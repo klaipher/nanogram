@@ -3,22 +3,27 @@
 // Use of this source code is governed by a BSD-style
 // license that can be found in the LICENSE file.
 
+#include <jxl/codestream_header.h>
 #include <jxl/decode.h>
 #include <jxl/decode_cxx.h>
+#include <jxl/memory_manager.h>
 #include <jxl/thread_parallel_runner.h>
 #include <jxl/thread_parallel_runner_cxx.h>
-#include <limits.h>
-#include <stdint.h>
-#include <stdio.h>
-#include <stdlib.h>
-#include <string.h>
+#include <jxl/types.h>
 
 #include <algorithm>
+#include <cstdint>
+#include <cstdio>
+#include <cstdlib>
+#include <cstring>
 #include <hwy/targets.h>
-#include <map>
+#include <memory>
 #include <mutex>
 #include <random>
 #include <vector>
+
+#include "lib/jxl/fuzztest.h"
+#include "tools/tracking_memory_manager.h"
 
 namespace {
 
@@ -26,6 +31,17 @@ namespace {
 int external_code = 0;
 
 constexpr const size_t kStreamingTargetNumberOfChunks = 128;
+
+using ::jpegxl::tools::kGiB;
+using ::jpegxl::tools::TrackingMemoryManager;
+
+void CheckImpl(bool ok, const char* condition, const char* file, int line) {
+  if (!ok) {
+    fprintf(stderr, "Check(%s) failed at %s:%d\n", condition, file, line);
+    __builtin_trap();
+  }
+}
+#define Check(OK) CheckImpl((OK), #OK, __FILE__, __LINE__)
 
 // Options for the fuzzing
 struct FuzzSpec {
@@ -64,20 +80,24 @@ void Consume(const T& entry) {
 
 // use_streaming: if true, decodes the data in small chunks, if false, decodes
 // it in one shot.
-bool DecodeJpegXl(const uint8_t* jxl, size_t size, size_t max_pixels,
-                  const FuzzSpec& spec, std::vector<uint8_t>* pixels,
-                  std::vector<uint8_t>* jpeg, size_t* xsize, size_t* ysize,
+bool DecodeJpegXl(const uint8_t* jxl, size_t size,
+                  JxlMemoryManager* memory_manager, size_t max_pixels,
+                  size_t max_total_pixels, const FuzzSpec& spec,
+                  std::vector<uint8_t>* pixels, std::vector<uint8_t>* jpeg,
+                  size_t* xsize, size_t* ysize,
                   std::vector<uint8_t>* icc_profile) {
+  size_t total_pixels = 0;
+  size_t retry_pixel_tax = 0;
   // Multi-threaded parallel runner. Limit to max 2 threads since the fuzzer
   // itself is already multithreaded.
   size_t num_threads =
       std::min<size_t>(2, JxlThreadParallelRunnerDefaultNumWorkerThreads());
-  auto runner = JxlThreadParallelRunnerMake(nullptr, num_threads);
+  auto runner = JxlThreadParallelRunnerMake(memory_manager, num_threads);
 
-  std::mt19937 mt(spec.random_seed);
+  auto mt = std::make_unique<std::mt19937>(spec.random_seed);
   std::exponential_distribution<> dis_streaming(kStreamingTargetNumberOfChunks);
 
-  auto dec = JxlDecoderMake(nullptr);
+  auto dec = JxlDecoderMake(memory_manager);
   if (JXL_DEC_SUCCESS !=
       JxlDecoderSubscribeEvents(
           dec.get(), JXL_DEC_BASIC_INFO | JXL_DEC_COLOR_ENCODING |
@@ -91,11 +111,12 @@ bool DecodeJpegXl(const uint8_t* jxl, size_t size, size_t max_pixels,
                                                      runner.get())) {
     return false;
   }
-  if (JXL_DEC_SUCCESS !=
-      JxlDecoderSetKeepOrientation(dec.get(), spec.keep_orientation)) {
+  if (JXL_DEC_SUCCESS != JxlDecoderSetKeepOrientation(
+                             dec.get(), TO_JXL_BOOL(spec.keep_orientation))) {
     abort();
   }
-  if (JXL_DEC_SUCCESS != JxlDecoderSetCoalescing(dec.get(), spec.coalescing)) {
+  if (JXL_DEC_SUCCESS !=
+      JxlDecoderSetCoalescing(dec.get(), TO_JXL_BOOL(spec.coalescing))) {
     abort();
   }
   JxlBasicInfo info;
@@ -132,19 +153,22 @@ bool DecodeJpegXl(const uint8_t* jxl, size_t size, size_t max_pixels,
 
   std::vector<uint8_t> extra_channel_pixels;
 
+  struct CalledRow {
+    std::vector<int> delta;
+    // Use the pixel values.
+    uint32_t value = 0;
+  };
+
   // Callback function used when decoding with use_callback.
   struct DecodeCallbackData {
     JxlBasicInfo info;
     size_t xsize = 0;
     size_t ysize = 0;
-    std::mutex called_rows_mutex;
+    std::unique_ptr<std::mutex[]> called_rows_mutex;
     // For each row stores the segments of the row being called. For each row
     // the sum of all the int values in the map up to [i] (inclusive) tell how
     // many times a callback included the pixel i of that row.
-    std::vector<std::map<uint32_t, int>> called_rows;
-
-    // Use the pixel values.
-    uint32_t value = 0;
+    std::vector<CalledRow> called_rows;
   };
   DecodeCallbackData decode_callback_data;
   auto decode_callback = +[](void* opaque, size_t x, size_t y,
@@ -156,10 +180,11 @@ bool DecodeJpegXl(const uint8_t* jxl, size_t size, size_t max_pixels,
     if (num_pixels && !pixels) abort();
     // Keep track of the segments being called by the callback.
     {
-      const std::lock_guard<std::mutex> lock(data->called_rows_mutex);
-      data->called_rows[y][x]++;
-      data->called_rows[y][x + num_pixels]--;
-      data->value += *static_cast<const uint8_t*>(pixels);
+      const std::lock_guard<std::mutex> lock(data->called_rows_mutex.get()[y]);
+      auto& called_row = data->called_rows[y];
+      called_row.delta[x]++;
+      called_row.delta[x + num_pixels]--;
+      called_row.value += *static_cast<const uint8_t*>(pixels);
     }
   };
 
@@ -178,6 +203,8 @@ bool DecodeJpegXl(const uint8_t* jxl, size_t size, size_t max_pixels,
       return false;
     } else if (status == JXL_DEC_NEED_MORE_INPUT) {
       if (spec.use_streaming) {
+        if (total_pixels > max_total_pixels) return false;
+        total_pixels += retry_pixel_tax;
         size_t remaining = JxlDecoderReleaseInput(dec.get());
         // move any remaining bytes to the front if necessary
         size_t used = streaming_size - remaining;
@@ -185,7 +212,7 @@ bool DecodeJpegXl(const uint8_t* jxl, size_t size, size_t max_pixels,
         leftover -= used;
         streaming_size -= used;
         size_t chunk_size = std::max<size_t>(
-            1, size * std::min<double>(1.0, dis_streaming(mt)));
+            1, size * std::min<double>(1.0, dis_streaming(*mt)));
         size_t add_size =
             std::min<size_t>(chunk_size, leftover - streaming_size);
         if (add_size == 0) {
@@ -243,6 +270,7 @@ bool DecodeJpegXl(const uint8_t* jxl, size_t size, size_t max_pixels,
       if (*xsize != 0 && num_pixels / *xsize != *ysize) return false;
       // limit max memory of this fuzzer test
       if (num_pixels > max_pixels) return false;
+      retry_pixel_tax = num_pixels;
 
       if (info.have_preview) {
         want_preview = true;
@@ -291,18 +319,20 @@ bool DecodeJpegXl(const uint8_t* jxl, size_t size, size_t max_pixels,
                                  icc_profile->data(), icc_profile->size())) {
         return false;
       }
-      if (want_preview) {
-        size_t preview_size;
-        if (JXL_DEC_SUCCESS !=
-            JxlDecoderPreviewOutBufferSize(dec.get(), &format, &preview_size)) {
-          return false;
-        }
-        preview_pixels.resize(preview_size);
-        if (JXL_DEC_SUCCESS != JxlDecoderSetPreviewOutBuffer(
-                                   dec.get(), &format, preview_pixels.data(),
-                                   preview_pixels.size())) {
-          abort();
-        }
+    } else if (status == JXL_DEC_NEED_PREVIEW_OUT_BUFFER) {
+      if (seen_preview) abort();
+      if (!want_preview) abort();
+      if (!seen_color_encoding) abort();
+      size_t preview_size;
+      if (JXL_DEC_SUCCESS !=
+          JxlDecoderPreviewOutBufferSize(dec.get(), &format, &preview_size)) {
+        return false;
+      }
+      preview_pixels.resize(preview_size);
+      if (JXL_DEC_SUCCESS != JxlDecoderSetPreviewOutBuffer(
+                                 dec.get(), &format, preview_pixels.data(),
+                                 preview_pixels.size())) {
+        abort();
       }
     } else if (status == JXL_DEC_PREVIEW_IMAGE) {
       if (seen_preview) abort();
@@ -326,10 +356,22 @@ bool DecodeJpegXl(const uint8_t* jxl, size_t size, size_t max_pixels,
         }
         decode_callback_data.xsize = frame_header.layer_info.xsize;
         decode_callback_data.ysize = frame_header.layer_info.ysize;
+        size_t num_pixels = static_cast<size_t>(frame_header.layer_info.xsize) *
+                            frame_header.layer_info.ysize;
+        if (num_pixels > max_pixels) return false;
+        if (total_pixels > max_total_pixels) return false;
+        total_pixels += num_pixels;
         if (!spec.coalescing) {
           decode_callback_data.called_rows.clear();
         }
+        decode_callback_data.called_rows_mutex =
+            std::make_unique<std::mutex[]>(decode_callback_data.ysize);
         decode_callback_data.called_rows.resize(decode_callback_data.ysize);
+        for (size_t y = 0; y < decode_callback_data.ysize; ++y) {
+          decode_callback_data.called_rows[y].delta.clear();
+          decode_callback_data.called_rows[y].delta.resize(
+              decode_callback_data.xsize + 1);
+        }
         Consume(frame_header);
         std::vector<char> frame_name(frame_header.name_length + 1);
         if (JXL_DEC_SUCCESS != JxlDecoderGetFrameName(dec.get(),
@@ -354,20 +396,22 @@ bool DecodeJpegXl(const uint8_t* jxl, size_t size, size_t max_pixels,
 
       if (info.num_extra_channels > 0) {
         std::uniform_int_distribution<> dis(0, info.num_extra_channels);
-        size_t ec_index = dis(mt);
+        size_t ec_index = dis(*mt);
         // There is also a probability no extra channel is chosen
         if (ec_index < info.num_extra_channels) {
-          size_t ec_index = info.num_extra_channels - 1;
+          // TODO(eustas): that looks suspicious to me
+          size_t last_ec_index = info.num_extra_channels - 1;
           size_t ec_size;
-          if (JXL_DEC_SUCCESS != JxlDecoderExtraChannelBufferSize(
-                                     dec.get(), &format, &ec_size, ec_index)) {
+          if (JXL_DEC_SUCCESS !=
+              JxlDecoderExtraChannelBufferSize(dec.get(), &format, &ec_size,
+                                               last_ec_index)) {
             return false;
           }
           extra_channel_pixels.resize(ec_size);
           if (JXL_DEC_SUCCESS !=
               JxlDecoderSetExtraChannelBuffer(dec.get(), &format,
                                               extra_channel_pixels.data(),
-                                              ec_size, ec_index)) {
+                                              ec_size, last_ec_index)) {
             return false;
           }
         }
@@ -387,7 +431,7 @@ bool DecodeJpegXl(const uint8_t* jxl, size_t size, size_t max_pixels,
           return false;
         }
         pixels->resize(buffer_size);
-        void* pixels_buffer = (void*)pixels->data();
+        void* pixels_buffer = static_cast<void*>(pixels->data());
         size_t pixels_buffer_size = pixels->size();
         if (JXL_DEC_SUCCESS !=
             JxlDecoderSetImageOutBuffer(dec.get(), &format, pixels_buffer,
@@ -439,16 +483,11 @@ bool DecodeJpegXl(const uint8_t* jxl, size_t size, size_t max_pixels,
       if (seen_need_image_out && spec.use_callback && spec.coalescing) {
         // Check that the callback sent all the pixels
         for (uint32_t y = 0; y < decode_callback_data.ysize; y++) {
-          // Check that each row was at least called once.
-          if (decode_callback_data.called_rows[y].empty()) abort();
-          uint32_t last_idx = 0;
-          int calls = 0;
-          for (auto it : decode_callback_data.called_rows[y]) {
-            if (it.first > last_idx) {
-              if (static_cast<uint32_t>(calls) != 1) abort();
-            }
-            calls += it.second;
-            last_idx = it.first;
+          const auto& deltas = decode_callback_data.called_rows[y].delta;
+          if (deltas[0] != 1) abort();
+          if (deltas[decode_callback_data.xsize] != -1) abort();
+          for (size_t i = 1; i < decode_callback_data.xsize; ++i) {
+            if (deltas[i] != 0) abort();
           }
         }
       }
@@ -462,16 +501,11 @@ bool DecodeJpegXl(const uint8_t* jxl, size_t size, size_t max_pixels,
       if (seen_need_image_out && spec.use_callback && spec.coalescing) {
         // Check that the callback sent all the pixels
         for (uint32_t y = 0; y < decode_callback_data.ysize; y++) {
-          // Check that each row was at least called once.
-          if (decode_callback_data.called_rows[y].empty()) abort();
-          uint32_t last_idx = 0;
-          int calls = 0;
-          for (auto it : decode_callback_data.called_rows[y]) {
-            if (it.first > last_idx) {
-              if (static_cast<uint32_t>(calls) != num_frames) abort();
-            }
-            calls += it.second;
-            last_idx = it.first;
+          const auto& deltas = decode_callback_data.called_rows[y].delta;
+          if (deltas[0] != static_cast<int>(num_frames)) abort();
+          if (deltas[decode_callback_data.xsize] != -1) abort();
+          for (size_t i = 1; i < decode_callback_data.xsize; ++i) {
+            if (deltas[i] != 0) abort();
           }
         }
       }
@@ -508,7 +542,7 @@ bool DecodeJpegXl(const uint8_t* jxl, size_t size, size_t max_pixels,
   }
 }
 
-int TestOneInput(const uint8_t* data, size_t size) {
+int DoTestOneInput(const uint8_t* data, size_t size) {
   if (size < 4) return 0;
   uint32_t flags = 0;
   size_t used_flag_bits = 0;
@@ -526,34 +560,42 @@ int TestOneInput(const uint8_t* data, size_t size) {
     flags /= limit;
     return result % (max_value + 1);
   };
+  const auto getBoolFlag = [&getFlag]() -> bool {
+    return static_cast<bool>(getFlag(1));
+  };
 
   FuzzSpec spec;
   // Allows some different possible variations in the chunk sizes of the
   // streaming case
   spec.random_seed = flags ^ size;
-  spec.get_alpha = !!getFlag(1);
-  spec.get_grayscale = !!getFlag(1);
-  spec.use_streaming = !!getFlag(1);
-  spec.jpeg_to_pixels = !!getFlag(1);
-  spec.use_callback = !!getFlag(1);
-  spec.keep_orientation = !!getFlag(1);
-  spec.coalescing = !!getFlag(1);
+  spec.get_alpha = getBoolFlag();
+  spec.get_grayscale = getBoolFlag();
+  spec.use_streaming = getBoolFlag();
+  spec.jpeg_to_pixels = getBoolFlag();
+  spec.use_callback = getBoolFlag();
+  spec.keep_orientation = getBoolFlag();
+  spec.coalescing = getBoolFlag();
   spec.output_type = static_cast<JxlDataType>(getFlag(JXL_TYPE_FLOAT16));
   spec.output_endianness = static_cast<JxlEndianness>(getFlag(JXL_BIG_ENDIAN));
   spec.output_align = getFlag(16);
-  spec.decode_boxes = !!getFlag(1);
+  spec.decode_boxes = getBoolFlag();
 
   std::vector<uint8_t> pixels;
   std::vector<uint8_t> jpeg;
   std::vector<uint8_t> icc;
-  size_t xsize, ysize;
+  size_t xsize;
+  size_t ysize;
   size_t max_pixels = 1 << 21;
+  size_t max_total_pixels = 5 * max_pixels;
 
+  TrackingMemoryManager memory_manager{/* cap */ 1 * kGiB,
+                                       /* total_cap */ 5 * kGiB};
   const auto targets = hwy::SupportedAndGeneratedTargets();
   hwy::SetSupportedTargetsForTest(targets[getFlag(targets.size() - 1)]);
-  DecodeJpegXl(data, size, max_pixels, spec, &pixels, &jpeg, &xsize, &ysize,
-               &icc);
+  DecodeJpegXl(data, size, memory_manager.get(), max_pixels, max_total_pixels,
+               spec, &pixels, &jpeg, &xsize, &ysize, &icc);
   hwy::SetSupportedTargetsForTest(0);
+  Check(memory_manager.Reset());
 
   return 0;
 }
@@ -561,5 +603,11 @@ int TestOneInput(const uint8_t* data, size_t size) {
 }  // namespace
 
 extern "C" int LLVMFuzzerTestOneInput(const uint8_t* data, size_t size) {
-  return TestOneInput(data, size);
+  return DoTestOneInput(data, size);
 }
+
+void TestOneInput(const std::vector<uint8_t>& data) {
+  DoTestOneInput(data.data(), data.size());
+}
+
+FUZZ_TEST(DjxlFuzzTest, TestOneInput);

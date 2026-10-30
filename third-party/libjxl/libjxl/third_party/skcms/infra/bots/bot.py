@@ -1,4 +1,4 @@
-#!/usr/bin/python2.7
+#!/usr/bin/python3
 
 import os
 import subprocess
@@ -13,8 +13,8 @@ def append(path, line):
   with open(path, 'a') as f:
     print >>f, line
 
-print "Hello from {platform} in {cwd}!".format(platform=sys.platform,
-                                               cwd=os.getcwd())
+print("Hello from {platform} in {cwd}!".format(platform=sys.platform,
+                                               cwd=os.getcwd()))
 
 if 'darwin' in sys.platform:
   # Get Xcode from CIPD using mac_toolchain tool.
@@ -22,8 +22,10 @@ if 'darwin' in sys.platform:
   xcode_app_path = os.path.join(os.getcwd(), sys.argv[4])
   # See mapping of Xcode version to Xcode build version here:
   # https://chrome-infra-packages.appspot.com/p/infra_internal/ios/xcode/mac/+/
-  XCODE_BUILD_VERSION = '12d4e'   # xcode 12.4
-  call('rm -rf {xcode_app_path}'.format(xcode_app_path=xcode_app_path))
+  XCODE_BUILD_VERSION = '16a242d'   # xcode 16.0
+  # When updating Xcode to a different version, it might be necessary to delete any existing
+  # installations with a line such as:
+  #     call('rm -rf {xcode_app_path}'.format(xcode_app_path=xcode_app_path))
   call(('{mac_toolchain}/mac_toolchain install '
         '-kind mac '
         '-xcode-version {xcode_build_version} '
@@ -45,11 +47,12 @@ elif 'linux' in sys.platform:
   # Get an Emscripten environment all set up.
   call('git clone https://github.com/emscripten-core/emsdk.git')
   os.chdir('emsdk')
-  call('./emsdk install 2.0.14')
+  call('./emsdk install 3.1.72')
+  call('./emsdk install node-20.18.0-64bit')
   os.chdir('..')
 
   emscripten_sdk = os.path.realpath('emsdk')
-  node = emscripten_sdk + '/node/14.18.2_64bit/bin/node'
+  node = emscripten_sdk + '/node/20.18.0_64bit/bin/node'
 
   em_config = os.path.realpath(os.path.join('.', 'em_config'))
   with open(em_config, 'w') as f:

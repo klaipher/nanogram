@@ -3,14 +3,11 @@
 // Use of this source code is governed by a BSD-style
 // license that can be found in the LICENSE file.
 
-#include <math.h>
-#include <stdint.h>
-#include <stdio.h>
+#include <cmath>
+#include <cstdint>
+#include <cstdio>
 
-#include <algorithm>
-#include <utility>
-#include <vector>
-
+#include "lib/jxl/base/status.h"
 #include "lib/jxl/render_pipeline/render_pipeline_stage.h"
 
 namespace jxl {
@@ -18,15 +15,18 @@ namespace jxl {
 class UpsampleXSlowStage : public RenderPipelineStage {
  public:
   UpsampleXSlowStage()
-      : RenderPipelineStage(RenderPipelineStage::Settings::ShiftX(1, 1)) {}
+      : RenderPipelineStage(
+            RenderPipelineStage::Settings::ShiftX(/*shift=*/1, /*border=*/1)) {}
 
-  void ProcessRow(const RowInfo& input_rows, const RowInfo& output_rows,
-                  size_t xextra, size_t xsize, size_t xpos, size_t ypos,
-                  size_t thread_id) const final {
+  Status ProcessRow(const RowInfo& input_rows, const RowInfo& output_rows,
+                    size_t xextra_left, size_t xextra_right, size_t xsize,
+                    size_t xpos, size_t ypos, size_t thread_id) const final {
+    ptrdiff_t x_start = -static_cast<ptrdiff_t>(xextra_left);
+    ptrdiff_t x_end = static_cast<ptrdiff_t>(xsize + xextra_right);
     for (size_t c = 0; c < input_rows.size(); c++) {
       const float* row = GetInputRow(input_rows, c, 0);
       float* row_out = GetOutputRow(output_rows, c, 0);
-      for (int64_t x = -xextra; x < (int64_t)(xsize + xextra); x++) {
+      for (ptrdiff_t x = x_start; x < x_end; x++) {
         float xp = *(row + x - 1);
         float xc = *(row + x);
         float xn = *(row + x + 1);
@@ -36,6 +36,7 @@ class UpsampleXSlowStage : public RenderPipelineStage {
         *(row_out + 2 * x + 1) = xout1;
       }
     }
+    return true;
   }
 
   const char* GetName() const override { return "TEST::UpsampleXSlowStage"; }
@@ -48,27 +49,31 @@ class UpsampleXSlowStage : public RenderPipelineStage {
 class UpsampleYSlowStage : public RenderPipelineStage {
  public:
   UpsampleYSlowStage()
-      : RenderPipelineStage(RenderPipelineStage::Settings::ShiftY(1, 1)) {}
+      : RenderPipelineStage(
+            RenderPipelineStage::Settings::ShiftY(/*shift=*/1, /*border=*/1)) {}
 
-  void ProcessRow(const RowInfo& input_rows, const RowInfo& output_rows,
-                  size_t xextra, size_t xsize, size_t xpos, size_t ypos,
-                  size_t thread_id) const final {
+  Status ProcessRow(const RowInfo& input_rows, const RowInfo& output_rows,
+                    size_t xextra_left, size_t xextra_right, size_t xsize,
+                    size_t xpos, size_t ypos, size_t thread_id) const final {
+    ptrdiff_t x_start = -static_cast<ptrdiff_t>(xextra_left);
+    ptrdiff_t x_end = static_cast<ptrdiff_t>(xsize + xextra_right);
     for (size_t c = 0; c < input_rows.size(); c++) {
       const float* rowp = GetInputRow(input_rows, c, -1);
       const float* rowc = GetInputRow(input_rows, c, 0);
       const float* rown = GetInputRow(input_rows, c, 1);
       float* row_out0 = GetOutputRow(output_rows, c, 0);
       float* row_out1 = GetOutputRow(output_rows, c, 1);
-      for (int64_t x = -xextra; x < (int64_t)(xsize + xextra); x++) {
+      for (ptrdiff_t x = x_start; x < x_end; x++) {
         float xp = *(rowp + x);
         float xc = *(rowc + x);
         float xn = *(rown + x);
-        float yout0 = xp * 0.25f + xc * 0.75f;
-        float yout1 = xc * 0.75f + xn * 0.25f;
-        *(row_out0 + x) = yout0;
-        *(row_out1 + x) = yout1;
+        float y_out0 = xp * 0.25f + xc * 0.75f;
+        float y_out1 = xc * 0.75f + xn * 0.25f;
+        *(row_out0 + x) = y_out0;
+        *(row_out1 + x) = y_out1;
       }
     }
+    return true;
   }
 
   RenderPipelineChannelMode GetChannelMode(size_t c) const final {
@@ -82,14 +87,18 @@ class Check0FinalStage : public RenderPipelineStage {
  public:
   Check0FinalStage() : RenderPipelineStage(RenderPipelineStage::Settings()) {}
 
-  void ProcessRow(const RowInfo& input_rows, const RowInfo& output_rows,
-                  size_t xextra, size_t xsize, size_t xpos, size_t ypos,
-                  size_t thread_id) const final {
+  Status ProcessRow(const RowInfo& input_rows, const RowInfo& output_rows,
+                    size_t xextra_left, size_t xextra_right, size_t xsize,
+                    size_t xpos, size_t ypos, size_t thread_id) const final {
+    ptrdiff_t x_start = -static_cast<ptrdiff_t>(xextra_left);
+    ptrdiff_t x_end = static_cast<ptrdiff_t>(xsize + xextra_right);
     for (size_t c = 0; c < input_rows.size(); c++) {
-      for (size_t x = 0; x < xsize; x++) {
-        JXL_CHECK(fabsf(GetInputRow(input_rows, c, 0)[x]) < 1e-8);
+      float* JXL_RESTRICT row = GetInputRow(input_rows, c, 0);
+      for (ptrdiff_t x = x_start; x < x_end; x++) {
+        JXL_ENSURE(std::abs(row[x]) < 1e-8);
       }
     }
+    return true;
   }
 
   RenderPipelineChannelMode GetChannelMode(size_t c) const final {

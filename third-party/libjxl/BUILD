@@ -4,12 +4,16 @@ load("@rules_cc//cc:objc_library.bzl", "objc_library")
 
 headers = [
     "jxl/codestream_header.h",
+    "jxl/cms.h",
     "jxl/cms_interface.h",
     "jxl/color_encoding.h",
+    "jxl/compressed_icc.h",
     "jxl/decode_cxx.h",
     "jxl/decode.h",
     "jxl/encode_cxx.h",
     "jxl/encode.h",
+    "jxl/gain_map.h",
+    "jxl/jxl_cms_export.h",
     "jxl/jxl_export.h",
     "jxl/jxl_threads_export.h",
     "jxl/memory_manager.h",
@@ -21,6 +25,7 @@ headers = [
 
 libs = [
     "jxl",
+    "jxl_cms",
 ]
 
 

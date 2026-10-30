@@ -4,6 +4,8 @@
 // license that can be found in the LICENSE file.
 
 #include <limits.h>
+#include <stdint.h>
+#include <stdio.h>
 #include <stdlib.h>
 #include <string.h>
 
@@ -12,7 +14,7 @@ bool error_msg(const char* message) {
   return false;
 }
 #define return_on_error(X) \
-  if (!X) return false;
+  if (!(X)) return false;
 
 size_t Log2(uint32_t value) { return 31 - __builtin_clz(value); }
 
@@ -47,8 +49,10 @@ class Parser {
 
       case '7':
         return ParseHeaderPAM(header, pos);
+
+      default:
+        return false;
     }
-    return false;
   }
 
   // Exposed for testing
@@ -58,8 +62,11 @@ class Parser {
 
     *number = 0;
     while (pos_ < end_ && *pos_ >= '0' && *pos_ <= '9') {
-      *number *= 10;
-      *number += *pos_ - '0';
+      const size_t digit = *pos_ - '0';
+      if (*number > (SIZE_MAX - digit) / 10) {
+        return error_msg("PNM: unsigned number too large");
+      }
+      *number = *number * 10 + digit;
       ++pos_;
     }
 
@@ -152,11 +159,12 @@ class Parser {
 
   bool MatchString(const char* keyword) {
     const uint8_t* ppos = pos_;
-    while (*keyword) {
+    const uint8_t* kw = reinterpret_cast<const uint8_t*>(keyword);
+    while (*kw) {
       if (ppos >= end_) return error_msg("PAM: unexpected end of input");
-      if (*keyword != *ppos) return false;
+      if (*kw != *ppos) return false;
       ppos++;
-      keyword++;
+      kw++;
     }
     pos_ = ppos;
     return_on_error(SkipWhitespace());
@@ -250,7 +258,7 @@ bool load_file(unsigned char** out, size_t* outsize, const char* filename) {
     fclose(file);
     return false;
   }
-  *out = (unsigned char*)malloc(*outsize);
+  *out = static_cast<unsigned char*>(malloc(*outsize));
   if (!(*out)) {
     fclose(file);
     return false;
@@ -282,11 +290,26 @@ bool DecodePAM(const char* filename, uint8_t** buffer, size_t* w, size_t* h,
   *nb_chans = (header.is_gray ? 1 : 3) + (header.has_alpha ? 1 : 0);
 
   size_t pnm_remaining_size = in_file + in_size - pos;
-  size_t buffer_size = *w * *h * *nb_chans * (*bitdepth > 8 ? 2 : 1);
+  // Guard against integer overflow in buffer size calculation.
+  // nb_chans is 1..4 and bytes_per_sample is 1..2, so sample_size (at most 8)
+  // cannot overflow on its own.
+  size_t bytes_per_sample = (*bitdepth > 8 ? 2 : 1);
+  size_t sample_size = *nb_chans * bytes_per_sample;
+  if (*h != 0 && *w > SIZE_MAX / *h) {
+    return error_msg("PNM: image dimensions too large");
+  }
+  size_t num_pixels = *w * *h;
+  if (num_pixels > SIZE_MAX / sample_size) {
+    return error_msg("PNM: image dimensions too large");
+  }
+  size_t buffer_size = num_pixels * sample_size;
   if (pnm_remaining_size < buffer_size) {
     return error_msg("PNM file too small");
   }
-  *buffer = (uint8_t*)malloc(buffer_size);
+  *buffer = static_cast<uint8_t*>(malloc(buffer_size));
+  if (!*buffer) {
+    return error_msg("PNM: memory allocation failed");
+  }
   memcpy(*buffer, pos, buffer_size);
   return true;
 }

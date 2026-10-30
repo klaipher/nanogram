@@ -5,20 +5,23 @@
 # license that can be found in the LICENSE file.
 
 # This file downloads the dependencies needed to build JPEG XL into third_party.
-# These dependencies are normally pulled by gtest.
+# These dependencies are normally pulled by git.
 
 set -eu
 
-MYDIR=$(dirname $(realpath "$0"))
+SELF=$(realpath "$0")
+MYDIR=$(dirname "${SELF}")
 
 # Git revisions we use for the given submodules. Update these whenever you
 # update a git submodule.
-THIRD_PARTY_BROTLI="36533a866ed1ca4b75cf049f4521e4ec5fe24727"
-THIRD_PARTY_HIGHWAY="591ad359a5aa6c320951ebd35f839604c87abe6c"
-THIRD_PARTY_SKCMS="b25b07b4b07990811de121c0356155b2ba0f4318"
-THIRD_PARTY_SJPEG="e5ab13008bb214deb66d5f3e17ca2f8dbff150bf"
-THIRD_PARTY_ZLIB="cacf7f1d4e3d44d871b605da3b647f07d718623f"
-THIRD_PARTY_LIBPNG="a40189cf881e9f0db80511c382292a5604c3c3d1"
+TESTDATA="873045a9c42ed60721756e26e2a6b32e17415205"
+THIRD_PARTY_BROTLI="028fb5a23661f123017c060daa546b55cf4bde29" # v1.2.0
+THIRD_PARTY_GOOGLETEST="6910c9d9165801d8827d628cb72eb7ea9dd538c5" # v1.16.0
+THIRD_PARTY_HIGHWAY="457c891775a7397bdb0376bb1031e6e027af1c48" # v1.2.0
+THIRD_PARTY_SKCMS="96d9171c94b937a1b5f0293de7309ac16311b722" # 2025_09_16
+THIRD_PARTY_SJPEG="94e0df6d0f8b44228de5be0ff35efb9f946a13c9" # Wed Apr 2 15:42:02 2025 -0700
+THIRD_PARTY_ZLIB="51b7f2abdade71cd9bb0e7a373ef2610ec6f9daf" # v1.3.1
+THIRD_PARTY_LIBPNG="872555f4ba910252783af1507f9e7fe1653be252" # v1.6.47
 THIRD_PARTY_LIBJPEG_TURBO="8ecba3647edb6dd940463fedf38ca33a8e2a73d1" # 2.1.5.1
 
 # Download the target revision from GitHub.
@@ -27,7 +30,7 @@ download_github() {
   local project="$2"
 
   local varname=`echo "$path" | tr '[:lower:]' '[:upper:]'`
-  varname="${varname/[\/-]/_}"
+  varname="${varname//[\/-]/_}"
   local sha
   eval "sha=\${${varname}}"
 
@@ -39,15 +42,8 @@ download_github() {
   fi
 
   local url
-  local strip_components=0
-  if [[ "${project:0:4}" == "http" ]]; then
-    # "project" is a googlesource.com base url.
-    url="${project}${sha}.tar.gz"
-  else
-    # GitHub files have a top-level directory
-    strip_components=1
-    url="https://github.com/${project}/tarball/${sha}"
-  fi
+  local strip_components=1
+  url="https://github.com/${project}/tarball/${sha}"
 
   echo "Downloading ${path} version ${sha}..." >&2
   mkdir -p "${down_dir}"
@@ -79,11 +75,12 @@ EOF
   fi
 
   # Sources downloaded from a tarball.
+  download_github testdata libjxl/testdata
   download_github third_party/brotli google/brotli
+  download_github third_party/googletest google/googletest
   download_github third_party/highway google/highway
   download_github third_party/sjpeg webmproject/sjpeg
-  download_github third_party/skcms \
-    "https://skia.googlesource.com/skcms/+archive/"
+  download_github third_party/skcms google/skcms
   download_github third_party/zlib madler/zlib
   download_github third_party/libpng glennrp/libpng
   download_github third_party/libjpeg-turbo libjpeg-turbo/libjpeg-turbo

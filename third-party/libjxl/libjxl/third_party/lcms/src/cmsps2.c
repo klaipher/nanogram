@@ -1,7 +1,7 @@
 //---------------------------------------------------------------------------------
 //
 //  Little Color Management System
-//  Copyright (c) 1998-2017 Marti Maria Saguer
+//  Copyright (c) 1998-2024 Marti Maria Saguer
 //
 // Permission is hereby granted, free of charge, to any person obtaining
 // a copy of this software and associated documentation files (the "Software"),
@@ -295,21 +295,7 @@ cmsUInt8Number Word2Byte(cmsUInt16Number w)
 }
 
 
-// Convert to byte (using ICC2 notation)
-/*
-static
-cmsUInt8Number L2Byte(cmsUInt16Number w)
-{
-    int ww = w + 0x0080;
-
-    if (ww > 0xFFFF) return 0xFF;
-
-    return (cmsUInt8Number) ((cmsUInt16Number) (ww >> 8) & 0xFF);
-}
-*/
-
 // Write a cooked byte
-
 static
 void WriteByte(cmsIOHANDLER* m, cmsUInt8Number b)
 {
@@ -326,7 +312,8 @@ void WriteByte(cmsIOHANDLER* m, cmsUInt8Number b)
 // ----------------------------------------------------------------- PostScript generation
 
 
-// Removes offending Carriage returns
+// Removes offending carriage returns
+
 static
 char* RemoveCR(const char* txt)
 {
@@ -424,21 +411,6 @@ void EmitIntent(cmsIOHANDLER* m, cmsUInt32Number RenderingIntent)
 //        = Yn*( L* / 116) / 7.787      if (L*) < 6 / 29
 //
 
-/*
-static
-void EmitL2Y(cmsIOHANDLER* m)
-{
-    _cmsIOPrintf(m,
-            "{ "
-                "100 mul 16 add 116 div "               // (L * 100 + 16) / 116
-                 "dup 6 29 div ge "                     // >= 6 / 29 ?
-                 "{ dup dup mul mul } "                 // yes, ^3 and done
-                 "{ 4 29 div sub 108 841 div mul } "    // no, slope limiting
-            "ifelse } bind ");
-}
-*/
-
-
 // Lab -> XYZ, see the discussion above
 
 static
@@ -469,12 +441,17 @@ void Emit1Gamma(cmsIOHANDLER* m, cmsToneCurve* Table)
     cmsUInt32Number i;
     cmsFloat64Number gamma;
 
-    if (Table == NULL) return; // Error
+    /**
+    * On error, empty tables or lienar assume gamma 1.0
+    */
+    if (Table == NULL ||
+        Table->nEntries <= 0 ||
+        cmsIsToneCurveLinear(Table)) {
 
-    if (Table ->nEntries <= 0) return;  // Empty table
+        _cmsIOPrintf(m, "{ 1 } bind ");
+        return;
+    }
 
-    // Suppress whole if identity
-    if (cmsIsToneCurveLinear(Table)) return;
 
     // Check if is really an exponential. If so, emit "exp"
     gamma = cmsEstimateGamma(Table, 0.001);
@@ -488,7 +465,7 @@ void Emit1Gamma(cmsIOHANDLER* m, cmsToneCurve* Table)
     // Bounds check
     EmitRangeCheck(m);
 
-    // Emit intepolation code
+    // Emit interpolation code
 
     // PostScript code                      Stack
     // ===============                      ========================
@@ -496,6 +473,8 @@ void Emit1Gamma(cmsIOHANDLER* m, cmsToneCurve* Table)
     _cmsIOPrintf(m, " [");
 
     for (i=0; i < Table->nEntries; i++) {
+    if (i % 10 == 0)
+            _cmsIOPrintf(m, "\n  ");
         _cmsIOPrintf(m, "%d ", Table->Table16[i]);
     }
 
@@ -512,7 +491,7 @@ void Emit1Gamma(cmsIOHANDLER* m, cmsToneCurve* Table)
     _cmsIOPrintf(m, "ceiling cvi ");              // tab val2 cell0 cell1
     _cmsIOPrintf(m, "3 index ");                  // tab val2 cell0 cell1 tab
     _cmsIOPrintf(m, "exch ");                     // tab val2 cell0 tab cell1
-    _cmsIOPrintf(m, "get ");                      // tab val2 cell0 y1
+    _cmsIOPrintf(m, "get\n  ");                   // tab val2 cell0 y1
     _cmsIOPrintf(m, "4 -1 roll ");                // val2 cell0 y1 tab
     _cmsIOPrintf(m, "3 -1 roll ");                // val2 y1 tab cell0
     _cmsIOPrintf(m, "get ");                      // val2 y1 y0
@@ -525,7 +504,7 @@ void Emit1Gamma(cmsIOHANDLER* m, cmsToneCurve* Table)
     _cmsIOPrintf(m, "sub ");                      // y0 (y1-y0) rest
     _cmsIOPrintf(m, "mul ");                      // y0 t1
     _cmsIOPrintf(m, "add ");                      // y
-    _cmsIOPrintf(m, "65535 div ");                // result
+    _cmsIOPrintf(m, "65535 div\n");               // result
 
     _cmsIOPrintf(m, " } bind ");
 }
@@ -534,9 +513,10 @@ void Emit1Gamma(cmsIOHANDLER* m, cmsToneCurve* Table)
 // Compare gamma table
 
 static
-cmsBool GammaTableEquals(cmsUInt16Number* g1, cmsUInt16Number* g2, cmsUInt32Number nEntries)
+cmsBool GammaTableEquals(cmsUInt16Number* g1, cmsUInt16Number* g2, cmsUInt32Number nG1, cmsUInt32Number nG2)
 {
-    return memcmp(g1, g2, nEntries* sizeof(cmsUInt16Number)) == 0;
+    if (nG1 != nG2) return FALSE;
+    return memcmp(g1, g2, nG1 * sizeof(cmsUInt16Number)) == 0;
 }
 
 
@@ -546,12 +526,13 @@ static
 void EmitNGamma(cmsIOHANDLER* m, cmsUInt32Number n, cmsToneCurve* g[])
 {
     cmsUInt32Number i;
+   
 
     for( i=0; i < n; i++ )
     {
         if (g[i] == NULL) return; // Error
 
-        if (i > 0 && GammaTableEquals(g[i-1]->Table16, g[i]->Table16, g[i]->nEntries)) {
+        if (i > 0 && GammaTableEquals(g[i-1]->Table16, g[i]->Table16, g[i-1]->nEntries, g[i]->nEntries)) {
 
             _cmsIOPrintf(m, "dup ");
         }
@@ -561,9 +542,6 @@ void EmitNGamma(cmsIOHANDLER* m, cmsUInt32Number n, cmsToneCurve* g[])
     }
 
 }
-
-
-
 
 
 // Following code dumps a LUT onto memory stream
@@ -611,7 +589,7 @@ int OutputValueSampler(CMSREGISTER const cmsUInt16Number In[], CMSREGISTER cmsUI
     }
 
 
-    // Hadle the parenthesis on rows
+    // Handle the parenthesis on rows
 
     if (In[0] != sc ->FirstComponent) {
 
@@ -662,11 +640,11 @@ int OutputValueSampler(CMSREGISTER const cmsUInt16Number In[], CMSREGISTER cmsUI
 
 static
 void WriteCLUT(cmsIOHANDLER* m, cmsStage* mpe, const char* PreMaj,
-                                             const char* PostMaj,
-                                             const char* PreMin,
-                                             const char* PostMin,
-                                             int FixWhite,
-                                             cmsColorSpaceSignature ColorSpace)
+                                               const char* PostMaj,
+                                               const char* PreMin,
+                                               const char* PostMin,
+                                               int FixWhite,
+                                               cmsColorSpaceSignature ColorSpace)
 {
     cmsUInt32Number i;
     cmsPsSamplerCargo sc;
@@ -683,18 +661,23 @@ void WriteCLUT(cmsIOHANDLER* m, cmsStage* mpe, const char* PreMaj,
     sc.FixWhite = FixWhite;
     sc.ColorSpace = ColorSpace;
 
-    _cmsIOPrintf(m, "[");
+    if (sc.Pipeline != NULL && sc.Pipeline->Params != NULL) {
 
-    for (i=0; i < sc.Pipeline->Params->nInputs; i++)
-        _cmsIOPrintf(m, " %d ", sc.Pipeline->Params->nSamples[i]);
+        _cmsIOPrintf(m, "[");
 
-    _cmsIOPrintf(m, " [\n");
+        for (i = 0; i < sc.Pipeline->Params->nInputs; i++) {
+            if (i < MAX_INPUT_DIMENSIONS)
+                _cmsIOPrintf(m, " %d ", sc.Pipeline->Params->nSamples[i]);
+        }
 
-    cmsStageSampleCLut16bit(mpe, OutputValueSampler, (void*) &sc, SAMPLER_INSPECT);
+        _cmsIOPrintf(m, " [\n");
 
-    _cmsIOPrintf(m, PostMin);
-    _cmsIOPrintf(m, PostMaj);
-    _cmsIOPrintf(m, "] ");
+        cmsStageSampleCLut16bit(mpe, OutputValueSampler, (void*)&sc, SAMPLER_INSPECT);
+
+        _cmsIOPrintf(m, PostMin);
+        _cmsIOPrintf(m, PostMaj);
+        _cmsIOPrintf(m, "] ");
+    }
 
 }
 
@@ -774,26 +757,27 @@ int EmitCIEBasedDEF(cmsIOHANDLER* m, cmsPipeline* Pipeline, cmsUInt32Number Inte
     const char* PostMaj;
     const char* PreMin, *PostMin;
     cmsStage* mpe;
-
-    mpe = Pipeline ->Elements;
+        
+    mpe = Pipeline->Elements;
 
     switch (cmsStageInputChannels(mpe)) {
     case 3:
+        _cmsIOPrintf(m, "[ /CIEBasedDEF\n");
+        PreMaj = "<";
+        PostMaj = ">\n";
+        PreMin = PostMin = "";
+        break;
 
-            _cmsIOPrintf(m, "[ /CIEBasedDEF\n");
-            PreMaj ="<";
-            PostMaj= ">\n";
-            PreMin = PostMin = "";
-            break;
     case 4:
-            _cmsIOPrintf(m, "[ /CIEBasedDEFG\n");
-            PreMaj = "[";
-            PostMaj = "]\n";
-            PreMin = "<";
-            PostMin = ">\n";
-            break;
+        _cmsIOPrintf(m, "[ /CIEBasedDEFG\n");
+        PreMaj = "[";
+        PostMaj = "]\n";
+        PreMin = "<";
+        PostMin = ">\n";
+        break;
+
     default:
-            return 0;
+        return 0;
 
     }
 
@@ -858,13 +842,13 @@ cmsToneCurve* ExtractGray2Y(cmsContext ContextID, cmsHPROFILE hProfile, cmsUInt3
 // a more perceptually uniform space... I do choose Lab.
 
 static
-int WriteInputLUT(cmsIOHANDLER* m, cmsHPROFILE hProfile, cmsUInt32Number Intent, cmsUInt32Number dwFlags)
+cmsBool WriteInputLUT(cmsIOHANDLER* m, cmsHPROFILE hProfile, cmsUInt32Number Intent, cmsUInt32Number dwFlags)
 {
     cmsHPROFILE hLab;
     cmsHTRANSFORM xform;
     cmsUInt32Number nChannels;
     cmsUInt32Number InputFormat;
-    int rc;
+
     cmsHPROFILE Profiles[2];
     cmsCIEXYZ BlackPointAdaptedToD50;
 
@@ -889,7 +873,7 @@ int WriteInputLUT(cmsIOHANDLER* m, cmsHPROFILE hProfile, cmsUInt32Number Intent,
     if (xform == NULL) {
 
         cmsSignalError(m ->ContextID, cmsERROR_COLORSPACE_CHECK, "Cannot create transform Profile -> Lab");
-        return 0;
+        return FALSE;
     }
 
     // Only 1, 3 and 4 channels are allowed
@@ -899,7 +883,7 @@ int WriteInputLUT(cmsIOHANDLER* m, cmsHPROFILE hProfile, cmsUInt32Number Intent,
     case 1: {
             cmsToneCurve* Gray2Y = ExtractGray2Y(m ->ContextID, hProfile, Intent);
             EmitCIEBasedA(m, Gray2Y, &BlackPointAdaptedToD50);
-            cmsFreeToneCurve(Gray2Y);
+            cmsFreeToneCurve(Gray2Y);            
             }
             break;
 
@@ -908,29 +892,35 @@ int WriteInputLUT(cmsIOHANDLER* m, cmsHPROFILE hProfile, cmsUInt32Number Intent,
             cmsUInt32Number OutFrm = TYPE_Lab_16;
             cmsPipeline* DeviceLink;
             _cmsTRANSFORM* v = (_cmsTRANSFORM*) xform;
+            cmsBool rc;
 
             DeviceLink = cmsPipelineDup(v ->Lut);
-            if (DeviceLink == NULL) return 0;
+            if (DeviceLink == NULL) {
+                cmsDeleteTransform(xform);
+                return FALSE;
+            }
 
             dwFlags |= cmsFLAGS_FORCE_CLUT;
             _cmsOptimizePipeline(m->ContextID, &DeviceLink, Intent, &InputFormat, &OutFrm, &dwFlags);
 
             rc = EmitCIEBasedDEF(m, DeviceLink, Intent, &BlackPointAdaptedToD50);
-            cmsPipelineFree(DeviceLink);
-            if (rc == 0) return 0;
+            cmsPipelineFree(DeviceLink);            
+            if (!rc) {
+                cmsDeleteTransform(xform);
+                return FALSE;
+            }
             }
             break;
 
     default:
 
-        cmsSignalError(m ->ContextID, cmsERROR_COLORSPACE_CHECK, "Only 3, 4 channels supported for CSA. This profile has %d channels.", nChannels);
-        return 0;
+        cmsDeleteTransform(xform);        
+        cmsSignalError(m ->ContextID, cmsERROR_COLORSPACE_CHECK, "Only 3, 4 channels are supported for CSA. This profile has %d channels.", nChannels);        
+        return FALSE;        
     }
 
-
     cmsDeleteTransform(xform);
-
-    return 1;
+    return TRUE;
 }
 
 static
@@ -972,9 +962,9 @@ int WriteInputMatrixShaper(cmsIOHANDLER* m, cmsHPROFILE hProfile, cmsStage* Matr
                 for (j = 0; j < 3; j++)
                     Mat.v[i].n[j] *= MAX_ENCODEABLE_XYZ;
 
-            rc = EmitCIEBasedABC(m, (cmsFloat64Number *)&Mat,
-                _cmsStageGetPtrToCurveSet(Shaper),
-                &BlackPointAdaptedToD50);
+            rc = EmitCIEBasedABC(m,  (cmsFloat64Number *) &Mat,
+                                _cmsStageGetPtrToCurveSet(Shaper),
+                                 &BlackPointAdaptedToD50);
         }
         else {
 
@@ -1001,10 +991,15 @@ int WriteNamedColorCSA(cmsIOHANDLER* m, cmsHPROFILE hNamedColor, cmsUInt32Number
 
     hLab  = cmsCreateLab4ProfileTHR(m ->ContextID, NULL);
     xform = cmsCreateTransform(hNamedColor, TYPE_NAMED_COLOR_INDEX, hLab, TYPE_Lab_DBL, Intent, 0);
+    cmsCloseProfile(hLab);
+
     if (xform == NULL) return 0;
 
     NamedColorList = cmsGetNamedColorList(xform);
-    if (NamedColorList == NULL) return 0;
+    if (NamedColorList == NULL) {
+        cmsDeleteTransform(xform);
+        return 0;
+    }
 
     _cmsIOPrintf(m, "<<\n");
     _cmsIOPrintf(m, "(colorlistcomment) (%s)\n", "Named color CSA");
@@ -1012,7 +1007,6 @@ int WriteNamedColorCSA(cmsIOHANDLER* m, cmsHPROFILE hNamedColor, cmsUInt32Number
     _cmsIOPrintf(m, "(Suffix) [ ( CV) ( CVC) ( C) ]\n");
 
     nColors   = cmsNamedColorCount(NamedColorList);
-
 
     for (i=0; i < nColors; i++) {
 
@@ -1028,12 +1022,9 @@ int WriteNamedColorCSA(cmsIOHANDLER* m, cmsHPROFILE hNamedColor, cmsUInt32Number
         _cmsIOPrintf(m, "  (%s) [ %.3f %.3f %.3f ]\n", ColorName, Lab.L, Lab.a, Lab.b);
     }
 
-
-
     _cmsIOPrintf(m, ">>\n");
 
     cmsDeleteTransform(xform);
-    cmsCloseProfile(hLab);
     return 1;
 }
 
@@ -1239,8 +1230,6 @@ void EmitPQRStage(cmsIOHANDLER* m, cmsHPROFILE hProfile, int DoBPC, int lIsAbsol
                     "exch pop exch pop exch pop exch pop } bind\n]\n");
 
         }
-
-
 }
 
 
@@ -1274,7 +1263,7 @@ void EmitXYZ2Lab(cmsIOHANDLER* m)
 // 8 bits.
 
 static
-int WriteOutputLUT(cmsIOHANDLER* m, cmsHPROFILE hProfile, cmsUInt32Number Intent, cmsUInt32Number dwFlags)
+cmsBool WriteOutputLUT(cmsIOHANDLER* m, cmsHPROFILE hProfile, cmsUInt32Number Intent, cmsUInt32Number dwFlags)
 {
     cmsHPROFILE hLab;
     cmsHTRANSFORM xform;
@@ -1289,10 +1278,10 @@ int WriteOutputLUT(cmsIOHANDLER* m, cmsHPROFILE hProfile, cmsUInt32Number Intent
     cmsUInt32Number InFrm = TYPE_Lab_16;
     cmsUInt32Number RelativeEncodingIntent;
     cmsColorSpaceSignature ColorSpace;
-
+    cmsStage* first;
 
     hLab = cmsCreateLab4ProfileTHR(m ->ContextID, NULL);
-    if (hLab == NULL) return 0;
+    if (hLab == NULL) return FALSE;
 
     OutputFormat = cmsFormatterForColorspaceOfProfile(hProfile, 2, FALSE);
     nChannels    = T_CHANNELS(OutputFormat);
@@ -1315,25 +1304,31 @@ int WriteOutputLUT(cmsIOHANDLER* m, cmsHPROFILE hProfile, cmsUInt32Number Intent
                                               OutputFormat, RelativeEncodingIntent, 0);
     cmsCloseProfile(hLab);
 
-    if (xform == NULL) {
-
+    if (xform == NULL) {        
         cmsSignalError(m ->ContextID, cmsERROR_COLORSPACE_CHECK, "Cannot create transform Lab -> Profile in CRD creation");
-        return 0;
+        return FALSE;
     }
 
     // Get a copy of the internal devicelink
     v = (_cmsTRANSFORM*) xform;
     DeviceLink = cmsPipelineDup(v ->Lut);
-    if (DeviceLink == NULL) return 0;
+    if (DeviceLink == NULL) {
+        cmsDeleteTransform(xform);
+        cmsSignalError(m->ContextID, cmsERROR_CORRUPTION_DETECTED, "Cannot access link for CRD");
+        return FALSE;
+    }
 
-
-    // We need a CLUT
+     // We need a CLUT
     dwFlags |= cmsFLAGS_FORCE_CLUT;
-    _cmsOptimizePipeline(m->ContextID, &DeviceLink, RelativeEncodingIntent, &InFrm, &OutputFormat, &dwFlags);
+    if (!_cmsOptimizePipeline(m->ContextID, &DeviceLink, RelativeEncodingIntent, &InFrm, &OutputFormat, &dwFlags)) {
+        cmsPipelineFree(DeviceLink);
+        cmsDeleteTransform(xform);
+        cmsSignalError(m->ContextID, cmsERROR_CORRUPTION_DETECTED, "Cannot create CLUT table for CRD");
+        return FALSE;
+    }
 
     _cmsIOPrintf(m, "<<\n");
     _cmsIOPrintf(m, "/ColorRenderingType 1\n");
-
 
     cmsDetectBlackPoint(&BlackPointAdaptedToD50, hProfile, Intent, 0);
 
@@ -1354,8 +1349,17 @@ int WriteOutputLUT(cmsIOHANDLER* m, cmsHPROFILE hProfile, cmsUInt32Number Intent
 
     _cmsIOPrintf(m, "/RenderTable ");
 
+    first = cmsPipelineGetPtrToFirstStage(DeviceLink);
+    if (first != NULL) {
+        if (first->Type != cmsSigCLutElemType) {
+            cmsPipelineFree(DeviceLink);
+            cmsDeleteTransform(xform);
+            cmsSignalError(m->ContextID, cmsERROR_CORRUPTION_DETECTED, "Cannot create CLUT, revise your flags!");
+            return FALSE;
+        }
 
-    WriteCLUT(m, cmsPipelineGetPtrToFirstStage(DeviceLink), "<", ">\n", "", "", lFixWhite, ColorSpace);
+        WriteCLUT(m, first, "<", ">\n", "", "", lFixWhite, ColorSpace);
+    }
 
     _cmsIOPrintf(m, " %d {} bind ", nChannels);
 
@@ -1363,7 +1367,6 @@ int WriteOutputLUT(cmsIOHANDLER* m, cmsHPROFILE hProfile, cmsUInt32Number Intent
             _cmsIOPrintf(m, "dup ");
 
     _cmsIOPrintf(m, "]\n");
-
 
     EmitIntent(m, Intent);
 
@@ -1377,7 +1380,7 @@ int WriteOutputLUT(cmsIOHANDLER* m, cmsHPROFILE hProfile, cmsUInt32Number Intent
     cmsPipelineFree(DeviceLink);
     cmsDeleteTransform(xform);
 
-    return 1;
+    return TRUE;
 }
 
 
@@ -1414,7 +1417,7 @@ int WriteNamedColorCRD(cmsIOHANDLER* m, cmsHPROFILE hNamedColor, cmsUInt32Number
     cmsUInt32Number i, nColors, nColorant;
     cmsUInt32Number OutputFormat;
     char ColorName[cmsMAX_PATH];
-    char Colorant[128];
+    char Colorant[512];
     cmsNAMEDCOLORLIST* NamedColorList;
 
 
@@ -1427,7 +1430,10 @@ int WriteNamedColorCRD(cmsIOHANDLER* m, cmsHPROFILE hNamedColor, cmsUInt32Number
 
 
     NamedColorList = cmsGetNamedColorList(xform);
-    if (NamedColorList == NULL) return 0;
+    if (NamedColorList == NULL) {
+        cmsDeleteTransform(xform);
+        return 0;
+    }
 
     _cmsIOPrintf(m, "<<\n");
     _cmsIOPrintf(m, "(colorlistcomment) (%s) \n", "Named profile");

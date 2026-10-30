@@ -6,10 +6,12 @@
 #ifndef LIB_JXL_MODULAR_OPTIONS_H_
 #define LIB_JXL_MODULAR_OPTIONS_H_
 
-#include <stdint.h>
-
 #include <array>
+#include <cstddef>
+#include <cstdint>
 #include <vector>
+
+#include "lib/jxl/enc_ans_params.h"
 
 namespace jxl {
 
@@ -37,12 +39,14 @@ enum class Predictor : uint32_t {
       15,  // Find the best decision tree for predictors/predictor per row
 };
 
+constexpr Predictor kUndefinedPredictor = static_cast<Predictor>(~0u);
+
 constexpr size_t kNumModularPredictors =
     static_cast<size_t>(Predictor::Average4) + 1;
 constexpr size_t kNumModularEncoderPredictors =
     static_cast<size_t>(Predictor::Variable) + 1;
 
-static constexpr ssize_t kNumStaticProperties = 2;  // channel, group_id.
+static constexpr ptrdiff_t kNumStaticProperties = 2;  // channel, group_id.
 
 using StaticPropRange =
     std::array<std::array<uint32_t, 2>, kNumStaticProperties>;
@@ -74,13 +78,12 @@ struct ModularOptions {
   // Alternative heuristic tweaks.
   // Properties default to channel, group, weighted, gradient residual, W-NW,
   // NW-N, N-NE, N-NN
-  std::vector<uint32_t> splitting_heuristics_properties = {0,  1,  15, 9,
-                                                           10, 11, 12, 13};
+  std::vector<uint32_t> splitting_heuristics_properties;
   float splitting_heuristics_node_threshold = 96;
   size_t max_property_values = 32;
 
   // Predictor to use for each channel.
-  Predictor predictor = static_cast<Predictor>(-1);
+  Predictor predictor = kUndefinedPredictor;
 
   int wp_mode = 0;
 
@@ -108,8 +111,17 @@ struct ModularOptions {
   };
   TreeKind tree_kind = TreeKind::kLearn;
 
+  HistogramParams histogram_params;
+
   // Ignore the image and just pretend all tokens are zeroes
   bool zero_tokens = false;
+
+  ModularOptions() {
+    // GCC has complaints about inline vector initialization; do it manually.
+    static const std::vector<uint32_t> kDefaultSplittingHeuristicsProperties = {
+        0, 1, 15, 9, 10, 11, 12, 13};
+    splitting_heuristics_properties = kDefaultSplittingHeuristicsProperties;
+  }
 };
 
 }  // namespace jxl

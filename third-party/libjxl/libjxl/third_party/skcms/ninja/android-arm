@@ -16,3 +16,7 @@ rule run
               else touch $out; fi
     description = run $in
 include ninja/common
+
+disabled = ! test -d $ndk
+no_hsw   = true
+no_skx   = true

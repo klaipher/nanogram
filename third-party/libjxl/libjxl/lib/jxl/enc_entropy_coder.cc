@@ -5,12 +5,14 @@
 
 #include "lib/jxl/enc_entropy_coder.h"
 
-#include <stddef.h>
-#include <stdint.h>
-
-#include <algorithm>
-#include <utility>
+#include <cstddef>
+#include <cstdint>
 #include <vector>
+
+#include "lib/jxl/base/rect.h"
+#include "lib/jxl/enc_ans.h"
+#include "lib/jxl/frame_dimensions.h"
+#include "lib/jxl/frame_header.h"
 
 #undef HWY_TARGET_INCLUDE
 #define HWY_TARGET_INCLUDE "lib/jxl/enc_entropy_coder.cc"
@@ -24,14 +26,9 @@
 #include "lib/jxl/base/status.h"
 #include "lib/jxl/coeff_order.h"
 #include "lib/jxl/coeff_order_fwd.h"
-#include "lib/jxl/common.h"
-#include "lib/jxl/dec_ans.h"
-#include "lib/jxl/dec_bit_reader.h"
-#include "lib/jxl/dec_context_map.h"
 #include "lib/jxl/entropy_coder.h"
-#include "lib/jxl/epf.h"
 #include "lib/jxl/image.h"
-#include "lib/jxl/image_ops.h"
+#include "lib/jxl/pack_signed.h"
 
 HWY_BEFORE_NAMESPACE();
 namespace jxl {
@@ -90,8 +87,8 @@ int32_t NumNonZeroExceptLLF(const size_t cx, const size_t cy,
   }
 
   // We want area - sum_zero, add because neg_sum_zero is already negated.
-  const int32_t nzeros =
-      int32_t(cx * cy * kDCTBlockSize) + GetLane(SumOfLanes(di, neg_sum_zero));
+  const int32_t nzeros = static_cast<int32_t>(cx * cy * kDCTBlockSize) +
+                         GetLane(SumOfLanes(di, neg_sum_zero));
 
   const int32_t shifted_nzeros = static_cast<int32_t>(
       (nzeros + covered_blocks - 1) >> log2_covered_blocks);
@@ -139,8 +136,8 @@ int32_t NumNonZero8x8ExceptDC(const int32_t* JXL_RESTRICT block,
   }
 
   // We want 64 - sum_zero, add because neg_sum_zero is already negated.
-  const int32_t nzeros =
-      int32_t(kDCTBlockSize) + GetLane(SumOfLanes(di, neg_sum_zero));
+  const int32_t nzeros = static_cast<int32_t>(kDCTBlockSize) +
+                         GetLane(SumOfLanes(di, neg_sum_zero));
 
   *nzeros_pos = nzeros;
 
@@ -153,21 +150,20 @@ int32_t NumNonZero8x8ExceptDC(const int32_t* JXL_RESTRICT block,
 // context; if this number is above 63, a specific context is used.  If the
 // number of nonzeros of a strategy is above 63, it is written directly using a
 // fixed number of bits (that depends on the size of the strategy).
-void TokenizeCoefficients(const coeff_order_t* JXL_RESTRICT orders,
-                          const Rect& rect,
-                          const int32_t* JXL_RESTRICT* JXL_RESTRICT ac_rows,
-                          const AcStrategyImage& ac_strategy,
-                          YCbCrChromaSubsampling cs,
-                          Image3I* JXL_RESTRICT tmp_num_nzeroes,
-                          std::vector<Token>* JXL_RESTRICT output,
-                          const ImageB& qdc, const ImageI& qf,
-                          const BlockCtxMap& block_ctx_map) {
+Status TokenizeCoefficients(const coeff_order_t* JXL_RESTRICT orders,
+                            const Rect& rect,
+                            const int32_t* JXL_RESTRICT* JXL_RESTRICT ac_rows,
+                            const AcStrategyImage& ac_strategy,
+                            const YCbCrChromaSubsampling& cs,
+                            Image3I* JXL_RESTRICT tmp_num_nzeroes,
+                            std::vector<Token>* JXL_RESTRICT output,
+                            const ImageB& qdc, const ImageI& qf,
+                            const BlockCtxMap& block_ctx_map) {
   const size_t xsize_blocks = rect.xsize();
   const size_t ysize_blocks = rect.ysize();
-
+  output->clear();
   // TODO(user): update the estimate: usually less coefficients are used.
-  output->reserve(output->size() +
-                  3 * xsize_blocks * ysize_blocks * kDCTBlockSize);
+  output->reserve(3 * xsize_blocks * ysize_blocks * kDCTBlockSize);
 
   size_t offset[3] = {};
   const size_t nzeros_stride = tmp_num_nzeroes->PixelsPerRow();
@@ -229,22 +225,23 @@ void TokenizeCoefficients(const coeff_order_t* JXL_RESTRICT orders,
         const size_t histo_offset =
             block_ctx_map.ZeroDensityContextsOffset(block_ctx);
         // Skip LLF.
-        size_t prev = (nzeros > static_cast<ssize_t>(size / 16) ? 0 : 1);
+        size_t prev = (nzeros > static_cast<ptrdiff_t>(size / 16) ? 0 : 1);
         for (size_t k = covered_blocks; k < size && nzeros != 0; ++k) {
           int32_t coeff = block[order[k]];
           size_t ctx =
               histo_offset + ZeroDensityContext(nzeros, k, covered_blocks,
                                                 log2_covered_blocks, prev);
           uint32_t u_coeff = PackSigned(coeff);
-          output->emplace_back(ctx, u_coeff);
-          prev = coeff != 0;
+          output->emplace_back(static_cast<uint32_t>(ctx), u_coeff);
+          prev = (coeff != 0) ? 1 : 0;
           nzeros -= prev;
         }
-        JXL_DASSERT(nzeros == 0);
+        JXL_ENSURE(nzeros == 0);
         offset[c] += size;
       }
     }
   }
+  return true;
 }
 
 // NOLINTNEXTLINE(google-readability-namespace-comments)
@@ -255,15 +252,15 @@ HWY_AFTER_NAMESPACE();
 #if HWY_ONCE
 namespace jxl {
 HWY_EXPORT(TokenizeCoefficients);
-void TokenizeCoefficients(const coeff_order_t* JXL_RESTRICT orders,
-                          const Rect& rect,
-                          const int32_t* JXL_RESTRICT* JXL_RESTRICT ac_rows,
-                          const AcStrategyImage& ac_strategy,
-                          YCbCrChromaSubsampling cs,
-                          Image3I* JXL_RESTRICT tmp_num_nzeroes,
-                          std::vector<Token>* JXL_RESTRICT output,
-                          const ImageB& qdc, const ImageI& qf,
-                          const BlockCtxMap& block_ctx_map) {
+Status TokenizeCoefficients(const coeff_order_t* JXL_RESTRICT orders,
+                            const Rect& rect,
+                            const int32_t* JXL_RESTRICT* JXL_RESTRICT ac_rows,
+                            const AcStrategyImage& ac_strategy,
+                            const YCbCrChromaSubsampling& cs,
+                            Image3I* JXL_RESTRICT tmp_num_nzeroes,
+                            std::vector<Token>* JXL_RESTRICT output,
+                            const ImageB& qdc, const ImageI& qf,
+                            const BlockCtxMap& block_ctx_map) {
   return HWY_DYNAMIC_DISPATCH(TokenizeCoefficients)(
       orders, rect, ac_rows, ac_strategy, cs, tmp_num_nzeroes, output, qdc, qf,
       block_ctx_map);
