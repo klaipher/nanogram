@@ -1,9 +1,9 @@
 name: CI
 
+# Manual only in this fork: a full release build needs Xcode 27.1 (versions.json),
+# which the macos-13 runner below does not have, and macOS minutes are billed at
+# 10x in private repositories. Fast checks run in sanity.yml instead.
 on:
-  push:
-    branches: [ master ]
-
   workflow_dispatch:
 
 jobs:
