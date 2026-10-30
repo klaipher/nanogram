@@ -41,7 +41,8 @@ cmd_setup() {
   git config fetch.parallel 0
   git config submodule.fetchJobs 0
   # Built-in FSEvents monitor (git >= 2.37) keeps `git status` fast on ~49k files.
-  if git help -a 2>/dev/null | grep fsmonitor--daemon >/dev/null; then
+  # (`git help -a` hides double-dash commands, so probe the daemon directly.)
+  if ! git fsmonitor--daemon status 2>&1 | grep 'not a git command' >/dev/null; then
     git config core.fsmonitor true
   fi
 
