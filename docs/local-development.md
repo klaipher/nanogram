@@ -45,6 +45,11 @@ profiles disabled, the same setup upstream's own CI uses.
 Simulator builds produce `bazel-bin/Telegram/Telegram.app` (a directory, not a zipped `.ipa`); `tg run` installs and
 launches it. Device builds still produce `bazel-bin/Telegram/Telegram.ipa`.
 
+Logging in on the simulator: debug builds show a QR code on the "Your Phone" screen. Scan it in Telegram on your
+phone (Settings → Devices → Link Desktop Device). Logging in by phone number can end on an "SMS Fee" screen (Telegram
+charges for SMS codes in some countries), and the simulator cannot pay it. If the app is stuck on that screen, run
+`xcrun simctl uninstall booted ph.telegra.Telegraph` and `tg run` again.
+
 ## Measured results
 
 Debug simulator build without extensions (`tg build`) on a 10-core Apple silicon Mac with 32 GB RAM, Xcode 27.2.
