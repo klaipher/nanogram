@@ -8,9 +8,10 @@
  *  be found in the AUTHORS file in the root of the source tree.
  */
 
-#include <assert.h>
-
 #include "libyuv/rotate.h"
+
+#include <assert.h>
+#include <limits.h>
 
 #include "libyuv/convert.h"
 #include "libyuv/cpu_id.h"
@@ -23,6 +24,21 @@ namespace libyuv {
 extern "C" {
 #endif
 
+static void TransposeWxH(const uint8_t* src,
+                         int src_stride,
+                         uint8_t* dst,
+                         int dst_stride,
+                         int width,
+                         int height) {
+  int i;
+  for (i = 0; i < width; ++i) {
+    int j;
+    for (j = 0; j < height; ++j) {
+      dst[i * dst_stride + j] = src[j * src_stride + i];
+    }
+  }
+}
+
 LIBYUV_API
 void TransposePlane(const uint8_t* src,
                     int src_stride,
@@ -31,10 +47,19 @@ void TransposePlane(const uint8_t* src,
                     int width,
                     int height) {
   int i = height;
-#if defined(HAS_TRANSPOSEWX16_MSA) || defined(HAS_TRANSPOSEWX16_LSX)
+#if defined(HAS_TRANSPOSEWXH_SME) || defined(HAS_TRANSPOSEWXH_HVX)
+  void (*TransposeWxH_fn)(const uint8_t* src, int src_stride, uint8_t* dst,
+                          int dst_stride, int width, int height) = NULL;
+#endif
+#if defined(HAS_TRANSPOSEWX16_AVX2) || defined(HAS_TRANSPOSEWX16_AVX512BW) || \
+    defined(HAS_TRANSPOSEWX16_LASX) || defined(HAS_TRANSPOSEWX16_WASMSIMD)
+  void (*TransposeWx16)(const uint8_t* src, int src_stride, uint8_t* dst,
+                        int dst_stride, int width) = NULL;
+#elif defined(HAS_TRANSPOSEWX16_NEON)
   void (*TransposeWx16)(const uint8_t* src, int src_stride, uint8_t* dst,
                         int dst_stride, int width) = TransposeWx16_C;
-#else
+#endif
+#if !defined(HAS_TRANSPOSEWX16_NEON)
   void (*TransposeWx8)(const uint8_t* src, int src_stride, uint8_t* dst,
                        int dst_stride, int width) = TransposeWx8_C;
 #endif
@@ -47,48 +72,98 @@ void TransposePlane(const uint8_t* src,
     }
   }
 #endif
-#if defined(HAS_TRANSPOSEWX8_SSSE3)
-  if (TestCpuFlag(kCpuHasSSSE3)) {
-    TransposeWx8 = TransposeWx8_Any_SSSE3;
-    if (IS_ALIGNED(width, 8)) {
-      TransposeWx8 = TransposeWx8_SSSE3;
-    }
-  }
-#endif
-#if defined(HAS_TRANSPOSEWX8_FAST_SSSE3)
-  if (TestCpuFlag(kCpuHasSSSE3)) {
-    TransposeWx8 = TransposeWx8_Fast_Any_SSSE3;
+#if defined(HAS_TRANSPOSEWX16_NEON)
+  if (TestCpuFlag(kCpuHasNEON)) {
+    TransposeWx16 = TransposeWx16_Any_NEON;
     if (IS_ALIGNED(width, 16)) {
-      TransposeWx8 = TransposeWx8_Fast_SSSE3;
+      TransposeWx16 = TransposeWx16_NEON;
     }
   }
 #endif
-#if defined(HAS_TRANSPOSEWX16_MSA)
-  if (TestCpuFlag(kCpuHasMSA)) {
-    TransposeWx16 = TransposeWx16_Any_MSA;
+#if defined(HAS_TRANSPOSEWXH_SME)
+  if (TestCpuFlag(kCpuHasSME)) {
+    TransposeWxH_fn = TransposeWxH_SME;
+  }
+#endif
+#if defined(HAS_TRANSPOSEWXH_HVX)
+  if (TestCpuFlag(kCpuHasHVX)) {
+    TransposeWxH_fn = TransposeWxH_HVX;
+  }
+#endif
+#if defined(HAS_TRANSPOSEWX8_AVX2)
+  if (TestCpuFlag(kCpuHasAVX2)) {
+    TransposeWx8 = TransposeWx8_Any_AVX2;
     if (IS_ALIGNED(width, 16)) {
-      TransposeWx16 = TransposeWx16_MSA;
+      TransposeWx8 = TransposeWx8_AVX2;
     }
   }
 #endif
-#if defined(HAS_TRANSPOSEWX16_LSX)
+#if defined(HAS_TRANSPOSEWX16_AVX2)
+  if (TestCpuFlag(kCpuHasAVX2)) {
+    TransposeWx16 = TransposeWx16_Any_AVX2;
+    if (IS_ALIGNED(width, 16)) {
+      TransposeWx16 = TransposeWx16_AVX2;
+    }
+  }
+#endif
+#if defined(HAS_TRANSPOSEWX16_AVX512BW)
+  if (TestCpuFlag(kCpuHasAVX512BW)) {
+    TransposeWx16 = TransposeWx16_AVX512BW;
+  }
+#endif
+#if defined(HAS_TRANSPOSEWX8_LSX)
   if (TestCpuFlag(kCpuHasLSX)) {
-    TransposeWx16 = TransposeWx16_Any_LSX;
+    TransposeWx8 = TransposeWx8_Any_LSX;
     if (IS_ALIGNED(width, 16)) {
-      TransposeWx16 = TransposeWx16_LSX;
+      TransposeWx8 = TransposeWx8_LSX;
+    }
+  }
+#endif
+#if defined(HAS_TRANSPOSEWX16_LASX)
+  if (TestCpuFlag(kCpuHasLASX)) {
+    TransposeWx16 = TransposeWx16_Any_LASX;
+    if (IS_ALIGNED(width, 16)) {
+      TransposeWx16 = TransposeWx16_LASX;
+    }
+  }
+#endif
+#if defined(HAS_TRANSPOSEWX8_WASMSIMD)
+  if (TestCpuFlag(kCpuHasWASMSIMD)) {
+    TransposeWx8 = TransposeWx8_Any_WASMSIMD;
+    if (IS_ALIGNED(width, 16)) {
+      TransposeWx8 = TransposeWx8_WASMSIMD;
+    }
+  }
+#endif
+#if defined(HAS_TRANSPOSEWX16_WASMSIMD)
+  if (TestCpuFlag(kCpuHasWASMSIMD)) {
+    TransposeWx16 = TransposeWx16_Any_WASMSIMD;
+    if (IS_ALIGNED(width, 16)) {
+      TransposeWx16 = TransposeWx16_WASMSIMD;
     }
   }
 #endif
 
-#if defined(HAS_TRANSPOSEWX16_MSA) || defined(HAS_TRANSPOSEWX16_LSX)
-  // Work across the source in 16x16 tiles
-  while (i >= 16) {
-    TransposeWx16(src, src_stride, dst, dst_stride, width);
-    src += 16 * src_stride;  // Go down 16 rows.
-    dst += 16;               // Move over 16 columns.
-    i -= 16;
+#if defined(HAS_TRANSPOSEWXH_SME) || defined(HAS_TRANSPOSEWXH_HVX)
+  if (TransposeWxH_fn) {
+    TransposeWxH_fn(src, src_stride, dst, dst_stride, width, height);
+    return;
   }
-#else
+#endif
+#if defined(HAS_TRANSPOSEWX16_AVX2) || defined(HAS_TRANSPOSEWX16_AVX512BW) || \
+    defined(HAS_TRANSPOSEWX16_LASX) || defined(HAS_TRANSPOSEWX16_NEON) ||     \
+    defined(HAS_TRANSPOSEWX16_WASMSIMD)
+  // Work across the source in 16x16 tiles
+  if (TransposeWx16) {
+    while (i >= 16) {
+      TransposeWx16(src, src_stride, dst, dst_stride, width);
+      src += 16 * src_stride;  // Go down 16 rows.
+      dst += 16;               // Move over 16 columns.
+      i -= 16;
+    }
+  }
+#endif
+#if !defined(HAS_TRANSPOSEWX16_NEON)
   // Work across the source in 8x8 tiles
   while (i >= 8) {
     TransposeWx8(src, src_stride, dst, dst_stride, width);
@@ -99,7 +174,7 @@ void TransposePlane(const uint8_t* src,
 #endif
 
   if (i > 0) {
-    TransposeWxH_C(src, src_stride, dst, dst_stride, width, i);
+    TransposeWxH(src, src_stride, dst, dst_stride, width, i);
   }
 }
 
@@ -113,7 +188,7 @@ void RotatePlane90(const uint8_t* src,
   // Rotate by 90 is a transpose with the source read
   // from bottom to top. So set the source pointer to the end
   // of the buffer and flip the sign of the source stride.
-  src += src_stride * (height - 1);
+  src += (ptrdiff_t)src_stride * (height - 1);
   src_stride = -src_stride;
   TransposePlane(src, src_stride, dst, dst_stride, width, height);
 }
@@ -128,7 +203,7 @@ void RotatePlane270(const uint8_t* src,
   // Rotate by 270 is a transpose with the destination written
   // from bottom to top. So set the destination pointer to the end
   // of the buffer and flip the sign of the destination stride.
-  dst += dst_stride * (width - 1);
+  dst += (ptrdiff_t)dst_stride * (width - 1);
   dst_stride = -dst_stride;
   TransposePlane(src, src_stride, dst, dst_stride, width, height);
 }
@@ -145,8 +220,8 @@ void RotatePlane180(const uint8_t* src,
   assert(row);
   if (!row)
     return;
-  const uint8_t* src_bot = src + src_stride * (height - 1);
-  uint8_t* dst_bot = dst + dst_stride * (height - 1);
+  const uint8_t* src_bot = src + (ptrdiff_t)src_stride * (height - 1);
+  uint8_t* dst_bot = dst + (ptrdiff_t)dst_stride * (height - 1);
   int half_height = (height + 1) >> 1;
   int y;
   void (*MirrorRow)(const uint8_t* src, uint8_t* dst, int width) = MirrorRow_C;
@@ -175,18 +250,15 @@ void RotatePlane180(const uint8_t* src,
     }
   }
 #endif
-#if defined(HAS_MIRRORROW_MSA)
-  if (TestCpuFlag(kCpuHasMSA)) {
-    MirrorRow = MirrorRow_Any_MSA;
-    if (IS_ALIGNED(width, 64)) {
-      MirrorRow = MirrorRow_MSA;
-    }
+#if defined(HAS_MIRRORROW_AVX512BW)
+  if (TestCpuFlag(kCpuHasAVX512BW)) {
+    MirrorRow = MirrorRow_AVX512BW;
   }
 #endif
 #if defined(HAS_MIRRORROW_LSX)
   if (TestCpuFlag(kCpuHasLSX)) {
     MirrorRow = MirrorRow_Any_LSX;
-    if (IS_ALIGNED(width, 32)) {
+    if (IS_ALIGNED(width, 16)) {
       MirrorRow = MirrorRow_LSX;
     }
   }
@@ -194,9 +266,22 @@ void RotatePlane180(const uint8_t* src,
 #if defined(HAS_MIRRORROW_LASX)
   if (TestCpuFlag(kCpuHasLASX)) {
     MirrorRow = MirrorRow_Any_LASX;
-    if (IS_ALIGNED(width, 64)) {
+    if (IS_ALIGNED(width, 32)) {
       MirrorRow = MirrorRow_LASX;
     }
+  }
+#endif
+#if defined(HAS_MIRRORROW_WASMSIMD)
+  if (TestCpuFlag(kCpuHasWASMSIMD)) {
+    MirrorRow = MirrorRow_Any_WASMSIMD;
+    if (IS_ALIGNED(width, 16)) {
+      MirrorRow = MirrorRow_WASMSIMD;
+    }
+  }
+#endif
+#if defined(HAS_MIRRORROW_HVX)
+  if (TestCpuFlag(kCpuHasHVX)) {
+    MirrorRow = MirrorRow_HVX;
   }
 #endif
 #if defined(HAS_COPYROW_SSE2)
@@ -209,6 +294,11 @@ void RotatePlane180(const uint8_t* src,
     CopyRow = IS_ALIGNED(width, 64) ? CopyRow_AVX : CopyRow_Any_AVX;
   }
 #endif
+#if defined(HAS_COPYROW_AVX512BW)
+  if (TestCpuFlag(kCpuHasAVX512BW)) {
+    CopyRow = CopyRow_AVX512BW;
+  }
+#endif
 #if defined(HAS_COPYROW_ERMS)
   if (TestCpuFlag(kCpuHasERMS)) {
     CopyRow = CopyRow_ERMS;
@@ -219,9 +309,34 @@ void RotatePlane180(const uint8_t* src,
     CopyRow = IS_ALIGNED(width, 32) ? CopyRow_NEON : CopyRow_Any_NEON;
   }
 #endif
+#if defined(HAS_COPYROW_SVE2)
+  if (TestCpuFlag(kCpuHasSVE2)) {
+    CopyRow = CopyRow_SVE2;
+  }
+#endif
+#if defined(HAS_COPYROW_SME)
+  if (TestCpuFlag(kCpuHasSME)) {
+    CopyRow = CopyRow_SME;
+  }
+#endif
 #if defined(HAS_COPYROW_RVV)
   if (TestCpuFlag(kCpuHasRVV)) {
     CopyRow = CopyRow_RVV;
+  }
+#endif
+#if defined(HAS_COPYROW_HVX)
+  if (TestCpuFlag(kCpuHasHVX)) {
+    CopyRow = CopyRow_HVX;
+  }
+#endif
+#if defined(HAS_COPYROW_LSX)
+  if (TestCpuFlag(kCpuHasLSX)) {
+    CopyRow = IS_ALIGNED(width, 16) ? CopyRow_LSX : CopyRow_Any_LSX;
+  }
+#endif
+#if defined(HAS_COPYROW_LASX)
+  if (TestCpuFlag(kCpuHasLASX)) {
+    CopyRow = IS_ALIGNED(width, 32) ? CopyRow_LASX : CopyRow_Any_LASX;
   }
 #endif
 
@@ -238,6 +353,24 @@ void RotatePlane180(const uint8_t* src,
   free_aligned_buffer_64(row);
 }
 
+static void TransposeUVWxH(const uint8_t* src,
+                           int src_stride,
+                           uint8_t* dst_a,
+                           int dst_stride_a,
+                           uint8_t* dst_b,
+                           int dst_stride_b,
+                           int width,
+                           int height) {
+  int i;
+  for (i = 0; i < width * 2; i += 2) {
+    int j;
+    for (j = 0; j < height; ++j) {
+      dst_a[((i >> 1) * dst_stride_a) + j] = src[i + (j * src_stride)];
+      dst_b[((i >> 1) * dst_stride_b) + j] = src[i + (j * src_stride) + 1];
+    }
+  }
+}
+
 LIBYUV_API
 void SplitTransposeUV(const uint8_t* src,
                       int src_stride,
@@ -248,71 +381,116 @@ void SplitTransposeUV(const uint8_t* src,
                       int width,
                       int height) {
   int i = height;
-#if defined(HAS_TRANSPOSEUVWX16_MSA)
+#if defined(HAS_TRANSPOSEUVWXH_SME) || defined(HAS_TRANSPOSEUVWXH_HVX)
+  void (*TransposeUVWxH_fn)(const uint8_t* src, int src_stride, uint8_t* dst_a,
+                            int dst_stride_a, uint8_t* dst_b, int dst_stride_b,
+                            int width, int height) = NULL;
+#endif
+#if defined(HAS_TRANSPOSEUVWX16_AVX2) ||     \
+    defined(HAS_TRANSPOSEUVWX16_AVX512BW) || \
+    defined(HAS_TRANSPOSEUVWX16_LASX) || defined(HAS_TRANSPOSEUVWX16_WASMSIMD)
   void (*TransposeUVWx16)(const uint8_t* src, int src_stride, uint8_t* dst_a,
                           int dst_stride_a, uint8_t* dst_b, int dst_stride_b,
-                          int width) = TransposeUVWx16_C;
-#elif defined(HAS_TRANSPOSEUVWX16_LSX)
-  void (*TransposeUVWx16)(const uint8_t* src, int src_stride, uint8_t* dst_a,
-                          int dst_stride_a, uint8_t* dst_b, int dst_stride_b,
-                          int width) = TransposeUVWx16_C;
-#else
+                          int width) = NULL;
+#endif
   void (*TransposeUVWx8)(const uint8_t* src, int src_stride, uint8_t* dst_a,
                          int dst_stride_a, uint8_t* dst_b, int dst_stride_b,
                          int width) = TransposeUVWx8_C;
-#endif
 
-#if defined(HAS_TRANSPOSEUVWX16_MSA)
-  if (TestCpuFlag(kCpuHasMSA)) {
-    TransposeUVWx16 = TransposeUVWx16_Any_MSA;
-    if (IS_ALIGNED(width, 8)) {
-      TransposeUVWx16 = TransposeUVWx16_MSA;
-    }
-  }
-#elif defined(HAS_TRANSPOSEUVWX16_LSX)
+#if defined(HAS_TRANSPOSEUVWX8_LSX)
   if (TestCpuFlag(kCpuHasLSX)) {
-    TransposeUVWx16 = TransposeUVWx16_Any_LSX;
+    TransposeUVWx8 = TransposeUVWx8_Any_LSX;
     if (IS_ALIGNED(width, 8)) {
-      TransposeUVWx16 = TransposeUVWx16_LSX;
+      TransposeUVWx8 = TransposeUVWx8_LSX;
     }
   }
-#else
+#endif
+#if defined(HAS_TRANSPOSEUVWX16_LASX)
+  if (TestCpuFlag(kCpuHasLASX)) {
+    TransposeUVWx16 = TransposeUVWx16_Any_LASX;
+    if (IS_ALIGNED(width, 8)) {
+      TransposeUVWx16 = TransposeUVWx16_LASX;
+    }
+  }
+#endif
 #if defined(HAS_TRANSPOSEUVWX8_NEON)
   if (TestCpuFlag(kCpuHasNEON)) {
-    TransposeUVWx8 = TransposeUVWx8_NEON;
-  }
-#endif
-#if defined(HAS_TRANSPOSEUVWX8_SSE2)
-  if (TestCpuFlag(kCpuHasSSE2)) {
-    TransposeUVWx8 = TransposeUVWx8_Any_SSE2;
+    TransposeUVWx8 = TransposeUVWx8_Any_NEON;
     if (IS_ALIGNED(width, 8)) {
-      TransposeUVWx8 = TransposeUVWx8_SSE2;
+      TransposeUVWx8 = TransposeUVWx8_NEON;
     }
   }
 #endif
-#endif /* defined(HAS_TRANSPOSEUVWX16_MSA) */
+#if defined(HAS_TRANSPOSEUVWXH_SME)
+  if (TestCpuFlag(kCpuHasSME)) {
+    TransposeUVWxH_fn = TransposeUVWxH_SME;
+  }
+#endif
+#if defined(HAS_TRANSPOSEUVWXH_HVX)
+  if (TestCpuFlag(kCpuHasHVX)) {
+    TransposeUVWxH_fn = TransposeUVWxH_HVX;
+  }
+#endif
+#if defined(HAS_TRANSPOSEUVWX8_AVX2)
+  if (TestCpuFlag(kCpuHasAVX2)) {
+    TransposeUVWx8 = TransposeUVWx8_Any_AVX2;
+    if (IS_ALIGNED(width, 8)) {
+      TransposeUVWx8 = TransposeUVWx8_AVX2;
+    }
+  }
+#endif
+#if defined(HAS_TRANSPOSEUVWX16_AVX2)
+  if (TestCpuFlag(kCpuHasAVX2)) {
+    TransposeUVWx16 = TransposeUVWx16_Any_AVX2;
+    if (IS_ALIGNED(width, 8)) {
+      TransposeUVWx16 = TransposeUVWx16_AVX2;
+    }
+  }
+#endif
+#if defined(HAS_TRANSPOSEUVWX16_AVX512BW)
+  if (TestCpuFlag(kCpuHasAVX512BW)) {
+    TransposeUVWx16 = TransposeUVWx16_AVX512BW;
+  }
+#endif
+#if defined(HAS_TRANSPOSEUVWX8_WASMSIMD)
+  if (TestCpuFlag(kCpuHasWASMSIMD)) {
+    TransposeUVWx8 = TransposeUVWx8_Any_WASMSIMD;
+    if (IS_ALIGNED(width, 8)) {
+      TransposeUVWx8 = TransposeUVWx8_WASMSIMD;
+    }
+  }
+#endif
+#if defined(HAS_TRANSPOSEUVWX16_WASMSIMD)
+  if (TestCpuFlag(kCpuHasWASMSIMD)) {
+    TransposeUVWx16 = TransposeUVWx16_Any_WASMSIMD;
+    if (IS_ALIGNED(width, 8)) {
+      TransposeUVWx16 = TransposeUVWx16_WASMSIMD;
+    }
+  }
+#endif
 
-#if defined(HAS_TRANSPOSEUVWX16_MSA)
-  // Work through the source in 8x8 tiles.
-  while (i >= 16) {
-    TransposeUVWx16(src, src_stride, dst_a, dst_stride_a, dst_b, dst_stride_b,
-                    width);
-    src += 16 * src_stride;  // Go down 16 rows.
-    dst_a += 16;             // Move over 8 columns.
-    dst_b += 16;             // Move over 8 columns.
-    i -= 16;
+#if defined(HAS_TRANSPOSEUVWXH_SME) || defined(HAS_TRANSPOSEUVWXH_HVX)
+  if (TransposeUVWxH_fn) {
+    TransposeUVWxH_fn(src, src_stride, dst_a, dst_stride_a, dst_b, dst_stride_b,
+                      width, i);
+    return;
   }
-#elif defined(HAS_TRANSPOSEUVWX16_LSX)
-  // Work through the source in 8x8 tiles.
-  while (i >= 16) {
-    TransposeUVWx16(src, src_stride, dst_a, dst_stride_a, dst_b, dst_stride_b,
-                    width);
-    src += 16 * src_stride;  // Go down 16 rows.
-    dst_a += 16;             // Move over 8 columns.
-    dst_b += 16;             // Move over 8 columns.
-    i -= 16;
+#endif
+#if defined(HAS_TRANSPOSEUVWX16_AVX2) ||     \
+    defined(HAS_TRANSPOSEUVWX16_AVX512BW) || \
+    defined(HAS_TRANSPOSEUVWX16_LASX) || defined(HAS_TRANSPOSEUVWX16_WASMSIMD)
+  // Work through the source in 16x16 tiles.
+  if (TransposeUVWx16) {
+    while (i >= 16) {
+      TransposeUVWx16(src, src_stride, dst_a, dst_stride_a, dst_b, dst_stride_b,
+                      width);
+      src += 16 * src_stride;  // Go down 16 rows.
+      dst_a += 16;             // Move over 16 columns.
+      dst_b += 16;             // Move over 16 columns.
+      i -= 16;
+    }
   }
-#else
+#endif
   // Work through the source in 8x8 tiles.
   while (i >= 8) {
     TransposeUVWx8(src, src_stride, dst_a, dst_stride_a, dst_b, dst_stride_b,
@@ -322,11 +500,10 @@ void SplitTransposeUV(const uint8_t* src,
     dst_b += 8;             // Move over 8 columns.
     i -= 8;
   }
-#endif
 
   if (i > 0) {
-    TransposeUVWxH_C(src, src_stride, dst_a, dst_stride_a, dst_b, dst_stride_b,
-                     width, i);
+    TransposeUVWxH(src, src_stride, dst_a, dst_stride_a, dst_b, dst_stride_b,
+                   width, i);
   }
 }
 
@@ -339,7 +516,7 @@ void SplitRotateUV90(const uint8_t* src,
                      int dst_stride_b,
                      int width,
                      int height) {
-  src += src_stride * (height - 1);
+  src += (ptrdiff_t)src_stride * (height - 1);
   src_stride = -src_stride;
 
   SplitTransposeUV(src, src_stride, dst_a, dst_stride_a, dst_b, dst_stride_b,
@@ -382,19 +559,34 @@ void SplitRotateUV180(const uint8_t* src,
     MirrorSplitUVRow = MirrorSplitUVRow_NEON;
   }
 #endif
-#if defined(HAS_MIRRORSPLITUVROW_SSSE3)
-  if (TestCpuFlag(kCpuHasSSSE3) && IS_ALIGNED(width, 16)) {
-    MirrorSplitUVRow = MirrorSplitUVRow_SSSE3;
+#if defined(HAS_MIRRORSPLITUVROW_AVX2)
+  if (TestCpuFlag(kCpuHasAVX2) && IS_ALIGNED(width, 32)) {
+    MirrorSplitUVRow = MirrorSplitUVRow_AVX2;
   }
 #endif
-#if defined(HAS_MIRRORSPLITUVROW_MSA)
-  if (TestCpuFlag(kCpuHasMSA) && IS_ALIGNED(width, 32)) {
-    MirrorSplitUVRow = MirrorSplitUVRow_MSA;
+#if defined(HAS_MIRRORSPLITUVROW_AVX512BW)
+  if (TestCpuFlag(kCpuHasAVX512BW)) {
+    MirrorSplitUVRow = MirrorSplitUVRow_AVX512BW;
   }
 #endif
 #if defined(HAS_MIRRORSPLITUVROW_LSX)
-  if (TestCpuFlag(kCpuHasLSX) && IS_ALIGNED(width, 32)) {
+  if (TestCpuFlag(kCpuHasLSX) && IS_ALIGNED(width, 16)) {
     MirrorSplitUVRow = MirrorSplitUVRow_LSX;
+  }
+#endif
+#if defined(HAS_MIRRORSPLITUVROW_LASX)
+  if (TestCpuFlag(kCpuHasLASX) && IS_ALIGNED(width, 32)) {
+    MirrorSplitUVRow = MirrorSplitUVRow_LASX;
+  }
+#endif
+#if defined(HAS_MIRRORSPLITUVROW_WASMSIMD)
+  if (TestCpuFlag(kCpuHasWASMSIMD) && IS_ALIGNED(width, 16)) {
+    MirrorSplitUVRow = MirrorSplitUVRow_WASMSIMD;
+  }
+#endif
+#if defined(HAS_MIRRORSPLITUVROW_HVX)
+  if (TestCpuFlag(kCpuHasHVX)) {
+    MirrorSplitUVRow = MirrorSplitUVRow_HVX;
   }
 #endif
 
@@ -421,14 +613,15 @@ int SplitRotateUV(const uint8_t* src_uv,
                   int width,
                   int height,
                   enum RotationMode mode) {
-  if (!src_uv || width <= 0 || height == 0 || !dst_u || !dst_v) {
+  if (!src_uv || width <= 0 || height == 0 || height == INT_MIN || !dst_u ||
+      !dst_v) {
     return -1;
   }
 
   // Negative height means invert the image.
   if (height < 0) {
     height = -height;
-    src_uv = src_uv + (height - 1) * src_stride_uv;
+    src_uv = src_uv + (ptrdiff_t)(height - 1) * src_stride_uv;
     src_stride_uv = -src_stride_uv;
   }
 
@@ -463,14 +656,14 @@ int RotatePlane(const uint8_t* src,
                 int width,
                 int height,
                 enum RotationMode mode) {
-  if (!src || width <= 0 || height == 0 || !dst) {
+  if (!src || width <= 0 || height == 0 || height == INT_MIN || !dst) {
     return -1;
   }
 
   // Negative height means invert the image.
   if (height < 0) {
     height = -height;
-    src = src + (height - 1) * src_stride;
+    src = src + (ptrdiff_t)(height - 1) * src_stride;
     src_stride = -src_stride;
   }
 
@@ -494,6 +687,21 @@ int RotatePlane(const uint8_t* src,
   return -1;
 }
 
+static void TransposeWxH_16(const uint16_t* src,
+                            int src_stride,
+                            uint16_t* dst,
+                            int dst_stride,
+                            int width,
+                            int height) {
+  int i;
+  for (i = 0; i < width; ++i) {
+    int j;
+    for (j = 0; j < height; ++j) {
+      dst[i * dst_stride + j] = src[j * src_stride + i];
+    }
+  }
+}
+
 static void TransposePlane_16(const uint16_t* src,
                               int src_stride,
                               uint16_t* dst,
@@ -501,16 +709,133 @@ static void TransposePlane_16(const uint16_t* src,
                               int width,
                               int height) {
   int i = height;
+#if defined(HAS_TRANSPOSEWXH_16_SME) || defined(HAS_TRANSPOSEWXH_16_RVV) || \
+    defined(HAS_TRANSPOSEWXH_16_HVX)
+  void (*TransposeWxH_16_fn)(const uint16_t* src, int src_stride, uint16_t* dst,
+                             int dst_stride, int width, int height) = NULL;
+#endif
+#if defined(HAS_TRANSPOSEWX32_16_AVX512BW)
+  void (*TransposeWx32_16)(const uint16_t* src, int src_stride, uint16_t* dst,
+                           int dst_stride, int width) = NULL;
+#endif
+#if defined(HAS_TRANSPOSEWX16_16_AVX2) || defined(HAS_TRANSPOSEWX16_16_LASX)
+  void (*TransposeWx16_16)(const uint16_t* src, int src_stride, uint16_t* dst,
+                           int dst_stride, int width) = NULL;
+#endif
+  void (*TransposeWx8_16)(const uint16_t* src, int src_stride, uint16_t* dst,
+                          int dst_stride, int width) = TransposeWx8_16_C;
+
+#if defined(HAS_TRANSPOSEWX8_16_NEON)
+  if (TestCpuFlag(kCpuHasNEON)) {
+    TransposeWx8_16 = TransposeWx8_16_Any_NEON;
+    if (IS_ALIGNED(width, 8)) {
+      TransposeWx8_16 = TransposeWx8_16_NEON;
+    }
+  }
+#endif
+#if defined(HAS_TRANSPOSEWX8_16_SVE2)
+  if (TestCpuFlag(kCpuHasSVE2)) {
+    TransposeWx8_16 = TransposeWx8_16_SVE2;
+  }
+#endif
+#if defined(HAS_TRANSPOSEWXH_16_SME)
+  if (TestCpuFlag(kCpuHasSME)) {
+    TransposeWxH_16_fn = TransposeWxH_16_SME;
+  }
+#endif
+#if defined(HAS_TRANSPOSEWXH_16_RVV)
+  if (TestCpuFlag(kCpuHasRVV)) {
+    TransposeWxH_16_fn = TransposeWxH_16_RVV;
+  }
+#endif
+#if defined(HAS_TRANSPOSEWXH_16_HVX)
+  if (TestCpuFlag(kCpuHasHVX)) {
+    TransposeWxH_16_fn = TransposeWxH_16_HVX;
+  }
+#endif
+#if defined(HAS_TRANSPOSEWX8_16_AVX2)
+  if (TestCpuFlag(kCpuHasAVX2)) {
+    TransposeWx8_16 = TransposeWx8_16_Any_AVX2;
+    if (IS_ALIGNED(width, 8)) {
+      TransposeWx8_16 = TransposeWx8_16_AVX2;
+    }
+  }
+#endif
+#if defined(HAS_TRANSPOSEWX16_16_AVX2)
+  if (TestCpuFlag(kCpuHasAVX2)) {
+    TransposeWx16_16 = TransposeWx16_16_Any_AVX2;
+    if (IS_ALIGNED(width, 8)) {
+      TransposeWx16_16 = TransposeWx16_16_AVX2;
+    }
+  }
+#endif
+#if defined(HAS_TRANSPOSEWX32_16_AVX512BW)
+  if (TestCpuFlag(kCpuHasAVX512BW)) {
+    TransposeWx32_16 = TransposeWx32_16_AVX512BW;
+  }
+#endif
+#if defined(HAS_TRANSPOSEWX8_16_LSX)
+  if (TestCpuFlag(kCpuHasLSX)) {
+    TransposeWx8_16 = TransposeWx8_16_Any_LSX;
+    if (IS_ALIGNED(width, 8)) {
+      TransposeWx8_16 = TransposeWx8_16_LSX;
+    }
+  }
+#endif
+#if defined(HAS_TRANSPOSEWX16_16_LASX)
+  if (TestCpuFlag(kCpuHasLASX)) {
+    TransposeWx16_16 = TransposeWx16_16_Any_LASX;
+    if (IS_ALIGNED(width, 8)) {
+      TransposeWx16_16 = TransposeWx16_16_LASX;
+    }
+  }
+#endif
+#if defined(HAS_TRANSPOSEWX8_16_WASMSIMD)
+  if (TestCpuFlag(kCpuHasWASMSIMD)) {
+    TransposeWx8_16 = TransposeWx8_16_Any_WASMSIMD;
+    if (IS_ALIGNED(width, 8)) {
+      TransposeWx8_16 = TransposeWx8_16_WASMSIMD;
+    }
+  }
+#endif
+
+#if defined(HAS_TRANSPOSEWXH_16_SME) || defined(HAS_TRANSPOSEWXH_16_RVV) || \
+    defined(HAS_TRANSPOSEWXH_16_HVX)
+  if (TransposeWxH_16_fn) {
+    TransposeWxH_16_fn(src, src_stride, dst, dst_stride, width, height);
+    return;
+  }
+#endif
+#if defined(HAS_TRANSPOSEWX32_16_AVX512BW)
+  if (TransposeWx32_16) {
+    while (i >= 32) {
+      TransposeWx32_16(src, src_stride, dst, dst_stride, width);
+      src += 32 * (ptrdiff_t)src_stride;
+      dst += 32;
+      i -= 32;
+    }
+  }
+#endif
+#if defined(HAS_TRANSPOSEWX16_16_AVX2) || defined(HAS_TRANSPOSEWX16_16_LASX)
+  if (TransposeWx16_16) {
+    while (i >= 16) {
+      TransposeWx16_16(src, src_stride, dst, dst_stride, width);
+      src += 16 * (ptrdiff_t)src_stride;
+      dst += 16;
+      i -= 16;
+    }
+  }
+#endif
   // Work across the source in 8x8 tiles
   while (i >= 8) {
-    TransposeWx8_16_C(src, src_stride, dst, dst_stride, width);
-    src += 8 * src_stride;  // Go down 8 rows.
-    dst += 8;               // Move over 8 columns.
+    TransposeWx8_16(src, src_stride, dst, dst_stride, width);
+    src += 8 * (ptrdiff_t)src_stride;  // Go down 8 rows.
+    dst += 8;                          // Move over 8 columns.
     i -= 8;
   }
 
   if (i > 0) {
-    TransposeWxH_16_C(src, src_stride, dst, dst_stride, width, i);
+    TransposeWxH_16(src, src_stride, dst, dst_stride, width, i);
   }
 }
 
@@ -523,7 +848,7 @@ static void RotatePlane90_16(const uint16_t* src,
   // Rotate by 90 is a transpose with the source read
   // from bottom to top. So set the source pointer to the end
   // of the buffer and flip the sign of the source stride.
-  src += src_stride * (height - 1);
+  src += (ptrdiff_t)src_stride * (height - 1);
   src_stride = -src_stride;
   TransposePlane_16(src, src_stride, dst, dst_stride, width, height);
 }
@@ -537,7 +862,7 @@ static void RotatePlane270_16(const uint16_t* src,
   // Rotate by 270 is a transpose with the destination written
   // from bottom to top. So set the destination pointer to the end
   // of the buffer and flip the sign of the destination stride.
-  dst += dst_stride * (width - 1);
+  dst += (ptrdiff_t)dst_stride * (width - 1);
   dst_stride = -dst_stride;
   TransposePlane_16(src, src_stride, dst, dst_stride, width, height);
 }
@@ -548,29 +873,8 @@ static void RotatePlane180_16(const uint16_t* src,
                               int dst_stride,
                               int width,
                               int height) {
-  const uint16_t* src_bot = src + src_stride * (height - 1);
-  uint16_t* dst_bot = dst + dst_stride * (height - 1);
-  int half_height = (height + 1) >> 1;
-  int y;
-
-  // Swap top and bottom row and mirror the content. Uses a temporary row.
-  align_buffer_64(row, width * 2);
-  uint16_t* row_tmp = (uint16_t*)row;
-  assert(row);
-  if (!row)
-    return;
-
-  // Odd height will harmlessly mirror the middle row twice.
-  for (y = 0; y < half_height; ++y) {
-    CopyRow_16_C(src, row_tmp, width);        // Copy top row into buffer
-    MirrorRow_16_C(src_bot, dst, width);      // Mirror bottom row into top row
-    MirrorRow_16_C(row_tmp, dst_bot, width);  // Mirror buffer into bottom row
-    src += src_stride;
-    dst += dst_stride;
-    src_bot -= src_stride;
-    dst_bot -= dst_stride;
-  }
-  free_aligned_buffer_64(row);
+  // Rotate by 180 is a vertical flip (negative height) and horizontal mirror.
+  MirrorPlane_16(src, src_stride, dst, dst_stride, width, -height);
 }
 
 LIBYUV_API
@@ -581,14 +885,14 @@ int RotatePlane_16(const uint16_t* src,
                    int width,
                    int height,
                    enum RotationMode mode) {
-  if (!src || width <= 0 || height == 0 || !dst) {
+  if (!src || width <= 0 || height == 0 || height == INT_MIN || !dst) {
     return -1;
   }
 
   // Negative height means invert the image.
   if (height < 0) {
     height = -height;
-    src = src + (height - 1) * src_stride;
+    src = src + (ptrdiff_t)(height - 1) * src_stride;
     src_stride = -src_stride;
   }
 
@@ -631,7 +935,7 @@ int I420Rotate(const uint8_t* src_y,
   int halfwidth = (width + 1) >> 1;
   int halfheight = (height + 1) >> 1;
   if ((!src_y && dst_y) || !src_u || !src_v || width <= 0 || height == 0 ||
-      !dst_y || !dst_u || !dst_v) {
+      height == INT_MIN || !dst_y || !dst_u || !dst_v) {
     return -1;
   }
 
@@ -639,9 +943,9 @@ int I420Rotate(const uint8_t* src_y,
   if (height < 0) {
     height = -height;
     halfheight = (height + 1) >> 1;
-    src_y = src_y + (height - 1) * src_stride_y;
-    src_u = src_u + (halfheight - 1) * src_stride_u;
-    src_v = src_v + (halfheight - 1) * src_stride_v;
+    src_y = src_y + (ptrdiff_t)(height - 1) * src_stride_y;
+    src_u = src_u + (ptrdiff_t)(halfheight - 1) * src_stride_u;
+    src_v = src_v + (ptrdiff_t)(halfheight - 1) * src_stride_v;
     src_stride_y = -src_stride_y;
     src_stride_u = -src_stride_u;
     src_stride_v = -src_stride_v;
@@ -701,16 +1005,17 @@ int I422Rotate(const uint8_t* src_y,
   int halfwidth = (width + 1) >> 1;
   int halfheight = (height + 1) >> 1;
   int r;
-  if (!src_y || !src_u || !src_v || width <= 0 || height == 0 || !dst_y ||
-      !dst_u || !dst_v) {
+  if (!src_y || !src_u || !src_v || width <= 0 || height == 0 ||
+      height == INT_MIN || !dst_y || !dst_u || !dst_v) {
     return -1;
   }
   // Negative height means invert the image.
   if (height < 0) {
     height = -height;
-    src_y = src_y + (height - 1) * src_stride_y;
-    src_u = src_u + (height - 1) * src_stride_u;
-    src_v = src_v + (height - 1) * src_stride_v;
+    halfheight = (height + 1) >> 1;
+    src_y = src_y + (ptrdiff_t)(height - 1) * src_stride_y;
+    src_u = src_u + (ptrdiff_t)(height - 1) * src_stride_u;
+    src_v = src_v + (ptrdiff_t)(height - 1) * src_stride_v;
     src_stride_y = -src_stride_y;
     src_stride_u = -src_stride_u;
     src_stride_v = -src_stride_v;
@@ -796,17 +1101,17 @@ int I444Rotate(const uint8_t* src_y,
                int width,
                int height,
                enum RotationMode mode) {
-  if (!src_y || !src_u || !src_v || width <= 0 || height == 0 || !dst_y ||
-      !dst_u || !dst_v) {
+  if (!src_y || !src_u || !src_v || width <= 0 || height == 0 ||
+      height == INT_MIN || !dst_y || !dst_u || !dst_v) {
     return -1;
   }
 
   // Negative height means invert the image.
   if (height < 0) {
     height = -height;
-    src_y = src_y + (height - 1) * src_stride_y;
-    src_u = src_u + (height - 1) * src_stride_u;
-    src_v = src_v + (height - 1) * src_stride_v;
+    src_y = src_y + (ptrdiff_t)(height - 1) * src_stride_y;
+    src_u = src_u + (ptrdiff_t)(height - 1) * src_stride_u;
+    src_v = src_v + (ptrdiff_t)(height - 1) * src_stride_v;
     src_stride_y = -src_stride_y;
     src_stride_u = -src_stride_u;
     src_stride_v = -src_stride_v;
@@ -856,8 +1161,8 @@ int NV12ToI420Rotate(const uint8_t* src_y,
                      enum RotationMode mode) {
   int halfwidth = (width + 1) >> 1;
   int halfheight = (height + 1) >> 1;
-  if (!src_y || !src_uv || width <= 0 || height == 0 || !dst_y || !dst_u ||
-      !dst_v) {
+  if (!src_y || !src_uv || width <= 0 || height == 0 || height == INT_MIN ||
+      !dst_y || !dst_u || !dst_v) {
     return -1;
   }
 
@@ -865,8 +1170,8 @@ int NV12ToI420Rotate(const uint8_t* src_y,
   if (height < 0) {
     height = -height;
     halfheight = (height + 1) >> 1;
-    src_y = src_y + (height - 1) * src_stride_y;
-    src_uv = src_uv + (halfheight - 1) * src_stride_uv;
+    src_y = src_y + (ptrdiff_t)(height - 1) * src_stride_y;
+    src_uv = src_uv + (ptrdiff_t)(halfheight - 1) * src_stride_uv;
     src_stride_y = -src_stride_y;
     src_stride_uv = -src_stride_uv;
   }
@@ -933,16 +1238,16 @@ int Android420ToI420Rotate(const uint8_t* src_y,
   int halfwidth = (width + 1) >> 1;
   int halfheight = (height + 1) >> 1;
   if ((!src_y && dst_y) || !src_u || !src_v || !dst_u || !dst_v || width <= 0 ||
-      height == 0) {
+      height == 0 || height == INT_MIN) {
     return -1;
   }
   // Negative height means invert the image.
   if (height < 0) {
     height = -height;
     halfheight = (height + 1) >> 1;
-    src_y = src_y + (height - 1) * src_stride_y;
-    src_u = src_u + (halfheight - 1) * src_stride_u;
-    src_v = src_v + (halfheight - 1) * src_stride_v;
+    src_y = src_y + (ptrdiff_t)(height - 1) * src_stride_y;
+    src_u = src_u + (ptrdiff_t)(halfheight - 1) * src_stride_u;
+    src_v = src_v + (ptrdiff_t)(halfheight - 1) * src_stride_v;
     src_stride_y = -src_stride_y;
     src_stride_u = -src_stride_u;
     src_stride_v = -src_stride_v;
@@ -1008,16 +1313,17 @@ int I010Rotate(const uint16_t* src_y,
                enum RotationMode mode) {
   int halfwidth = (width + 1) >> 1;
   int halfheight = (height + 1) >> 1;
-  if (!src_y || !src_u || !src_v || width <= 0 || height == 0 || !dst_y ||
-      !dst_u || !dst_v || dst_stride_y < 0) {
+  if (!src_y || !src_u || !src_v || width <= 0 || height == 0 ||
+      height == INT_MIN || !dst_y || !dst_u || !dst_v || dst_stride_y < 0) {
     return -1;
   }
   // Negative height means invert the image.
   if (height < 0) {
     height = -height;
-    src_y = src_y + (height - 1) * src_stride_y;
-    src_u = src_u + (height - 1) * src_stride_u;
-    src_v = src_v + (height - 1) * src_stride_v;
+    halfheight = (height + 1) >> 1;
+    src_y = src_y + (ptrdiff_t)(height - 1) * src_stride_y;
+    src_u = src_u + (ptrdiff_t)(halfheight - 1) * src_stride_u;
+    src_v = src_v + (ptrdiff_t)(halfheight - 1) * src_stride_v;
     src_stride_y = -src_stride_y;
     src_stride_u = -src_stride_u;
     src_stride_v = -src_stride_v;
@@ -1079,16 +1385,17 @@ int I210Rotate(const uint16_t* src_y,
   int halfwidth = (width + 1) >> 1;
   int halfheight = (height + 1) >> 1;
   int r;
-  if (!src_y || !src_u || !src_v || width <= 0 || height == 0 || !dst_y ||
-      !dst_u || !dst_v) {
+  if (!src_y || !src_u || !src_v || width <= 0 || height == 0 ||
+      height == INT_MIN || !dst_y || !dst_u || !dst_v) {
     return -1;
   }
   // Negative height means invert the image.
   if (height < 0) {
     height = -height;
-    src_y = src_y + (height - 1) * src_stride_y;
-    src_u = src_u + (height - 1) * src_stride_u;
-    src_v = src_v + (height - 1) * src_stride_v;
+    halfheight = (height + 1) >> 1;
+    src_y = src_y + (ptrdiff_t)(height - 1) * src_stride_y;
+    src_u = src_u + (ptrdiff_t)(height - 1) * src_stride_u;
+    src_v = src_v + (ptrdiff_t)(height - 1) * src_stride_v;
     src_stride_y = -src_stride_y;
     src_stride_u = -src_stride_u;
     src_stride_v = -src_stride_v;
@@ -1176,16 +1483,16 @@ int I410Rotate(const uint16_t* src_y,
                int width,
                int height,
                enum RotationMode mode) {
-  if (!src_y || !src_u || !src_v || width <= 0 || height == 0 || !dst_y ||
-      !dst_u || !dst_v || dst_stride_y < 0) {
+  if (!src_y || !src_u || !src_v || width <= 0 || height == 0 ||
+      height == INT_MIN || !dst_y || !dst_u || !dst_v || dst_stride_y < 0) {
     return -1;
   }
   // Negative height means invert the image.
   if (height < 0) {
     height = -height;
-    src_y = src_y + (height - 1) * src_stride_y;
-    src_u = src_u + (height - 1) * src_stride_u;
-    src_v = src_v + (height - 1) * src_stride_v;
+    src_y = src_y + (ptrdiff_t)(height - 1) * src_stride_y;
+    src_u = src_u + (ptrdiff_t)(height - 1) * src_stride_u;
+    src_v = src_v + (ptrdiff_t)(height - 1) * src_stride_v;
     src_stride_y = -src_stride_y;
     src_stride_u = -src_stride_u;
     src_stride_v = -src_stride_v;

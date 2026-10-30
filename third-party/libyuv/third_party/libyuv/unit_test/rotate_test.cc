@@ -14,13 +14,18 @@
 #include "libyuv/cpu_id.h"
 #include "libyuv/rotate.h"
 
+#if !defined(LIBYUV_USING_SHARED_LIBRARY) && !defined(COMPONENT_BUILD) && \
+    !defined(ENABLE_ROW_TESTS)
+#define ENABLE_ROW_TESTS
+#endif
+
 #ifdef ENABLE_ROW_TESTS
 #include "libyuv/rotate_row.h"
 #endif
 
 namespace libyuv {
 
-#define SUBSAMPLE(v, a) ((((v) + (a)-1)) / (a))
+#define SUBSAMPLE(v, a) ((((v) + (a) - 1)) / (a))
 
 static void I420TestRotate(int src_width,
                            int src_height,
@@ -78,7 +83,7 @@ static void I420TestRotate(int src_width,
 
   // Rotation should be exact.
   for (int i = 0; i < dst_i420_size; ++i) {
-    EXPECT_EQ(dst_i420_c[i], dst_i420_opt[i]);
+    ASSERT_EQ(dst_i420_c[i], dst_i420_opt[i]);
   }
 
   free_aligned_buffer_page_end(dst_i420_c);
@@ -197,7 +202,7 @@ static void I422TestRotate(int src_width,
 
   // Rotation should be exact.
   for (int i = 0; i < dst_i422_size; ++i) {
-    EXPECT_EQ(dst_i422_c[i], dst_i422_opt[i]);
+    ASSERT_EQ(dst_i422_c[i], dst_i422_opt[i]);
   }
 
   free_aligned_buffer_page_end(dst_i422_c);
@@ -283,7 +288,7 @@ static void I444TestRotate(int src_width,
 
   // Rotation should be exact.
   for (int i = 0; i < dst_i444_size; ++i) {
-    EXPECT_EQ(dst_i444_c[i], dst_i444_opt[i]);
+    ASSERT_EQ(dst_i444_c[i], dst_i444_opt[i]);
   }
 
   free_aligned_buffer_page_end(dst_i444_c);
@@ -401,7 +406,7 @@ static void NV12TestRotate(int src_width,
 
   // Rotation should be exact.
   for (int i = 0; i < dst_i420_size; ++i) {
-    EXPECT_EQ(dst_i420_c[i], dst_i420_opt[i]);
+    ASSERT_EQ(dst_i420_c[i], dst_i420_opt[i]);
   }
 
   free_aligned_buffer_page_end(dst_i420_c);
@@ -495,15 +500,15 @@ TEST_F(LibYUVRotateTest, NV12Rotate270_Invert) {
     const int kHeight = benchmark_height_;                                    \
     const int kSizeUV =                                                       \
         SUBSAMPLE(kWidth, SRC_SUBSAMP_X) * SUBSAMPLE(kHeight, SRC_SUBSAMP_Y); \
-    align_buffer_page_end(src_y, kWidth* kHeight + OFF);                      \
+    align_buffer_page_end(src_y, kWidth * kHeight + OFF);                     \
     align_buffer_page_end(src_uv,                                             \
-                          kSizeUV*((PIXEL_STRIDE == 3) ? 3 : 2) + OFF);       \
-    align_buffer_page_end(dst_y_c, kWidth* kHeight);                          \
+                          kSizeUV * ((PIXEL_STRIDE == 3) ? 3 : 2) + OFF);     \
+    align_buffer_page_end(dst_y_c, kWidth * kHeight);                         \
     align_buffer_page_end(dst_u_c, SUBSAMPLE(kWidth, SUBSAMP_X) *             \
                                        SUBSAMPLE(kHeight, SUBSAMP_Y));        \
     align_buffer_page_end(dst_v_c, SUBSAMPLE(kWidth, SUBSAMP_X) *             \
                                        SUBSAMPLE(kHeight, SUBSAMP_Y));        \
-    align_buffer_page_end(dst_y_opt, kWidth* kHeight);                        \
+    align_buffer_page_end(dst_y_opt, kWidth * kHeight);                       \
     align_buffer_page_end(dst_u_opt, SUBSAMPLE(kWidth, SUBSAMP_X) *           \
                                          SUBSAMPLE(kHeight, SUBSAMP_Y));      \
     align_buffer_page_end(dst_v_opt, SUBSAMPLE(kWidth, SUBSAMP_X) *           \
@@ -522,12 +527,12 @@ TEST_F(LibYUVRotateTest, NV12Rotate270_Invert) {
             (fastrand() & 0xff);                                              \
       }                                                                       \
     }                                                                         \
-    memset(dst_y_c, 1, kWidth* kHeight);                                      \
+    memset(dst_y_c, 1, kWidth * kHeight);                                     \
     memset(dst_u_c, 2,                                                        \
            SUBSAMPLE(kWidth, SUBSAMP_X) * SUBSAMPLE(kHeight, SUBSAMP_Y));     \
     memset(dst_v_c, 3,                                                        \
            SUBSAMPLE(kWidth, SUBSAMP_X) * SUBSAMPLE(kHeight, SUBSAMP_Y));     \
-    memset(dst_y_opt, 101, kWidth* kHeight);                                  \
+    memset(dst_y_opt, 101, kWidth * kHeight);                                 \
     memset(dst_u_opt, 102,                                                    \
            SUBSAMPLE(kWidth, SUBSAMP_X) * SUBSAMPLE(kHeight, SUBSAMP_Y));     \
     memset(dst_v_opt, 103,                                                    \
@@ -550,18 +555,18 @@ TEST_F(LibYUVRotateTest, NV12Rotate270_Invert) {
     }                                                                         \
     for (int i = 0; i < kHeight; ++i) {                                       \
       for (int j = 0; j < kWidth; ++j) {                                      \
-        EXPECT_EQ(dst_y_c[i * kWidth + j], dst_y_opt[i * kWidth + j]);        \
+        ASSERT_EQ(dst_y_c[i * kWidth + j], dst_y_opt[i * kWidth + j]);        \
       }                                                                       \
     }                                                                         \
     for (int i = 0; i < SUBSAMPLE(kHeight, SUBSAMP_Y); ++i) {                 \
       for (int j = 0; j < SUBSAMPLE(kWidth, SUBSAMP_X); ++j) {                \
-        EXPECT_EQ(dst_u_c[i * SUBSAMPLE(kWidth, SUBSAMP_X) + j],              \
+        ASSERT_EQ(dst_u_c[i * SUBSAMPLE(kWidth, SUBSAMP_X) + j],              \
                   dst_u_opt[i * SUBSAMPLE(kWidth, SUBSAMP_X) + j]);           \
       }                                                                       \
     }                                                                         \
     for (int i = 0; i < SUBSAMPLE(kHeight, SUBSAMP_Y); ++i) {                 \
       for (int j = 0; j < SUBSAMPLE(kWidth, SUBSAMP_X); ++j) {                \
-        EXPECT_EQ(dst_v_c[i * SUBSAMPLE(kWidth, SUBSAMP_X) + j],              \
+        ASSERT_EQ(dst_v_c[i * SUBSAMPLE(kWidth, SUBSAMP_X) + j],              \
                   dst_v_opt[i * SUBSAMPLE(kWidth, SUBSAMP_X) + j]);           \
       }                                                                       \
     }                                                                         \
@@ -656,7 +661,7 @@ static void I010TestRotate(int src_width,
 
   // Rotation should be exact.
   for (int i = 0; i < dst_i010_size; ++i) {
-    EXPECT_EQ(dst_i010_c[i], dst_i010_opt[i]);
+    ASSERT_EQ(dst_i010_c[i], dst_i010_opt[i]);
   }
 
   free_aligned_buffer_page_end_16(dst_i010_c);
@@ -744,7 +749,7 @@ static void I210TestRotate(int src_width,
 
   // Rotation should be exact.
   for (int i = 0; i < dst_i210_size; ++i) {
-    EXPECT_EQ(dst_i210_c[i], dst_i210_opt[i]);
+    ASSERT_EQ(dst_i210_c[i], dst_i210_opt[i]);
   }
 
   free_aligned_buffer_page_end_16(dst_i210_c);
@@ -830,7 +835,7 @@ static void I410TestRotate(int src_width,
 
   // Rotation should be exact.
   for (int i = 0; i < dst_i410_size; ++i) {
-    EXPECT_EQ(dst_i410_c[i], dst_i410_opt[i]);
+    ASSERT_EQ(dst_i410_c[i], dst_i410_opt[i]);
   }
 
   free_aligned_buffer_page_end_16(dst_i410_c);
@@ -864,7 +869,7 @@ TEST_F(LibYUVRotateTest, I410Rotate270_Opt) {
 
 #if defined(ENABLE_ROW_TESTS)
 
-TEST_F(LibYUVRotateTest, Transpose4x4_Test) {
+TEST_F(LibYUVRotateTest, TransposeWx4_32_Test) {
   // dst width and height
   const int width = 4;
   const int height = 4;
@@ -880,39 +885,39 @@ TEST_F(LibYUVRotateTest, Transpose4x4_Test) {
   memset(dst_pixels_c, 1, width * height * 4);
   memset(dst_pixels_opt, 2, width * height * 4);
 
-  Transpose4x4_32_C((const uint8_t*)src_pixels, height * 4,
+  TransposeWx4_32_C((const uint8_t*)src_pixels, height * 4,
                     (uint8_t*)dst_pixels_c, width * 4, width);
 
   const int benchmark_iterations =
       (benchmark_iterations_ * benchmark_width_ * benchmark_height_ + 15) /
       (4 * 4);
   for (int i = 0; i < benchmark_iterations; ++i) {
-#if defined(HAS_TRANSPOSE4X4_32_NEON)
+#if defined(HAS_TRANSPOSEWX4_32_NEON)
     if (TestCpuFlag(kCpuHasNEON)) {
-      Transpose4x4_32_NEON((const uint8_t*)src_pixels, height * 4,
+      TransposeWx4_32_NEON((const uint8_t*)src_pixels, height * 4,
                            (uint8_t*)dst_pixels_opt, width * 4, width);
     } else
-#elif defined(HAS_TRANSPOSE4X4_32_SSE2)
-    if (TestCpuFlag(kCpuHasSSE2)) {
-      Transpose4x4_32_SSE2((const uint8_t*)src_pixels, height * 4,
+#elif defined(HAS_TRANSPOSEWX4_32_AVX2)
+    if (TestCpuFlag(kCpuHasAVX2)) {
+      TransposeWx4_32_AVX2((const uint8_t*)src_pixels, height * 4,
                            (uint8_t*)dst_pixels_opt, width * 4, width);
     } else
 #endif
     {
-      Transpose4x4_32_C((const uint8_t*)src_pixels, height * 4,
+      TransposeWx4_32_C((const uint8_t*)src_pixels, height * 4,
                         (uint8_t*)dst_pixels_opt, width * 4, width);
     }
   }
 
   for (int i = 0; i < 4; ++i) {
     for (int j = 0; j < 4; ++j) {
-      EXPECT_EQ(dst_pixels_c[i][j], src_pixels[j][i]);
-      EXPECT_EQ(dst_pixels_c[i][j], dst_pixels_opt[i][j]);
+      ASSERT_EQ(dst_pixels_c[i][j], src_pixels[j][i]);
+      ASSERT_EQ(dst_pixels_c[i][j], dst_pixels_opt[i][j]);
     }
   }
 }
 
-TEST_F(LibYUVRotateTest, Transpose4x4_Opt) {
+TEST_F(LibYUVRotateTest, TransposeWx4_32_Opt) {
   // dst width and height
   const int width = ((benchmark_width_ * benchmark_height_ + 3) / 4 + 3) & ~3;
   const int height = 4;
@@ -924,38 +929,126 @@ TEST_F(LibYUVRotateTest, Transpose4x4_Opt) {
   memset(dst_pixels_c, 1, width * height * 4);
   memset(dst_pixels_opt, 2, width * height * 4);
 
-  Transpose4x4_32_C((const uint8_t*)src_pixels, height * 4,
+  TransposeWx4_32_C((const uint8_t*)src_pixels, height * 4,
                     (uint8_t*)dst_pixels_c, width * 4, width);
 
   for (int i = 0; i < benchmark_iterations_; ++i) {
-#if defined(HAS_TRANSPOSE4X4_32_NEON)
+#if defined(HAS_TRANSPOSEWX4_32_NEON)
     if (TestCpuFlag(kCpuHasNEON)) {
-      Transpose4x4_32_NEON((const uint8_t*)src_pixels, height * 4,
+      TransposeWx4_32_NEON((const uint8_t*)src_pixels, height * 4,
                            (uint8_t*)dst_pixels_opt, width * 4, width);
     } else
-#elif defined(HAS_TRANSPOSE4X4_32_AVX2)
+#elif defined(HAS_TRANSPOSEWX4_32_AVX2)
     if (TestCpuFlag(kCpuHasAVX2)) {
-      Transpose4x4_32_AVX2((const uint8_t*)src_pixels, height * 4,
-                           (uint8_t*)dst_pixels_opt, width * 4, width);
-    } else if (TestCpuFlag(kCpuHasSSE2)) {
-      Transpose4x4_32_SSE2((const uint8_t*)src_pixels, height * 4,
+      TransposeWx4_32_AVX2((const uint8_t*)src_pixels, height * 4,
                            (uint8_t*)dst_pixels_opt, width * 4, width);
     } else
 #endif
     {
-      Transpose4x4_32_C((const uint8_t*)src_pixels, height * 4,
+      TransposeWx4_32_C((const uint8_t*)src_pixels, height * 4,
                         (uint8_t*)dst_pixels_opt, width * 4, width);
     }
   }
 
   for (int i = 0; i < width * height; ++i) {
-    EXPECT_EQ(dst_pixels_c[i], dst_pixels_opt[i]);
+    ASSERT_EQ(dst_pixels_c[i], dst_pixels_opt[i]);
   }
 
   free_aligned_buffer_page_end(src_pixels);
   free_aligned_buffer_page_end(dst_pixels_c);
   free_aligned_buffer_page_end(dst_pixels_opt);
 }
+
+TEST_F(LibYUVRotateTest, TransposeWx4_32_Any) {
+  for (int width : {4, 8, 12, 16, 20, 28, 36}) {
+    const int height = 4;
+    align_buffer_page_end(src_pixels, height * width * 4);
+    align_buffer_page_end(dst_pixels_c, width * height * 4);
+    align_buffer_page_end(dst_pixels_opt, width * height * 4);
+
+    MemRandomize(src_pixels, height * width * 4);
+    memset(dst_pixels_c, 1, width * height * 4);
+    memset(dst_pixels_opt, 2, width * height * 4);
+
+    TransposeWx4_32_C(src_pixels, height * 4, dst_pixels_c, width * 4, width);
+#if defined(HAS_TRANSPOSEWX4_32_AVX2)
+    if (TestCpuFlag(kCpuHasAVX2)) {
+      if ((width & 7) == 0) {
+        TransposeWx4_32_AVX2(src_pixels, height * 4, dst_pixels_opt, width * 4,
+                             width);
+      } else {
+        TransposeWx4_32_Any_AVX2(src_pixels, height * 4, dst_pixels_opt,
+                                 width * 4, width);
+      }
+    } else
+#endif
+#if defined(HAS_TRANSPOSEWX4_32_NEON)
+        if (TestCpuFlag(kCpuHasNEON)) {
+      TransposeWx4_32_NEON(src_pixels, height * 4, dst_pixels_opt, width * 4,
+                           width);
+    } else
+#endif
+    {
+      TransposeWx4_32_C(src_pixels, height * 4, dst_pixels_opt, width * 4,
+                        width);
+    }
+
+    ASSERT_EQ(0, memcmp(dst_pixels_c, dst_pixels_opt, width * height * 4))
+        << "width=" << width;
+
+    free_aligned_buffer_page_end(src_pixels);
+    free_aligned_buffer_page_end(dst_pixels_c);
+    free_aligned_buffer_page_end(dst_pixels_opt);
+  }
+}
+
+#if defined(HAS_TRANSPOSEWXH_32_AVX2)
+TEST_F(LibYUVRotateTest, TransposeWxH_32_Test) {
+  if (!TestCpuFlag(kCpuHasAVX2)) {
+    return;
+  }
+  const int kMaxW = 35;
+  const int kMaxH = 25;
+  align_buffer_page_end(src_pixels, kMaxW * kMaxH * 4);
+  align_buffer_page_end(dst_pixels_c, kMaxW * kMaxH * 4);
+  align_buffer_page_end(dst_pixels_opt, kMaxW * kMaxH * 4);
+  MemRandomize(src_pixels, kMaxW * kMaxH * 4);
+
+  for (int h = 1; h <= kMaxH; ++h) {
+    for (int w = 1; w <= kMaxW; ++w) {
+      const int src_stride = w * 4;
+      const int dst_stride = h * 4;
+      const int src_bytes = src_stride * h;
+      const int dst_bytes = dst_stride * w;
+      const uint8_t* src = src_pixels + kMaxW * kMaxH * 4 - src_bytes;
+      uint8_t* dst_c = dst_pixels_c + kMaxW * kMaxH * 4 - dst_bytes;
+      uint8_t* dst_opt = dst_pixels_opt + kMaxW * kMaxH * 4 - dst_bytes;
+
+      memset(dst_c, 1, dst_bytes);
+      memset(dst_opt, 2, dst_bytes);
+      TransposeWxH_32_C(src, src_stride, dst_c, dst_stride, w, h);
+      TransposeWxH_32_AVX2(src, src_stride, dst_opt, dst_stride, w, h);
+      ASSERT_EQ(0, memcmp(dst_c, dst_opt, dst_bytes)) << w << "x" << h;
+
+      // Also test negative src_stride (90-degree) and negative dst_stride
+      // (270-degree).
+      memset(dst_c, 3, dst_bytes);
+      memset(dst_opt, 4, dst_bytes);
+      TransposeWxH_32_C(src + (ptrdiff_t)(h - 1) * src_stride, -src_stride,
+                        dst_c + (ptrdiff_t)(w - 1) * dst_stride, -dst_stride, w,
+                        h);
+      TransposeWxH_32_AVX2(src + (ptrdiff_t)(h - 1) * src_stride, -src_stride,
+                           dst_opt + (ptrdiff_t)(w - 1) * dst_stride,
+                           -dst_stride, w, h);
+      ASSERT_EQ(0, memcmp(dst_c, dst_opt, dst_bytes)) << "neg " << w << "x" << h;
+    }
+  }
+
+  free_aligned_buffer_page_end(src_pixels);
+  free_aligned_buffer_page_end(dst_pixels_c);
+  free_aligned_buffer_page_end(dst_pixels_opt);
+}
+#endif  // defined(HAS_TRANSPOSEWXH_32_AVX2)
 
 #endif  // ENABLE_ROW_TESTS
 

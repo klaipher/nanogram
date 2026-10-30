@@ -13,7 +13,7 @@ LOCAL_OBJ_FILES := \
 	source/compare.o           \
 	source/compare_common.o    \
 	source/compare_gcc.o       \
-	source/compare_msa.o       \
+	source/compare_hvx.o       \
 	source/compare_neon.o      \
 	source/compare_neon64.o    \
 	source/compare_win.o       \
@@ -33,17 +33,19 @@ LOCAL_OBJ_FILES := \
 	source/rotate_argb.o       \
 	source/rotate_common.o     \
 	source/rotate_gcc.o        \
+	source/rotate_hvx.o        \
+	source/rotate_lasx.o       \
 	source/rotate_lsx.o        \
-	source/rotate_msa.o        \
 	source/rotate_neon.o       \
 	source/rotate_neon64.o     \
+	source/rotate_rvv.o        \
 	source/rotate_win.o        \
 	source/row_any.o           \
 	source/row_common.o        \
 	source/row_gcc.o           \
+	source/row_hvx.o           \
 	source/row_lasx.o          \
 	source/row_lsx.o           \
-	source/row_msa.o           \
 	source/row_neon.o          \
 	source/row_neon64.o        \
 	source/row_rvv.o           \
@@ -53,8 +55,8 @@ LOCAL_OBJ_FILES := \
 	source/scale_argb.o        \
 	source/scale_common.o      \
 	source/scale_gcc.o         \
+	source/scale_hvx.o         \
 	source/scale_lsx.o         \
-	source/scale_msa.o         \
 	source/scale_neon.o        \
 	source/scale_neon64.o      \
 	source/scale_rgb.o         \
@@ -69,10 +71,14 @@ LOCAL_OBJ_FILES := \
 .c.o:
 	$(CC) -c $(CFLAGS) $*.c -o $*.o
 
-all: libyuv.a i444tonv12_eg yuvconvert yuvconstants cpuid psnr
+all: libyuv.a i444tonv12_eg yuvconvert yuvconstants cpuid psnr compare
 
 libyuv.a: $(LOCAL_OBJ_FILES)
 	$(AR) $(ARFLAGS) $@ $(LOCAL_OBJ_FILES)
+
+# A C++ test utility that compares two YUV files.
+compare: util/compare.cc libyuv.a
+	$(CXX) $(CXXFLAGS) -Iutil/ -o $@ util/compare.cc libyuv.a
 
 # A C++ test utility that uses libyuv conversion.
 yuvconvert: util/yuvconvert.cc libyuv.a
@@ -97,4 +103,4 @@ cpuid: util/cpuid.c libyuv.a
 	$(CC) $(CFLAGS) -o $@ util/cpuid.c libyuv.a
 
 clean:
-	/bin/rm -f source/*.o *.ii *.s libyuv.a i444tonv12_eg yuvconvert yuvconstants cpuid psnr
+	/bin/rm -f source/*.o *.ii *.s libyuv.a i444tonv12_eg yuvconvert yuvconstants cpuid psnr compare

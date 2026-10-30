@@ -11,6 +11,8 @@
 #ifndef INCLUDE_LIBYUV_SCALE_UV_H_
 #define INCLUDE_LIBYUV_SCALE_UV_H_
 
+#include <stdint.h>
+
 #include "libyuv/basic_types.h"
 #include "libyuv/scale.h"  // For FilterMode
 
@@ -31,7 +33,6 @@ int UVScale(const uint8_t* src_uv,
             enum FilterMode filtering);
 
 // Scale a 16 bit UV image.
-// This function is currently incomplete, it can't handle all cases.
 LIBYUV_API
 int UVScale_16(const uint16_t* src_uv,
                int src_stride_uv,
