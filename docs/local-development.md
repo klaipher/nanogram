@@ -15,8 +15,15 @@ tools/dev/tg project      # generate + open the Xcode project (simulator, no ext
 tools/dev/tg build        # or build from the command line (debug simulator, no extensions)
 ```
 
-Requirements: macOS 27, Xcode **27.1** selected with `xcode-select`, and roughly 40–60 GB free for the first full
-debug build (Bazel outputs plus the disk cache). Simulator builds need no Apple developer account: they use
+Requirements: macOS 27, Xcode **27.1** (newer 27.x usually works; `tg` passes `--overrideXcodeVersion` like
+upstream's own dev command), and roughly 40–60 GB free for the first full debug build (Bazel outputs plus the disk
+cache). Two one-time Xcode steps, both checked by `tg doctor`:
+
+```sh
+sudo xcode-select -s /Applications/Xcode.app          # DEVELOPER_DIR is not enough: Bazel runs the
+                                                      # third-party build scripts without it
+xcodebuild -downloadComponent MetalToolchain          # Xcode 26+ no longer bundles the Metal compiler
+``` Simulator builds need no Apple developer account: they use
 `build-system/fake-codesigning` with provisioning profiles disabled, the same setup upstream's own CI uses.
 
 `tools/dev/tg help` lists everything. Common variants:

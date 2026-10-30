@@ -74,7 +74,9 @@ EOF
 cmd_doctor() {
   local ok=0
   local want_xcode; want_xcode="$(xcode_version)"
-  local dev_dir; dev_dir="$(xcode-select -p 2>/dev/null || true)"
+  # Ignore DEVELOPER_DIR: Bazel runs the third-party genrules (webp, ffmpeg, ...)
+  # without it, and they call xcode-select themselves.
+  local dev_dir; dev_dir="$(env -u DEVELOPER_DIR xcode-select -p 2>/dev/null || true)"
   if [[ "$dev_dir" != *Xcode*.app* ]]; then
     warn "xcode-select points at '$dev_dir'. Install Xcode $want_xcode and run: sudo xcode-select -s /Applications/Xcode.app"
     ok=1
@@ -85,6 +87,11 @@ cmd_doctor() {
       ok=1
     else
       say "Xcode $have"
+    fi
+    # Xcode 26+ ships the Metal compiler as a separate download; the app's shaders need it.
+    if ! xcrun metal --version >/dev/null 2>&1; then
+      warn "Metal Toolchain missing. Run: xcodebuild -downloadComponent MetalToolchain"
+      ok=1
     fi
   fi
   [ -f "$CONFIG" ] && say "Configuration: $CONFIG" || { warn "Missing $CONFIG (run: tools/dev/tg setup)"; ok=1; }
