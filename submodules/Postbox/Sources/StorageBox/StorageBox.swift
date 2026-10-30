@@ -307,6 +307,11 @@ public final class StorageBox {
         }
         
         private func internalAddSize(contentType: UInt8, delta: Int64) {
+            // A zero delta (every downloaded chunk of a file whose size is already known) would
+            // rewrite the same row.
+            if delta == 0 {
+                return
+            }
             let key = ValueBoxKey(length: 1)
             key.setUInt8(0, value: contentType)
             
@@ -332,6 +337,9 @@ public final class StorageBox {
         }
         
         private func internalAddSize(peerId: Int64, contentType: UInt8, delta: Int64) {
+            if delta == 0 {
+                return
+            }
             let key = ValueBoxKey(length: 8 + 1)
             key.setInt64(0, value: peerId)
             key.setUInt8(8, value: contentType)
@@ -371,7 +379,10 @@ public final class StorageBox {
                 if let size = size {
                     info.size = size
                 }
-                self.valueBox.set(self.hashIdToInfoTable, key: mainKey, value: info.serialize())
+                // Media is registered on every request; skip the write when nothing changed.
+                if info.contentType != previousContentType || info.size != previousSize {
+                    self.valueBox.set(self.hashIdToInfoTable, key: mainKey, value: info.serialize())
+                }
             } else {
                 self.valueBox.set(self.hashIdToInfoTable, key: mainKey, value: ItemInfo(id: id, contentType: contentType, size: size ?? 0).serialize())
             }

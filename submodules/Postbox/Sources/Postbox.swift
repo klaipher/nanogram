@@ -2868,6 +2868,11 @@ final class PostboxImpl {
         for peer in peers {
             let currentPeer = self.peerTable.get(peer.id)
             if let updatedPeer = update(currentPeer, peer) {
+                // Most updates repeat the sender and chat unchanged. Writing them anyway costs a
+                // database write and makes every live view rebuild the messages that show them.
+                if let currentPeer, self.peerTable.encodesIdentically(currentPeer, updatedPeer) {
+                    continue
+                }
                 self.peerTable.set(updatedPeer)
                 self.currentUpdatedPeers[updatedPeer.id] = updatedPeer
                 var previousIndexNameWasEmpty = true
@@ -4743,10 +4748,16 @@ public class Postbox {
 
     public func setCanBeginTransactions(_ value: Bool, afterTransactionIfRunning: @escaping () -> Void = {}) {
         let storageBox = self.mediaBox.storageBox
+        // The cache statistics database lives in the shared app group container too, and animation
+        // and image caches keep writing to it; holding its lock while suspended gets the app killed
+        // (0xdead10cc). Its writes are queued while disabled, like the other two.
+        let cacheStorageBox = self.mediaBox.cacheStorageBox
         self.impl.with { impl in
             impl.setCanBeginTransactions(value, afterTransactionIfRunning: {
                 storageBox.setCanBeginTransactions(value, afterTransactionIfRunning: {
-                    afterTransactionIfRunning()
+                    cacheStorageBox.setCanBeginTransactions(value, afterTransactionIfRunning: {
+                        afterTransactionIfRunning()
+                    })
                 })
             })
         }

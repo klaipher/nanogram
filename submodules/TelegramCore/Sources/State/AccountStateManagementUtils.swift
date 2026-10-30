@@ -5251,11 +5251,18 @@ func replayFinalState(
                         storeForwardInfo = StoreMessageForwardInfo(authorId: forwardInfo.author?.id, sourceId: forwardInfo.source?.id, sourceMessageId: forwardInfo.sourceMessageId, date: forwardInfo.date, authorSignature: forwardInfo.authorSignature, psaType: forwardInfo.psaType, flags: forwardInfo.flags)
                     }
                     var attributes = currentMessage.attributes
+                    var changed = false
                     loop: for j in 0 ..< attributes.count {
                         if let attribute = attributes[j] as? ViewCountMessageAttribute {
-                            attributes[j] = ViewCountMessageAttribute(count: max(attribute.count, Int(count)))
+                            if Int(count) > attribute.count {
+                                attributes[j] = ViewCountMessageAttribute(count: Int(count))
+                                changed = true
+                            }
                             break loop
                         }
+                    }
+                    if !changed {
+                        return .skip
                     }
                     return .update(StoreMessage(id: currentMessage.id, customStableId: nil, globallyUniqueId: currentMessage.globallyUniqueId, groupingKey: currentMessage.groupingKey, threadId: currentMessage.threadId, timestamp: currentMessage.timestamp, flags: StoreMessageFlags(currentMessage.flags), tags: currentMessage.tags, globalTags: currentMessage.globalTags, localTags: currentMessage.localTags, forwardInfo: storeForwardInfo, authorId: currentMessage.author?.id, text: currentMessage.text, attributes: attributes, media: currentMessage.media))
                 })
@@ -5266,11 +5273,18 @@ func replayFinalState(
                         storeForwardInfo = StoreMessageForwardInfo(authorId: forwardInfo.author?.id, sourceId: forwardInfo.source?.id, sourceMessageId: forwardInfo.sourceMessageId, date: forwardInfo.date, authorSignature: forwardInfo.authorSignature, psaType: forwardInfo.psaType, flags: forwardInfo.flags)
                     }
                     var attributes = currentMessage.attributes
+                    var changed = false
                     loop: for j in 0 ..< attributes.count {
                         if let attribute = attributes[j] as? ForwardCountMessageAttribute {
-                            attributes[j] = ForwardCountMessageAttribute(count: max(attribute.count, Int(count)))
+                            if Int(count) > attribute.count {
+                                attributes[j] = ForwardCountMessageAttribute(count: Int(count))
+                                changed = true
+                            }
                             break loop
                         }
+                    }
+                    if !changed {
+                        return .skip
                     }
                     return .update(StoreMessage(id: currentMessage.id, customStableId: nil, globallyUniqueId: currentMessage.globallyUniqueId, groupingKey: currentMessage.groupingKey, threadId: currentMessage.threadId, timestamp: currentMessage.timestamp, flags: StoreMessageFlags(currentMessage.flags), tags: currentMessage.tags, globalTags: currentMessage.globalTags, localTags: currentMessage.localTags, forwardInfo: storeForwardInfo, authorId: currentMessage.author?.id, text: currentMessage.text, attributes: attributes, media: currentMessage.media))
                 })

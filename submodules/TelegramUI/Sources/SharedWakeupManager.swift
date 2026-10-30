@@ -93,6 +93,8 @@ public final class SharedWakeupManager {
     private var silenceAudioRenderer: MediaPlayerAudioRenderer?
     
     private var accountsAndTasks: [(Account, Bool, AccountTasks)] = []
+    /// What `updateAccounts` last decided: whether database transactions stay enabled.
+    private var transactionsEnabled = true
     
     private var pendingMediaUploadsByKey: [PendingMediaUploadKey: Float] = [:]
     private var backgroundProcessingTaskProgressByKey: [PendingMediaUploadKey: Float] = [:]
@@ -1048,8 +1050,6 @@ public final class SharedWakeupManager {
                             }
                             
                             if let actualTaskId {
-                                strongSelf.endBackgroundTask(actualTaskId)
-                                
                                 if let (taskId, _, timer) = strongSelf.currentTask, taskId == actualTaskId {
                                     timer.invalidate()
                                     strongSelf.currentTask = nil
@@ -1058,6 +1058,18 @@ public final class SharedWakeupManager {
                             
                             strongSelf.isInBackgroundExtension = false
                             strongSelf.checkTasks()
+                            
+                            if let actualTaskId {
+                                if strongSelf.currentTask != nil || strongSelf.transactionsEnabled {
+                                    // Still running (a new task, audio, a call...): nothing to wait for.
+                                    strongSelf.endBackgroundTask(actualTaskId)
+                                } else {
+                                    // Ending the task first let the app suspend in the middle of a
+                                    // database write in the shared container, and iOS kills an app
+                                    // that suspends holding a file lock (0xdead10cc).
+                                    strongSelf.endBackgroundTaskAfterPausingTransactions(actualTaskId)
+                                }
+                            }
                         }
                         if let taskId = self.beginBackgroundTask("background-wakeup", {
                             handleExpiration()
@@ -1132,11 +1144,42 @@ public final class SharedWakeupManager {
         }*/
     }
     
+    /// Ends the task once running database transactions have finished (`updateAccounts` has just
+    /// disabled new ones), or after 1 s at most so the expiring task is always ended in time. Queued
+    /// transactions run when the app becomes active again.
+    private func endBackgroundTaskAfterPausingTransactions(_ taskId: UIBackgroundTaskIdentifier) {
+        let accounts = self.accountsAndTasks.map(\.0)
+        if accounts.isEmpty {
+            self.endBackgroundTask(taskId)
+            return
+        }
+        var isEnded = false
+        let finish: () -> Void = { [weak self] in
+            Queue.mainQueue().async {
+                if isEnded {
+                    return
+                }
+                isEnded = true
+                self?.endBackgroundTask(taskId)
+            }
+        }
+        let remaining = Atomic<Int>(value: accounts.count)
+        for account in accounts {
+            account.postbox.setCanBeginTransactions(false, afterTransactionIfRunning: {
+                if remaining.modify({ $0 - 1 }) == 0 {
+                    finish()
+                }
+            })
+        }
+        Queue.mainQueue().after(1.0, finish)
+    }
+    
     private func updateAccounts(hasTasks: Bool, endTaskAfterTransactionsComplete: UIBackgroundTaskIdentifier?) {
         let hasBackgroundLocationTask = self.accountsAndTasks.contains(where: { $0.2.backgroundLocation })
         
         if self.inForeground || self.hasActiveAudioSession || self.isInBackgroundExtension || self.backgroundProcessingTaskId != nil || self.backgroundStoryProcessingTaskId != nil || hasBackgroundLocationTask || (hasTasks && self.currentExternalCompletion != nil) || self.activeExplicitExtensionTimer != nil || self.silenceAudioRenderer != nil {
             Logger.shared.log("Wakeup", "enableBeginTransactions: true (active)")
+            self.transactionsEnabled = true
             
             for (account, primary, tasks) in self.accountsAndTasks {
                 account.postbox.setCanBeginTransactions(true)
@@ -1160,6 +1203,7 @@ public final class SharedWakeupManager {
                 enableBeginTransactions = true
             }
             Logger.shared.log("Wakeup", "enableBeginTransactions: \(enableBeginTransactions)")
+            self.transactionsEnabled = enableBeginTransactions
             
             final class CompletionObservationState {
                 var isCompleted: Bool = false
