@@ -84,3 +84,7 @@ tools/sim-watcher/dist/
 submodules/TelegramApi/Sources/SwiftPMGenerated/
 submodules/TelegramApi/ObjC/SwiftPMGenerated/
 submodules/TelegramApi/Tests/SwiftPMGenerated/
+
+# Local development (see docs/local-development.md)
+/user.bazelrc
+/build-system/dev-configuration.json
