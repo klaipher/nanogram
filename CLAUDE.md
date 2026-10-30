@@ -33,7 +33,7 @@ source ~/.zshrc 2>/dev/null; python3 build-system/Make/Make.py --overrideXcodeVe
 The first app-side `ios_unit_test` is `//submodules/TextFormat:TextFormatTests` (the mention/date link codecs). An `ios_unit_test` here needs an `ios_test_runner` pinned to a real device/OS (e.g. `iPhone 17` / `26.5`) — the default runner picks an invalid device and the test process exits 15. **Run new targets via `--target`, not the default suite:** `Tests/AllTests` currently references a dangling `//submodules/TgVoipWebrtc:TgCallsTests`, so the default would fail to build until that suite is repaired.
 
 Pure C++ units have host `cc_test`s that bypass Make.py entirely (macOS build, no codesigning):
-`./build-input/bazel-9.2.0-darwin-arm64 test //submodules/TgVoipWebrtc:streaming_audio_renderer_test --test_output=all`
+`./build-input/bazel-9.3.1-darwin-arm64 test //submodules/TgVoipWebrtc:streaming_audio_renderer_test --test_output=all`
 (likewise `:mtproto_ice_transport_test`). `//third-party/libprisma:SyntaxHighlighterTests` (added
 2026-09-25) is the same kind of target outside tgcalls: it compiles only libprisma's pure-C++ core
 (not `Syntaxer.mm`, which needs UIKit) plus header-only `boost_regex`, loads the real shipped
@@ -48,11 +48,11 @@ upstream is not a substitute for the cap. They follow a plain `CHECK_TRUE` + `ma
 explicitly in `submodules/TgVoipWebrtc/BUILD` (group sources are not globbed), and must be added to the
 `exclude:` list in `tgcalls/Package.swift` so SwiftPM does not compile their `main()`. The first run compiles
 WebRTC for the host (~2.5 min); later runs take seconds. Note the binary is version-stamped and
-arch-suffixed (`bazel-9.2.0-darwin-arm64` since 2026-09-14, was `bazel-8.4.2-darwin-arm64`), not the
+arch-suffixed (`bazel-9.3.1-darwin-arm64` since 2026-09-14, was `bazel-8.4.2-darwin-arm64`), not the
 bare `bazel-8.4.2` the tgcalls CLAUDE.md names; `versions.json` is the single pin.
 
 `//submodules/MetalEngine:MetalPipelineCacheTests` (added 2026-10-01) is the first host `swift_test`, run
-the same way (`… bazel-9.2.0-darwin-arm64 test //submodules/MetalEngine:MetalPipelineCacheTests`; one test
+the same way (`… bazel-9.3.1-darwin-arm64 test //submodules/MetalEngine:MetalPipelineCacheTests`; one test
 via `--test_filter=MetalPipelineCacheTests/<name>`, comma lists are not supported). It compiles only
 `MetalPipelineCache.swift` + `MetalBinaryArchiveSerialization.swift` and runs on the Mac's GPU, because
 the simulator has no binary archives (serializing fails an assertion there). It pins an **Apple bug**: a
@@ -163,10 +163,10 @@ static.rust-lang.org) a large archive misses the deadline: the build log fills w
 `Remote Cache: DEADLINE_EXCEEDED … remote_addr=…:9092`, the guest sits idle, and after the retries
 `--experimental_remote_downloader_local_fallback` (`.bazelrc`) downloads it again inside the VM. It reads like the VM
 cannot reach the cache; it can (`curl http://<cache>:8080/status` from the guest answers in milliseconds), and the
-tell is bazel-remote holding an outbound connection to the archive's host. This happened with the Rust toolchain:
-rules_rust 0.74.0 knows checksums only up to Rust 1.98.0, so `MODULE.bazel` supplies 1.98.1's in
-`rust.toolchain(sha256s = …)`. **Bumping the Rust version means updating that dict** (each archive's checksum is at
-`static.rust-lang.org/dist/<archive>.sha256`), or dropping it once rules_rust's `known_shas.bzl` covers the version.
+tell is bazel-remote holding an outbound connection to the archive's host. This happened with the Rust toolchain
+when rules_rust did not yet know the pinned Rust version's checksums. rules_rust 0.75.0's `known_shas.bzl` covers
+the pinned 1.99.1. **Bumping Rust past what rules_rust knows means adding `rust.toolchain(sha256s = …)`** (each
+archive's checksum is at `static.rust-lang.org/dist/<archive>.sha256`).
 
 ### Upgrading the vendored FFmpeg
 
@@ -1501,4 +1501,4 @@ This repo includes a tgcalls testbench (CLI tool, Go/Pion SFU, Docker build) lay
 
 Build the test binary from this directory with:
 
-`./build-input/bazel-9.2.0-darwin-arm64 build //submodules/TgVoipWebrtc/tgcalls/tools/cli:tgcalls_cli`
+`./build-input/bazel-9.3.1-darwin-arm64 build //submodules/TgVoipWebrtc/tgcalls/tools/cli:tgcalls_cli`

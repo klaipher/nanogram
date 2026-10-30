@@ -36,7 +36,7 @@ common:macos --watchfs
 # The disk cache (Make.py --cacheDir) grows without limit by default. Keep it
 # bounded: entries unused for two weeks, or the oldest past 40 GB, are removed
 # in the background once the Bazel server has been idle for a few minutes.
-# Override either value in user.bazelrc. (Bazel 9.2 still names these
+# Override either value in user.bazelrc. (Bazel 9.3 still names these
 # --experimental_disk_cache_gc_*; newer releases drop the prefix.)
 common --experimental_disk_cache_gc_max_size=40G
 common --experimental_disk_cache_gc_max_age=14d

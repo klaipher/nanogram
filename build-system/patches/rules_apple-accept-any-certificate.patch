@@ -1,0 +1,15 @@
+Accept any code signing certificate, not only ones macOS trusts.
+
+Telegram's rules_apple fork (ali-fareed/rules_apple 485016e) carries this one
+change on top of upstream; the fake-codesigning certificates are not trusted.
+
+--- a/tools/codesigningtool/codesigningtool.py
++++ b/tools/codesigningtool/codesigningtool.py
+@@ -262,7 +262,6 @@
+   _, output, _ = execute.execute_and_filter_output([
+       "security",
+       "find-identity",
+-      "-v",
+       "-p",
+       "codesigning",
+   ], raise_on_failure=True)
