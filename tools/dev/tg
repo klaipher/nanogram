@@ -105,6 +105,13 @@ cmd_doctor() {
   else
     say "Free disk: ${free} GB"
   fi
+  local expires
+  expires="$(security cms -D -i "$ROOT/build-system/fake-codesigning/profiles/Telegram.mobileprovision" 2>/dev/null \
+    | plutil -extract ExpirationDate raw - 2>/dev/null || true)"
+  if [ -n "$expires" ] && [ "$(date -u +%Y-%m-%dT%H:%M:%SZ)" \> "$expires" ]; then
+    warn "The fake provisioning profiles expired on $expires, so device builds fail (run: tools/dev/tg refresh-fake-profiles)"
+    ok=1
+  fi
   return $ok
 }
 
@@ -323,6 +330,7 @@ Usage: tools/dev/tg <command> [options]
   test [label]          Run tests (default: Tests/AllTests)
   new-module <dir>      Create a Swift module that uses the strict Swift 6 preset
   strict-report         Count Swift 6 concurrency problems per module (~15 min)
+  refresh-fake-profiles Re-date and re-sign the fake provisioning profiles (device builds)
   disk                  Show what is using disk space
   clean                 Remove build outputs, keep downloads and caches
   prune [--yes]         Remove all Bazel outputs, the disk cache and DerivedData
@@ -341,6 +349,7 @@ case "$command" in
   test) cmd_test "$@" ;;
   new-module) cmd_new_module "$@" ;;
   strict-report) cmd_strict_report "$@" ;;
+  refresh-fake-profiles) python3 "$ROOT/build-system/Make/RefreshFakeProfiles.py" "$@" ;;
   disk) cmd_disk "$@" ;;
   clean) cmd_clean "$@" ;;
   prune) cmd_prune "$@" ;;
