@@ -318,6 +318,7 @@ final class AuthorizationSequencePhoneEntryControllerNode: ASDisplayNode {
     private let contactSyncNode: ContactSyncNode
     private let proceedNode: SolidRoundedButtonNode
     
+    private var qrContainerNode: ASDisplayNode?
     private var qrNode: ASImageNode?
     private let exportTokenDisposable = MetaDisposable()
     private let tokenEventsDisposable = MetaDisposable()
@@ -504,8 +505,11 @@ final class AuthorizationSequencePhoneEntryControllerNode: ASDisplayNode {
         super.didLoad()
         
         self.titleNode.view.addGestureRecognizer(UITapGestureRecognizer(target: self, action: #selector(self.debugTap(_:))))
-        #if DEBUG && false
-        self.noticeNode.view.addGestureRecognizer(UITapGestureRecognizer(target: self, action: #selector(self.debugQrTap(_:))))
+        // Debug builds show a QR login code on the phone screen. Scan it in Telegram on a
+        // phone (Settings > Devices > Link Desktop Device) to log in without an SMS, which
+        // the server may ask the simulator to pay for.
+        #if DEBUG
+        self.showDebugQr()
         #endif
     }
     
@@ -651,6 +655,10 @@ final class AuthorizationSequencePhoneEntryControllerNode: ASDisplayNode {
             self.managedAnimationNode.isHidden = true
         }
         
+        if let qrContainerNode = self.qrContainerNode {
+            items.insert(AuthorizationLayoutItem(node: qrContainerNode, size: CGSize(width: 224.0, height: 224.0), spacingBefore: AuthorizationLayoutItemSpacing(weight: 10.0, maxValue: 10.0), spacingAfter: AuthorizationLayoutItemSpacing(weight: 10.0, maxValue: 10.0)), at: 0)
+        }
+        
         let contactSyncSize = self.contactSyncNode.updateLayout(width: maximumWidth)
         if self.hasOtherAccounts {
             self.contactSyncNode.isHidden = false
@@ -710,12 +718,18 @@ final class AuthorizationSequencePhoneEntryControllerNode: ASDisplayNode {
         }
     }
     
-    @objc private func debugQrTap(_ recognizer: UITapGestureRecognizer) {
+    private func showDebugQr() {
         if self.qrNode == nil {
+            // A white card with a margin keeps the code scannable in dark mode too.
+            let qrContainerNode = ASDisplayNode()
+            qrContainerNode.backgroundColor = .white
+            qrContainerNode.cornerRadius = 16.0
             let qrNode = ASImageNode()
-            qrNode.frame = CGRect(origin: CGPoint(x: 16.0, y: 64.0 + 16.0), size: CGSize(width: 200.0, height: 200.0))
+            qrNode.frame = CGRect(origin: CGPoint(x: 12.0, y: 12.0), size: CGSize(width: 200.0, height: 200.0))
+            qrContainerNode.addSubnode(qrNode)
+            self.qrContainerNode = qrContainerNode
             self.qrNode = qrNode
-            self.addSubnode(qrNode)
+            self.addSubnode(qrContainerNode)
             
             self.refreshQrToken()
         }
