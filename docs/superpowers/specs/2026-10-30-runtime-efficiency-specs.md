@@ -15,7 +15,7 @@ Status values: `todo`, `in progress`, `done (<commit>)`, `dropped (<reason>)`.
 
 ## Quick fixes (S)
 
-### R1. Polls with a deadline are re-fetched every 0.5 s — `todo`, verified
+### R1. Polls with a deadline are re-fetched every 0.5 s — `done (9bc6231a)`, verified
 
 - **Where**: `submodules/TelegramCore/Sources/State/AccountViewTracker.swift:549-583`.
 - **Problem**: `remainingTime = timestamp - startDate - 1` is the time since the poll was posted, not the
@@ -27,7 +27,7 @@ Status values: `todo`, `in progress`, `done (<commit>)`, `dropped (<reason>)`.
 - **Check**: open a chat with a deadline poll; count `messages.getPollResults` requests per minute
   (network telemetry in a debug build, or a breakpoint in `fetchPoll`).
 
-### R2. Automatic power saving stops working after the first call — `todo`, verified
+### R2. Automatic power saving stops working after the first call — `done (9bc6231a)`, verified
 
 - **Where**: `submodules/TelegramCallsUI/Sources/PresentationCall.swift:1181,1194,1255,1268`;
   `submodules/TelegramPresentationData/Sources/PresentationData.swift:531-545`.
@@ -60,7 +60,7 @@ Status values: `todo`, `in progress`, `done (<commit>)`, `dropped (<reason>)`.
 - **Fix**: no stderr logging in release; with an empty path, don't install the sink.
 - **Check**: memory of the broadcast extension over a 30 min screen share.
 
-### R5. The cheaper custom-emoji renderer is behind a debug switch — `todo`, verified
+### R5. The cheaper custom-emoji renderer is behind a debug switch — `in progress` (timer tolerance, 3cd4aadf; moving it to the shared display link measured worse), verified
 
 - **Where**: `submodules/TelegramUIPreferences/Sources/ExperimentalUISettings.swift:112`
   (`compressedEmojiCache: false`); `DCTMultiAnimationRendererImpl.swift:909-930`,
@@ -71,7 +71,7 @@ Status values: `todo`, `in progress`, `done (<commit>)`, `dropped (<reason>)`.
   buffers and drive the renderer from the shared display link.
 - **Check**: Time Profiler on a chat full of animated custom emoji, before/after.
 
-### R6. Auto night mode polls every second — `todo`, verified
+### R6. Auto night mode polls every second — `done (9bc6231a)`, verified
 
 - **Where**: `submodules/TelegramPresentationData/Sources/PresentationData.swift:505-520`.
 - **Problem**: a 1 s repeating main-queue timer for every trigger except `.explicitNone`, including the
@@ -86,7 +86,7 @@ Status values: `todo`, `in progress`, `done (<commit>)`, `dropped (<reason>)`.
 - **Fix**: treat `ProcessInfo.isLowPowerModeEnabled` or thermal state `.serious`/`.critical` as "power saving
   on", observing `NSProcessInfoPowerStateDidChange` and `thermalStateDidChangeNotification`.
 
-### R8. Display links and sensors that keep running — `todo`
+### R8. Display links and sensors that keep running — `in progress` (1 Hz autoremove/timestamp loops → 10 s and the AppLock 5 s write only with a passcode: 9bc6231a)
 
 - Media editor: a 60 fps `CADisplayLink` stays active while a video is paused
   (`TelegramUI/Components/MediaEditor/Sources/UniversalTextureSource.swift:96-117`). Pause it when `rate == 0`.
@@ -143,7 +143,7 @@ Status values: `todo`, `in progress`, `done (<commit>)`, `dropped (<reason>)`.
 - `TelegramUI/Components/LottieComponent/Sources/LottieComponent.swift:441-451`: a new drawing context per
   frame on main; 110 call sites, 15 looping. Render off-main or cache frames.
 
-### R14. Display link frame rate — `todo`
+### R14. Display link frame rate — `in progress` (shared link asks for 60/30 Hz: 3cd4aadf)
 
 - `DisplayLinkAnimator.swift:168-185,219-229`: on iPad the shared link asks for 120 Hz whenever any link is
   active; 30 fps links are throttled in software, so main still wakes at 60+ Hz. Pass the highest requested
@@ -207,7 +207,7 @@ Status values: `todo`, `in progress`, `done (<commit>)`, `dropped (<reason>)`.
   keep theirs; any peer update scans all entries (`MessageHistoryViewState.swift:1663`).
 - **Fix**: pause views of invisible screens; lower the preload count.
 
-### R22. Unbounded caches, no memory-warning handling — `todo`
+### R22. Unbounded caches, no memory-warning handling — `in progress` (memory-warning handler, throttle-record pruning: 9bc6231a)
 
 - No Swift handler for `didReceiveMemoryWarningNotification`; Postbox caches (`PeerTable.cachedPeers`,
   cached peer data, presences, read states) and `PresentationsResourceCache` are unbounded and cleared only
@@ -219,6 +219,20 @@ Status values: `todo`, `in progress`, `done (<commit>)`, `dropped (<reason>)`.
 - `GradientBackground/Sources/SoftwareGradientBackground.swift:574-601` regenerates 15–60 frames per message
   animation; `WallpaperBackgroundNode.swift:486-528,548` redoes a full-screen blend on main behind a
   one-entry cache; loops while a chat loads (`ChatLoadingNode.swift:235`).
+
+## Found and fixed while measuring (2026-10-30)
+
+- Streamed video left a temp copy of every segment until relaunch (242 MB in a 3-minute browse); segments
+  crossed the JS player as base64 both ways (7ddeada8).
+- Retain cycles: poll/todo option nodes, context-menu custom items, reposted-story captions, Gifts pane
+  subscription, live-stream frame map, UniversalVideoManager bags (42e24c27).
+- Unchanged peers and view counts rewritten on every update; StorageBox no-op writes; 0xdead10cc from
+  databases still writing when a background task expired (f997e5c0).
+- 2 Hz memory logger, 10 Hz read-metrics heartbeat, hidden chats' 10 s refresh, widget/folder polls (9bc6231a).
+
+Measured with the same AXe-driven scenario (60 s idle chat list, 10 busy channels opened and scrolled, 30 s
+idle), debug builds, back to back: browsing CPU 74.8 → 60.4 s, written 348 → 273 MB, peak memory 306 → 243 MB,
+temp files left 242 → 0 MB. Idle readings vary more between runs than between builds on a live account.
 
 ## Already done well (keep)
 
