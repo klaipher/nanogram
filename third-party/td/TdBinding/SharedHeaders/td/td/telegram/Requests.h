@@ -1,11 +1,12 @@
 //
-// Copyright Aliaksei Levin (levlam@telegram.org), Arseny Smirnov (arseny30@gmail.com) 2014-2025
+// Copyright Aliaksei Levin (levlam@telegram.org), Arseny Smirnov (arseny30@gmail.com) 2014-2026
 //
 // Distributed under the Boost Software License, Version 1.0. (See accompanying
 // file LICENSE_1_0.txt or copy at http://www.boost.org/LICENSE_1_0.txt)
 //
 #pragma once
 
+#include "td/telegram/SentEmailCode.h"
 #include "td/telegram/Td.h"
 #include "td/telegram/td_api.h"
 
@@ -100,6 +101,8 @@ class Requests {
 
   Promise<int32> create_count_request_promise(uint64 id);
 
+  Promise<SentEmailCode> create_sent_email_code_request_promise(uint64 id);
+
   template <class T>
   void on_request(uint64 id, const T &) = delete;
 
@@ -129,6 +132,12 @@ class Requests {
 
   void on_request(uint64 id, const td_api::requestQrCodeAuthentication &request);
 
+  void on_request(uint64 id, const td_api::getAuthenticationPasskeyParameters &request);
+
+  void on_request(uint64 id, td_api::checkAuthenticationPasskey &request);
+
+  void on_request(uint64 id, td_api::checkAuthenticationWebToken &request);
+
   void on_request(uint64 id, const td_api::resetAuthenticationEmailAddress &request);
 
   void on_request(uint64 id, td_api::checkAuthenticationPassword &request);
@@ -156,6 +165,8 @@ class Requests {
   void on_request(uint64 id, const td_api::getPasswordState &request);
 
   void on_request(uint64 id, td_api::setPassword &request);
+
+  void on_request(uint64 id, const td_api::isLoginEmailAddressRequired &request);
 
   void on_request(uint64 id, td_api::setLoginEmailAddress &request);
 
@@ -219,6 +230,8 @@ class Requests {
 
   void on_request(uint64 id, td_api::searchUserByToken &request);
 
+  void on_request(uint64 id, td_api::applyUnpaidMessagesToken &request);
+
   void on_request(uint64 id, const td_api::getActiveSessions &request);
 
   void on_request(uint64 id, const td_api::terminateSession &request);
@@ -273,9 +286,15 @@ class Requests {
 
   void on_request(uint64 id, const td_api::getMessageViewers &request);
 
+  void on_request(uint64 id, const td_api::getMessageAuthor &request);
+
   void on_request(uint64 id, const td_api::getMessages &request);
 
+  void on_request(uint64 id, const td_api::getFullRichMessage &request);
+
   void on_request(uint64 id, const td_api::getMessageProperties &request);
+
+  void on_request(uint64 id, td_api::getPollOptionProperties &request);
 
   void on_request(uint64 id, const td_api::getChatSponsoredMessages &request);
 
@@ -291,15 +310,53 @@ class Requests {
 
   void on_request(uint64 id, const td_api::reportSponsoredChat &request);
 
-  void on_request(uint64 id, const td_api::getMessageLink &request);
+  void on_request(uint64 id, const td_api::getVideoMessageAdvertisements &request);
+
+  void on_request(uint64 id, const td_api::viewVideoMessageAdvertisement &request);
+
+  void on_request(uint64 id, const td_api::clickVideoMessageAdvertisement &request);
+
+  void on_request(uint64 id, const td_api::reportVideoMessageAdvertisement &request);
+
+  void on_request(uint64 id, td_api::getMessageLink &request);
 
   void on_request(uint64 id, const td_api::getMessageEmbeddingCode &request);
 
   void on_request(uint64 id, td_api::getMessageLinkInfo &request);
 
+  void on_request(uint64 id, td_api::createTextCompositionStyle &request);
+
+  void on_request(uint64 id, td_api::editTextCompositionStyle &request);
+
+  void on_request(uint64 id, td_api::deleteTextCompositionStyle &request);
+
+  void on_request(uint64 id, td_api::searchTextCompositionStyle &request);
+
+  void on_request(uint64 id, td_api::getTextCompositionStyleExample &request);
+
+  void on_request(uint64 id, td_api::addTextCompositionStyle &request);
+
+  void on_request(uint64 id, td_api::removeTextCompositionStyle &request);
+
   void on_request(uint64 id, td_api::translateText &request);
 
+  void on_request(uint64 id, td_api::translateRichMessage &request);
+
   void on_request(uint64 id, td_api::translateMessageText &request);
+
+  void on_request(uint64 id, td_api::translateMessageRichMessage &request);
+
+  void on_request(uint64 id, td_api::summarizeMessage &request);
+
+  void on_request(uint64 id, td_api::composeTextWithAi &request);
+
+  void on_request(uint64 id, td_api::composeRichMessageWithAi &request);
+
+  void on_request(uint64 id, td_api::createRichMessageWithAi &request);
+
+  void on_request(uint64 id, td_api::fixTextWithAi &request);
+
+  void on_request(uint64 id, td_api::fixRichMessageWithAi &request);
 
   void on_request(uint64 id, const td_api::recognizeSpeech &request);
 
@@ -335,6 +392,14 @@ class Requests {
 
   void on_request(uint64 id, const td_api::clearAutosaveSettingsExceptions &request);
 
+  void on_request(uint64 id, const td_api::changeWebBrowserSettings &request);
+
+  void on_request(uint64 id, td_api::addWebBrowserSettingsException &request);
+
+  void on_request(uint64 id, td_api::removeWebBrowserSettingsException &request);
+
+  void on_request(uint64 id, const td_api::removeAllWebBrowserSettingsExceptions &request);
+
   void on_request(uint64 id, const td_api::getRecommendedChats &request);
 
   void on_request(uint64 id, const td_api::getChatSimilarChats &request);
@@ -357,6 +422,28 @@ class Requests {
 
   void on_request(uint64 id, const td_api::getChats &request);
 
+  void on_request(uint64 id, const td_api::loadDirectMessagesChatTopics &request);
+
+  void on_request(uint64 id, const td_api::getDirectMessagesChatTopic &request);
+
+  void on_request(uint64 id, const td_api::getDirectMessagesChatTopicHistory &request);
+
+  void on_request(uint64 id, const td_api::getDirectMessagesChatTopicMessageByDate &request);
+
+  void on_request(uint64 id, const td_api::deleteDirectMessagesChatTopicHistory &request);
+
+  void on_request(uint64 id, const td_api::deleteDirectMessagesChatTopicMessagesByDate &request);
+
+  void on_request(uint64 id, const td_api::setDirectMessagesChatTopicIsMarkedAsUnread &request);
+
+  void on_request(uint64 id, const td_api::unpinAllDirectMessagesChatTopicMessages &request);
+
+  void on_request(uint64 id, const td_api::readAllDirectMessagesChatTopicReactions &request);
+
+  void on_request(uint64 id, const td_api::getDirectMessagesChatTopicRevenue &request);
+
+  void on_request(uint64 id, const td_api::toggleDirectMessagesChatTopicCanSendUnpaidMessages &request);
+
   void on_request(uint64 id, const td_api::loadSavedMessagesTopics &request);
 
   void on_request(uint64 id, const td_api::getSavedMessagesTopicHistory &request);
@@ -370,6 +457,18 @@ class Requests {
   void on_request(uint64 id, const td_api::toggleSavedMessagesTopicIsPinned &request);
 
   void on_request(uint64 id, const td_api::setPinnedSavedMessagesTopics &request);
+
+  void on_request(uint64 id, const td_api::getCommunityFullInfo &request);
+
+  void on_request(uint64 id, td_api::createCommunity &request);
+
+  void on_request(uint64 id, td_api::setCommunityName &request);
+
+  void on_request(uint64 id, const td_api::setCommunityPhoto &request);
+
+  void on_request(uint64 id, const td_api::setCommunityPermissions &request);
+
+  void on_request(uint64 id, const td_api::deleteCommunity &request);
 
   void on_request(uint64 id, td_api::searchPublicChat &request);
 
@@ -413,6 +512,10 @@ class Requests {
 
   void on_request(uint64 id, const td_api::clickAnimatedEmojiMessage &request);
 
+  void on_request(uint64 id, const td_api::listenToAudio &request);
+
+  void on_request(uint64 id, const td_api::sendMessageViewMetrics &request);
+
   void on_request(uint64 id, const td_api::getInternalLink &request);
 
   void on_request(uint64 id, const td_api::getInternalLinkType &request);
@@ -420,6 +523,16 @@ class Requests {
   void on_request(uint64 id, td_api::getExternalLinkInfo &request);
 
   void on_request(uint64 id, td_api::getExternalLink &request);
+
+  void on_request(uint64 id, td_api::getLinkWebBrowserType &request);
+
+  void on_request(uint64 id, td_api::getOauthLinkInfo &request);
+
+  void on_request(uint64 id, td_api::checkOauthRequestMatchCode &request);
+
+  void on_request(uint64 id, td_api::acceptOauthRequest &request);
+
+  void on_request(uint64 id, td_api::declineOauthRequest &request);
 
   void on_request(uint64 id, const td_api::getChatHistory &request);
 
@@ -442,6 +555,10 @@ class Requests {
   void on_request(uint64 id, const td_api::searchCallMessages &request);
 
   void on_request(uint64 id, td_api::searchOutgoingDocumentMessages &request);
+
+  void on_request(uint64 id, td_api::getPublicPostSearchLimits &request);
+
+  void on_request(uint64 id, td_api::searchPublicPosts &request);
 
   void on_request(uint64 id, td_api::searchPublicMessagesByTag &request);
 
@@ -471,6 +588,14 @@ class Requests {
 
   void on_request(uint64 id, const td_api::getChatScheduledMessages &request);
 
+  void on_request(uint64 id, const td_api::getPasskeyParameters &request);
+
+  void on_request(uint64 id, td_api::addLoginPasskey &request);
+
+  void on_request(uint64 id, const td_api::getLoginPasskeys &request);
+
+  void on_request(uint64 id, td_api::removeLoginPasskey &request);
+
   void on_request(uint64 id, const td_api::getEmojiReaction &request);
 
   void on_request(uint64 id, const td_api::getCustomEmojiReactionAnimations &request);
@@ -493,6 +618,10 @@ class Requests {
 
   void on_request(uint64 id, const td_api::removeMessageReaction &request);
 
+  void on_request(uint64 id, const td_api::deleteAllRecentMessageReactionsFromSender &request);
+
+  void on_request(uint64 id, const td_api::deleteMessageReactionsFromSender &request);
+
   void on_request(uint64 id, const td_api::setMessageReactions &request);
 
   void on_request(uint64 id, td_api::getMessageAddedReactions &request);
@@ -509,11 +638,31 @@ class Requests {
 
   void on_request(uint64 id, td_api::getStoryPublicForwards &request);
 
+  void on_request(uint64 id, const td_api::getChatStoryAlbums &request);
+
+  void on_request(uint64 id, const td_api::getStoryAlbumStories &request);
+
+  void on_request(uint64 id, td_api::createStoryAlbum &request);
+
+  void on_request(uint64 id, const td_api::reorderStoryAlbums &request);
+
+  void on_request(uint64 id, const td_api::deleteStoryAlbum &request);
+
+  void on_request(uint64 id, td_api::setStoryAlbumName &request);
+
+  void on_request(uint64 id, const td_api::addStoryAlbumStories &request);
+
+  void on_request(uint64 id, const td_api::removeStoryAlbumStories &request);
+
+  void on_request(uint64 id, const td_api::reorderStoryAlbumStories &request);
+
   void on_request(uint64 id, const td_api::removeNotification &request);
 
   void on_request(uint64 id, const td_api::removeNotificationGroup &request);
 
   void on_request(uint64 id, const td_api::deleteMessages &request);
+
+  void on_request(uint64 id, const td_api::deleteEphemeralMessage &request);
 
   void on_request(uint64 id, const td_api::deleteChatMessagesBySender &request);
 
@@ -521,11 +670,15 @@ class Requests {
 
   void on_request(uint64 id, const td_api::readAllChatMentions &request);
 
-  void on_request(uint64 id, const td_api::readAllMessageThreadMentions &request);
+  void on_request(uint64 id, const td_api::readAllForumTopicMentions &request);
 
   void on_request(uint64 id, const td_api::readAllChatReactions &request);
 
-  void on_request(uint64 id, const td_api::readAllMessageThreadReactions &request);
+  void on_request(uint64 id, const td_api::readAllForumTopicReactions &request);
+
+  void on_request(uint64 id, const td_api::readAllChatPollVotes &request);
+
+  void on_request(uint64 id, const td_api::readAllForumTopicPollVotes &request);
 
   void on_request(uint64 id, const td_api::getChatAvailableMessageSenders &request);
 
@@ -539,11 +692,15 @@ class Requests {
 
   void on_request(uint64 id, td_api::sendInlineQueryResultMessage &request);
 
+  void on_request(uint64 id, td_api::sendEphemeralMessage &request);
+
   void on_request(uint64 id, td_api::addLocalMessage &request);
 
   void on_request(uint64 id, td_api::editMessageText &request);
 
   void on_request(uint64 id, td_api::editMessageLiveLocation &request);
+
+  void on_request(uint64 id, td_api::editMessageChecklist &request);
 
   void on_request(uint64 id, td_api::editMessageMedia &request);
 
@@ -561,7 +718,15 @@ class Requests {
 
   void on_request(uint64 id, td_api::editInlineMessageReplyMarkup &request);
 
+  void on_request(uint64 id, td_api::editEphemeralMessage &request);
+
+  void on_request(uint64 id, td_api::editEphemeralMessageCaption &request);
+
+  void on_request(uint64 id, td_api::replyToCallbackQueryWithEphemeralMessage &request);
+
   void on_request(uint64 id, td_api::editMessageSchedulingState &request);
+
+  void on_request(uint64 id, const td_api::deleteMessageEphemeralContent &request);
 
   void on_request(uint64 id, td_api::setMessageFactCheck &request);
 
@@ -572,6 +737,8 @@ class Requests {
   void on_request(uint64 id, td_api::editBusinessMessageText &request);
 
   void on_request(uint64 id, td_api::editBusinessMessageLiveLocation &request);
+
+  void on_request(uint64 id, td_api::editBusinessMessageChecklist &request);
 
   void on_request(uint64 id, td_api::editBusinessMessageMedia &request);
 
@@ -607,7 +774,7 @@ class Requests {
 
   void on_request(uint64 id, const td_api::loadQuickReplyShortcuts &request);
 
-  void on_request(uint64 id, const td_api::setQuickReplyShortcutName &request);
+  void on_request(uint64 id, td_api::setQuickReplyShortcutName &request);
 
   void on_request(uint64 id, const td_api::deleteQuickReplyShortcut &request);
 
@@ -627,6 +794,16 @@ class Requests {
 
   void on_request(uint64 id, td_api::editQuickReplyMessage &request);
 
+  void on_request(uint64 id, const td_api::loadChatWelcomeMessages &request);
+
+  void on_request(uint64 id, td_api::addChatWelcomeMessage &request);
+
+  void on_request(uint64 id, td_api::editChatWelcomeMessage &request);
+
+  void on_request(uint64 id, const td_api::deleteChatWelcomeMessage &request);
+
+  void on_request(uint64 id, const td_api::deleteAllChatWelcomeMessages &request);
+
   void on_request(uint64 id, const td_api::getCurrentWeather &request);
 
   void on_request(uint64 id, const td_api::getStory &request);
@@ -636,6 +813,8 @@ class Requests {
   void on_request(uint64 id, const td_api::canPostStory &request);
 
   void on_request(uint64 id, td_api::postStory &request);
+
+  void on_request(uint64 id, td_api::startLiveStory &request);
 
   void on_request(uint64 id, td_api::editStory &request);
 
@@ -658,6 +837,8 @@ class Requests {
   void on_request(uint64 id, td_api::editForumTopic &request);
 
   void on_request(uint64 id, const td_api::getForumTopic &request);
+
+  void on_request(uint64 id, const td_api::getForumTopicHistory &request);
 
   void on_request(uint64 id, const td_api::getForumTopicLink &request);
 
@@ -684,6 +865,12 @@ class Requests {
   void on_request(uint64 id, const td_api::deleteChatReplyMarkup &request);
 
   void on_request(uint64 id, td_api::sendChatAction &request);
+
+  void on_request(uint64 id, td_api::sendTextMessageDraft &request);
+
+  void on_request(uint64 id, td_api::sendRichMessageDraft &request);
+
+  void on_request(uint64 id, const td_api::stopPendingMessage &request);
 
   void on_request(uint64 id, td_api::forwardMessages &request);
 
@@ -735,6 +922,10 @@ class Requests {
 
   void on_request(uint64 id, const td_api::replaceVideoChatRtmpUrl &request);
 
+  void on_request(uint64 id, const td_api::getLiveStoryRtmpUrl &request);
+
+  void on_request(uint64 id, const td_api::replaceLiveStoryRtmpUrl &request);
+
   void on_request(uint64 id, const td_api::getGroupCall &request);
 
   void on_request(uint64 id, const td_api::startScheduledVideoChat &request);
@@ -745,6 +936,8 @@ class Requests {
 
   void on_request(uint64 id, td_api::joinVideoChat &request);
 
+  void on_request(uint64 id, td_api::joinLiveStory &request);
+
   void on_request(uint64 id, td_api::startGroupCallScreenSharing &request);
 
   void on_request(uint64 id, const td_api::endGroupCallScreenSharing &request);
@@ -752,6 +945,30 @@ class Requests {
   void on_request(uint64 id, td_api::setVideoChatTitle &request);
 
   void on_request(uint64 id, const td_api::toggleVideoChatMuteNewParticipants &request);
+
+  void on_request(uint64 id, const td_api::toggleGroupCallAreMessagesAllowed &request);
+
+  void on_request(uint64 id, const td_api::setGroupCallPaidMessageStarCount &request);
+
+  void on_request(uint64 id, const td_api::getLiveStoryStreamer &request);
+
+  void on_request(uint64 id, const td_api::getLiveStoryAvailableMessageSenders &request);
+
+  void on_request(uint64 id, const td_api::setLiveStoryMessageSender &request);
+
+  void on_request(uint64 id, td_api::sendGroupCallMessage &request);
+
+  void on_request(uint64 id, const td_api::addPendingLiveStoryReaction &request);
+
+  void on_request(uint64 id, const td_api::commitPendingLiveStoryReactions &request);
+
+  void on_request(uint64 id, const td_api::removePendingLiveStoryReactions &request);
+
+  void on_request(uint64 id, const td_api::deleteGroupCallMessages &request);
+
+  void on_request(uint64 id, const td_api::deleteGroupCallMessagesBySender &request);
+
+  void on_request(uint64 id, const td_api::getLiveStoryTopDonors &request);
 
   void on_request(uint64 id, const td_api::revokeGroupCallInviteLink &request);
 
@@ -791,9 +1008,9 @@ class Requests {
 
   void on_request(uint64 id, const td_api::endGroupCall &request);
 
-  void on_request(uint64 id, const td_api::getVideoChatStreams &request);
+  void on_request(uint64 id, const td_api::getGroupCallStreams &request);
 
-  void on_request(uint64 id, td_api::getVideoChatStreamSegment &request);
+  void on_request(uint64 id, td_api::getGroupCallStreamSegment &request);
 
   void on_request(uint64 id, td_api::encryptGroupCallData &request);
 
@@ -879,11 +1096,15 @@ class Requests {
 
   void on_request(uint64 id, const td_api::deleteChatBackground &request);
 
+  void on_request(uint64 id, td_api::getGiftChatThemes &request);
+
   void on_request(uint64 id, td_api::setChatTheme &request);
 
   void on_request(uint64 id, td_api::setChatDraftMessage &request);
 
   void on_request(uint64 id, const td_api::toggleChatHasProtectedContent &request);
+
+  void on_request(uint64 id, const td_api::processChatHasProtectedContentDisableRequest &request);
 
   void on_request(uint64 id, const td_api::toggleChatIsPinned &request);
 
@@ -957,6 +1178,8 @@ class Requests {
 
   void on_request(uint64 id, const td_api::setChatDiscussionGroup &request);
 
+  void on_request(uint64 id, const td_api::setChatDirectMessagesGroup &request);
+
   void on_request(uint64 id, td_api::setChatLocation &request);
 
   void on_request(uint64 id, const td_api::setChatSlowModeDelay &request);
@@ -967,7 +1190,7 @@ class Requests {
 
   void on_request(uint64 id, const td_api::unpinAllChatMessages &request);
 
-  void on_request(uint64 id, const td_api::unpinAllMessageThreadMessages &request);
+  void on_request(uint64 id, const td_api::unpinAllForumTopicMessages &request);
 
   void on_request(uint64 id, const td_api::joinChat &request);
 
@@ -979,11 +1202,15 @@ class Requests {
 
   void on_request(uint64 id, td_api::setChatMemberStatus &request);
 
+  void on_request(uint64 id, td_api::setChatMemberTag &request);
+
   void on_request(uint64 id, const td_api::banChatMember &request);
 
   void on_request(uint64 id, const td_api::canTransferOwnership &request);
 
   void on_request(uint64 id, td_api::transferChatOwnership &request);
+
+  void on_request(uint64 id, const td_api::getChatOwnerAfterLeaving &request);
 
   void on_request(uint64 id, const td_api::getChatMember &request);
 
@@ -1015,6 +1242,12 @@ class Requests {
 
   void on_request(uint64 id, td_api::processChatJoinRequests &request);
 
+  void on_request(uint64 id, const td_api::approveSuggestedPost &request);
+
+  void on_request(uint64 id, td_api::declineSuggestedPost &request);
+
+  void on_request(uint64 id, td_api::addOffer &request);
+
   void on_request(uint64 id, td_api::revokeChatInviteLink &request);
 
   void on_request(uint64 id, td_api::deleteRevokedChatInviteLink &request);
@@ -1030,6 +1263,8 @@ class Requests {
   void on_request(uint64 id, const td_api::getTimeZones &request);
 
   void on_request(uint64 id, const td_api::clearAllDraftMessages &request);
+
+  void on_request(uint64 id, const td_api::getStakeDiceState &request);
 
   void on_request(uint64 id, const td_api::downloadFile &request);
 
@@ -1099,11 +1334,17 @@ class Requests {
 
   void on_request(uint64 id, const td_api::setUserPersonalProfilePhoto &request);
 
+  void on_request(uint64 id, td_api::setUserNote &request);
+
   void on_request(uint64 id, const td_api::suggestUserProfilePhoto &request);
+
+  void on_request(uint64 id, const td_api::suggestUserBirthdate &request);
 
   void on_request(uint64 id, const td_api::toggleBotCanManageEmojiStatus &request);
 
   void on_request(uint64 id, const td_api::setUserEmojiStatus &request);
+
+  void on_request(uint64 id, const td_api::getPersonalChatHistory &request);
 
   void on_request(uint64 id, td_api::searchUserByPhoneNumber &request);
 
@@ -1123,7 +1364,9 @@ class Requests {
 
   void on_request(uint64 id, td_api::reorderActiveUsernames &request);
 
-  void on_request(uint64 id, td_api::setBirthdate &request);
+  void on_request(uint64 id, const td_api::setBirthdate &request);
+
+  void on_request(uint64 id, const td_api::setMainProfileTab &request);
 
   void on_request(uint64 id, const td_api::setPersonalChat &request);
 
@@ -1177,11 +1420,25 @@ class Requests {
 
   void on_request(uint64 id, const td_api::deleteBotMediaPreviews &request);
 
+  void on_request(uint64 id, td_api::checkBotUsername &request);
+
+  void on_request(uint64 id, td_api::createBot &request);
+
+  void on_request(uint64 id, const td_api::getManagedBotToken &request);
+
+  void on_request(uint64 id, const td_api::getManagedBotAccessSettings &request);
+
+  void on_request(uint64 id, td_api::setManagedBotAccessSettings &request);
+
   void on_request(uint64 id, td_api::setBotName &request);
 
   void on_request(uint64 id, const td_api::getBotName &request);
 
   void on_request(uint64 id, const td_api::setBotProfilePhoto &request);
+
+  void on_request(uint64 id, td_api::addBotSecondaryUsername &request);
+
+  void on_request(uint64 id, const td_api::deleteBotSecondaryUsername &request);
 
   void on_request(uint64 id, td_api::toggleBotUsernameIsActive &request);
 
@@ -1215,13 +1472,27 @@ class Requests {
 
   void on_request(uint64 id, const td_api::getUserProfilePhotos &request);
 
+  void on_request(uint64 id, const td_api::getUserProfileAudios &request);
+
+  void on_request(uint64 id, const td_api::isProfileAudio &request);
+
+  void on_request(uint64 id, td_api::addProfileAudio &request);
+
+  void on_request(uint64 id, const td_api::setProfileAudioPosition &request);
+
+  void on_request(uint64 id, const td_api::removeProfileAudio &request);
+
   void on_request(uint64 id, const td_api::setAccentColor &request);
+
+  void on_request(uint64 id, const td_api::setUpgradedGiftColors &request);
 
   void on_request(uint64 id, const td_api::setProfileAccentColor &request);
 
   void on_request(uint64 id, const td_api::getBusinessConnectedBot &request);
 
   void on_request(uint64 id, td_api::setBusinessConnectedBot &request);
+
+  void on_request(uint64 id, const td_api::confirmBusinessConnectedBot &request);
 
   void on_request(uint64 id, const td_api::deleteBusinessConnectedBot &request);
 
@@ -1253,6 +1524,8 @@ class Requests {
 
   void on_request(uint64 id, const td_api::setSupergroupUnrestrictBoostCount &request);
 
+  void on_request(uint64 id, const td_api::setSupergroupMainProfileTab &request);
+
   void on_request(uint64 id, const td_api::toggleSupergroupSignMessages &request);
 
   void on_request(uint64 id, const td_api::toggleSupergroupJoinToSendMessages &request);
@@ -1277,11 +1550,13 @@ class Requests {
 
   void on_request(uint64 id, const td_api::reportSupergroupAntiSpamFalsePositive &request);
 
-  void on_request(uint64 id, td_api::getSupergroupMembers &request);
+  void on_request(uint64 id, const td_api::getSupergroupMembers &request);
 
   void on_request(uint64 id, const td_api::closeSecretChat &request);
 
   void on_request(uint64 id, const td_api::getStickerOutline &request);
+
+  void on_request(uint64 id, const td_api::getStickerOutlineSvgPath &request);
 
   void on_request(uint64 id, td_api::getStickers &request);
 
@@ -1425,15 +1700,99 @@ class Requests {
 
   void on_request(uint64 id, const td_api::getChatRevenueStatistics &request);
 
-  void on_request(uint64 id, const td_api::getChatRevenueWithdrawalUrl &request);
+  void on_request(uint64 id, td_api::getChatRevenueWithdrawalUrl &request);
 
-  void on_request(uint64 id, const td_api::getChatRevenueTransactions &request);
+  void on_request(uint64 id, td_api::getChatRevenueTransactions &request);
+
+  void on_request(uint64 id, td_api::getTonTransactions &request);
+
+  void on_request(uint64 id, td_api::getTonWalletTransactions &request);
+
+  void on_request(uint64 id, td_api::getTonWalletTransaction &request);
+
+  void on_request(uint64 id, td_api::getTonWalletTransactionByMsgHash &request);
+
+  void on_request(uint64 id, const td_api::loadTonWalletState &request);
+
+  void on_request(uint64 id, const td_api::loadTonWalletGaslessTransfersInfo &request);
+
+  void on_request(uint64 id, const td_api::checkWalletBotBalance &request);
+
+  void on_request(uint64 id, const td_api::getUserTonWalletAddresses &request);
+
+  void on_request(uint64 id, const td_api::createUserTonWallet &request);
+
+  void on_request(uint64 id, td_api::getAddressTonWallet &request);
+
+  void on_request(uint64 id, td_api::getTonWalletSecretPhrase &request);
+
+  void on_request(uint64 id, const td_api::getTonWalletOwnershipProofChallenge &request);
+
+  void on_request(uint64 id, td_api::enableTonWalletBackup &request);
+
+  void on_request(uint64 id, td_api::disableTonWalletBackup &request);
+
+  void on_request(uint64 id, td_api::disableTonWalletBackupWithProof &request);
+
+  void on_request(uint64 id, td_api::sendTonWalletTransfer &request);
+
+  void on_request(uint64 id, td_api::deleteTonWallet &request);
+
+  void on_request(uint64 id, td_api::replaceTonWallet &request);
+
+  void on_request(uint64 id, const td_api::getCurrencyExchangeRates &request);
+
+  void on_request(uint64 id, td_api::getTonWalletNfts &request);
+
+  void on_request(uint64 id, const td_api::getTonWalletCardBackgroundGiftCollectionNames &request);
+
+  void on_request(uint64 id, td_api::setTonWalletCardStickers &request);
+
+  void on_request(uint64 id, const td_api::getTonConnectSessions &request);
+
+  void on_request(uint64 id, td_api::createTonConnectSession &request);
+
+  void on_request(uint64 id, td_api::setTonConnectSessionWalletClientId &request);
+
+  void on_request(uint64 id, td_api::sendTonConnectSessionConnectResult &request);
+
+  void on_request(uint64 id, const td_api::getTonConnectSessionPendingRequests &request);
+
+  void on_request(uint64 id, td_api::getTonConnectDAppPendingRequests &request);
+
+  void on_request(uint64 id, td_api::claimTonConnectRequest &request);
+
+  void on_request(uint64 id, td_api::answerTonConnectRequest &request);
+
+  void on_request(uint64 id, const td_api::getTonConnectSessionNextEventId &request);
+
+  void on_request(uint64 id, const td_api::disconnectTonConnectSession &request);
+
+  void on_request(uint64 id, td_api::getOnRampProviders &request);
+
+  void on_request(uint64 id, td_api::getOnRampProviderBaseCurrencies &request);
+
+  void on_request(uint64 id, td_api::sendTonCenterApiRequest &request);
+
+  void on_request(uint64 id, td_api::getOnRampPaymentAvailability &request);
+
+  void on_request(uint64 id, td_api::getOnRampPaymentLimits &request);
+
+  void on_request(uint64 id, td_api::getOnRampPaymentQuote &request);
+
+  void on_request(uint64 id, td_api::createOnRampPaymentSession &request);
+
+  void on_request(uint64 id, const td_api::getTonCenterStreamingApiUrl &request);
 
   void on_request(uint64 id, const td_api::getStarRevenueStatistics &request);
 
-  void on_request(uint64 id, const td_api::getStarWithdrawalUrl &request);
+  void on_request(uint64 id, td_api::getStarWithdrawalUrl &request);
 
   void on_request(uint64 id, const td_api::getStarAdAccountUrl &request);
+
+  void on_request(uint64 id, const td_api::getGramRevenueStatistics &request);
+
+  void on_request(uint64 id, td_api::getGramWithdrawalUrl &request);
 
   void on_request(uint64 id, const td_api::getMessageStatistics &request);
 
@@ -1465,11 +1824,21 @@ class Requests {
 
   void on_request(uint64 id, td_api::setOption &request);
 
+  void on_request(uint64 id, td_api::addPollOption &request);
+
+  void on_request(uint64 id, td_api::deletePollOption &request);
+
   void on_request(uint64 id, td_api::setPollAnswer &request);
 
   void on_request(uint64 id, const td_api::getPollVoters &request);
 
+  void on_request(uint64 id, const td_api::getPollVoteStatistics &request);
+
   void on_request(uint64 id, td_api::stopPoll &request);
+
+  void on_request(uint64 id, td_api::addChecklistTasks &request);
+
+  void on_request(uint64 id, td_api::markChecklistTasksAsDone &request);
 
   void on_request(uint64 id, td_api::hideSuggestedAction &request);
 
@@ -1489,9 +1858,15 @@ class Requests {
 
   void on_request(uint64 id, td_api::answerInlineQuery &request);
 
+  void on_request(uint64 id, td_api::answerGuestQuery &request);
+
   void on_request(uint64 id, td_api::savePreparedInlineMessage &request);
 
   void on_request(uint64 id, td_api::getPreparedInlineMessage &request);
+
+  void on_request(uint64 id, td_api::savePreparedKeyboardButton &request);
+
+  void on_request(uint64 id, td_api::getPreparedKeyboardButton &request);
 
   void on_request(uint64 id, td_api::getGrossingWebAppBots &request);
 
@@ -1505,6 +1880,8 @@ class Requests {
 
   void on_request(uint64 id, td_api::getWebAppUrl &request);
 
+  void on_request(uint64 id, td_api::getGuardBotWebAppUrl &request);
+
   void on_request(uint64 id, td_api::sendWebAppData &request);
 
   void on_request(uint64 id, td_api::openWebApp &request);
@@ -1514,6 +1891,8 @@ class Requests {
   void on_request(uint64 id, td_api::answerWebAppQuery &request);
 
   void on_request(uint64 id, td_api::checkWebAppFileDownload &request);
+
+  void on_request(uint64 id, td_api::answerChatJoinRequestQuery &request);
 
   void on_request(uint64 id, td_api::getCallbackQueryAnswer &request);
 
@@ -1543,9 +1922,25 @@ class Requests {
 
   void on_request(uint64 id, const td_api::getAvailableGifts &request);
 
+  void on_request(uint64 id, const td_api::canSendGift &request);
+
   void on_request(uint64 id, td_api::sendGift &request);
 
+  void on_request(uint64 id, td_api::getGiftAuctionState &request);
+
+  void on_request(uint64 id, const td_api::getGiftAuctionAcquiredGifts &request);
+
+  void on_request(uint64 id, const td_api::openGiftAuction &request);
+
+  void on_request(uint64 id, const td_api::closeGiftAuction &request);
+
+  void on_request(uint64 id, td_api::placeGiftAuctionBid &request);
+
+  void on_request(uint64 id, const td_api::increaseGiftAuctionBid &request);
+
   void on_request(uint64 id, td_api::sellGift &request);
+
+  void on_request(uint64 id, td_api::deleteGift &request);
 
   void on_request(uint64 id, const td_api::toggleGiftIsSaved &request);
 
@@ -1555,23 +1950,63 @@ class Requests {
 
   void on_request(uint64 id, const td_api::getGiftUpgradePreview &request);
 
+  void on_request(uint64 id, const td_api::getUpgradedGiftVariants &request);
+
   void on_request(uint64 id, td_api::upgradeGift &request);
+
+  void on_request(uint64 id, td_api::buyGiftUpgrade &request);
+
+  void on_request(uint64 id, const td_api::craftGift &request);
 
   void on_request(uint64 id, td_api::transferGift &request);
 
+  void on_request(uint64 id, const td_api::dropGiftOriginalDetails &request);
+
   void on_request(uint64 id, td_api::sendResoldGift &request);
+
+  void on_request(uint64 id, td_api::sendGiftPurchaseOffer &request);
+
+  void on_request(uint64 id, const td_api::processGiftPurchaseOffer &request);
 
   void on_request(uint64 id, td_api::getReceivedGifts &request);
 
   void on_request(uint64 id, const td_api::getReceivedGift &request);
 
+  void on_request(uint64 id, td_api::getGiftsForCrafting &request);
+
   void on_request(uint64 id, td_api::getUpgradedGift &request);
+
+  void on_request(uint64 id, td_api::getUpgradedGiftValueInfo &request);
 
   void on_request(uint64 id, const td_api::getUpgradedGiftWithdrawalUrl &request);
 
-  void on_request(uint64 id, const td_api::setGiftResalePrice &request);
+  void on_request(uint64 id, const td_api::withdrawUpgradedGift &request);
+
+  void on_request(uint64 id, td_api::getUpgradedGiftDepositInfo &request);
+
+  void on_request(uint64 id, td_api::displayUpgradedGift &request);
+
+  void on_request(uint64 id, const td_api::getUpgradedGiftsPromotionalAnimation &request);
+
+  void on_request(uint64 id, td_api::setGiftResalePrice &request);
 
   void on_request(uint64 id, td_api::searchGiftsForResale &request);
+
+  void on_request(uint64 id, const td_api::getGiftCollections &request);
+
+  void on_request(uint64 id, td_api::createGiftCollection &request);
+
+  void on_request(uint64 id, const td_api::reorderGiftCollections &request);
+
+  void on_request(uint64 id, const td_api::deleteGiftCollection &request);
+
+  void on_request(uint64 id, td_api::setGiftCollectionName &request);
+
+  void on_request(uint64 id, const td_api::addGiftCollectionGifts &request);
+
+  void on_request(uint64 id, const td_api::removeGiftCollectionGifts &request);
+
+  void on_request(uint64 id, const td_api::reorderGiftCollectionGifts &request);
 
   void on_request(uint64 id, td_api::createInvoiceLink &request);
 
@@ -1616,6 +2051,10 @@ class Requests {
   void on_request(uint64 id, const td_api::removeInstalledBackground &request);
 
   void on_request(uint64 id, const td_api::resetInstalledBackgrounds &request);
+
+  void on_request(uint64 id, const td_api::getProfileShareThemeBackdrops &request);
+
+  void on_request(uint64 id, td_api::setProfileShareTheme &request);
 
   void on_request(uint64 id, td_api::getRecentlyVisitedTMeUrls &request);
 
@@ -1699,19 +2138,23 @@ class Requests {
 
   void on_request(uint64 id, const td_api::getCountries &request);
 
+  void on_request(uint64 id, const td_api::getCountry &request);
+
   void on_request(uint64 id, const td_api::getCountryCode &request);
 
   void on_request(uint64 id, const td_api::getPhoneNumberInfo &request);
 
   void on_request(uint64 id, td_api::getCollectibleItemInfo &request);
 
-  void on_request(uint64 id, const td_api::getApplicationDownloadLink &request);
-
   void on_request(uint64 id, td_api::getDeepLinkInfo &request);
+
+  void on_request(uint64 id, td_api::dismissWebToken &request);
 
   void on_request(uint64 id, const td_api::getApplicationConfig &request);
 
   void on_request(uint64 id, td_api::saveApplicationLogEvent &request);
+
+  void on_request(uint64 id, const td_api::getApplicationDownloadLink &request);
 
   void on_request(uint64 id, td_api::addProxy &request);
 
@@ -1725,9 +2168,11 @@ class Requests {
 
   void on_request(uint64 id, const td_api::getProxies &request);
 
-  void on_request(uint64 id, const td_api::getProxyLink &request);
+  void on_request(uint64 id, td_api::pingProxy &request);
 
-  void on_request(uint64 id, const td_api::pingProxy &request);
+  void on_request(uint64 id, td_api::processWebProxyCarrierMessage &request);
+
+  void on_request(uint64 id, td_api::reportWebProxyCarrierError &request);
 
   void on_request(uint64 id, const td_api::getUserSupportInfo &request);
 
@@ -1789,7 +2234,7 @@ class Requests {
 
   void on_request(uint64 id, const td_api::testNetwork &request);
 
-  void on_request(uint64 id, td_api::testProxy &request);
+  void on_request(uint64 id, const td_api::testProxy &request);
 
   void on_request(uint64 id, const td_api::testGetDifference &request);
 

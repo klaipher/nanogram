@@ -879,7 +879,6 @@ class e2e_chain_stateProof final : public Object {
   UInt256 kv_hash_;
   object_ptr<e2e_chain_groupState> group_state_;
   object_ptr<e2e_chain_sharedKey> shared_key_;
-  enum Flags : std::int32_t { GROUP_STATE_MASK = 1, SHARED_KEY_MASK = 2 };
 
   e2e_chain_stateProof();
 

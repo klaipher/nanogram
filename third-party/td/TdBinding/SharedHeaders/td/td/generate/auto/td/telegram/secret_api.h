@@ -210,7 +210,7 @@ class decryptedMessage46 final : public DecryptedMessage {
   array<object_ptr<MessageEntity>> entities_;
   string via_bot_name_;
   int64 reply_to_random_id_;
-  enum Flags : std::int32_t { MEDIA_MASK = 512, ENTITIES_MASK = 128, VIA_BOT_NAME_MASK = 2048, REPLY_TO_RANDOM_ID_MASK = 8 };
+  enum Flags : std::int32_t { VIA_BOT_NAME_MASK = 2048, REPLY_TO_RANDOM_ID_MASK = 8 };
 
   decryptedMessage46();
 
@@ -243,7 +243,7 @@ class decryptedMessage final : public DecryptedMessage {
   string via_bot_name_;
   int64 reply_to_random_id_;
   int64 grouped_id_;
-  enum Flags : std::int32_t { MEDIA_MASK = 512, ENTITIES_MASK = 128, VIA_BOT_NAME_MASK = 2048, REPLY_TO_RANDOM_ID_MASK = 8, GROUPED_ID_MASK = 131072 };
+  enum Flags : std::int32_t { VIA_BOT_NAME_MASK = 2048, REPLY_TO_RANDOM_ID_MASK = 8, GROUPED_ID_MASK = 131072 };
 
   decryptedMessage();
 
@@ -1252,7 +1252,7 @@ class documentAttributeAudio final : public DocumentAttribute {
   string title_;
   string performer_;
   bytes waveform_;
-  enum Flags : std::int32_t { TITLE_MASK = 1, PERFORMER_MASK = 2, WAVEFORM_MASK = 4 };
+  enum Flags : std::int32_t { TITLE_MASK = 1, PERFORMER_MASK = 2 };
 
   documentAttributeAudio();
 

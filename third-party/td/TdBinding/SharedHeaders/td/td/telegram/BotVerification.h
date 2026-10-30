@@ -1,5 +1,5 @@
 //
-// Copyright Aliaksei Levin (levlam@telegram.org), Arseny Smirnov (arseny30@gmail.com) 2014-2025
+// Copyright Aliaksei Levin (levlam@telegram.org), Arseny Smirnov (arseny30@gmail.com) 2014-2026
 //
 // Distributed under the Boost Software License, Version 1.0. (See accompanying
 // file LICENSE_1_0.txt or copy at http://www.boost.org/LICENSE_1_0.txt)
@@ -7,6 +7,7 @@
 #pragma once
 
 #include "td/telegram/CustomEmojiId.h"
+#include "td/telegram/MessageEntity.h"
 #include "td/telegram/td_api.h"
 #include "td/telegram/telegram_api.h"
 #include "td/telegram/UserId.h"
@@ -45,7 +46,7 @@ class BotVerification {
  private:
   UserId bot_user_id_;
   CustomEmojiId icon_;
-  string description_;
+  FormattedText description_;
 
   friend bool operator==(const BotVerification &lhs, const BotVerification &rhs);
 
