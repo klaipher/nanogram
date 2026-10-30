@@ -8,20 +8,27 @@
 
 #include <jxl/decode.h>
 #include <jxl/types.h>
-#include <stdint.h>
 
+#include <algorithm>
+#include <array>
+#include <cstddef>
+#include <cstdint>
+#include <limits>
+#include <utility>
+#include <vector>
+
+#include "lib/jxl/base/common.h"
 #include "lib/jxl/base/compiler_specific.h"
 #include "lib/jxl/base/data_parallel.h"
-#include "lib/jxl/base/span.h"
 #include "lib/jxl/base/status.h"
-#include "lib/jxl/blending.h"
-#include "lib/jxl/common.h"
+#include "lib/jxl/common.h"  // JXL_HIGH_PRECISION
 #include "lib/jxl/dec_bit_reader.h"
 #include "lib/jxl/dec_cache.h"
 #include "lib/jxl/dec_modular.h"
+#include "lib/jxl/frame_dimensions.h"
 #include "lib/jxl/frame_header.h"
-#include "lib/jxl/headers.h"
 #include "lib/jxl/image_bundle.h"
+#include "lib/jxl/image_metadata.h"
 
 namespace jxl {
 
@@ -31,7 +38,8 @@ namespace jxl {
 // Used in the encoder to model decoder behaviour, and in tests.
 Status DecodeFrame(PassesDecoderState* dec_state, ThreadPool* JXL_RESTRICT pool,
                    const uint8_t* next_in, size_t avail_in,
-                   ImageBundle* decoded, const CodecMetadata& metadata,
+                   FrameHeader* frame_header, ImageBundle* decoded,
+                   const CodecMetadata& metadata,
                    bool use_slow_rendering_pipeline = false);
 
 // TODO(veluca): implement "forced drawing".
@@ -43,6 +51,7 @@ class FrameDecoder {
       : dec_state_(dec_state),
         pool_(pool),
         frame_header_(&metadata),
+        modular_frame_decoder_(dec_state_->memory_manager()),
         use_slow_rendering_pipeline_(use_slow_rendering_pipeline) {}
 
   void SetRenderSpotcolors(bool rsc) { render_spotcolors_ = rsc; }
@@ -172,7 +181,7 @@ class FrameDecoder {
 
   size_t NextNumPassesToPause() const {
     auto it = std::upper_bound(passes_to_pause_.begin(), passes_to_pause_.end(),
-                               NumCompletePasses());
+                               static_cast<int>(NumCompletePasses()));
     return (it != passes_to_pause_.end() ? *it
                                          : std::numeric_limits<size_t>::max());
   }
@@ -182,10 +191,10 @@ class FrameDecoder {
   // @param undo_orientation: if true, indicates the frame decoder should apply
   // the exif orientation to bring the image to the intended display
   // orientation.
-  void SetImageOutput(const PixelCallback& pixel_callback, void* image_buffer,
-                      size_t image_buffer_size, size_t xsize, size_t ysize,
-                      JxlPixelFormat format, size_t bits_per_sample,
-                      bool unpremul_alpha, bool undo_orientation) const {
+  Status SetImageOutput(const PixelCallback& pixel_callback, void* image_buffer,
+                        size_t image_buffer_size, size_t xsize, size_t ysize,
+                        JxlPixelFormat format, size_t bits_per_sample,
+                        bool unpremul_alpha, bool undo_orientation) const {
     dec_state_->width = xsize;
     dec_state_->height = ysize;
     dec_state_->main_output.format = format;
@@ -193,7 +202,8 @@ class FrameDecoder {
     dec_state_->main_output.callback = pixel_callback;
     dec_state_->main_output.buffer = image_buffer;
     dec_state_->main_output.buffer_size = image_buffer_size;
-    dec_state_->main_output.stride = GetStride(xsize, format);
+    JXL_ASSIGN_OR_RETURN(dec_state_->main_output.stride,
+                         GetStride(xsize, format));
     const jxl::ExtraChannelInfo* alpha =
         decoded_->metadata()->Find(jxl::ExtraChannel::kAlpha);
     if (alpha && alpha->alpha_associated && unpremul_alpha) {
@@ -220,30 +230,34 @@ class FrameDecoder {
       dec_state_->fast_xyb_srgb8_conversion = true;
     }
 #endif
+    return true;
   }
 
-  void AddExtraChannelOutput(void* buffer, size_t buffer_size, size_t xsize,
-                             JxlPixelFormat format, size_t bits_per_sample) {
+  Status AddExtraChannelOutput(void* buffer, size_t buffer_size, size_t xsize,
+                               JxlPixelFormat format, size_t bits_per_sample) {
     ImageOutput out;
     out.format = format;
     out.bits_per_sample = bits_per_sample;
     out.buffer = buffer;
     out.buffer_size = buffer_size;
-    out.stride = GetStride(xsize, format);
+    JXL_ASSIGN_OR_RETURN(out.stride, GetStride(xsize, format));
     dec_state_->extra_output.push_back(out);
+    return true;
   }
 
  private:
+  using PassesReaders = std::array<BitReader*, kMaxNumPasses>;
+
   Status ProcessDCGlobal(BitReader* br);
   Status ProcessDCGroup(size_t dc_group_id, BitReader* br);
-  void FinalizeDC();
+  Status FinalizeDC();
   Status AllocateOutput();
   Status ProcessACGlobal(BitReader* br);
-  Status ProcessACGroup(size_t ac_group_id, BitReader* JXL_RESTRICT* br,
+  Status ProcessACGroup(size_t ac_group_id, PassesReaders& br,
                         size_t num_passes, size_t thread, bool force_draw,
                         bool dc_only);
   void MarkSections(const SectionInfo* sections, size_t num,
-                    SectionStatus* section_status);
+                    const SectionStatus* section_status);
 
   // Allocates storage for parallel decoding using up to `num_threads` threads
   // of up to `num_tasks` tasks. The value of `thread` passed to
@@ -256,17 +270,20 @@ class FrameDecoder {
       group_dec_caches_.resize(storage_size);
     }
     use_task_id_ = num_threads > num_tasks;
-    bool use_group_ids = (modular_frame_decoder_.UsesFullImage() &&
-                          (frame_header_.encoding == FrameEncoding::kVarDCT ||
-                           (frame_header_.flags & FrameHeader::kNoise)));
+    bool use_noise = (frame_header_.flags & FrameHeader::kNoise) != 0;
+    bool use_group_ids =
+        (modular_frame_decoder_.UsesFullImage() &&
+         (frame_header_.encoding == FrameEncoding::kVarDCT || use_noise));
     if (dec_state_->render_pipeline) {
       JXL_RETURN_IF_ERROR(dec_state_->render_pipeline->PrepareForThreads(
           storage_size, use_group_ids));
     }
+    JXL_RETURN_IF_ERROR(
+        dec_state_->upsampler8x->PrepareForThreads(num_threads));
     return true;
   }
 
-  size_t GetStorageLocation(size_t thread, size_t task) {
+  size_t GetStorageLocation(size_t thread, size_t task) const {
     if (use_task_id_) return task;
     return thread;
   }
@@ -277,13 +294,25 @@ class FrameDecoder {
                                           : 2u);
   }
 
-  static size_t GetStride(const size_t xsize, JxlPixelFormat format) {
-    size_t stride =
-        (xsize * BytesPerChannel(format.data_type) * format.num_channels);
-    if (format.align > 1) {
-      stride = (jxl::DivCeil(stride, format.align) * format.align);
+  static StatusOr<size_t> GetStride(const size_t xsize, JxlPixelFormat format) {
+    size_t x_stride;
+    if (!SafeMul(BytesPerChannel(format.data_type), format.num_channels,
+                 x_stride)) {
+      return JXL_FAILURE("Image too large");
     }
-    return stride;
+    size_t y_stride;
+    if (!SafeMul(x_stride, xsize, y_stride)) {
+      return JXL_FAILURE("Image too large");
+    }
+    if (!SafeRoundUpTo(y_stride, format.align, y_stride)) {
+      return JXL_FAILURE("Image too large");
+    }
+    return y_stride;
+  }
+
+  bool HasDcGroupToDecode() const {
+    return std::any_of(decoded_dc_groups_.cbegin(), decoded_dc_groups_.cend(),
+                       [](uint8_t ready) { return ready == 0; });
   }
 
   PassesDecoderState* dec_state_;

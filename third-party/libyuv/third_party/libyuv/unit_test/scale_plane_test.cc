@@ -8,21 +8,37 @@
  *  be found in the AUTHORS file in the root of the source tree.
  */
 
+#include <limits.h>
+#include <stdint.h>
 #include <stdlib.h>
+#include <string.h>
 #include <time.h>
+
+#include <new>
 
 #include "../unit_test/unit_test.h"
 #include "libyuv/cpu_id.h"
 #include "libyuv/scale.h"
+#include "libyuv/scale_uv.h"
 
 #ifdef ENABLE_ROW_TESTS
 #include "libyuv/scale_row.h"  // For ScaleRowDown2Box_Odd_C
 #endif
 
+#if defined(__has_feature)
+#if __has_feature(memory_sanitizer)
+#include <sanitizer/msan_interface.h>
+#define MSAN_POISON(ptr, size) __msan_allocated_memory(ptr, size)
+#endif
+#endif
+#ifndef MSAN_POISON
+#define MSAN_POISON(ptr, size)
+#endif
+
 #define STRINGIZE(line) #line
 #define FILELINESTR(file, line) file ":" STRINGIZE(line)
 
-#if defined(__riscv) && !defined(__clang__)
+#if (defined(__riscv) && !defined(__clang__)) || defined(__hexagon__)
 #define DISABLE_SLOW_TESTS
 #undef ENABLE_FULL_TESTS
 #undef ENABLE_ROW_TESTS
@@ -36,6 +52,108 @@
 #endif
 
 namespace libyuv {
+
+// POC: int row_stride = src_stride * 2 overflows to a small negative value
+// when src_stride is close to INT_MAX, causing src_ptr to walk backward
+// past the start of the source allocation on the second loop iteration.
+// With src_stride = 0x7FFFFFFE, row_stride = (int)0xFFFFFFFC = -4, so on
+// y=1 ScaleRowDown2Box reads 4 bytes before the heap allocation.
+TEST_F(LibYUVScaleTest, ScalePlaneDown2_RowStrideOverflow) {
+  constexpr int kSrcStride = 0x7FFFFFFE;  // INT_MAX - 1
+  constexpr int kSrcW = 64;
+  constexpr int kSrcH = 4;
+  constexpr int kDstW = 32;
+  constexpr int kDstH = 2;
+  // src_size = (kSrcH - 1) * stride + width.
+  size_t src_size = kSrcH - 1;
+  if (src_size > SIZE_MAX / kSrcStride) {
+    GTEST_SKIP() << "could not represent allocation size in size_t";
+  }
+  src_size *= kSrcStride;
+  if (src_size > SIZE_MAX - kSrcW) {
+    GTEST_SKIP() << "could not represent allocation size in size_t";
+  }
+  src_size += kSrcW;
+
+#if defined(__aarch64__)
+  // Infer malloc can accept a large size for cpu with dot product (a76/a55)
+  int has_large_malloc = TestCpuFlag(kCpuHasNeonDotProd);
+#else
+  int has_large_malloc = 1;
+#endif
+  if (!has_large_malloc) {
+    GTEST_SKIP() << "large allocation may assert for " << src_size << " bytes";
+  }
+
+  uint8_t* src = new (std::nothrow) uint8_t[src_size];
+  if (!src) {
+    GTEST_SKIP() << "could not allocate " << src_size << " bytes";
+  }
+  uint8_t dst[kDstW * kDstH];
+  uint8_t* src_row = src;
+  for (int i = 0; i < kSrcH; i++) {
+    memset(src_row, 0x41, kSrcW);
+    src_row += kSrcStride;
+  }
+  // Force the C row kernel: the SIMD kernels are inline asm that ASAN does not
+  // instrument, so they silently read OOB without a report.
+  MaskCpuFlags(1);
+  // 2*dst == src on both axes -> ScalePlane dispatches to ScalePlaneDown2.
+  // int row_stride = kSrcStride * 2 wraps to -4; on y=1 src_ptr underflows.
+  ScalePlane(src, kSrcStride, kSrcW, kSrcH, dst, kDstW, kDstW, kDstH,
+             kFilterBox);
+  MaskCpuFlags(0);
+  delete[] src;
+}
+
+// POC: same defect in the 1/4 fast path. src_stride = 0x3FFFFFFF gives
+// int row_stride = src_stride * 4 = (int)0xFFFFFFFC = -4.
+TEST_F(LibYUVScaleTest, ScalePlaneDown4_RowStrideOverflow) {
+  constexpr int kSrcStride = 0x3FFFFFFF;  // INT_MAX / 4 (rounded down)
+  constexpr int kSrcW = 64;
+  constexpr int kSrcH = 8;
+  constexpr int kDstW = 16;
+  constexpr int kDstH = 2;
+  // src_size = (kSrcH - 1) * stride + width.
+  size_t src_size = kSrcH - 1;
+  if (src_size > SIZE_MAX / kSrcStride) {
+    GTEST_SKIP() << "could not represent allocation size in size_t";
+  }
+  src_size *= kSrcStride;
+  if (src_size > SIZE_MAX - kSrcW) {
+    GTEST_SKIP() << "could not represent allocation size in size_t";
+  }
+  src_size += kSrcW;
+
+#if defined(__aarch64__)
+  // Infer malloc can accept a large size for cpu with dot product (a76/a55)
+  int has_large_malloc = TestCpuFlag(kCpuHasNeonDotProd);
+#else
+  int has_large_malloc = 1;
+#endif
+  if (!has_large_malloc) {
+    GTEST_SKIP() << "large allocation may assert for " << src_size << " bytes";
+  }
+
+  uint8_t* src = new (std::nothrow) uint8_t[src_size];
+  if (!src) {
+    GTEST_SKIP() << "could not allocate " << src_size << " bytes";
+  }
+  uint8_t dst[kDstW * kDstH];
+  uint8_t* src_row = src;
+  for (int i = 0; i < kSrcH; i++) {
+    memset(src_row, 0x41, kSrcW);
+    src_row += kSrcStride;
+  }
+  // Force the C row kernel: the SIMD kernels are inline asm that ASAN does not
+  // instrument, so they silently read OOB without a report.
+  MaskCpuFlags(1);
+  // 4*dst == src on both axes with kFilterBox -> ScalePlaneDown4.
+  ScalePlane(src, kSrcStride, kSrcW, kSrcH, dst, kDstW, kDstW, kDstH,
+             kFilterBox);
+  MaskCpuFlags(0);
+  delete[] src;
+}
 
 #ifdef ENABLE_ROW_TESTS
 #ifdef HAS_SCALEROWDOWN2_SSSE3
@@ -80,58 +198,53 @@ TEST_F(LibYUVScaleTest, TestScaleRowDown2Box_Odd_SSSE3) {
     // Test regular half size.
     ScaleRowDown2Box_C(orig_pixels, 128, dst_pixels_c, 64);
 
-    EXPECT_EQ(64u, dst_pixels_c[0]);
-    EXPECT_EQ(25u, dst_pixels_c[1]);
-    EXPECT_EQ(13u, dst_pixels_c[2]);
-    EXPECT_EQ(5u, dst_pixels_c[3]);
-    EXPECT_EQ(0u, dst_pixels_c[4]);
-    EXPECT_EQ(133u, dst_pixels_c[63]);
+    ASSERT_EQ(64u, dst_pixels_c[0]);
+    ASSERT_EQ(25u, dst_pixels_c[1]);
+    ASSERT_EQ(13u, dst_pixels_c[2]);
+    ASSERT_EQ(5u, dst_pixels_c[3]);
+    ASSERT_EQ(0u, dst_pixels_c[4]);
+    ASSERT_EQ(133u, dst_pixels_c[63]);
 
     // Test Odd width version - Last pixel is just 1 horizontal pixel.
     ScaleRowDown2Box_Odd_C(orig_pixels, 128, dst_pixels_c, 64);
 
-    EXPECT_EQ(64u, dst_pixels_c[0]);
-    EXPECT_EQ(25u, dst_pixels_c[1]);
-    EXPECT_EQ(13u, dst_pixels_c[2]);
-    EXPECT_EQ(5u, dst_pixels_c[3]);
-    EXPECT_EQ(0u, dst_pixels_c[4]);
-    EXPECT_EQ(10u, dst_pixels_c[63]);
+    ASSERT_EQ(64u, dst_pixels_c[0]);
+    ASSERT_EQ(25u, dst_pixels_c[1]);
+    ASSERT_EQ(13u, dst_pixels_c[2]);
+    ASSERT_EQ(5u, dst_pixels_c[3]);
+    ASSERT_EQ(0u, dst_pixels_c[4]);
+    ASSERT_EQ(10u, dst_pixels_c[63]);
 
     // Test one pixel less, should skip the last pixel.
     memset(dst_pixels_c, 0, sizeof(dst_pixels_c));
     ScaleRowDown2Box_Odd_C(orig_pixels, 128, dst_pixels_c, 63);
 
-    EXPECT_EQ(64u, dst_pixels_c[0]);
-    EXPECT_EQ(25u, dst_pixels_c[1]);
-    EXPECT_EQ(13u, dst_pixels_c[2]);
-    EXPECT_EQ(5u, dst_pixels_c[3]);
-    EXPECT_EQ(0u, dst_pixels_c[4]);
-    EXPECT_EQ(0u, dst_pixels_c[63]);
+    ASSERT_EQ(64u, dst_pixels_c[0]);
+    ASSERT_EQ(25u, dst_pixels_c[1]);
+    ASSERT_EQ(13u, dst_pixels_c[2]);
+    ASSERT_EQ(5u, dst_pixels_c[3]);
+    ASSERT_EQ(0u, dst_pixels_c[4]);
+    ASSERT_EQ(0u, dst_pixels_c[63]);
 
     // Test regular half size SSSE3.
     ScaleRowDown2Box_SSSE3(orig_pixels, 128, dst_pixels_opt, 64);
 
-    EXPECT_EQ(64u, dst_pixels_opt[0]);
-    EXPECT_EQ(25u, dst_pixels_opt[1]);
-    EXPECT_EQ(13u, dst_pixels_opt[2]);
-    EXPECT_EQ(5u, dst_pixels_opt[3]);
-    EXPECT_EQ(0u, dst_pixels_opt[4]);
-    EXPECT_EQ(133u, dst_pixels_opt[63]);
+    ASSERT_EQ(64u, dst_pixels_opt[0]);
+    ASSERT_EQ(25u, dst_pixels_opt[1]);
+    ASSERT_EQ(13u, dst_pixels_opt[2]);
+    ASSERT_EQ(5u, dst_pixels_opt[3]);
+    ASSERT_EQ(0u, dst_pixels_opt[4]);
+    ASSERT_EQ(133u, dst_pixels_opt[63]);
 
     // Compare C and SSSE3 match.
     ScaleRowDown2Box_Odd_C(orig_pixels, 128, dst_pixels_c, 64);
     ScaleRowDown2Box_Odd_SSSE3(orig_pixels, 128, dst_pixels_opt, 64);
     for (int i = 0; i < 64; ++i) {
-      EXPECT_EQ(dst_pixels_c[i], dst_pixels_opt[i]);
+      ASSERT_EQ(dst_pixels_c[i], dst_pixels_opt[i]);
     }
   }
 }
 #endif  // HAS_SCALEROWDOWN2_SSSE3
-
-extern "C" void ScaleRowDown2Box_16_NEON(const uint16_t* src_ptr,
-                                         ptrdiff_t src_stride,
-                                         uint16_t* dst,
-                                         int dst_width);
 
 TEST_F(LibYUVScaleTest, TestScaleRowDown2Box_16) {
   SIMD_ALIGNED(uint16_t orig_pixels[2560 * 2]);
@@ -154,17 +267,24 @@ TEST_F(LibYUVScaleTest, TestScaleRowDown2Box_16) {
     } else {
       ScaleRowDown2Box_16_C(&orig_pixels[0], 2560, &dst_pixels_opt[0], 1280);
     }
+#elif defined(HAS_SCALEROWDOWN2_16_AVX2)
+    int has_avx2 = TestCpuFlag(kCpuHasAVX2);
+    if (has_avx2) {
+      ScaleRowDown2Box_16_AVX2(&orig_pixels[0], 2560, &dst_pixels_opt[0], 1280);
+    } else {
+      ScaleRowDown2Box_16_C(&orig_pixels[0], 2560, &dst_pixels_opt[0], 1280);
+    }
 #else
     ScaleRowDown2Box_16_C(&orig_pixels[0], 2560, &dst_pixels_opt[0], 1280);
 #endif
   }
 
   for (int i = 0; i < 1280; ++i) {
-    EXPECT_EQ(dst_pixels_c[i], dst_pixels_opt[i]);
+    ASSERT_EQ(dst_pixels_c[i], dst_pixels_opt[i]);
   }
 
-  EXPECT_EQ(dst_pixels_c[0], (0 + 1 + 2560 + 2561 + 2) / 4);
-  EXPECT_EQ(dst_pixels_c[1279], 3839);
+  ASSERT_EQ(dst_pixels_c[0], (0 + 1 + 2560 + 2561 + 2) / 4);
+  ASSERT_EQ(dst_pixels_c[1279], 3839);
 }
 #endif  // ENABLE_ROW_TESTS
 
@@ -244,7 +364,7 @@ static int TestPlaneFilter_16(int src_width,
         DX(benchmark_width_, nom, denom), DX(benchmark_height_, nom, denom),   \
         kFilter##filter, benchmark_iterations_, disable_cpu_flags_,            \
         benchmark_cpu_info_);                                                  \
-    EXPECT_LE(diff, max_diff);                                                 \
+    ASSERT_LE(diff, max_diff);                                                 \
   }
 
 // Test a scale factor with all 4 filters.  Expect unfiltered to be exact, but
@@ -283,12 +403,12 @@ TEST_F(LibYUVScaleTest, PlaneTest3x) {
                kFilterBilinear);
   }
 
-  EXPECT_EQ(225, dest_pixels[0]);
+  ASSERT_EQ(225, dest_pixels[0]);
 
   ScalePlane(orig_pixels, kSrcStride, 480, 3, dest_pixels, kDstStride, 160, 1,
              kFilterNone);
 
-  EXPECT_EQ(225, dest_pixels[0]);
+  ASSERT_EQ(225, dest_pixels[0]);
 
   free_aligned_buffer_page_end(dest_pixels);
   free_aligned_buffer_page_end(orig_pixels);
@@ -311,12 +431,12 @@ TEST_F(LibYUVScaleTest, PlaneTest4x) {
                kFilterBilinear);
   }
 
-  EXPECT_EQ(66, dest_pixels[0]);
+  ASSERT_EQ(66, dest_pixels[0]);
 
   ScalePlane(orig_pixels, kSrcStride, 640, 4, dest_pixels, kDstStride, 160, 1,
              kFilterNone);
 
-  EXPECT_EQ(2, dest_pixels[0]);  // expect the 3rd pixel of the 3rd row
+  ASSERT_EQ(2, dest_pixels[0]);  // expect the 3rd pixel of the 3rd row
 
   free_aligned_buffer_page_end(dest_pixels);
   free_aligned_buffer_page_end(orig_pixels);
@@ -345,7 +465,7 @@ TEST_F(LibYUVScaleTest, PlaneTestRotate_None) {
   }
 
   for (int i = 0; i < kSize; ++i) {
-    EXPECT_EQ(dest_c_pixels[i], dest_opt_pixels[i]);
+    ASSERT_EQ(dest_c_pixels[i], dest_opt_pixels[i]);
   }
 
   free_aligned_buffer_page_end(dest_c_pixels);
@@ -375,7 +495,7 @@ TEST_F(LibYUVScaleTest, PlaneTestRotate_Bilinear) {
   }
 
   for (int i = 0; i < kSize; ++i) {
-    EXPECT_EQ(dest_c_pixels[i], dest_opt_pixels[i]);
+    ASSERT_EQ(dest_c_pixels[i], dest_opt_pixels[i]);
   }
 
   free_aligned_buffer_page_end(dest_c_pixels);
@@ -406,12 +526,41 @@ TEST_F(LibYUVScaleTest, PlaneTestRotate_Box) {
   }
 
   for (int i = 0; i < kSize; ++i) {
-    EXPECT_EQ(dest_c_pixels[i], dest_opt_pixels[i]);
+    ASSERT_EQ(dest_c_pixels[i], dest_opt_pixels[i]);
   }
 
   free_aligned_buffer_page_end(dest_c_pixels);
   free_aligned_buffer_page_end(dest_opt_pixels);
   free_aligned_buffer_page_end(orig_pixels);
+}
+
+TEST_F(LibYUVScaleTest, ScalePlaneBox_Any) {
+  const int kDstW = 29;
+  const int kDstH = 3;
+  const int kSrcH = 9;
+  for (int src_w : {87, 174, 73, 155}) {
+    const int kSrcSize = src_w * kSrcH;
+    const int kDstSize = kDstW * kDstH;
+    align_buffer_page_end(src_pixels, kSrcSize);
+    align_buffer_page_end(dst_c_pixels, kDstSize);
+    align_buffer_page_end(dst_opt_pixels, kDstSize);
+    MemRandomize(src_pixels, kSrcSize);
+    MSAN_POISON(dst_opt_pixels, kDstSize);
+
+    MaskCpuFlags(disable_cpu_flags_);
+    ScalePlane(src_pixels, src_w, src_w, kSrcH, dst_c_pixels, kDstW, kDstW,
+               kDstH, kFilterBox);
+    MaskCpuFlags(benchmark_cpu_info_);
+    ScalePlane(src_pixels, src_w, src_w, kSrcH, dst_opt_pixels, kDstW, kDstW,
+               kDstH, kFilterBox);
+
+    for (int i = 0; i < kDstSize; ++i) {
+      ASSERT_EQ(dst_c_pixels[i], dst_opt_pixels[i]);
+    }
+    free_aligned_buffer_page_end(dst_opt_pixels);
+    free_aligned_buffer_page_end(dst_c_pixels);
+    free_aligned_buffer_page_end(src_pixels);
+  }
 }
 
 TEST_F(LibYUVScaleTest, PlaneTest1_Box) {
@@ -432,9 +581,9 @@ TEST_F(LibYUVScaleTest, PlaneTest1_Box) {
                      /* dst_width= */ 1, /* dst_height= */ 2,
                      libyuv::kFilterBox);
 
-  EXPECT_EQ(dst_pixels[0], 1);
-  EXPECT_EQ(dst_pixels[1], 1);
-  EXPECT_EQ(dst_pixels[2], 3);
+  ASSERT_EQ(dst_pixels[0], 1);
+  ASSERT_EQ(dst_pixels[1], 1);
+  ASSERT_EQ(dst_pixels[2], 3);
 
   free_aligned_buffer_page_end(dst_pixels);
   free_aligned_buffer_page_end(orig_pixels);
@@ -460,11 +609,311 @@ TEST_F(LibYUVScaleTest, PlaneTest1_16_Box) {
       /* src_height= */ 1, dst_pixels, /* dst_stride= */ 1,
       /* dst_width= */ 1, /* dst_height= */ 2, libyuv::kFilterNone);
 
-  EXPECT_EQ(dst_pixels[0], 1);
-  EXPECT_EQ(dst_pixels[1], 1);
-  EXPECT_EQ(dst_pixels[2], 3);
+  ASSERT_EQ(dst_pixels[0], 1);
+  ASSERT_EQ(dst_pixels[1], 1);
+  ASSERT_EQ(dst_pixels[2], 3);
 
   free_aligned_buffer_page_end(dst_pixels_alloc);
   free_aligned_buffer_page_end(orig_pixels_alloc);
 }
+
+TEST_F(LibYUVScaleTest, ScalePlaneVerticalPointUp) {
+  const int kWidth = 32;
+  const uint8_t kSentinel = 0xFF;
+  const uint8_t expected[] = {10, 10, 20, 30, 30};
+
+  // An extra sentinel row exposes accidental interpolation past the last valid
+  // row. 3->5 is the uneven ratio that used to drop the last source row.
+  align_buffer_page_end(src, kWidth * 4);
+  align_buffer_page_end(dst, kWidth * 5);
+  memset(src, kSentinel, kWidth * 4);
+  memset(dst, kSentinel, kWidth * 5);
+  memset(src, 10, kWidth);
+  memset(src + kWidth, 20, kWidth);
+  memset(src + 2 * kWidth, 30, kWidth);
+
+  ASSERT_EQ(0, ScalePlane(src, kWidth, kWidth, 3, dst, kWidth, kWidth, 5,
+                          kFilterNone));
+  for (int y = 0; y < 5; ++y) {
+    for (int x = 0; x < kWidth; ++x) {
+      EXPECT_EQ(expected[y], dst[y * kWidth + x]);
+    }
+  }
+
+  free_aligned_buffer_page_end(dst);
+  free_aligned_buffer_page_end(src);
+}
+
+TEST_F(LibYUVScaleTest, ScalePlaneVerticalPointUp_16) {
+  const int kWidth = 32;
+  const uint16_t kSentinel = 0xFFFF;
+  const uint16_t expected[] = {10, 10, 20, 30, 30};
+
+  align_buffer_page_end(src_alloc, kWidth * 4 * 2);
+  align_buffer_page_end(dst_alloc, kWidth * 5 * 2);
+  uint16_t* src = reinterpret_cast<uint16_t*>(src_alloc);
+  uint16_t* dst = reinterpret_cast<uint16_t*>(dst_alloc);
+  for (int i = 0; i < kWidth * 4; ++i) {
+    src[i] = kSentinel;
+  }
+  for (int i = 0; i < kWidth * 5; ++i) {
+    dst[i] = kSentinel;
+  }
+  for (int x = 0; x < kWidth; ++x) {
+    src[x] = 10;
+    src[kWidth + x] = 20;
+    src[2 * kWidth + x] = 30;
+  }
+
+  ASSERT_EQ(0, ScalePlane_16(src, kWidth, kWidth, 3, dst, kWidth, kWidth, 5,
+                             kFilterNone));
+  for (int y = 0; y < 5; ++y) {
+    for (int x = 0; x < kWidth; ++x) {
+      EXPECT_EQ(expected[y], dst[y * kWidth + x]);
+    }
+  }
+
+  free_aligned_buffer_page_end(dst_alloc);
+  free_aligned_buffer_page_end(src_alloc);
+}
+
+TEST_F(LibYUVScaleTest, ScalePlaneVerticalBilinearUp) {
+  const int kWidth = 32;
+  const uint8_t kSentinel = 0xFF;
+  // Same-width 2x upsampling still uses FixedDiv1. With y = 0 the 8.8
+  // fractions are 0, 85, 170, 255. InterpolateRow_C:
+  // (a * (256 - yf) + b * yf + 128) >> 8.
+  // Nearest 2x would duplicate rows as {10, 10, 200, 200}.
+  const uint8_t expected[] = {10, 73, 136, 199};
+
+  align_buffer_page_end(src, kWidth * 3);
+  align_buffer_page_end(dst, kWidth * 4);
+  memset(src, kSentinel, kWidth * 3);
+  memset(dst, kSentinel, kWidth * 4);
+  memset(src, 10, kWidth);
+  memset(src + kWidth, 200, kWidth);
+
+  ASSERT_EQ(0, ScalePlane(src, kWidth, kWidth, 2, dst, kWidth, kWidth, 4,
+                          kFilterBilinear));
+  for (int y = 0; y < 4; ++y) {
+    for (int x = 0; x < kWidth; ++x) {
+      EXPECT_EQ(expected[y], dst[y * kWidth + x]);
+    }
+  }
+
+  free_aligned_buffer_page_end(dst);
+  free_aligned_buffer_page_end(src);
+}
+
+TEST_F(LibYUVScaleTest, ScalePlaneVerticalBilinearUp_16) {
+  const int kWidth = 32;
+  const uint16_t kSentinel = 0xFFFF;
+  const uint16_t expected[] = {10, 73, 136, 199};
+
+  align_buffer_page_end(src_alloc, kWidth * 3 * 2);
+  align_buffer_page_end(dst_alloc, kWidth * 4 * 2);
+  uint16_t* src = reinterpret_cast<uint16_t*>(src_alloc);
+  uint16_t* dst = reinterpret_cast<uint16_t*>(dst_alloc);
+  for (int i = 0; i < kWidth * 3; ++i) {
+    src[i] = kSentinel;
+  }
+  for (int i = 0; i < kWidth * 4; ++i) {
+    dst[i] = kSentinel;
+  }
+  for (int x = 0; x < kWidth; ++x) {
+    src[x] = 10;
+    src[kWidth + x] = 200;
+  }
+
+  ASSERT_EQ(0, ScalePlane_16(src, kWidth, kWidth, 2, dst, kWidth, kWidth, 4,
+                             kFilterBilinear));
+  for (int y = 0; y < 4; ++y) {
+    for (int x = 0; x < kWidth; ++x) {
+      EXPECT_EQ(expected[y], dst[y * kWidth + x]);
+    }
+  }
+
+  free_aligned_buffer_page_end(dst_alloc);
+  free_aligned_buffer_page_end(src_alloc);
+}
+
+// POC: int * int overflow in ScalePlaneVertical (scale_common.cc).
+//
+// `yi * src_stride` is evaluated as int * int. When the product exceeds
+// INT_MAX it wraps negative and InterpolateRow reads from BEFORE the
+// source allocation.
+//
+// Parameters:
+//   - dst_width == src_width
+//     -> ScalePlane dispatches to ScalePlaneVertical
+//   - src_height == 5, dst_height == 1
+//     -> single iteration with yi == 2
+//   - src_stride == 0x7FFFFFF8
+//     -> 2 * 0x7FFFFFF8 == 0xFFFFFFF0 == -16 (int)
+//
+// The source buffer is sized so that the *correct* 64-bit offset
+// (2 * 0x7FFFFFF8 == 4294967280) plus kWidth bytes is in-bounds. With the
+// bug, the 32-bit product is -16 and ASAN reports a heap-buffer-overflow
+// READ "16 bytes before" the allocation.
+TEST_F(LibYUVScaleTest, ScalePlaneVertical_IntStrideOverflow) {
+  const int kWidth = 16;
+  const int kSrcHeight = 5;
+  const int kDstHeight = 1;
+  const int kStride = 0x7FFFFFF8;  // 2147483640
+
+  // src_size is big enough for the only row this call legitimately touches
+  // (yi == 2) when computed in 64-bit: 2 * stride + width = 4 GiB.
+  size_t src_size = kStride;
+  if (src_size > SIZE_MAX / 2) {
+    GTEST_SKIP() << "could not represent allocation size in size_t";
+  }
+  src_size *= 2;
+  if (src_size > SIZE_MAX - kWidth) {
+    GTEST_SKIP() << "could not represent allocation size in size_t";
+  }
+  src_size += kWidth;
+
+#if defined(__aarch64__)
+  // Infer malloc can accept a large size for cpu with dot product (a76/a55)
+  int has_large_malloc = TestCpuFlag(kCpuHasNeonDotProd);
+#else
+  int has_large_malloc = 1;
+#endif
+  if (!has_large_malloc) {
+    GTEST_SKIP() << "large allocation may assert for " << src_size << " bytes";
+  }
+
+  uint8_t* src = new (std::nothrow) uint8_t[src_size];
+  if (!src) {
+    GTEST_SKIP() << "could not allocate " << src_size << " bytes";
+  }
+  uint8_t* dst = new uint8_t[kWidth];
+  memset(dst, 0, kWidth);
+
+  // Force the scalar path so the crash site is deterministic
+  // (InterpolateRow_C -> memcpy when yf == 0).
+  MaskCpuFlags(disable_cpu_flags_);
+
+  int r = ScalePlane(src, kStride, kWidth, kSrcHeight, dst, kWidth, kWidth,
+                     kDstHeight, kFilterNone);
+
+  // Not reached under ASAN.
+  ASSERT_EQ(0, r);
+  delete[] src;
+  delete[] dst;
+}
+
+TEST_F(LibYUVScaleTest, ScalePlane_InvalidInputs) {
+  uint8_t src[16] = {0};
+  uint8_t dst[16] = {0};
+
+  // NULL src/dst
+  EXPECT_EQ(-1, ScalePlane(nullptr, 4, 4, 4, dst, 4, 4, 4, kFilterNone));
+  EXPECT_EQ(-1, ScalePlane(src, 4, 4, 4, nullptr, 4, 4, 4, kFilterNone));
+
+  // Width/height <= 0 (except src_height which can be negative but not 0)
+  EXPECT_EQ(-1, ScalePlane(src, 4, 0, 4, dst, 4, 4, 4, kFilterNone));
+  EXPECT_EQ(-1, ScalePlane(src, 4, -1, 4, dst, 4, 4, 4, kFilterNone));
+  EXPECT_EQ(-1, ScalePlane(src, 4, 4, 0, dst, 4, 4, 4, kFilterNone));
+  EXPECT_EQ(-1, ScalePlane(src, 4, 4, 4, dst, 4, 0, 4, kFilterNone));
+  EXPECT_EQ(-1, ScalePlane(src, 4, 4, 4, dst, 4, -1, 4, kFilterNone));
+  EXPECT_EQ(-1, ScalePlane(src, 4, 4, 4, dst, 4, 4, 0, kFilterNone));
+  EXPECT_EQ(-1, ScalePlane(src, 4, 4, 4, dst, 4, 4, -1, kFilterNone));
+
+  // Width/height too large (> 32768)
+  EXPECT_EQ(-1, ScalePlane(src, 4, 32769, 4, dst, 4, 4, 4, kFilterNone));
+  EXPECT_EQ(-1, ScalePlane(src, 4, 4, 32769, dst, 4, 4, 4, kFilterNone));
+  EXPECT_EQ(-1, ScalePlane(src, 4, 4, -32769, dst, 4, 4, 4, kFilterNone));
+
+  // Valid edge cases
+  EXPECT_EQ(0, ScalePlane(src, 4, 1, 1, dst, 4, 1, 1, kFilterNone));
+  EXPECT_EQ(0, ScalePlane(src, 4, 1, -1, dst, 4, 1, 1, kFilterNone));
+}
+
+TEST_F(LibYUVScaleTest, ScalePlane_16_InvalidInputs) {
+  uint16_t src[16] = {0};
+  uint16_t dst[16] = {0};
+
+  EXPECT_EQ(-1, ScalePlane_16(nullptr, 4, 4, 4, dst, 4, 4, 4, kFilterNone));
+  EXPECT_EQ(-1, ScalePlane_16(src, 4, 4, 4, nullptr, 4, 4, 4, kFilterNone));
+  EXPECT_EQ(-1, ScalePlane_16(src, 4, 0, 4, dst, 4, 4, 4, kFilterNone));
+  EXPECT_EQ(-1, ScalePlane_16(src, 4, 32769, 4, dst, 4, 4, 4, kFilterNone));
+  EXPECT_EQ(-1, ScalePlane_16(src, 4, 4, -32769, dst, 4, 4, 4, kFilterNone));
+}
+
+TEST_F(LibYUVScaleTest, ScalePlane_12_InvalidInputs) {
+  uint16_t src[16] = {0};
+  uint16_t dst[16] = {0};
+
+  EXPECT_EQ(-1, ScalePlane_12(nullptr, 4, 4, 4, dst, 4, 4, 4, kFilterNone));
+  EXPECT_EQ(-1, ScalePlane_12(src, 4, 4, 4, nullptr, 4, 4, 4, kFilterNone));
+  EXPECT_EQ(-1, ScalePlane_12(src, 4, 0, 4, dst, 4, 4, 4, kFilterNone));
+  EXPECT_EQ(-1, ScalePlane_12(src, 4, 32769, 4, dst, 4, 4, 4, kFilterNone));
+  EXPECT_EQ(-1, ScalePlane_12(src, 4, 4, -32769, dst, 4, 4, 4, kFilterNone));
+}
+
+TEST_F(LibYUVScaleTest, ScalePlaneOversizeHeight) {
+  const int kSrcWidth = 4;
+  const int kSrcHeight = 32768;
+  uint8_t* src = new uint8_t[kSrcWidth * kSrcHeight];
+  memset(src, 0, kSrcWidth * kSrcHeight);
+  uint8_t dst[4 * 2] = {};
+
+  for (int dst_w : {4, 2}) {
+    for (int dst_h : {1, 2}) {
+      for (FilterMode f :
+           {kFilterNone, kFilterLinear, kFilterBilinear, kFilterBox}) {
+        EXPECT_EQ(0, ScalePlane(src, kSrcWidth, kSrcWidth, kSrcHeight, dst,
+                                dst_w, dst_w, dst_h, f));
+        EXPECT_EQ(0, ScalePlane(src, kSrcWidth, kSrcWidth, -kSrcHeight, dst,
+                                dst_w, dst_w, dst_h, f));
+      }
+    }
+  }
+  delete[] src;
+}
+
+TEST_F(LibYUVScaleTest, ScalePlaneBoxMaxSrcHeight) {
+  const int kSrcWidth = 4;
+  const int kSrcHeight = 32768;
+  uint8_t* src = new uint8_t[kSrcWidth * kSrcHeight];
+  memset(src, 0, kSrcWidth * kSrcHeight);
+  uint8_t dst[2 * 4] = {};
+
+  EXPECT_EQ(0, ScalePlane(src, kSrcWidth, kSrcWidth, kSrcHeight, dst, 2, 2, 4,
+                          kFilterBox));
+  delete[] src;
+}
+
+#if defined(__LP64__) || defined(_WIN64)
+TEST_F(LibYUVScaleTest, ScaleLargeImageOver2GB) {
+  const int kSrcWidth = 4;
+  const int kSrcHeight = 32768;
+  const int kSrcStride = 131072;  // 32768 * 131072 = 4 GB (> INT_MAX)
+  const size_t kSrcSize = (size_t)kSrcStride * kSrcHeight;
+  uint8_t* src = static_cast<uint8_t*>(calloc(1, kSrcSize));
+  if (!src) {
+    GTEST_SKIP() << "could not allocate " << kSrcSize << " bytes";
+  }
+  uint8_t dst[8 * 4 * 4] = {};
+
+  for (FilterMode f :
+       {kFilterNone, kFilterLinear, kFilterBilinear, kFilterBox}) {
+    EXPECT_EQ(
+        0, ScalePlane(src, kSrcStride, kSrcWidth, kSrcHeight, dst, 4, 4, 2, f));
+    EXPECT_EQ(0, ScalePlane(src, kSrcStride, kSrcWidth, -kSrcHeight, dst, 4, 4,
+                            2, f));
+    EXPECT_EQ(
+        0, ScalePlane(src, kSrcStride, kSrcWidth, kSrcHeight, dst, 8, 8, 2, f));
+    EXPECT_EQ(0, UVScale(src, kSrcStride, kSrcWidth, kSrcHeight, dst, 4 * 2, 4,
+                         2, f));
+    EXPECT_EQ(0, UVScale(src, kSrcStride, kSrcWidth, -kSrcHeight, dst, 4 * 2, 4,
+                         2, f));
+    EXPECT_EQ(0, UVScale(src, kSrcStride, kSrcWidth, kSrcHeight, dst, 8 * 2, 8,
+                         2, f));
+  }
+  free(src);
+}
+#endif
+
 }  // namespace libyuv

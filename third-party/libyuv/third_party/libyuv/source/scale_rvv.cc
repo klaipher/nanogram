@@ -18,30 +18,111 @@
 #include "libyuv/row.h"
 #include "libyuv/scale_row.h"
 
-// This module is for clang rvv. GCC hasn't supported segment load & store.
-#if !defined(LIBYUV_DISABLE_RVV) && defined(__riscv_vector) && \
-    defined(__clang__)
+// Note: every register written by an inline asm block (vector, general
+// purpose, mask/predicate, "cc" for flags and "memory" for stores) must be
+// listed in its clobber list, even when the ABI treats it as caller-saved.
+// With LTO/LTCG the compiler may keep values live in any register across the
+// asm statement, and other OS ABIs (e.g. Windows) differ in which registers
+// are callee-saved. List "memory" first, then "cc", then registers.
+
+// This module is for RVV (RISC-V Vector extension)
+#if !defined(LIBYUV_DISABLE_RVV) && defined(__riscv_vector)
 #include <assert.h>
-#include <riscv_vector.h>
 #ifdef __cplusplus
 namespace libyuv {
 extern "C" {
 #endif
 
+// vsetvli/vsetivli write the vl and vtype CSRs. Only "vl" is declared, and
+// only for GCC; clang historically rejected it. The "vtype" register is
+// intentionally not declared, and whether it should be is unresolved.
+// TODO(fbarchard): consider adding "vtype" (and "vl" for clang) to the
+// clobber list once confirmed with compiler maintainers.
+#ifndef RVV_VL_CLOBBER
+#ifdef __clang__
+#define RVV_VL_CLOBBER
+#else
+#define RVV_VL_CLOBBER "vl",
+#endif
+#endif
+
+#ifdef HAS_SCALEARGBFILTERCOLS_RVV
+void ScaleARGBFilterCols_RVV(uint8_t* dst_argb,
+                             const uint8_t* src_argb,
+                             int dst_width,
+                             int x,
+                             int dx) {
+  assert(x >= 0);
+  int vl, vl_dx;
+  asm volatile(
+      "vsetvli     %[vl], %[w], e32, m2, ta, ma   \n"
+      "vmv.v.x     v0, %[x]                       \n"
+      "vid.v       v2                             \n"
+      "vmacc.vx    v0, %[dx], v2                  \n"
+
+      "1:          \n"
+      // idx is x >> 16, byte index is (x >> 14) & ~3u
+      "vsrl.vi     v2, v0, 14                     \n"
+      "vand.vi     v2, v2, -4                     \n"
+      // Read Packed ARGB w/ byte index.
+      "vluxseg2ei32.v v4, (%[src_argb]), v2        \n"
+      // xf = (x >> 9) & 0x7f;
+      "vsrl.vi     v8, v0, 9                      \n"
+      "vand.vx     v8, v8, %[c_7f]                \n"
+      "mul         %[vl_dx], %[vl], %[dx]         \n"
+      "vadd.vx     v0, v0, %[vl_dx]               \n"
+      // duplicate v_xf0_u32[i] from {0,0,0,f[i]} to {f[i],f[i],f[i],f[i]}
+      "vmul.vx     v8, v8, %[c_01010101]          \n"
+      // TODO(fbarchard): Replace 0x7f ^ f with 128-f.  bug=607.
+      "vxor.vx     v10, v8, %[c_7f7f7f7f]         \n"
+      "sub         %[w], %[w], %[vl]              \n"
+      "slli        %[vl], %[vl], 2                \n"
+      "vsetvli     zero, %[vl], e8, m2, ta, ma    \n"
+      // ((a) * (0x7f ^ f) + (b)*f) >> 7
+      "vwmulu.vv   v12, v4, v10                   \n"
+      "vwmaccu.vv  v12, v6, v8                    \n"
+      "vnsrl.wi    v4, v12, 7                     \n"
+      "vse8.v      v4, (%[dst_argb])              \n"
+      "add         %[dst_argb], %[dst_argb], %[vl]\n"
+      "vsetvli     %[vl], %[w], e32, m2, ta, ma   \n"
+      "bgtz        %[w], 1b                       \n"
+      : [w] "+r"(dst_width),            // %[w]
+        [dst_argb] "+r"(dst_argb),      // %[dst_argb]
+        [vl] "=&r"(vl),                 // %[vl]
+        [vl_dx] "=&r"(vl_dx)            // %[vl_dx]
+      : [src_argb] "r"(src_argb),       // %[src_argb]
+        [x] "r"(x),                     // %[x]
+        [dx] "r"(dx),                   // %[dx]
+        [c_7f] "r"(0x7f),               // %[c_7f]
+        [c_01010101] "r"(0x01010101u),  // %[c_01010101]
+        [c_7f7f7f7f] "r"(0x7f7f7f7fu)   // %[c_7f7f7f7f]
+      : RVV_VL_CLOBBER "memory", "v0", "v1", "v2", "v3", "v4", "v5", "v6", "v7",
+        "v8", "v9", "v10", "v11", "v12", "v13", "v14", "v15");
+}
+#endif
+
 #ifdef HAS_SCALEADDROW_RVV
 void ScaleAddRow_RVV(const uint8_t* src_ptr, uint16_t* dst_ptr, int src_width) {
-  size_t w = (size_t)src_width;
-  do {
-    size_t vl = __riscv_vsetvl_e8m4(w);
-    vuint8m4_t v_src = __riscv_vle8_v_u8m4(src_ptr, vl);
-    vuint16m8_t v_dst = __riscv_vle16_v_u16m8(dst_ptr, vl);
-    // Use widening multiply-add instead of widening + add
-    v_dst = __riscv_vwmaccu_vx_u16m8(v_dst, 1, v_src, vl);
-    __riscv_vse16_v_u16m8(dst_ptr, v_dst, vl);
-    w -= vl;
-    src_ptr += vl;
-    dst_ptr += vl;
-  } while (w > 0);
+  int vl;
+  asm volatile(
+      "1:          \n"
+      "vsetvli     %[vl], %[w], e8, m2, ta, ma    \n"
+      "vle16.v     v8, (%[dst_ptr])               \n"
+      "vle8.v      v16, (%[src_ptr])              \n"
+      // Use widening multiply-add instead of widening + add
+      "vwmaccu.vx  v8, %[one], v16                \n"
+      "vse16.v     v8, (%[dst_ptr])               \n"
+      "sub         %[w], %[w], %[vl]              \n"
+      "add         %[src_ptr], %[src_ptr], %[vl]  \n"
+      "slli        %[vl], %[vl], 1                \n"
+      "add         %[dst_ptr], %[dst_ptr], %[vl]  \n"
+      "bgtz        %[w], 1b                       \n"
+      : [w] "+r"(src_width),      // %[w]
+        [src_ptr] "+r"(src_ptr),  // %[src_ptr]
+        [dst_ptr] "+r"(dst_ptr),  // %[dst_ptr]
+        [vl] "=&r"(vl)            // %[vl]
+      : [one] "r"(1)              // %[one]
+      : RVV_VL_CLOBBER "memory", "v8", "v9", "v10", "v11", "v16", "v17");
 }
 #endif
 
@@ -51,18 +132,25 @@ void ScaleARGBRowDown2_RVV(const uint8_t* src_argb,
                            uint8_t* dst_argb,
                            int dst_width) {
   (void)src_stride;
-  size_t w = (size_t)dst_width;
-  const uint64_t* src = (const uint64_t*)(src_argb);
-  uint32_t* dst = (uint32_t*)(dst_argb);
-  do {
-    size_t vl = __riscv_vsetvl_e64m8(w);
-    vuint64m8_t v_data = __riscv_vle64_v_u64m8(src, vl);
-    vuint32m4_t v_dst = __riscv_vnsrl_wx_u32m4(v_data, 32, vl);
-    __riscv_vse32_v_u32m4(dst, v_dst, vl);
-    w -= vl;
-    src += vl;
-    dst += vl;
-  } while (w > 0);
+  int vl;
+  asm volatile(
+      "1:          \n"
+      "vsetvli     %[vl], %[w], e32, m4, ta, ma   \n"
+      "vlseg2e32.v v8, (%[src])                   \n"
+      "vse32.v     v12, (%[dst])                  \n"
+      "sub         %[w], %[w], %[vl]              \n"
+      "slli        %[vl], %[vl], 2                \n"
+      "add         %[dst], %[dst], %[vl]          \n"
+      "slli        %[vl], %[vl], 1                \n"
+      "add         %[src], %[src], %[vl]          \n"
+      "bgtz        %[w], 1b                       \n"
+      : [w] "+r"(dst_width),   // %[w]
+        [src] "+r"(src_argb),  // %[src]
+        [dst] "+r"(dst_argb),  // %[dst]
+        [vl] "=&r"(vl)         // %[vl]
+      :
+      : RVV_VL_CLOBBER "memory", "v8", "v9", "v10", "v11", "v12", "v13", "v14",
+        "v15");
 }
 #endif
 
@@ -72,25 +160,31 @@ void ScaleARGBRowDown2Linear_RVV(const uint8_t* src_argb,
                                  uint8_t* dst_argb,
                                  int dst_width) {
   (void)src_stride;
-  size_t w = (size_t)dst_width;
-  const uint32_t* src = (const uint32_t*)(src_argb);
+  int vl;
   // NOTE: To match behavior on other platforms, vxrm (fixed-point rounding mode
   // register) is set to round-to-nearest-up mode(0).
-  asm volatile("csrwi vxrm, 0");
-  do {
-    vuint8m4_t v_odd, v_even, v_dst;
-    vuint32m4_t v_odd_32, v_even_32;
-    size_t vl = __riscv_vsetvl_e32m4(w);
-    __riscv_vlseg2e32_v_u32m4(&v_even_32, &v_odd_32, src, vl);
-    v_even = __riscv_vreinterpret_v_u32m4_u8m4(v_even_32);
-    v_odd = __riscv_vreinterpret_v_u32m4_u8m4(v_odd_32);
-    // Use round-to-nearest-up mode for averaging add
-    v_dst = __riscv_vaaddu_vv_u8m4(v_even, v_odd, vl * 4);
-    __riscv_vse8_v_u8m4(dst_argb, v_dst, vl * 4);
-    w -= vl;
-    src += vl * 2;
-    dst_argb += vl * 4;
-  } while (w > 0);
+  asm volatile(
+      "csrwi       vxrm, 0                        \n"
+
+      "1:          \n"
+      "vsetvli     %[vl], %[w], e32, m4, ta, ma   \n"
+      "vlseg2e32.v v8, (%[src])                   \n"
+      "sub         %[w], %[w], %[vl]              \n"
+      "slli        %[vl], %[vl], 2                \n"
+      "vsetvli     zero, %[vl], e8, m4, ta, ma    \n"
+      "vaaddu.vv   v8, v8, v12                    \n"
+      "vse8.v      v8, (%[dst_argb])              \n"
+      "add         %[dst_argb], %[dst_argb], %[vl]\n"
+      "slli        %[vl], %[vl], 1                \n"
+      "add         %[src], %[src], %[vl]          \n"
+      "bgtz        %[w], 1b                       \n"
+      : [w] "+r"(dst_width),        // %[w]
+        [src] "+r"(src_argb),       // %[src]
+        [dst_argb] "+r"(dst_argb),  // %[dst_argb]
+        [vl] "=&r"(vl)              // %[vl]
+      :
+      : RVV_VL_CLOBBER "memory", "v8", "v9", "v10", "v11", "v12", "v13", "v14",
+        "v15");
 }
 #endif
 
@@ -99,34 +193,36 @@ void ScaleARGBRowDown2Box_RVV(const uint8_t* src_argb,
                               ptrdiff_t src_stride,
                               uint8_t* dst_argb,
                               int dst_width) {
-  size_t w = (size_t)dst_width;
-  const uint32_t* src0 = (const uint32_t*)(src_argb);
-  const uint32_t* src1 = (const uint32_t*)(src_argb + src_stride);
-  // NOTE: To match behavior on other platforms, vxrm (fixed-point rounding mode
-  // register) is set to round-to-nearest-up mode(0).
-  asm volatile("csrwi vxrm, 0");
-  do {
-    vuint8m4_t v_row0_odd, v_row0_even, v_row1_odd, v_row1_even, v_dst;
-    vuint16m8_t v_row0_sum, v_row1_sum, v_dst_16;
-    vuint32m4_t v_row0_odd_32, v_row0_even_32, v_row1_odd_32, v_row1_even_32;
-    size_t vl = __riscv_vsetvl_e32m4(w);
-    __riscv_vlseg2e32_v_u32m4(&v_row0_even_32, &v_row0_odd_32, src0, vl);
-    __riscv_vlseg2e32_v_u32m4(&v_row1_even_32, &v_row1_odd_32, src1, vl);
-    v_row0_even = __riscv_vreinterpret_v_u32m4_u8m4(v_row0_even_32);
-    v_row0_odd = __riscv_vreinterpret_v_u32m4_u8m4(v_row0_odd_32);
-    v_row1_even = __riscv_vreinterpret_v_u32m4_u8m4(v_row1_even_32);
-    v_row1_odd = __riscv_vreinterpret_v_u32m4_u8m4(v_row1_odd_32);
-    v_row0_sum = __riscv_vwaddu_vv_u16m8(v_row0_even, v_row0_odd, vl * 4);
-    v_row1_sum = __riscv_vwaddu_vv_u16m8(v_row1_even, v_row1_odd, vl * 4);
-    v_dst_16 = __riscv_vadd_vv_u16m8(v_row0_sum, v_row1_sum, vl * 4);
-    // Use round-to-nearest-up mode for vnclip
-    v_dst = __riscv_vnclipu_wx_u8m4(v_dst_16, 2, vl * 4);
-    __riscv_vse8_v_u8m4(dst_argb, v_dst, vl * 4);
-    w -= vl;
-    src0 += vl * 2;
-    src1 += vl * 2;
-    dst_argb += vl * 4;
-  } while (w > 0);
+  int vl;
+  asm volatile(
+      "add         %[src1], %[src0], %[src1]      \n"
+
+      "1:          \n"
+      "vsetvli     %[vl], %[w], e32, m2, ta, ma   \n"
+      "vlseg2e32.v v16, (%[src0])                 \n"
+      "vlseg2e32.v v20, (%[src1])                 \n"
+      "sub         %[w], %[w], %[vl]              \n"
+      "slli        %[vl], %[vl], 2                \n"
+      "vsetvli     zero, %[vl], e8, m2, ta, ma    \n"
+      "vwaddu.vx   v8, v16, %[c2]                 \n"
+      "vwaddu.wv   v8, v8, v18                    \n"
+      "vwaddu.wv   v8, v8, v20                    \n"
+      "vwaddu.wv   v8, v8, v22                    \n"
+      "vnsrl.wi    v16, v8, 2                     \n"
+      "vse8.v      v16, (%[dst_argb])             \n"
+      "add         %[dst_argb], %[dst_argb], %[vl]\n"
+      "slli        %[vl], %[vl], 1                \n"
+      "add         %[src0], %[src0], %[vl]        \n"
+      "add         %[src1], %[src1], %[vl]        \n"
+      "bgtz        %[w], 1b                       \n"
+      : [w] "+r"(dst_width),        // %[w]
+        [src0] "+r"(src_argb),      // %[src0]
+        [src1] "+r"(src_stride),    // %[src1]
+        [dst_argb] "+r"(dst_argb),  // %[dst_argb]
+        [vl] "=&r"(vl)              // %[vl]
+      : [c2] "r"(2)                 // %[c2]
+      : RVV_VL_CLOBBER "memory", "v8", "v9", "v10", "v11", "v16", "v17", "v18",
+        "v19", "v20", "v21", "v22", "v23");
 }
 #endif
 
@@ -136,18 +232,27 @@ void ScaleARGBRowDownEven_RVV(const uint8_t* src_argb,
                               int src_stepx,
                               uint8_t* dst_argb,
                               int dst_width) {
-  size_t w = (size_t)dst_width;
-  const uint32_t* src = (const uint32_t*)(src_argb);
-  uint32_t* dst = (uint32_t*)(dst_argb);
-  const int stride_byte = src_stepx * 4;
-  do {
-    size_t vl = __riscv_vsetvl_e32m8(w);
-    vuint32m8_t v_row = __riscv_vlse32_v_u32m8(src, stride_byte, vl);
-    __riscv_vse32_v_u32m8(dst, v_row, vl);
-    w -= vl;
-    src += vl * src_stepx;
-    dst += vl;
-  } while (w > 0);
+  (void)src_stride;
+  int vl;
+  ptrdiff_t src_step;
+  asm volatile(
+      "1:          \n"
+      "vsetvli     %[vl], %[w], e32, m4, ta, ma   \n"
+      "vlse32.v    v8, (%[src]), %[stride_byte]   \n"
+      "vse32.v     v8, (%[dst])                   \n"
+      "sub         %[w], %[w], %[vl]              \n"
+      "mul         %[src_step], %[vl], %[stride_byte]\n"
+      "add         %[src], %[src], %[src_step]    \n"
+      "slli        %[vl], %[vl], 2                \n"
+      "add         %[dst], %[dst], %[vl]          \n"
+      "bgtz        %[w], 1b                       \n"
+      : [w] "+r"(dst_width),                         // %[w]
+        [src] "+r"(src_argb),                        // %[src]
+        [dst] "+r"(dst_argb),                        // %[dst]
+        [vl] "=&r"(vl),                              // %[vl]
+        [src_step] "=&r"(src_step)                   // %[src_step]
+      : [stride_byte] "r"((ptrdiff_t)src_stepx * 4)  // %[stride_byte]
+      : RVV_VL_CLOBBER "memory", "v8", "v9", "v10", "v11");
 }
 #endif
 
@@ -157,37 +262,39 @@ void ScaleARGBRowDownEvenBox_RVV(const uint8_t* src_argb,
                                  int src_stepx,
                                  uint8_t* dst_argb,
                                  int dst_width) {
-  size_t w = (size_t)dst_width;
-  const uint32_t* src0 = (const uint32_t*)(src_argb);
-  const uint32_t* src1 = (const uint32_t*)(src_argb + src_stride);
-  const int stride_byte = src_stepx * 4;
-  // NOTE: To match behavior on other platforms, vxrm (fixed-point rounding mode
-  // register) is set to round-to-nearest-up mode(0).
-  asm volatile("csrwi vxrm, 0");
-  do {
-    vuint8m4_t v_row0_low, v_row0_high, v_row1_low, v_row1_high, v_dst;
-    vuint16m8_t v_row0_sum, v_row1_sum, v_sum;
-    vuint32m4_t v_row0_low_32, v_row0_high_32, v_row1_low_32, v_row1_high_32;
-    size_t vl = __riscv_vsetvl_e32m4(w);
-    __riscv_vlsseg2e32_v_u32m4(&v_row0_low_32, &v_row0_high_32, src0,
-                               stride_byte, vl);
-    __riscv_vlsseg2e32_v_u32m4(&v_row1_low_32, &v_row1_high_32, src1,
-                               stride_byte, vl);
-    v_row0_low = __riscv_vreinterpret_v_u32m4_u8m4(v_row0_low_32);
-    v_row0_high = __riscv_vreinterpret_v_u32m4_u8m4(v_row0_high_32);
-    v_row1_low = __riscv_vreinterpret_v_u32m4_u8m4(v_row1_low_32);
-    v_row1_high = __riscv_vreinterpret_v_u32m4_u8m4(v_row1_high_32);
-    v_row0_sum = __riscv_vwaddu_vv_u16m8(v_row0_low, v_row0_high, vl * 4);
-    v_row1_sum = __riscv_vwaddu_vv_u16m8(v_row1_low, v_row1_high, vl * 4);
-    v_sum = __riscv_vadd_vv_u16m8(v_row0_sum, v_row1_sum, vl * 4);
-    // Use round-to-nearest-up mode for vnclip
-    v_dst = __riscv_vnclipu_wx_u8m4(v_sum, 2, vl * 4);
-    __riscv_vse8_v_u8m4(dst_argb, v_dst, vl * 4);
-    w -= vl;
-    src0 += vl * src_stepx;
-    src1 += vl * src_stepx;
-    dst_argb += vl * 4;
-  } while (w > 0);
+  int vl;
+  ptrdiff_t src_step;
+  asm volatile(
+      "add         %[src1], %[src0], %[src1]      \n"
+
+      "1:          \n"
+      "vsetvli     %[vl], %[w], e32, m2, ta, ma   \n"
+      "vlsseg2e32.v v16, (%[src0]), %[stride_byte] \n"
+      "vlsseg2e32.v v20, (%[src1]), %[stride_byte] \n"
+      "sub         %[w], %[w], %[vl]              \n"
+      "mul         %[src_step], %[vl], %[stride_byte]\n"
+      "slli        %[vl], %[vl], 2                \n"
+      "vsetvli     zero, %[vl], e8, m2, ta, ma    \n"
+      "vwaddu.vx   v8, v16, %[c2]                 \n"
+      "vwaddu.wv   v8, v8, v18                    \n"
+      "vwaddu.wv   v8, v8, v20                    \n"
+      "vwaddu.wv   v8, v8, v22                    \n"
+      "vnsrl.wi    v16, v8, 2                     \n"
+      "vse8.v      v16, (%[dst_argb])             \n"
+      "add         %[src0], %[src0], %[src_step]  \n"
+      "add         %[src1], %[src1], %[src_step]  \n"
+      "add         %[dst_argb], %[dst_argb], %[vl]\n"
+      "bgtz        %[w], 1b                       \n"
+      : [w] "+r"(dst_width),                          // %[w]
+        [src0] "+r"(src_argb),                        // %[src0]
+        [src1] "+r"(src_stride),                      // %[src1]
+        [dst_argb] "+r"(dst_argb),                    // %[dst_argb]
+        [vl] "=&r"(vl),                               // %[vl]
+        [src_step] "=&r"(src_step)                    // %[src_step]
+      : [stride_byte] "r"((ptrdiff_t)src_stepx * 4),  // %[stride_byte]
+        [c2] "r"(2)                                   // %[c2]
+      : RVV_VL_CLOBBER "memory", "v8", "v9", "v10", "v11", "v16", "v17", "v18",
+        "v19", "v20", "v21", "v22", "v23");
 }
 #endif
 
@@ -196,18 +303,25 @@ void ScaleRowDown2_RVV(const uint8_t* src_ptr,
                        ptrdiff_t src_stride,
                        uint8_t* dst,
                        int dst_width) {
-  size_t w = (size_t)dst_width;
-  const uint16_t* src = (const uint16_t*)src_ptr;
   (void)src_stride;
-  do {
-    size_t vl = __riscv_vsetvl_e16m8(w);
-    vuint16m8_t v_src = __riscv_vle16_v_u16m8(src, vl);
-    vuint8m4_t v_dst = __riscv_vnsrl_wx_u8m4(v_src, 8, vl);
-    __riscv_vse8_v_u8m4(dst, v_dst, vl);
-    w -= vl;
-    src += vl;
-    dst += vl;
-  } while (w > 0);
+  int vl;
+  asm volatile(
+      "1:          \n"
+      "vsetvli     %[vl], %[w], e8, m2, ta, ma    \n"
+      "vle16.v     v8, (%[src_ptr])               \n"
+      "vnsrl.wi    v16, v8, 8                     \n"
+      "vse8.v      v16, (%[dst])                  \n"
+      "sub         %[w], %[w], %[vl]              \n"
+      "add         %[dst], %[dst], %[vl]          \n"
+      "slli        %[vl], %[vl], 1                \n"
+      "add         %[src_ptr], %[src_ptr], %[vl]  \n"
+      "bgtz        %[w], 1b                       \n"
+      : [w] "+r"(dst_width),      // %[w]
+        [src_ptr] "+r"(src_ptr),  // %[src_ptr]
+        [dst] "+r"(dst),          // %[dst]
+        [vl] "=&r"(vl)            // %[vl]
+      :
+      : RVV_VL_CLOBBER "memory", "v8", "v9", "v10", "v11", "v16", "v17");
 }
 #endif
 
@@ -216,22 +330,32 @@ void ScaleRowDown2Linear_RVV(const uint8_t* src_ptr,
                              ptrdiff_t src_stride,
                              uint8_t* dst,
                              int dst_width) {
-  size_t w = (size_t)dst_width;
   (void)src_stride;
+  int vl;
   // NOTE: To match behavior on other platforms, vxrm (fixed-point rounding mode
   // register) is set to round-to-nearest-up mode(0).
-  asm volatile("csrwi vxrm, 0");
-  do {
-    vuint8m4_t v_s0, v_s1, v_dst;
-    size_t vl = __riscv_vsetvl_e8m4(w);
-    __riscv_vlseg2e8_v_u8m4(&v_s0, &v_s1, src_ptr, vl);
-    // Use round-to-nearest-up mode for averaging add
-    v_dst = __riscv_vaaddu_vv_u8m4(v_s0, v_s1, vl);
-    __riscv_vse8_v_u8m4(dst, v_dst, vl);
-    w -= vl;
-    src_ptr += 2 * vl;
-    dst += vl;
-  } while (w > 0);
+  asm volatile(
+      "csrwi       vxrm, 0                        \n"
+
+      "1:          \n"
+      "vsetvli     %[vl], %[w], e8, m2, ta, ma    \n"
+      "vle16.v     v8, (%[src_ptr])               \n"
+      "vnsrl.wi    v16, v8, 0                     \n"
+      "vnsrl.wi    v18, v8, 8                     \n"
+      "vaaddu.vv   v16, v16, v18                  \n"
+      "vse8.v      v16, (%[dst])                  \n"
+      "sub         %[w], %[w], %[vl]              \n"
+      "add         %[dst], %[dst], %[vl]          \n"
+      "slli        %[vl], %[vl], 1                \n"
+      "add         %[src_ptr], %[src_ptr], %[vl]  \n"
+      "bgtz        %[w], 1b                       \n"
+      : [w] "+r"(dst_width),      // %[w]
+        [src_ptr] "+r"(src_ptr),  // %[src_ptr]
+        [dst] "+r"(dst),          // %[dst]
+        [vl] "=&r"(vl)            // %[vl]
+      :
+      : RVV_VL_CLOBBER "memory", "v8", "v9", "v10", "v11", "v16", "v17", "v18",
+        "v19");
 }
 #endif
 
@@ -240,30 +364,34 @@ void ScaleRowDown2Box_RVV(const uint8_t* src_ptr,
                           ptrdiff_t src_stride,
                           uint8_t* dst,
                           int dst_width) {
-  const uint8_t* s = src_ptr;
-  const uint8_t* t = src_ptr + src_stride;
-  size_t w = (size_t)dst_width;
-  // NOTE: To match behavior on other platforms, vxrm (fixed-point rounding mode
-  // register) is set to round-to-nearest-up mode(0).
-  asm volatile("csrwi vxrm, 0");
-  do {
-    size_t vl = __riscv_vsetvl_e8m4(w);
-    vuint8m4_t v_s0, v_s1, v_t0, v_t1;
-    vuint16m8_t v_s01, v_t01, v_st01;
-    vuint8m4_t v_dst;
-    __riscv_vlseg2e8_v_u8m4(&v_s0, &v_s1, s, vl);
-    __riscv_vlseg2e8_v_u8m4(&v_t0, &v_t1, t, vl);
-    v_s01 = __riscv_vwaddu_vv_u16m8(v_s0, v_s1, vl);
-    v_t01 = __riscv_vwaddu_vv_u16m8(v_t0, v_t1, vl);
-    v_st01 = __riscv_vadd_vv_u16m8(v_s01, v_t01, vl);
-    // Use round-to-nearest-up mode for vnclip
-    v_dst = __riscv_vnclipu_wx_u8m4(v_st01, 2, vl);
-    __riscv_vse8_v_u8m4(dst, v_dst, vl);
-    w -= vl;
-    s += 2 * vl;
-    t += 2 * vl;
-    dst += vl;
-  } while (w > 0);
+  int vl;
+  asm volatile(
+      "add         %[t], %[s], %[t]               \n"
+
+      "1:          \n"
+      "vsetvli     %[vl], %[w], e8, m2, ta, ma    \n"
+      "vlseg2e8.v  v16, (%[s])                    \n"
+      "vlseg2e8.v  v20, (%[t])                    \n"
+      "vwaddu.vx   v8, v16, %[c2]                 \n"
+      "vwaddu.wv   v8, v8, v18                    \n"
+      "vwaddu.wv   v8, v8, v20                    \n"
+      "vwaddu.wv   v8, v8, v22                    \n"
+      "vnsrl.wi    v16, v8, 2                     \n"
+      "vse8.v      v16, (%[dst])                  \n"
+      "sub         %[w], %[w], %[vl]              \n"
+      "add         %[dst], %[dst], %[vl]          \n"
+      "slli        %[vl], %[vl], 1                \n"
+      "add         %[s], %[s], %[vl]              \n"
+      "add         %[t], %[t], %[vl]              \n"
+      "bgtz        %[w], 1b                       \n"
+      : [w] "+r"(dst_width),   // %[w]
+        [s] "+r"(src_ptr),     // %[s]
+        [t] "+r"(src_stride),  // %[t]
+        [dst] "+r"(dst),       // %[dst]
+        [vl] "=&r"(vl)         // %[vl]
+      : [c2] "r"(2)            // %[c2]
+      : RVV_VL_CLOBBER "memory", "v8", "v9", "v10", "v11", "v16", "v17", "v18",
+        "v19", "v20", "v21", "v22", "v23");
 }
 #endif
 
@@ -272,17 +400,25 @@ void ScaleRowDown4_RVV(const uint8_t* src_ptr,
                        ptrdiff_t src_stride,
                        uint8_t* dst_ptr,
                        int dst_width) {
-  size_t w = (size_t)dst_width;
   (void)src_stride;
-  do {
-    size_t vl = __riscv_vsetvl_e8m2(w);
-    vuint8m2_t v_s0, v_s1, v_s2, v_s3;
-    __riscv_vlseg4e8_v_u8m2(&v_s0, &v_s1, &v_s2, &v_s3, src_ptr, vl);
-    __riscv_vse8_v_u8m2(dst_ptr, v_s2, vl);
-    w -= vl;
-    src_ptr += (4 * vl);
-    dst_ptr += vl;
-  } while (w > 0);
+  int vl;
+  asm volatile(
+      "1:          \n"
+      "vsetvli     %[vl], %[w], e8, m2, ta, ma    \n"
+      "vlseg4e8.v  v8, (%[src_ptr])               \n"
+      "vse8.v      v12, (%[dst_ptr])              \n"
+      "sub         %[w], %[w], %[vl]              \n"
+      "add         %[dst_ptr], %[dst_ptr], %[vl]  \n"
+      "slli        %[vl], %[vl], 2                \n"
+      "add         %[src_ptr], %[src_ptr], %[vl]  \n"
+      "bgtz        %[w], 1b                       \n"
+      : [w] "+r"(dst_width),      // %[w]
+        [src_ptr] "+r"(src_ptr),  // %[src_ptr]
+        [dst_ptr] "+r"(dst_ptr),  // %[dst_ptr]
+        [vl] "=&r"(vl)            // %[vl]
+      :
+      : RVV_VL_CLOBBER "memory", "v8", "v9", "v10", "v11", "v12", "v13", "v14",
+        "v15");
 }
 #endif
 
@@ -291,61 +427,57 @@ void ScaleRowDown4Box_RVV(const uint8_t* src_ptr,
                           ptrdiff_t src_stride,
                           uint8_t* dst_ptr,
                           int dst_width) {
-  const uint8_t* src_ptr1 = src_ptr + src_stride;
-  const uint8_t* src_ptr2 = src_ptr + src_stride * 2;
-  const uint8_t* src_ptr3 = src_ptr + src_stride * 3;
-  size_t w = (size_t)dst_width;
-  // NOTE: To match behavior on other platforms, vxrm (fixed-point rounding mode
-  // register) is set to round-to-nearest-up mode(0).
-  asm volatile("csrwi vxrm, 0");
-  do {
-    vuint8m2_t v_s0, v_s1, v_s2, v_s3;
-    vuint8m2_t v_t0, v_t1, v_t2, v_t3;
-    vuint8m2_t v_u0, v_u1, v_u2, v_u3;
-    vuint8m2_t v_v0, v_v1, v_v2, v_v3;
-    vuint16m4_t v_s01, v_s23, v_t01, v_t23;
-    vuint16m4_t v_u01, v_u23, v_v01, v_v23;
-    vuint16m4_t v_st01, v_st23, v_uv01, v_uv23;
-    vuint16m4_t v_st0123, v_uv0123, v_stuv0123;
-    vuint8m2_t v_dst;
-    size_t vl = __riscv_vsetvl_e8m2(w);
+  const uint8_t* src_ptr1;
+  const uint8_t* src_ptr2;
+  int vl;
+  asm volatile(
+      "add         %[src_ptr1], %[src_ptr], %[src_ptr3]\n"
+      "add         %[src_ptr2], %[src_ptr1], %[src_ptr3]\n"
+      "add         %[src_ptr3], %[src_ptr2], %[src_ptr3]\n"
 
-    __riscv_vlseg4e8_v_u8m2(&v_s0, &v_s1, &v_s2, &v_s3, src_ptr, vl);
-    v_s01 = __riscv_vwaddu_vv_u16m4(v_s0, v_s1, vl);
-
-    __riscv_vlseg4e8_v_u8m2(&v_t0, &v_t1, &v_t2, &v_t3, src_ptr1, vl);
-    v_t01 = __riscv_vwaddu_vv_u16m4(v_t0, v_t1, vl);
-
-    __riscv_vlseg4e8_v_u8m2(&v_u0, &v_u1, &v_u2, &v_u3, src_ptr2, vl);
-    v_u01 = __riscv_vwaddu_vv_u16m4(v_u0, v_u1, vl);
-    v_u23 = __riscv_vwaddu_vv_u16m4(v_u2, v_u3, vl);
-
-    v_s23 = __riscv_vwaddu_vv_u16m4(v_s2, v_s3, vl);
-    v_t23 = __riscv_vwaddu_vv_u16m4(v_t2, v_t3, vl);
-    v_st01 = __riscv_vadd_vv_u16m4(v_s01, v_t01, vl);
-    v_st23 = __riscv_vadd_vv_u16m4(v_s23, v_t23, vl);
-
-    __riscv_vlseg4e8_v_u8m2(&v_v0, &v_v1, &v_v2, &v_v3, src_ptr3, vl);
-
-    v_v01 = __riscv_vwaddu_vv_u16m4(v_v0, v_v1, vl);
-    v_v23 = __riscv_vwaddu_vv_u16m4(v_v2, v_v3, vl);
-
-    v_uv01 = __riscv_vadd_vv_u16m4(v_u01, v_v01, vl);
-    v_uv23 = __riscv_vadd_vv_u16m4(v_u23, v_v23, vl);
-
-    v_st0123 = __riscv_vadd_vv_u16m4(v_st01, v_st23, vl);
-    v_uv0123 = __riscv_vadd_vv_u16m4(v_uv01, v_uv23, vl);
-    v_stuv0123 = __riscv_vadd_vv_u16m4(v_st0123, v_uv0123, vl);
-    // Use round-to-nearest-up mode for vnclip
-    v_dst = __riscv_vnclipu_wx_u8m2(v_stuv0123, 4, vl);
-    __riscv_vse8_v_u8m2(dst_ptr, v_dst, vl);
-    w -= vl;
-    src_ptr += 4 * vl;
-    src_ptr1 += 4 * vl;
-    src_ptr2 += 4 * vl;
-    src_ptr3 += 4 * vl;
-    dst_ptr += vl;
-  } while (w > 0);
+      "1:          \n"
+      "vsetvli     %[vl], %[w], e8, m2, ta, ma    \n"
+      "vlseg4e8.v  v16, (%[src_ptr])              \n"
+      "vlseg4e8.v  v24, (%[src_ptr1])             \n"
+      "vwaddu.vx   v8, v16, %[c8]                 \n"
+      "vwaddu.wv   v8, v8, v18                    \n"
+      "vwaddu.wv   v8, v8, v20                    \n"
+      "vwaddu.wv   v8, v8, v22                    \n"
+      "vwaddu.wv   v8, v8, v24                    \n"
+      "vwaddu.wv   v8, v8, v26                    \n"
+      "vwaddu.wv   v8, v8, v28                    \n"
+      "vwaddu.wv   v8, v8, v30                    \n"
+      "vlseg4e8.v  v16, (%[src_ptr2])             \n"
+      "vlseg4e8.v  v24, (%[src_ptr3])             \n"
+      "vwaddu.wv   v8, v8, v16                    \n"
+      "vwaddu.wv   v8, v8, v18                    \n"
+      "vwaddu.wv   v8, v8, v20                    \n"
+      "vwaddu.wv   v8, v8, v22                    \n"
+      "vwaddu.wv   v8, v8, v24                    \n"
+      "vwaddu.wv   v8, v8, v26                    \n"
+      "vwaddu.wv   v8, v8, v28                    \n"
+      "vwaddu.wv   v8, v8, v30                    \n"
+      "vnsrl.wi    v16, v8, 4                     \n"
+      "vse8.v      v16, (%[dst_ptr])              \n"
+      "sub         %[w], %[w], %[vl]              \n"
+      "add         %[dst_ptr], %[dst_ptr], %[vl]  \n"
+      "slli        %[vl], %[vl], 2                \n"
+      "add         %[src_ptr], %[src_ptr], %[vl]  \n"
+      "add         %[src_ptr1], %[src_ptr1], %[vl]\n"
+      "add         %[src_ptr2], %[src_ptr2], %[vl]\n"
+      "add         %[src_ptr3], %[src_ptr3], %[vl]\n"
+      "bgtz        %[w], 1b                       \n"
+      : [w] "+r"(dst_width),          // %[w]
+        [src_ptr] "+r"(src_ptr),      // %[src_ptr]
+        [src_ptr1] "=&r"(src_ptr1),   // %[src_ptr1]
+        [src_ptr2] "=&r"(src_ptr2),   // %[src_ptr2]
+        [src_ptr3] "+r"(src_stride),  // %[src_ptr3]
+        [dst_ptr] "+r"(dst_ptr),      // %[dst_ptr]
+        [vl] "=&r"(vl)                // %[vl]
+      : [c8] "r"(8)                   // %[c8]
+      : RVV_VL_CLOBBER "memory", "v8", "v9", "v10", "v11", "v16", "v17", "v18",
+        "v19", "v20", "v21", "v22", "v23", "v24", "v25", "v26", "v27", "v28",
+        "v29", "v30", "v31");
 }
 #endif
 
@@ -354,16 +486,29 @@ void ScaleRowDown34_RVV(const uint8_t* src_ptr,
                         ptrdiff_t src_stride,
                         uint8_t* dst_ptr,
                         int dst_width) {
-  size_t w = (size_t)dst_width / 3u;
-  do {
-    size_t vl = __riscv_vsetvl_e8m2(w);
-    vuint8m2_t v_s0, v_s1, v_s2, v_s3;
-    __riscv_vlseg4e8_v_u8m2(&v_s0, &v_s1, &v_s2, &v_s3, src_ptr, vl);
-    __riscv_vsseg3e8_v_u8m2(dst_ptr, v_s0, v_s1, v_s3, vl);
-    w -= vl;
-    src_ptr += 4 * vl;
-    dst_ptr += 3 * vl;
-  } while (w > 0);
+  (void)src_stride;
+  dst_width /= 3;
+  int vl;
+  asm volatile(
+      "1:          \n"
+      "vsetvli     %[vl], %[w], e8, m2, ta, ma    \n"
+      "vlseg4e8.v  v8, (%[src_ptr])               \n"
+      "vmv2r.v     v12, v14                       \n"
+      "vsseg3e8.v  v8, (%[dst_ptr])               \n"
+      "sub         %[w], %[w], %[vl]              \n"
+      "add         %[dst_ptr], %[dst_ptr], %[vl]  \n"
+      "slli        %[vl], %[vl], 1                \n"
+      "add         %[dst_ptr], %[dst_ptr], %[vl]  \n"
+      "slli        %[vl], %[vl], 1                \n"
+      "add         %[src_ptr], %[src_ptr], %[vl]  \n"
+      "bgtz        %[w], 1b                       \n"
+      : [w] "+r"(dst_width),      // %[w]
+        [src_ptr] "+r"(src_ptr),  // %[src_ptr]
+        [dst_ptr] "+r"(dst_ptr),  // %[dst_ptr]
+        [vl] "=&r"(vl)            // %[vl]
+      :
+      : RVV_VL_CLOBBER "memory", "v8", "v9", "v10", "v11", "v12", "v13", "v14",
+        "v15");
 }
 #endif
 
@@ -372,66 +517,72 @@ void ScaleRowDown34_0_Box_RVV(const uint8_t* src_ptr,
                               ptrdiff_t src_stride,
                               uint8_t* dst_ptr,
                               int dst_width) {
-  size_t w = (size_t)dst_width / 3u;
-  const uint8_t* s = src_ptr;
-  const uint8_t* t = src_ptr + src_stride;
+  dst_width /= 3;
+  const uint8_t* t;
+  int vl;
   // NOTE: To match behavior on other platforms, vxrm (fixed-point rounding mode
   // register) is set to round-to-nearest-up mode(0).
-  asm volatile("csrwi vxrm, 0");
-  do {
-    vuint8m2_t v_s0, v_s1, v_s2, v_s3;
-    vuint16m4_t v_t0_u16, v_t1_u16, v_t2_u16, v_t3_u16;
-    vuint8m2_t v_u0, v_u1, v_u2, v_u3;
-    vuint16m4_t v_u1_u16;
-    vuint8m2_t v_a0, v_a1, v_a2;
-    size_t vl = __riscv_vsetvl_e8m2(w);
-    __riscv_vlseg4e8_v_u8m2(&v_s0, &v_s1, &v_s2, &v_s3, s, vl);
+  asm volatile(
+      "add         %[t], %[s], %[src_stride]      \n"
+      "csrwi       vxrm, 0                        \n"
 
-    if (src_stride == 0) {
-      v_t0_u16 = __riscv_vwaddu_vx_u16m4(v_s0, 2, vl);
-      v_t1_u16 = __riscv_vwaddu_vx_u16m4(v_s1, 2, vl);
-      v_t2_u16 = __riscv_vwaddu_vx_u16m4(v_s2, 2, vl);
-      v_t3_u16 = __riscv_vwaddu_vx_u16m4(v_s3, 2, vl);
-    } else {
-      vuint8m2_t v_t0, v_t1, v_t2, v_t3;
-      __riscv_vlseg4e8_v_u8m2(&v_t0, &v_t1, &v_t2, &v_t3, t, vl);
-      v_t0_u16 = __riscv_vwaddu_vx_u16m4(v_t0, 0, vl);
-      v_t1_u16 = __riscv_vwaddu_vx_u16m4(v_t1, 0, vl);
-      v_t2_u16 = __riscv_vwaddu_vx_u16m4(v_t2, 0, vl);
-      v_t3_u16 = __riscv_vwaddu_vx_u16m4(v_t3, 0, vl);
-      t += 4 * vl;
-    }
+      "1:          \n"
+      "vsetvli     %[vl], %[w], e8, m2, ta, ma    \n"
+      "vlseg4e8.v  v24, (%[s])                    \n"
+      "bnez        %[src_stride], 2f              \n"
+      "vwaddu.vx   v20, v24, %[c2]                \n"
+      "vwaddu.vx   v16, v26, %[c2]                \n"
+      "vwaddu.vx   v12, v28, %[c2]                \n"
+      "vwaddu.vx   v8, v30, %[c2]                 \n"
+      "j           3f                             \n"
 
-    v_t0_u16 = __riscv_vwmaccu_vx_u16m4(v_t0_u16, 3, v_s0, vl);
-    v_t1_u16 = __riscv_vwmaccu_vx_u16m4(v_t1_u16, 3, v_s1, vl);
-    v_t2_u16 = __riscv_vwmaccu_vx_u16m4(v_t2_u16, 3, v_s2, vl);
-    v_t3_u16 = __riscv_vwmaccu_vx_u16m4(v_t3_u16, 3, v_s3, vl);
+      "2:          \n"
+      "vlseg4e8.v  v0, (%[t])                     \n"
+      "vwaddu.vx   v20, v0, %[c2]                 \n"
+      "vwaddu.vx   v16, v2, %[c2]                 \n"
+      "vwaddu.vx   v12, v4, %[c2]                 \n"
+      "vwaddu.vx   v8, v6, %[c2]                  \n"
 
-    // Use round-to-nearest-up mode for vnclip & averaging add
-    v_u0 = __riscv_vnclipu_wx_u8m2(v_t0_u16, 2, vl);
-    v_u1 = __riscv_vnclipu_wx_u8m2(v_t1_u16, 2, vl);
-    v_u2 = __riscv_vnclipu_wx_u8m2(v_t2_u16, 2, vl);
-    v_u3 = __riscv_vnclipu_wx_u8m2(v_t3_u16, 2, vl);
-
-    // a0 = (src[0] * 3 + s[1] * 1 + 2) >> 2
-    v_u1_u16 = __riscv_vwaddu_vx_u16m4(v_u1, 0, vl);
-    v_u1_u16 = __riscv_vwmaccu_vx_u16m4(v_u1_u16, 3, v_u0, vl);
-    v_a0 = __riscv_vnclipu_wx_u8m2(v_u1_u16, 2, vl);
-
-    // a1 = (src[1] * 1 + s[2] * 1 + 1) >> 1
-    v_a1 = __riscv_vaaddu_vv_u8m2(v_u1, v_u2, vl);
-
-    // a2 = (src[2] * 1 + s[3] * 3 + 2) >> 2
-    v_u1_u16 = __riscv_vwaddu_vx_u16m4(v_u2, 0, vl);
-    v_u1_u16 = __riscv_vwmaccu_vx_u16m4(v_u1_u16, 3, v_u3, vl);
-    v_a2 = __riscv_vnclipu_wx_u8m2(v_u1_u16, 2, vl);
-
-    __riscv_vsseg3e8_v_u8m2(dst_ptr, v_a0, v_a1, v_a2, vl);
-
-    w -= vl;
-    s += 4 * vl;
-    dst_ptr += 3 * vl;
-  } while (w > 0);
+      "3:          \n"
+      "vwmaccu.vx  v20, %[c3], v24                \n"
+      "vnsrl.wi    v24, v20, 2                    \n"
+      "vwmaccu.vx  v16, %[c3], v26                \n"
+      "vnsrl.wi    v20, v16, 2                    \n"
+      "vwmaccu.vx  v12, %[c3], v28                \n"
+      "vnsrl.wi    v16, v12, 2                    \n"
+      "vwmaccu.vx  v8, %[c3], v30                 \n"
+      "vnsrl.wi    v12, v8, 2                     \n"
+      // a0 = (src[0] * 3 + s[1] * 1 + 2) >> 2
+      "vwaddu.vx   v8, v20, %[c2]                 \n"
+      "vwmaccu.vx  v8, %[c3], v24                 \n"
+      "vnsrl.wi    v14, v8, 2                     \n"
+      // a2 = (src[2] * 1 + s[3] * 3 + 2) >> 2
+      "vwaddu.vx   v8, v16, %[c2]                 \n"
+      "vwmaccu.vx  v8, %[c3], v12                 \n"
+      // a1 = (src[1] * 1 + s[2] * 1 + 1) >> 1
+      "vaaddu.vv   v16, v20, v16                  \n"
+      "vnsrl.wi    v18, v8, 2                     \n"
+      "vsseg3e8.v  v14, (%[dst_ptr])              \n"
+      "sub         %[w], %[w], %[vl]              \n"
+      "add         %[dst_ptr], %[dst_ptr], %[vl]  \n"
+      "slli        %[vl], %[vl], 1                \n"
+      "add         %[dst_ptr], %[dst_ptr], %[vl]  \n"
+      "slli        %[vl], %[vl], 1                \n"
+      "add         %[s], %[s], %[vl]              \n"
+      "add         %[t], %[t], %[vl]              \n"
+      "bgtz        %[w], 1b                       \n"
+      : [w] "+r"(dst_width),           // %[w]
+        [s] "+r"(src_ptr),             // %[s]
+        [t] "=&r"(t),                  // %[t]
+        [dst_ptr] "+r"(dst_ptr),       // %[dst_ptr]
+        [vl] "=&r"(vl)                 // %[vl]
+      : [src_stride] "r"(src_stride),  // %[src_stride]
+        [c2] "r"(2),                   // %[c2]
+        [c3] "r"(3)                    // %[c3]
+      : RVV_VL_CLOBBER "memory", "v0", "v1", "v2", "v3", "v4", "v5", "v6", "v7",
+        "v8", "v9", "v10", "v11", "v12", "v13", "v14", "v15", "v16", "v17",
+        "v18", "v19", "v20", "v21", "v22", "v23", "v24", "v25", "v26", "v27",
+        "v28", "v29", "v30", "v31");
 }
 #endif
 
@@ -440,54 +591,63 @@ void ScaleRowDown34_1_Box_RVV(const uint8_t* src_ptr,
                               ptrdiff_t src_stride,
                               uint8_t* dst_ptr,
                               int dst_width) {
-  size_t w = (size_t)dst_width / 3u;
-  const uint8_t* s = src_ptr;
-  const uint8_t* t = src_ptr + src_stride;
+  dst_width /= 3;
+  const uint8_t* t;
+  int vl;
   // NOTE: To match behavior on other platforms, vxrm (fixed-point rounding mode
   // register) is set to round-to-nearest-up mode(0).
-  asm volatile("csrwi vxrm, 0");
-  do {
-    vuint8m2_t v_s0, v_s1, v_s2, v_s3;
-    vuint8m2_t v_ave0, v_ave1, v_ave2, v_ave3;
-    vuint16m4_t v_u1_u16;
-    vuint8m2_t v_a0, v_a1, v_a2;
-    size_t vl = __riscv_vsetvl_e8m2(w);
-    __riscv_vlseg4e8_v_u8m2(&v_s0, &v_s1, &v_s2, &v_s3, s, vl);
+  asm volatile(
+      "add         %[t], %[s], %[src_stride]      \n"
+      "csrwi       vxrm, 0                        \n"
 
-    // Use round-to-nearest-up mode for vnclip & averaging add
-    if (src_stride == 0) {
-      v_ave0 = __riscv_vaaddu_vv_u8m2(v_s0, v_s0, vl);
-      v_ave1 = __riscv_vaaddu_vv_u8m2(v_s1, v_s1, vl);
-      v_ave2 = __riscv_vaaddu_vv_u8m2(v_s2, v_s2, vl);
-      v_ave3 = __riscv_vaaddu_vv_u8m2(v_s3, v_s3, vl);
-    } else {
-      vuint8m2_t v_t0, v_t1, v_t2, v_t3;
-      __riscv_vlseg4e8_v_u8m2(&v_t0, &v_t1, &v_t2, &v_t3, t, vl);
-      v_ave0 = __riscv_vaaddu_vv_u8m2(v_s0, v_t0, vl);
-      v_ave1 = __riscv_vaaddu_vv_u8m2(v_s1, v_t1, vl);
-      v_ave2 = __riscv_vaaddu_vv_u8m2(v_s2, v_t2, vl);
-      v_ave3 = __riscv_vaaddu_vv_u8m2(v_s3, v_t3, vl);
-      t += 4 * vl;
-    }
-    // a0 = (src[0] * 3 + s[1] * 1 + 2) >> 2
-    v_u1_u16 = __riscv_vwaddu_vx_u16m4(v_ave1, 0, vl);
-    v_u1_u16 = __riscv_vwmaccu_vx_u16m4(v_u1_u16, 3, v_ave0, vl);
-    v_a0 = __riscv_vnclipu_wx_u8m2(v_u1_u16, 2, vl);
+      "1:          \n"
+      "vsetvli     %[vl], %[w], e8, m2, ta, ma    \n"
+      "vlseg4e8.v  v14, (%[s])                    \n"
+      "bnez        %[src_stride], 2f              \n"
+      "vaaddu.vv   v14, v14, v14                  \n"
+      "vaaddu.vv   v8, v16, v16                   \n"
+      "vaaddu.vv   v10, v18, v18                  \n"
+      "vaaddu.vv   v12, v20, v20                  \n"
+      "j           3f                             \n"
 
-    // a1 = (src[1] * 1 + s[2] * 1 + 1) >> 1
-    v_a1 = __riscv_vaaddu_vv_u8m2(v_ave1, v_ave2, vl);
+      "2:          \n"
+      "vlseg4e8.v  v22, (%[t])                    \n"
+      "vaaddu.vv   v14, v14, v22                  \n"
+      "vaaddu.vv   v8, v16, v24                   \n"
+      "vaaddu.vv   v10, v18, v26                  \n"
+      "vaaddu.vv   v12, v20, v28                  \n"
 
-    // a2 = (src[2] * 1 + s[3] * 3 + 2) >> 2
-    v_u1_u16 = __riscv_vwaddu_vx_u16m4(v_ave2, 0, vl);
-    v_u1_u16 = __riscv_vwmaccu_vx_u16m4(v_u1_u16, 3, v_ave3, vl);
-    v_a2 = __riscv_vnclipu_wx_u8m2(v_u1_u16, 2, vl);
-
-    __riscv_vsseg3e8_v_u8m2(dst_ptr, v_a0, v_a1, v_a2, vl);
-
-    w -= vl;
-    s += 4 * vl;
-    dst_ptr += 3 * vl;
-  } while (w > 0);
+      "3:          \n"
+      // a0 = (src[0] * 3 + s[1] * 1 + 2) >> 2
+      "vwaddu.vx   v16, v8, %[c2]                 \n"
+      "vwmaccu.vx  v16, %[c3], v14                \n"
+      "vnsrl.wi    v20, v16, 2                    \n"
+      // a2 = (src[2] * 1 + s[3] * 3 + 2) >> 2
+      "vwaddu.vx   v16, v10, %[c2]                \n"
+      "vwmaccu.vx  v16, %[c3], v12                \n"
+      // a1 = (src[1] * 1 + s[2] * 1 + 1) >> 1
+      "vaaddu.vv   v22, v8, v10                   \n"
+      "vnsrl.wi    v24, v16, 2                    \n"
+      "vsseg3e8.v  v20, (%[dst_ptr])              \n"
+      "sub         %[w], %[w], %[vl]              \n"
+      "add         %[dst_ptr], %[dst_ptr], %[vl]  \n"
+      "slli        %[vl], %[vl], 1                \n"
+      "add         %[dst_ptr], %[dst_ptr], %[vl]  \n"
+      "slli        %[vl], %[vl], 1                \n"
+      "add         %[s], %[s], %[vl]              \n"
+      "add         %[t], %[t], %[vl]              \n"
+      "bgtz        %[w], 1b                       \n"
+      : [w] "+r"(dst_width),           // %[w]
+        [s] "+r"(src_ptr),             // %[s]
+        [t] "=&r"(t),                  // %[t]
+        [dst_ptr] "+r"(dst_ptr),       // %[dst_ptr]
+        [vl] "=&r"(vl)                 // %[vl]
+      : [src_stride] "r"(src_stride),  // %[src_stride]
+        [c2] "r"(2),                   // %[c2]
+        [c3] "r"(3)                    // %[c3]
+      : RVV_VL_CLOBBER "memory", "v8", "v9", "v10", "v11", "v12", "v13", "v14",
+        "v15", "v16", "v17", "v18", "v19", "v20", "v21", "v22", "v23", "v24",
+        "v25", "v26", "v27", "v28", "v29");
 }
 #endif
 
@@ -496,19 +656,31 @@ void ScaleRowDown38_RVV(const uint8_t* src_ptr,
                         ptrdiff_t src_stride,
                         uint8_t* dst_ptr,
                         int dst_width) {
-  size_t w = (size_t)dst_width / 3u;
   (void)src_stride;
   assert(dst_width % 3 == 0);
-  do {
-    vuint8m1_t v_s0, v_s1, v_s2, v_s3, v_s4, v_s5, v_s6, v_s7;
-    size_t vl = __riscv_vsetvl_e8m1(w);
-    __riscv_vlseg8e8_v_u8m1(&v_s0, &v_s1, &v_s2, &v_s3, &v_s4, &v_s5, &v_s6,
-                            &v_s7, src_ptr, vl);
-    __riscv_vsseg3e8_v_u8m1(dst_ptr, v_s0, v_s3, v_s6, vl);
-    w -= vl;
-    src_ptr += 8 * vl;
-    dst_ptr += 3 * vl;
-  } while (w > 0);
+  dst_width /= 3;
+  int vl;
+  asm volatile(
+      "1:          \n"
+      "vsetvli     %[vl], %[w], e8, m1, ta, ma    \n"
+      "vlseg8e8.v  v8, (%[src_ptr])               \n"
+      "vmv1r.v     v9, v11                        \n"
+      "vmv1r.v     v10, v14                       \n"
+      "vsseg3e8.v  v8, (%[dst_ptr])               \n"
+      "sub         %[w], %[w], %[vl]              \n"
+      "add         %[dst_ptr], %[dst_ptr], %[vl]  \n"
+      "slli        %[vl], %[vl], 1                \n"
+      "add         %[dst_ptr], %[dst_ptr], %[vl]  \n"
+      "slli        %[vl], %[vl], 2                \n"
+      "add         %[src_ptr], %[src_ptr], %[vl]  \n"
+      "bgtz        %[w], 1b                       \n"
+      : [w] "+r"(dst_width),      // %[w]
+        [src_ptr] "+r"(src_ptr),  // %[src_ptr]
+        [dst_ptr] "+r"(dst_ptr),  // %[dst_ptr]
+        [vl] "=&r"(vl)            // %[vl]
+      :
+      : RVV_VL_CLOBBER "memory", "v8", "v9", "v10", "v11", "v12", "v13", "v14",
+        "v15");
 }
 #endif
 
@@ -517,56 +689,63 @@ void ScaleRowDown38_2_Box_RVV(const uint8_t* src_ptr,
                               ptrdiff_t src_stride,
                               uint8_t* dst_ptr,
                               int dst_width) {
-  size_t w = (size_t)dst_width / 3u;
-  const uint16_t coeff_a = (65536u / 6u);
-  const uint16_t coeff_b = (65536u / 4u);
   assert((dst_width % 3 == 0) && (dst_width > 0));
-  do {
-    vuint8m1_t v_s0, v_s1, v_s2, v_s3, v_s4, v_s5, v_s6, v_s7;
-    vuint8m1_t v_t0, v_t1, v_t2, v_t3, v_t4, v_t5, v_t6, v_t7;
-    vuint16m2_t v_e0, v_e1, v_e2, v_e;
-    vuint16m2_t v_f0, v_f1, v_f2, v_f;
-    vuint16m2_t v_g0, v_g1, v_g;
-    vuint8m1_t v_dst_e, v_dst_f, v_dst_g;
-    size_t vl = __riscv_vsetvl_e8m1(w);
-    // s: e00, e10, e20, f00, f10, f20, g00, g10
-    // t: e01, e11, e21, f01, f11, f21, g01, g11
-    __riscv_vlseg8e8_v_u8m1(&v_s0, &v_s1, &v_s2, &v_s3, &v_s4, &v_s5, &v_s6,
-                            &v_s7, src_ptr, vl);
-    __riscv_vlseg8e8_v_u8m1(&v_t0, &v_t1, &v_t2, &v_t3, &v_t4, &v_t5, &v_t6,
-                            &v_t7, src_ptr + src_stride, vl);
-    // Calculate sum of [e00, e21] to v_e
-    // Calculate sum of [f00, f21] to v_f
-    // Calculate sum of [g00, g11] to v_g
-    v_e0 = __riscv_vwaddu_vv_u16m2(v_s0, v_t0, vl);
-    v_e1 = __riscv_vwaddu_vv_u16m2(v_s1, v_t1, vl);
-    v_e2 = __riscv_vwaddu_vv_u16m2(v_s2, v_t2, vl);
-    v_f0 = __riscv_vwaddu_vv_u16m2(v_s3, v_t3, vl);
-    v_f1 = __riscv_vwaddu_vv_u16m2(v_s4, v_t4, vl);
-    v_f2 = __riscv_vwaddu_vv_u16m2(v_s5, v_t5, vl);
-    v_g0 = __riscv_vwaddu_vv_u16m2(v_s6, v_t6, vl);
-    v_g1 = __riscv_vwaddu_vv_u16m2(v_s7, v_t7, vl);
+  dst_width /= 3;
+  int vl;
+  asm volatile(
+      "add         %[src_ptr1], %[src_ptr], %[src_ptr1]\n"
 
-    v_e0 = __riscv_vadd_vv_u16m2(v_e0, v_e1, vl);
-    v_f0 = __riscv_vadd_vv_u16m2(v_f0, v_f1, vl);
-    v_e = __riscv_vadd_vv_u16m2(v_e0, v_e2, vl);
-    v_f = __riscv_vadd_vv_u16m2(v_f0, v_f2, vl);
-    v_g = __riscv_vadd_vv_u16m2(v_g0, v_g1, vl);
-
-    // Average in 16-bit fixed-point
-    v_e = __riscv_vmulhu_vx_u16m2(v_e, coeff_a, vl);
-    v_f = __riscv_vmulhu_vx_u16m2(v_f, coeff_a, vl);
-    v_g = __riscv_vmulhu_vx_u16m2(v_g, coeff_b, vl);
-
-    v_dst_e = __riscv_vnsrl_wx_u8m1(v_e, 0, vl);
-    v_dst_f = __riscv_vnsrl_wx_u8m1(v_f, 0, vl);
-    v_dst_g = __riscv_vnsrl_wx_u8m1(v_g, 0, vl);
-
-    __riscv_vsseg3e8_v_u8m1(dst_ptr, v_dst_e, v_dst_f, v_dst_g, vl);
-    w -= vl;
-    src_ptr += 8 * vl;
-    dst_ptr += 3 * vl;
-  } while (w > 0);
+      "1:          \n"
+      "vsetvli     %[vl], %[w], e8, m1, ta, ma    \n"
+      // s: e00, e10, e20, f00, f10, f20, g00, g10
+      "vlseg8e8.v  v14, (%[src_ptr])              \n"
+      // t: e01, e11, e21, f01, f11, f21, g01, g11
+      "vlseg8e8.v  v22, (%[src_ptr1])             \n"
+      "vwaddu.vv   v8, v14, v22                   \n"
+      "vwaddu.vv   v10, v15, v23                  \n"
+      "vsetvli     zero, zero, e16, m2, ta, ma    \n"
+      "vadd.vv     v8, v8, v10                    \n"
+      "vsetvli     zero, zero, e8, m1, ta, ma     \n"
+      "vwaddu.vv   v10, v17, v25                  \n"
+      "vwaddu.vv   v12, v18, v26                  \n"
+      "vwaddu.vv   v14, v16, v24                  \n"
+      "vsetvli     zero, zero, e16, m2, ta, ma    \n"
+      "vadd.vv     v10, v10, v12                  \n"
+      "vadd.vv     v8, v8, v14                    \n"
+      "vsetvli     zero, zero, e8, m1, ta, ma     \n"
+      "vwaddu.vv   v12, v19, v27                  \n"
+      "vwaddu.vv   v14, v20, v28                  \n"
+      "vwaddu.vv   v16, v21, v29                  \n"
+      "vsetvli     zero, zero, e16, m2, ta, ma    \n"
+      "vadd.vv     v10, v10, v12                  \n"
+      "vadd.vv     v12, v14, v16                  \n"
+      // Average in 16-bit fixed-point
+      "vmulhu.vx   v8, v8, %[coeff_a]             \n"
+      "vmulhu.vx   v10, v10, %[coeff_a]           \n"
+      "vmulhu.vx   v12, v12, %[coeff_b]           \n"
+      "vsetvli     zero, zero, e8, m1, ta, ma     \n"
+      "vnsrl.wi    v14, v8, 0                     \n"
+      "vnsrl.wi    v15, v10, 0                    \n"
+      "vnsrl.wi    v16, v12, 0                    \n"
+      "vsseg3e8.v  v14, (%[dst_ptr])              \n"
+      "sub         %[w], %[w], %[vl]              \n"
+      "add         %[dst_ptr], %[dst_ptr], %[vl]  \n"
+      "slli        %[vl], %[vl], 1                \n"
+      "add         %[dst_ptr], %[dst_ptr], %[vl]  \n"
+      "slli        %[vl], %[vl], 2                \n"
+      "add         %[src_ptr], %[src_ptr], %[vl]  \n"
+      "add         %[src_ptr1], %[src_ptr1], %[vl]\n"
+      "bgtz        %[w], 1b                       \n"
+      : [w] "+r"(dst_width),          // %[w]
+        [src_ptr] "+r"(src_ptr),      // %[src_ptr]
+        [src_ptr1] "+r"(src_stride),  // %[src_ptr1]
+        [dst_ptr] "+r"(dst_ptr),      // %[dst_ptr]
+        [vl] "=&r"(vl)                // %[vl]
+      : [coeff_a] "r"(65536u / 6u),   // %[coeff_a]
+        [coeff_b] "r"(65536u / 4u)    // %[coeff_b]
+      : RVV_VL_CLOBBER "memory", "v8", "v9", "v10", "v11", "v12", "v13", "v14",
+        "v15", "v16", "v17", "v18", "v19", "v20", "v21", "v22", "v23", "v24",
+        "v25", "v26", "v27", "v28", "v29");
 }
 #endif
 
@@ -575,71 +754,88 @@ void ScaleRowDown38_3_Box_RVV(const uint8_t* src_ptr,
                               ptrdiff_t src_stride,
                               uint8_t* dst_ptr,
                               int dst_width) {
-  size_t w = (size_t)dst_width / 3u;
-  const uint16_t coeff_a = (65536u / 9u);
-  const uint16_t coeff_b = (65536u / 6u);
   assert((dst_width % 3 == 0) && (dst_width > 0));
-  do {
-    vuint8m1_t v_s0, v_s1, v_s2, v_s3, v_s4, v_s5, v_s6, v_s7;
-    vuint8m1_t v_t0, v_t1, v_t2, v_t3, v_t4, v_t5, v_t6, v_t7;
-    vuint8m1_t v_u0, v_u1, v_u2, v_u3, v_u4, v_u5, v_u6, v_u7;
-    vuint16m2_t v_e0, v_e1, v_e2, v_e3, v_e4, v_e;
-    vuint16m2_t v_f0, v_f1, v_f2, v_f3, v_f4, v_f;
-    vuint16m2_t v_g0, v_g1, v_g2, v_g;
-    vuint8m1_t v_dst_e, v_dst_f, v_dst_g;
-    size_t vl = __riscv_vsetvl_e8m1(w);
-    // s: e00, e10, e20, f00, f10, f20, g00, g10
-    // t: e01, e11, e21, f01, f11, f21, g01, g11
-    // u: e02, e12, e22, f02, f12, f22, g02, g12
-    __riscv_vlseg8e8_v_u8m1(&v_s0, &v_s1, &v_s2, &v_s3, &v_s4, &v_s5, &v_s6,
-                            &v_s7, src_ptr, vl);
-    __riscv_vlseg8e8_v_u8m1(&v_t0, &v_t1, &v_t2, &v_t3, &v_t4, &v_t5, &v_t6,
-                            &v_t7, src_ptr + src_stride, vl);
-    __riscv_vlseg8e8_v_u8m1(&v_u0, &v_u1, &v_u2, &v_u3, &v_u4, &v_u5, &v_u6,
-                            &v_u7, src_ptr + 2 * src_stride, vl);
-    // Calculate sum of [e00, e22]
-    v_e0 = __riscv_vwaddu_vv_u16m2(v_s0, v_t0, vl);
-    v_e1 = __riscv_vwaddu_vv_u16m2(v_s1, v_t1, vl);
-    v_e2 = __riscv_vwaddu_vv_u16m2(v_s2, v_t2, vl);
-    v_e3 = __riscv_vwaddu_vv_u16m2(v_u0, v_u1, vl);
-    v_e4 = __riscv_vwaddu_vx_u16m2(v_u2, 0, vl);
+  dst_width /= 3;
+  const uint8_t* src_ptr1;
+  int vl;
+  asm volatile(
+      "add         %[src_ptr1], %[src_ptr], %[src_ptr2]\n"
+      "add         %[src_ptr2], %[src_ptr1], %[src_ptr2]\n"
 
-    v_e0 = __riscv_vadd_vv_u16m2(v_e0, v_e1, vl);
-    v_e2 = __riscv_vadd_vv_u16m2(v_e2, v_e3, vl);
-    v_e0 = __riscv_vadd_vv_u16m2(v_e0, v_e4, vl);
-    v_e = __riscv_vadd_vv_u16m2(v_e0, v_e2, vl);
-    // Calculate sum of [f00, f22]
-    v_f0 = __riscv_vwaddu_vv_u16m2(v_s3, v_t3, vl);
-    v_f1 = __riscv_vwaddu_vv_u16m2(v_s4, v_t4, vl);
-    v_f2 = __riscv_vwaddu_vv_u16m2(v_s5, v_t5, vl);
-    v_f3 = __riscv_vwaddu_vv_u16m2(v_u3, v_u4, vl);
-    v_f4 = __riscv_vwaddu_vx_u16m2(v_u5, 0, vl);
-
-    v_f0 = __riscv_vadd_vv_u16m2(v_f0, v_f1, vl);
-    v_f2 = __riscv_vadd_vv_u16m2(v_f2, v_f3, vl);
-    v_f0 = __riscv_vadd_vv_u16m2(v_f0, v_f4, vl);
-    v_f = __riscv_vadd_vv_u16m2(v_f0, v_f2, vl);
-    // Calculate sum of [g00, g12]
-    v_g0 = __riscv_vwaddu_vv_u16m2(v_s6, v_t6, vl);
-    v_g1 = __riscv_vwaddu_vv_u16m2(v_s7, v_t7, vl);
-    v_g2 = __riscv_vwaddu_vv_u16m2(v_u6, v_u7, vl);
-
-    v_g = __riscv_vadd_vv_u16m2(v_g0, v_g1, vl);
-    v_g = __riscv_vadd_vv_u16m2(v_g, v_g2, vl);
-
-    // Average in 16-bit fixed-point
-    v_e = __riscv_vmulhu_vx_u16m2(v_e, coeff_a, vl);
-    v_f = __riscv_vmulhu_vx_u16m2(v_f, coeff_a, vl);
-    v_g = __riscv_vmulhu_vx_u16m2(v_g, coeff_b, vl);
-
-    v_dst_e = __riscv_vnsrl_wx_u8m1(v_e, 0, vl);
-    v_dst_f = __riscv_vnsrl_wx_u8m1(v_f, 0, vl);
-    v_dst_g = __riscv_vnsrl_wx_u8m1(v_g, 0, vl);
-    __riscv_vsseg3e8_v_u8m1(dst_ptr, v_dst_e, v_dst_f, v_dst_g, vl);
-    w -= vl;
-    src_ptr += 8 * vl;
-    dst_ptr += 3 * vl;
-  } while (w > 0);
+      "1:          \n"
+      "vsetvli     %[vl], %[w], e8, m1, ta, ma    \n"
+      // s: e00, e10, e20, f00, f10, f20, g00, g10
+      "vlseg8e8.v  v8, (%[src_ptr])               \n"
+      // t: e01, e11, e21, f01, f11, f21, g01, g11
+      "vlseg8e8.v  v19, (%[src_ptr1])             \n"
+      // u: e02, e12, e22, f02, f12, f22, g02, g12
+      "vlseg8e8.v  v0, (%[src_ptr2])              \n"
+      // Calculate sum of [e00, e22]
+      "vwaddu.vv   v16, v8, v19                   \n"
+      "vwaddu.vv   v18, v9, v20                   \n"
+      "vsetvli     zero, zero, e16, m2, ta, ma    \n"
+      "vadd.vv     v8, v16, v18                   \n"
+      "vsetvli     zero, zero, e8, m1, ta, ma     \n"
+      "vwaddu.vv   v16, v10, v21                  \n"
+      "vwaddu.vv   v18, v0, v1                    \n"
+      "vwcvtu.x.x.v v20, v2                        \n"
+      "vsetvli     zero, zero, e16, m2, ta, ma    \n"
+      "vadd.vv     v16, v16, v18                  \n"
+      "vadd.vv     v8, v8, v20                    \n"
+      "vadd.vv     v8, v8, v16                    \n"
+      // Calculate sum of [f00, f22]
+      "vsetvli     zero, zero, e8, m1, ta, ma     \n"
+      "vwaddu.vv   v16, v11, v22                  \n"
+      "vwaddu.vv   v10, v12, v23                  \n"
+      "vsetvli     zero, zero, e16, m2, ta, ma    \n"
+      "vadd.vv     v10, v16, v10                  \n"
+      "vsetvli     zero, zero, e8, m1, ta, ma     \n"
+      "vwaddu.vv   v16, v13, v24                  \n"
+      "vwaddu.vv   v12, v3, v4                    \n"
+      "vsetvli     zero, zero, e16, m2, ta, ma    \n"
+      "vadd.vv     v12, v16, v12                  \n"
+      "vsetvli     zero, zero, e8, m1, ta, ma     \n"
+      "vwcvtu.x.x.v v16, v5                        \n"
+      "vsetvli     zero, zero, e16, m2, ta, ma    \n"
+      "vadd.vv     v10, v10, v16                  \n"
+      "vadd.vv     v10, v10, v12                  \n"
+      // Calculate sum of [g00, g12]
+      "vsetvli     zero, zero, e8, m1, ta, ma     \n"
+      "vwaddu.vv   v12, v14, v25                  \n"
+      "vwaddu.vv   v16, v15, v26                  \n"
+      "vwaddu.vv   v14, v6, v7                    \n"
+      "vsetvli     zero, zero, e16, m2, ta, ma    \n"
+      "vadd.vv     v12, v12, v16                  \n"
+      "vadd.vv     v12, v12, v14                  \n"
+      // Average in 16-bit fixed-point
+      "vmulhu.vx   v8, v8, %[coeff_a]             \n"
+      "vmulhu.vx   v10, v10, %[coeff_a]           \n"
+      "vmulhu.vx   v12, v12, %[coeff_b]           \n"
+      "vsetvli     zero, zero, e8, m1, ta, ma     \n"
+      "vnsrl.wi    v14, v8, 0                     \n"
+      "vnsrl.wi    v15, v10, 0                    \n"
+      "vnsrl.wi    v16, v12, 0                    \n"
+      "vsseg3e8.v  v14, (%[dst_ptr])              \n"
+      "sub         %[w], %[w], %[vl]              \n"
+      "add         %[dst_ptr], %[dst_ptr], %[vl]  \n"
+      "slli        %[vl], %[vl], 1                \n"
+      "add         %[dst_ptr], %[dst_ptr], %[vl]  \n"
+      "slli        %[vl], %[vl], 2                \n"
+      "add         %[src_ptr], %[src_ptr], %[vl]  \n"
+      "add         %[src_ptr1], %[src_ptr1], %[vl]\n"
+      "add         %[src_ptr2], %[src_ptr2], %[vl]\n"
+      "bgtz        %[w], 1b                       \n"
+      : [w] "+r"(dst_width),          // %[w]
+        [src_ptr] "+r"(src_ptr),      // %[src_ptr]
+        [src_ptr1] "=&r"(src_ptr1),   // %[src_ptr1]
+        [src_ptr2] "+r"(src_stride),  // %[src_ptr2]
+        [dst_ptr] "+r"(dst_ptr),      // %[dst_ptr]
+        [vl] "=&r"(vl)                // %[vl]
+      : [coeff_a] "r"(65536u / 9u),   // %[coeff_a]
+        [coeff_b] "r"(65536u / 6u)    // %[coeff_b]
+      : RVV_VL_CLOBBER "memory", "v0", "v1", "v2", "v3", "v4", "v5", "v6", "v7",
+        "v8", "v9", "v10", "v11", "v12", "v13", "v14", "v15", "v16", "v17",
+        "v18", "v19", "v20", "v21", "v22", "v23", "v24", "v25", "v26");
 }
 #endif
 
@@ -651,35 +847,41 @@ void ScaleRowDown38_3_Box_RVV(const uint8_t* src_ptr,
 void ScaleRowUp2_Linear_RVV(const uint8_t* src_ptr,
                             uint8_t* dst_ptr,
                             int dst_width) {
-  size_t work_width = (size_t)dst_width - 1u;
-  size_t src_width = work_width >> 1u;
-  const uint8_t* work_src_ptr = src_ptr;
-  uint8_t* work_dst_ptr = dst_ptr + 1;
-  size_t vl = __riscv_vsetvlmax_e8m4();
-  vuint8m4_t v_3 = __riscv_vmv_v_x_u8m4(3, vl);
+  int src_width = (dst_width - 1) >> 1;
   dst_ptr[0] = src_ptr[0];
-  while (src_width > 0) {
-    vuint8m4_t v_src0, v_src1, v_dst_odd, v_dst_even;
-    vuint16m8_t v_src0_u16, v_src1_u16;
-    size_t vl = __riscv_vsetvl_e8m4(src_width);
-    v_src0 = __riscv_vle8_v_u8m4(work_src_ptr, vl);
-    v_src1 = __riscv_vle8_v_u8m4(work_src_ptr + 1, vl);
-
-    v_src0_u16 = __riscv_vwaddu_vx_u16m8(v_src0, 2, vl);
-    v_src1_u16 = __riscv_vwaddu_vx_u16m8(v_src1, 2, vl);
-    v_src0_u16 = __riscv_vwmaccu_vv_u16m8(v_src0_u16, v_3, v_src1, vl);
-    v_src1_u16 = __riscv_vwmaccu_vv_u16m8(v_src1_u16, v_3, v_src0, vl);
-
-    v_dst_odd = __riscv_vnsrl_wx_u8m4(v_src0_u16, 2, vl);
-    v_dst_even = __riscv_vnsrl_wx_u8m4(v_src1_u16, 2, vl);
-
-    __riscv_vsseg2e8_v_u8m4(work_dst_ptr, v_dst_even, v_dst_odd, vl);
-
-    src_width -= vl;
-    work_src_ptr += vl;
-    work_dst_ptr += 2 * vl;
+  if (src_width > 0) {
+    int vl;
+    const uint8_t* work_src_next;
+    uint8_t* work_dst_ptr = dst_ptr + 1;
+    asm volatile(
+        "1:          \n"
+        "vsetvli     %[vl], %[src_width], e8, m2, ta, ma\n"
+        "vle8.v      v12, (%[src_ptr])              \n"
+        "addi        %[work_src_next], %[src_ptr], 1\n"
+        "vle8.v      v24, (%[work_src_next])        \n"
+        "vwaddu.vx   v16, v12, %[c2]                \n"
+        "vwmaccu.vx  v16, %[c3], v24                \n"
+        "vnsrl.wi    v26, v16, 2                    \n"
+        "vwaddu.vx   v16, v24, %[c2]                \n"
+        "vwmaccu.vx  v16, %[c3], v12                \n"
+        "vnsrl.wi    v24, v16, 2                    \n"
+        "vsseg2e8.v  v24, (%[work_dst_ptr])         \n"
+        "sub         %[src_width], %[src_width], %[vl]\n"
+        "add         %[src_ptr], %[src_ptr], %[vl]  \n"
+        "slli        %[vl], %[vl], 1                \n"
+        "add         %[work_dst_ptr], %[work_dst_ptr], %[vl]\n"
+        "bgtz        %[src_width], 1b               \n"
+        : [src_width] "+r"(src_width),          // %[src_width]
+          [src_ptr] "+r"(src_ptr),              // %[src_ptr]
+          [work_dst_ptr] "+r"(work_dst_ptr),    // %[work_dst_ptr]
+          [vl] "=&r"(vl),                       // %[vl]
+          [work_src_next] "=&r"(work_src_next)  // %[work_src_next]
+        : [c2] "r"(2),                          // %[c2]
+          [c3] "r"(3)                           // %[c3]
+        : RVV_VL_CLOBBER "memory", "v12", "v13", "v16", "v17", "v18", "v19",
+          "v24", "v25", "v26", "v27");
   }
-  dst_ptr[dst_width - 1] = src_ptr[(dst_width - 1) / 2];
+  dst_ptr[dst_width - 1] = src_ptr[0];
 }
 #endif
 
@@ -689,69 +891,70 @@ void ScaleRowUp2_Bilinear_RVV(const uint8_t* src_ptr,
                               uint8_t* dst_ptr,
                               ptrdiff_t dst_stride,
                               int dst_width) {
-  size_t work_width = ((size_t)dst_width - 1u) & ~1u;
-  size_t src_width = work_width >> 1u;
-  const uint8_t* work_s = src_ptr;
-  const uint8_t* work_t = src_ptr + src_stride;
-  const uint8_t* s = work_s;
-  const uint8_t* t = work_t;
-  uint8_t* d = dst_ptr;
+  int src_width = (dst_width - 1) >> 1;
+  const uint8_t* t = src_ptr + src_stride;
   uint8_t* e = dst_ptr + dst_stride;
-  uint8_t* work_d = d + 1;
-  uint8_t* work_e = e + 1;
-  size_t vl = __riscv_vsetvlmax_e16m4();
-  vuint16m4_t v_3_u16 = __riscv_vmv_v_x_u16m4(3, vl);
-  vuint8m2_t v_3_u8 = __riscv_vmv_v_x_u8m2(3, vl);
-  d[0] = (3 * s[0] + t[0] + 2) >> 2;
-  e[0] = (s[0] + 3 * t[0] + 2) >> 2;
-  while (src_width > 0) {
-    vuint8m2_t v_s0, v_s1, v_t0, v_t1;
-    vuint16m4_t v_s0_u16, v_s1_u16, v_t0_u16, v_t1_u16;
-    vuint16m4_t v_t0_u16_, v_t1_u16_;
-    vuint8m2_t v_dst0_even, v_dst0_odd, v_dst1_even, v_dst1_odd;
-    size_t vl = __riscv_vsetvl_e8m2(src_width);
-    v_s0 = __riscv_vle8_v_u8m2(work_s, vl);
-    v_s1 = __riscv_vle8_v_u8m2(work_s + 1, vl);
-
-    v_s0_u16 = __riscv_vwaddu_vx_u16m4(v_s0, 2, vl);
-    v_s1_u16 = __riscv_vwaddu_vx_u16m4(v_s1, 2, vl);
-    v_s0_u16 = __riscv_vwmaccu_vv_u16m4(v_s0_u16, v_3_u8, v_s1, vl);
-    v_s1_u16 = __riscv_vwmaccu_vv_u16m4(v_s1_u16, v_3_u8, v_s0, vl);
-
-    v_t0 = __riscv_vle8_v_u8m2(work_t, vl);
-    v_t1 = __riscv_vle8_v_u8m2(work_t + 1, vl);
-
-    v_t0_u16 = __riscv_vwaddu_vx_u16m4(v_t0, 2, vl);
-    v_t1_u16 = __riscv_vwaddu_vx_u16m4(v_t1, 2, vl);
-    v_t0_u16 = __riscv_vwmaccu_vv_u16m4(v_t0_u16, v_3_u8, v_t1, vl);
-    v_t1_u16 = __riscv_vwmaccu_vv_u16m4(v_t1_u16, v_3_u8, v_t0, vl);
-
-    v_t0_u16_ = __riscv_vmv_v_v_u16m4(v_t0_u16, vl);
-    v_t1_u16_ = __riscv_vmv_v_v_u16m4(v_t1_u16, vl);
-
-    v_t0_u16 = __riscv_vmacc_vv_u16m4(v_t0_u16, v_3_u16, v_s0_u16, vl);
-    v_t1_u16 = __riscv_vmacc_vv_u16m4(v_t1_u16, v_3_u16, v_s1_u16, vl);
-    v_s0_u16 = __riscv_vmacc_vv_u16m4(v_s0_u16, v_3_u16, v_t0_u16_, vl);
-    v_s1_u16 = __riscv_vmacc_vv_u16m4(v_s1_u16, v_3_u16, v_t1_u16_, vl);
-
-    v_dst0_odd = __riscv_vnsrl_wx_u8m2(v_t0_u16, 4, vl);
-    v_dst0_even = __riscv_vnsrl_wx_u8m2(v_t1_u16, 4, vl);
-    v_dst1_odd = __riscv_vnsrl_wx_u8m2(v_s0_u16, 4, vl);
-    v_dst1_even = __riscv_vnsrl_wx_u8m2(v_s1_u16, 4, vl);
-
-    __riscv_vsseg2e8_v_u8m2(work_d, v_dst0_even, v_dst0_odd, vl);
-    __riscv_vsseg2e8_v_u8m2(work_e, v_dst1_even, v_dst1_odd, vl);
-
-    src_width -= vl;
-    work_s += vl;
-    work_t += vl;
-    work_d += 2 * vl;
-    work_e += 2 * vl;
+  dst_ptr[0] = (3 * src_ptr[0] + t[0] + 2) >> 2;
+  e[0] = (src_ptr[0] + 3 * t[0] + 2) >> 2;
+  if (src_width > 0) {
+    int vl;
+    const uint8_t* tmp_ptr;
+    uint8_t* work_d = dst_ptr + 1;
+    uint8_t* work_e = e + 1;
+    asm volatile(
+        "1:          \n"
+        "vsetvli     %[vl], %[src_width], e8, m2, ta, ma\n"
+        "vle8.v      v0, (%[work_s])                \n"
+        "addi        %[tmp_ptr], %[work_s], 1       \n"
+        "vle8.v      v2, (%[tmp_ptr])               \n"
+        "vwaddu.vx   v8, v0, %[c2]                  \n"
+        "vwaddu.vx   v12, v2, %[c2]                 \n"
+        "vwmaccu.vx  v8, %[c3], v2                  \n"
+        "vwmaccu.vx  v12, %[c3], v0                 \n"
+        "vle8.v      v4, (%[work_t])                \n"
+        "addi        %[tmp_ptr], %[work_t], 1       \n"
+        "vle8.v      v6, (%[tmp_ptr])               \n"
+        "vwaddu.vx   v16, v4, %[c2]                 \n"
+        "vwaddu.vx   v20, v6, %[c2]                 \n"
+        "vwmaccu.vx  v16, %[c3], v6                 \n"
+        "vwmaccu.vx  v20, %[c3], v4                 \n"
+        "vmv4r.v     v24, v16                       \n"
+        "vmv4r.v     v28, v20                       \n"
+        "vsetvli     zero, zero, e16, m4, ta, ma    \n"
+        "vmacc.vx    v16, %[c3], v8                 \n"
+        "vmacc.vx    v20, %[c3], v12                \n"
+        "vmacc.vx    v8, %[c3], v24                 \n"
+        "vmacc.vx    v12, %[c3], v28                \n"
+        "vsetvli     zero, zero, e8, m2, ta, ma     \n"
+        "vnsrl.wi    v0, v20, 4                     \n"
+        "vnsrl.wi    v2, v16, 4                     \n"
+        "vsseg2e8.v  v0, (%[work_d])                \n"
+        "vnsrl.wi    v4, v12, 4                     \n"
+        "vnsrl.wi    v6, v8, 4                      \n"
+        "vsseg2e8.v  v4, (%[work_e])                \n"
+        "sub         %[src_width], %[src_width], %[vl]\n"
+        "add         %[work_s], %[work_s], %[vl]    \n"
+        "add         %[work_t], %[work_t], %[vl]    \n"
+        "slli        %[vl], %[vl], 1                \n"
+        "add         %[work_d], %[work_d], %[vl]    \n"
+        "add         %[work_e], %[work_e], %[vl]    \n"
+        "bgtz        %[src_width], 1b               \n"
+        : [src_width] "+r"(src_width),  // %[src_width]
+          [work_s] "+r"(src_ptr),       // %[work_s]
+          [work_t] "+r"(t),             // %[work_t]
+          [work_d] "+r"(work_d),        // %[work_d]
+          [work_e] "+r"(work_e),        // %[work_e]
+          [vl] "=&r"(vl),               // %[vl]
+          [tmp_ptr] "=&r"(tmp_ptr)      // %[tmp_ptr]
+        : [c2] "r"(2),                  // %[c2]
+          [c3] "r"(3)                   // %[c3]
+        : RVV_VL_CLOBBER "memory", "v0", "v1", "v2", "v3", "v4", "v5", "v6",
+          "v7", "v8", "v9", "v10", "v11", "v12", "v13", "v14", "v15", "v16",
+          "v17", "v18", "v19", "v20", "v21", "v22", "v23", "v24", "v25", "v26",
+          "v27", "v28", "v29", "v30", "v31");
   }
-  d[dst_width - 1] =
-      (3 * s[(dst_width - 1) / 2] + t[(dst_width - 1) / 2] + 2) >> 2;
-  e[dst_width - 1] =
-      (s[(dst_width - 1) / 2] + 3 * t[(dst_width - 1) / 2] + 2) >> 2;
+  dst_ptr[dst_width - 1] = (3 * src_ptr[0] + t[0] + 2) >> 2;
+  e[dst_width - 1] = (src_ptr[0] + 3 * t[0] + 2) >> 2;
 }
 #endif
 
@@ -760,19 +963,26 @@ void ScaleUVRowDown2_RVV(const uint8_t* src_uv,
                          ptrdiff_t src_stride,
                          uint8_t* dst_uv,
                          int dst_width) {
-  size_t w = (size_t)dst_width;
-  const uint32_t* src = (const uint32_t*)src_uv;
-  uint16_t* dst = (uint16_t*)dst_uv;
   (void)src_stride;
-  do {
-    size_t vl = __riscv_vsetvl_e32m8(w);
-    vuint32m8_t v_data = __riscv_vle32_v_u32m8(src, vl);
-    vuint16m4_t v_u1v1 = __riscv_vnsrl_wx_u16m4(v_data, 16, vl);
-    __riscv_vse16_v_u16m4(dst, v_u1v1, vl);
-    w -= vl;
-    src += vl;
-    dst += vl;
-  } while (w > 0);
+  int vl;
+  asm volatile(
+      "1:          \n"
+      "vsetvli     %[vl], %[w], e16, m2, ta, ma   \n"
+      "vle32.v     v8, (%[src_uv])                \n"
+      "vnsrl.wi    v16, v8, 16                    \n"
+      "vse16.v     v16, (%[dst_uv])               \n"
+      "sub         %[w], %[w], %[vl]              \n"
+      "slli        %[vl], %[vl], 1                \n"
+      "add         %[dst_uv], %[dst_uv], %[vl]    \n"
+      "slli        %[vl], %[vl], 1                \n"
+      "add         %[src_uv], %[src_uv], %[vl]    \n"
+      "bgtz        %[w], 1b                       \n"
+      : [w] "+r"(dst_width),    // %[w]
+        [src_uv] "+r"(src_uv),  // %[src_uv]
+        [dst_uv] "+r"(dst_uv),  // %[dst_uv]
+        [vl] "=&r"(vl)          // %[vl]
+      :
+      : RVV_VL_CLOBBER "memory", "v8", "v9", "v10", "v11", "v16", "v17");
 }
 #endif
 
@@ -781,26 +991,32 @@ void ScaleUVRowDown2Linear_RVV(const uint8_t* src_uv,
                                ptrdiff_t src_stride,
                                uint8_t* dst_uv,
                                int dst_width) {
-  size_t w = (size_t)dst_width;
-  const uint16_t* src = (const uint16_t*)src_uv;
   (void)src_stride;
+  int vl;
   // NOTE: To match behavior on other platforms, vxrm (fixed-point rounding mode
   // register) is set to round-to-nearest-up mode(0).
-  asm volatile("csrwi vxrm, 0");
-  do {
-    vuint8m4_t v_u0v0, v_u1v1, v_avg;
-    vuint16m4_t v_u0v0_16, v_u1v1_16;
-    size_t vl = __riscv_vsetvl_e16m4(w);
-    __riscv_vlseg2e16_v_u16m4(&v_u0v0_16, &v_u1v1_16, src, vl);
-    v_u0v0 = __riscv_vreinterpret_v_u16m4_u8m4(v_u0v0_16);
-    v_u1v1 = __riscv_vreinterpret_v_u16m4_u8m4(v_u1v1_16);
-    // Use round-to-nearest-up mode for averaging add
-    v_avg = __riscv_vaaddu_vv_u8m4(v_u0v0, v_u1v1, vl * 2);
-    __riscv_vse8_v_u8m4(dst_uv, v_avg, vl * 2);
-    w -= vl;
-    src += vl * 2;
-    dst_uv += vl * 2;
-  } while (w > 0);
+  asm volatile(
+      "csrwi       vxrm, 0                        \n"
+
+      "1:          \n"
+      "vsetvli     %[vl], %[w], e8, m2, ta, ma    \n"
+      "vlseg4e8.v  v8, (%[src_uv])                \n"
+      "vaaddu.vv   v8, v8, v12                    \n"
+      "vaaddu.vv   v10, v10, v14                  \n"
+      "vsseg2e8.v  v8, (%[dst_uv])                \n"
+      "sub         %[w], %[w], %[vl]              \n"
+      "slli        %[vl], %[vl], 1                \n"
+      "add         %[dst_uv], %[dst_uv], %[vl]    \n"
+      "slli        %[vl], %[vl], 1                \n"
+      "add         %[src_uv], %[src_uv], %[vl]    \n"
+      "bgtz        %[w], 1b                       \n"
+      : [w] "+r"(dst_width),    // %[w]
+        [src_uv] "+r"(src_uv),  // %[src_uv]
+        [dst_uv] "+r"(dst_uv),  // %[dst_uv]
+        [vl] "=&r"(vl)          // %[vl]
+      :
+      : RVV_VL_CLOBBER "memory", "v8", "v9", "v10", "v11", "v12", "v13", "v14",
+        "v15");
 }
 #endif
 
@@ -809,42 +1025,41 @@ void ScaleUVRowDown2Box_RVV(const uint8_t* src_uv,
                             ptrdiff_t src_stride,
                             uint8_t* dst_uv,
                             int dst_width) {
-  const uint8_t* src_uv_row1 = src_uv + src_stride;
-  size_t w = (size_t)dst_width;
-  // NOTE: To match behavior on other platforms, vxrm (fixed-point rounding mode
-  // register) is set to round-to-nearest-up mode(0).
-  asm volatile("csrwi vxrm, 0");
-  do {
-    vuint8m2_t v_u0_row0, v_v0_row0, v_u1_row0, v_v1_row0;
-    vuint8m2_t v_u0_row1, v_v0_row1, v_u1_row1, v_v1_row1;
-    vuint16m4_t v_u0u1_row0, v_u0u1_row1, v_v0v1_row0, v_v0v1_row1;
-    vuint16m4_t v_sum0, v_sum1;
-    vuint8m2_t v_dst_u, v_dst_v;
-    size_t vl = __riscv_vsetvl_e8m2(w);
+  int vl;
+  asm volatile(
+      "add         %[src_uv_row1], %[src_uv], %[src_uv_row1]\n"
 
-    __riscv_vlseg4e8_v_u8m2(&v_u0_row0, &v_v0_row0, &v_u1_row0, &v_v1_row0,
-                            src_uv, vl);
-    __riscv_vlseg4e8_v_u8m2(&v_u0_row1, &v_v0_row1, &v_u1_row1, &v_v1_row1,
-                            src_uv_row1, vl);
-
-    v_u0u1_row0 = __riscv_vwaddu_vv_u16m4(v_u0_row0, v_u1_row0, vl);
-    v_u0u1_row1 = __riscv_vwaddu_vv_u16m4(v_u0_row1, v_u1_row1, vl);
-    v_v0v1_row0 = __riscv_vwaddu_vv_u16m4(v_v0_row0, v_v1_row0, vl);
-    v_v0v1_row1 = __riscv_vwaddu_vv_u16m4(v_v0_row1, v_v1_row1, vl);
-
-    v_sum0 = __riscv_vadd_vv_u16m4(v_u0u1_row0, v_u0u1_row1, vl);
-    v_sum1 = __riscv_vadd_vv_u16m4(v_v0v1_row0, v_v0v1_row1, vl);
-    // Use round-to-nearest-up mode for vnclip
-    v_dst_u = __riscv_vnclipu_wx_u8m2(v_sum0, 2, vl);
-    v_dst_v = __riscv_vnclipu_wx_u8m2(v_sum1, 2, vl);
-
-    __riscv_vsseg2e8_v_u8m2(dst_uv, v_dst_u, v_dst_v, vl);
-
-    dst_uv += 2 * vl;
-    src_uv += 4 * vl;
-    w -= vl;
-    src_uv_row1 += 4 * vl;
-  } while (w > 0);
+      "1:          \n"
+      "vsetvli     %[vl], %[w], e8, m2, ta, ma    \n"
+      "vlseg4e8.v  v14, (%[src_uv])               \n"
+      "vlseg4e8.v  v22, (%[src_uv_row1])          \n"
+      "vwaddu.vx   v8, v14, %[c2]                 \n"
+      "vwaddu.wv   v8, v8, v18                    \n"
+      "vwaddu.wv   v8, v8, v22                    \n"
+      "vwaddu.wv   v8, v8, v26                    \n"
+      "vwaddu.vx   v12, v16, %[c2]                \n"
+      "vwaddu.wv   v12, v12, v20                  \n"
+      "vwaddu.wv   v12, v12, v24                  \n"
+      "vwaddu.wv   v12, v12, v28                  \n"
+      "vnsrl.wi    v16, v8, 2                     \n"
+      "vnsrl.wi    v18, v12, 2                    \n"
+      "vsseg2e8.v  v16, (%[dst_uv])               \n"
+      "sub         %[w], %[w], %[vl]              \n"
+      "slli        %[vl], %[vl], 1                \n"
+      "add         %[dst_uv], %[dst_uv], %[vl]    \n"
+      "slli        %[vl], %[vl], 1                \n"
+      "add         %[src_uv], %[src_uv], %[vl]    \n"
+      "add         %[src_uv_row1], %[src_uv_row1], %[vl]\n"
+      "bgtz        %[w], 1b                       \n"
+      : [w] "+r"(dst_width),             // %[w]
+        [src_uv] "+r"(src_uv),           // %[src_uv]
+        [src_uv_row1] "+r"(src_stride),  // %[src_uv_row1]
+        [dst_uv] "+r"(dst_uv),           // %[dst_uv]
+        [vl] "=&r"(vl)                   // %[vl]
+      : [c2] "r"(2)                      // %[c2]
+      : RVV_VL_CLOBBER "memory", "v8", "v9", "v10", "v11", "v12", "v13", "v14",
+        "v15", "v16", "v17", "v18", "v19", "v20", "v21", "v22", "v23", "v24",
+        "v25", "v26", "v27", "v28", "v29");
 }
 #endif
 
@@ -854,24 +1069,29 @@ void ScaleUVRowDown4_RVV(const uint8_t* src_uv,
                          int src_stepx,
                          uint8_t* dst_uv,
                          int dst_width) {
-  // Overflow will never happen here, since sizeof(size_t)/sizeof(int)=2.
-  // dst_width = src_width / 4 and src_width is also int.
-  size_t w = (size_t)dst_width * 8;
   (void)src_stride;
   (void)src_stepx;
-  do {
-    size_t vl = __riscv_vsetvl_e8m8(w);
-    vuint8m8_t v_row = __riscv_vle8_v_u8m8(src_uv, vl);
-    vuint64m8_t v_row_64 = __riscv_vreinterpret_v_u8m8_u64m8(v_row);
-    // Narrowing without clipping
-    vuint32m4_t v_tmp = __riscv_vncvt_x_x_w_u32m4(v_row_64, vl / 8);
-    vuint16m2_t v_dst_16 = __riscv_vncvt_x_x_w_u16m2(v_tmp, vl / 8);
-    vuint8m2_t v_dst = __riscv_vreinterpret_v_u16m2_u8m2(v_dst_16);
-    __riscv_vse8_v_u8m2(dst_uv, v_dst, vl / 4);
-    w -= vl;
-    src_uv += vl;
-    dst_uv += vl / 4;
-  } while (w > 0);
+  int vl;
+  asm volatile(
+      "1:          \n"
+      "vsetvli     %[vl], %[w], e32, m2, ta, ma   \n"
+      "vle64.v     v8, (%[src_uv])                \n"
+      "vnsrl.wi    v16, v8, 0                     \n"
+      "vsetvli     zero, zero, e16, m1, ta, ma    \n"
+      "vnsrl.wi    v8, v16, 0                     \n"
+      "vse16.v     v8, (%[dst_uv])                \n"
+      "sub         %[w], %[w], %[vl]              \n"
+      "slli        %[vl], %[vl], 1                \n"
+      "add         %[dst_uv], %[dst_uv], %[vl]    \n"
+      "slli        %[vl], %[vl], 2                \n"
+      "add         %[src_uv], %[src_uv], %[vl]    \n"
+      "bgtz        %[w], 1b                       \n"
+      : [w] "+r"(dst_width),    // %[w]
+        [src_uv] "+r"(src_uv),  // %[src_uv]
+        [dst_uv] "+r"(dst_uv),  // %[dst_uv]
+        [vl] "=&r"(vl)          // %[vl]
+      :
+      : RVV_VL_CLOBBER "memory", "v8", "v9", "v10", "v11", "v16", "v17");
 }
 #endif
 
@@ -881,19 +1101,27 @@ void ScaleUVRowDownEven_RVV(const uint8_t* src_uv,
                             int src_stepx,
                             uint8_t* dst_uv,
                             int dst_width) {
-  size_t w = (size_t)dst_width;
-  const ptrdiff_t stride_byte = (ptrdiff_t)src_stepx * 2;
-  const uint16_t* src = (const uint16_t*)(src_uv);
-  uint16_t* dst = (uint16_t*)(dst_uv);
   (void)src_stride;
-  do {
-    size_t vl = __riscv_vsetvl_e16m8(w);
-    vuint16m8_t v_row = __riscv_vlse16_v_u16m8(src, stride_byte, vl);
-    __riscv_vse16_v_u16m8(dst, v_row, vl);
-    w -= vl;
-    src += vl * src_stepx;
-    dst += vl;
-  } while (w > 0);
+  int vl;
+  ptrdiff_t src_step;
+  asm volatile(
+      "1:          \n"
+      "vsetvli     %[vl], %[w], e16, m4, ta, ma   \n"
+      "vlse16.v    v8, (%[src_uv]), %[stride_byte]\n"
+      "vse16.v     v8, (%[dst_uv])                \n"
+      "sub         %[w], %[w], %[vl]              \n"
+      "mul         %[src_step], %[vl], %[stride_byte]\n"
+      "add         %[src_uv], %[src_uv], %[src_step]\n"
+      "slli        %[vl], %[vl], 1                \n"
+      "add         %[dst_uv], %[dst_uv], %[vl]    \n"
+      "bgtz        %[w], 1b                       \n"
+      : [w] "+r"(dst_width),                         // %[w]
+        [src_uv] "+r"(src_uv),                       // %[src_uv]
+        [dst_uv] "+r"(dst_uv),                       // %[dst_uv]
+        [vl] "=&r"(vl),                              // %[vl]
+        [src_step] "=&r"(src_step)                   // %[src_step]
+      : [stride_byte] "r"((ptrdiff_t)src_stepx * 2)  // %[stride_byte]
+      : RVV_VL_CLOBBER "memory", "v8", "v9", "v10", "v11");
 }
 #endif
 
@@ -906,41 +1134,51 @@ void ScaleUVRowDownEven_RVV(const uint8_t* src_uv,
 void ScaleUVRowUp2_Linear_RVV(const uint8_t* src_ptr,
                               uint8_t* dst_ptr,
                               int dst_width) {
-  size_t work_width = ((size_t)dst_width - 1u) & ~1u;
-  uint16_t* work_dst_ptr = (uint16_t*)dst_ptr + 1;
-  const uint8_t* work_src_ptr = src_ptr;
-  size_t vl = __riscv_vsetvlmax_e8m4();
-  vuint8m4_t v_3_u8 = __riscv_vmv_v_x_u8m4(3, vl);
+  int src_pairs = (dst_width - 1) >> 1;
   dst_ptr[0] = src_ptr[0];
   dst_ptr[1] = src_ptr[1];
-  while (work_width > 0) {
-    vuint8m4_t v_uv0, v_uv1, v_dst_odd_u8, v_dst_even_u8;
-    vuint16m4_t v_dst_odd, v_dst_even;
-    vuint16m8_t v_uv0_u16, v_uv1_u16;
-    size_t vl = __riscv_vsetvl_e8m4(work_width);
-    v_uv0 = __riscv_vle8_v_u8m4(work_src_ptr, vl);
-    v_uv1 = __riscv_vle8_v_u8m4(work_src_ptr + 2, vl);
-
-    v_uv0_u16 = __riscv_vwaddu_vx_u16m8(v_uv0, 2, vl);
-    v_uv1_u16 = __riscv_vwaddu_vx_u16m8(v_uv1, 2, vl);
-
-    v_uv0_u16 = __riscv_vwmaccu_vv_u16m8(v_uv0_u16, v_3_u8, v_uv1, vl);
-    v_uv1_u16 = __riscv_vwmaccu_vv_u16m8(v_uv1_u16, v_3_u8, v_uv0, vl);
-
-    v_dst_odd_u8 = __riscv_vnsrl_wx_u8m4(v_uv0_u16, 2, vl);
-    v_dst_even_u8 = __riscv_vnsrl_wx_u8m4(v_uv1_u16, 2, vl);
-
-    v_dst_even = __riscv_vreinterpret_v_u8m4_u16m4(v_dst_even_u8);
-    v_dst_odd = __riscv_vreinterpret_v_u8m4_u16m4(v_dst_odd_u8);
-
-    __riscv_vsseg2e16_v_u16m4(work_dst_ptr, v_dst_even, v_dst_odd, vl / 2);
-
-    work_width -= vl;
-    work_src_ptr += vl;
-    work_dst_ptr += vl;
+  if (src_pairs > 0) {
+    int vl;
+    const uint8_t* work_src_next;
+    uint8_t* work_dst_ptr = dst_ptr + 2;
+    asm volatile(
+        "1:          \n"
+        "vsetvli     %[vl], %[src_pairs], e8, m2, ta, ma\n"
+        "addi        %[work_src_next], %[src_ptr], 2\n"
+        "vlseg2e8.v  v16, (%[work_src_next])        \n"
+        "vlseg2e8.v  v20, (%[src_ptr])              \n"
+        "vwaddu.vx   v12, v16, %[c2]                \n"
+        "vwmaccu.vx  v12, %[c3], v20                \n"
+        "vnsrl.wi    v24, v12, 2                    \n"
+        "vwaddu.vx   v12, v20, %[c2]                \n"
+        "vwmaccu.vx  v12, %[c3], v16                \n"
+        "vnsrl.wi    v28, v12, 2                    \n"
+        "vwaddu.vx   v12, v18, %[c2]                \n"
+        "vwmaccu.vx  v12, %[c3], v22                \n"
+        "vnsrl.wi    v26, v12, 2                    \n"
+        "vwaddu.vx   v12, v22, %[c2]                \n"
+        "vwmaccu.vx  v12, %[c3], v18                \n"
+        "vnsrl.wi    v30, v12, 2                    \n"
+        "vsseg4e8.v  v24, (%[work_dst_ptr])         \n"
+        "sub         %[src_pairs], %[src_pairs], %[vl]\n"
+        "slli        %[vl], %[vl], 1                \n"
+        "add         %[src_ptr], %[src_ptr], %[vl]  \n"
+        "slli        %[vl], %[vl], 1                \n"
+        "add         %[work_dst_ptr], %[work_dst_ptr], %[vl]\n"
+        "bgtz        %[src_pairs], 1b               \n"
+        : [src_pairs] "+r"(src_pairs),          // %[src_pairs]
+          [src_ptr] "+r"(src_ptr),              // %[src_ptr]
+          [work_dst_ptr] "+r"(work_dst_ptr),    // %[work_dst_ptr]
+          [vl] "=&r"(vl),                       // %[vl]
+          [work_src_next] "=&r"(work_src_next)  // %[work_src_next]
+        : [c2] "r"(2),                          // %[c2]
+          [c3] "r"(3)                           // %[c3]
+        : RVV_VL_CLOBBER "memory", "v12", "v13", "v14", "v15", "v16", "v17",
+          "v18", "v19", "v20", "v21", "v22", "v23", "v24", "v25", "v26", "v27",
+          "v28", "v29", "v30", "v31");
   }
-  dst_ptr[2 * dst_width - 2] = src_ptr[((dst_width + 1) & ~1) - 2];
-  dst_ptr[2 * dst_width - 1] = src_ptr[((dst_width + 1) & ~1) - 1];
+  dst_ptr[2 * dst_width - 2] = src_ptr[0];
+  dst_ptr[2 * dst_width - 1] = src_ptr[1];
 }
 #endif
 
@@ -950,84 +1188,155 @@ void ScaleUVRowUp2_Bilinear_RVV(const uint8_t* src_ptr,
                                 uint8_t* dst_ptr,
                                 ptrdiff_t dst_stride,
                                 int dst_width) {
-  size_t work_width = ((size_t)dst_width - 1u) & ~1u;
-  const uint8_t* work_s = src_ptr;
-  const uint8_t* work_t = src_ptr + src_stride;
-  const uint8_t* s = work_s;
-  const uint8_t* t = work_t;
-  uint8_t* d = dst_ptr;
+  int src_pairs = (dst_width - 1) >> 1;
+  const uint8_t* t = src_ptr + src_stride;
   uint8_t* e = dst_ptr + dst_stride;
-  uint16_t* work_d = (uint16_t*)d + 1;
-  uint16_t* work_e = (uint16_t*)e + 1;
-  size_t vl = __riscv_vsetvlmax_e16m4();
-  vuint16m4_t v_3_u16 = __riscv_vmv_v_x_u16m4(3, vl);
-  vuint8m2_t v_3_u8 = __riscv_vmv_v_x_u8m2(3, vl);
-  d[0] = (3 * s[0] + t[0] + 2) >> 2;
-  e[0] = (s[0] + 3 * t[0] + 2) >> 2;
-  d[1] = (3 * s[1] + t[1] + 2) >> 2;
-  e[1] = (s[1] + 3 * t[1] + 2) >> 2;
-  while (work_width > 0) {
-    vuint8m2_t v_s0, v_s1, v_t0, v_t1;
-    vuint16m4_t v_s0_u16, v_s1_u16, v_t0_u16, v_t1_u16;
-    vuint16m4_t v_t0_u16_, v_t1_u16_;
-    vuint8m2_t v_dst0_odd_u8, v_dst0_even_u8, v_dst1_odd_u8, v_dst1_even_u8;
-    vuint16m2_t v_dst0_even, v_dst0_odd, v_dst1_even, v_dst1_odd;
-    size_t vl = __riscv_vsetvl_e8m2(work_width);
-    v_s0 = __riscv_vle8_v_u8m2(work_s, vl);
-    v_s1 = __riscv_vle8_v_u8m2(work_s + 2, vl);
-
-    v_s0_u16 = __riscv_vwaddu_vx_u16m4(v_s0, 2, vl);
-    v_s1_u16 = __riscv_vwaddu_vx_u16m4(v_s1, 2, vl);
-    v_s0_u16 = __riscv_vwmaccu_vv_u16m4(v_s0_u16, v_3_u8, v_s1, vl);
-    v_s1_u16 = __riscv_vwmaccu_vv_u16m4(v_s1_u16, v_3_u8, v_s0, vl);
-
-    v_t0 = __riscv_vle8_v_u8m2(work_t, vl);
-    v_t1 = __riscv_vle8_v_u8m2(work_t + 2, vl);
-
-    v_t0_u16 = __riscv_vwaddu_vx_u16m4(v_t0, 2, vl);
-    v_t1_u16 = __riscv_vwaddu_vx_u16m4(v_t1, 2, vl);
-    v_t0_u16 = __riscv_vwmaccu_vv_u16m4(v_t0_u16, v_3_u8, v_t1, vl);
-    v_t1_u16 = __riscv_vwmaccu_vv_u16m4(v_t1_u16, v_3_u8, v_t0, vl);
-
-    v_t0_u16_ = __riscv_vmv_v_v_u16m4(v_t0_u16, vl);
-    v_t1_u16_ = __riscv_vmv_v_v_u16m4(v_t1_u16, vl);
-
-    v_t0_u16 = __riscv_vmacc_vv_u16m4(v_t0_u16, v_3_u16, v_s0_u16, vl);
-    v_t1_u16 = __riscv_vmacc_vv_u16m4(v_t1_u16, v_3_u16, v_s1_u16, vl);
-    v_s0_u16 = __riscv_vmacc_vv_u16m4(v_s0_u16, v_3_u16, v_t0_u16_, vl);
-    v_s1_u16 = __riscv_vmacc_vv_u16m4(v_s1_u16, v_3_u16, v_t1_u16_, vl);
-
-    v_dst0_odd_u8 = __riscv_vnsrl_wx_u8m2(v_t0_u16, 4, vl);
-    v_dst0_even_u8 = __riscv_vnsrl_wx_u8m2(v_t1_u16, 4, vl);
-    v_dst1_odd_u8 = __riscv_vnsrl_wx_u8m2(v_s0_u16, 4, vl);
-    v_dst1_even_u8 = __riscv_vnsrl_wx_u8m2(v_s1_u16, 4, vl);
-
-    v_dst0_even = __riscv_vreinterpret_v_u8m2_u16m2(v_dst0_even_u8);
-    v_dst0_odd = __riscv_vreinterpret_v_u8m2_u16m2(v_dst0_odd_u8);
-    v_dst1_even = __riscv_vreinterpret_v_u8m2_u16m2(v_dst1_even_u8);
-    v_dst1_odd = __riscv_vreinterpret_v_u8m2_u16m2(v_dst1_odd_u8);
-
-    __riscv_vsseg2e16_v_u16m2(work_d, v_dst0_even, v_dst0_odd, vl / 2);
-    __riscv_vsseg2e16_v_u16m2(work_e, v_dst1_even, v_dst1_odd, vl / 2);
-
-    work_width -= vl;
-    work_s += vl;
-    work_t += vl;
-    work_d += vl;
-    work_e += vl;
+  dst_ptr[0] = (3 * src_ptr[0] + t[0] + 2) >> 2;
+  e[0] = (src_ptr[0] + 3 * t[0] + 2) >> 2;
+  dst_ptr[1] = (3 * src_ptr[1] + t[1] + 2) >> 2;
+  e[1] = (src_ptr[1] + 3 * t[1] + 2) >> 2;
+  if (src_pairs > 0) {
+    int vl;
+    const uint8_t* tmp_ptr;
+    uint8_t* work_d = dst_ptr + 2;
+    uint8_t* work_e = e + 2;
+    asm volatile(
+        "1:          \n"
+        "vsetvli     %[vl], %[src_pairs], e8, m2, ta, ma\n"
+        // Load s_u0 (v0), s_v0 (v2) and s_u1 (v4), s_v1 (v6)
+        "vlseg2e8.v  v0, (%[work_s])                \n"
+        "addi        %[tmp_ptr], %[work_s], 2       \n"
+        "vlseg2e8.v  v4, (%[tmp_ptr])               \n"
+        // Load t_u0 (v8), t_v0 (v10) and t_u1 (v12), t_v1 (v14)
+        "vlseg2e8.v  v8, (%[work_t])                \n"
+        "addi        %[tmp_ptr], %[work_t], 2       \n"
+        "vlseg2e8.v  v12, (%[tmp_ptr])              \n"
+        // Compute U channel horizontal interpolation into v16..v31
+        "vwaddu.vx   v16, v0, %[c2]                 \n"
+        "vwaddu.vx   v20, v4, %[c2]                 \n"
+        "vwmaccu.vx  v16, %[c3], v4                 \n"
+        "vwmaccu.vx  v20, %[c3], v0                 \n"
+        "vwaddu.vx   v24, v8, %[c2]                 \n"
+        "vwaddu.vx   v28, v12, %[c2]                \n"
+        "vwmaccu.vx  v24, %[c3], v12                \n"
+        "vwmaccu.vx  v28, %[c3], v8                 \n"
+        // Move t_v0 (v10) -> v0, t_v1 (v14) -> v4 so v8..v15 are free
+        "vmv2r.v     v0, v10                        \n"
+        "vmv2r.v     v4, v14                        \n"
+        "vmv4r.v     v8, v24                        \n"
+        "vmv4r.v     v12, v28                       \n"
+        "vsetvli     zero, zero, e16, m4, ta, ma    \n"
+        "vmacc.vx    v24, %[c3], v16                \n"
+        "vmacc.vx    v28, %[c3], v20                \n"
+        "vmacc.vx    v16, %[c3], v8                 \n"
+        "vmacc.vx    v20, %[c3], v12                \n"
+        "vsetvli     zero, zero, e8, m2, ta, ma     \n"
+        // Move s_v0 (v2) -> v8, s_v1 (v6) -> v10, t_v0 (v0) -> v12, t_v1 (v4)
+        // -> v14
+        "vmv2r.v     v8, v2                         \n"
+        "vmv2r.v     v10, v6                        \n"
+        "vmv2r.v     v12, v0                        \n"
+        "vmv2r.v     v14, v4                        \n"
+        // Narrow U results into v0 (u_d_even), v2 (u_d_odd), v4 (u_e_even), v6
+        // (u_e_odd)
+        "vnsrl.wi    v0, v28, 4                     \n"
+        "vnsrl.wi    v2, v24, 4                     \n"
+        "vnsrl.wi    v4, v20, 4                     \n"
+        "vnsrl.wi    v6, v16, 4                     \n"
+        // Compute V channel horizontal interpolation from v8, v10, v12, v14
+        // into v16..v31
+        "vwaddu.vx   v16, v8, %[c2]                 \n"
+        "vwaddu.vx   v20, v10, %[c2]                \n"
+        "vwmaccu.vx  v16, %[c3], v10                \n"
+        "vwmaccu.vx  v20, %[c3], v8                 \n"
+        "vwaddu.vx   v24, v12, %[c2]                \n"
+        "vwaddu.vx   v28, v14, %[c2]                \n"
+        "vwmaccu.vx  v24, %[c3], v14                \n"
+        "vwmaccu.vx  v28, %[c3], v12                \n"
+        "vmv4r.v     v8, v24                        \n"
+        "vmv4r.v     v12, v28                       \n"
+        "vsetvli     zero, zero, e16, m4, ta, ma    \n"
+        "vmacc.vx    v24, %[c3], v16                \n"
+        "vmacc.vx    v28, %[c3], v20                \n"
+        "vmacc.vx    v16, %[c3], v8                 \n"
+        "vmacc.vx    v20, %[c3], v12                \n"
+        "vsetvli     zero, zero, e8, m2, ta, ma     \n"
+        // Assemble and store row 0: (u_d_even, v_d_even, u_d_odd, v_d_odd) in
+        // v8..v15
+        "vmv2r.v     v8, v0                         \n"
+        "vnsrl.wi    v10, v28, 4                    \n"
+        "vmv2r.v     v12, v2                        \n"
+        "vnsrl.wi    v14, v24, 4                    \n"
+        "vsseg4e8.v  v8, (%[work_d])                \n"
+        // Assemble and store row 1: (u_e_even, v_e_even, u_e_odd, v_e_odd) in
+        // v8..v15
+        "vmv2r.v     v8, v4                         \n"
+        "vnsrl.wi    v10, v20, 4                    \n"
+        "vmv2r.v     v12, v6                        \n"
+        "vnsrl.wi    v14, v16, 4                    \n"
+        "vsseg4e8.v  v8, (%[work_e])                \n"
+        "sub         %[src_pairs], %[src_pairs], %[vl]\n"
+        "slli        %[vl], %[vl], 1                \n"
+        "add         %[work_s], %[work_s], %[vl]    \n"
+        "add         %[work_t], %[work_t], %[vl]    \n"
+        "slli        %[vl], %[vl], 1                \n"
+        "add         %[work_d], %[work_d], %[vl]    \n"
+        "add         %[work_e], %[work_e], %[vl]    \n"
+        "bgtz        %[src_pairs], 1b               \n"
+        : [src_pairs] "+r"(src_pairs),  // %[src_pairs]
+          [work_s] "+r"(src_ptr),       // %[work_s]
+          [work_t] "+r"(t),             // %[work_t]
+          [work_d] "+r"(work_d),        // %[work_d]
+          [work_e] "+r"(work_e),        // %[work_e]
+          [vl] "=&r"(vl),               // %[vl]
+          [tmp_ptr] "=&r"(tmp_ptr)      // %[tmp_ptr]
+        : [c2] "r"(2),                  // %[c2]
+          [c3] "r"(3)                   // %[c3]
+        : RVV_VL_CLOBBER "memory", "v0", "v1", "v2", "v3", "v4", "v5", "v6",
+          "v7", "v8", "v9", "v10", "v11", "v12", "v13", "v14", "v15", "v16",
+          "v17", "v18", "v19", "v20", "v21", "v22", "v23", "v24", "v25", "v26",
+          "v27", "v28", "v29", "v30", "v31");
   }
-  d[2 * dst_width - 2] =
-      (3 * s[((dst_width + 1) & ~1) - 2] + t[((dst_width + 1) & ~1) - 2] + 2) >>
-      2;
-  e[2 * dst_width - 2] =
-      (s[((dst_width + 1) & ~1) - 2] + 3 * t[((dst_width + 1) & ~1) - 2] + 2) >>
-      2;
-  d[2 * dst_width - 1] =
-      (3 * s[((dst_width + 1) & ~1) - 1] + t[((dst_width + 1) & ~1) - 1] + 2) >>
-      2;
-  e[2 * dst_width - 1] =
-      (s[((dst_width + 1) & ~1) - 1] + 3 * t[((dst_width + 1) & ~1) - 1] + 2) >>
-      2;
+  dst_ptr[2 * dst_width - 2] = (3 * src_ptr[0] + t[0] + 2) >> 2;
+  e[2 * dst_width - 2] = (src_ptr[0] + 3 * t[0] + 2) >> 2;
+  dst_ptr[2 * dst_width - 1] = (3 * src_ptr[1] + t[1] + 2) >> 2;
+  e[2 * dst_width - 1] = (src_ptr[1] + 3 * t[1] + 2) >> 2;
+}
+#endif
+
+#ifdef HAS_SCALEUVADDCOLS3_RVV
+void ScaleUVAddCols3_RVV(int dst_width,
+                         int scaleval,
+                         const uint16_t* src_uv,
+                         uint8_t* dst_uv) {
+  size_t vl, vl2;
+  size_t w = (size_t)dst_width;
+  asm volatile(
+      "1:                                                    \n"
+      "vsetvli     %[vl], %[w], e32, m2, ta, ma              \n"
+      "vlseg3e32.v v8, (%[src_uv])                           \n"
+      "sub         %[w], %[w], %[vl]                         \n"
+      "slli        %[vl2], %[vl], 2                          \n"
+      "add         %[src_uv], %[src_uv], %[vl2]              \n"
+      "slli        %[vl2], %[vl2], 1                         \n"
+      "add         %[src_uv], %[src_uv], %[vl2]              \n"
+      "slli        %[vl], %[vl], 1                           \n"
+      "vsetvli     zero, %[vl], e16, m2, ta, ma              \n"
+      "vadd.vv     v8, v8, v10                               \n"
+      "vadd.vv     v8, v8, v12                               \n"
+      "vmulhu.vx   v8, v8, %[scaleval]                       \n"
+      "vsetvli     zero, %[vl], e8, m1, ta, ma               \n"
+      "vnsrl.wi    v4, v8, 0                                 \n"
+      "vse8.v      v4, (%[dst_uv])                           \n"
+      "add         %[dst_uv], %[dst_uv], %[vl]               \n"
+      "bgtz        %[w], 1b                                  \n"
+      : [w] "+r"(w),              // %[w]
+        [src_uv] "+r"(src_uv),    // %[src_uv]
+        [dst_uv] "+r"(dst_uv),    // %[dst_uv]
+        [vl] "=&r"(vl),           // %[vl]
+        [vl2] "=&r"(vl2)          // %[vl2]
+      : [scaleval] "r"(scaleval)  // %[scaleval]
+      : RVV_VL_CLOBBER "memory", "v4", "v8", "v9", "v10", "v11", "v12", "v13");
 }
 #endif
 
@@ -1036,5 +1345,4 @@ void ScaleUVRowUp2_Bilinear_RVV(const uint8_t* src_ptr,
 }  // namespace libyuv
 #endif
 
-#endif  // !defined(LIBYUV_DISABLE_RVV) && defined(__riscv_vector) &&
-        // defined(__clang__)
+#endif  // !defined(LIBYUV_DISABLE_RVV) && defined(__riscv_vector)

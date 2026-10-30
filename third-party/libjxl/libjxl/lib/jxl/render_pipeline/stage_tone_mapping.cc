@@ -5,15 +5,24 @@
 
 #include "lib/jxl/render_pipeline/stage_tone_mapping.h"
 
+#include <cstddef>
+#include <memory>
+#include <utility>
+
+#include "lib/jxl/base/common.h"
+#include "lib/jxl/base/compiler_specific.h"
+#include "lib/jxl/base/sanitizers.h"
+#include "lib/jxl/base/status.h"
+#include "lib/jxl/cms/tone_mapping.h"
+#include "lib/jxl/dec_xyb.h"
+#include "lib/jxl/render_pipeline/render_pipeline_stage.h"
+
 #undef HWY_TARGET_INCLUDE
 #define HWY_TARGET_INCLUDE "lib/jxl/render_pipeline/stage_tone_mapping.cc"
 #include <hwy/foreach_target.h>
 #include <hwy/highway.h>
 
-#include "lib/jxl/dec_tone_mapping-inl.h"
-#include "lib/jxl/dec_xyb-inl.h"
-#include "lib/jxl/sanitizers.h"
-#include "lib/jxl/transfer_functions-inl.h"
+#include "lib/jxl/cms/tone_mapping-inl.h"
 
 HWY_BEFORE_NAMESPACE();
 namespace jxl {
@@ -29,26 +38,24 @@ class ToneMappingStage : public RenderPipelineStage {
       // No tone mapping requested.
       return;
     }
-    if (output_encoding_info_.orig_color_encoding.tf.IsPQ() &&
-        output_encoding_info_.desired_intensity_target <
-            output_encoding_info_.orig_intensity_target) {
+    const auto& orig_tf = output_encoding_info_.orig_color_encoding.Tf();
+    const auto& dest_tf = output_encoding_info_.color_encoding.Tf();
+    if (orig_tf.IsPQ() && output_encoding_info_.desired_intensity_target <
+                              output_encoding_info_.orig_intensity_target) {
       tone_mapper_ = jxl::make_unique<ToneMapper>(
-          /*source_range=*/std::pair<float, float>(
-              0, output_encoding_info_.orig_intensity_target),
+          /*source_range=*/Range{0.0f,
+                                 output_encoding_info_.orig_intensity_target},
           /*target_range=*/
-          std::pair<float, float>(
-              0, output_encoding_info_.desired_intensity_target),
+          Range{0.0f, output_encoding_info_.desired_intensity_target},
           output_encoding_info_.luminances);
-    } else if (output_encoding_info_.orig_color_encoding.tf.IsHLG() &&
-               !output_encoding_info_.color_encoding.tf.IsHLG()) {
+    } else if (orig_tf.IsHLG() && !dest_tf.IsHLG()) {
       hlg_ootf_ = jxl::make_unique<HlgOOTF>(
           /*source_luminance=*/output_encoding_info_.orig_intensity_target,
           /*target_luminance=*/output_encoding_info_.desired_intensity_target,
           output_encoding_info_.luminances);
     }
 
-    if (output_encoding_info_.color_encoding.tf.IsPQ() &&
-        (tone_mapper_ || hlg_ootf_)) {
+    if (dest_tf.IsPQ() && (tone_mapper_ || hlg_ootf_)) {
       to_intensity_target_ =
           10000.f / output_encoding_info_.orig_intensity_target;
       from_desired_intensity_target_ =
@@ -58,50 +65,52 @@ class ToneMappingStage : public RenderPipelineStage {
 
   bool IsNeeded() const { return tone_mapper_ || hlg_ootf_; }
 
-  void ProcessRow(const RowInfo& input_rows, const RowInfo& output_rows,
-                  size_t xextra, size_t xsize, size_t xpos, size_t ypos,
-                  size_t thread_id) const final {
-    if (!(tone_mapper_ || hlg_ootf_)) return;
+  Status ProcessRow(const RowInfo& input_rows, const RowInfo& output_rows,
+                    size_t xextra_left, size_t xextra_right, size_t xsize,
+                    size_t xpos, size_t ypos, size_t thread_id) const final {
+    if (!tone_mapper_ && !hlg_ootf_) return true;
+    JXL_ENSURE(xextra_left == 0 && xextra_right == 0);
+    // I.e. we have tone_mapper_ or hlg_ootf_ or both.
+    // Other inveriants: !tone_mapper_ means !!hlg_ootf_ and vice-versa.
 
     const HWY_FULL(float) d;
-    const size_t xsize_v = RoundUpTo(xsize, Lanes(d));
+    size_t x_span_tail = RoundUpTo(xsize, Lanes(d)) - xsize;
     float* JXL_RESTRICT row0 = GetInputRow(input_rows, 0, 0);
     float* JXL_RESTRICT row1 = GetInputRow(input_rows, 1, 0);
     float* JXL_RESTRICT row2 = GetInputRow(input_rows, 2, 0);
     // All calculations are lane-wise, still some might require
     // value-dependent behaviour (e.g. NearestInt). Temporary unpoison last
     // vector tail.
-    msan::UnpoisonMemory(row0 + xsize, sizeof(float) * (xsize_v - xsize));
-    msan::UnpoisonMemory(row1 + xsize, sizeof(float) * (xsize_v - xsize));
-    msan::UnpoisonMemory(row2 + xsize, sizeof(float) * (xsize_v - xsize));
-    for (ssize_t x = -xextra; x < (ssize_t)(xsize + xextra); x += Lanes(d)) {
+    msan::UnpoisonMemory(row0 + xsize, sizeof(float) * x_span_tail);
+    msan::UnpoisonMemory(row1 + xsize, sizeof(float) * x_span_tail);
+    msan::UnpoisonMemory(row2 + xsize, sizeof(float) * x_span_tail);
+    // TODO(eustas): why unaligned load/store?
+    for (size_t x = 0; x < xsize; x += Lanes(d)) {
       auto r = LoadU(d, row0 + x);
       auto g = LoadU(d, row1 + x);
       auto b = LoadU(d, row2 + x);
-      if (tone_mapper_ || hlg_ootf_) {
-        r = Mul(r, Set(d, to_intensity_target_));
-        g = Mul(g, Set(d, to_intensity_target_));
-        b = Mul(b, Set(d, to_intensity_target_));
-        if (tone_mapper_) {
-          tone_mapper_->ToneMap(&r, &g, &b);
-        } else {
-          JXL_ASSERT(hlg_ootf_);
-          hlg_ootf_->Apply(&r, &g, &b);
-        }
-        if (tone_mapper_ || hlg_ootf_->WarrantsGamutMapping()) {
-          GamutMap(&r, &g, &b, output_encoding_info_.luminances);
-        }
-        r = Mul(r, Set(d, from_desired_intensity_target_));
-        g = Mul(g, Set(d, from_desired_intensity_target_));
-        b = Mul(b, Set(d, from_desired_intensity_target_));
+      r = Mul(r, Set(d, to_intensity_target_));
+      g = Mul(g, Set(d, to_intensity_target_));
+      b = Mul(b, Set(d, to_intensity_target_));
+      if (tone_mapper_) {
+        tone_mapper_->ToneMap(&r, &g, &b);
+      } else {
+        hlg_ootf_->Apply(&r, &g, &b);
       }
+      if (tone_mapper_ || hlg_ootf_->WarrantsGamutMapping()) {
+        GamutMap(&r, &g, &b, output_encoding_info_.luminances);
+      }
+      r = Mul(r, Set(d, from_desired_intensity_target_));
+      g = Mul(g, Set(d, from_desired_intensity_target_));
+      b = Mul(b, Set(d, from_desired_intensity_target_));
       StoreU(r, d, row0 + x);
       StoreU(g, d, row1 + x);
       StoreU(b, d, row2 + x);
     }
-    msan::PoisonMemory(row0 + xsize, sizeof(float) * (xsize_v - xsize));
-    msan::PoisonMemory(row1 + xsize, sizeof(float) * (xsize_v - xsize));
-    msan::PoisonMemory(row2 + xsize, sizeof(float) * (xsize_v - xsize));
+    msan::PoisonMemory(row0 + xsize, sizeof(float) * x_span_tail);
+    msan::PoisonMemory(row1 + xsize, sizeof(float) * x_span_tail);
+    msan::PoisonMemory(row2 + xsize, sizeof(float) * x_span_tail);
+    return true;
   }
 
   RenderPipelineChannelMode GetChannelMode(size_t c) const final {

@@ -13,7 +13,7 @@ libs = [
     "sharpyuv",
 ]
 
-# libwebp at c1ffd9ac7593894c40a1de99d03f0b7af8af2577
+# libwebp v1.6.0 (tag commit 4fa21912338357f89e4fd51cf2368325b59e9bd9)
 filegroup(
     name = "libwebp_sources",
     srcs = glob([

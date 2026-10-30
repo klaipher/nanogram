@@ -10,19 +10,13 @@
 #pragma warning( disable : 6011 ) // dereferencing NULL pointer (from malloc)
 #endif
 
-#include "skcms.h"
-#include "skcms_internal.h"
+#include "src/skcms_public.h"
+#include "src/skcms_internals.h"
 #include "test_only.h"
 #include <stdint.h>
 #include <stdio.h>
 #include <stdlib.h>
 #include <string.h>
-
-#if defined(__ARM_FEATURE_FP16_VECTOR_ARITHMETIC) && defined(SKCMS_OPT_INTO_NEON_FP16)
-    static bool kFP16 = true;
-#else
-    static bool kFP16 = false;
-#endif
 
 #if defined(_MSC_VER)
     #define DEBUGBREAK __debugbreak
@@ -53,7 +47,7 @@
             double ratio = (X < Y) ? X / Y                                                \
                          : (Y < X) ? Y / X                                                \
                          : 1.0;                                                           \
-            if (ratio < (kFP16 ? 0.995 : 1.0)) {                                          \
+            if (ratio < 1.0) {                                                            \
                 fprintf(stderr, "expect_close(" #x "==%g, " #y "==%g) failed at %s:%d\n", \
                         X,Y, __FILE__,__LINE__);                                          \
                 fflush(stderr);   /* stderr is buffered on Windows. */                    \
@@ -64,7 +58,7 @@
 
 
 
-static void test_ICCProfile() {
+static void test_ICCProfile(void) {
     // Nothing works yet.  :)
     skcms_ICCProfile profile;
 
@@ -72,7 +66,7 @@ static void test_ICCProfile() {
     expect(!skcms_Parse(buf, sizeof(buf), &profile));
 }
 
-static void test_FormatConversions() {
+static void test_FormatConversions(void) {
     // We can interpret src as 85 RGB_888 pixels or 64 RGB_8888 pixels.
     uint8_t src[256],
             dst[85*4];
@@ -183,7 +177,7 @@ static void test_FormatConversions() {
     expect(_888[6] == 8 && _888[7] == 9 && _888[8] == 10);
 }
 
-static void test_FormatConversions_565() {
+static void test_FormatConversions_565(void) {
     // This should hit all the unique values of each lane of 565.
     uint16_t src[64];
     for (int i = 0; i < 64; i++) {
@@ -218,7 +212,7 @@ static void test_FormatConversions_565() {
     }
 }
 
-static void test_FormatConversions_16161616LE() {
+static void test_FormatConversions_16161616LE(void) {
     // We want to hit each 16-bit value, 4 per each of 16384 pixels.
     uint64_t* src = malloc(8 * 16384);
     for (int i = 0; i < 16384; i++) {
@@ -260,7 +254,7 @@ static void test_FormatConversions_16161616LE() {
     free(back);
 }
 
-static void test_FormatConversions_161616LE() {
+static void test_FormatConversions_161616LE(void) {
     // We'll test the same cases as the _16161616LE() test, as if they were 4 RGB pixels.
     uint16_t src[] = { 0x0000, 0x0001, 0x0002,
                        0x0003, 0x0080, 0x0081,
@@ -297,7 +291,7 @@ static int bswap16(int x) {
          | (x & 0xff00) >> 8;
 }
 
-static void test_FormatConversions_16161616BE() {
+static void test_FormatConversions_16161616BE(void) {
     // We want to hit each 16-bit value, 4 per each of 16384 pixels.
     uint64_t* src = malloc(8 * 16384);
     for (int i = 0; i < 16384; i++) {
@@ -319,7 +313,7 @@ static void test_FormatConversions_16161616BE() {
     // so the low lanes are actually the most significant byte, and the high least.
 
     expect(dst[    0] == 0x03020100);
-    expect(dst[ 8127] == (kFP16 ? 0xfffefdfc : 0xfefefdfc));
+    expect(dst[ 8127] == 0xfefefdfc);
     expect(dst[16383] == 0xfffefdfc);
 
     // We've lost precision when transforming to 8-bit, so these won't quite round-trip.
@@ -340,7 +334,7 @@ static void test_FormatConversions_16161616BE() {
     free(back);
 }
 
-static void test_FormatConversions_161616BE() {
+static void test_FormatConversions_161616BE(void) {
     // We'll test the same cases as the _16161616BE() test, as if they were 4 RGB pixels.
     uint16_t src[] = { 0x0000, 0x0001, 0x0002,
                        0x0003, 0x7efc, 0x7efd,
@@ -353,7 +347,7 @@ static void test_FormatConversions_161616BE() {
 
     expect(dst[0] == 0xff020100);
     expect(dst[1] == 0xfffdfc03);
-    expect(dst[2] == (kFP16 ? 0xfffcfffe : 0xfffcfefe));
+    expect(dst[2] == 0xfffcfefe);
     expect(dst[3] == 0xfffffefd);
 
     // We've lost precision when transforming to 8-bit, so these won't quite round-trip.
@@ -371,7 +365,7 @@ static void test_FormatConversions_161616BE() {
     }
 }
 
-static void test_FormatConversions_101010() {
+static void test_FormatConversions_101010(void) {
     uint32_t src = (uint32_t)1023 <<  0    // 1.0.
                  | (uint32_t) 511 << 10    // About 1/2.
                  | (uint32_t)   4 << 20    // Smallest 10-bit channel that's non-zero in 8-bit.
@@ -405,7 +399,132 @@ static void test_FormatConversions_101010() {
                   | (uint32_t)   3 << 30));
 }
 
-static void test_FormatConversions_half() {
+static void test_FormatConversions_101010_xr(void) {
+    uint32_t src = 0xff007fff;
+    uint32_t dst = 0;
+    expect(skcms_Transform(&src, skcms_PixelFormat_BGRA_8888,
+                           skcms_AlphaFormat_Unpremul, NULL, &dst,
+                           skcms_PixelFormat_BGR_101010x_XR,
+                           skcms_AlphaFormat_Unpremul, NULL, 1));
+    expect(((dst >> 0) & 0x3ff) == 894);
+    expect(((dst >> 10) & 0x3ff) == 638);
+    expect(((dst >> 20) & 0x3ff) == 384);
+
+    uint32_t dst2 = 0;
+    expect(skcms_Transform(&dst, skcms_PixelFormat_BGR_101010x_XR,
+                           skcms_AlphaFormat_Unpremul, NULL, &dst2,
+                           skcms_PixelFormat_BGRA_8888,
+                           skcms_AlphaFormat_Unpremul, NULL, 1));
+    expect(((dst2 >> 0) & 0xff) == 255);
+    expect(((dst2 >> 8) & 0xff) == 127);
+    expect(((dst2 >> 16) & 0xff) == 0);
+
+    // 384 maps to a zero channel value in the BGR_101010x_XR format.
+    const uint32_t bgr10_xr_zero = 384;
+    src = (bgr10_xr_zero <<  0) |
+          (bgr10_xr_zero << 10) |
+          (bgr10_xr_zero << 20);
+    expect(skcms_Transform(&src, skcms_PixelFormat_BGR_101010x_XR,
+                           skcms_AlphaFormat_Unpremul, NULL, &dst,
+                           skcms_PixelFormat_BGRA_8888,
+                           skcms_AlphaFormat_Unpremul, NULL, 1));
+    expect(dst == 0xff000000);
+}
+
+static void test_FormatConversions_10101010_xr(void) {
+    uint32_t src = 0xff007fff;
+    uint64_t dst = 0;
+    expect(skcms_Transform(&src, skcms_PixelFormat_BGRA_8888,
+                           skcms_AlphaFormat_Unpremul, NULL, &dst,
+                           skcms_PixelFormat_BGRA_10101010_XR,
+                           skcms_AlphaFormat_Unpremul, NULL, 1));
+    expect(((dst >> ( 0+6)) & 0x3ff) == 894);
+    expect(((dst >> (16+6)) & 0x3ff) == 638);
+    expect(((dst >> (32+6)) & 0x3ff) == 384);
+    expect(((dst >> (48+6)) & 0x3ff) == 894);
+
+    uint32_t dst2;
+    expect(skcms_Transform(&dst, skcms_PixelFormat_BGRA_10101010_XR,
+                           skcms_AlphaFormat_Unpremul, NULL, &dst2,
+                           skcms_PixelFormat_BGRA_8888,
+                           skcms_AlphaFormat_Unpremul, NULL, 1));
+    expect(((dst2 >> 0) & 0xff) == 255);
+    expect(((dst2 >> 8) & 0xff) == 127);
+    expect(((dst2 >> 16) & 0xff) == 0);
+
+    // Convert a transparent black pixel with premultiplied alpha.
+    // 384 maps to a zero channel value in the BGRA_10101010_XR format.
+    const uint64_t bgra10_xr_zero = 384;
+    uint64_t src2 = (bgra10_xr_zero <<  (0+6)) |
+                    (bgra10_xr_zero << (16+6)) |
+                    (bgra10_xr_zero << (32+6)) |
+                    (bgra10_xr_zero << (48+6));
+    expect(skcms_Transform(&src2, skcms_PixelFormat_BGRA_10101010_XR,
+                           skcms_AlphaFormat_PremulAsEncoded, NULL, &dst2,
+                           skcms_PixelFormat_BGRA_8888,
+                           skcms_AlphaFormat_Unpremul, NULL, 1));
+    expect(dst2 == 0);
+}
+
+static void test_FormatConversions_G8(void) {
+    uint8_t src[1 * 256] = {0};
+    for (int i = 0; i < 256; i++) {
+        src[i] = (uint8_t)i;
+    }
+
+    uint8_t dst[4 * 256] = {0};
+    expect(skcms_Transform(src, skcms_PixelFormat_G_8      , skcms_AlphaFormat_Unpremul, NULL,
+                           dst, skcms_PixelFormat_RGBA_8888, skcms_AlphaFormat_Unpremul, NULL,
+                           256));
+    for (int i = 0; i < 256; i++) {
+      expect(dst[i * 4 + 0] == (uint8_t)i);  // red = gray
+      expect(dst[i * 4 + 1] == (uint8_t)i);  // green = gray
+      expect(dst[i * 4 + 2] == (uint8_t)i);  // blue = gray
+      expect(dst[i * 4 + 3] == 0xFF);        // opaque
+    }
+
+    // Let's convert back the other way.
+    uint8_t back[1 * 256] = {0};
+    expect(skcms_Transform(dst,  skcms_PixelFormat_RGBA_8888, skcms_AlphaFormat_Unpremul, NULL,
+                           back, skcms_PixelFormat_G_8      , skcms_AlphaFormat_Unpremul, NULL,
+                           256));
+    for (int i = 0; i < 256; i++) {
+      expect(src[i] == back[i]);
+    }
+}
+
+static void test_FormatConversions_GA88(void) {
+    uint8_t src[2 * 256] = {0};
+    for (int i = 0; i < 256; i++) {
+        // Using a different "gray" and "alpha" value will hopefully catch most
+        // potential LE-vs-BE confusion bugs.
+        src[i * 2 + 0] = (uint8_t)i;
+        src[i * 2 + 1] = (uint8_t)((i * 7) % 256);
+    }
+
+    uint8_t dst[4 * 256] = {0};
+    expect(skcms_Transform(src, skcms_PixelFormat_GA_88    , skcms_AlphaFormat_Unpremul, NULL,
+                           dst, skcms_PixelFormat_RGBA_8888, skcms_AlphaFormat_Unpremul, NULL,
+                           256));
+    for (int i = 0; i < 256; i++) {
+      expect(dst[i * 4 + 0] == (uint8_t)i);  // red = gray
+      expect(dst[i * 4 + 1] == (uint8_t)i);  // green = gray
+      expect(dst[i * 4 + 2] == (uint8_t)i);  // blue = gray
+      expect(dst[i * 4 + 3] == src[i * 2 + 1]);
+    }
+
+    // Let's convert back the other way.
+    uint8_t back[2 * 256] = {0};
+    expect(skcms_Transform(dst,  skcms_PixelFormat_RGBA_8888, skcms_AlphaFormat_Unpremul, NULL,
+                           back, skcms_PixelFormat_GA_88    , skcms_AlphaFormat_Unpremul, NULL,
+                           256));
+    for (int i = 0; i < 256; i++) {
+      expect(src[i * 2 + 0] == back[i * 2 + 0]);
+      expect(src[i * 2 + 1] == back[i * 2 + 1]);
+    }
+}
+
+static void test_FormatConversions_half(void) {
     uint16_t src[] = {
         0x3c00,  // 1.0
         0x3800,  // 0.5
@@ -468,7 +587,7 @@ static void test_FormatConversions_half() {
     expect(back[5] == src[6] || back[5] == 0x0000);
 }
 
-static void test_FormatConversions_half_norm() {
+static void test_FormatConversions_half_norm(void) {
     const uint16_t src[] = {
         0x3800,  //  0.5
         0x3c00,  //  1.0
@@ -504,7 +623,7 @@ static void test_FormatConversions_half_norm() {
     expect(dst[3] == src[1]);
 }
 
-static void test_FormatConversions_float() {
+static void test_FormatConversions_float(void) {
     float src[] = { 1.0f, 0.5f, 1/255.0f, 1/512.0f };
 
     uint32_t dst;
@@ -792,7 +911,7 @@ static void test_Parse(bool regen) {
     }
 }
 
-static void test_ApproximateCurve_clamped() {
+static void test_ApproximateCurve_clamped(void) {
     // These data represent a transfer function that is clamped at the high
     // end of its domain. It comes from the color profile attached to
     // https://crbug.com/750459
@@ -866,7 +985,7 @@ static void expect_eq_Matrix3x3(skcms_Matrix3x3 a, skcms_Matrix3x3 b) {
     }
 }
 
-static void test_Matrix3x3_invert() {
+static void test_Matrix3x3_invert(void) {
     skcms_Matrix3x3 inv;
 
     skcms_Matrix3x3 I = {{
@@ -905,7 +1024,7 @@ static void test_Matrix3x3_invert() {
     }});
 }
 
-static void test_SimpleRoundTrip() {
+static void test_SimpleRoundTrip(void) {
     // We'll test that parametric sRGB roundtrips with itself, bytes -> bytes.
     void*  srgb_ptr;
     size_t srgb_len;
@@ -955,7 +1074,7 @@ static void expect_round_trip_through_floats(const skcms_ICCProfile* A,
     }
 }
 
-static void test_FloatRoundTrips() {
+static void test_FloatRoundTrips(void) {
     void*  srgb_ptr;
     size_t srgb_len;
     expect(load_file("profiles/mobile/sRGB_parametric.icc", &srgb_ptr, &srgb_len));
@@ -992,7 +1111,7 @@ static void test_FloatRoundTrips() {
     free(  lr_ptr);
 }
 
-static void test_sRGB_AllBytes() {
+static void test_sRGB_AllBytes(void) {
     // Test that our transfer function implementation is perfect to at least 8-bit precision.
 
     void* ptr;
@@ -1030,7 +1149,7 @@ static void test_sRGB_AllBytes() {
     free(ptr);
 }
 
-static void test_TRC_Table16() {
+static void test_TRC_Table16(void) {
     // We'll convert from FB (table-based sRGB) to sRGB (parametric sRGB).
     skcms_ICCProfile FB, sRGB;
 
@@ -1060,7 +1179,7 @@ static void test_TRC_Table16() {
     free(sRGB_ptr);
 }
 
-static void test_Premul() {
+static void test_Premul(void) {
     void* ptr;
     size_t len;
     skcms_ICCProfile sRGB;
@@ -1104,7 +1223,7 @@ static void test_Premul() {
     free(ptr);
 }
 
-static void test_ByteToLinearFloat() {
+static void test_ByteToLinearFloat(void) {
     uint32_t src[1] = { 0xFFFFFFFF };
     float dst[4];
 
@@ -1138,7 +1257,7 @@ static void test_ByteToLinearFloat() {
 
 // This test is written with the expectation that we use A2B1, not A2B0.
 #if 0
-static void test_CLUT() {
+static void test_CLUT(void) {
     // Identity* transform from a v4 A2B profile to good old parametric sRGB.
     //   * Approximate identity, apparently?
     void  *srgb_ptr, *a2b_ptr;
@@ -1191,7 +1310,7 @@ static void test_CLUT() {
 }
 #endif
 
-static void test_MakeUsableAsDestination() {
+static void test_MakeUsableAsDestination(void) {
     void*  ptr;
     size_t len;
     expect(load_file("profiles/mobile/sRGB_LUT.icc", &ptr, &len));
@@ -1222,7 +1341,7 @@ static void test_MakeUsableAsDestination() {
     free(ptr);
 }
 
-static void test_MakeUsableAsDestinationAdobe() {
+static void test_MakeUsableAsDestinationAdobe(void) {
     void*  ptr;
     size_t len;
     expect(load_file("profiles/misc/AdobeRGB.icc", &ptr, &len));
@@ -1244,7 +1363,7 @@ static void test_MakeUsableAsDestinationAdobe() {
     free(ptr);
 }
 
-static void test_AdaptToD50() {
+static void test_AdaptToD50(void) {
     skcms_Matrix3x3 xyz_to_xyzD50;
     float x_D65 = 0.3127f;
     float y_D65 = 0.3290f;
@@ -1262,7 +1381,7 @@ static void test_AdaptToD50() {
         }
 }
 
-static void test_PrimariesToXYZ() {
+static void test_PrimariesToXYZ(void) {
     skcms_Matrix3x3 srgb_to_xyz;
     expect(skcms_PrimariesToXYZD50(0.64f, 0.33f,
                                    0.30f, 0.60f,
@@ -1277,7 +1396,7 @@ static void test_PrimariesToXYZ() {
         }
 }
 
-static void test_Programmatic_sRGB() {
+static void test_Programmatic_sRGB(void) {
     skcms_Matrix3x3 srgb_to_xyz;
     expect(skcms_PrimariesToXYZD50(0.64f, 0.33f,
                                    0.30f, 0.60f,
@@ -1294,7 +1413,19 @@ static void test_Programmatic_sRGB() {
     expect(skcms_ApproximatelyEqualProfiles(&p, &srgb));
 }
 
-static void test_ExactlyEqual() {
+static void test_EqualityCheck(void) {
+    const skcms_ICCProfile* alpha = skcms_sRGB_profile();
+    const skcms_ICCProfile* beta = skcms_sRGB_profile();
+    const skcms_ICCProfile* gamma = skcms_XYZD50_profile();
+    const skcms_ICCProfile* delta = skcms_XYZD50_profile();
+
+    // This is pointer equality because we should cache calls to these profiles.
+    expect(alpha == beta);
+    expect(gamma == delta);
+    expect(alpha != gamma);
+}
+
+static void test_ExactlyEqual(void) {
     const skcms_ICCProfile* srgb = skcms_sRGB_profile();
     skcms_ICCProfile        copy = *srgb;
 
@@ -1311,7 +1442,7 @@ static void test_ExactlyEqual() {
     expect(0 == memcmp(&exact, srgb, sizeof(skcms_ICCProfile)));
 }
 
-static void test_GrayscaleAndRGBCanBeEqual() {
+static void test_GrayscaleAndRGBCanBeEqual(void) {
     const skcms_ICCProfile* srgb = skcms_sRGB_profile();
     skcms_ICCProfile        gray = *srgb;
     gray.data_color_space = skcms_Signature_Gray;
@@ -1320,7 +1451,7 @@ static void test_GrayscaleAndRGBCanBeEqual() {
     expect(skcms_ApproximatelyEqualProfiles(&gray, srgb));
 }
 
-static void test_Clamp() {
+static void test_Clamp(void) {
     // Test that we clamp out-of-gamut values when converting to fixed point,
     // not just to byte value range but also to gamut (for compatibility with
     // older systems).
@@ -1360,7 +1491,7 @@ static void test_Clamp() {
     free(dp3_ptr);
 }
 
-static void test_AliasedTransforms() {
+static void test_AliasedTransforms(void) {
     // We should be able to skcms_Transform() in place if the source and destination
     // buffers are perfectly aligned and the pixel formats are the same size.
 
@@ -1385,41 +1516,7 @@ static void test_AliasedTransforms() {
                             &buf, skcms_PixelFormat_BGR_161616BE, upm, xyz, 1) );
 }
 
-static void test_Palette8() {
-    uint32_t palette[256];
-    for (int i = 0; i < 256; i++) {
-        palette[i] = (uint32_t)(255 - i) * 0x01010101;
-    }
-
-    uint8_t  src[512];
-    uint32_t dst[512];
-    for (int i = 0; i < 512; i++) {
-        src[i] = (uint8_t)(i % 256);
-    }
-
-    const skcms_ICCProfile* srgb = skcms_sRGB_profile();
-    const skcms_AlphaFormat upm = skcms_AlphaFormat_Unpremul;
-
-    expect( skcms_TransformWithPalette(src, skcms_PixelFormat_RGBA_8888_Palette8, upm, srgb,
-                                       dst, skcms_PixelFormat_RGBA_8888         , upm, srgb,
-                                       512, palette) );
-
-    for (int i = 0; i < 512; i++) {
-        uint32_t expected = (uint32_t)(255 - i%256) * 0x01010101;
-        expect( dst[i] == expected );
-    }
-
-
-    // Double check we can't transform skcms_PixelFormat_RGBA_8888_Palette8 without a palette.
-    expect( !skcms_Transform(src, skcms_PixelFormat_RGBA_8888_Palette8, upm, srgb,
-                             dst, skcms_PixelFormat_RGBA_8888         , upm, srgb,
-                             512) );
-    expect( !skcms_TransformWithPalette(src, skcms_PixelFormat_RGBA_8888_Palette8, upm, srgb,
-                                        dst, skcms_PixelFormat_RGBA_8888         , upm, srgb,
-                                        512, NULL) );
-}
-
-static void test_TF_invert() {
+static void test_TF_invert(void) {
     const skcms_TransferFunction *sRGB = skcms_sRGB_TransferFunction(),
                                  *inv  = skcms_sRGB_Inverse_TransferFunction();
     expect(1.0f == skcms_TransferFunction_eval(sRGB, 1.0f));
@@ -1436,11 +1533,12 @@ static void test_TF_invert() {
   //expect(0 == memcmp(sRGB, &sRGB2, sizeof(skcms_TransferFunction)));
 }
 
-static void test_PQ() {
+static void test_PQ(void) {
     {
         // This PQ function maps [0,1] to [0,1].
         skcms_TransferFunction pq;
-        expect(skcms_TransferFunction_makePQ(&pq));
+        expect(skcms_TransferFunction_makePQish(&pq, -107/128.0f,         1.0f,   32/2523.0f
+                                                   , 2413/128.0f, -2392/128.0f, 8192/1305.0f));
 
         expect(0.0000f == skcms_TransferFunction_eval(&pq, 0.0f));
         expect(1.0000f == skcms_TransferFunction_eval(&pq, 1.0f));
@@ -1500,9 +1598,10 @@ static void test_PQ() {
     }
 }
 
-static void test_HLG() {
+static void test_HLG(void) {
     skcms_TransferFunction enc, dec;
-    expect(skcms_TransferFunction_makeHLG(&dec));
+    expect(skcms_TransferFunction_makeHLGish(&dec, 2.0f, 2.0f
+                                                 , 1/0.17883277f, 0.28466892f, 0.55991073f));
     expect(skcms_TransferFunction_invert(&dec, &enc));
 
     // Spot check the lower half of the curve.
@@ -1526,8 +1625,8 @@ static void test_HLG() {
     expect(0.5001f > skcms_TransferFunction_eval(&enc, 1.000001f));
 
     // TODO: this isn't really the best round-trip precision.
-    expect(1.000001f < skcms_TransferFunction_eval(&dec,
-                                                   skcms_TransferFunction_eval(&enc, 1.000001f)));
+    expect(1.000001f <= skcms_TransferFunction_eval(&dec,
+                                                    skcms_TransferFunction_eval(&enc, 1.000001f)));
     expect(1.000010f > skcms_TransferFunction_eval(&dec,
                                                    skcms_TransferFunction_eval(&enc, 1.000001f)));
 
@@ -1566,7 +1665,7 @@ static void test_HLG() {
     expect(12.00000f < rgb[5] && rgb[5] < 12.00001f);
 }
 
-static void test_scaled_HLG() {
+static void test_scaled_HLG(void) {
     // HLG curve scaled 4x, spot checked at a bunch of interesting points.
     skcms_TransferFunction enc, dec;
     expect(skcms_TransferFunction_makeScaledHLGish(
@@ -1640,10 +1739,11 @@ static void test_scaled_HLG() {
     #undef N
 }
 
-static void test_PQ_invert() {
+static void test_PQ_invert(void) {
     skcms_TransferFunction pqA, invA, invB;
 
-    expect(skcms_TransferFunction_makePQ(&pqA));
+    expect(skcms_TransferFunction_makePQish(&pqA, -107/128.0f,         1.0f,   32/2523.0f
+                                                , 2413/128.0f, -2392/128.0f, 8192/1305.0f));
     // PQ's inverse is actually also PQish, so we can write out its expected value here.
     expect(skcms_TransferFunction_makePQish(&invA, 107/128.0f, 2413/128.0f, 1305/8192.0f
                                                  ,       1.0f, 2392/128.0f, 2523/  32.0f));
@@ -1688,10 +1788,11 @@ static void test_PQ_invert() {
 #endif
 }
 
-static void test_HLG_invert() {
+static void test_HLG_invert(void) {
     skcms_TransferFunction hlg, inv;
 
-    expect(skcms_TransferFunction_makeHLG(&hlg));
+    expect(skcms_TransferFunction_makeHLGish(&hlg, 2.0f, 2.0f
+                                                 , 1/0.17883277f, 0.28466892f, 0.55991073f));
     // Unlike PQ, we can't create HLG's inverse directly, only via _invert().
     expect(skcms_TransferFunction_invert(&hlg, &inv));
 
@@ -1716,7 +1817,237 @@ static void test_HLG_invert() {
     expect(skcms_AreApproximateInverses(&inv_curve, &hlg));
 }
 
-static void test_RGBA_8888_sRGB() {
+static void test_PQ_v2(void) {
+    const float signal_100_nits = 0.508078421517399f;
+    const float value_100_nits = 0.0100f;
+    const float signal_203_nits = 0.580688881041611f;
+    const float value_203_nits = 0.0203f;
+    skcms_TransferFunction tf;
+    const float tol = 0.01f;
+    float y_expected = 0.f;
+    float y_actual = 0.f;
+
+    skcms_TransferFunction_makePQ(&tf, 203.f);
+    y_expected = value_100_nits;
+    y_actual = skcms_TransferFunction_eval(&tf, signal_100_nits);
+    expect(y_actual <= y_expected + tol);
+    expect(y_actual >= y_expected - tol);
+
+    y_expected = value_203_nits;
+    y_actual = skcms_TransferFunction_eval(&tf, signal_203_nits);
+    expect(y_actual <= y_expected + tol);
+    expect(y_actual >= y_expected - tol);
+
+    skcms_TransferFunction_makePQ(&tf, 100.f);
+    y_expected = value_100_nits;
+    y_actual = skcms_TransferFunction_eval(&tf, signal_100_nits);
+    expect(y_actual <= y_expected + tol);
+    expect(y_actual >= y_expected - tol);
+
+    y_expected = value_203_nits;
+    y_actual = skcms_TransferFunction_eval(&tf, signal_203_nits);
+    expect(y_actual <= y_expected + tol);
+    expect(y_actual >= y_expected - tol);
+
+    expect(!skcms_TransferFunction_isPQish(&tf));
+    expect(skcms_TransferFunction_isPQ(&tf));
+    expect(skcms_TransferFunction_getType(&tf) == skcms_TFType_PQ);
+}
+
+static void test_HLG_v2(void) {
+    const float white_before_ootf = 0.26479718562407867f;
+    const float tol = 0.01f;
+    float y_expected = 0.f;
+    float y_actual = 0.f;
+
+    skcms_TransferFunction tf;
+    skcms_TransferFunction_makeHLG(&tf, 203.f, 1000.f, 1.2f);
+    expect(tf.a == 203.f);
+    expect(tf.b == 1000.f);
+    expect(tf.c == 1.2f);
+
+    y_expected = 1/48.f;
+    y_actual = skcms_TransferFunction_eval(&tf, 0.25f);
+    expect(y_actual <= y_expected + tol);
+    expect(y_actual >= y_expected - tol);
+
+    y_expected = white_before_ootf;
+    y_actual = skcms_TransferFunction_eval(&tf, 0.75f);
+    expect(y_actual <= y_expected + tol);
+    expect(y_actual >= y_expected - tol);
+
+    skcms_TransferFunction_makeHLG(&tf, 314.f, 314.f, 1.f);
+    expect(tf.a == 314.f);
+    expect(tf.b == 314.f);
+    expect(tf.c == 1.f);
+
+    y_expected = 1/48.f;
+    y_actual = skcms_TransferFunction_eval(&tf, 0.25f);
+    expect(y_actual <= y_expected + tol);
+    expect(y_actual >= y_expected - tol);
+
+    y_expected = white_before_ootf;
+    y_actual = skcms_TransferFunction_eval(&tf, 0.75f);
+    expect(y_actual <= y_expected + tol);
+    expect(y_actual >= y_expected - tol);
+
+    expect(!skcms_TransferFunction_isHLGish(&tf));
+    expect(skcms_TransferFunction_isHLG(&tf));
+    expect(skcms_TransferFunction_getType(&tf) == skcms_TFType_HLG);
+}
+
+// Copied from SkNamedGamut::kRec2020
+static const skcms_Matrix3x3 rec2020_to_xyzd50 = {{
+    {  0.673459f,   0.165661f,  0.125100f  },
+    {  0.279033f,   0.675338f,  0.0456288f },
+    { -0.00193139f, 0.0299794f, 0.797162f  },
+}};
+
+static skcms_ICCProfile skcms_Rec2100PQ_profile(void) {
+    skcms_ICCProfile profile = *skcms_XYZD50_profile();
+
+    profile.has_toXYZD50 = true;
+    profile.toXYZD50 = rec2020_to_xyzd50;
+
+    profile.has_CICP = true;
+    profile.CICP.color_primaries = 9;
+    profile.CICP.transfer_characteristics = 16;
+    profile.CICP.matrix_coefficients = 0;
+    profile.CICP.video_full_range_flag = 1;
+
+    return profile;
+}
+
+static skcms_ICCProfile skcms_Rec2100HLG_profile(void) {
+    skcms_ICCProfile profile = *skcms_XYZD50_profile();
+
+    profile.has_toXYZD50 = true;
+    profile.toXYZD50 = rec2020_to_xyzd50;
+
+    profile.has_CICP = true;
+    profile.CICP.color_primaries = 9;
+    profile.CICP.transfer_characteristics = 18;
+    profile.CICP.matrix_coefficients = 0;
+    profile.CICP.video_full_range_flag = 1;
+
+    return profile;
+}
+
+static void test_PQ_CICP(void) {
+    // Represent using CICP.
+    // The RGB values are the PQ signal values that map to 0 nits, 10000 nits, and 203 nits.
+    float rgb[] = {0.0f,1.0f,0.58068888f};
+    const float max_nits = 10000.0f / 203.0f;
+
+    skcms_ICCProfile src = skcms_Rec2100PQ_profile(),
+                     dst = *skcms_XYZD50_profile();
+    dst.toXYZD50 = rec2020_to_xyzd50;
+
+    expect(skcms_Transform(rgb, skcms_PixelFormat_RGB_fff, skcms_AlphaFormat_Unpremul, &src,
+                           rgb, skcms_PixelFormat_RGB_fff, skcms_AlphaFormat_Unpremul, &dst, 1));
+    expect(rgb[0] == 0.0f);
+    expect(max_nits - 0.1f <= rgb[1] && rgb[1] <= max_nits + 0.1f);
+    expect(0.99f < rgb[2] && rgb[2] < 1.01f);
+
+    // And back.
+    expect(skcms_Transform(rgb, skcms_PixelFormat_RGB_fff,skcms_AlphaFormat_Unpremul, &dst,
+                           rgb, skcms_PixelFormat_RGB_fff,skcms_AlphaFormat_Unpremul, &src, 1));
+    expect(0 <= rgb[0] && rgb[0] <= 1e-6);
+    expect(0.99f < rgb[1] && rgb[1] < 1.01f);
+    expect(0.580f < rgb[2] && rgb[2] < 0.581f);
+}
+
+static void test_HLG_CICP(void) {
+    #define NUM_TESTS 3
+    // Represent using CICP.
+    float signal_values[NUM_TESTS] = {0.0f, 0.75f, 1.0f};
+    float linear_values[NUM_TESTS] = {0.0f, 1.0f, 1000.0f / 203.0f};
+    const float eps = 0.01f;
+
+    for (size_t i = 0; i < NUM_TESTS; ++i) {
+        float rgb[3] = {
+            signal_values[i],
+            signal_values[i],
+            signal_values[i],
+        };
+        skcms_ICCProfile src = skcms_Rec2100HLG_profile(),
+                         dst = *skcms_XYZD50_profile();
+        dst.toXYZD50 = rec2020_to_xyzd50;
+
+        expect(skcms_Transform(rgb, skcms_PixelFormat_RGB_fff, skcms_AlphaFormat_Unpremul, &src,
+                               rgb, skcms_PixelFormat_RGB_fff, skcms_AlphaFormat_Unpremul, &dst, 1));
+        for (size_t c = 0; c < 3; ++c) {
+            expect(linear_values[i] - eps <= rgb[c] && rgb[c] <= linear_values[i] + eps);
+        }
+
+        // And back.
+        expect(skcms_Transform(rgb, skcms_PixelFormat_RGB_fff,skcms_AlphaFormat_Unpremul, &dst,
+                               rgb, skcms_PixelFormat_RGB_fff,skcms_AlphaFormat_Unpremul, &src, 1));
+        for (size_t c = 0; c < 3; ++c) {
+            expect(signal_values[i] - eps <= rgb[c] && rgb[c] <= signal_values[i] + eps);
+        }
+    }
+}
+
+static void test_PQ_HLG_SRGB_xform(void) {
+    #define NUM_PROFILES 3
+    #define NUM_TEST_COLORS 4
+    #define NUM_CHANNELS 3
+    // Test the conversion of four test colors between three color spaces.
+    skcms_ICCProfile profiles[NUM_PROFILES] = {
+        *skcms_sRGB_profile(),
+        skcms_Rec2100PQ_profile(),
+        skcms_Rec2100HLG_profile(),
+    };
+    const float test_colors[NUM_PROFILES][NUM_TEST_COLORS * NUM_CHANNELS] = {
+        // Test colors in sRGB. These colors come from the 8-bit representations on the right. For
+        // the last entry, the 8-bit color "overflows" to test the HDR range.
+        {
+            0.250980f, 0.752941f, 0.501961f, //  40, C0, 80
+            0.752941f, 0.501961f, 0.250980f, //  C0, 80, 40
+            0.501961f, 0.250980f, 0.752941f, //  80, 40, C0
+            1.501961f, 1.501961f, 1.501961f, // 17F,17F,17F
+        },
+        // Test colors in Rec2100PQ. Can computed from the above using
+        // http://colorjs.io/apps/convert/
+        {
+            0.427497f, 0.507680f, 0.438025f,
+            0.488329f, 0.436016f, 0.332192f,
+            0.408383f, 0.325747f, 0.505492f,
+            0.680125f, 0.680100f, 0.680094f,
+        },
+        // Test colors in Rec2100HLG, manually computed using reference definitions.
+        {
+            0.445885f, 0.635855f, 0.471461f,
+            0.608503f, 0.482343f, 0.269551f,
+            0.444920f, 0.277295f, 0.673327f,
+            0.898379f, 0.898336f, 0.898325f,
+        },
+    };
+    const float eps = 0.01f;
+
+    for (size_t src = 0; src < NUM_PROFILES; ++src) {
+        for (size_t dst = 0; dst < NUM_PROFILES; ++dst) {
+            float result[NUM_TEST_COLORS * NUM_CHANNELS];
+            expect(skcms_Transform(
+                test_colors[src],
+                skcms_PixelFormat_RGB_fff,skcms_AlphaFormat_Unpremul, &profiles[src],
+                result,
+                skcms_PixelFormat_RGB_fff,skcms_AlphaFormat_Unpremul, &profiles[dst],
+                NUM_TEST_COLORS));
+
+            for (size_t c = 0; c < NUM_TEST_COLORS * 3; ++c) {
+                expect(test_colors[dst][c] - eps <= result[c] &&
+                       result[c] <= test_colors[dst][c] + eps);
+            }
+        }
+    }
+    #undef NUM_PROFILES
+    #undef NUM_TEST_COLORS
+    #undef NUM_CHANNELS
+}
+
+static void test_RGBA_8888_sRGB(void) {
     // We'll convert sRGB to Display P3 two ways and test they're equivalent.
 
     // Method A: normal sRGB profile we're used to, paired with RGBA_8888.
@@ -1779,7 +2110,7 @@ static void test_RGBA_8888_sRGB() {
     free(ptr);
 }
 
-static void test_ParseWithA2BPriority() {
+static void test_ParseWithA2BPriority(void) {
     void*  ptr;
     size_t len;
     expect(load_file("profiles/misc/US_Web_Coated_SWOP_CMYK.icc", &ptr,&len));
@@ -1808,7 +2139,7 @@ static void test_ParseWithA2BPriority() {
     free(ptr);
 }
 
-static void test_B2A() {
+static void test_B2A(void) {
     void*  ptr;
     size_t len;
     expect(load_file("profiles/color.org/Upper_Left.icc", &ptr,&len));
@@ -1870,10 +2201,14 @@ int main(int argc, char** argv) {
     test_FormatConversions();
     test_FormatConversions_565();
     test_FormatConversions_101010();
+    test_FormatConversions_101010_xr();
+    test_FormatConversions_10101010_xr();
     test_FormatConversions_16161616LE();
     test_FormatConversions_161616LE();
     test_FormatConversions_16161616BE();
     test_FormatConversions_161616BE();
+    test_FormatConversions_G8();
+    test_FormatConversions_GA88();
     test_FormatConversions_half();
     test_FormatConversions_half_norm();
     test_FormatConversions_float();
@@ -1887,10 +2222,10 @@ int main(int argc, char** argv) {
     test_AdaptToD50();
     test_PrimariesToXYZ();
     test_Programmatic_sRGB();
+    test_EqualityCheck();
     test_ExactlyEqual();
     test_GrayscaleAndRGBCanBeEqual();
     test_AliasedTransforms();
-    test_Palette8();
     test_TF_invert();
     test_Clamp();
     test_Premul();
@@ -1899,16 +2234,19 @@ int main(int argc, char** argv) {
     test_scaled_HLG();
     test_PQ_invert();
     test_HLG_invert();
+    test_PQ_v2();
+    test_HLG_v2();
+    test_PQ_CICP();
+    test_HLG_CICP();
+    test_PQ_HLG_SRGB_xform();
     test_RGBA_8888_sRGB();
     test_ParseWithA2BPriority();
     test_B2A();
 
-    // Temporarily disable some tests while getting FP16 compute working.
-    if (!kFP16) {
-        test_Parse(regenTestData);
-        test_sRGB_AllBytes();
-        test_TRC_Table16();
-    }
+    test_Parse(regenTestData);
+    test_sRGB_AllBytes();
+    test_TRC_Table16();
+
 #if 0
     test_CLUT();
 #endif

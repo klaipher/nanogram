@@ -6,21 +6,18 @@
 #ifndef LIB_JXL_IMAGE_TEST_UTILS_H_
 #define LIB_JXL_IMAGE_TEST_UTILS_H_
 
-#ifndef __STDC_FORMAT_MACROS
-#define __STDC_FORMAT_MACROS
-#endif
-
-#include <inttypes.h>
-#include <stddef.h>
-#include <stdint.h>
-
+#include <algorithm>
 #include <cmath>
+#include <cstddef>
+#include <cstdint>
+#include <cstdio>
 #include <limits>
 #include <sstream>
+#include <type_traits>
 
 #include "lib/jxl/base/compiler_specific.h"
-#include "lib/jxl/base/printf_macros.h"
 #include "lib/jxl/base/random.h"
+#include "lib/jxl/base/rect.h"
 #include "lib/jxl/image.h"
 
 namespace jxl {
@@ -29,7 +26,10 @@ template <typename T>
 bool SamePixels(const Plane<T>& image1, const Plane<T>& image2,
                 std::stringstream& failures) {
   const Rect rect(image1);
-  JXL_CHECK(SameSize(image1, image2));
+  if (!SameSize(image1, image2)) {
+    failures << "size mismatch\n";
+    return false;
+  }
   size_t mismatches = 0;
   for (size_t y = rect.y0(); y < rect.ysize(); ++y) {
     const T* const JXL_RESTRICT row1 = image1.Row(y);
@@ -37,7 +37,8 @@ bool SamePixels(const Plane<T>& image1, const Plane<T>& image2,
     for (size_t x = rect.x0(); x < rect.xsize(); ++x) {
       if (row1[x] != row2[x]) {
         failures << "pixel mismatch" << x << ", " << y << ": "
-                 << double(row1[x]) << " != " << double(row2[x]) << "\n";
+                 << static_cast<double>(row1[x])
+                 << " != " << static_cast<double>(row2[x]) << "\n";
         if (++mismatches > 4) {
           return false;
         }
@@ -50,7 +51,10 @@ bool SamePixels(const Plane<T>& image1, const Plane<T>& image2,
 template <typename T>
 bool SamePixels(const Image3<T>& image1, const Image3<T>& image2,
                 std::stringstream& failures) {
-  JXL_CHECK(SameSize(image1, image2));
+  if (!SameSize(image1, image2)) {
+    failures << "size mismatch\n";
+    return false;
+  }
   for (size_t c = 0; c < 3; ++c) {
     if (!SamePixels(image1.Plane(c), image2.Plane(c), failures)) {
       return false;
@@ -65,21 +69,24 @@ template <typename T>
 bool VerifyRelativeError(const Plane<T>& expected, const Plane<T>& actual,
                          const double threshold_l1,
                          const double threshold_relative,
-                         std::stringstream& failures, const intptr_t border = 0,
-                         const size_t c = 0) {
-  JXL_CHECK(SameSize(expected, actual));
-  const intptr_t xsize = expected.xsize();
-  const intptr_t ysize = expected.ysize();
+                         std::stringstream& failures, const ptrdiff_t border = 0,
+                         const int c = 0) {
+  if (!SameSize(expected, actual)) {
+    failures << "size mismatch\n";
+    return false;
+  }
+  const ptrdiff_t xsize = expected.xsize();
+  const ptrdiff_t ysize = expected.ysize();
 
   // Max over current scanline to give a better idea whether there are
   // systematic errors or just one outlier. Invalid if negative.
   double max_l1 = -1;
   double max_relative = -1;
   bool any_bad = false;
-  for (intptr_t y = border; y < ysize - border; ++y) {
+  for (ptrdiff_t y = border; y < ysize - border; ++y) {
     const T* const JXL_RESTRICT row_expected = expected.Row(y);
     const T* const JXL_RESTRICT row_actual = actual.Row(y);
-    for (intptr_t x = border; x < xsize - border; ++x) {
+    for (ptrdiff_t x = border; x < xsize - border; ++x) {
       const double l1 = std::abs(row_expected[x] - row_actual[x]);
 
       // Cannot compute relative, only check/update L1.
@@ -89,7 +96,8 @@ bool VerifyRelativeError(const Plane<T>& expected, const Plane<T>& actual,
           max_l1 = std::max(max_l1, l1);
         }
       } else {
-        const double relative = l1 / std::abs(double(row_expected[x]));
+        const double relative =
+            l1 / std::abs(static_cast<double>(row_expected[x]));
         if (l1 > threshold_l1 && relative > threshold_relative) {
           // Fails both tolerances => will exit below, update max_*.
           any_bad = true;
@@ -104,37 +112,36 @@ bool VerifyRelativeError(const Plane<T>& expected, const Plane<T>& actual,
   }
   // Never had a valid relative value, don't print it.
   if (max_relative < 0) {
-    fprintf(stderr, "c=%" PRIu64 ": max +/- %E exceeds +/- %.2E\n",
-            static_cast<uint64_t>(c), max_l1, threshold_l1);
+    fprintf(stderr, "c=%d: max +/- %E exceeds +/- %.2E\n", c, max_l1,
+            threshold_l1);
   } else {
-    fprintf(stderr,
-            "c=%" PRIu64 ": max +/- %E, x %E exceeds +/- %.2E, x %.2E\n",
-            static_cast<uint64_t>(c), max_l1, max_relative, threshold_l1,
-            threshold_relative);
+    fprintf(stderr, "c=%d: max +/- %E, x %E exceeds +/- %.2E, x %.2E\n", c,
+            max_l1, max_relative, threshold_l1, threshold_relative);
   }
   // Dump the expected image and actual image if the region is small enough.
-  const intptr_t kMaxTestDumpSize = 16;
+  const ptrdiff_t kMaxTestDumpSize = 16;
   if (xsize <= kMaxTestDumpSize + 2 * border &&
       ysize <= kMaxTestDumpSize + 2 * border) {
     fprintf(stderr, "Expected image:\n");
-    for (intptr_t y = border; y < ysize - border; ++y) {
+    for (ptrdiff_t y = border; y < ysize - border; ++y) {
       const T* const JXL_RESTRICT row_expected = expected.Row(y);
-      for (intptr_t x = border; x < xsize - border; ++x) {
+      for (ptrdiff_t x = border; x < xsize - border; ++x) {
         fprintf(stderr, "%10lf ", static_cast<double>(row_expected[x]));
       }
       fprintf(stderr, "\n");
     }
 
     fprintf(stderr, "Actual image:\n");
-    for (intptr_t y = border; y < ysize - border; ++y) {
+    for (ptrdiff_t y = border; y < ysize - border; ++y) {
       const T* const JXL_RESTRICT row_expected = expected.Row(y);
       const T* const JXL_RESTRICT row_actual = actual.Row(y);
-      for (intptr_t x = border; x < xsize - border; ++x) {
+      for (ptrdiff_t x = border; x < xsize - border; ++x) {
         const double l1 = std::abs(row_expected[x] - row_actual[x]);
 
         bool bad = l1 > threshold_l1;
         if (row_expected[x] > 1E-10) {
-          const double relative = l1 / std::abs(double(row_expected[x]));
+          const double relative =
+              l1 / std::abs(static_cast<double>(row_expected[x]));
           bad &= relative > threshold_relative;
         }
         if (bad) {
@@ -148,16 +155,17 @@ bool VerifyRelativeError(const Plane<T>& expected, const Plane<T>& actual,
   }
 
   // Find first failing x for further debugging.
-  for (intptr_t y = border; y < ysize - border; ++y) {
+  for (ptrdiff_t y = border; y < ysize - border; ++y) {
     const T* const JXL_RESTRICT row_expected = expected.Row(y);
     const T* const JXL_RESTRICT row_actual = actual.Row(y);
 
-    for (intptr_t x = border; x < xsize - border; ++x) {
+    for (ptrdiff_t x = border; x < xsize - border; ++x) {
       const double l1 = std::abs(row_expected[x] - row_actual[x]);
 
       bool bad = l1 > threshold_l1;
       if (row_expected[x] > 1E-10) {
-        const double relative = l1 / std::abs(double(row_expected[x]));
+        const double relative =
+            l1 / std::abs(static_cast<double>(row_expected[x]));
         bad &= relative > threshold_relative;
       }
       if (bad) {
@@ -177,11 +185,11 @@ bool VerifyRelativeError(const Image3<T>& expected, const Image3<T>& actual,
                          const float threshold_l1,
                          const float threshold_relative,
                          std::stringstream& failures,
-                         const intptr_t border = 0) {
+                         const ptrdiff_t border = 0) {
   for (size_t c = 0; c < 3; ++c) {
-    bool ok =
-        VerifyRelativeError(expected.Plane(c), actual.Plane(c), threshold_l1,
-                            threshold_relative, failures, border, c);
+    bool ok = VerifyRelativeError(expected.Plane(c), actual.Plane(c),
+                                  threshold_l1, threshold_relative, failures,
+                                  border, static_cast<int>(c));
     if (!ok) {
       return false;
     }
@@ -207,7 +215,7 @@ void GenerateImage(Rng& rng, Plane<T>* image, U begin, U end) {
 
 template <typename T>
 void RandomFillImage(Plane<T>* image, const T begin, const T end,
-                     const int seed = 129) {
+                     const uint64_t seed = 129) {
   Rng rng(seed);
   GenerateImage(rng, image, begin, end);
 }
@@ -216,8 +224,8 @@ template <typename T>
 typename std::enable_if<std::is_integral<T>::value>::type RandomFillImage(
     Plane<T>* image) {
   Rng rng(129);
-  GenerateImage(rng, image, int64_t(0),
-                int64_t(std::numeric_limits<T>::max()) + 1);
+  GenerateImage(rng, image, static_cast<int64_t>(0),
+                static_cast<int64_t>(std::numeric_limits<T>::max()) + 1);
 }
 
 JXL_INLINE void RandomFillImage(Plane<float>* image) {
@@ -236,8 +244,8 @@ template <typename T>
 typename std::enable_if<std::is_integral<T>::value>::type RandomFillImage(
     Image3<T>* image) {
   Rng rng(129);
-  GenerateImage(rng, image, int64_t(0),
-                int64_t(std::numeric_limits<T>::max()) + 1);
+  GenerateImage(rng, image, static_cast<int64_t>(0),
+                static_cast<int64_t>(std::numeric_limits<T>::max()) + 1);
 }
 
 JXL_INLINE void RandomFillImage(Image3F* image) {
@@ -247,7 +255,7 @@ JXL_INLINE void RandomFillImage(Image3F* image) {
 
 template <typename T, typename U>
 void RandomFillImage(Image3<T>* image, const U begin, const U end,
-                     const int seed = 129) {
+                     const uint64_t seed = 129) {
   Rng rng(seed);
   GenerateImage(rng, image, begin, end);
 }

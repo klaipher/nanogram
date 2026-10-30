@@ -8,13 +8,15 @@
 
 // Facade for image decoders (PNG, PNM, ...).
 
-#include <stddef.h>
-#include <stdint.h>
+#include <jxl/memory_manager.h>
 
+#include <cstddef>
+#include <cstdint>
 #include <string>
-#include <vector>
 
 #include "lib/extras/dec/color_hints.h"
+#include "lib/extras/packed_image.h"
+#include "lib/jxl/base/compiler_specific.h"
 #include "lib/jxl/base/span.h"
 #include "lib/jxl/base/status.h"
 
@@ -36,13 +38,16 @@ enum class Codec : uint32_t {
   kJXL
 };
 
+Codec DetectCodec(const Span<const uint8_t>& bytes);
+
 bool CanDecode(Codec codec);
+
+std::string ListOfDecodeCodecs();
 
 // If and only if extension is ".pfm", *bits_per_sample is updated to 32 so
 // that Encode() would encode to PFM instead of PPM.
-Codec CodecFromPath(std::string path,
+Codec CodecFromPath(const std::string& path,
                     size_t* JXL_RESTRICT bits_per_sample = nullptr,
-                    std::string* basename = nullptr,
                     std::string* extension = nullptr);
 
 // Decodes "bytes" info *ppf.
@@ -50,7 +55,9 @@ Codec CodecFromPath(std::string path,
 Status DecodeBytes(Span<const uint8_t> bytes, const ColorHints& color_hints,
                    extras::PackedPixelFile* ppf,
                    const SizeConstraints* constraints = nullptr,
-                   Codec* orig_codec = nullptr);
+                   Codec* orig_codec = nullptr,
+                   JxlMemoryManager* memory_manager = nullptr,
+                   bool coalescing = true);
 
 }  // namespace extras
 }  // namespace jxl

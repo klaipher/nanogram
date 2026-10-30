@@ -15,11 +15,10 @@
 
 #include "hwy/nanobenchmark.h"
 
-#include <stdint.h>
+#include <stddef.h>
 #include <stdio.h>
 
-#include <random>
-
+#include "hwy/tests/hwy_gtest.h"
 #include "hwy/tests/test_util-inl.h"
 
 namespace hwy {
@@ -52,7 +51,7 @@ void MeasureDiv(const FuncInput (&inputs)[N]) {
   }
 }
 
-std::mt19937 rng;
+RandomState rng;
 
 // A function whose runtime depends on rng.
 FuncOutput Random(const void* /*arg*/, FuncInput in) {
@@ -77,7 +76,7 @@ void MeasureRandom(const FuncInput (&inputs)[N]) {
   }
 }
 
-TEST(NanobenchmarkTest, RunAll) {
+TEST(NanobenchmarkTest, RunTest) {
   const int unpredictable = Unpredictable1();  // == 1, unknown to compiler.
   static const FuncInput inputs[] = {static_cast<FuncInput>(unpredictable) + 2,
                                      static_cast<FuncInput>(unpredictable + 9)};
@@ -88,3 +87,5 @@ TEST(NanobenchmarkTest, RunAll) {
 
 }  // namespace
 }  // namespace hwy
+
+HWY_TEST_MAIN();

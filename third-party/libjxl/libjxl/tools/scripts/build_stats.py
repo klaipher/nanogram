@@ -20,6 +20,7 @@ import collections
 import itertools
 import json
 import os
+import platform
 import re
 import struct
 import subprocess
@@ -29,8 +30,9 @@ import tempfile
 # Ignore functions with stack size smaller than this value.
 MIN_STACK_SIZE = 32
 
+IS_OSX = (platform.system() == 'Darwin')
 
-Symbol = collections.namedtuple('Symbol', ['address', 'size', 'typ', 'name'])
+Symbol = collections.namedtuple('Symbol', ['address', 'size', 'kind', 'name'])
 
 # Represents the stack size information of a function (defined by its address).
 SymbolStack = collections.namedtuple('SymbolStack',
@@ -55,27 +57,52 @@ RAM_SIZE = 'dbs'
 
 # u - symbols imported from some other library
 # a - absolute address symbols
-IGNORE_SYMBOLS = 'ua'
+# c - common symbol
+# i - indirect symbol
+# - - debugger symbol table entries
+IGNORE_SYMBOLS = 'uaci-'
 
 SIMD_NAMESPACES = [
-    'N_SCALAR', 'N_WASM', 'N_NEON', 'N_PPC8', 'N_SSE4', 'N_AVX2', 'N_AVX3']
+    'N_SCALAR', 'N_EMU128',
+    'N_RVV',
+    'N_WASM', 'N_WASM_EMU256',
+    'N_NEON', 'N_NEON_BF16', 'N_NEON_WITHOUT_AES',
+    'N_SVE', 'N_SVE2', 'N_SVE_256', 'N_SVE2_128',
+    'N_PPC8', 'N_PPC9', 'N_PPC10',
+    'N_Z14', 'N_Z15',
+    'N_SSE2', 'N_SSSE3', 'N_SSE4',
+    'N_AVX2', 'N_AVX3', 'N_AVX3_DL', 'N_AVX3_ZEN4', 'N_AVX3_SPR'
+]
 
 
 def LoadSymbols(filename):
   ret = []
   nmout = subprocess.check_output(['nm', '--format=posix', filename])
   for line in nmout.decode('utf-8').splitlines():
-    if line.rstrip().endswith(':'):
+    line = line.rstrip()
+    if len(line) == 0:
+      # OSX nm produces extra crlf at the end
+      continue
+    if line.endswith(':'):
       # Ignore object names.
       continue
+    line = re.sub(' +', ' ', line)
     # symbol_name, symbol_type, (optional) address, (optional) size
     symlist = line.rstrip().split(' ')
-    assert 2 <= len(symlist) <= 4
+    col_count = len(symlist)
+    assert 2 <= col_count <= 4
     ret.append(Symbol(
-        int(symlist[2], 16) if len(symlist) > 2 else None,
-        int(symlist[3], 16) if len(symlist) > 3 else None,
+        int(symlist[2], 16) if col_count > 2 else None,
+        int(symlist[3], 16) if col_count > 3 else None,
         symlist[1],
         symlist[0]))
+  if IS_OSX:
+    ret = sorted(ret, key=lambda sym: sym.address)
+    for i in range(len(ret) - 1):
+      size = ret[i + 1].address - ret[i].address
+      if size > (1 << 30):
+        continue
+      ret[i] = ret[i]._replace(size=size)
   return ret
 
 def LoadTargetCommand(target, build_dir):
@@ -145,8 +172,9 @@ def LoadStackSizes(filename, binutils=''):
   section, which can be done by compiling with -fstack-size-section in clang.
   """
   with tempfile.NamedTemporaryFile() as stack_sizes_sec:
+    objcopy = ['objcopy', 'gobjcopy'][IS_OSX]
     subprocess.check_call(
-        [binutils + 'objcopy', '-O', 'binary', '--only-section=.stack_sizes',
+        [binutils + objcopy, '-O', 'binary', '--only-section=.stack_sizes',
          '--set-section-flags', '.stack_sizes=alloc', filename,
          stack_sizes_sec.name])
     stack_sizes = stack_sizes_sec.read()
@@ -157,10 +185,11 @@ def LoadStackSizes(filename, binutils=''):
   #  dynamic stack allocations are not included.
 
   # Get the pointer format based on the ELF file.
+  objdump = ['objdump', 'gobjdump'][IS_OSX]
   output = subprocess.check_output(
-      [binutils + 'objdump', '-a', filename]).decode('utf-8')
+      [binutils + objdump, '-a', filename]).decode('utf-8')
   elf_format = re.search('file format (.*)$', output, re.MULTILINE).group(1)
-  if elf_format.startswith('elf64-little') or elf_format == 'elf64-x86-64':
+  if elf_format.startswith('elf64-little') or elf_format.endswith('-x86-64') or elf_format.endswith('-arm64'):
     pointer_fmt = '<Q'
   elif elf_format.startswith('elf32-little') or elf_format == 'elf32-i386':
     pointer_fmt = '<I'
@@ -193,10 +222,10 @@ def TargetSize(symbols, symbol_filter=None):
     if not sym.size or (symbol_filter is not None and
                         sym.name not in symbol_filter):
       continue
-    t = sym.typ.lower()
+    t = sym.kind.lower()
     # We can remove symbols if they appear in multiple objects since they will
     # be merged by the linker.
-    if symbol_filter is not None and (t == sym.typ or t in 'wv'):
+    if symbol_filter is not None and (t == sym.kind or t in 'wv'):
       symbol_filter.remove(sym.name)
     ret.setdefault(t, 0)
     ret[t] += sym.size
@@ -212,13 +241,13 @@ def PrintStats(stats):
   for objstat in stats:
     bin_size = 0
     ram_size = 0
-    for typ, size in objstat.size_map.items():
-      if typ in BIN_SIZE:
+    for kind, size in objstat.size_map.items():
+      if kind in BIN_SIZE:
         bin_size += size
-      if typ in RAM_SIZE:
+      if kind in RAM_SIZE:
         ram_size += size
-      if typ not in BIN_SIZE + RAM_SIZE:
-        raise Exception('Unknown type "%s"' % typ)
+      if kind not in BIN_SIZE + RAM_SIZE:
+        raise Exception('Unknown type "%s"' % kind)
     if objstat.in_partition:
       sum_bin_size += bin_size
       sum_ram_size += ram_size
@@ -234,7 +263,7 @@ def PrintStats(stats):
   print('%-32s %17s %17s' % ('Object name', 'Binary size', 'Static RAM size'))
   for name, bin_size, ram_size in table:
     print('%-32s %8d (%5.1f%%) %8d (%5.1f%%)' % (
-        name, bin_size, 100. * bin_size / mx_bin_size,
+        name, bin_size, (100. * bin_size / mx_bin_size) if mx_bin_size else 0,
         ram_size, (100. * ram_size / mx_ram_size) if mx_ram_size else 0))
   print()
 
@@ -254,8 +283,8 @@ def PrintTopSymbols(tgt_top_symbols):
   if not tgt_top_symbols:
     return
   print(' Size     T Symbol name')
-  for size, typ, name in tgt_top_symbols:
-    print('%9d %s %s' % (size, typ, name))
+  for size, kind, name in tgt_top_symbols:
+    print('%9d %s %s' % (size, kind, name))
   print()
 
 
@@ -297,19 +326,19 @@ def SizeStats(args):
     tgt_syms = syms[target]
     used_syms = set()
     for sym in tgt_syms:
-      if sym.typ.lower() in BIN_SIZE + RAM_SIZE:
+      if sym.kind.lower() in BIN_SIZE + RAM_SIZE:
         used_syms.add(sym.name)
-      elif sym.typ.lower() in IGNORE_SYMBOLS:
+      elif sym.kind.lower() in IGNORE_SYMBOLS:
         continue
       else:
-        print('Unknown: %s %s' % (sym.typ, sym.name))
+        print('Unknown: %s %s' % (sym.kind, sym.name))
 
     target_path = os.path.join(args.build_dir, tgt.filename)
     sym_stacks = []
     if not target_path.endswith('.a'):
       sym_stacks = LoadStackSizes(target_path, args.binutils)
     symbols_by_addr = {sym.address: sym for sym in tgt_syms
-                          if sym.typ.lower() in 'tw'}
+                          if sym.kind.lower() in 'tw'}
     tgt_stack_sizes = collections.OrderedDict()
     for sym_stack in sorted(sym_stacks, key=lambda s: -s.stack_size):
       tgt_stack_sizes[
@@ -317,7 +346,7 @@ def SizeStats(args):
 
     tgt_top_symbols = []
     if args.top_symbols:
-      tgt_top_symbols = [(sym.size, sym.typ, sym.name) for sym in tgt_syms
+      tgt_top_symbols = [(sym.size, sym.kind, sym.name) for sym in tgt_syms
                          if sym.name in used_syms and sym.size]
       tgt_top_symbols.sort(key=lambda t: (-t[0], t[2]))
       tgt_top_symbols = tgt_top_symbols[:args.top_symbols]
@@ -334,7 +363,7 @@ def SizeStats(args):
       for sym in tgt_syms:
         if not sym.size or mangled not in sym.name:
           continue
-        t = sym.typ.lower()
+        t = sym.kind.lower()
         ret.setdefault(t, 0)
         ret[t] += sym.size
       # SIMD namespaces are not part of the partition, they are already included

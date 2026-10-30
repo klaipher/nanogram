@@ -6,13 +6,16 @@
 #ifndef TOOLS_CMDLINE_H_
 #define TOOLS_CMDLINE_H_
 
-#include <stdarg.h>
-#include <stdio.h>
-#include <string.h>
-
+#include <cctype>
+#include <cerrno>
 #include <cstdint>
+#include <cstdio>
+#include <cstdlib>
+#include <cstring>
+#include <limits>
 #include <memory>
 #include <string>
+#include <utility>
 #include <vector>
 
 namespace jpegxl {
@@ -20,7 +23,7 @@ namespace tools {
 
 class CommandLineParser {
  public:
-  typedef int OptionId;
+  using OptionId = int;
 
   // An abstract class for defining command line options.
   class CmdOptionInterface {
@@ -159,11 +162,11 @@ class CommandLineParser {
   // A positional argument.
   class CmdOptionPositional : public CmdOptionInterface {
    public:
-    CmdOptionPositional(const char* name, const std::string& help_text,
+    CmdOptionPositional(const char* name, std::string help_text,
                         const char** storage, int verbosity_level,
                         bool required)
         : name_(name),
-          help_text_(help_text),
+          help_text_(std::move(help_text)),
           storage_(storage),
           verbosity_level_(verbosity_level),
           required_(required) {}
@@ -270,7 +273,7 @@ class CommandLineParser {
             return (*parser_.parser_with_arg_)(arg, storage_);
           } else {
             fprintf(stderr, "--%s didn't expect any argument passed to it.\n",
-                    argv[*i]);
+                    long_name_);
             return false;
           }
         }
@@ -279,7 +282,7 @@ class CommandLineParser {
       (*i)++;
       if (metavar_) {
         if (argc <= *i) {
-          fprintf(stderr, "--%s expected an argument but none passed.\n",
+          fprintf(stderr, "%s expected an argument but none passed.\n",
                   argv[*i - 1]);
           return false;
         }
@@ -365,22 +368,41 @@ class CommandLineParser {
 //
 
 static inline bool ParseSigned(const char* arg, int* out) {
+  // Parse() only passes argv entries while i < argc, so arg is non-null.
   char* end;
-  *out = static_cast<int>(strtol(arg, &end, 0));
-  if (end[0] != '\0') {
+  errno = 0;
+  const long value = strtol(arg, &end, 0);
+  if (errno == ERANGE || end == arg || end[0] != '\0' ||
+      value < std::numeric_limits<int>::min() ||
+      value > std::numeric_limits<int>::max()) {
     fprintf(stderr, "Unable to interpret as signed integer: %s.\n", arg);
     return false;
   }
+  *out = static_cast<int>(value);
   return true;
 }
 
 static inline bool ParseUnsigned(const char* arg, size_t* out) {
-  char* end;
-  *out = static_cast<size_t>(strtoull(arg, &end, 0));
-  if (end[0] != '\0') {
+  // Parse() only passes argv entries while i < argc, so arg is non-null.
+  const char* p = arg;
+  while (*p != '\0' &&
+         std::isspace(static_cast<unsigned char>(*p)) != 0) {
+    ++p;
+  }
+  // Reject explicit negative values (strtoull accepts an optional sign).
+  if (*p == '-') {
     fprintf(stderr, "Unable to interpret as unsigned integer: %s.\n", arg);
     return false;
   }
+  char* end;
+  errno = 0;
+  const unsigned long long value = strtoull(arg, &end, 0);
+  if (errno == ERANGE || end == arg || end[0] != '\0' ||
+      value > std::numeric_limits<size_t>::max()) {
+    fprintf(stderr, "Unable to interpret as unsigned integer: %s.\n", arg);
+    return false;
+  }
+  *out = static_cast<size_t>(value);
   return true;
 }
 
@@ -438,5 +460,15 @@ static inline bool SetBooleanFalse(bool* out) {
 
 }  // namespace tools
 }  // namespace jpegxl
+
+#define JPEGXL_TOOLS_ABORT(M)                      \
+  fprintf(stderr, "JPEGXL_TOOLS_ABORT: %s\n", #M); \
+  std::exit(EXIT_FAILURE);
+
+#define JPEGXL_TOOLS_CHECK(C)                        \
+  if (!(C)) {                                        \
+    fprintf(stderr, "JPEGXL_TOOLS_CHECK: %s\n", #C); \
+    std::exit(EXIT_FAILURE);                         \
+  }
 
 #endif  // TOOLS_CMDLINE_H_

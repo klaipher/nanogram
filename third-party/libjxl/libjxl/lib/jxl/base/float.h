@@ -12,13 +12,14 @@
 #include <string.h>
 
 #include "lib/jxl/base/byte_order.h"
+#include "lib/jxl/base/compiler_specific.h"
 #include "lib/jxl/base/status.h"
 
 namespace jxl {
 
-namespace {
-// Based on highway scalar implementation, for testing
-float LoadFloat16(uint16_t bits16) {
+namespace detail {
+
+static JXL_INLINE float LoadFloat16(uint16_t bits16) {
   const uint32_t sign = bits16 >> 15;
   const uint32_t biased_exp = (bits16 >> 10) & 0x1F;
   const uint32_t mantissa = bits16 & 0x3FF;
@@ -31,7 +32,8 @@ float LoadFloat16(uint16_t bits16) {
   }
 
   // Normalized: convert the representation directly (faster than ldexp/tables).
-  const uint32_t biased_exp32 = biased_exp + (127 - 15);
+  const uint32_t biased_exp32 =
+      biased_exp == 0b11111 ? 0b11111111 : biased_exp + (127 - 15);
   const uint32_t mantissa32 = mantissa << (23 - 10);
   const uint32_t bits32 = (sign << 31) | (biased_exp32 << 23) | mantissa32;
 
@@ -39,7 +41,7 @@ float LoadFloat16(uint16_t bits16) {
   memcpy(&result, &bits32, 4);
   return result;
 }
-}  // namespace
+}  // namespace detail
 
 template <typename SaveFloatAtFn>
 static Status JXL_INLINE LoadFloatRow(const uint8_t* src, size_t count,
@@ -80,11 +82,11 @@ static Status JXL_INLINE LoadFloatRow(const uint8_t* src, size_t count,
     case JXL_TYPE_FLOAT16:
       if (little_endian) {
         for (size_t i = 0; i < count; ++i) {
-          callback(i, LoadFloat16(LoadLE16(src + stride * i)));
+          callback(i, detail::LoadFloat16(LoadLE16(src + stride * i)));
         }
       } else {
         for (size_t i = 0; i < count; ++i) {
-          callback(i, LoadFloat16(LoadBE16(src + stride * i)));
+          callback(i, detail::LoadFloat16(LoadBE16(src + stride * i)));
         }
       }
       return true;

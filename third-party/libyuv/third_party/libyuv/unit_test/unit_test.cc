@@ -11,8 +11,35 @@
 #include "../unit_test/unit_test.h"
 
 #include <stdlib.h>  // For getenv()
+#if defined(__hexagon__)
+#include <sys/mman.h>
+#endif
 
 #include <cstring>
+
+#if defined(__hexagon__)
+// Hexagon QuRT sys/mman.h declares mmap/munmap without extern "C", and the
+// runtime does not provide them. Emulate anonymous mappings with malloc/free.
+__attribute__((nothrow)) void* mmap(void* addr,
+                                    size_t length,
+                                    int prot,
+                                    int flags,
+                                    int fd,
+                                    off_t offset) {
+  (void)addr;
+  (void)prot;
+  (void)flags;
+  (void)fd;
+  (void)offset;
+  return malloc(length);
+}
+
+__attribute__((nothrow)) int munmap(void* addr, size_t length) {
+  (void)length;
+  free(addr);
+  return 0;
+}
+#endif
 
 #ifdef LIBYUV_USE_ABSL_FLAGS
 #include "absl/flags/flag.h"
@@ -52,38 +79,51 @@ static const int32_t FLAGS_libyuv_cpu_info = 0;
 // Test environment variable for disabling CPU features. Any non-zero value
 // to disable. Zero ignored to make it easy to set the variable on/off.
 #if !defined(__native_client__) && !defined(_M_ARM)
-static LIBYUV_BOOL TestEnv(const char* name) {
+static bool TestEnv(const char* name) {
   const char* var = getenv(name);
   if (var) {
     if (var[0] != '0') {
-      return LIBYUV_TRUE;
+      return true;
     }
   }
-  return LIBYUV_FALSE;
+  return false;
 }
 #else  // nacl does not support getenv().
-static LIBYUV_BOOL TestEnv(const char*) {
-  return LIBYUV_FALSE;
+static bool TestEnv(const char*) {
+  return false;
 }
 #endif
 
-int TestCpuEnv(int cpu_info) {
+static int TestCpuEnv(int cpu_info) {
 #if defined(__arm__) || defined(__aarch64__)
   if (TestEnv("LIBYUV_DISABLE_NEON")) {
     cpu_info &= ~libyuv::kCpuHasNEON;
   }
 #endif
-#if defined(__mips__) && defined(__linux__)
-  if (TestEnv("LIBYUV_DISABLE_MSA")) {
-    cpu_info &= ~libyuv::kCpuHasMSA;
+#if defined(__aarch64__)
+  if (TestEnv("LIBYUV_DISABLE_NEON_DOTPROD")) {
+    cpu_info &= ~libyuv::kCpuHasNeonDotProd;
+  }
+  if (TestEnv("LIBYUV_DISABLE_NEON_I8MM")) {
+    cpu_info &= ~libyuv::kCpuHasNeonI8MM;
+  }
+  if (TestEnv("LIBYUV_DISABLE_SVE")) {
+    cpu_info &= ~libyuv::kCpuHasSVE;
+  }
+  if (TestEnv("LIBYUV_DISABLE_SVE2")) {
+    cpu_info &= ~libyuv::kCpuHasSVE2;
+  }
+  if (TestEnv("LIBYUV_DISABLE_SME")) {
+    cpu_info &= ~libyuv::kCpuHasSME;
+  }
+  if (TestEnv("LIBYUV_DISABLE_SME2")) {
+    cpu_info &= ~libyuv::kCpuHasSME2;
   }
 #endif
 #if defined(__longarch__) && defined(__linux__)
   if (TestEnv("LIBYUV_DISABLE_LSX")) {
     cpu_info &= ~libyuv::kCpuHasLSX;
   }
-#endif
-#if defined(__longarch__) && defined(__linux__)
   if (TestEnv("LIBYUV_DISABLE_LASX")) {
     cpu_info &= ~libyuv::kCpuHasLASX;
   }
@@ -91,6 +131,16 @@ int TestCpuEnv(int cpu_info) {
 #if defined(__riscv) && defined(__linux__)
   if (TestEnv("LIBYUV_DISABLE_RVV")) {
     cpu_info &= ~libyuv::kCpuHasRVV;
+  }
+#endif
+#if defined(__wasm__)
+  if (TestEnv("LIBYUV_DISABLE_WASM")) {
+    cpu_info &= ~libyuv::kCpuHasWASMSIMD;
+  }
+#endif
+#if defined(__hexagon__)
+  if (TestEnv("LIBYUV_DISABLE_HVX")) {
+    cpu_info &= ~libyuv::kCpuHasHVX;
   }
 #endif
 #if !defined(__pnacl__) && !defined(__CLR_VER) &&                   \
@@ -147,6 +197,9 @@ int TestCpuEnv(int cpu_info) {
   if (TestEnv("LIBYUV_DISABLE_AVX10")) {
     cpu_info &= ~libyuv::kCpuHasAVX10;
   }
+  if (TestEnv("LIBYUV_DISABLE_AVX10_2")) {
+    cpu_info &= ~libyuv::kCpuHasAVX10_2;
+  }
   if (TestEnv("LIBYUV_DISABLE_AVXVNNI")) {
     cpu_info &= ~libyuv::kCpuHasAVXVNNI;
   }
@@ -155,6 +208,12 @@ int TestCpuEnv(int cpu_info) {
   }
   if (TestEnv("LIBYUV_DISABLE_AMXINT8")) {
     cpu_info &= ~libyuv::kCpuHasAMXINT8;
+  }
+  if (TestEnv("LIBYUV_DISABLE_AVX512BMM")) {
+    cpu_info &= ~libyuv::kCpuHasAVX512BMM;
+  }
+  if (TestEnv("LIBYUV_DISABLE_AMXTF32")) {
+    cpu_info &= ~libyuv::kCpuHasAMXTF32;
   }
 #endif
   if (TestEnv("LIBYUV_DISABLE_ASM")) {
@@ -207,7 +266,7 @@ LibYUVConvertTest::LibYUVConvertTest()
   }
   const char* cpu_info = getenv("LIBYUV_CPU_INFO");
   if (cpu_info) {
-    benchmark_cpu_info_ = atoi(cpu_flags);  // NOLINT
+    benchmark_cpu_info_ = atoi(cpu_info);  // NOLINT
   }
   if (LIBYUV_GET_FLAG(FLAGS_libyuv_cpu_info)) {
     benchmark_cpu_info_ = LIBYUV_GET_FLAG(FLAGS_libyuv_cpu_info);
@@ -263,7 +322,7 @@ LibYUVColorTest::LibYUVColorTest()
   }
   const char* cpu_info = getenv("LIBYUV_CPU_INFO");
   if (cpu_info) {
-    benchmark_cpu_info_ = atoi(cpu_flags);  // NOLINT
+    benchmark_cpu_info_ = atoi(cpu_info);  // NOLINT
   }
   if (LIBYUV_GET_FLAG(FLAGS_libyuv_cpu_info)) {
     benchmark_cpu_info_ = LIBYUV_GET_FLAG(FLAGS_libyuv_cpu_info);
@@ -319,7 +378,7 @@ LibYUVScaleTest::LibYUVScaleTest()
   }
   const char* cpu_info = getenv("LIBYUV_CPU_INFO");
   if (cpu_info) {
-    benchmark_cpu_info_ = atoi(cpu_flags);  // NOLINT
+    benchmark_cpu_info_ = atoi(cpu_info);  // NOLINT
   }
   if (LIBYUV_GET_FLAG(FLAGS_libyuv_cpu_info)) {
     benchmark_cpu_info_ = LIBYUV_GET_FLAG(FLAGS_libyuv_cpu_info);
@@ -375,7 +434,7 @@ LibYUVRotateTest::LibYUVRotateTest()
   }
   const char* cpu_info = getenv("LIBYUV_CPU_INFO");
   if (cpu_info) {
-    benchmark_cpu_info_ = atoi(cpu_flags);  // NOLINT
+    benchmark_cpu_info_ = atoi(cpu_info);  // NOLINT
   }
   if (LIBYUV_GET_FLAG(FLAGS_libyuv_cpu_info)) {
     benchmark_cpu_info_ = LIBYUV_GET_FLAG(FLAGS_libyuv_cpu_info);
@@ -431,7 +490,7 @@ LibYUVPlanarTest::LibYUVPlanarTest()
   }
   const char* cpu_info = getenv("LIBYUV_CPU_INFO");
   if (cpu_info) {
-    benchmark_cpu_info_ = atoi(cpu_flags);  // NOLINT
+    benchmark_cpu_info_ = atoi(cpu_info);  // NOLINT
   }
   if (LIBYUV_GET_FLAG(FLAGS_libyuv_cpu_info)) {
     benchmark_cpu_info_ = LIBYUV_GET_FLAG(FLAGS_libyuv_cpu_info);
@@ -487,7 +546,7 @@ LibYUVBaseTest::LibYUVBaseTest()
   }
   const char* cpu_info = getenv("LIBYUV_CPU_INFO");
   if (cpu_info) {
-    benchmark_cpu_info_ = atoi(cpu_flags);  // NOLINT
+    benchmark_cpu_info_ = atoi(cpu_info);  // NOLINT
   }
   if (LIBYUV_GET_FLAG(FLAGS_libyuv_cpu_info)) {
     benchmark_cpu_info_ = LIBYUV_GET_FLAG(FLAGS_libyuv_cpu_info);
@@ -543,7 +602,7 @@ LibYUVCompareTest::LibYUVCompareTest()
   }
   const char* cpu_info = getenv("LIBYUV_CPU_INFO");
   if (cpu_info) {
-    benchmark_cpu_info_ = atoi(cpu_flags);  // NOLINT
+    benchmark_cpu_info_ = atoi(cpu_info);  // NOLINT
   }
   if (LIBYUV_GET_FLAG(FLAGS_libyuv_cpu_info)) {
     benchmark_cpu_info_ = LIBYUV_GET_FLAG(FLAGS_libyuv_cpu_info);

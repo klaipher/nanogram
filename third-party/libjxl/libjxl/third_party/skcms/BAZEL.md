@@ -15,6 +15,8 @@ $ bazel build //...
 $ bazel test //...
 ```
 
+To include debug symbols, add `--compilation_mode=dbg` to your commands.
+
 ### Building and testing on RBE
 
 Same as above, but add `--config=linux-rbe` to your `bazel` invocation, e.g.:
@@ -29,7 +31,24 @@ Note that you need to obtain RBE credentials for this to work (instructions belo
 
 ## macOS
 
-TODO(lovisolo)
+Ensure you have a local Xcode installation, then run:
+
+```
+$ bazel build //...
+
+$ bazel test //...
+```
+
+Our Bazel macOS build does not support RBE at this time.
+
+Note however that it is possible to use RBE from macOS to cross-compile for Linux and run tests on
+Linux RBE workers, e.g.:
+
+```
+$ bazel build //... --config=linux-rbe
+
+$ bazel test //... --config=linux-rbe
+```
 
 ## Windows
 
@@ -89,7 +108,7 @@ for Visual Studio 2019 (rationale
 Please install the latter by following the above instructions before proceeding.
 
 Download and install LLVM from this
-[link](https://github.com/llvm/llvm-project/releases/tag/llvmorg-12.0.1).
+[link](https://github.com/llvm/llvm-project/releases/tag/llvmorg-13.0.0).
 
 Open `cmd.exe` and `cd` into your SkCMS repository checkout, then run:
 

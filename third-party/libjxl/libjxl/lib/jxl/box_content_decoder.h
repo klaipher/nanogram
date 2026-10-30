@@ -11,9 +11,6 @@
 #include <stdint.h>
 #include <stdlib.h>
 
-#include <memory>
-#include <vector>
-
 namespace jxl {
 
 /** Outputs the contents of a box in a streaming fashion, either directly, or
@@ -35,7 +32,7 @@ class JxlBoxContentDecoder {
                            size_t* avail_out);
 
  private:
-  BrotliDecoderState* brotli_dec;
+  BrotliDecoderState* brotli_dec = nullptr;
 
   bool header_done_;
   bool brob_decode_;

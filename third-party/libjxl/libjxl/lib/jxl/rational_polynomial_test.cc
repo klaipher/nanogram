@@ -3,20 +3,21 @@
 // Use of this source code is governed by a BSD-style
 // license that can be found in the LICENSE file.
 
-#include <stdio.h>
-
+#include <algorithm>
 #include <cmath>
-#include <string>
+#include <cstddef>
+#include <cstdint>
+#include <cstdio>
 
 #undef HWY_TARGET_INCLUDE
 #define HWY_TARGET_INCLUDE "lib/jxl/rational_polynomial_test.cc"
 #include <hwy/foreach_target.h>
 #include <hwy/highway.h>
-#include <hwy/tests/test_util-inl.h>
+#include <hwy/tests/hwy_gtest.h>
 
-#include "lib/jxl/base/status.h"
-#include "lib/jxl/common.h"
-#include "lib/jxl/rational_polynomial-inl.h"
+#include "lib/jxl/base/common.h"
+#include "lib/jxl/base/rational_polynomial-inl.h"
+#include "lib/jxl/testing.h"
 
 HWY_BEFORE_NAMESPACE();
 namespace jxl {
@@ -26,7 +27,9 @@ using T = float;  // required by EvalLog2
 using D = HWY_FULL(T);
 
 // These templates are not found via ADL.
+using hwy::HWY_NAMESPACE::Abs;
 using hwy::HWY_NAMESPACE::Add;
+using hwy::HWY_NAMESPACE::Eq;
 using hwy::HWY_NAMESPACE::GetLane;
 using hwy::HWY_NAMESPACE::ShiftLeft;
 using hwy::HWY_NAMESPACE::ShiftRight;
@@ -53,7 +56,7 @@ struct EvalLog2 {
     const HWY_FULL(int32_t) di;
     const auto x_bits = BitCast(di, vx);
     // Cannot handle negative numbers / NaN.
-    JXL_DASSERT(AllTrue(di, Eq(Abs(x_bits), x_bits)));
+    EXPECT_TRUE(AllTrue(di, Eq(Abs(x_bits), x_bits)));
 
     // Range reduction to [-1/3, 1/3] - 3 integer, 2 float ops
     const auto exp_bits = Sub(x_bits, Set(di, 0x3f2aaaab));  // = 2/3
@@ -108,10 +111,10 @@ T RunApproximation(T x0, T x1, const T (&p)[NP], const T (&q)[NQ],
   for (T x = x0; x <= x1; x += (x1 - x0) / 10000.0) {
     const T f = func_to_approx(x);
     const T g = eval(x, p, q);
-    maxerr = std::max(fabsf(g - f), maxerr);
+    const float err = std::abs(static_cast<float>(g - f));
+    maxerr = std::max(err, maxerr);
     if (x == x0 || x - lastPrint > (x1 - x0) / 20.0) {
-      printf("x: %11.6f, f: %11.6f, g: %11.6f, e: %11.6f\n", x, f, g,
-             fabs(g - f));
+      printf("x: %11.6f, f: %11.6f, g: %11.6f, e: %11.6f\n", x, f, g, err);
       lastPrint = x;
     }
   }
@@ -159,8 +162,8 @@ void TestExp() {
   const T q[4 * (2 + 1)] = {HWY_REP4(9.6259895571622622E-01),
                             HWY_REP4(-4.7272457588933831E-01),
                             HWY_REP4(7.4802088567547664E-02)};
-  const T err =
-      RunApproximation(-1, 1, p, q, EvalPoly(), [](T x) { return T(exp(x)); });
+  const T err = RunApproximation(-1, 1, p, q, EvalPoly(),
+                                 [](T x) { return static_cast<T>(exp(x)); });
   EXPECT_LT(err, 1E-4);
 }
 
@@ -175,8 +178,8 @@ void TestNegExp() {
       HWY_REP4(5.9579108238812878E-02), HWY_REP4(3.4542074345478582E-02),
       HWY_REP4(8.7263562483501714E-03), HWY_REP4(1.4095109143061216E-03)};
 
-  const T err =
-      RunApproximation(0, 10, p, q, EvalPoly(), [](T x) { return T(exp(-x)); });
+  const T err = RunApproximation(0, 10, p, q, EvalPoly(),
+                                 [](T x) { return static_cast<T>(exp(-x)); });
   EXPECT_LT(err, sizeof(T) == 8 ? 2E-5 : 3E-5);
 }
 
@@ -192,7 +195,7 @@ void TestSin() {
       HWY_REP4(3.1546157932479282E-03), HWY_REP4(-1.6692542019380155E-04)};
 
   const T err = RunApproximation(0, Pi<T>(1) * 2, p, q, EvalPoly(),
-                                 [](T x) { return T(sin(x)); });
+                                 [](T x) { return static_cast<T>(sin(x)); });
   EXPECT_LT(err, sizeof(T) == 8 ? 5E-4 : 7E-4);
 }
 

@@ -5,50 +5,15 @@
 
 #include "lib/threads/thread_parallel_runner_internal.h"
 
+#include <jxl/parallel_runner.h>
+#include <jxl/types.h>
+
 #include <algorithm>
-
-#if defined(ADDRESS_SANITIZER) || defined(MEMORY_SANITIZER) || \
-    defined(THREAD_SANITIZER)
-#include "sanitizer/common_interface_defs.h"  // __sanitizer_print_stack_trace
-#endif                                        // defined(*_SANITIZER)
-
-#include <jxl/thread_parallel_runner.h>
-
-namespace {
-
-// Important: JXL_ASSERT does not guarantee running the `condition` code,
-// use only for debug mode checks.
-
-#if JXL_ENABLE_ASSERT
-// Exits the program after printing a stack trace when possible.
-bool Abort() {
-#if defined(ADDRESS_SANITIZER) || defined(MEMORY_SANITIZER) || \
-    defined(THREAD_SANITIZER)
-  // If compiled with any sanitizer print a stack trace. This call doesn't crash
-  // the program, instead the trap below will crash it also allowing gdb to
-  // break there.
-  __sanitizer_print_stack_trace();
-#endif  // defined(*_SANITIZER)
-
-#ifdef _MSC_VER
-  __debugbreak();
-  abort();
-#else
-  __builtin_trap();
-#endif
-}
-#define JXL_ASSERT(condition) \
-  do {                        \
-    if (!(condition)) {       \
-      Abort();                \
-    }                         \
-  } while (0)
-#else
-#define JXL_ASSERT(condition) \
-  do {                        \
-  } while (0)
-#endif
-}  // namespace
+#include <atomic>
+#include <cstddef>
+#include <cstdint>
+#include <mutex>
+#include <thread>
 
 namespace jpegxl {
 
@@ -58,11 +23,11 @@ JxlParallelRetCode ThreadParallelRunner::Runner(
     JxlParallelRunFunction func, uint32_t start_range, uint32_t end_range) {
   ThreadParallelRunner* self =
       static_cast<ThreadParallelRunner*>(runner_opaque);
-  if (start_range > end_range) return -1;
-  if (start_range == end_range) return 0;
+  if (start_range > end_range) return JXL_PARALLEL_RET_RUNNER_ERROR;
+  if (start_range == end_range) return JXL_PARALLEL_RET_SUCCESS;
 
   int ret = init(jpegxl_opaque, std::max<size_t>(self->num_worker_threads_, 1));
-  if (ret != 0) return ret;
+  if (ret != JXL_PARALLEL_RET_SUCCESS) return ret;
 
   // Use a sequential run when num_worker_threads_ is zero since we have no
   // worker threads.
@@ -71,19 +36,20 @@ JxlParallelRetCode ThreadParallelRunner::Runner(
     for (uint32_t task = start_range; task < end_range; ++task) {
       func(jpegxl_opaque, task, thread);
     }
-    return 0;
+    return JXL_PARALLEL_RET_SUCCESS;
   }
 
   if (self->depth_.fetch_add(1, std::memory_order_acq_rel) != 0) {
-    return -1;  // Must not re-enter.
+    return JXL_PARALLEL_RET_RUNNER_ERROR;  // Must not re-enter.
   }
 
   const WorkerCommand worker_command =
       (static_cast<WorkerCommand>(start_range) << 32) + end_range;
   // Ensure the inputs do not result in a reserved command.
-  JXL_ASSERT(worker_command != kWorkerWait);
-  JXL_ASSERT(worker_command != kWorkerOnce);
-  JXL_ASSERT(worker_command != kWorkerExit);
+  if ((worker_command == kWorkerWait) || (worker_command == kWorkerOnce) ||
+      (worker_command == kWorkerExit)) {
+    return JXL_PARALLEL_RET_RUNNER_ERROR;
+  }
 
   self->data_func_ = func;
   self->jpegxl_opaque_ = jpegxl_opaque;
@@ -93,9 +59,9 @@ JxlParallelRetCode ThreadParallelRunner::Runner(
   self->WorkersReadyBarrier();
 
   if (self->depth_.fetch_add(-1, std::memory_order_acq_rel) != 1) {
-    return -1;
+    return JXL_PARALLEL_RET_RUNNER_ERROR;
   }
-  return 0;
+  return JXL_PARALLEL_RET_SUCCESS;
 }
 
 // static
@@ -115,9 +81,9 @@ void ThreadParallelRunner::RunRange(ThreadParallelRunner* self,
   //   because it avoids user-specified parameters.
 
   for (;;) {
-#if 0
-      // dynamic
-      const uint32_t my_size = std::max(num_tasks / (num_worker_threads * 4), 1);
+#if JXL_FALSE
+    // dynamic
+    const uint32_t my_size = std::max(num_tasks / (num_worker_threads * 4), 1);
 #else
     // guided
     const uint32_t num_reserved =
@@ -199,8 +165,12 @@ ThreadParallelRunner::~ThreadParallelRunner() {
   }
 
   for (std::thread& thread : threads_) {
-    JXL_ASSERT(thread.joinable());
-    thread.join();
+    if (!thread.joinable()) {
+      // Should not ever happen.
+      // TODO(eustas): do we need to log some alert?
+    } else {
+      thread.join();
+    }
   }
 }
 }  // namespace jpegxl

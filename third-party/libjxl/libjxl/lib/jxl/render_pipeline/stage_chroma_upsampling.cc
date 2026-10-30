@@ -5,6 +5,13 @@
 
 #include "lib/jxl/render_pipeline/stage_chroma_upsampling.h"
 
+#include <cstddef>
+#include <memory>
+
+#include "lib/jxl/base/common.h"
+#include "lib/jxl/base/status.h"
+#include "lib/jxl/render_pipeline/render_pipeline_stage.h"
+
 #undef HWY_TARGET_INCLUDE
 #define HWY_TARGET_INCLUDE "lib/jxl/render_pipeline/stage_chroma_upsampling.cc"
 #include <hwy/foreach_target.h>
@@ -27,17 +34,20 @@ class HorizontalChromaUpsamplingStage : public RenderPipelineStage {
             /*shift=*/1, /*border=*/1)),
         c_(channel) {}
 
-  void ProcessRow(const RowInfo& input_rows, const RowInfo& output_rows,
-                  size_t xextra, size_t xsize, size_t xpos, size_t ypos,
-                  size_t thread_id) const final {
+  Status ProcessRow(const RowInfo& input_rows, const RowInfo& output_rows,
+                    size_t xextra_left, size_t xextra_right, size_t xsize,
+                    size_t xpos, size_t ypos, size_t thread_id) const final {
     HWY_FULL(float) df;
-    xextra = RoundUpTo(xextra, Lanes(df));
+    ptrdiff_t x_start =
+        -static_cast<ptrdiff_t>(RoundUpTo(xextra_left, Lanes(df)));
+    ptrdiff_t x_end = static_cast<ptrdiff_t>(xsize + xextra_right);
+
     auto threefour = Set(df, 0.75f);
     auto onefour = Set(df, 0.25f);
     const float* row_in = GetInputRow(input_rows, c_, 0);
     float* row_out = GetOutputRow(output_rows, c_, 0);
-    for (ssize_t x = -xextra; x < static_cast<ssize_t>(xsize + xextra);
-         x += Lanes(df)) {
+    for (ptrdiff_t x = x_start; x < x_end; x += Lanes(df)) {
+      // TODO(eustas): why unaligned?
       auto current = Mul(LoadU(df, row_in + x), threefour);
       auto prev = LoadU(df, row_in + x - 1);
       auto next = LoadU(df, row_in + x + 1);
@@ -45,6 +55,7 @@ class HorizontalChromaUpsamplingStage : public RenderPipelineStage {
       auto right = MulAdd(onefour, next, current);
       StoreInterleaved(df, left, right, row_out + x * 2);
     }
+    return true;
   }
 
   RenderPipelineChannelMode GetChannelMode(size_t c) const final {
@@ -65,11 +76,14 @@ class VerticalChromaUpsamplingStage : public RenderPipelineStage {
             /*shift=*/1, /*border=*/1)),
         c_(channel) {}
 
-  void ProcessRow(const RowInfo& input_rows, const RowInfo& output_rows,
-                  size_t xextra, size_t xsize, size_t xpos, size_t ypos,
-                  size_t thread_id) const final {
+  Status ProcessRow(const RowInfo& input_rows, const RowInfo& output_rows,
+                    size_t xextra_left, size_t xextra_right, size_t xsize,
+                    size_t xpos, size_t ypos, size_t thread_id) const final {
     HWY_FULL(float) df;
-    xextra = RoundUpTo(xextra, Lanes(df));
+    ptrdiff_t x_start =
+        -static_cast<ptrdiff_t>(RoundUpTo(xextra_left, Lanes(df)));
+    ptrdiff_t x_end = static_cast<ptrdiff_t>(xsize + xextra_right);
+
     auto threefour = Set(df, 0.75f);
     auto onefour = Set(df, 0.25f);
     const float* row_top = GetInputRow(input_rows, c_, -1);
@@ -77,8 +91,8 @@ class VerticalChromaUpsamplingStage : public RenderPipelineStage {
     const float* row_bot = GetInputRow(input_rows, c_, 1);
     float* row_out0 = GetOutputRow(output_rows, c_, 0);
     float* row_out1 = GetOutputRow(output_rows, c_, 1);
-    for (ssize_t x = -xextra; x < static_cast<ssize_t>(xsize + xextra);
-         x += Lanes(df)) {
+    for (ptrdiff_t x = x_start; x < x_end; x += Lanes(df)) {
+      // TODO(eustas): why unaligned?
       auto it = LoadU(df, row_top + x);
       auto im = LoadU(df, row_mid + x);
       auto ib = LoadU(df, row_bot + x);
@@ -86,6 +100,7 @@ class VerticalChromaUpsamplingStage : public RenderPipelineStage {
       Store(MulAdd(it, onefour, im_scaled), df, row_out0 + x);
       Store(MulAdd(ib, onefour, im_scaled), df, row_out1 + x);
     }
+    return true;
   }
 
   RenderPipelineChannelMode GetChannelMode(size_t c) const final {
