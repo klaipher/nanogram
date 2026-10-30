@@ -188,7 +188,13 @@ cmd_run() {
       "com.apple.CoreSimulator.SimRuntime.iOS-${os//./-}")"
   fi
   xcrun simctl bootstatus "$udid" -b >/dev/null
-  open "$(env -u DEVELOPER_DIR xcode-select -p)/Applications/Simulator.app" --args -CurrentDeviceUDID "$udid" || true
+  # Show the device window: Simulator.app in older Xcodes, DeviceHub in Xcode 27.
+  local dev_dir; dev_dir="$(env -u DEVELOPER_DIR xcode-select -p)"
+  if [ -d "$dev_dir/Applications/Simulator.app" ]; then
+    open "$dev_dir/Applications/Simulator.app" --args -CurrentDeviceUDID "$udid" || true
+  else
+    open "$dev_dir/../Applications/DeviceHub.app" || true
+  fi
   [ -x "$ROOT/bazel-bin/Telegram/Telegram.app/Telegram" ] || die "no app at $ROOT/bazel-bin/Telegram/Telegram.app"
   # Bazel outputs are read-only and simctl needs a writable bundle: stage an APFS
   # clone (instant, no extra space) and install from that.
