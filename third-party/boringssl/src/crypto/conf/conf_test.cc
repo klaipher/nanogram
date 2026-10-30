@@ -1,31 +1,35 @@
-/* Copyright (c) 2021, Google Inc.
- *
- * Permission to use, copy, modify, and/or distribute this software for any
- * purpose with or without fee is hereby granted, provided that the above
- * copyright notice and this permission notice appear in all copies.
- *
- * THE SOFTWARE IS PROVIDED "AS IS" AND THE AUTHOR DISCLAIMS ALL WARRANTIES
- * WITH REGARD TO THIS SOFTWARE INCLUDING ALL IMPLIED WARRANTIES OF
- * MERCHANTABILITY AND FITNESS. IN NO EVENT SHALL THE AUTHOR BE LIABLE FOR ANY
- * SPECIAL, DIRECT, INDIRECT, OR CONSEQUENTIAL DAMAGES OR ANY DAMAGES
- * WHATSOEVER RESULTING FROM LOSS OF USE, DATA OR PROFITS, WHETHER IN AN ACTION
- * OF CONTRACT, NEGLIGENCE OR OTHER TORTIOUS ACTION, ARISING OUT OF OR IN
- * CONNECTION WITH THE USE OR PERFORMANCE OF THIS SOFTWARE. */
+// Copyright 2021 The BoringSSL Authors
+//
+// Licensed under the Apache License, Version 2.0 (the "License");
+// you may not use this file except in compliance with the License.
+// You may obtain a copy of the License at
+//
+//     https://www.apache.org/licenses/LICENSE-2.0
+//
+// Unless required by applicable law or agreed to in writing, software
+// distributed under the License is distributed on an "AS IS" BASIS,
+// WITHOUT WARRANTIES OR CONDITIONS OF ANY KIND, either express or implied.
+// See the License for the specific language governing permissions and
+// limitations under the License.
 
 #include <algorithm>
+#include <map>
 #include <string>
 #include <vector>
-#include <map>
 
 #include <openssl/bio.h>
 #include <openssl/conf.h>
 
 #include <gtest/gtest.h>
 
+#include "../test/test_util.h"
 #include "internal.h"
 
+BSSL_NAMESPACE_BEGIN
+namespace {
 
-// A |CONF| is an unordered list of sections, where each section contains an
+
+// A `CONF` is an unordered list of sections, where each section contains an
 // ordered list of (name, value) pairs.
 using ConfModel =
     std::map<std::string, std::vector<std::pair<std::string, std::string>>>;
@@ -92,7 +96,7 @@ static void ExpectConfEquals(const CONF *conf, const ConfModel &model) {
     }
   }
 
-  // There should not be any other values in |conf|. |conf| currently stores
+  // There should not be any other values in `conf`. `conf` currently stores
   // both sections and values in the same map.
   EXPECT_EQ(lh_CONF_SECTION_num_items(conf->sections), model.size());
   EXPECT_EQ(lh_CONF_VALUE_num_items(conf->values), total_values);
@@ -150,7 +154,7 @@ key5 = value5
           },
       },
 
-      // Trailing backslashes are line continations.
+      // Trailing backslashes are line continuations.
       {
           "key=\\\nvalue\nkey2=foo\\\nbar=baz",
           {
@@ -310,17 +314,102 @@ key7 = value7  # section1
 
       // Punctuation is allowed in key names.
       {
-          "key.1 = value\n",
+          "key!%&*+,-./;?@^_|~1 = value\n",
           {
-              {"default", {{"key.1", "value"}}},
+              {"default", {{"key!%&*+,-./;?@^_|~1", "value"}}},
+          },
+      },
+
+      // Only the first equals counts as a key/value separator.
+      {
+          "key======",
+          {
+              {"default", {{"key", "====="}}},
+          },
+      },
+
+      // Empty keys and empty values are allowed.
+      {
+          R"(
+[both_empty]
+=
+[empty_key]
+=value
+[empty_value]
+key=
+[equals]
+======
+[]
+empty=section
+)",
+          {
+              {"default", {}},
+              {"both_empty", {{"", ""}}},
+              {"empty_key", {{"", "value"}}},
+              {"empty_value", {{"key", ""}}},
+              {"equals", {{"", "====="}}},
+              {"", {{"empty", "section"}}},
+          },
+      },
+
+      // After the first equals, the value can freely contain more equals.
+      {
+          "key1 = \\$value1\nkey2 = \"$value2\"",
+          {
+              {"default", {{"key1", "$value1"}, {"key2", "$value2"}}},
+          },
+      },
+
+      // Non-ASCII bytes are allowed in values.
+      {
+          "key = \xe2\x98\x83",
+          {
+              {"default", {{"key", "\xe2\x98\x83"}}},
+          },
+      },
+
+      // An escaped backslash is not a line continuation.
+      {
+          R"(
+key1 = value1\\
+key2 = value2
+)",
+          {
+              {"default", {{"key1", "value1\\"}, {"key2", "value2"}}},
+          },
+      },
+
+      // An unterminated escape sequence at the end of a line is silently
+      // ignored. Normally, this would be a line continuation, but the line
+      // continuation logic does not count backslashes and only looks at the
+      // last two characters. This is probably a bug.
+      {
+          R"(
+key1 = value1\\\
+key2 = value2
+)",
+          {
+              {"default", {{"key1", "value1\\"}, {"key2", "value2"}}},
+          },
+      },
+
+      // The above also happens inside a quoted string, even allowing the quoted
+      // string to be unterminated. This is also probably a bug.
+      {
+          R"(
+key1 = "value1\\\
+key2 = value2
+)",
+          {
+              {"default", {{"key1", "value1\\"}, {"key2", "value2"}}},
           },
       },
   };
   for (const auto &t : kTests) {
     SCOPED_TRACE(t.in);
-    bssl::UniquePtr<BIO> bio(BIO_new_mem_buf(t.in.data(), t.in.size()));
+    UniquePtr<BIO> bio(BIO_new_mem_buf(t.in.data(), t.in.size()));
     ASSERT_TRUE(bio);
-    bssl::UniquePtr<CONF> conf(NCONF_new(nullptr));
+    UniquePtr<CONF> conf(NCONF_new(nullptr));
     ASSERT_TRUE(conf);
     ASSERT_TRUE(NCONF_load_bio(conf.get(), bio.get(), nullptr));
 
@@ -343,11 +432,12 @@ key7 = value7  # section1
   };
   for (const auto &t : kInvalidTests) {
     SCOPED_TRACE(t);
-    bssl::UniquePtr<BIO> bio(BIO_new_mem_buf(t, strlen(t)));
+    UniquePtr<BIO> bio(BIO_new_mem_buf(t, strlen(t)));
     ASSERT_TRUE(bio);
-    bssl::UniquePtr<CONF> conf(NCONF_new(nullptr));
+    UniquePtr<CONF> conf(NCONF_new(nullptr));
     ASSERT_TRUE(conf);
     EXPECT_FALSE(NCONF_load_bio(conf.get(), bio.get(), nullptr));
+    EXPECT_TRUE(ErrorsAreAndClear({{ERR_LIB_CONF, std::nullopt}}));
   }
 }
 
@@ -385,7 +475,7 @@ TEST(ConfTest, ParseList) {
        /*remove_whitespace=*/1,
        {"ab cd", "", "ef gh"}},
   };
-  for (const auto& t : kTests) {
+  for (const auto &t : kTests) {
     SCOPED_TRACE(t.list);
     SCOPED_TRACE(t.sep);
     SCOPED_TRACE(t.remove_whitespace);
@@ -401,3 +491,6 @@ TEST(ConfTest, ParseList) {
     EXPECT_EQ(result, t.expected);
   }
 }
+
+}  // namespace
+BSSL_NAMESPACE_END

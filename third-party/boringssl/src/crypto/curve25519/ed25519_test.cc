@@ -1,16 +1,16 @@
-/* Copyright (c) 2015, Google Inc.
- *
- * Permission to use, copy, modify, and/or distribute this software for any
- * purpose with or without fee is hereby granted, provided that the above
- * copyright notice and this permission notice appear in all copies.
- *
- * THE SOFTWARE IS PROVIDED "AS IS" AND THE AUTHOR DISCLAIMS ALL WARRANTIES
- * WITH REGARD TO THIS SOFTWARE INCLUDING ALL IMPLIED WARRANTIES OF
- * MERCHANTABILITY AND FITNESS. IN NO EVENT SHALL THE AUTHOR BE LIABLE FOR ANY
- * SPECIAL, DIRECT, INDIRECT, OR CONSEQUENTIAL DAMAGES OR ANY DAMAGES
- * WHATSOEVER RESULTING FROM LOSS OF USE, DATA OR PROFITS, WHETHER IN AN ACTION
- * OF CONTRACT, NEGLIGENCE OR OTHER TORTIOUS ACTION, ARISING OUT OF OR IN
- * CONNECTION WITH THE USE OR PERFORMANCE OF THIS SOFTWARE. */
+// Copyright 2015 The BoringSSL Authors
+//
+// Licensed under the Apache License, Version 2.0 (the "License");
+// you may not use this file except in compliance with the License.
+// You may obtain a copy of the License at
+//
+//     https://www.apache.org/licenses/LICENSE-2.0
+//
+// Unless required by applicable law or agreed to in writing, software
+// distributed under the License is distributed on an "AS IS" BASIS,
+// WITHOUT WARRANTIES OR CONDITIONS OF ANY KIND, either express or implied.
+// See the License for the specific language governing permissions and
+// limitations under the License.
 
 #include <stdint.h>
 #include <string.h>
@@ -23,6 +23,9 @@
 #include "../test/file_test.h"
 #include "../test/test_util.h"
 
+
+BSSL_NAMESPACE_BEGIN
+namespace {
 
 TEST(Ed25519Test, TestVectors) {
   FileTestGTest("crypto/curve25519/ed25519_tests.txt", [](FileTest *t) {
@@ -47,6 +50,42 @@ TEST(Ed25519Test, TestVectors) {
     EXPECT_EQ(Bytes(expected_signature), Bytes(signature));
     EXPECT_TRUE(ED25519_verify(message.data(), message.size(), signature,
                                public_key.data()));
+  });
+}
+
+TEST(Ed25519Test, TestVectorsPreHash) {
+  FileTestGTest("crypto/curve25519/ed25519ph_tests.txt", [](FileTest *t) {
+    std::vector<uint8_t> private_seed, public_key, context, message,
+        expected_signature;
+    ASSERT_TRUE(t->GetBytes(&private_seed, "PRIVSEED"));
+    ASSERT_EQ(32u, private_seed.size());
+    ASSERT_TRUE(t->GetBytes(&public_key, "PUB"));
+    ASSERT_EQ(32u, public_key.size());
+    ASSERT_TRUE(t->GetBytes(&context, "CONTEXT"));
+    ASSERT_TRUE(t->GetBytes(&message, "MESSAGE"));
+    ASSERT_TRUE(t->GetBytes(&expected_signature, "SIG"));
+    ASSERT_EQ(64u, expected_signature.size());
+
+    uint8_t calculated_public_key[32];
+    uint8_t private_key[64];
+    ED25519_keypair_from_seed(calculated_public_key, private_key,
+                              private_seed.data());
+    ASSERT_EQ(Bytes(public_key), Bytes(calculated_public_key));
+
+    uint8_t digest[SHA512_DIGEST_LENGTH];
+    SHA512(message.data(), message.size(), digest);
+
+    // Signing should not leak the private key or the digest
+    CONSTTIME_SECRET(private_key, sizeof(private_key));
+    CONSTTIME_SECRET(digest, sizeof(digest));
+    uint8_t signature[64];
+    ASSERT_TRUE(ED25519_sign_prehashed(signature, context.data(),
+                                       context.size(), digest, private_key));
+    CONSTTIME_DECLASSIFY(signature, sizeof(signature));
+    CONSTTIME_DECLASSIFY(digest, sizeof(digest));
+    EXPECT_EQ(Bytes(expected_signature), Bytes(signature));
+    EXPECT_TRUE(ED25519_verify_prehashed(context.data(), context.size(), digest,
+                                         signature, public_key.data()));
   });
 }
 
@@ -130,3 +169,6 @@ TEST(Ed25519Test, KeypairFromSeed) {
   EXPECT_EQ(Bytes(public_key1), Bytes(public_key2));
   EXPECT_EQ(Bytes(private_key1), Bytes(private_key2));
 }
+
+}  // namespace
+BSSL_NAMESPACE_END
