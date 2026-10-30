@@ -10,4 +10,4 @@ After an Xcode update that brings a new simulator runtime, change these two valu
 """
 
 TEST_SIMULATOR_DEVICE = "iPhone 17"
-TEST_SIMULATOR_OS = "27.0"
+TEST_SIMULATOR_OS = "27.2"
