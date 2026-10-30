@@ -21,6 +21,7 @@ arm64_specific_sources = [
 
 arm64_specific_textual_hdrs = [
     "third_party/openh264/src/codec/common/arm64/arm_arch64_common_macro.S",
+    "third_party/openh264/src/codec/common/arm64/arm_aarch64_common.h",
 ]
 
 arm_specific_sources = [
