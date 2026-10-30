@@ -1,5 +1,8 @@
 # Telegram iOS Source Code Compilation Guide
 
+> **This fork:** official release-13.1.1 with faster, disk-friendly local builds. Start with
+> [`docs/local-development.md`](docs/local-development.md) and `tools/dev/tg setup`.
+
 We welcome all developers to use our API and source code to create applications on our platform.
 There are several things we require from **all developers** for the moment.
 
