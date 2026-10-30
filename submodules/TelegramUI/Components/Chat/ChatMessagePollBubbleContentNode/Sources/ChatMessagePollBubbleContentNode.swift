@@ -3179,13 +3179,15 @@ public class ChatMessagePollBubbleContentNode: ChatMessageBubbleContentNode {
                                         }
                                         self.updateSelection()
                                     }
-                                    optionNode.longTapped = { [weak self] in
+                                    // Weak: the option node owns this closure, and the bubble owns the option node.
+                                    optionNode.longTapped = { [weak self, weak optionNode] in
                                         guard let self,
+                                              let optionNode,
                                               let item = self.item,
                                               let option else {
                                             return
                                         }
-                                        item.controllerInteraction.pollOptionLongTap(option.opaqueIdentifier, ChatControllerInteraction.LongTapParams(message: item.message, contentNode: optionNode.contextSourceNode, messageNode: strongSelf, progress: nil))
+                                        item.controllerInteraction.pollOptionLongTap(option.opaqueIdentifier, ChatControllerInteraction.LongTapParams(message: item.message, contentNode: optionNode.contextSourceNode, messageNode: self, progress: nil))
                                     }
                                     optionNode.frame = optionNodeFrame
                                 } else {

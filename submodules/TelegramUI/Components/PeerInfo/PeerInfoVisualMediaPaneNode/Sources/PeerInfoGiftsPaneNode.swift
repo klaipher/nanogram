@@ -104,6 +104,7 @@ public final class PeerInfoGiftsPaneNode: ASDisplayNode, PeerInfoPaneNode, UIScr
     private let presentationDataPromise = Promise<PresentationData>()
     
     private var collectionsDisposable: Disposable?
+    private var peerDisposable: Disposable?
     private var collections: [StarGiftCollection]?
     private var reorderedCollectionIds: [Int32]?
     private var isReordering = false
@@ -194,7 +195,9 @@ public final class PeerInfoGiftsPaneNode: ASDisplayNode, PeerInfoPaneNode, UIScr
             self.setCurrentCollection(collection: .collection(Int32(initialGiftCollectionId)))
         }
         
-        let _ = (context.engine.data.subscribe(TelegramEngine.EngineData.Item.Peer.Peer(id: peerId))
+        // Kept and disposed in deinit: this subscription never completes, so a discarded
+        // disposable left it running for the rest of the process.
+        self.peerDisposable = (context.engine.data.subscribe(TelegramEngine.EngineData.Item.Peer.Peer(id: peerId))
         |> deliverOnMainQueue).start(next: { [weak self] peer in
             guard let self else {
                 return
@@ -206,6 +209,7 @@ public final class PeerInfoGiftsPaneNode: ASDisplayNode, PeerInfoPaneNode, UIScr
     
     deinit {
         self.collectionsDisposable?.dispose()
+        self.peerDisposable?.dispose()
     }
         
     public override func didLoad() {

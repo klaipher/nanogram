@@ -758,7 +758,11 @@ private final class ContextControllerActionsListCustomItemNode: ASDisplayNode, C
             itemNode = self.item.node(
                 presentationData: presentationData,
                 getController: self.getController,
-                actionSelected: { result in
+                // Weak: the item node keeps this closure, and this node keeps the item node.
+                actionSelected: { [weak self] result in
+                    guard let self else {
+                        return
+                    }
                     switch result {
                     case .default, .dismissWithoutContent:
                         self.requestDismiss(result)

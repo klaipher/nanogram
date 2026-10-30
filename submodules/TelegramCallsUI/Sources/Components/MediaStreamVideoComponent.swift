@@ -485,7 +485,7 @@ public final class MediaStreamVideoComponent: Component {
                     videoView.alpha > 0,
                     self.hadVideo,
                     let snapshot = videoView.snapshotView(afterScreenUpdates: false) ?? videoView.snapshotView(afterScreenUpdates: true) {
-                    lastFrame[peerId.id.description] = snapshot
+                    storeLastFrame(snapshot, key: peerId.id.description)
                 }
                 
                 var aspect = videoView.getAspect()
@@ -713,7 +713,7 @@ public final class MediaStreamVideoComponent: Component {
                 presentation.frame = presentationParent.convert(videoView.frame, from: self)
                 
                 if let callId = self.component?.call.peerId?.id.description {
-                    lastFrame[callId] = presentation
+                    storeLastFrame(presentation, key: callId)
                 }
                 
                 videoView.alpha = 0
@@ -799,6 +799,19 @@ public final class MediaStreamVideoComponent: Component {
 
 // TODO: move to appropriate place
 fileprivate var lastFrame: [String: UIView] = [:]
+fileprivate var lastFrameKeys: [String] = []
+
+/// Remembers a stream's last frame for the stalled-stream placeholder. Only the few most recent
+/// streams are kept: each entry is a full video frame, and the map used to keep one per stream
+/// ever watched for the life of the process.
+fileprivate func storeLastFrame(_ view: UIView, key: String) {
+    lastFrame[key] = view
+    lastFrameKeys.removeAll(where: { $0 == key })
+    lastFrameKeys.append(key)
+    while lastFrameKeys.count > 4 {
+        lastFrame.removeValue(forKey: lastFrameKeys.removeFirst())
+    }
+}
 
 private final class CustomIntensityVisualEffectView: UIVisualEffectView {
     private var animator: UIViewPropertyAnimator!

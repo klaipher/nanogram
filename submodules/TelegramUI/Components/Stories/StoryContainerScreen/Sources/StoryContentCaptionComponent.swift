@@ -796,7 +796,12 @@ final class StoryContentCaptionComponent: Component {
                         entities = story.entities
                     } else if self.forwardInfoDisposable == nil, let forwardInfoStory = component.forwardInfoStory {
                         self.forwardInfoDisposable = (forwardInfoStory
-                        |> deliverOnMainQueue).start(next: { story in
+                        |> deliverOnMainQueue).start(next: { [weak self] story in
+                            // Weak: the source is a Promise that never completes, so a strong
+                            // capture kept this view (and its deinit, which disposes this) alive.
+                            guard let self else {
+                                return
+                            }
                             if let story {
                                 self.forwardInfoStory = story
                                 if !self.isUpdating {

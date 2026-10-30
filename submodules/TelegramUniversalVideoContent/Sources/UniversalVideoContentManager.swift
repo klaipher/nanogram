@@ -260,7 +260,7 @@ public final class UniversalVideoManagerImpl: UniversalVideoManager {
     public func removePlaybackCompleted(id: AnyHashable, index: Int) {
         if let current = self.holderCallbacks[id] {
             current.playbackCompleted.remove(index)
-            if current.playbackCompleted.isEmpty {
+            if current.isEmpty {
                 self.holderCallbacks.removeValue(forKey: id)
             }
         }
@@ -290,7 +290,7 @@ public final class UniversalVideoManagerImpl: UniversalVideoManager {
                 Queue.mainQueue().async {
                     if let current = self.holderCallbacks[content.id] {
                         current.status.remove(index)
-                        if current.playbackCompleted.isEmpty {
+                        if current.isEmpty {
                             self.holderCallbacks.removeValue(forKey: content.id)
                         }
                     }
@@ -322,8 +322,8 @@ public final class UniversalVideoManagerImpl: UniversalVideoManager {
             return ActionDisposable {
                 Queue.mainQueue().async {
                     if let current = self.holderCallbacks[content.id] {
-                        current.status.remove(index)
-                        if current.playbackCompleted.isEmpty {
+                        current.bufferingStatus.remove(index)
+                        if current.isEmpty {
                             self.holderCallbacks.removeValue(forKey: content.id)
                         }
                     }
@@ -355,8 +355,8 @@ public final class UniversalVideoManagerImpl: UniversalVideoManager {
             return ActionDisposable {
                 Queue.mainQueue().async {
                     if let current = self.holderCallbacks[content.id] {
-                        current.status.remove(index)
-                        if current.playbackCompleted.isEmpty {
+                        current.isNativePictureInPictureActive.remove(index)
+                        if current.isEmpty {
                             self.holderCallbacks.removeValue(forKey: content.id)
                         }
                     }

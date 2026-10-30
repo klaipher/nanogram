@@ -1392,8 +1392,9 @@ public class ChatMessageTodoBubbleContentNode: ChatMessageBubbleContentNode {
                                 if optionNode.supernode !== strongSelf {
                                     strongSelf.addSubnode(optionNode)
                                     let todoItem = optionNode.option
-                                    optionNode.selectionUpdated = {
-                                        guard let strongSelf = self, let item = strongSelf.item, let todoItem else {
+                                    // Weak: the option node owns this closure.
+                                    optionNode.selectionUpdated = { [weak optionNode] in
+                                        guard let strongSelf = self, let item = strongSelf.item, let todoItem, let optionNode else {
                                             return
                                         }
                                         item.controllerInteraction.requestToggleTodoMessageItem(item.message.id, todoItem.id, optionNode.radioNode?.isChecked == true)
