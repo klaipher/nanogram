@@ -85,7 +85,7 @@ build_target() {
     ${CONFIGURE_ARGS} ${EXTRA_CONFIGURE_ARGS} ${target_specific_flags} \
 
   export DIST_DIR
-  eval make dist
+  eval make -j"$(getconf _NPROCESSORS_ONLN)" dist
   cd "${old_pwd}"
 }
 

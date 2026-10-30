@@ -45,5 +45,18 @@ common --experimental_disk_cache_gc_max_age=14d
 # from the repository cache into external/ instead of copying them.
 common --experimental_repository_cache_hardlinks
 
+# Build-time tools (Rust proc-macros, build scripts and uniffi-bindgen, the SwiftTL
+# code generator, C/C++ helpers) are built unoptimized, as Cargo does for build
+# dependencies. They only generate code, so their output is the same either way.
+# They were ~860 actions and ~1,240 CPU-seconds of a cold build, and the Rust tool
+# chain behind the wallet bindings (uniffi-bindgen alone: 98 s) sat at the start of
+# the critical path, ahead of every Swift module that depends on WalletContext.
+build --host_compilation_mode=fastbuild
+
+# apple_support's layering check is a beta lint that is on by default. It does not
+# change any output, and generating its module maps took ~30 s at the very start
+# of every cold build (on the critical path).
+common --repo_env=APPLE_SUPPORT_LAYERING_CHECK_BETA=0
+
 # Per-developer overrides (disk cache path, jobs, ...). Not checked in.
 try-import %workspace%/user.bazelrc
