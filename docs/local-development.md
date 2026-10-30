@@ -125,6 +125,11 @@ the versions needed are not in the Bazel Central Registry yet; switch them to pl
 
 ### Fork hygiene
 
+- **One simulator pin for tests.** Upstream pins each of its 48 `ios_test_runner`s to its own CI's device/OS
+  (mostly iOS 26.5), which is not installed with Xcode 27.2, so every app-side test failed before running. They
+  all read `TEST_SIMULATOR_DEVICE` / `TEST_SIMULATOR_OS` from `build-system/bazel-utils/test_simulator.bzl`
+  (iPhone 17 / iOS 27.0) now; after an Xcode update, change the pair there.
+
 - **Absolute submodule URLs.** Upstream uses `../rlottie.git` and `../tgcalls.git`, which resolve relative to the
   remote. From this fork they would point at `github.com/klaipher/rlottie.git`, which doesn't exist; they now point
   at `TelegramMessenger/…` directly.

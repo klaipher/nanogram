@@ -9,6 +9,7 @@ load(
 load("//build-system/bazel-utils:plist_fragment.bzl",
     "plist_fragment",
 )
+load("//build-system/bazel-utils:test_simulator.bzl", "TEST_SIMULATOR_DEVICE", "TEST_SIMULATOR_OS")
 
 filegroup(
     name = "TelegramCallsUIMetalResources",
@@ -160,8 +161,8 @@ swift_library(
 
 ios_test_runner(
     name = "TelegramCallsUITestRunner",
-    device_type = "iPhone 17",
-    os_version = "26.5",
+    device_type = TEST_SIMULATOR_DEVICE,
+    os_version = TEST_SIMULATOR_OS,
 )
 
 ios_unit_test(

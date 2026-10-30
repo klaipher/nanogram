@@ -1,6 +1,7 @@
 load("@build_bazel_rules_swift//swift:swift.bzl", "swift_library")
 load("@build_bazel_rules_apple//apple:ios.bzl", "ios_unit_test")
 load("@build_bazel_rules_apple//apple/testing/default_runner:ios_test_runner.bzl", "ios_test_runner")
+load("//build-system/bazel-utils:test_simulator.bzl", "TEST_SIMULATOR_DEVICE", "TEST_SIMULATOR_OS")
 
 swift_library(
     name = "RichTextEditorMessageConversion",
@@ -39,8 +40,8 @@ swift_library(
 # real device/OS, mirroring //submodules/TextFormat:TextFormatTestRunner. See CLAUDE.md.
 ios_test_runner(
     name = "RichTextEditorMessageConversionTestRunner",
-    device_type = "iPhone 17",
-    os_version = "26.5",
+    device_type = TEST_SIMULATOR_DEVICE,
+    os_version = TEST_SIMULATOR_OS,
 )
 
 ios_unit_test(

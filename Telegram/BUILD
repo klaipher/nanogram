@@ -63,6 +63,7 @@ load(
 load("@build_bazel_rules_apple//apple:resources.bzl",
     "swift_intent_library",
 )
+load("//build-system/bazel-utils:test_simulator.bzl", "TEST_SIMULATOR_DEVICE", "TEST_SIMULATOR_OS")
 
 config_setting(
     name = "debug",
@@ -1458,8 +1459,8 @@ swift_library(
 
 ios_test_runner(
     name = "IntentsExtensionTestRunner",
-    device_type = "iPhone 17",
-    os_version = "26.5",
+    device_type = TEST_SIMULATOR_DEVICE,
+    os_version = TEST_SIMULATOR_OS,
 )
 
 ios_unit_test(
@@ -1992,8 +1993,8 @@ filegroup(
 
 ios_test_runner(
     name = "iPhone-17__26.2",
-    device_type = "iPhone 17",
-    os_version = "26.2",
+    device_type = TEST_SIMULATOR_DEVICE,
+    os_version = TEST_SIMULATOR_OS,
 )
 
 

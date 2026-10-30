@@ -3,6 +3,7 @@ load("@build_bazel_rules_apple//apple:ios.bzl", "ios_application", "ios_ui_test"
 load("//build-system/bazel-utils:plist_fragment.bzl", "plist_fragment")
 load("@build_bazel_rules_apple//apple/testing/default_runner:ios_test_runner.bzl", "ios_test_runner")
 load("@rules_shell//shell:sh_binary.bzl", "sh_binary")
+load("//build-system/bazel-utils:test_simulator.bzl", "TEST_SIMULATOR_DEVICE", "TEST_SIMULATOR_OS")
 
 # Pinned to a device/OS that actually exists. The default runner picks an invalid device and the
 # test process exits 15 with no diagnostic. Mirrors //submodules/TextFormat:TextFormatTestRunner.
@@ -15,8 +16,8 @@ sh_binary(
 ios_test_runner(
     name = "HarnessTestRunner",
     pre_action = ":UninstallHarnessFromTestSims",
-    device_type = "iPhone 17",
-    os_version = "26.5",
+    device_type = TEST_SIMULATOR_DEVICE,
+    os_version = TEST_SIMULATOR_OS,
 )
 
 # Tier 2 runs on the OS the harness is hand-driven on (K1 is iPhone 18 Pro / iOS 27.0), so a
@@ -25,7 +26,7 @@ ios_test_runner(
     name = "HarnessUITestRunner",
     pre_action = ":UninstallHarnessFromTestSims",
     device_type = "iPhone 18 Pro",
-    os_version = "27.0",
+    os_version = TEST_SIMULATOR_OS,
 )
 
 swift_library(
