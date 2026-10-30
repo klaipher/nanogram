@@ -1,0 +1,265 @@
+#!/usr/bin/env bash
+# tg — local development helper for this Telegram-iOS fork.
+#
+# Wraps build-system/Make/Make.py with fast, disk-friendly defaults for
+# simulator work. Run `tools/dev/tg help` for commands; see
+# docs/local-development.md for the reasoning behind each default.
+set -euo pipefail
+
+ROOT="$(cd "$(dirname "${BASH_SOURCE[0]}")/../.." && pwd)"
+cd "$ROOT"
+
+CACHE_DIR="${TG_CACHE_DIR:-$HOME/.cache/telegram-ios/bazel-disk-cache}"
+CONFIG="${TG_CONFIG:-$ROOT/build-system/dev-configuration.json}"
+CODESIGNING="${TG_CODESIGNING:-$ROOT/build-system/fake-codesigning}"
+UPSTREAM_URL="https://github.com/TelegramMessenger/Telegram-iOS.git"
+
+bazel_version() { python3 -c 'import json;print(json.load(open("versions.json"))["bazel"].split(":")[0])'; }
+xcode_version() { python3 -c 'import json;print(json.load(open("versions.json"))["xcode"])'; }
+bazel_bin() { echo "$ROOT/build-input/bazel-$(bazel_version)-darwin-$(uname -m)"; }
+
+say() { printf '\033[1m==>\033[0m %s\n' "$*"; }
+warn() { printf '\033[33mwarning:\033[0m %s\n' "$*" >&2; }
+die() { printf '\033[31merror:\033[0m %s\n' "$*" >&2; exit 1; }
+
+size_of() { if [ -e "$1" ]; then du -sh "$1" 2>/dev/null | cut -f1; else echo "-"; fi; }
+
+require_config() {
+  [ -f "$CONFIG" ] || die "no build configuration at $CONFIG. Run: tools/dev/tg setup"
+}
+
+# Make.py checks Xcode against versions.json; upstream's own dev command always
+# overrides it, so do the same and let `doctor` report a mismatch instead.
+make_py() {
+  python3 -u build-system/Make/Make.py --overrideXcodeVersion --cacheDir="$CACHE_DIR" "$@"
+}
+
+cmd_setup() {
+  say "Configuring git for a large repository"
+  git config core.untrackedCache true
+  git config feature.manyFiles true
+  git config fetch.parallel 0
+  git config submodule.fetchJobs 0
+  # Built-in FSEvents monitor (git >= 2.37) keeps `git status` fast on ~49k files.
+  if git help -a 2>/dev/null | grep fsmonitor--daemon >/dev/null; then
+    git config core.fsmonitor true
+  fi
+
+  say "Fetching submodules (shallow)"
+  git submodule sync --recursive >/dev/null
+  git submodule update --init --recursive --depth 1 --jobs 8
+
+  mkdir -p "$CACHE_DIR"
+
+  if [ ! -f "$CONFIG" ]; then
+    cp build-system/appstore-configuration.json "$CONFIG"
+    say "Created $CONFIG from appstore-configuration.json"
+    warn "Replace api_id and api_hash in it with your own (https://my.telegram.org/apps)."
+    warn "Keep bundle_id/team_id unless you also provide matching provisioning profiles."
+  fi
+
+  if [ ! -f user.bazelrc ]; then
+    cat > user.bazelrc <<EOF
+# Personal Bazel settings (not checked in). Examples:
+# common --experimental_disk_cache_gc_max_size=20G
+# build --jobs=8
+EOF
+    say "Created user.bazelrc for personal overrides"
+  fi
+
+  cmd_doctor || true
+}
+
+cmd_doctor() {
+  local ok=0
+  local want_xcode; want_xcode="$(xcode_version)"
+  local dev_dir; dev_dir="$(xcode-select -p 2>/dev/null || true)"
+  if [[ "$dev_dir" != *Xcode*.app* ]]; then
+    warn "xcode-select points at '$dev_dir'. Install Xcode $want_xcode and run: sudo xcode-select -s /Applications/Xcode.app"
+    ok=1
+  else
+    local have; have="$(xcodebuild -version 2>/dev/null | awk 'NR==1{print $2}')"
+    if [ "$have" != "$want_xcode" ]; then
+      warn "Xcode $have is selected, this release expects $want_xcode (versions.json). Builds may fail."
+      ok=1
+    else
+      say "Xcode $have"
+    fi
+  fi
+  [ -f "$CONFIG" ] && say "Configuration: $CONFIG" || { warn "Missing $CONFIG (run: tools/dev/tg setup)"; ok=1; }
+  if git submodule status --recursive | grep '^-' >/dev/null; then
+    warn "Some submodules are not checked out (run: tools/dev/tg setup)"; ok=1
+  fi
+  local free; free="$(df -g "$ROOT" | awk 'NR==2{print $4}')"
+  if [ "${free:-0}" -lt 60 ]; then
+    warn "Only ${free} GB free. A first full debug build needs roughly 40-60 GB (output base + disk cache)."
+    ok=1
+  else
+    say "Free disk: ${free} GB"
+  fi
+  return $ok
+}
+
+# tg build [--release] [--device] [--full] [-- extra Make.py build args]
+cmd_build() {
+  require_config
+  local configuration full=0 bazel_args=() extra=()
+  local release=0 device=0
+  while [ $# -gt 0 ]; do
+    case "$1" in
+      --release) release=1 ;;
+      --device) device=1 ;;
+      --full) full=1 ;;
+      --) shift; extra=("$@"); break ;;
+      *) die "unknown build option: $1" ;;
+    esac
+    shift
+  done
+  case "$release$device" in
+    00) configuration=debug_sim_arm64 ;;
+    10) configuration=release_sim_arm64 ;;
+    01) configuration=debug_arm64 ;;
+    11) configuration=release_arm64 ;;
+  esac
+  # The app extensions (Share, Notification Service/Content, Intents, Widget)
+  # are separate binaries that most UI work never touches.
+  if [ $full -eq 0 ]; then bazel_args+=("--//Telegram:disableExtensions"); fi
+  # Simulator builds need no provisioning profiles.
+  if [ $device -eq 0 ]; then bazel_args+=("--//Telegram:disableProvisioningProfiles"); fi
+
+  local make_args=()
+  if [ ${#bazel_args[@]} -gt 0 ]; then
+    make_args+=("--bazelArguments=${bazel_args[*]}")
+  fi
+  # ${a[@]+"${a[@]}"}: empty arrays are "unbound" under set -u in macOS bash 3.2.
+  make_py ${make_args[@]+"${make_args[@]}"} build \
+    --configurationPath="$CONFIG" \
+    --codesigningInformationPath="$CODESIGNING" \
+    --buildNumber="${TG_BUILD_NUMBER:-1}" \
+    --configuration="$configuration" \
+    ${extra[@]+"${extra[@]}"}
+  say "Built: $ROOT/bazel-bin/Telegram/Telegram.ipa"
+}
+
+# tg project [--full] — generate and open the Xcode project (simulator, no extensions).
+cmd_project() {
+  require_config
+  local args=(--disableProvisioningProfiles)
+  [ "${1:-}" = "--full" ] || args+=(--disableExtensions)
+  make_py generateProject \
+    --configurationPath="$CONFIG" \
+    --codesigningInformationPath="$CODESIGNING" \
+    "${args[@]}"
+}
+
+# tg test [label]
+cmd_test() {
+  require_config
+  make_py test \
+    --configurationPath="$CONFIG" \
+    --codesigningInformationPath="$CODESIGNING" \
+    ${1:+--target="$1"}
+}
+
+cmd_disk() {
+  local bazel; bazel="$(bazel_bin)"
+  printf '%-34s %s\n' "Source checkout (incl. .git)" "$(size_of "$ROOT")"
+  printf '%-34s %s\n' "  .git (+ submodule objects)" "$(size_of "$ROOT/.git")"
+  printf '%-34s %s\n' "Bazel disk cache ($CACHE_DIR)" "$(size_of "$CACHE_DIR")"
+  if [ -x "$bazel" ]; then
+    local output_base repo_cache
+    output_base="$("$bazel" info output_base 2>/dev/null || true)"
+    repo_cache="$("$bazel" info repository_cache 2>/dev/null || true)"
+    printf '%-34s %s\n' "Bazel output base" "$(size_of "$output_base")"
+    printf '%-34s %s\n' "  Xcode project builds (nested)" "$(size_of "$output_base/rules_xcodeproj.noindex")"
+    printf '%-34s %s\n' "Bazel repository cache" "$(size_of "$repo_cache")"
+  else
+    echo "Bazel output base                  (bazel not downloaded yet)"
+  fi
+  local dd=( "$HOME"/Library/Developer/Xcode/DerivedData/Telegram-* )
+  if [ -e "${dd[0]}" ]; then
+    printf '%-34s %s\n' "Xcode DerivedData (Telegram-*)" "$(du -shc "${dd[@]}" | tail -1 | cut -f1)"
+  fi
+}
+
+# tg clean — drop build outputs, keep downloaded repositories and the disk cache.
+cmd_clean() {
+  local bazel; bazel="$(bazel_bin)"
+  [ -x "$bazel" ] || die "bazel not downloaded yet"
+  "$bazel" clean
+}
+
+# tg prune [--yes] — reclaim everything Bazel and Xcode keep for this checkout.
+cmd_prune() {
+  if [ "${1:-}" != "--yes" ]; then
+    echo "This deletes the Bazel output base (bazel clean --expunge), the disk cache at"
+    echo "$CACHE_DIR and Telegram-* DerivedData. The next build starts cold."
+    echo "Re-run with: tools/dev/tg prune --yes"
+    return 1
+  fi
+  local bazel; bazel="$(bazel_bin)"
+  if [ -x "$bazel" ]; then "$bazel" clean --expunge; fi
+  rm -rf "$CACHE_DIR"
+  rm -rf "$HOME"/Library/Developer/Xcode/DerivedData/Telegram-*
+  say "Pruned"
+}
+
+# tg sync-upstream <tag> — import an official release onto the `upstream` branch.
+cmd_sync_upstream() {
+  local tag="${1:-}"
+  [ -n "$tag" ] || die "usage: tools/dev/tg sync-upstream <tag>   (e.g. release-13.2)"
+  git remote get-url telegram >/dev/null 2>&1 || git remote add telegram "$UPSTREAM_URL"
+  say "Fetching $tag (depth 1)"
+  git fetch --depth 1 --no-tags telegram "refs/tags/$tag:refs/telegram-tags/$tag"
+  local commit tree parent new
+  commit="$(git rev-parse "refs/telegram-tags/$tag^{commit}")"
+  tree="$(git rev-parse "$commit^{tree}")"
+  parent="$(git rev-parse upstream)"
+  if [ "$(git rev-parse "upstream^{tree}")" = "$tree" ]; then
+    say "upstream already matches $tag"; return 0
+  fi
+  new="$(git commit-tree "$tree" -p "$parent" -m "Import upstream Telegram-iOS $tag
+
+Snapshot of $UPSTREAM_URL at tag $tag (commit $commit), imported without history.
+
+Upstream-Tag: $tag
+Upstream-Commit: $commit")"
+  git update-ref refs/heads/upstream "$new" "$parent"
+  say "upstream -> $tag ($(git rev-parse --short "$new")). Next:"
+  echo "  git switch main && git merge upstream"
+  echo "  git submodule update --init --recursive --depth 1 --jobs 8"
+}
+
+cmd_help() {
+  cat <<'EOF'
+Usage: tools/dev/tg <command> [options]
+
+  setup                 Configure git, fetch submodules shallowly, create local config files
+  doctor                Check Xcode version, configuration, submodules and free disk
+  build [--release] [--device] [--full] [-- <Make.py build args>]
+                        Build the app (default: debug simulator, no app extensions)
+  project [--full]      Generate and open the Xcode project (simulator, no extensions)
+  test [label]          Run tests (default: Tests/AllTests)
+  disk                  Show what is using disk space
+  clean                 Remove build outputs, keep downloads and caches
+  prune [--yes]         Remove all Bazel outputs, the disk cache and DerivedData
+  sync-upstream <tag>   Import an official release tag onto the `upstream` branch
+
+Environment: TG_CACHE_DIR, TG_CONFIG, TG_CODESIGNING, TG_BUILD_NUMBER
+EOF
+}
+
+command="${1:-help}"; shift || true
+case "$command" in
+  setup) cmd_setup "$@" ;;
+  doctor) cmd_doctor "$@" ;;
+  build) cmd_build "$@" ;;
+  project) cmd_project "$@" ;;
+  test) cmd_test "$@" ;;
+  disk) cmd_disk "$@" ;;
+  clean) cmd_clean "$@" ;;
+  prune) cmd_prune "$@" ;;
+  sync-upstream) cmd_sync_upstream "$@" ;;
+  help|-h|--help) cmd_help ;;
+  *) die "unknown command: $command (see: tools/dev/tg help)" ;;
+esac
