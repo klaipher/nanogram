@@ -83,8 +83,11 @@ class BazelCommandLine:
 
         num_threads = max(os.cpu_count() - 2, 2)
         self.common_debug_args = [
-            '--@build_bazel_rules_swift//swift:copt="-j"',
-            f'--@build_bazel_rules_swift//swift:copt="{num_threads}"',
+            # No shell quoting: the arguments reach Bazel as-is, so quotes would end up
+            # inside the flag values. swiftc's response-file parser happened to strip
+            # them, but the separate derived-files action rejected them as input files.
+            '--@build_bazel_rules_swift//swift:copt=-j',
+            f'--@build_bazel_rules_swift//swift:copt={num_threads}',
         ]
 
         self.common_release_args = [

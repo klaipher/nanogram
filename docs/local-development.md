@@ -243,7 +243,9 @@ take either side and let the next build rewrite it.
 - **Bazel Central Registry modules for the script-built libraries** (dav1d, libwebp, opus, flatbuffers). FFmpeg's
   build script consumes dav1d and opus at fixed paths, FlatBuffers 24.12.23 is not in the registry, and with parallel
   `make` the remaining gain is small, while each switch risks behaviour differences in codec builds.
-- **`swift.split_derived_files_generation`** (`Make.py --enableParallelSwiftmoduleGeneration`). It lets dependents
-  start earlier but adds CPU work, and cold builds here are already CPU-bound for most of their length.
+- **`swift.split_derived_files_generation`** (`Make.py --enableParallelSwiftmoduleGeneration`). Measured cold, with an
+  empty cache: 1,071 s with it vs 756 s without (9,235 vs 7,775 actions, critical path 488 s vs 475 s). The extra
+  derived-files action per module costs more CPU than the earlier start of dependents saves, even though only 5–6 of
+  10 cores are busy during the last ~5 minutes of a cold build (the Swift module chain).
 - **What is left on the critical path** is the chain of Swift modules from `AccountContext` to `TelegramUI`
   (~400 s cold, 36 s for `TelegramUI` alone). Shortening it means splitting modules, which is a code change.
