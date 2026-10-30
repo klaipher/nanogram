@@ -1,16 +1,13 @@
-load("@build_bazel_rules_swift//swift:swift.bzl", "swift_library")
+load("//build-system/bazel-utils:swift_strict.bzl", "swift6_library")
 load("@build_bazel_rules_apple//apple:ios.bzl", "ios_unit_test")
 load("@build_bazel_rules_apple//apple/testing/default_runner:ios_test_runner.bzl", "ios_test_runner")
 
-swift_library(
+swift6_library(
     name = "ChatInterfaceState",
     module_name = "ChatInterfaceState",
     srcs = glob([
         "Sources/**/*.swift",
     ]),
-    copts = [
-        "-warnings-as-errors",
-    ],
     deps = [
         "//submodules/SSignalKit/SwiftSignalKit:SwiftSignalKit",
         "//submodules/AsyncDisplayKit:AsyncDisplayKit",
@@ -25,7 +22,7 @@ swift_library(
     ],
 )
 
-swift_library(
+swift6_library(
     name = "ChatInterfaceStateTestsLib",
     testonly = True,
     srcs = glob([

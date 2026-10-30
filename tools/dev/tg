@@ -169,6 +169,79 @@ cmd_test() {
     ${1:+--target="$1"}
 }
 
+# tg new-module <dir> — scaffold a Swift module that uses the strict Swift preset
+# (build-system/bazel-utils/swift_strict.bzl) and a host unit test, then run the test.
+cmd_new_module() {
+  local path="${1:-}"
+  [ -n "$path" ] || die "usage: tools/dev/tg new-module <dir>   (e.g. submodules/MyFeature)"
+  path="${path%/}"
+  local name; name="$(basename "$path")"
+  [[ "$name" =~ ^[A-Z][A-Za-z0-9]*$ ]] || die "the directory name is the module name and must be UpperCamelCase: $name"
+  [ ! -e "$path" ] || die "$path already exists"
+  mkdir -p "$path/Sources" "$path/Tests"
+  cat > "$path/BUILD" <<EOF
+load("//build-system/bazel-utils:swift_strict.bzl", "strict_swift_library", "strict_swift_test")
+
+strict_swift_library(
+    name = "$name",
+    module_name = "$name",
+    srcs = glob(["Sources/**/*.swift"]),
+    deps = [],
+    visibility = ["//visibility:public"],
+)
+
+# Runs on the Mac (tools/dev/tg new-module ran it once). Keep it while the module
+# needs only Foundation; a module that imports UIKit needs an ios_unit_test instead.
+strict_swift_test(
+    name = "${name}Tests",
+    srcs = glob(["Tests/**/*.swift"]),
+    deps = [":$name"],
+)
+EOF
+  cat > "$path/Sources/$name.swift" <<EOF
+public enum $name {
+    public static let name = "$name"
+}
+EOF
+  cat > "$path/Tests/${name}Tests.swift" <<EOF
+import XCTest
+@testable import $name
+
+final class ${name}Tests: XCTestCase {
+    func testName() {
+        XCTAssertEqual($name.name, "$name")
+    }
+}
+EOF
+  say "Created $path (strict Swift 6). Checking that it builds and its test passes"
+  "$(bazel_bin)" test "//$path:${name}Tests" --test_output=errors
+  say "Add \"//$path\" to the deps of the module that uses it"
+}
+
+# tg strict-report — count Swift 6 concurrency problems per module.
+#
+# Builds the app once with -strict-concurrency=complete, reporting every problem as
+# a warning so the whole tree is checked in one pass. It rebuilds all Swift code
+# (about 15 minutes) and replaces the normal build outputs; the next `tg build`
+# restores them from the disk cache, which this build does not write to.
+cmd_strict_report() {
+  require_config
+  local dir; dir="$(dirname "$CACHE_DIR")"
+  local log="$dir/strict-report.log" report="$dir/strict-report.txt"
+  mkdir -p "$dir"
+  say "Building with Swift 6 concurrency checking (log: $log)"
+  local flags="--//Telegram:disableExtensions --//Telegram:disableProvisioningProfiles"
+  flags+=" --@build_bazel_rules_swift//swift:copt=-strict-concurrency=complete"
+  flags+=" --@build_bazel_rules_swift//swift:copt=-no-warnings-as-errors"
+  flags+=" --disk_cache= --experimental_ui_max_stdouterr_bytes=-1"
+  make_py "--bazelArguments=$flags" build --continueOnError \
+    --configurationPath="$CONFIG" \
+    --codesigningInformationPath="$CODESIGNING" \
+    --buildNumber=1 --configuration=debug_sim_arm64 >"$log" 2>&1 || true
+  python3 "$ROOT/build-system/Make/StrictReport.py" "$ROOT" "$log" "$(bazel_bin)" | tee "$report"
+  say "Report saved to $report. Run tools/dev/tg build to restore the normal outputs"
+}
+
 cmd_disk() {
   local bazel; bazel="$(bazel_bin)"
   printf '%-34s %s\n' "Source checkout (incl. .git)" "$(size_of "$ROOT")"
@@ -248,6 +321,8 @@ Usage: tools/dev/tg <command> [options]
                         Build the app (default: debug simulator, no app extensions)
   project [--full]      Generate and open the Xcode project (simulator, no extensions)
   test [label]          Run tests (default: Tests/AllTests)
+  new-module <dir>      Create a Swift module that uses the strict Swift 6 preset
+  strict-report         Count Swift 6 concurrency problems per module (~15 min)
   disk                  Show what is using disk space
   clean                 Remove build outputs, keep downloads and caches
   prune [--yes]         Remove all Bazel outputs, the disk cache and DerivedData
@@ -264,6 +339,8 @@ case "$command" in
   build) cmd_build "$@" ;;
   project) cmd_project "$@" ;;
   test) cmd_test "$@" ;;
+  new-module) cmd_new_module "$@" ;;
+  strict-report) cmd_strict_report "$@" ;;
   disk) cmd_disk "$@" ;;
   clean) cmd_clean "$@" ;;
   prune) cmd_prune "$@" ;;

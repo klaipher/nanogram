@@ -264,6 +264,7 @@ is serialized across processes with `flock` on `.tempkey.lock` for the same reas
 would each key a database with material only one of them persisted).
 
 ## Code Style Guidelines
+- **New Swift modules** use `strict_swift_library` / `strict_swift_test` from `//build-system/bazel-utils:swift_strict.bzl` (Swift 6 mode, every Swift 7 upcoming feature, strict memory safety, warnings as errors); `tools/dev/tg new-module <dir>` scaffolds one. Existing modules stay `swift_library` (Swift 5 mode) unless they compile cleanly in Swift 6 mode, in which case they use `swift6_library`. See `docs/local-development.md`, "Swift strictness".
 - **Naming**: PascalCase for types, camelCase for variables/methods
 - **Imports**: Group and sort imports at the top of files
 - **Error Handling**: Properly handle errors with appropriate redaction of sensitive data

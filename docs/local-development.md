@@ -38,6 +38,8 @@ profiles disabled, the same setup upstream's own CI uses.
 | `tg build --device` | debug device build (needs real provisioning profiles; set `TG_CODESIGNING`) |
 | `tg test //submodules/TextFormat:TextFormatTests` | one test target |
 | `tg disk` / `tg clean` / `tg prune --yes` | inspect / trim / wipe build state |
+| `tg new-module submodules/MyFeature` | a new Swift module with the strict Swift 6 preset and a host test |
+| `tg strict-report` | Swift 6 concurrency problems per module (~15 min, see below) |
 
 The app is at `bazel-bin/Telegram/Telegram.ipa`. To run it in a simulator, unzip it and
 `xcrun simctl install <udid> Payload/Telegram.app`.
@@ -54,8 +56,8 @@ Debug simulator build without extensions (`tg build`) on a 10-core Apple silicon
 | Bazel outputs + disk cache, actual disk used | ~22.5 GB | **~14.2 GB** (the 7.4 GB disk cache shares blocks with the outputs) |
 
 `du` reports the disk cache at full size either way, because it counts copy-on-write clones twice; the numbers above
-come from the change in free space. Downloaded archives (the repository cache) add 3–6 GB, shared with other Bazel
-projects on the machine.
+come from the change in free space. Downloaded dependencies (the repository cache) add about 4 GB, shared with
+other Bazel projects on the machine.
 
 ## How the build system works (upstream)
 
@@ -134,6 +136,29 @@ the versions needed are not in the Bazel Central Registry yet; switch them to pl
   have Xcode 27.1 and would fail while burning macOS minutes (billed at 10x in private repos). It is now manual
   only. `sanity.yml` runs on Linux in seconds: the `Make.py` unit tests, shellcheck, and the version-pin check.
 
+## Swift strictness
+
+Telegram's modules compile in the Swift 5 language mode, and 723 of 732 of them treat warnings as errors. A
+build with Swift 6's complete concurrency checking (2026-10-30, Swift 6.4) reports **at least 24,480 problems in
+563 modules**; the real number is higher, because the five largest modules' output was cut off and three modules
+fail outright, which left their dependents (including the app's main `TelegramUI` module) unchecked. Fixing that
+means rewriting much of Telegram's threading code and conflicting with every upstream release, so the existing
+code stays in the Swift 5 mode. Strictness is applied where it is cheap instead
+(`build-system/bazel-utils/swift_strict.bzl`):
+
+| Macro | Settings | Used for |
+| --- | --- | --- |
+| `strict_swift_library`, `strict_swift_test` | Swift 6 mode, `-warnings-as-errors`, `-strict-memory-safety`, and every Swift 7 upcoming feature (`ExistentialAny`, `InternalImportsByDefault`, `MemberImportVisibility`, `InferIsolatedConformances`, `NonisolatedNonsendingByDefault`, `ImmutableWeakCaptures`) | New modules written in this fork. `tg new-module <dir>` creates one. |
+| `swift6_library` | Swift 6 mode, `-warnings-as-errors` | Existing Telegram modules that already compile cleanly in Swift 6 mode. The Swift 7 features are left out because they would need edits to Telegram's files. 14 modules so far (`git grep -l swift6_library`). |
+
+To move more modules: run `tg strict-report`, pick modules with no problems that are not in its "not checked"
+list, switch their `swift_library` to `swift6_library` (and drop the now-redundant `-warnings-as-errors` copt),
+and run `tg build`. The report rebuilds all Swift code with the extra checks and replaces the normal outputs; the
+next `tg build` restores them from the disk cache in about 20 seconds.
+
+After an Xcode update, `xcrun swift-frontend -print-supported-features` lists new upcoming features to add to the
+strict preset.
+
 ## Where the disk space goes
 
 | Location | What | Controlled by |
@@ -142,7 +167,7 @@ the versions needed are not in the Bazel Central Registry yet; switch them to pl
 | Bazel output base (`bazel info output_base`) | Build outputs for every configuration you have built, plus `external/` | `tg clean` (outputs) / `tg prune` (everything) |
 | `<output_base>/rules_xcodeproj.noindex` | A second output base used by builds started from Xcode | Same as above. Using mainly one of Xcode or the CLI avoids keeping two full sets of outputs. |
 | `~/.cache/telegram-ios/bazel-disk-cache` | Content-addressed cache of action outputs | GC limits in `.bazelrc` / `user.bazelrc` |
-| Repository cache (`bazel info repository_cache`) | Downloaded archives | Shared by all Bazel projects of this user; old versions stay until you delete it |
+| Repository cache (`bazel info repository_cache`) | Downloaded archives (`content_addressable/`) and extracted dependencies (`contents/`) | Shared by all Bazel projects of this user. Bazel deletes extracted dependencies unused for 14 days (`--repo_contents_cache_gc_max_age`); old archives stay until you delete them |
 | `~/Library/Developer/Xcode/DerivedData/Telegram-*` | Xcode index and logs | `tg prune` |
 
 Each configuration you build (`debug_sim_arm64`, `release_arm64`, …) keeps its own output tree, so sticking to

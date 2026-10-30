@@ -1,14 +1,11 @@
-load("@build_bazel_rules_swift//swift:swift.bzl", "swift_library")
+load("//build-system/bazel-utils:swift_strict.bzl", "swift6_library")
 
-swift_library(
+swift6_library(
     name = "ChatMessageInvoiceBubbleContentNode",
     module_name = "ChatMessageInvoiceBubbleContentNode",
     srcs = glob([
         "Sources/**/*.swift",
     ]),
-    copts = [
-        "-warnings-as-errors",
-    ],
     deps = [
         "//submodules/Display",
         "//submodules/LottieSettings:LottieSettings",

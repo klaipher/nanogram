@@ -1,14 +1,11 @@
-load("@build_bazel_rules_swift//swift:swift.bzl", "swift_library")
+load("//build-system/bazel-utils:swift_strict.bzl", "swift6_library")
 
-swift_library(
+swift6_library(
     name = "UrlHandling",
     module_name = "UrlHandling",
     srcs = glob([
 		"Sources/**/*.swift",
     ]),
-    copts = [
-        "-warnings-as-errors",
-    ],
     deps = [
         "//submodules/SSignalKit/SwiftSignalKit:SwiftSignalKit",
         "//submodules/TelegramCore:TelegramCore",
