@@ -77,7 +77,7 @@ swift_library(
 )
 
 # Host (macOS) test of the collapsed header's title layout: only that file is compiled, it needs nothing but CoreGraphics.
-# Run with `./build-input/bazel-9.2.0-darwin-arm64 test //submodules/TelegramUI/Components/Stories/StoryPeerListComponent:StoryPeerListTitleLayoutTests`.
+# Run with `./build-input/bazel-9.3.1-darwin-arm64 test //submodules/TelegramUI/Components/Stories/StoryPeerListComponent:StoryPeerListTitleLayoutTests`.
 swift_test(
     name = "StoryPeerListTitleLayoutTests",
     srcs = [
@@ -90,7 +90,7 @@ swift_test(
 )
 
 # Host (macOS) test of the expanded row's spacing when its avatars do not all fit, built the same way.
-# Run with `./build-input/bazel-9.2.0-darwin-arm64 test //submodules/TelegramUI/Components/Stories/StoryPeerListComponent:StoryPeerListRowLayoutTests`.
+# Run with `./build-input/bazel-9.3.1-darwin-arm64 test //submodules/TelegramUI/Components/Stories/StoryPeerListComponent:StoryPeerListRowLayoutTests`.
 swift_test(
     name = "StoryPeerListRowLayoutTests",
     srcs = [

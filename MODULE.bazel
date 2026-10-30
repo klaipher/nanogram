@@ -108,7 +108,7 @@ use_repo(
 # Third-party crates of the Rust MTProto engine (third-party/mtproto-engine). Every version is pinned
 # with `=` to third-party/mtproto-engine/Cargo.lock. Kept apart from wallet_engine_crates so the two
 # lockfiles move independently. Repin only this repository:
-#   CARGO_BAZEL_REPIN=1 CARGO_BAZEL_REPIN_ONLY=mtproto_engine_crates ./build-input/bazel-9.2.0-darwin-arm64 build //third-party/mtproto-engine:mtproto_engine_ffi_archive
+#   CARGO_BAZEL_REPIN=1 CARGO_BAZEL_REPIN_ONLY=mtproto_engine_crates ./build-input/bazel-9.3.1-darwin-arm64 build //third-party/mtproto-engine:mtproto_engine_ffi_archive
 mtproto_engine_crates = use_extension("@rules_rust//crate_universe:extensions.bzl", "crate")
 mtproto_engine_crates.spec(package = "aes", features = ["zeroize"], repositories = ["mtproto_engine_crates"], version = "=0.8.4")
 mtproto_engine_crates.spec(package = "base64", repositories = ["mtproto_engine_crates"], version = "=0.22.1")
