@@ -318,8 +318,14 @@ final class AuthorizationSequencePhoneEntryControllerNode: ASDisplayNode {
     private let contactSyncNode: ContactSyncNode
     private let proceedNode: SolidRoundedButtonNode
     
+    // "Log in by QR Code": shows a code to scan in Telegram on another device (Settings >
+    // Devices > Link Desktop Device). Useful where the server asks for a paid SMS code,
+    // which builds without App Store signing (simulator, fake-signed device) cannot pay.
+    private let qrButtonNode: HighlightableButtonNode
+    private let qrInfoNode: ImmediateTextNode
     private var qrContainerNode: ASDisplayNode?
     private var qrNode: ASImageNode?
+    private var validLayout: (ContainerViewLayout, CGFloat)?
     private let exportTokenDisposable = MetaDisposable()
     private let tokenEventsDisposable = MetaDisposable()
     var accountUpdated: ((UnauthorizedAccount) -> Void)?
@@ -423,6 +429,16 @@ final class AuthorizationSequencePhoneEntryControllerNode: ASDisplayNode {
         
         self.phoneAndCountryNode = PhoneAndCountryNode(strings: strings, theme: theme)
         
+        self.qrButtonNode = HighlightableButtonNode()
+        self.qrButtonNode.accessibilityIdentifier = "Auth.PhoneEntry.QrLoginButton"
+        
+        self.qrInfoNode = ImmediateTextNode()
+        self.qrInfoNode.maximumNumberOfLines = 0
+        self.qrInfoNode.textAlignment = .center
+        self.qrInfoNode.displaysAsynchronously = false
+        self.qrInfoNode.attributedText = NSAttributedString(string: "Open Telegram on your phone and go to\nSettings → Devices → \(strings.AuthSessions_LinkDesktopDevice)", font: Font.regular(15.0), textColor: theme.list.itemSecondaryTextColor, paragraphAlignment: .center)
+        self.qrInfoNode.isHidden = true
+        
         self.proceedNode = SolidRoundedButtonNode(title: self.strings.Login_Continue, theme: SolidRoundedButtonTheme(theme: self.theme), glass: false, height: 50.0, cornerRadius: 50 * 0.5)
         self.proceedNode.progressType = .embedded
         self.proceedNode.isEnabled = false
@@ -442,6 +458,8 @@ final class AuthorizationSequencePhoneEntryControllerNode: ASDisplayNode {
         self.addSubnode(self.noticeActivateAreaNode)
         self.addSubnode(self.phoneAndCountryNode)
         self.addSubnode(self.contactSyncNode)
+        self.addSubnode(self.qrButtonNode)
+        self.addSubnode(self.qrInfoNode)
         self.addSubnode(self.proceedNode)
         self.addSubnode(self.animationNode)
         self.addSubnode(self.managedAnimationNode)
@@ -490,6 +508,9 @@ final class AuthorizationSequencePhoneEntryControllerNode: ASDisplayNode {
             self?.checkPhone?()
         }
         
+        self.updateQrButtonTitle()
+        self.qrButtonNode.addTarget(self, action: #selector(self.qrButtonPressed), forControlEvents: .touchUpInside)
+        
         self.animationNode.completed = { [weak self] _ in
             self?.animationNode.removeFromSupernode()
             self?.managedAnimationNode.isHidden = false
@@ -505,12 +526,6 @@ final class AuthorizationSequencePhoneEntryControllerNode: ASDisplayNode {
         super.didLoad()
         
         self.titleNode.view.addGestureRecognizer(UITapGestureRecognizer(target: self, action: #selector(self.debugTap(_:))))
-        // Debug builds show a QR login code on the phone screen. Scan it in Telegram on a
-        // phone (Settings > Devices > Link Desktop Device) to log in without an SMS, which
-        // the server may ask the simulator to pay for.
-        #if DEBUG
-        self.showDebugQr()
-        #endif
     }
     
     private var animationSnapshotView: UIView?
@@ -601,6 +616,7 @@ final class AuthorizationSequencePhoneEntryControllerNode: ASDisplayNode {
     }
     
     func containerLayoutUpdated(_ layout: ContainerViewLayout, navigationBarHeight: CGFloat, transition: ContainedViewLayoutTransition) {
+        self.validLayout = (layout, navigationBarHeight)
         var insets = layout.insets(options: [])
         insets.top = layout.statusBarHeight ?? 20.0
         if let inputHeight = layout.inputHeight, !inputHeight.isZero {
@@ -643,11 +659,20 @@ final class AuthorizationSequencePhoneEntryControllerNode: ASDisplayNode {
             AuthorizationLayoutItem(node: self.phoneAndCountryNode, size: CGSize(width: maximumWidth, height: 115.0), spacingBefore: AuthorizationLayoutItemSpacing(weight: 30.0, maxValue: 30.0), spacingAfter: AuthorizationLayoutItemSpacing(weight: 0.0, maxValue: 0.0)),
         ]
         
-        if layout.size.width > 320.0 {
+        let isQrVisible = self.qrContainerNode != nil
+        if isQrVisible {
+            // The code takes the place of the phone animation.
+            self.animationNode.isHidden = true
+            self.managedAnimationNode.isHidden = true
+        }
+        if layout.size.width > 320.0 && !isQrVisible {
             items.insert(AuthorizationLayoutItem(node: self.animationNode, size: animationSize, spacingBefore: AuthorizationLayoutItemSpacing(weight: 10.0, maxValue: 10.0), spacingAfter: AuthorizationLayoutItemSpacing(weight: 0.0, maxValue: 0.0)), at: 0)
             self.proceedNode.isHidden = false
             self.animationNode.isHidden = false
             self.animationNode.visibility = true
+            self.managedAnimationNode.isHidden = self.animationNode.supernode != nil
+        } else if layout.size.width > 320.0 {
+            self.proceedNode.isHidden = false
         } else {
             insets.top = navigationBarHeight
             self.proceedNode.isHidden = true
@@ -656,8 +681,13 @@ final class AuthorizationSequencePhoneEntryControllerNode: ASDisplayNode {
         }
         
         if let qrContainerNode = self.qrContainerNode {
-            items.insert(AuthorizationLayoutItem(node: qrContainerNode, size: CGSize(width: 224.0, height: 224.0), spacingBefore: AuthorizationLayoutItemSpacing(weight: 10.0, maxValue: 10.0), spacingAfter: AuthorizationLayoutItemSpacing(weight: 10.0, maxValue: 10.0)), at: 0)
+            let qrInfoSize = self.qrInfoNode.updateLayout(CGSize(width: maximumWidth - inset * 2.0, height: CGFloat.greatestFiniteMagnitude))
+            items.insert(AuthorizationLayoutItem(node: self.qrInfoNode, size: qrInfoSize, spacingBefore: AuthorizationLayoutItemSpacing(weight: 12.0, maxValue: 12.0), spacingAfter: AuthorizationLayoutItemSpacing(weight: 0.0, maxValue: 0.0)), at: 0)
+            items.insert(AuthorizationLayoutItem(node: qrContainerNode, size: CGSize(width: 224.0, height: 224.0), spacingBefore: AuthorizationLayoutItemSpacing(weight: 10.0, maxValue: 10.0), spacingAfter: AuthorizationLayoutItemSpacing(weight: 0.0, maxValue: 0.0)), at: 0)
         }
+        
+        let qrButtonSize = self.qrButtonNode.measure(CGSize(width: maximumWidth, height: 44.0))
+        items.append(AuthorizationLayoutItem(node: self.qrButtonNode, size: qrButtonSize, spacingBefore: AuthorizationLayoutItemSpacing(weight: 16.0, maxValue: 16.0), spacingAfter: AuthorizationLayoutItemSpacing(weight: 0.0, maxValue: 0.0)))
         
         let contactSyncSize = self.contactSyncNode.updateLayout(width: maximumWidth)
         if self.hasOtherAccounts {
@@ -718,7 +748,30 @@ final class AuthorizationSequencePhoneEntryControllerNode: ASDisplayNode {
         }
     }
     
-    private func showDebugQr() {
+    private func updateQrButtonTitle() {
+        let title = self.qrContainerNode == nil ? self.strings.AuthSessions_AddDeviceIntro_Title : "Log in by Phone Number"
+        self.qrButtonNode.setAttributedTitle(NSAttributedString(string: title, font: Font.regular(17.0), textColor: self.theme.list.itemAccentColor), for: [])
+    }
+    
+    @objc private func qrButtonPressed() {
+        if let qrContainerNode = self.qrContainerNode {
+            self.exportTokenDisposable.set(nil)
+            qrContainerNode.removeFromSupernode()
+            self.qrContainerNode = nil
+            self.qrNode = nil
+            self.qrInfoNode.isHidden = true
+        } else {
+            self.view.endEditing(true)
+            self.showQrLogin()
+            self.qrInfoNode.isHidden = false
+        }
+        self.updateQrButtonTitle()
+        if let (layout, navigationBarHeight) = self.validLayout {
+            self.containerLayoutUpdated(layout, navigationBarHeight: navigationBarHeight, transition: .animated(duration: 0.3, curve: .spring))
+        }
+    }
+    
+    private func showQrLogin() {
         if self.qrNode == nil {
             // A white card with a margin keeps the code scannable in dark mode too.
             let qrContainerNode = ASDisplayNode()
