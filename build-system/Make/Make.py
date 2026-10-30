@@ -121,6 +121,12 @@ class BazelCommandLine:
     def add_additional_args(self, additional_args):
         self.additional_args = additional_args
 
+    def get_user_arguments(self):
+        # --bazelArguments go last so they can override anything set above.
+        if not self.additional_args:
+            return []
+        return shlex.split(self.additional_args)
+
     def set_build_number(self, build_number):
         self.build_number = build_number
 
@@ -262,6 +268,8 @@ class BazelCommandLine:
         if self.show_actions:
             combined_arguments += ['--subcommands']
 
+        combined_arguments += self.get_user_arguments()
+
         return combined_arguments
 
     def get_additional_build_arguments(self):
@@ -321,6 +329,7 @@ class BazelCommandLine:
         combined_arguments += self.configuration_args
         if self.profile_swift:
             combined_arguments += ['--config=swift_profile']
+        combined_arguments += self.get_user_arguments()
 
         print('TelegramBuild: running')
         print(subprocess.list2cmdline(combined_arguments))
@@ -354,6 +363,7 @@ class BazelCommandLine:
             ]
 
         combined_arguments += self.configuration_args
+        combined_arguments += self.get_user_arguments()
 
         print('TelegramBuild: running')
         print(subprocess.list2cmdline(combined_arguments))
@@ -382,6 +392,8 @@ class BazelCommandLine:
             combined_arguments += [
                 '--disk_cache={path}'.format(path=self.cache_dir)
             ]
+
+        combined_arguments += self.get_user_arguments()
 
         # Add user-provided query arguments
         combined_arguments += query_args
@@ -511,6 +523,7 @@ def generate_project(bazel, arguments):
         bazel_command_line.add_cache_dir(arguments.cacheDir)
     elif arguments.cacheHost is not None:
         bazel_command_line.add_remote_cache(arguments.cacheHost)
+    bazel_command_line.add_additional_args(arguments.bazelArguments)
 
     bazel_command_line.set_continue_on_error(arguments.continueOnError)
 
@@ -622,6 +635,7 @@ def build(bazel, arguments):
         bazel_command_line.add_cache_dir(arguments.cacheDir)
     elif arguments.cacheHost is not None:
         bazel_command_line.add_remote_cache(arguments.cacheHost)
+    bazel_command_line.add_additional_args(arguments.bazelArguments)
 
     resolve_configuration(
         base_path=os.getcwd(),
@@ -704,6 +718,7 @@ def test(bazel, arguments):
         bazel_command_line.add_cache_dir(arguments.cacheDir)
     elif arguments.cacheHost is not None:
         bazel_command_line.add_remote_cache(arguments.cacheHost)
+    bazel_command_line.add_additional_args(arguments.bazelArguments)
 
     resolve_configuration(
         base_path=os.getcwd(),
@@ -730,6 +745,7 @@ def query(bazel, arguments):
         bazel_command_line.add_cache_dir(arguments.cacheDir)
     elif arguments.cacheHost is not None:
         bazel_command_line.add_remote_cache(arguments.cacheHost)
+    bazel_command_line.add_additional_args(arguments.bazelArguments)
 
     # Resolve configuration if needed
     if arguments.configurationPath is not None:
