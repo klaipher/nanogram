@@ -265,7 +265,7 @@ genrule(
 
         VARIANT=release
 
-        FFMPEG_VERSION="8.1.2"
+        FFMPEG_VERSION="8.1.3"
 
         if [ "$(TARGET_CPU)" == "ios_arm64" ]; then
             BUILD_ARCH="arm64"
