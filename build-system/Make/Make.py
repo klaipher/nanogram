@@ -12,6 +12,7 @@ import glob
 from BuildEnvironment import resolve_executable, call_executable, run_executable_with_output, BuildEnvironmentVersions, BuildEnvironment
 from ProjectGeneration import generate
 from BazelLocation import locate_bazel
+from FileSync import write_if_changed, sync_directory
 from BuildConfiguration import CodesigningSource, GitCodesigningSource, DirectoryCodesigningSource, XcodeManagedCodesigningSource, BuildConfiguration, build_configuration_from_json
 import RemoteBuild
 import TartBuild
@@ -471,25 +472,19 @@ def resolve_configuration(base_path, bazel_command_line: BazelCommandLine, argum
 
     build_configuration = build_configuration_from_json(path=arguments.configurationPath)
 
-    with open(configuration_repository_path + '/WORKSPACE', 'w+') as file:
-        pass
-
-    with open(configuration_repository_path + '/MODULE.bazel', 'w+') as file:
-        file.write('module(\n    name = "build_configuration",\n)\n')
-
-    with open(configuration_repository_path + '/BUILD', 'w+') as file:
-        pass
+    # Unchanged files are left untouched so Bazel doesn't re-analyze them on every run.
+    write_if_changed(configuration_repository_path + '/WORKSPACE', '')
+    write_if_changed(configuration_repository_path + '/MODULE.bazel', 'module(\n    name = "build_configuration",\n)\n')
+    write_if_changed(configuration_repository_path + '/BUILD', '')
 
     provisioning_path = '{}/provisioning'.format(configuration_repository_path)
-    if os.path.exists(provisioning_path):
-        shutil.rmtree(provisioning_path)
-    os.makedirs(provisioning_path, exist_ok=True)
+    provisioning_staging_path = tempfile.mkdtemp(prefix='telegram-provisioning-')
 
     codesigning_data = resolve_codesigning(
         arguments=arguments,
         base_path=base_path,
         build_configuration=build_configuration,
-        provisioning_profiles_path=provisioning_path,
+        provisioning_profiles_path=provisioning_staging_path,
         additional_codesigning_output_path=additional_codesigning_output_path
     )
     if codesigning_data.aps_environment is None:
@@ -500,15 +495,18 @@ def resolve_configuration(base_path, bazel_command_line: BazelCommandLine, argum
         build_configuration.write_to_variables_file(bazel_path=bazel_command_line.bazel, use_xcode_managed_codesigning=codesigning_data.use_xcode_managed_codesigning, aps_environment=codesigning_data.aps_environment, path=configuration_repository_path + '/variables.bzl')
 
     provisioning_profile_files = []
-    for file_name in os.listdir(provisioning_path):
+    for file_name in sorted(os.listdir(provisioning_staging_path)):
         if file_name.endswith('.mobileprovision'):
             provisioning_profile_files.append(file_name)
 
-    with open(provisioning_path + '/BUILD', 'w+') as file:
+    with open(provisioning_staging_path + '/BUILD', 'w+') as file:
         file.write('exports_files([\n')
         for file_name in provisioning_profile_files:
             file.write('    "{}",\n'.format(file_name))
         file.write('])\n')
+
+    sync_directory(provisioning_staging_path, provisioning_path)
+    shutil.rmtree(provisioning_staging_path)
 
 
 def generate_project(bazel, arguments):

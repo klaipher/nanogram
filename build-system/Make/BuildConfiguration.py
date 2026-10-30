@@ -6,6 +6,7 @@ import tempfile
 import plistlib
 
 from BuildEnvironment import run_executable_with_output, check_run_system
+from FileSync import write_if_changed
 from DecryptMatch import decrypt_match_data
 
 class BuildConfiguration:
@@ -55,10 +56,8 @@ class BuildConfiguration:
         string += 'telegram_enable_icloud = {}\n'.format(self.enable_icloud)
         string += 'telegram_enable_watch = True\n'
 
-        if os.path.exists(path):
-            os.remove(path)
-        with open(path, 'w+') as file:
-            file.write(string)
+        # Left untouched when unchanged so Bazel doesn't re-analyze it on every run.
+        write_if_changed(path, string)
 
 
 def build_configuration_from_json(path):
