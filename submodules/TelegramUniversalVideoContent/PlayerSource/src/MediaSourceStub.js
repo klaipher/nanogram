@@ -1,5 +1,16 @@
 import { TimeRangesStub } from "./TimeRangesStub.js"
 
+// A whole ArrayBuffer holding exactly the given bytes (a view may cover part of a larger buffer).
+function toArrayBuffer(data) {
+    if (data instanceof ArrayBuffer) {
+        return data;
+    }
+    if (data.byteOffset === 0 && data.byteLength === data.buffer.byteLength) {
+        return data.buffer;
+    }
+    return data.buffer.slice(data.byteOffset, data.byteOffset + data.byteLength);
+}
+
 function bytesToBase64(bytes) {
     const binString = Array.from(bytes, (byte) =>
         String.fromCodePoint(byte),
@@ -69,9 +80,19 @@ export class SourceBufferStub extends EventTarget {
         this.updating = true;
         this.dispatchEvent(new Event('updatestart'));
 
-        window.bridgeInvokeAsync(this.bridgeId, "SourceBuffer", "appendBuffer", {
-            "data": bytesToBase64(data)
-        }).then((result) => {
+        // Hand the bytes to native code directly when the JSC bridge is there (see HLSJSBinaryStore);
+        // base64 built a one-character string per byte.
+        var params = {};
+        var dataId = 0;
+        if (typeof _JsCorePolyfills !== "undefined" && _JsCorePolyfills.putBinary) {
+            dataId = _JsCorePolyfills.putBinary(toArrayBuffer(data));
+        }
+        if (dataId) {
+            params["dataId"] = dataId;
+        } else {
+            params["data"] = bytesToBase64(data);
+        }
+        window.bridgeInvokeAsync(this.bridgeId, "SourceBuffer", "appendBuffer", params).then((result) => {
             const updatedRanges = result["ranges"];
             var ranges = [];
             for (var i = 0; i < updatedRanges.length; i += 2) {

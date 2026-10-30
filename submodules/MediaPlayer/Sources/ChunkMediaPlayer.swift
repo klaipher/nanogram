@@ -34,13 +34,20 @@ public final class ChunkMediaPlayerPart {
             self.init(file: file, ignoreAudioEditList: false)
         }
 
-        public init(file: TempBoxFile, ignoreAudioEditList: Bool) {
+        /// Delete the file when the last part using it is released. Off by default: the
+        /// livestream player wraps the same file in a new `TempFile` on every update.
+        public let deletesFileOnRelease: Bool
+        
+        public init(file: TempBoxFile, ignoreAudioEditList: Bool, deletesFileOnRelease: Bool = false) {
             self.file = file
             self.ignoreAudioEditList = ignoreAudioEditList
+            self.deletesFileOnRelease = deletesFileOnRelease
         }
         
         deinit {
-            //TempBox.shared.dispose(self.file)
+            if self.deletesFileOnRelease {
+                TempBox.shared.dispose(self.file)
+            }
         }
     }
     

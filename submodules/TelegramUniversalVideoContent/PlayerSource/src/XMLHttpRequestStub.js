@@ -68,7 +68,9 @@ export class XMLHttpRequestStub extends EventTarget {
         window.bridgeInvokeAsync(this.bridgeId, "XMLHttpRequest", "load", {
             "id": this.bridgeId,
             "url": this._url,
-            "requestHeaders": this._requestHeaders
+            "requestHeaders": this._requestHeaders,
+            // Lets the native side send binary bodies as an ArrayBuffer id instead of base64.
+            "responseType": this._responseType
         }).then((result) => {
             if (result["error"]) {
                 this.dispatchEvent(new Event("error"));
@@ -76,7 +78,11 @@ export class XMLHttpRequestStub extends EventTarget {
                 this.status = result["status"];
                 this.statusText = result["statusText"];
 
-                if (result["responseData"]) {
+                if (result["responseDataId"] !== undefined) {
+                    // Binary body handed over by native code without base64 (HLSJSBinaryStore).
+                    this._responseData = _JsCorePolyfills.takeBinary(result["responseDataId"]);
+                    this.responseXML = null;
+                } else if (result["responseData"]) {
                     if (this._responseType === "arraybuffer") {
                         this._responseData = base64ToArrayBuffer(result["responseData"]);
                     } else {

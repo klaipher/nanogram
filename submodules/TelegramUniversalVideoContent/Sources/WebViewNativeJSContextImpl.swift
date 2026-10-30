@@ -6,8 +6,40 @@ import SwiftSignalKit
 
 private var ObjCKey_ContextReference: Int?
 
+/// Moves video data between native code and the JS player (hls.js) without base64: native code
+/// stores bytes under an id, JS turns the id into an ArrayBuffer (`takeBinary`), and JS hands
+/// buffers back the same way (`putBinary`). Base64 meant encoding, a JS source string to parse,
+/// and a per-byte JS loop for every video segment, in both directions.
+final class HLSJSBinaryStore {
+    static let shared = HLSJSBinaryStore()
+    
+    private let lock = NSLock()
+    private var nextId: Int32 = 1
+    private var items: [Int32: (data: Data, timestamp: Double)] = [:]
+    
+    func put(_ data: Data) -> Int32 {
+        self.lock.lock()
+        defer { self.lock.unlock() }
+        let id = self.nextId
+        self.nextId = self.nextId == Int32.max ? 1 : self.nextId + 1
+        let now = CFAbsoluteTimeGetCurrent()
+        // Ids are taken right away; anything left (an abandoned request) is dropped after a minute.
+        self.items = self.items.filter { now - $0.value.timestamp < 60.0 }
+        self.items[id] = (data, now)
+        return id
+    }
+    
+    func take(_ id: Int32) -> Data? {
+        self.lock.lock()
+        defer { self.lock.unlock() }
+        return self.items.removeValue(forKey: id)?.data
+    }
+}
+
 @objc private protocol JsCorePolyfillsExport: JSExport {
     func postMessage(_ object: JSValue)
+    func takeBinary(_ id: Int32) -> JSValue
+    func putBinary(_ value: JSValue) -> Int32
     func consoleLog(_ object: JSValue)
     func consoleLog(_ object: JSValue, _ arg1: JSValue)
     func consoleLog(_ object: JSValue, _ arg1: JSValue, _ arg2: JSValue)
@@ -43,6 +75,34 @@ private var ObjCKey_ContextReference: Int?
                 handleScriptMessage(message)
             }
         }
+    }
+    
+    /// An ArrayBuffer over a native copy of the stored bytes (freed when JS releases the buffer), or null.
+    @objc func takeBinary(_ id: Int32) -> JSValue {
+        let context = JSContext.current()!
+        guard let data = HLSJSBinaryStore.shared.take(id), !data.isEmpty, let bytes = malloc(data.count) else {
+            return JSValue(nullIn: context)
+        }
+        data.copyBytes(to: bytes.assumingMemoryBound(to: UInt8.self), count: data.count)
+        guard let buffer = JSObjectMakeArrayBufferWithBytesNoCopy(context.jsGlobalContextRef, bytes, data.count, { bytes, _ in
+            free(bytes)
+        }, nil, nil) else {
+            return JSValue(nullIn: context)
+        }
+        return JSValue(jsValueRef: buffer, in: context)
+    }
+    
+    /// Stores the bytes of an ArrayBuffer and returns its id, or 0 (the caller then falls back to base64).
+    @objc func putBinary(_ value: JSValue) -> Int32 {
+        guard let context = value.context, let object = JSValueToObject(context.jsGlobalContextRef, value.jsValueRef, nil) else {
+            return 0
+        }
+        let ctx = context.jsGlobalContextRef
+        let length = JSObjectGetArrayBufferByteLength(ctx, object, nil)
+        guard length > 0, let bytes = JSObjectGetArrayBufferBytesPtr(ctx, object, nil) else {
+            return 0
+        }
+        return HLSJSBinaryStore.shared.put(Data(bytes: bytes, count: length))
     }
     
     @objc func consoleLog(_ object: JSValue) {
@@ -169,6 +229,10 @@ private var ObjCKey_ContextReference: Int?
 }
 
 final class WebViewNativeJSContextImpl: HLSJSContext {
+    var supportsBinaryTransfer: Bool {
+        return true
+    }
+    
     fileprivate final class Reference {
         weak var context: WebViewNativeJSContextImpl.Impl?
         
