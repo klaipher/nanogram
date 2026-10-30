@@ -913,6 +913,9 @@ public final class DCTMultiAnimationRendererImpl: MultiAnimationRenderer {
                             }
                             strongSelf.animationTick(frameInterval: frameInterval)
                         }, selector: #selector(TimerTarget.timerEvent), userInfo: nil, repeats: true)
+                        // Apple's guidance for energy: a tolerance lets the system batch this wake-up
+                        // with others. 10% of a frame is below what can be seen.
+                        displayTimer.tolerance = frameInterval * 0.1
                         self.displayTimer = displayTimer
                         RunLoop.main.add(displayTimer, forMode: .common)
                     }

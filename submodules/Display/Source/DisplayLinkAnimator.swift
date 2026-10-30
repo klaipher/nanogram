@@ -167,27 +167,35 @@ public final class SharedDisplayLinkDriver {
             }
             if #available(iOS 15.0, *) {
                 let maxFps = Float(UIScreen.main.maximumFramesPerSecond)
-                if maxFps > 61.0 {
-                    var frameRateRange: CAFrameRateRange
-                    switch maxFramesPerSecond {
-                    case let .fps(fps):
-                        if fps > 60 {
+                var frameRateRange: CAFrameRateRange = .default
+                switch maxFramesPerSecond {
+                case let .fps(fps):
+                    if fps > 60 {
+                        if maxFps > 61.0 {
                             frameRateRange = CAFrameRateRange(minimum: 30.0, maximum: 120.0, preferred: 120.0)
-                        } else {
-                            frameRateRange = .default
                         }
-                    case .max:
+                    } else if fps <= 30 {
+                        // Every active link wants 30 fps or less (emoji, stickers in Low Power Mode...):
+                        // ask for 30 instead of waking at the full display rate only to skip frames.
+                        // Scrolling and Core Animation request their own, higher rates.
+                        frameRateRange = CAFrameRateRange(minimum: 15.0, maximum: 30.0, preferred: 30.0)
+                    } else if maxFps > 61.0 {
+                        // On 120 Hz screens `.default` let the link run at 120 Hz (the app disables the
+                        // minimum frame duration), waking twice per 60 fps frame.
+                        frameRateRange = CAFrameRateRange(minimum: 30.0, maximum: 60.0, preferred: 60.0)
+                    }
+                case .max:
+                    if maxFps > 61.0 {
                         frameRateRange = CAFrameRateRange(minimum: 30.0, maximum: 120.0, preferred: 120.0)
                     }
-                    
-                    if isIpad {
-                        frameRateRange = CAFrameRateRange(minimum: 30.0, maximum: 120.0, preferred: 120.0)
-                    }
-                    
-                    if displayLink.preferredFrameRateRange != frameRateRange {
-                        displayLink.preferredFrameRateRange = frameRateRange
-                        print("SharedDisplayLinkDriver: switch to \(frameRateRange)")
-                    }
+                }
+                
+                if isIpad && maxFps > 61.0 {
+                    frameRateRange = CAFrameRateRange(minimum: 30.0, maximum: 120.0, preferred: 120.0)
+                }
+                
+                if displayLink.preferredFrameRateRange != frameRateRange {
+                    displayLink.preferredFrameRateRange = frameRateRange
                 }
             }
             displayLink.isPaused = false
