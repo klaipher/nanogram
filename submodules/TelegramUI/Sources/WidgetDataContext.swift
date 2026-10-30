@@ -100,7 +100,7 @@ final class WidgetDataContext {
         self.reloadManager = WidgetReloadManager(inForeground: inForeground)
         
         let queue = Queue()
-        let updatedAdditionalPeerIds: Signal<[AccountRecordId: Set<EnginePeer.Id>], NoError> = Signal { subscriber in
+        let currentAdditionalPeerIds: Signal<[AccountRecordId: Set<EnginePeer.Id>], NoError> = Signal { subscriber in
             if #available(iOSApplicationExtension 14.0, iOS 14.0, *) {
                 #if arch(arm64) || arch(x86_64)
                 WidgetCenter.shared.getCurrentConfigurations { result in
@@ -160,11 +160,23 @@ final class WidgetDataContext {
             return EmptyDisposable
         }
         |> runOn(queue)
+        
+        // Widget configurations change only when the user edits a widget on the home screen.
+        // Re-read them every 60 s and whenever the app comes to the foreground (was every 10 s,
+        // in the background too).
+        let periodicTick: Signal<Void, NoError> = (Signal<Void, NoError>.single(Void())
         |> then(
-            Signal<[AccountRecordId: Set<EnginePeer.Id>], NoError>.complete()
-            |> delay(10.0, queue: queue)
-        )
+            Signal<Void, NoError>.complete()
+            |> delay(60.0, queue: queue)
+        ))
         |> restart
+        let updatedAdditionalPeerIds: Signal<[AccountRecordId: Set<EnginePeer.Id>], NoError> = combineLatest(queue: queue,
+            inForeground |> distinctUntilChanged,
+            periodicTick
+        )
+        |> mapToSignal { _ -> Signal<[AccountRecordId: Set<EnginePeer.Id>], NoError> in
+            return currentAdditionalPeerIds
+        }
         
         self.disposable = (combineLatest(queue: queue,
             updatedAdditionalPeerIds |> distinctUntilChanged,

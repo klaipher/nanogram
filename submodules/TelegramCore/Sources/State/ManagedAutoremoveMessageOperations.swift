@@ -46,11 +46,13 @@ func managedAutoremoveMessageOperations(network: Network, postbox: Postbox, isRe
             return EmptyDisposable
         }
         
+        // The server time offset (whole seconds) only changes when the connection corrects it;
+        // re-reading it every 10 s instead of every second removes a main-thread wake-up per loop.
         let timeOffset = (
             timeOffsetOnce
             |> then(
                 Signal<Double, NoError>.complete()
-                |> delay(1.0, queue: .mainQueue())
+                |> delay(10.0, queue: .mainQueue())
             )
         )
         |> restart
@@ -142,11 +144,13 @@ func managedAutoexpireStoryOperations(network: Network, postbox: Postbox) -> Sig
             return EmptyDisposable
         }
         
+        // The server time offset (whole seconds) only changes when the connection corrects it;
+        // re-reading it every 10 s instead of every second removes a main-thread wake-up per loop.
         let timeOffset = (
             timeOffsetOnce
             |> then(
                 Signal<Double, NoError>.complete()
-                |> delay(1.0, queue: .mainQueue())
+                |> delay(10.0, queue: .mainQueue())
             )
         )
         |> restart

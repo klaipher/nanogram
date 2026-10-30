@@ -30,7 +30,10 @@ public final class MessageReadMetricsTracker {
     private static let kMinViewTimeMs: Int = 300
     private static let kUserActivityTimeout: Double = 15.0
     private static let kMaxPhaseDuration: Double = 300.0
-    private static let kHeartbeatInterval: Double = 0.1
+    // Time is split exactly at the activity cutoff (see `activeMs`) and flushed on every activity
+    // report, so the heartbeat only bounds the 300 s phase cap. It was 0.1 s: 10 main-thread
+    // wake-ups a second while a channel is open.
+    private static let kHeartbeatInterval: Double = 1.0
 
     private struct TrackingPhase {
         let viewId: Int64
@@ -68,24 +71,25 @@ public final class MessageReadMetricsTracker {
             self.viewportHeightPx = viewportHeightPx
         }
 
+        /// The part of `lastTick ..< now` before the user went inactive (`kUserActivityTimeout`
+        /// after the last activity).
+        private static func activeMs(lastTick: CFAbsoluteTime, now: CFAbsoluteTime, lastActivityTime: CFAbsoluteTime) -> Int {
+            let activeUntil = min(now, lastActivityTime + kUserActivityTimeout)
+            return Int(max(0.0, activeUntil - lastTick) * 1000.0)
+        }
+
         mutating func flushTime(now: CFAbsoluteTime, lastActivityTime: CFAbsoluteTime) {
             if let lastTick = self.lastTickTime {
-                let deltaMs = Int((now - lastTick) * 1000.0)
-                self.totalViewTimeMs += deltaMs
-                if (now - lastActivityTime) < kUserActivityTimeout {
-                    self.activeViewTimeMs += deltaMs
-                }
+                self.totalViewTimeMs += Int((now - lastTick) * 1000.0)
+                self.activeViewTimeMs += TrackingPhase.activeMs(lastTick: lastTick, now: now, lastActivityTime: lastActivityTime)
             }
             self.lastTickTime = now
         }
 
         mutating func stopTicking(now: CFAbsoluteTime, lastActivityTime: CFAbsoluteTime) {
             if let lastTick = self.lastTickTime {
-                let deltaMs = Int((now - lastTick) * 1000.0)
-                self.totalViewTimeMs += deltaMs
-                if (now - lastActivityTime) < kUserActivityTimeout {
-                    self.activeViewTimeMs += deltaMs
-                }
+                self.totalViewTimeMs += Int((now - lastTick) * 1000.0)
+                self.activeViewTimeMs += TrackingPhase.activeMs(lastTick: lastTick, now: now, lastActivityTime: lastActivityTime)
             }
             self.lastTickTime = nil
         }
@@ -219,7 +223,14 @@ public final class MessageReadMetricsTracker {
 
     public func reportUserActivity() {
         assert(Queue.mainQueue().isCurrent())
-        self.lastActivityTime = CFAbsoluteTimeGetCurrent()
+        let now = CFAbsoluteTimeGetCurrent()
+        // Account the time up to now against the previous activity before moving it.
+        for (messageId, phase) in self.phases where phase.state == .tracking {
+            var phase = phase
+            phase.flushTime(now: now, lastActivityTime: self.lastActivityTime)
+            self.phases[messageId] = phase
+        }
+        self.lastActivityTime = now
     }
 
     public func setIsActive(_ isActive: Bool) {

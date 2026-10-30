@@ -515,6 +515,14 @@ private struct ChatHistoryAnimatedEmojiConfiguration {
 private var nextClientId: Int32 = 1
 
 public final class ChatHistoryListNodeImpl: ASDisplayNode, ChatHistoryNode, ChatHistoryListNode {
+    override public func didEnterHierarchy() {
+        super.didEnterHierarchy()
+        if self.skippedDisplayedItemRangeRefresh {
+            self.skippedDisplayedItemRangeRefresh = false
+            self.listView.updateVisibleItemRange(force: true)
+        }
+    }
+    
     static let fixedAdMessageStableId: UInt32 = UInt32.max - 5000
 
     private let listView: ChatHistoryListViewBackend
@@ -825,6 +833,7 @@ public final class ChatHistoryListNodeImpl: ASDisplayNode, ChatHistoryNode, Chat
     private var seenMessageIds = Set<MessageId>()
     
     private var refreshDisplayedItemRangeTimer: SwiftSignalKit.Timer?
+    private var skippedDisplayedItemRangeRefresh = false
     
     private var genericReactionEffect: String?
     private var genericReactionEffectDisposable: Disposable?
@@ -1194,6 +1203,12 @@ public final class ChatHistoryListNodeImpl: ASDisplayNode, ChatHistoryNode, Chat
         
         self.refreshDisplayedItemRangeTimer = SwiftSignalKit.Timer(timeout: 10.0, repeat: true, completion: { [weak self] in
             guard let strongSelf = self else {
+                return
+            }
+            // Chats lower in the navigation stack are out of the window; refreshing them re-requested
+            // views, reactions and paid media for posts nobody sees. Catch up when shown again.
+            if !strongSelf.isNodeLoaded || strongSelf.view.window == nil {
+                strongSelf.skippedDisplayedItemRangeRefresh = true
                 return
             }
             strongSelf.listView.updateVisibleItemRange(force: true)

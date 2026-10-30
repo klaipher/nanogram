@@ -275,7 +275,9 @@ public final class AppLockContextImpl: AppLockContext {
                 }
             }
             
-            strongSelf.updateTimestampRenewTimer(shouldRun: isApplicationActive && !isCurrentlyLocked)
+            // The activity timestamp only feeds the passcode auto-lock; without a passcode, renewing it
+            // rewrote the lock state file every 5 s while the app was open.
+            strongSelf.updateTimestampRenewTimer(shouldRun: isApplicationActive && !isCurrentlyLocked && accessChallengeData.data.isLockable)
             strongSelf.lockStatus.update(isPasscodeLocked: isCurrentlyLocked, isApplicationActive: isApplicationActive, isApplicationInForeground: isApplicationInForeground)
             
             if shouldDisplayCoveringView {
@@ -343,6 +345,8 @@ public final class AppLockContextImpl: AppLockContext {
                 }, queue: .mainQueue())
                 self.timestampRenewTimer = timestampRenewTimer
                 timestampRenewTimer.start()
+                // Fresh right away (e.g. when a passcode has just been turned on), not 5 s later.
+                self.updateApplicationActivityTimestamp()
             }
         } else {
             if let timestampRenewTimer = self.timestampRenewTimer {

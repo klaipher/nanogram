@@ -510,17 +510,57 @@ private func automaticThemeShouldSwitch(_ settings: AutomaticThemeSwitchSetting,
     } else if case .explicitNone = settings.trigger {
         return .single(false)
     } else {
+        // Re-evaluates only when the answer can change, instead of a 1 s timer for every trigger.
         return Signal { subscriber in
             let parameters = AutomaticThemeSwitchParameters(settings: settings)
-            subscriber.putNext(automaticThemeShouldSwitchNow(parameters, systemUserInterfaceStyle: systemUserInterfaceStyle))
-            
-            let timer = SwiftSignalKit.Timer(timeout: 1.0, repeat: true, completion: {
+            let emit = {
                 subscriber.putNext(automaticThemeShouldSwitchNow(parameters, systemUserInterfaceStyle: systemUserInterfaceStyle))
-            }, queue: Queue.mainQueue())
-            timer.start()
+            }
+            emit()
             
-            return ActionDisposable {
-                timer.invalidate()
+            switch parameters.trigger {
+            case .explicitNone, .explicitForce, .system:
+                // Fixed for the lifetime of this signal: a system appearance change re-creates it.
+                return EmptyDisposable
+            case .brightness:
+                let observer = NotificationCenter.default.addObserver(forName: UIScreen.brightnessDidChangeNotification, object: nil, queue: OperationQueue.main, using: { _ in
+                    emit()
+                })
+                return ActionDisposable {
+                    NotificationCenter.default.removeObserver(observer)
+                }
+            case let .time(fromSeconds, toSeconds):
+                // One timer to the next switch moment, re-armed after it fires or the clock changes.
+                var timer: SwiftSignalKit.Timer?
+                var schedule: (() -> Void)?
+                schedule = {
+                    timer?.invalidate()
+                    let now = roundTimeToDay(Int32(Date().timeIntervalSince1970))
+                    let dayLength: Int32 = 24 * 60 * 60
+                    let untilFrom = (fromSeconds - now + dayLength) % dayLength
+                    let untilAfterTo = (toSeconds + 1 - now + dayLength) % dayLength
+                    let delay = max(1, min(untilFrom == 0 ? dayLength : untilFrom, untilAfterTo == 0 ? dayLength : untilAfterTo))
+                    let next = SwiftSignalKit.Timer(timeout: Double(delay), repeat: false, completion: {
+                        emit()
+                        schedule?()
+                    }, queue: Queue.mainQueue())
+                    timer = next
+                    next.start()
+                }
+                schedule?()
+                let observers = [UIApplication.significantTimeChangeNotification, NSNotification.Name.NSSystemTimeZoneDidChange].map { name in
+                    NotificationCenter.default.addObserver(forName: name, object: nil, queue: OperationQueue.main, using: { _ in
+                        emit()
+                        schedule?()
+                    })
+                }
+                return ActionDisposable {
+                    timer?.invalidate()
+                    schedule = nil
+                    for observer in observers {
+                        NotificationCenter.default.removeObserver(observer)
+                    }
+                }
             }
         }
         |> runOn(Queue.mainQueue())

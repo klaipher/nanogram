@@ -1191,7 +1191,8 @@ public final class PresentationCallImpl: PresentationCall {
                                             timer.start()
                                             
                                             return ActionDisposable {
-                                                device.isBatteryMonitoringEnabled = false
+                                                // Not turned off: the app keeps battery monitoring on from launch for automatic
+                                                // power saving, which read batteryLevel -1 (never low) after the first call.
                                                 timer.invalidate()
                                             }
                                         }
@@ -1265,7 +1266,8 @@ public final class PresentationCallImpl: PresentationCall {
                                     timer.start()
                                     
                                     return ActionDisposable {
-                                        device.isBatteryMonitoringEnabled = false
+                                        // Not turned off: the app keeps battery monitoring on from launch for automatic
+                                        // power saving, which read batteryLevel -1 (never low) after the first call.
                                         timer.invalidate()
                                     }
                                 }

@@ -1691,7 +1691,9 @@ private func extractAccountManagerState(records: AccountRecordsView<TelegramAcco
         let _ = self.urlSession(identifier: "\(baseAppBundleId).backroundSession")
         
         var previousReportedMemoryConsumption = 0
-        let _ = Foundation.Timer.scheduledTimer(withTimeInterval: 0.5, repeats: true, block: { _ in
+        // Every 5 s (was 0.5 s, for the life of the app, background included). The value is only
+        // logged on a >1 MB change and shown by a debug overlay; 2 Hz kept the main thread waking.
+        let memoryReportTimer = Foundation.Timer.scheduledTimer(withTimeInterval: 5.0, repeats: true, block: { _ in
             let value = getMemoryConsumption()
             if abs(value - previousReportedMemoryConsumption) > 1 * 1024 * 1024 {
                 previousReportedMemoryConsumption = value
@@ -1733,6 +1735,7 @@ private func extractAccountManagerState(records: AccountRecordsView<TelegramAcco
                 }
             }
         })
+        memoryReportTimer.tolerance = 1.0
         
         //self.addBackgroundDownloadTask()
         
@@ -2068,6 +2071,24 @@ private func extractAccountManagerState(records: AccountRecordsView<TelegramAcco
         })
     }
 
+    // iOS asks for memory back before it kills the app. Drop the same Postbox caches as on
+    // entering the background (proven safe: live views keep their own copies) and stale
+    // request-throttle records. Nothing visible is affected.
+    func applicationDidReceiveMemoryWarning(_ application: UIApplication) {
+        Logger.shared.log("App \(self.episodeId)", "Memory warning")
+        let _ = (self.sharedContextPromise.get()
+        |> take(1)
+        |> mapToSignal { sharedApplicationContext in
+            return sharedApplicationContext.sharedContext.activeAccountContexts |> take(1)
+        }
+        |> deliverOnMainQueue).start(next: { activeAccounts in
+            for (_, context, _) in activeAccounts.accounts {
+                context.account.postbox.clearCaches()
+                context.account.viewTracker.pruneThrottleState()
+            }
+        })
+    }
+    
     func handleDidEnterBackground() {
         let _ = (self.sharedContextPromise.get()
         |> take(1)
@@ -2088,6 +2109,7 @@ private func extractAccountManagerState(records: AccountRecordsView<TelegramAcco
              |> deliverOnMainQueue).start(next: { activeAccounts in
                 for (_, context, _) in activeAccounts.accounts {
                     context.account.postbox.clearCaches()
+                    context.account.viewTracker.pruneThrottleState()
                 }
             })
         })
