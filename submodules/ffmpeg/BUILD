@@ -265,13 +265,13 @@ genrule(
 
         VARIANT=release
 
-        FFMPEG_VERSION="8.1.3"
+        FFMPEG_VERSION="9.0.2"
 
         if [ "$(TARGET_CPU)" == "ios_arm64" ]; then
             BUILD_ARCH="arm64"
         elif [ "$(TARGET_CPU)" == "ios_sim_arm64" ]; then
             BUILD_ARCH="sim_arm64"
-            VARIANT="debug"
+            # Built optimized like device (release) so simulator profiles are representative.
         elif [ "$(TARGET_CPU)" == "darwin_arm64" ]; then
             BUILD_ARCH="macos_arm64"
             VARIANT="debug"
