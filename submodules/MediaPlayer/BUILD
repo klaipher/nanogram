@@ -55,6 +55,9 @@ ios_unit_test(
     name = "UniversalMediaPlayerTests",
     minimum_os_version = "15.0",
     runner = ":UniversalMediaPlayerTestRunner",
+    resources = [
+        "Tests/Resources/sticker_vp9.webm",
+    ],
     deps = [
         ":UniversalMediaPlayerTestsLib",
     ],

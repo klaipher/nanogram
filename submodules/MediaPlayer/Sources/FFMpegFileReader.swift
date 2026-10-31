@@ -263,7 +263,11 @@ public final class FFMpegFileReader {
         self.init(source: source, passthroughDecoder: passthroughDecoder, useHardwareAcceleration: useHardwareAcceleration, skipLoopFilter: skipLoopFilter, selectedStream: selectedStream, seek: seek, maxReadablePts: maxReadablePts, ignoreEditList: false)
     }
 
-    init?(source: SourceDescription, passthroughDecoder: Bool = false, useHardwareAcceleration: Bool, skipLoopFilter: Bool = false, selectedStream: SelectedStream, seek: Seek?, maxReadablePts: (streamIndex: Int, pts: Int64, isEnded: Bool)?, ignoreEditList: Bool) {
+    // `reusesPixelBuffers` draws converted frames from a CVPixelBufferPool instead of creating an
+    // IOSurface-backed buffer per frame. A pooled buffer is recycled only after every holder (a display
+    // layer, a CGImage, a queued sample buffer) has released it, and no consumer writes to a frame it
+    // was handed, so this does not change what is shown. It is a parameter only so tests can compare.
+    init?(source: SourceDescription, passthroughDecoder: Bool = false, useHardwareAcceleration: Bool, skipLoopFilter: Bool = false, selectedStream: SelectedStream, seek: Seek?, maxReadablePts: (streamIndex: Int, pts: Int64, isEnded: Bool)?, ignoreEditList: Bool, reusesPixelBuffers: Bool = true) {
         let _ = FFMpegMediaFrameSourceContextHelpers.registerFFMpegGlobals
         
         switch source {
@@ -382,9 +386,11 @@ public final class FFMpegFileReader {
                                 }
                                 
                                 if codecContext.open() {
+                                    let decoder = FFMpegMediaVideoFrameDecoder(codecContext: codecContext)
+                                    decoder.reusesPixelBuffers = reusesPixelBuffers
                                     stream = Stream(
                                         info: info,
-                                        decoder: .video(FFMpegMediaVideoFrameDecoder(codecContext: codecContext))
+                                        decoder: .video(decoder)
                                     )
                                     break outer
                                 }

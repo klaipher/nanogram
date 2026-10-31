@@ -58,6 +58,9 @@ public final class FFMpegMediaVideoFrameDecoder: MediaTrackFrameDecoder {
     
     public var reusesPixelBuffers: Bool = false
     private var reusablePixelBufferPool: (pool: CVPixelBufferPool, width: Int32, height: Int32, pixelFormat: OSType, alignment: Int32)?
+    // Every frame of a stream normally has the same format, and creating a description per frame was
+    // ~0.9 s of a 87 s device trace. Reused only while it still matches the frame's buffer.
+    private var cachedFormatDescription: CMVideoFormatDescription?
     
     private var delayedFrames: [MediaTrackFrame] = []
     
@@ -468,6 +471,19 @@ public final class FFMpegMediaVideoFrameDecoder: MediaTrackFrameDecoder {
         return pool
     }
     
+    private func formatDescription(for pixelBuffer: CVPixelBuffer) -> CMVideoFormatDescription? {
+        if let current = self.cachedFormatDescription, CMVideoFormatDescriptionMatchesImageBuffer(current, imageBuffer: pixelBuffer) {
+            return current
+        }
+        var formatRef: CMVideoFormatDescription?
+        let formatStatus = CMVideoFormatDescriptionCreateForImageBuffer(allocator: kCFAllocatorDefault, imageBuffer: pixelBuffer, formatDescriptionOut: &formatRef)
+        guard let format = formatRef, formatStatus == 0 else {
+            return nil
+        }
+        self.cachedFormatDescription = format
+        return format
+    }
+    
     private func convertVideoFrame(_ frame: FFMpegAVFrame, pts: CMTime, dts: CMTime, duration: CMTime, forceARGB: Bool = false, unpremultiplyAlpha: Bool = true, displayImmediately: Bool = true) -> MediaTrackFrame? {
         if frame.nativePixelFormat() == FFMpegAVFrameNativePixelFormat.videoToolbox {
             guard let pixelBufferRef = frame.data[3] else {
@@ -476,10 +492,7 @@ public final class FFMpegMediaVideoFrameDecoder: MediaTrackFrameDecoder {
             let unmanagedPixelBuffer = Unmanaged<CVPixelBuffer>.fromOpaque(UnsafeRawPointer(pixelBufferRef))
             let pixelBuffer = unmanagedPixelBuffer.takeUnretainedValue()
             
-            var formatRef: CMVideoFormatDescription?
-            let formatStatus = CMVideoFormatDescriptionCreateForImageBuffer(allocator: kCFAllocatorDefault, imageBuffer: pixelBuffer, formatDescriptionOut: &formatRef)
-            
-            guard let format = formatRef, formatStatus == 0 else {
+            guard let format = self.formatDescription(for: pixelBuffer) else {
                 return nil
             }
             
@@ -656,10 +669,7 @@ public final class FFMpegMediaVideoFrameDecoder: MediaTrackFrameDecoder {
 
         CVPixelBufferUnlockBaseAddress(pixelBuffer, [])
         
-        var formatRef: CMVideoFormatDescription?
-        let formatStatus = CMVideoFormatDescriptionCreateForImageBuffer(allocator: kCFAllocatorDefault, imageBuffer: pixelBuffer, formatDescriptionOut: &formatRef)
-        
-        guard let format = formatRef, formatStatus == 0 else {
+        guard let format = self.formatDescription(for: pixelBuffer) else {
             return nil
         }
         
