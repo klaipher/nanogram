@@ -87,7 +87,7 @@ public final class PeerAccessRestrictionInfo: PostboxCoding, Equatable {
     }
     
     public init(flatBuffersObject: TelegramCore_PeerAccessRestrictionInfo) throws {
-        self.rules = try (0 ..< flatBuffersObject.rulesCount).map { try RestrictionRule(flatBuffersObject: flatBuffersObject.rules(at: $0)!) }
+        self.rules = try flatBuffersObject.rules.map { try RestrictionRule(flatBuffersObject: $0) }
     }
     
     public func encodeToFlatBuffers(builder: inout FlatBufferBuilder) -> Offset {

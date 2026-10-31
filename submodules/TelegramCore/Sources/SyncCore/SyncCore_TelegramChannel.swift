@@ -642,7 +642,7 @@ public final class TelegramChannel: Peer, Equatable {
         self.accessHash = try flatBuffersObject.accessHash.flatMap(TelegramPeerAccessHash.init)
         self.title = flatBuffersObject.title
         self.username = flatBuffersObject.username
-        self.photo = try (0 ..< flatBuffersObject.photoCount).map { try TelegramMediaImageRepresentation(flatBuffersObject: flatBuffersObject.photo(at: $0)!) }
+        self.photo = try flatBuffersObject.photo.map { try TelegramMediaImageRepresentation(flatBuffersObject: $0) }
         self.creationDate = flatBuffersObject.creationDate
         self.version = flatBuffersObject.version
         self.participationStatus = TelegramChannelParticipationStatus(rawValue: flatBuffersObject.participationStatus)
@@ -657,7 +657,7 @@ public final class TelegramChannel: Peer, Equatable {
         self.adminRights = try flatBuffersObject.adminRights.flatMap { try TelegramChatAdminRights(flatBuffersObject: $0) }
         self.bannedRights = try flatBuffersObject.bannedRights.flatMap { try TelegramChatBannedRights(flatBuffersObject: $0) }
         self.defaultBannedRights = try flatBuffersObject.defaultBannedRights.map { try TelegramChatBannedRights(flatBuffersObject: $0) }
-        self.usernames = try (0 ..< flatBuffersObject.usernamesCount).map { try TelegramPeerUsername(flatBuffersObject: flatBuffersObject.usernames(at: $0)!) }
+        self.usernames = try flatBuffersObject.usernames.map { try TelegramPeerUsername(flatBuffersObject: $0) }
         self.storiesHidden = flatBuffersObject.storiesHidden?.value
         self.nameColor = try flatBuffersObject.nameColor.flatMap(PeerNameColor.init(flatBuffersObject:))
         self.backgroundEmojiId = flatBuffersObject.backgroundEmojiId == Int64.min ? nil : flatBuffersObject.backgroundEmojiId

@@ -897,21 +897,21 @@ public final class TelegramMediaFile: Media, Equatable, Codable {
         self.fileId = MediaId(namespace: flatBuffersObject.fileId.namespace, id: flatBuffersObject.fileId.id)
         self.partialReference = try flatBuffersObject.partialReference.flatMap { try PartialMediaReference(flatBuffersObject: $0 ) }
         self.resource = try TelegramMediaResource_parse(flatBuffersObject: flatBuffersObject.resource)
-        self.previewRepresentations = try (0 ..< flatBuffersObject.previewRepresentationsCount).map { i in
-            return try TelegramMediaImageRepresentation(flatBuffersObject: flatBuffersObject.previewRepresentations(at: i)!)
+        self.previewRepresentations = try flatBuffersObject.previewRepresentations.map { item in
+            return try TelegramMediaImageRepresentation(flatBuffersObject: item)
         }
-        self.videoThumbnails = try (0 ..< flatBuffersObject.videoThumbnailsCount).map { i in
-            return try VideoThumbnail(flatBuffersObject: flatBuffersObject.videoThumbnails(at: i)!)
+        self.videoThumbnails = try flatBuffersObject.videoThumbnails.map { item in
+            return try VideoThumbnail(flatBuffersObject: item)
         }
         self.videoCover = try flatBuffersObject.videoCover.flatMap { try TelegramMediaImage(flatBuffersObject: $0) }
         self.immediateThumbnailData = flatBuffersObject.immediateThumbnailData.isEmpty ? nil : Data(flatBuffersObject.immediateThumbnailData)
         self.mimeType = flatBuffersObject.mimeType
         self.size = flatBuffersObject.size == Int64.min ? nil : flatBuffersObject.size
-        self.attributes = try (0 ..< flatBuffersObject.attributesCount).map { i in
-            return try TelegramMediaFileAttribute(flatBuffersObject: flatBuffersObject.attributes(at: i)!)
+        self.attributes = try flatBuffersObject.attributes.map { item in
+            return try TelegramMediaFileAttribute(flatBuffersObject: item)
         }
-        self.alternativeRepresentations = try (0 ..< flatBuffersObject.alternativeRepresentationsCount).map { i in
-            return try TelegramMediaFile(flatBuffersObject: flatBuffersObject.alternativeRepresentations(at: i)!)
+        self.alternativeRepresentations = try flatBuffersObject.alternativeRepresentations.map { item in
+            return try TelegramMediaFile(flatBuffersObject: item)
         }
     }
     
@@ -1385,8 +1385,7 @@ public extension TelegramMediaFile.Accessor {
             if let _wrappedFile = self._wrappedFile {
                 return _wrappedFile.fileName
             }
-            for i in 0 ..< self._wrapped!.attributesCount {
-                let attribute = self._wrapped!.attributes(at: i)!
+            for attribute in self._wrapped!.attributes {
                 if attribute.valueType == .telegrammediafileattributeFilename {
                     if let value = attribute.value(type: TelegramCore_TelegramMediaFileAttribute_FileName.self) {
                         return value.fileName
@@ -1404,8 +1403,7 @@ public extension TelegramMediaFile.Accessor {
         if let _wrappedFile = self._wrappedFile {
             return _wrappedFile.isSticker
         }
-        for i in 0 ..< self._wrapped!.attributesCount {
-            let attribute = self._wrapped!.attributes(at: i)!
+        for attribute in self._wrapped!.attributes {
             if attribute.valueType == .telegrammediafileattributeSticker {
                 return true
             }
@@ -1420,8 +1418,7 @@ public extension TelegramMediaFile.Accessor {
         if let _wrappedFile = self._wrappedFile {
             return _wrappedFile.isStaticSticker
         }
-        for i in 0 ..< self._wrapped!.attributesCount {
-            let attribute = self._wrapped!.attributes(at: i)!
+        for attribute in self._wrapped!.attributes {
             if attribute.valueType == .telegrammediafileattributeSticker {
                 if self._wrapped!.size != Int64.min, self._wrapped!.size < 300 * 1024 {
                     return !isAnimatedSticker
@@ -1438,8 +1435,7 @@ public extension TelegramMediaFile.Accessor {
         if let _wrappedFile = self._wrappedFile {
             return _wrappedFile.isStaticEmoji
         }
-        for i in 0 ..< self._wrapped!.attributesCount {
-            let attribute = self._wrapped!.attributes(at: i)!
+        for attribute in self._wrapped!.attributes {
             if attribute.valueType == .telegrammediafileattributeCustomemoji {
                 return self._wrapped!.mimeType == "image/webp"
             }
@@ -1451,8 +1447,7 @@ public extension TelegramMediaFile.Accessor {
         if let _wrappedFile = self._wrappedFile {
             return _wrappedFile.isVideo
         }
-        for i in 0 ..< self._wrapped!.attributesCount {
-            let attribute = self._wrapped!.attributes(at: i)!
+        for attribute in self._wrapped!.attributes {
             if attribute.valueType == .telegrammediafileattributeVideo {
                 return true
             }
@@ -1464,8 +1459,7 @@ public extension TelegramMediaFile.Accessor {
         if let _wrappedFile = self._wrappedFile {
             return _wrappedFile.isInstantVideo
         }
-        for i in 0 ..< self._wrapped!.attributesCount {
-            let attribute = self._wrapped!.attributes(at: i)!
+        for attribute in self._wrapped!.attributes {
             if attribute.valueType == .telegrammediafileattributeVideo {
                 if let value = attribute.value(type: TelegramCore_TelegramMediaFileAttribute_Video.self) {
                     return TelegramMediaVideoFlags(rawValue: value.flags).contains(.instantRoundVideo)
@@ -1479,8 +1473,7 @@ public extension TelegramMediaFile.Accessor {
         if let _wrappedFile = self._wrappedFile {
             return _wrappedFile.preloadSize
         }
-        for i in 0 ..< self._wrapped!.attributesCount {
-            let attribute = self._wrapped!.attributes(at: i)!
+        for attribute in self._wrapped!.attributes {
             if attribute.valueType == .telegrammediafileattributeVideo {
                 if let value = attribute.value(type: TelegramCore_TelegramMediaFileAttribute_Video.self) {
                     return value.preloadSize == 0 ? nil : value.preloadSize
@@ -1497,8 +1490,7 @@ public extension TelegramMediaFile.Accessor {
         if let _wrappedFile = self._wrappedFile {
             return _wrappedFile.isAnimated
         }
-        for i in 0 ..< self._wrapped!.attributesCount {
-            let attribute = self._wrapped!.attributes(at: i)!
+        for attribute in self._wrapped!.attributes {
             if attribute.valueType == .telegrammediafileattributeAnimated {
                 return true
             }
@@ -1523,8 +1515,7 @@ public extension TelegramMediaFile.Accessor {
         if let _wrappedFile = self._wrappedFile {
             return _wrappedFile.isPremiumSticker
         }
-        for i in 0 ..< self._wrapped!.videoThumbnailsCount {
-            let thumbnail = self._wrapped!.videoThumbnails(at: i)!
+        for thumbnail in self._wrapped!.videoThumbnails {
             if thumbnail.resource.valueType == .telegrammediaresourceClouddocumentsizemediaresource {
                 if let value = thumbnail.resource.value(type: TelegramCore_TelegramMediaResource_CloudDocumentSizeMediaResource.self) {
                     if value.sizeSpec == "f" {
@@ -1540,8 +1531,7 @@ public extension TelegramMediaFile.Accessor {
         if let _wrappedFile = self._wrappedFile {
             return _wrappedFile.noPremium
         }
-        for i in 0 ..< self._wrapped!.attributesCount {
-            let attribute = self._wrapped!.attributes(at: i)!
+        for attribute in self._wrapped!.attributes {
             if attribute.valueType == .telegrammediafileattributeNopremium {
                 return true
             }
@@ -1553,8 +1543,7 @@ public extension TelegramMediaFile.Accessor {
         if let _wrappedFile = self._wrappedFile {
             return _wrappedFile.premiumEffect
         }
-        for i in 0 ..< self._wrapped!.videoThumbnailsCount {
-            let thumbnail = self._wrapped!.videoThumbnails(at: i)!
+        for thumbnail in self._wrapped!.videoThumbnails {
             if thumbnail.resource.valueType == .telegrammediaresourceClouddocumentsizemediaresource {
                 if let value = thumbnail.resource.value(type: TelegramCore_TelegramMediaResource_CloudDocumentSizeMediaResource.self) {
                     if value.sizeSpec == "f" {
@@ -1572,8 +1561,7 @@ public extension TelegramMediaFile.Accessor {
         }
         if self._wrapped!.mimeType == "video/webm" {
             var hasSticker = false
-            for i in 0 ..< self._wrapped!.attributesCount {
-                let attribute = self._wrapped!.attributes(at: i)!
+            for attribute in self._wrapped!.attributes {
                 if attribute.valueType == .telegrammediafileattributeSticker {
                     hasSticker = true
                     break
@@ -1592,8 +1580,7 @@ public extension TelegramMediaFile.Accessor {
             return _wrappedFile.isCustomEmoji
         }
         var hasSticker = false
-        for i in 0 ..< self._wrapped!.attributesCount {
-            let attribute = self._wrapped!.attributes(at: i)!
+        for attribute in self._wrapped!.attributes {
             if attribute.valueType == .telegrammediafileattributeCustomemoji {
                 hasSticker = true
                 break
@@ -1611,8 +1598,7 @@ public extension TelegramMediaFile.Accessor {
             }
             return nil
         }
-        for i in 0 ..< self._wrapped!.attributesCount {
-            let attribute = self._wrapped!.attributes(at: i)!
+        for attribute in self._wrapped!.attributes {
             if attribute.valueType == .telegrammediafileattributeCustomemoji {
                 if let value = attribute.value(type: TelegramCore_TelegramMediaFileAttribute_CustomEmoji.self) {
                     return value.alt
@@ -1633,8 +1619,7 @@ public extension TelegramMediaFile.Accessor {
             return nil
         }
         
-        for i in 0 ..< self._wrapped!.attributesCount {
-            let attribute = self._wrapped!.attributes(at: i)!
+        for attribute in self._wrapped!.attributes {
             if attribute.valueType == .telegrammediafileattributeSticker {
                 if let value = attribute.value(type: TelegramCore_TelegramMediaFileAttribute_Sticker.self) {
                     return value.displayText
@@ -1649,8 +1634,7 @@ public extension TelegramMediaFile.Accessor {
         if let _wrappedFile = self._wrappedFile {
             return _wrappedFile.isCustomTemplateEmoji
         }
-        for i in 0 ..< self._wrapped!.attributesCount {
-            let attribute = self._wrapped!.attributes(at: i)!
+        for attribute in self._wrapped!.attributes {
             if attribute.valueType == .telegrammediafileattributeCustomemoji {
                 if let value = attribute.value(type: TelegramCore_TelegramMediaFileAttribute_CustomEmoji.self) {
                     let isSingleColor = value.isSingleColor
@@ -1689,8 +1673,7 @@ public extension TelegramMediaFile.Accessor {
             }
             return false
         }
-        for i in 0 ..< self._wrapped!.attributesCount {
-            let attribute = self._wrapped!.attributes(at: i)!
+        for attribute in self._wrapped!.attributes {
             if attribute.valueType == .telegrammediafileattributeCustomemoji {
                 if let value = attribute.value(type: TelegramCore_TelegramMediaFileAttribute_CustomEmoji.self) {
                     if let packReference = value.packReference {
@@ -1712,8 +1695,7 @@ public extension TelegramMediaFile.Accessor {
         if let _wrappedFile = self._wrappedFile {
             return _wrappedFile.isPremiumEmoji
         }
-        for i in 0 ..< self._wrapped!.attributesCount {
-            let attribute = self._wrapped!.attributes(at: i)!
+        for attribute in self._wrapped!.attributes {
             if attribute.valueType == .telegrammediafileattributeCustomemoji {
                 if let value = attribute.value(type: TelegramCore_TelegramMediaFileAttribute_CustomEmoji.self) {
                     return value.isPremium
@@ -1729,8 +1711,7 @@ public extension TelegramMediaFile.Accessor {
         }
         if self._wrapped!.mimeType == "video/webm" {
             var hasSticker = false
-            for i in 0 ..< self._wrapped!.attributesCount {
-                let attribute = self._wrapped!.attributes(at: i)!
+            for attribute in self._wrapped!.attributes {
                 if attribute.valueType == .telegrammediafileattributeCustomemoji {
                     hasSticker = true
                     break
@@ -1745,8 +1726,7 @@ public extension TelegramMediaFile.Accessor {
         if let _wrappedFile = self._wrappedFile {
             return _wrappedFile.hasLinkedStickers
         }
-        for i in 0 ..< self._wrapped!.attributesCount {
-            let attribute = self._wrapped!.attributes(at: i)!
+        for attribute in self._wrapped!.attributes {
             if attribute.valueType == .telegrammediafileattributeHaslinkedstickers {
                 return true
             }
@@ -1762,8 +1742,7 @@ public extension TelegramMediaFile.Accessor {
         var hasNonVoiceAudio = false
         var hasVideo = false
         
-        for i in 0 ..< self._wrapped!.attributesCount {
-            let attribute = self._wrapped!.attributes(at: i)!
+        for attribute in self._wrapped!.attributes {
             if attribute.valueType == .telegrammediafileattributeAudio {
                 if let value = attribute.value(type: TelegramCore_TelegramMediaFileAttribute_Audio.self) {
                     if !value.isVoice {
@@ -1781,8 +1760,7 @@ public extension TelegramMediaFile.Accessor {
         if let _wrappedFile = self._wrappedFile {
             return _wrappedFile.isVoice
         }
-        for i in 0 ..< self._wrapped!.attributesCount {
-            let attribute = self._wrapped!.attributes(at: i)!
+        for attribute in self._wrapped!.attributes {
             if attribute.valueType == .telegrammediafileattributeAudio {
                 if let value = attribute.value(type: TelegramCore_TelegramMediaFileAttribute_Audio.self) {
                     return value.isVoice
@@ -1797,8 +1775,7 @@ public extension TelegramMediaFile.Accessor {
             return _wrappedFile.dimensions
         }
         
-        for i in 0 ..< self._wrapped!.attributesCount {
-            let attribute = self._wrapped!.attributes(at: i)!
+        for attribute in self._wrapped!.attributes {
             if attribute.valueType == .telegrammediafileattributeVideo {
                 if let value = attribute.value(type: TelegramCore_TelegramMediaFileAttribute_Video.self) {
                     return PixelDimensions(width: value.width, height: value.height)

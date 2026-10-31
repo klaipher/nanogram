@@ -225,8 +225,8 @@ http_file(
 
 http_file(
     name = "flatbuffers_zip",
-    sha256 = "c5cd6a605ff20350c7faa19d8eeb599df6117ea4aabd16ac58a7eb5ba82df4e7",
-    urls = ["https://github.com/google/flatbuffers/archive/refs/tags/v24.12.23.zip"],
+    sha256 = "f5d4636bfc4d30c622c9ad238ce947848c2b90b10aecd387dc62cdee2584359b",
+    urls = ["https://github.com/google/flatbuffers/archive/refs/tags/v25.12.19.zip"],
 )
 
 provisioning_profile_repository = use_extension("@build_bazel_rules_apple//apple:apple.bzl", "provisioning_profile_repository_extension")

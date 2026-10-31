@@ -10,7 +10,7 @@ public var flatBuffers_checkedGet: Bool = false
 #endif
 
 @inline(__always)
-public func FlatBuffers_getRoot<T: FlatBufferObject & Verifiable>(
+public func FlatBuffers_getRoot<T: FlatBufferTable & Verifiable>(
     byteBuffer: inout ByteBuffer,
     fileId: String? = nil,
     options: VerifierOptions = .init()

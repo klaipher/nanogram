@@ -238,14 +238,15 @@ public final class DeviceContactBasicData: Equatable {
         self.firstName = flatBuffersObject.firstName
         self.lastName = flatBuffersObject.lastName
         
-        if flatBuffersObject.phoneNumbersCount == 1 {
+        let flatPhoneNumbers = flatBuffersObject.phoneNumbers
+        if flatPhoneNumbers.count == 1 {
             self.phoneNumbers = [
-                DeviceContactPhoneNumberData(flatBuffersObject: flatBuffersObject.phoneNumbers(at: 0)!)
+                DeviceContactPhoneNumberData(flatBuffersObject: flatPhoneNumbers[0])
             ]
         } else {
             var phoneNumbers: [DeviceContactPhoneNumberData] = []
-            for i in 0 ..< flatBuffersObject.phoneNumbersCount {
-                phoneNumbers.append(DeviceContactPhoneNumberData(flatBuffersObject: flatBuffersObject.phoneNumbers(at: i)!))
+            for phoneNumber in flatPhoneNumbers {
+                phoneNumbers.append(DeviceContactPhoneNumberData(flatBuffersObject: phoneNumber))
             }
             self.phoneNumbers = phoneNumbers
         }

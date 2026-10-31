@@ -138,7 +138,7 @@ public final class TelegramCommunity: Peer, Equatable {
         self.id = PeerId(flatBuffersObject: flatBuffersObject.id)
         self.accessHash = try flatBuffersObject.accessHash.flatMap(TelegramPeerAccessHash.init)
         self.title = flatBuffersObject.title
-        self.photo = try (0 ..< flatBuffersObject.photoCount).map { try TelegramMediaImageRepresentation(flatBuffersObject: flatBuffersObject.photo(at: $0)!) }
+        self.photo = try flatBuffersObject.photo.map { try TelegramMediaImageRepresentation(flatBuffersObject: $0) }
         self.creationDate = flatBuffersObject.creationDate
         self.participationStatus = TelegramCommunityParticipationStatus(rawValue: flatBuffersObject.participationStatus) ?? .member
         self.flags = TelegramCommunityFlags(rawValue: flatBuffersObject.flags)

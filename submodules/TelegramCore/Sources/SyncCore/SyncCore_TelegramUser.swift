@@ -606,12 +606,12 @@ public final class TelegramUser: Peer, Equatable {
         self.lastName = flatBuffersObject.lastName
         self.username = flatBuffersObject.username
         self.phone = flatBuffersObject.phone
-        self.photo = try (0 ..< flatBuffersObject.photoCount).map { try TelegramMediaImageRepresentation(flatBuffersObject: flatBuffersObject.photo(at: $0)!) }
+        self.photo = try flatBuffersObject.photo.map { try TelegramMediaImageRepresentation(flatBuffersObject: $0) }
         self.botInfo = try flatBuffersObject.botInfo.flatMap { try BotUserInfo(flatBuffersObject: $0) }
         self.restrictionInfo = try flatBuffersObject.restrictionInfo.flatMap { try PeerAccessRestrictionInfo(flatBuffersObject: $0) }
         self.flags = UserInfoFlags(rawValue: flatBuffersObject.flags)
         self.emojiStatus = try flatBuffersObject.emojiStatus.flatMap { try PeerEmojiStatus(flatBuffersObject: $0) }
-        self.usernames = try (0 ..< flatBuffersObject.usernamesCount).map { try TelegramPeerUsername(flatBuffersObject: flatBuffersObject.usernames(at: $0)!) }
+        self.usernames = try flatBuffersObject.usernames.map { try TelegramPeerUsername(flatBuffersObject: $0) }
         self.storiesHidden = flatBuffersObject.storiesHidden?.value
         if let collectibleColor = try flatBuffersObject.collectibleColor.flatMap(PeerCollectibleColor.init) {
             self.nameColor = .collectible(collectibleColor)

@@ -19,14 +19,14 @@ set -x
     tar -xf "$(location @cmake_tar_gz//file)" -C "$$CMAKE_DIR"
     
     tar -xzf "$(location @flatbuffers_zip//file)" --directory "$$BUILD_DIR"
-    pushd "$$BUILD_DIR/flatbuffers-24.12.23"
+    pushd "$$BUILD_DIR/flatbuffers-25.12.19"
     mkdir build
     cd build
     PATH="$$CMAKE_DIR/cmake-4.1.2-macos-universal/CMake.app/Contents/bin:$$PATH" cmake .. -DCMAKE_BUILD_TYPE=Release -DFLATBUFFERS_BUILD_TESTS=0 -DFLATBUFFERS_INSTALL=0 -DFLATBUFFERS_BUILD_FLATLIB=0 -DFLATBUFFERS_STATIC_FLATC=0
     make -j $$core_count
     popd
 
-    cp "$$BUILD_DIR/flatbuffers-24.12.23/build/flatc" "$(location flatc_bin)"
+    cp "$$BUILD_DIR/flatbuffers-25.12.19/build/flatc" "$(location flatc_bin)"
 """,
     outs = [
         "flatc_bin",

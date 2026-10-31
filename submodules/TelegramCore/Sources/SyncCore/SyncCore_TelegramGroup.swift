@@ -247,7 +247,7 @@ public final class TelegramGroup: Peer, Equatable {
     public init(flatBuffersObject: TelegramCore_TelegramGroup) throws {
         self.id = PeerId(flatBuffersObject.id)
         self.title = flatBuffersObject.title
-        self.photo = try (0 ..< flatBuffersObject.photoCount).map { try TelegramMediaImageRepresentation(flatBuffersObject: flatBuffersObject.photo(at: $0)!) }
+        self.photo = try flatBuffersObject.photo.map { try TelegramMediaImageRepresentation(flatBuffersObject: $0) }
         self.participantCount = Int(flatBuffersObject.participantCount)
         
         guard let role = flatBuffersObject.role else {

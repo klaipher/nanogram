@@ -232,7 +232,7 @@ public final class TelegramMediaImage: Media, Equatable, Codable {
                 throw FlatBuffersError.missingRequiredField()
             }
             
-            self.backgroundColors = flatBuffersObject.backgroundColors
+            self.backgroundColors = Array(flatBuffersObject.backgroundColors)
         }
         
         func encodeToFlatBuffers(builder: inout FlatBufferBuilder) -> Offset {
@@ -375,11 +375,11 @@ public final class TelegramMediaImage: Media, Equatable, Codable {
     
     public init(flatBuffersObject: TelegramCore_TelegramMediaImage) throws {
         self.imageId = MediaId(namespace: flatBuffersObject.imageId.namespace, id: flatBuffersObject.imageId.id)
-        self.representations = try (0 ..< flatBuffersObject.representationsCount).map { i in
-            return try TelegramMediaImageRepresentation(flatBuffersObject: flatBuffersObject.representations(at: i)!)
+        self.representations = try flatBuffersObject.representations.map { item in
+            return try TelegramMediaImageRepresentation(flatBuffersObject: item)
         }
-        self.videoRepresentations = try (0 ..< flatBuffersObject.videoRepresentationsCount).map { i in
-            return try TelegramMediaImage.VideoRepresentation(flatBuffersObject: flatBuffersObject.videoRepresentations(at: i)!)
+        self.videoRepresentations = try flatBuffersObject.videoRepresentations.map { item in
+            return try TelegramMediaImage.VideoRepresentation(flatBuffersObject: item)
         }
         self.immediateThumbnailData = flatBuffersObject.immediateThumbnailData.isEmpty ? nil : Data(flatBuffersObject.immediateThumbnailData)
         self.emojiMarkup = try flatBuffersObject.emojiMarkup.flatMap { try EmojiMarkup(flatBuffersObject: $0) }
@@ -590,7 +590,7 @@ public final class TelegramMediaImageRepresentation: PostboxCoding, Equatable, C
     public init(flatBuffersObject: TelegramCore_TelegramMediaImageRepresentation) throws {
         self.dimensions = PixelDimensions(width: flatBuffersObject.width, height: flatBuffersObject.height)
         self.resource = try TelegramMediaResource_parse(flatBuffersObject: flatBuffersObject.resource)
-        self.progressiveSizes = flatBuffersObject.progressiveSizes
+        self.progressiveSizes = Array(flatBuffersObject.progressiveSizes)
         self.immediateThumbnailData = flatBuffersObject.immediateThumbnailData.isEmpty ? nil : Data(flatBuffersObject.immediateThumbnailData)
         self.hasVideo = flatBuffersObject.hasVideo
         self.isPersonal = flatBuffersObject.isPersonal

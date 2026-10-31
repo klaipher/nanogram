@@ -682,7 +682,7 @@ public indirect enum InstantPageBlock: PostboxCoding, Equatable {
             guard let value = flatBuffersObject.value(type: TelegramCore_InstantPageBlock_List.self) else {
                 throw FlatBuffersError.missingRequiredField()
             }
-            self = .list(items: try (0 ..< value.itemsCount).map { try InstantPageListItem(flatBuffersObject: value.items(at: $0)!) }, ordered: value.ordered)
+            self = .list(items: try value.items.map { try InstantPageListItem(flatBuffersObject: $0) }, ordered: value.ordered)
         case .instantpageblockBlockquote:
             guard let value = flatBuffersObject.value(type: TelegramCore_InstantPageBlock_BlockQuote.self) else {
                 throw FlatBuffersError.missingRequiredField()
@@ -690,8 +690,8 @@ public indirect enum InstantPageBlock: PostboxCoding, Equatable {
             let caption = try RichText(flatBuffersObject: value.caption)
             // Absent on payloads written before the field existed, which is exactly the model's `nil`.
             let collapsed = value.collapsed?.value
-            if value.blocksCount > 0 {
-                let blocks = try (0 ..< value.blocksCount).map { try InstantPageBlock(flatBuffersObject: value.blocks(at: $0)!) }
+            if !value.blocks.isEmpty {
+                let blocks = try value.blocks.map { try InstantPageBlock(flatBuffersObject: $0) }
                 self = .blockQuote(blocks: blocks, caption: caption, collapsed: collapsed)
             } else if let legacyText = value.text {
                 self = .blockQuote(blocks: [.paragraph(try RichText(flatBuffersObject: legacyText))], caption: caption, collapsed: collapsed)
@@ -729,7 +729,7 @@ public indirect enum InstantPageBlock: PostboxCoding, Equatable {
             }
             self = .buttonRow(
                 alignment: InstantPageButtonRowAlignment(rawValue: value.alignment) ?? .justify,
-                buttons: try (0 ..< value.buttonsCount).map { try InstantPageButton(flatBuffersObject: value.buttons(at: $0)!) }
+                buttons: try value.buttons.map { try InstantPageButton(flatBuffersObject: $0) }
             )
         case .instantpageblockCover:
             guard let value = flatBuffersObject.value(type: TelegramCore_InstantPageBlock_Cover.self) else {
@@ -745,17 +745,17 @@ public indirect enum InstantPageBlock: PostboxCoding, Equatable {
             guard let value = flatBuffersObject.value(type: TelegramCore_InstantPageBlock_PostEmbed.self) else {
                 throw FlatBuffersError.missingRequiredField()
             }
-            self = .postEmbed(url: value.url, webpageId: value.webpageId.flatMap(MediaId.init), avatarId: value.avatarId.flatMap(MediaId.init), author: value.author, date: value.date, blocks: try (0 ..< value.blocksCount).map { try InstantPageBlock(flatBuffersObject: value.blocks(at: $0)!) }, caption: try InstantPageCaption(flatBuffersObject: value.caption))
+            self = .postEmbed(url: value.url, webpageId: value.webpageId.flatMap(MediaId.init), avatarId: value.avatarId.flatMap(MediaId.init), author: value.author, date: value.date, blocks: try value.blocks.map { try InstantPageBlock(flatBuffersObject: $0) }, caption: try InstantPageCaption(flatBuffersObject: value.caption))
         case .instantpageblockCollage:
             guard let value = flatBuffersObject.value(type: TelegramCore_InstantPageBlock_Collage.self) else {
                 throw FlatBuffersError.missingRequiredField()
             }
-            self = .collage(items: try (0 ..< value.itemsCount).map { try InstantPageBlock(flatBuffersObject: value.items(at: $0)!) }, caption: try InstantPageCaption(flatBuffersObject: value.caption))
+            self = .collage(items: try value.items.map { try InstantPageBlock(flatBuffersObject: $0) }, caption: try InstantPageCaption(flatBuffersObject: value.caption))
         case .instantpageblockSlideshow:
             guard let value = flatBuffersObject.value(type: TelegramCore_InstantPageBlock_Slideshow.self) else {
                 throw FlatBuffersError.missingRequiredField()
             }
-            self = .slideshow(items: try (0 ..< value.itemsCount).map { try InstantPageBlock(flatBuffersObject: value.items(at: $0)!) }, caption: try InstantPageCaption(flatBuffersObject: value.caption))
+            self = .slideshow(items: try value.items.map { try InstantPageBlock(flatBuffersObject: $0) }, caption: try InstantPageCaption(flatBuffersObject: value.caption))
         case .instantpageblockChannelbanner:
             guard let value = flatBuffersObject.value(type: TelegramCore_InstantPageBlock_ChannelBanner.self) else {
                 throw FlatBuffersError.missingRequiredField()
@@ -776,17 +776,17 @@ public indirect enum InstantPageBlock: PostboxCoding, Equatable {
             guard let value = flatBuffersObject.value(type: TelegramCore_InstantPageBlock_Table.self) else {
                 throw FlatBuffersError.missingRequiredField()
             }
-            self = .table(title: try RichText(flatBuffersObject: value.title), rows: try (0 ..< value.rowsCount).map { try InstantPageTableRow(flatBuffersObject: value.rows(at: $0)!) }, bordered: value.bordered, striped: value.striped, compact: value.compact)
+            self = .table(title: try RichText(flatBuffersObject: value.title), rows: try value.rows.map { try InstantPageTableRow(flatBuffersObject: $0) }, bordered: value.bordered, striped: value.striped, compact: value.compact)
         case .instantpageblockDetails:
             guard let value = flatBuffersObject.value(type: TelegramCore_InstantPageBlock_Details.self) else {
                 throw FlatBuffersError.missingRequiredField()
             }
-            self = .details(title: try RichText(flatBuffersObject: value.title), blocks: try (0 ..< value.blocksCount).map { try InstantPageBlock(flatBuffersObject: value.blocks(at: $0)!) }, expanded: value.expanded)
+            self = .details(title: try RichText(flatBuffersObject: value.title), blocks: try value.blocks.map { try InstantPageBlock(flatBuffersObject: $0) }, expanded: value.expanded)
         case .instantpageblockRelatedarticles:
             guard let value = flatBuffersObject.value(type: TelegramCore_InstantPageBlock_RelatedArticles.self) else {
                 throw FlatBuffersError.missingRequiredField()
             }
-            self = .relatedArticles(title: try RichText(flatBuffersObject: value.title), articles: try (0 ..< value.articlesCount).map { try InstantPageRelatedArticle(flatBuffersObject: value.articles(at: $0)!) })
+            self = .relatedArticles(title: try RichText(flatBuffersObject: value.title), articles: try value.articles.map { try InstantPageRelatedArticle(flatBuffersObject: $0) })
         case .instantpageblockMap:
             guard let value = flatBuffersObject.value(type: TelegramCore_InstantPageBlock_Map.self) else {
                 throw FlatBuffersError.missingRequiredField()
@@ -1242,8 +1242,8 @@ public indirect enum InstantPageListItem: PostboxCoding, Equatable {
             guard let blocksValue = flatBuffersObject.value(type: TelegramCore_InstantPageListItem_Blocks.self) else {
                 throw FlatBuffersError.missingRequiredField()
             }
-            let blocks = try (0 ..< blocksValue.blocksCount).map { i in
-                return try InstantPageBlock(flatBuffersObject: blocksValue.blocks(at: i)!)
+            let blocks = try blocksValue.blocks.map { item in
+                return try InstantPageBlock(flatBuffersObject: item)
             }
             self = .blocks(blocks, blocksValue.number, InstantPageListItem.checkedFromTriState(blocksValue.checkState))
         case .instantpagelistitemUnknown:
@@ -1431,8 +1431,8 @@ public final class InstantPageTableRow: PostboxCoding, Equatable {
     }
     
     public init(flatBuffersObject: TelegramCore_InstantPageTableRow) throws {
-        self.cells = try (0 ..< flatBuffersObject.cellsCount).map { i in
-            return try InstantPageTableCell(flatBuffersObject: flatBuffersObject.cells(at: i)!)
+        self.cells = try flatBuffersObject.cells.map { item in
+            return try InstantPageTableCell(flatBuffersObject: item)
         }
     }
     
@@ -1708,13 +1708,13 @@ public final class InstantPage: PostboxCoding, Equatable {
     }
     
     public init(flatBuffersObject: TelegramCore_InstantPage) throws {
-        self.blocks = try (0 ..< flatBuffersObject.blocksCount).map { i in
-            return try InstantPageBlock(flatBuffersObject: flatBuffersObject.blocks(at: i)!)
+        self.blocks = try flatBuffersObject.blocks.map { item in
+            return try InstantPageBlock(flatBuffersObject: item)
         }
         
         var media: [MediaId: Media] = [:]
-        for i in 0 ..< flatBuffersObject.mediaCount {
-            let parsedMedia = try TelegramMedia_parse(flatBuffersObject: flatBuffersObject.media(at: i)!)
+        for flatMedia in flatBuffersObject.media {
+            let parsedMedia = try TelegramMedia_parse(flatBuffersObject: flatMedia)
             if let id = parsedMedia.id {
                 media[id] = parsedMedia
             }
@@ -1910,7 +1910,7 @@ public extension InstantPage.Accessor {
     struct MediaIterator: Sequence, IteratorProtocol {
         private let accessor: InstantPage.Accessor
         private var wrappedInstantPageIterator: Dictionary<MediaId, Media>.Iterator?
-        private var wrappedCurrentIndex: Int32 = 0
+        private var wrappedCurrentIndex: Int = 0
         
         init(_ accessor: InstantPage.Accessor) {
             self.accessor = accessor
@@ -1930,12 +1930,13 @@ public extension InstantPage.Accessor {
                 return (id, TelegramMedia.Accessor(value))
             }
             
-            if self.wrappedCurrentIndex >= self.accessor._wrapped!.mediaCount {
+            let wrappedMedia = self.accessor._wrapped!.media
+            if self.wrappedCurrentIndex >= wrappedMedia.count {
                 return nil
             }
             let index = self.wrappedCurrentIndex
             self.wrappedCurrentIndex += 1
-            let media = self.accessor._wrapped!.media(at: index)!
+            let media = wrappedMedia[index]
             let parsedMedia = TelegramMedia.Accessor(media)
             if let id = parsedMedia.id {
                 return (id, parsedMedia)

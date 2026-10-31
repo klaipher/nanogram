@@ -530,7 +530,7 @@ extension RichText {
             guard let value = flatBuffersObject.value(type: TelegramCore_RichText_Concat.self) else {
                 throw FlatBuffersError.missingRequiredField()
             }
-            self = .concat(try (0..<value.textsCount).map { try RichText(flatBuffersObject: value.texts(at: $0)!) })
+            self = .concat(try value.texts.map { try RichText(flatBuffersObject: $0) })
         case .richtextSubscript:
             guard let value = flatBuffersObject.value(type: TelegramCore_RichText_Subscript.self) else {
                 throw FlatBuffersError.missingRequiredField()

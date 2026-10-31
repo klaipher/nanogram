@@ -342,28 +342,18 @@ public struct PeerCollectibleColor: Equatable, Codable {
         self.backgroundEmojiId = flatBuffersObject.backgroundEmojiId
         self.accentColor = flatBuffersObject.accentColor
                 
-        let colorsCount = Int(flatBuffersObject.colorsCount)
-        if colorsCount > 0 {
-            var colors: [UInt32] = []
-            colors.reserveCapacity(colorsCount)
-            for i in 0..<colorsCount {
-                colors.append(flatBuffersObject.colors(at: Int32(i)))
-            }
-            self.colors = colors
+        let flatColors = flatBuffersObject.colors
+        if !flatColors.isEmpty {
+            self.colors = Array(flatColors)
         } else {
             self.colors = []
         }
         
         self.darkAccentColor = flatBuffersObject.darkAccentColor == UInt32.min ? nil : flatBuffersObject.darkAccentColor
         
-        let darkColorsCount = Int(flatBuffersObject.darkColorsCount)
-        if darkColorsCount > 0 {
-            var darkColors: [UInt32] = []
-            darkColors.reserveCapacity(darkColorsCount)
-            for i in 0..<darkColorsCount {
-                darkColors.append(flatBuffersObject.darkColors(at: Int32(i)))
-            }
-            self.darkColors = darkColors
+        let flatDarkColors = flatBuffersObject.darkColors
+        if !flatDarkColors.isEmpty {
+            self.darkColors = Array(flatDarkColors)
         } else {
             self.darkColors = nil
         }
