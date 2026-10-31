@@ -150,10 +150,9 @@ then
 		else
 		    PLATFORM="iPhoneOS"
 		    CFLAGS="$CFLAGS -mios-version-min=$DEPLOYMENT_TARGET"
-		    if [ "$ARCH" = "arm64" ]
-		    then
-		        EXPORT="GASPP_FIX_XCODE5=1"
-		    fi
+		    # No GASPP_FIX_XCODE5: it rewrites NEON syntax for Xcode 5's assembler, and current
+		    # clang rejects the result for FFmpeg 9's lane forms (dup v6.16b, v1.b[\lane] in
+		    # hevcpred_neon.S). The simulator never set it and assembles the same files.
 		fi
 		fi
 
