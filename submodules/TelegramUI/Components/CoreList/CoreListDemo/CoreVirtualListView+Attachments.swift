@@ -295,15 +295,41 @@ extension CoreVirtualListView {
             return
         }
 
+        // The keyTimes depend only on the trajectory, so every attachment shares them; box them once
+        // per flight rather than once per attachment per call.
+        var boxedKeyTimes: AttachmentFlightBoxedKeyTimes?
+
         for attachment in window.attachments {
             let composed = attachmentMap(attachment, window: window)
                 .composedKeyframe(trajectory: flight.trajectory,
                                   coordinateShift: flight.coordinateShift)
+            let layer = attachment.view.layer
             // A rigid attachment rides the content translation and needs no track of its own.
             guard composed.values.contains(where: { abs($0) > 1e-9 }) else {
-                attachment.view.layer.removeAnimation(forKey: Self.attachmentFlightKey)
+                layer.removeAnimation(forKey: Self.attachmentFlightKey)
                 continue
             }
+            // This runs on every render of a flight — every sampling tick and rebalance — and the
+            // track usually comes out identical. An identical track (same values, keyTimes, duration
+            // and past beginTime) is the same animation at the same phase, so re-adding it changes
+            // nothing on screen and only costs an allocation, boxing and a commit. Keep the one that
+            // is playing; anything that changes the emitted animation reinstalls it below.
+            if let installed = layer.attachmentFlightTrackRecord,
+               layer.animation(forKey: Self.attachmentFlightKey) != nil,
+               installed.matches(values: composed.values, keyTimes: composed.keyTimes,
+                                 duration: flight.trajectory.duration, beginTime: flight.beginTime) {
+                continue
+            }
+            let keyTimes: AttachmentFlightBoxedKeyTimes
+            if let cached = boxedKeyTimes ?? attachmentFlightBoxedKeyTimes,
+               cached.raw == composed.keyTimes {
+                keyTimes = cached
+            } else {
+                keyTimes = AttachmentFlightBoxedKeyTimes(raw: composed.keyTimes)
+                attachmentFlightBoxedKeyTimes = keyTimes
+            }
+            boxedKeyTimes = keyTimes
+
             let animation = CAKeyframeAnimation(keyPath: "position.y")
             animation.isAdditive = true
             // `.linear` for the same reason `Trajectory.boundsOriginKeyframeAnimation` uses it: the
@@ -312,11 +338,25 @@ extension CoreVirtualListView {
             // same way, so sampler and render agree.
             animation.calculationMode = .linear
             animation.values = composed.values.map { NSNumber(value: Double($0)) }
-            animation.keyTimes = composed.keyTimes.map { NSNumber(value: $0) }
+            animation.keyTimes = keyTimes.boxed
             animation.duration = flight.trajectory.duration
             animation.beginTime = flight.beginTime
             animation.preferHighRefreshRate()
-            attachment.view.layer.add(animation, forKey: Self.attachmentFlightKey)
+            layer.add(animation, forKey: Self.attachmentFlightKey)
+            layer.attachmentFlightTrackRecord = AttachmentFlightTrackRecord(
+                values: composed.values, keyTimes: composed.keyTimes,
+                duration: flight.trajectory.duration, beginTime: flight.beginTime)
+        }
+    }
+
+    /// The last boxed keyTimes built for a flight track, shared by every attachment of this list.
+    private var attachmentFlightBoxedKeyTimes: AttachmentFlightBoxedKeyTimes? {
+        get {
+            objc_getAssociatedObject(self, &attachmentFlightBoxedKeyTimesKey) as? AttachmentFlightBoxedKeyTimes
+        }
+        set {
+            objc_setAssociatedObject(self, &attachmentFlightBoxedKeyTimesKey, newValue,
+                                     .OBJC_ASSOCIATION_RETAIN_NONATOMIC)
         }
     }
 
@@ -712,5 +752,60 @@ extension CoreVirtualListView {
         else { return nil }
         return attachmentMap(attachment, window: window).y(atOffset: engine.offset)
             + containerOriginY - window.minY - engine.offset
+    }
+}
+
+/// What the flight track installed on an attachment layer was built from. Every input of the emitted
+/// `CAKeyframeAnimation` that can vary between calls is here; the rest (key path, additivity,
+/// calculation mode, frame-rate range) is constant. Equal inputs therefore mean an identical
+/// animation, which is what lets `installAttachmentFlightTracks` keep the one already playing.
+final class AttachmentFlightTrackRecord {
+    let values: [CGFloat]
+    let keyTimes: [Double]
+    let duration: CFTimeInterval
+    let beginTime: CFTimeInterval
+
+    init(values: [CGFloat], keyTimes: [Double], duration: CFTimeInterval, beginTime: CFTimeInterval) {
+        self.values = values
+        self.keyTimes = keyTimes
+        self.duration = duration
+        self.beginTime = beginTime
+    }
+
+    func matches(values: [CGFloat], keyTimes: [Double],
+                 duration: CFTimeInterval, beginTime: CFTimeInterval) -> Bool {
+        // Exact equality on purpose: any difference at all is a different animation.
+        return self.duration == duration && self.beginTime == beginTime
+            && self.values == values && self.keyTimes == keyTimes
+    }
+}
+
+/// A flight's keyTimes and their boxed form, built once and shared by every attachment's track.
+final class AttachmentFlightBoxedKeyTimes {
+    let raw: [Double]
+    let boxed: [NSNumber]
+
+    init(raw: [Double]) {
+        self.raw = raw
+        self.boxed = raw.map { NSNumber(value: $0) }
+    }
+}
+
+private var attachmentFlightTrackRecordKey: UInt8 = 0
+private var attachmentFlightBoxedKeyTimesKey: UInt8 = 0
+
+extension CALayer {
+    /// The inputs of the flight track this layer currently carries, written only by
+    /// `installAttachmentFlightTracks`. It is a cache, never the authority: a track is kept only
+    /// while the layer still HAS an animation under `attachmentFlightKey`, so a layer stripped by a
+    /// rebind or a completed animation is reinstalled whatever this says.
+    fileprivate var attachmentFlightTrackRecord: AttachmentFlightTrackRecord? {
+        get {
+            objc_getAssociatedObject(self, &attachmentFlightTrackRecordKey) as? AttachmentFlightTrackRecord
+        }
+        set {
+            objc_setAssociatedObject(self, &attachmentFlightTrackRecordKey, newValue,
+                                     .OBJC_ASSOCIATION_RETAIN_NONATOMIC)
+        }
     }
 }
