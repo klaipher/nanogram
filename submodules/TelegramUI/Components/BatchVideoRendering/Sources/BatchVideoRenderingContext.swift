@@ -120,6 +120,16 @@ public final class BatchVideoRenderingContext {
                         selectedStream: .mediaType(.video),
                         seek: nil,
                         maxReadablePts: nil
+                    ) ?? FFMpegFileReader(
+                        // FFmpeg is built without an MPEG-4 Part 2 decoder, so such GIFs failed here and
+                        // kept their placeholder. The target is a sample buffer display layer, which
+                        // decodes compressed frames itself.
+                        source: .file(self.dataPath),
+                        passthroughDecoder: true,
+                        useHardwareAcceleration: false,
+                        selectedStream: .mediaType(.video),
+                        seek: nil,
+                        maxReadablePts: nil
                     )
                     if reader == nil {
                         self.isFailed = true
