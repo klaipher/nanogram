@@ -443,7 +443,10 @@ public final class AudioWaveformComponent: Component {
             
             if needsAnimation != (self.playbackStatusAnimator != nil) {
                 if needsAnimation {
-                    self.playbackStatusAnimator = ConstantDisplayLinkAnimator(update: { [weak self] in
+                    // Each tick redraws the whole waveform on the CPU while the played part's color moves
+                    // slowly across the bars; 30 Hz looks the same. View-once sparks keep 60 Hz.
+                    let framesPerSecond: SharedDisplayLinkDriver.FramesPerSecond = (self.component?.isViewOnceMessage ?? false) ? .fps(60) : .fps(30)
+                    self.playbackStatusAnimator = ConstantDisplayLinkAnimator(framesPerSecond: framesPerSecond, update: { [weak self] in
                         if let self, let component = self.component, let sparksView = self.sparksView {
                             sparksView.update(position: CGPoint(x: 10.0 + (sparksView.bounds.width - 20.0) * self.progress, y: sparksView.bounds.height / 2.0 + 8.0), sampleHeight: self.lastHeight, color: component.foregroundColor)
                         }

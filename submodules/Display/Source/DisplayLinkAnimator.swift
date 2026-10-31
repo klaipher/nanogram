@@ -361,7 +361,7 @@ public final class ConstantDisplayLinkAnimator {
         didSet {
             if self.isPaused != oldValue {
                 if !self.isPaused && self.displayLink == nil {
-                    let displayLink = SharedDisplayLinkDriver.shared.add { [weak self] _ in
+                    let displayLink = SharedDisplayLinkDriver.shared.add(framesPerSecond: self.framesPerSecond) { [weak self] _ in
                         self?.tick()
                     }
                     self.displayLink = displayLink
@@ -373,17 +373,20 @@ public final class ConstantDisplayLinkAnimator {
         }
     }
     
-    public init(update: @escaping () -> Void) {
+    private let framesPerSecond: SharedDisplayLinkDriver.FramesPerSecond
+
+    public init(framesPerSecond: SharedDisplayLinkDriver.FramesPerSecond = .fps(60), update: @escaping () -> Void) {
+        self.framesPerSecond = framesPerSecond
         self.update = update
     }
-    
+
     deinit {
         if let displayLink = self.displayLink {
             displayLink.isPaused = true
             displayLink.invalidate()
         }
     }
-    
+
     public func invalidate() {
         if let displayLink = self.displayLink {
             displayLink.isPaused = true
