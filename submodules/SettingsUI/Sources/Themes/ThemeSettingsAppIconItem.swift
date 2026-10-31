@@ -383,16 +383,16 @@ class ThemeSettingsAppIconItemNode: ListViewItemNode, ItemListItemNode {
                             var name = "Icon"
                             var bordered = true
                             switch icon.name {
-                                case "FastgramComet":
+                                case "NanogramComet":
                                     name = "Comet"
                                     bordered = false
-                                case "FastgramDash":
+                                case "NanogramDash":
                                     name = "Dash"
                                     bordered = false
-                                case "FastgramForward":
+                                case "NanogramForward":
                                     name = "Forward"
                                     bordered = false
-                                case "FastgramStreak":
+                                case "NanogramStreak":
                                     name = "Streak"
                                     bordered = false
                                 case "BlueIcon":

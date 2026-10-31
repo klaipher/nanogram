@@ -219,7 +219,7 @@ def cmd_testflight(args):
     config = load_config()
     team_id = config['team_id']
     work = tempfile.mkdtemp(prefix='testflight-')
-    archive = os.path.join(work, 'Fastgram.xcarchive')
+    archive = os.path.join(work, 'Nanogram.xcarchive')
     apps_dir = os.path.join(archive, 'Products', 'Applications')
     os.makedirs(apps_dir)
     os.makedirs(os.path.join(archive, 'dSYMs'))
@@ -246,8 +246,8 @@ def cmd_testflight(args):
             },
             'ArchiveVersion': 2,
             'CreationDate': datetime.datetime.now(datetime.timezone.utc),
-            'Name': 'Fastgram',
-            'SchemeName': 'Fastgram',
+            'Name': 'Nanogram',
+            'SchemeName': 'Nanogram',
         }, f)
     options = os.path.join(work, 'ExportOptions.plist')
     with open(options, 'wb') as f:

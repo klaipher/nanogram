@@ -1,8 +1,8 @@
 /* Localized versions of Info.plist keys */
-"NSContactsUsageDescription" = "سيقوم Fastgram برفع جهات الاتصال الخاصة بك باستمرار إلى خوادم التخزين السحابية ذات التشفير العالي لتتمكن من التواصل مع أصدقائك من خلال جميع أجهزتك.";
-"NSLocationWhenInUseUsageDescription" = "عندما ترغب في مشاركة مكانك مع أصدقائك، Fastgram يحتاج لصلاحيات لعرض الخريطة لهم.";
-"NSLocationAlwaysAndWhenInUseUsageDescription" = "عندما تختار أن تشارك مكانك بشكل حي مع أصدقائك في المحادثة، يحتاج Fastgram إلى الوصول لموقعك في الخلفية حتى بعد إغلاق Fastgram خلال فترة المشاركة.";
-"NSLocationAlwaysUsageDescription" = "عندما تقوم بمشاركة موقعك مع أصدقائك، Fastgram يحتاج إلى الصلاحية ليعرض لهم الخريطة. كما تحتاج لإعطاء Fastgram الصلاحية لتتمكن من إرسال موقعك من ساعة آبل.";
+"NSContactsUsageDescription" = "سيقوم Nanogram برفع جهات الاتصال الخاصة بك باستمرار إلى خوادم التخزين السحابية ذات التشفير العالي لتتمكن من التواصل مع أصدقائك من خلال جميع أجهزتك.";
+"NSLocationWhenInUseUsageDescription" = "عندما ترغب في مشاركة مكانك مع أصدقائك، Nanogram يحتاج لصلاحيات لعرض الخريطة لهم.";
+"NSLocationAlwaysAndWhenInUseUsageDescription" = "عندما تختار أن تشارك مكانك بشكل حي مع أصدقائك في المحادثة، يحتاج Nanogram إلى الوصول لموقعك في الخلفية حتى بعد إغلاق Nanogram خلال فترة المشاركة.";
+"NSLocationAlwaysUsageDescription" = "عندما تقوم بمشاركة موقعك مع أصدقائك، Nanogram يحتاج إلى الصلاحية ليعرض لهم الخريطة. كما تحتاج لإعطاء Nanogram الصلاحية لتتمكن من إرسال موقعك من ساعة آبل.";
 "NSCameraUsageDescription" = "نحتاج ذلك لتتمكن من التقاط وإرسال الصور والفيديوهات.";
 "NSPhotoLibraryUsageDescription" = "نحتاج ذلك لتتمكن من إرسال الصور والفيديوهات من ألبوم الصور.";
 "NSPhotoLibraryAddUsageDescription" = "نحتاج هذه الصلاحية لتتمكن من حفظ وسائطك في مكتبة الصور الخاصة بك.";
