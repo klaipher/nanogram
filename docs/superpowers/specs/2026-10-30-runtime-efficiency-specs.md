@@ -38,7 +38,7 @@ Status values: `todo`, `in progress`, `done (<commit>)`, `dropped (<reason>)`.
 - **Fix**: don't turn monitoring off in `PresentationCall` (the app keeps it on), or reference-count it.
 - **Check**: make a call, end it, then read `UIDevice.current.batteryLevel` (≠ -1).
 
-### R3. Live location keeps the compass running and sends updates while standing still — `todo`, compass verified
+### R3. Live location keeps the compass running and sends updates while standing still — `done (84531ea7)`, partial: compass stops, unchanged updates skipped; no background accuracy change
 
 - **Where**: `submodules/DeviceLocationManager/Sources/DeviceLocationManager.swift:56-62,117-127`;
   `submodules/LiveLocationManager/Sources/LiveLocationManager.swift:123-126,228-248`.
@@ -51,7 +51,7 @@ Status values: `todo`, `in progress`, `done (<commit>)`, `dropped (<reason>)`.
   when stationary.
 - **Check**: share live location for 15 min stationary; compare edit requests and Energy Log.
 
-### R4. Group-call logging always on, and an unbounded in-memory log during screen sharing — `todo`, verified
+### R4. Group-call logging always on, and an unbounded in-memory log during screen sharing — `in progress`: fixed in the tgcalls working tree, not committed (no fork remote for tgcalls)
 
 - **Where**: `submodules/TgVoipWebrtc/Sources/OngoingCallThreadLocalContext.mm:2680` (`need_log = true`);
   `tgcalls/group/GroupInstanceCustomImpl.cpp:3773-3780` (`SetLogToStderr(true)`, `LS_INFO`);
@@ -60,7 +60,7 @@ Status values: `todo`, `in progress`, `done (<commit>)`, `dropped (<reason>)`.
 - **Fix**: no stderr logging in release; with an empty path, don't install the sink.
 - **Check**: memory of the broadcast extension over a 30 min screen share.
 
-### R5. The cheaper custom-emoji renderer is behind a debug switch — `in progress` (timer tolerance, 3cd4aadf; moving it to the shared display link measured worse), verified
+### R5. The cheaper custom-emoji renderer is behind a debug switch — `dropped` (timer tolerance kept, 3cd4aadf; the compressed path renders visibly differently; buffer reuse was disabled upstream in 47239681a7 "Fix animation cache", 2022)
 
 - **Where**: `submodules/TelegramUIPreferences/Sources/ExperimentalUISettings.swift:112`
   (`compressedEmojiCache: false`); `DCTMultiAnimationRendererImpl.swift:909-930`,
@@ -79,7 +79,7 @@ Status values: `todo`, `in progress`, `done (<commit>)`, `dropped (<reason>)`.
 - **Fix**: no timer for `.system`; for the time trigger, a single timer to the next switch; for brightness,
   `UIScreen.brightnessDidChangeNotification`.
 
-### R7. Low Power Mode and thermal state are ignored — `todo`
+### R7. Low Power Mode and thermal state are ignored — `todo` (skipped in round 2: changes what power saving turns off)
 
 - **Where**: `PresentationData.swift:531-565` (battery percentage only); `AppDelegate.swift:2077`;
   `DCTMultiAnimationRendererImpl.swift:930` (read once at init).
@@ -100,7 +100,7 @@ Status values: `todo`, `in progress`, `done (<commit>)`, `dropped (<reason>)`.
   `ManagedPeerTimestampAttributeOperations.swift:51-60`) and the 5 s lock-state write without a passcode
   (`AppLock.swift:278,338,375-377`): schedule to the next due time instead.
 
-### R9. SQLite WAL is never checkpointed or size-limited — `todo`
+### R9. SQLite WAL is never checkpointed or size-limited — `dropped` (upstream ran journal_size_limit=1536 in 2016 and removed it in a73bcc3180, 2017, during the multi-process rework; reason unrecorded)
 
 - **Where**: `submodules/Postbox/Sources/SqliteValueBox.swift:609-610,627,687`.
 - `checkpoint()` has no callers; `wal_autocheckpoint`/`journal_size_limit` are commented out;
@@ -119,7 +119,7 @@ Status values: `todo`, `in progress`, `done (<commit>)`, `dropped (<reason>)`.
   devices) before turning it back on, and keep the software path as a fallback.
 - **Check**: CPU during a 1080p livestream on a device.
 
-### R11. Animated stickers render on the CPU with one timer each — `todo`
+### R11. Animated stickers render on the CPU with one timer each — `todo` (a cache path makes later loops lossy: 4-bit alpha, subsampled chroma)
 
 - **Where**: `AnimatedStickerNode/Sources/AnimatedStickerNode.swift:314-317,423,582`,
   `AnimatedStickerFrameSource.swift:542-544,613-623`, `SoftwareAnimationRenderer.swift:49-60,182`.
@@ -130,7 +130,7 @@ Status values: `todo`, `in progress`, `done (<commit>)`, `dropped (<reason>)`.
 - **Fix**: route playback through the compressed/Metal renderer or the shared emoji renderer, cap fps, and
   give the uncached call sites a cache path.
 
-### R12. Stickers and emoji keep animating in the background — `todo`
+### R12. Stickers and emoji keep animating in the background — `done (84531ea7)`
 
 - The shared display link stops in the background (`Display/Source/DisplayLinkAnimator.swift:103-116`), but
   sticker timers and the emoji timer are gated only on visibility (`AnimatedStickerNode.swift:423`,
@@ -138,7 +138,7 @@ Status values: `todo`, `in progress`, `done (<commit>)`, `dropped (<reason>)`.
   app stays alive in the background (music, voice messages).
 - **Fix**: also gate on application state.
 
-### R13. `LottieComponent` renders on the main thread every frame — `todo`
+### R13. `LottieComponent` renders on the main thread every frame — `todo` (already stops when hidden; context reuse is not a small change)
 
 - `TelegramUI/Components/LottieComponent/Sources/LottieComponent.swift:441-451`: a new drawing context per
   frame on main; 110 call sites, 15 looping. Render off-main or cache frames.
@@ -152,33 +152,33 @@ Status values: `todo`, `in progress`, `done (<commit>)`, `dropped (<reason>)`.
   says doubles main-thread row work (`CoreList/CoreListDemo/PhysicsScrollEngine.swift:722,745-749`). Try
   `pinsSamplingLinkRate = false` and drop the pin in Low Power Mode; measure scroll smoothness.
 
-### R15. Profile data preloaded on every chat open — `todo`
+### R15. Profile data preloaded on every chat open — `done (3d30de4c)`, partial: tag views warm once instead of staying live
 
 - `TelegramUI/Sources/ChatController.swift:8057-8067` starts `keepPeerInfoScreenDataHot` for the whole
   controller lifetime: 7 tagged history views of 20 items with `clipHoles: false` (server fetches to fill
   holes), profile photos and two story lists (`PeerInfoScreen/Sources/PeerInfoData.swift:613-646,738-760`).
 - **Fix**: start it on intent (header tap or a dwell time), or use search counters instead of 7 views.
 
-### R16. Auto-download ignores Low Data Mode and expensive networks — `todo`
+### R16. Auto-download ignores Low Data Mode and expensive networks — `done (3d30de4c)` (Instant View images still use the immediate network type)
 
 - No `isConstrained`/`isExpensive` anywhere; `NetworkType.swift` uses reachability only, so Personal Hotspot
   counts as Wi‑Fi and gets the high preset (`MediaAutoDownloadSettings.swift:393-399`,
   `PrefetchManager.swift:44-50`).
 - **Fix**: `NWPathMonitor`; treat constrained/expensive paths (and Low Power Mode) as cellular or the low preset.
 
-### R17. Chat photos decoded at full size, no decoded-image cache — `todo`
+### R17. Chat photos decoded at full size, no decoded-image cache — `todo` (skipped: some paths would get a blurrier image)
 
 - `PhotoResources/Sources/PhotoResources.swift:893-895`: decode with a maximum pixel size
   (`CGImageSourceCreateThumbnailAtIndex`) and add a small memory-pressure-aware cache.
 
-### R18. RNNoise runs even when noise suppression is off — `todo`
+### R18. RNNoise runs even when noise suppression is off — `in progress`: buffer reuse in the tgcalls working tree, not committed
 
 - `tgcalls/group/GroupAudioCapturePostProcessor.cpp:78-99`: `rnnoise_process_frame` runs every 10 ms for
   voice-activity detection even when suppression is off, and a new `webrtc::AudioBuffer` is allocated per
   frame on size mismatch. Note rnnoise 0.2 (this fork) is a bigger model, which makes this more expensive.
 - **Fix**: cheaper VAD when suppression is off; reuse the buffer.
 
-### R19. Background radio wake-ups — `todo`
+### R19. Background radio wake-ups — `todo` (skipped: presence timing and reconnect back-off affect what contacts see and reconnect speed)
 
 - Online presence: `account.updateStatus` every 30 s while in the foreground
   (`TelegramCore/Sources/State/ManagedAccountPresence.swift:48-57`).
@@ -190,7 +190,7 @@ Status values: `todo`, `in progress`, `done (<commit>)`, `dropped (<reason>)`.
 
 ## Design changes (L)
 
-### R20. Chat history re-lays out every loaded row on every update, on the main thread — `todo`
+### R20. Chat history re-lays out every loaded row on every update, on the main thread — `todo` (narrowing allUpdated cannot be proven safe: neighbour merging and non-entry inputs)
 
 - `TelegramUI/Sources/ChatHistoryListNode.swift:2056,2648` (`messageViewQueue = mainQueue`,
   `allUpdated: !isSavedMusic || forceUpdateAll`); `CoreListChatHistoryBackend.swift:953-955,1784,2020,2097`
@@ -233,6 +233,31 @@ Status values: `todo`, `in progress`, `done (<commit>)`, `dropped (<reason>)`.
 Measured with the same AXe-driven scenario (60 s idle chat list, 10 busy channels opened and scrolled, 30 s
 idle), debug builds, back to back: browsing CPU 74.8 → 60.4 s, written 348 → 273 MB, peak memory 306 → 243 MB,
 temp files left 242 → 0 MB. Idle readings vary more between runs than between builds on a live account.
+
+## Round 2 (2026-10-31)
+
+Commits 3d30de4c, 84531ea7, 63094959, 918a6467. Every change was reviewed by a second agent, and the
+upstream history of every hunk was checked (full Telegram-iOS history, blobless clone): two were reverted
+because upstream had tried and removed them (R9's journal size limit, R5's buffer reuse). Small items:
+S3 paid-media timer, S4 inline media status, S5/S6 no-op writes, S7 typing notifications, S9 shared
+reachability poll done; S1 typing dots, S2 (no such refresh), S8 (already writes only on change) not changed.
+A sweep found 39 more issues, 6 fixed (transport-stats writes per packet, folder tabs, premium rows,
+hidden Settings badge, emoji glyph cache, HLS timer chains). Voice: AirPods recording uses
+.bluetoothHighQualityRecording on iOS 26+, waveform/trim/draft fixes. Gallery/camera: stuck photo sends,
+picker leaks, P3 chat-camera photos, supersampled round video.
+
+A/B on debug builds, same account, back to back (old = 37db3131, new = 918a6467):
+
+| Scenario | old | new |
+|---|---|---|
+| Chat list idle 60 s, CPU | 6.5 s, 118 wake-ups/s | 3.7 s, 110 wake-ups/s |
+| Browse 10 channels, CPU rate | 30.5% of a core | 30.2% of a core |
+| Settings idle 60 s | 0.4 s, 17 wake-ups/s | 0.3 s, 16 wake-ups/s |
+| Gallery picker, 3 rounds | 19.1 s CPU | 18.4 s CPU |
+| Leaked chat screens after browsing | 0 | 0 |
+
+Idle on the chat list varies with the animated emoji on screen; most of the round's gains are in
+hidden and background states the simulator scenario does not exercise.
 
 ## Already done well (keep)
 
