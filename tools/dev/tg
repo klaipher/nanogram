@@ -408,6 +408,55 @@ Upstream-Commit: $commit")"
   echo "  git submodule update --init --recursive --depth 1 --jobs 8"
 }
 
+# tg device [--no-install] — release build signed for your own iPhone, then install it.
+# Uses ~/.config/telegram-ios/device-configuration.json (bundle id, team, your api_id) and the
+# profiles that `python3 tools/dev/device_signing.py profiles` puts in
+# ~/.config/telegram-ios/codesigning (paid team: push and app extensions). Without those
+# profiles it falls back to Xcode's free signing, which has no push and no extensions.
+cmd_device() {
+  local config="${TG_DEVICE_CONFIG:-$HOME/.config/telegram-ios/device-configuration.json}"
+  local signing="${TG_DEVICE_CODESIGNING:-$HOME/.config/telegram-ios/codesigning}"
+  local install=1 udid="${TG_DEVICE_UDID:-}"
+  while [ $# -gt 0 ]; do
+    case "$1" in
+      --no-install) install=0 ;;
+      *) die "unknown device option: $1" ;;
+    esac
+    shift
+  done
+  [ -f "$config" ] || die "no device configuration at $config"
+
+  local signing_args=() make_args=()
+  if ls "$signing/profiles/"*.mobileprovision >/dev/null 2>&1; then
+    signing_args=(--codesigningInformationPath="$signing")
+  else
+    warn "no profiles in $signing/profiles (run: python3 tools/dev/device_signing.py profiles)"
+    warn "using free Xcode signing: no push notifications, no app extensions"
+    signing_args=(--xcodeManagedCodesigning)
+    make_args=("--bazelArguments=--//Telegram:disableExtensions")
+  fi
+  make_py ${make_args[@]+"${make_args[@]}"} build \
+    --configurationPath="$config" \
+    "${signing_args[@]}" \
+    --buildNumber="${TG_BUILD_NUMBER:-1}" \
+    --configuration=release_arm64
+  say "Built: $ROOT/bazel-bin/Telegram/Telegram.ipa"
+  [ $install -eq 1 ] || return 0
+
+  if [ -z "$udid" ]; then
+    udid="$(xcrun devicectl list devices 2>/dev/null | awk '/physical/ { for (i = 1; i <= NF; i++) if ($i ~ /^[0-9A-F]{8}-[0-9A-F]{16}$/) { print $i; exit } }')"
+  fi
+  [ -n "$udid" ] || die "no iPhone found: connect it (cable or same Wi-Fi) and unlock it, or set TG_DEVICE_UDID"
+  local unpacked
+  unpacked="$(mktemp -d)"
+  unzip -q "$ROOT/bazel-bin/Telegram/Telegram.ipa" -d "$unpacked"
+  # The phone sometimes rejects a valid signature once (0xe8008001); a second attempt installs.
+  xcrun devicectl device install app --device "$udid" "$unpacked/Payload/Telegram.app" \
+    || xcrun devicectl device install app --device "$udid" "$unpacked/Payload/Telegram.app"
+  rm -rf "$unpacked"
+  say "Installed on $udid"
+}
+
 cmd_help() {
   cat <<'EOF'
 Usage: tools/dev/tg <command> [options]
@@ -417,6 +466,8 @@ Usage: tools/dev/tg <command> [options]
   build [--release] [--device] [--full] [-- <Make.py build args>]
                         Build the app (default: debug simulator, no app extensions)
   run [build options]   Build, install and launch on the test simulator
+  device [--no-install] Release build signed for your iPhone, then install it
+                        (signing: python3 tools/dev/device_signing.py --help)
   project [--full]      Generate and open the Xcode project (simulator, no extensions)
   test [label]          Run tests (default: Tests/AllTests)
   new-module <dir>      Create a Swift module that uses the strict Swift 6 preset
@@ -438,6 +489,7 @@ case "$command" in
   doctor) cmd_doctor "$@" ;;
   build) cmd_build "$@" ;;
   run) cmd_run "$@" ;;
+  device) cmd_device "$@" ;;
   fake-signing) cmd_fake_signing "$@" ;;
   project) cmd_project "$@" ;;
   test) cmd_test "$@" ;;
