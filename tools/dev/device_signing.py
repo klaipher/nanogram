@@ -8,6 +8,10 @@ Subcommands:
   apns-csr   Create the private key and certificate signing request for the push certificate.
   apns-pem   Combine the downloaded push certificate (aps.cer) with that key into the .pem file
              that my.telegram.org/apps expects, so Telegram's servers can push to your app.
+  testflight Wrap a built Telegram.ipa into an Xcode archive, let Xcode re-sign it for the App
+             Store (distribution certificate and profiles are created automatically) and upload
+             it to App Store Connect with the Apple ID signed in to Xcode. The app record must
+             exist in App Store Connect first.
 
 Everything is written under ~/.config/telegram-ios (private, outside the repository).
 Xcode must be signed in to the Apple ID of the team (Xcode > Settings > Accounts).
@@ -209,6 +213,64 @@ def cmd_apns_pem(args):
     print('Upload this file at my.telegram.org/apps (APNS certificate, both sandbox and production):\n  ' + out)
 
 
+def cmd_testflight(args):
+    import tempfile
+    import zipfile
+    config = load_config()
+    team_id = config['team_id']
+    work = tempfile.mkdtemp(prefix='testflight-')
+    archive = os.path.join(work, 'Fastgram.xcarchive')
+    apps_dir = os.path.join(archive, 'Products', 'Applications')
+    os.makedirs(apps_dir)
+    os.makedirs(os.path.join(archive, 'dSYMs'))
+    # ditto keeps symlinks and permissions inside the bundles.
+    unpacked = os.path.join(work, 'ipa')
+    subprocess.run(['ditto', '-x', '-k', args.ipa, unpacked], check=True)
+    app = os.path.join(apps_dir, 'Telegram.app')
+    subprocess.run(['ditto', os.path.join(unpacked, 'Payload', 'Telegram.app'), app], check=True)
+    for dsym in glob.glob(os.path.join(os.path.dirname(os.path.realpath(args.ipa)), '*.dSYM')):
+        subprocess.run(['ditto', dsym, os.path.join(archive, 'dSYMs', os.path.basename(dsym))], check=True)
+    with open(os.path.join(app, 'Info.plist'), 'rb') as f:
+        info = plistlib.load(f)
+    import datetime
+    with open(os.path.join(archive, 'Info.plist'), 'wb') as f:
+        plistlib.dump({
+            'ApplicationProperties': {
+                'ApplicationPath': 'Applications/Telegram.app',
+                'Architectures': ['arm64'],
+                'CFBundleIdentifier': info['CFBundleIdentifier'],
+                'CFBundleShortVersionString': info['CFBundleShortVersionString'],
+                'CFBundleVersion': info['CFBundleVersion'],
+                'SigningIdentity': 'Apple Development',
+                'Team': team_id,
+            },
+            'ArchiveVersion': 2,
+            'CreationDate': datetime.datetime.now(datetime.timezone.utc),
+            'Name': 'Fastgram',
+            'SchemeName': 'Fastgram',
+        }, f)
+    options = os.path.join(work, 'ExportOptions.plist')
+    with open(options, 'wb') as f:
+        plistlib.dump({
+            'method': 'app-store-connect',
+            'destination': 'export' if args.export_only else 'upload',
+            'teamID': team_id,
+            'signingStyle': 'automatic',
+            'uploadSymbols': True,
+            'manageAppVersionAndBuildNumber': False,
+        }, f)
+    print('{} {} {} ({})'.format('Exporting' if args.export_only else 'Uploading', info['CFBundleIdentifier'], info['CFBundleShortVersionString'], info['CFBundleVersion']), flush=True)
+    result = subprocess.run(['xcodebuild', '-exportArchive', '-archivePath', archive, '-exportOptionsPlist', options,
+                             '-exportPath', os.path.join(work, 'out'), '-allowProvisioningUpdates'])
+    if result.returncode != 0:
+        sys.exit('Export failed; logs are in ' + work)
+    if args.export_only:
+        print('Signed for the App Store (not uploaded): ' + os.path.join(work, 'out'))
+    else:
+        print('Uploaded. The build appears in App Store Connect > TestFlight after Apple processes it (10-30 min).')
+    print('Work files: ' + work)
+
+
 def main():
     parser = argparse.ArgumentParser(description=__doc__, formatter_class=argparse.RawDescriptionHelpFormatter)
     sub = parser.add_subparsers(dest='command', required=True)
@@ -222,6 +284,10 @@ def main():
     p = sub.add_parser('apns-pem')
     p.add_argument('cer', help='the aps.cer downloaded from developer.apple.com')
     p.set_defaults(func=cmd_apns_pem)
+    p = sub.add_parser('testflight')
+    p.add_argument('ipa', nargs='?', default='bazel-bin/Telegram/Telegram.ipa')
+    p.add_argument('--export-only', action='store_true', help='sign for the App Store but do not upload')
+    p.set_defaults(func=cmd_testflight)
     args = parser.parse_args()
     args.func(args)
 

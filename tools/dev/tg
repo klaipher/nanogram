@@ -457,6 +457,15 @@ cmd_device() {
   say "Installed on $udid"
 }
 
+# tg testflight — release build for the App Store with a new build number, uploaded to
+# TestFlight through the Apple ID signed in to Xcode (see device_signing.py testflight).
+cmd_testflight() {
+  # Every upload needs a higher build number than the last one.
+  export TG_BUILD_NUMBER="${TG_BUILD_NUMBER:-$(date +%Y%m%d%H%M)}"
+  cmd_device --no-install
+  python3 "$ROOT/tools/dev/device_signing.py" testflight "$ROOT/bazel-bin/Telegram/Telegram.ipa" "$@"
+}
+
 cmd_help() {
   cat <<'EOF'
 Usage: tools/dev/tg <command> [options]
@@ -468,6 +477,7 @@ Usage: tools/dev/tg <command> [options]
   run [build options]   Build, install and launch on the test simulator
   device [--no-install] Release build signed for your iPhone, then install it
                         (signing: python3 tools/dev/device_signing.py --help)
+  testflight [--export-only]  Release build uploaded to TestFlight (new build number)
   project [--full]      Generate and open the Xcode project (simulator, no extensions)
   test [label]          Run tests (default: Tests/AllTests)
   new-module <dir>      Create a Swift module that uses the strict Swift 6 preset
@@ -490,6 +500,7 @@ case "$command" in
   build) cmd_build "$@" ;;
   run) cmd_run "$@" ;;
   device) cmd_device "$@" ;;
+  testflight) cmd_testflight "$@" ;;
   fake-signing) cmd_fake_signing "$@" ;;
   project) cmd_project "$@" ;;
   test) cmd_test "$@" ;;

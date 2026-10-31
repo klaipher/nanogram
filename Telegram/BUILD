@@ -1982,6 +1982,7 @@ ios_application(
     resources = [
         ":LaunchScreen",
         #":DefaultAppIcon",
+        "Telegram-iOS/PrivacyInfo.xcprivacy",
     ],
     frameworks = [
         ":MtProtoKitFramework",
