@@ -103,6 +103,7 @@ final class CameraNeo: NSObject, CameraProtocol {
 
         self.session.usesApplicationAudioSession = true
         self.session.automaticallyConfiguresApplicationAudioSession = false
+        Camera.applyBluetoothHighQualityRecordingPolicy(to: self.session, configuration: configuration)
 
         self.sessionQueue.setSpecific(key: self.sessionQueueKey, value: ())
         self.mediaQueue.setSpecific(key: self.mediaQueueKey, value: ())

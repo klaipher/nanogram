@@ -740,6 +740,7 @@ final class LegacyCamera: CameraProtocol {
         session.session.automaticallyConfiguresApplicationAudioSession = false
         session.session.automaticallyConfiguresCaptureDeviceForWideColor = false
         session.session.usesApplicationAudioSession = true
+        Camera.applyBluetoothHighQualityRecordingPolicy(to: session.session, configuration: configuration)
         if let previewView {
             previewView.setSession(session.session, autoConnect: !session.hasMultiCam)
         }
