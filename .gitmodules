@@ -3,8 +3,9 @@
 # were made absolute so they resolve to TelegramMessenger from this fork too.
 [submodule "submodules/rlottie/rlottie"]
 	path = submodules/rlottie/rlottie
-	url = https://github.com/TelegramMessenger/rlottie.git
+	url = https://github.com/klaipher/rlottie.git
 	shallow = true
+	branch = telegram-ios-dev
 [submodule "submodules/TgVoipWebrtc/tgcalls"]
 	path = submodules/TgVoipWebrtc/tgcalls
 	url = https://github.com/klaipher/tgcalls.git
