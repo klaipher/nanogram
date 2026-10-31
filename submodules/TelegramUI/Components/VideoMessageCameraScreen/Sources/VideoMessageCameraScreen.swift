@@ -2206,12 +2206,7 @@ public class VideoMessageCameraScreen: ViewController {
     }
     
     private func requestAudioSession() {
-        let audioSessionType: ManagedAudioSessionType
-        if self.context.sharedContext.currentMediaInputSettings.with({ $0 }).pauseMusicOnRecording { 
-            audioSessionType = .record(speaker: false, video: false, withOthers: false)
-        } else {
-            audioSessionType = .record(speaker: false, video: false, withOthers: true)
-        }
+        let audioSessionType = ManagedAudioSessionType.videoMessageRecording(pauseMusicOnRecording: self.context.sharedContext.currentMediaInputSettings.with({ $0 }).pauseMusicOnRecording)
       
         self.audioSessionDisposable = self.context.sharedContext.mediaManager.audioSession.push(audioSessionType: audioSessionType, activate: { [weak self] _ in
             if let self {

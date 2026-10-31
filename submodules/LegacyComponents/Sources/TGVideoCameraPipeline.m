@@ -151,6 +151,10 @@ const NSInteger TGVideoCameraRetainedBufferCount = 16;
 	_captureSession = [[AVCaptureSession alloc] init];
     _captureSession.automaticallyConfiguresApplicationAudioSession = false;
     _captureSession.usesApplicationAudioSession = true;
+    // Round videos record AirPods full-band (iOS 26+); the app's audio session asks for the same.
+    if (@available(iOS 26.0, *)) {
+        _captureSession.configuresApplicationAudioSessionForBluetoothHighQualityRecording = true;
+    }
 
 	[[NSNotificationCenter defaultCenter] addObserver:self selector:@selector(captureSessionNotification:) name:nil object:_captureSession];
 	_applicationWillEnterForegroundObserver = [[NSNotificationCenter defaultCenter] addObserverForName:UIApplicationWillEnterForegroundNotification object:[[LegacyComponentsGlobals provider] applicationInstance] queue:nil usingBlock:^(__unused NSNotification *note)

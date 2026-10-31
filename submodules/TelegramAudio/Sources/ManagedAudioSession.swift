@@ -72,6 +72,15 @@ public enum ManagedAudioSessionType: Equatable {
         return .record(speaker: beginWithTone, video: false, withOthers: !pauseMusicOnRecording)
     }
 
+    /// The session a round-video message recording asks for, in the chat (`VideoMessageCameraScreen`)
+    /// and in story replies (the legacy `TGVideoMessageCaptureController`).
+    ///
+    /// It is a non-video `.record`: round videos keep `AVAudioSession.Mode.default`, the only mode
+    /// that allows full-bandwidth Bluetooth recording, so AirPods are not narrowband.
+    public static func videoMessageRecording(pauseMusicOnRecording: Bool) -> ManagedAudioSessionType {
+        return .record(speaker: false, video: false, withOthers: !pauseMusicOnRecording)
+    }
+
     /// Whether the session asks for full-bandwidth Bluetooth recording (iOS 26+, e.g. AirPods with
     /// H2), with HFP as the fallback on routes that do not support it.
     ///

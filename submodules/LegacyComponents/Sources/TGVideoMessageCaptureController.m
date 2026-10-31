@@ -1346,7 +1346,7 @@ typedef enum
         _otherAudioPlaying = [[AVAudioSession sharedInstance] isOtherAudioPlaying];
         
         __weak TGVideoMessageCaptureController *weakSelf = self;
-        id<SDisposable> disposable = [[LegacyComponentsGlobals provider] requestAudioSession:speaker ? TGAudioSessionTypePlayAndRecordHeadphones : TGAudioSessionTypePlayAndRecord
+        id<SDisposable> disposable = [[LegacyComponentsGlobals provider] requestAudioSession:TGAudioSessionTypeRecordVideoMessage
         activated:^{
             __strong TGVideoMessageCaptureController *strongSelf = weakSelf;
             if (strongSelf != nil) {

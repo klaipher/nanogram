@@ -37,6 +37,16 @@ final class ManagedAudioSessionTypeTests: XCTestCase {
         }
     }
 
+    /// Round videos (chat and story replies) map the toggle like voice messages and record
+    /// AirPods full-band.
+    func testVideoMessageRecordingFollowsToggleAndUsesBluetoothHighQualityRecording() {
+        XCTAssertEqual(ManagedAudioSessionType.videoMessageRecording(pauseMusicOnRecording: true), .record(speaker: false, video: false, withOthers: false))
+        XCTAssertEqual(ManagedAudioSessionType.videoMessageRecording(pauseMusicOnRecording: false), .record(speaker: false, video: false, withOthers: true))
+        for pauseMusicOnRecording in [false, true] {
+            XCTAssertTrue(ManagedAudioSessionType.videoMessageRecording(pauseMusicOnRecording: pauseMusicOnRecording).usesBluetoothHighQualityRecording)
+        }
+    }
+
     /// The option is compatible only with mode .default and adds input latency, so video recording
     /// (.videoRecording mode), calls and playback never ask for it.
     func testOnlyNonVideoRecordingUsesBluetoothHighQualityRecording() {

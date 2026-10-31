@@ -24,7 +24,9 @@ typedef enum {
     TGAudioSessionTypePlayEmbedVideo,
     TGAudioSessionTypePlayAndRecord,
     TGAudioSessionTypePlayAndRecordHeadphones,
-    TGAudioSessionTypeCall
+    TGAudioSessionTypeCall,
+    // A round video message (story replies record through TGVideoMessageCaptureController).
+    TGAudioSessionTypeRecordVideoMessage
 } TGAudioSessionType;
 
 @protocol LegacyComponentsGlobalsProvider <NSObject>

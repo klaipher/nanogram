@@ -188,6 +188,8 @@ private final class LegacyComponentsGlobalsProviderImpl: NSObject, LegacyCompone
                     } else {
                         convertedType = .record(speaker: false, video: true, withOthers: true)
                     }
+                case TGAudioSessionTypeRecordVideoMessage:
+                    convertedType = .videoMessageRecording(pauseMusicOnRecording: legacyContext.sharedContext.currentMediaInputSettings.with({ $0 }).pauseMusicOnRecording)
                 default:
                     convertedType = .play(mixWithOthers: false)
             }
