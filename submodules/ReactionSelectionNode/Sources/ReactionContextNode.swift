@@ -2792,8 +2792,8 @@ public final class ReactionContextNode: ASDisplayNode, ASScrollViewDelegate {
                 }
             }
             
-            if let effectData = effectData, let composition = try? Animation.from(data: effectData) {
-                let view = AnimationView(animation: composition, configuration: LottieConfiguration(renderingEngine: .mainThread, decodingStrategy: .codable))
+            if let effectData = effectData, let composition = try? Animation.from(data: effectData, strategy: .dictionaryBased) {
+                let view = AnimationView(animation: composition, configuration: LottieConfiguration(renderingEngine: .mainThread, decodingStrategy: .dictionaryBased))
                 view.animationSpeed = 1.0
                 view.backgroundColor = nil
                 view.isOpaque = false
@@ -3533,8 +3533,8 @@ public final class StandaloneReactionAnimation: ASDisplayNode {
                 patternEffectData = try? Data(contentsOf: url)
             }
             
-            if let patternEffectData, let composition = try? Animation.from(data: patternEffectData) {
-                let view = AnimationView(animation: composition, configuration: LottieConfiguration(renderingEngine: .mainThread, decodingStrategy: .codable))
+            if let patternEffectData, let composition = try? Animation.from(data: patternEffectData, strategy: .dictionaryBased) {
+                let view = AnimationView(animation: composition, configuration: LottieConfiguration(renderingEngine: .mainThread, decodingStrategy: .dictionaryBased))
                 view.animationSpeed = 1.0
                 view.backgroundColor = nil
                 view.isOpaque = false
@@ -3583,8 +3583,8 @@ public final class StandaloneReactionAnimation: ASDisplayNode {
             additionalAnimationNode = nil
         }
         
-        if let additionalAnimationNode = additionalAnimationNode, !isLarge, !avatarPeers.isEmpty, let url = getAppBundle().url(forResource: "effectavatar", withExtension: "json"), let composition = Animation.filepath(url.path) {
-            let view = AnimationView(animation: composition, configuration: LottieConfiguration(renderingEngine: .mainThread, decodingStrategy: .codable))
+        if let additionalAnimationNode = additionalAnimationNode, !isLarge, !avatarPeers.isEmpty, let url = getAppBundle().url(forResource: "effectavatar", withExtension: "json"), let composition = try? Animation.from(data: Data(contentsOf: url), strategy: .dictionaryBased) {
+            let view = AnimationView(animation: composition, configuration: LottieConfiguration(renderingEngine: .mainThread, decodingStrategy: .dictionaryBased))
             view.animationSpeed = 1.0
             view.backgroundColor = nil
             view.isOpaque = false
@@ -3944,8 +3944,8 @@ public final class StandaloneReactionAnimation: ASDisplayNode {
                 }
             }
             
-            if let effectData = effectData, let composition = try? Animation.from(data: effectData) {
-                let view = AnimationView(animation: composition, configuration: LottieConfiguration(renderingEngine: .mainThread, decodingStrategy: .codable))
+            if let effectData = effectData, let composition = try? Animation.from(data: effectData, strategy: .dictionaryBased) {
+                let view = AnimationView(animation: composition, configuration: LottieConfiguration(renderingEngine: .mainThread, decodingStrategy: .dictionaryBased))
                 view.animationSpeed = 1.0
                 view.backgroundColor = nil
                 view.isOpaque = false

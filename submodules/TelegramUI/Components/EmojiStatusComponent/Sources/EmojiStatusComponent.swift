@@ -223,7 +223,7 @@ public final class EmojiStatusComponent: Component {
                 }
                 
                 var coloredComposition: Animation?
-                if let composition = try? Animation.from(data: unzippedData) {
+                if let composition = try? Animation.from(data: unzippedData, strategy: .dictionaryBased) {
                     coloredComposition = composition
                 }
                 

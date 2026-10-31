@@ -191,14 +191,14 @@ public final class LottieAnimationComponent: Component {
                     self.currentCompletion = nil
                     
                     var animation: Animation?
-                    if let url = getAppBundle().url(forResource: component.animation.name, withExtension: "json"), let maybeAnimation = Animation.filepath(url.path) {
+                    if let url = getAppBundle().url(forResource: component.animation.name, withExtension: "json"), let maybeAnimation = try? Animation.from(data: Data(contentsOf: url), strategy: .dictionaryBased) {
                         animation = maybeAnimation
                     } else if let url = getAppBundle().url(forResource: component.animation.name, withExtension: "tgs"), let data = try? Data(contentsOf: URL(fileURLWithPath: url.path)), let unpackedData = TGGUnzipData(data, 5 * 1024 * 1024) {
-                        animation = try? Animation.from(data: unpackedData, strategy: .codable)
+                        animation = try? Animation.from(data: unpackedData, strategy: .dictionaryBased)
                     }
                     
                     if let animation {
-                        let view = AnimationView(animation: animation, configuration: LottieConfiguration(renderingEngine: .mainThread, decodingStrategy: .codable))
+                        let view = AnimationView(animation: animation, configuration: LottieConfiguration(renderingEngine: .mainThread, decodingStrategy: .dictionaryBased))
                         switch component.animation.mode {
                         case .still, .animateTransitionFromPrevious:
                             view.loopMode = .playOnce

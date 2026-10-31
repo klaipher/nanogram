@@ -39,14 +39,14 @@ public final class AnimationNode: ASDisplayNode {
             
             var animation: Animation?
             if let animationName {
-                if let url = getAppBundle().url(forResource: animationName, withExtension: "json"), let maybeAnimation = Animation.filepath(url.path) {
+                if let url = getAppBundle().url(forResource: animationName, withExtension: "json"), let maybeAnimation = try? Animation.from(data: Data(contentsOf: url), strategy: .dictionaryBased) {
                     animation = maybeAnimation
                 } else if let url = getAppBundle().url(forResource: animationName, withExtension: "tgs"), let data = try? Data(contentsOf: URL(fileURLWithPath: url.path)), let unpackedData = TGGUnzipData(data, 5 * 1024 * 1024) {
-                    animation = try? Animation.from(data: unpackedData, strategy: .codable)
+                    animation = try? Animation.from(data: unpackedData, strategy: .dictionaryBased)
                 }
             }
             if let animation {
-                let view = AnimationView(animation: animation, configuration: LottieConfiguration(renderingEngine: .mainThread, decodingStrategy: .codable))
+                let view = AnimationView(animation: animation, configuration: LottieConfiguration(renderingEngine: .mainThread, decodingStrategy: .dictionaryBased))
                 view.animationSpeed = self.speed
                 view.backgroundColor = .clear
                 view.isOpaque = false
@@ -77,7 +77,7 @@ public final class AnimationNode: ASDisplayNode {
         
         self.setViewBlock({
             if let json = try? JSONSerialization.jsonObject(with: animationData, options: []) as? [String: Any], let animation = try? Animation(dictionary: json) {
-                let view = AnimationView(animation: animation, configuration: LottieConfiguration(renderingEngine: .mainThread, decodingStrategy: .codable))
+                let view = AnimationView(animation: animation, configuration: LottieConfiguration(renderingEngine: .mainThread, decodingStrategy: .dictionaryBased))
                 view.animationSpeed = self.speed
                 view.backgroundColor = .clear
                 view.isOpaque = false
@@ -129,7 +129,7 @@ public final class AnimationNode: ASDisplayNode {
     
     public func setAnimation(name: String, colors: [String: UIColor]? = nil) {
         self.currentParams = (name, colors)
-        if let url = getAppBundle().url(forResource: name, withExtension: "json"), let animation = Animation.filepath(url.path) {
+        if let url = getAppBundle().url(forResource: name, withExtension: "json"), let animation = try? Animation.from(data: Data(contentsOf: url), strategy: .dictionaryBased) {
             self.didPlay = false
             self.animationView()?.animation = animation
             

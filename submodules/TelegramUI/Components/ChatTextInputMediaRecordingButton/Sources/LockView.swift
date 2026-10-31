@@ -15,8 +15,8 @@ final class LockView: UIButton, TGModernConversationInputMicButtonLock {
         self.useDarkTheme = useDarkTheme
         self.pause = pause
         
-        if let url = getAppBundle().url(forResource: "LockWait", withExtension: "json"), let animation = Animation.filepath(url.path) {
-            let view = AnimationView(animation: animation, configuration: LottieConfiguration(renderingEngine: .mainThread, decodingStrategy: .codable))
+        if let url = getAppBundle().url(forResource: "LockWait", withExtension: "json"), let animation = try? Animation.from(data: Data(contentsOf: url), strategy: .dictionaryBased) {
+            let view = AnimationView(animation: animation, configuration: LottieConfiguration(renderingEngine: .mainThread, decodingStrategy: .dictionaryBased))
             view.loopMode = .autoReverse
             view.backgroundColor = .clear
             view.isOpaque = false
@@ -25,8 +25,8 @@ final class LockView: UIButton, TGModernConversationInputMicButtonLock {
             self.idleView = AnimationView()
         }
         
-        if let url = getAppBundle().url(forResource: self.pause ? "LockPause" : "Lock", withExtension: "json"), let animation = Animation.filepath(url.path) {
-            let view = AnimationView(animation: animation, configuration: LottieConfiguration(renderingEngine: .mainThread, decodingStrategy: .codable))
+        if let url = getAppBundle().url(forResource: self.pause ? "LockPause" : "Lock", withExtension: "json"), let animation = try? Animation.from(data: Data(contentsOf: url), strategy: .dictionaryBased) {
+            let view = AnimationView(animation: animation, configuration: LottieConfiguration(renderingEngine: .mainThread, decodingStrategy: .dictionaryBased))
             view.backgroundColor = .clear
             view.isOpaque = false
             self.lockingView = view

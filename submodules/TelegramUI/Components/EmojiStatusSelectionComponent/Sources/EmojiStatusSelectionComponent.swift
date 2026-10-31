@@ -877,8 +877,8 @@ public final class EmojiStatusSelectionController: ViewController {
             
             var effectView: AnimationView?
             
-            if let customEffectFile = customEffectFile, let data = try? Data(contentsOf: URL(fileURLWithPath: customEffectFile)), let composition = try? Animation.from(data: TGGUnzipData(data, 2 * 1024 * 1024) ?? data) {
-                let view = AnimationView(animation: composition, configuration: LottieConfiguration(renderingEngine: .mainThread, decodingStrategy: .codable))
+            if let customEffectFile = customEffectFile, let data = try? Data(contentsOf: URL(fileURLWithPath: customEffectFile)), let composition = try? Animation.from(data: TGGUnzipData(data, 2 * 1024 * 1024) ?? data, strategy: .dictionaryBased) {
+                let view = AnimationView(animation: composition, configuration: LottieConfiguration(renderingEngine: .mainThread, decodingStrategy: .dictionaryBased))
                 view.animationSpeed = 1.0
                 view.backgroundColor = nil
                 view.isOpaque = false
@@ -916,8 +916,8 @@ public final class EmojiStatusSelectionController: ViewController {
                     }
                 }
                 
-                if let effectData = effectData, let composition = try? Animation.from(data: effectData) {
-                    let view = AnimationView(animation: composition, configuration: LottieConfiguration(renderingEngine: .mainThread, decodingStrategy: .codable))
+                if let effectData = effectData, let composition = try? Animation.from(data: effectData, strategy: .dictionaryBased) {
+                    let view = AnimationView(animation: composition, configuration: LottieConfiguration(renderingEngine: .mainThread, decodingStrategy: .dictionaryBased))
                     view.animationSpeed = 1.0
                     view.backgroundColor = nil
                     view.isOpaque = false
