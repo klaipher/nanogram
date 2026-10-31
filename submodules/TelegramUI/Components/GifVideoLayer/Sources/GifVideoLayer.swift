@@ -18,6 +18,8 @@ open class GifVideoLayer: AVSampleBufferDisplayLayer, BatchVideoRenderingContext
     public var batchVideoRenderingTargetState: BatchVideoRenderingContext.TargetState?
     
     private var thumbnailDisposable: Disposable?
+    private var thumbnailGeneration: Int = 0
+    private var appliedThumbnailGeneration: Int = 0
     
     private var isReadyToRender: Bool = false
     
@@ -51,17 +53,43 @@ open class GifVideoLayer: AVSampleBufferDisplayLayer, BatchVideoRenderingContext
                     }
                     let boundingSize = CGSize(width: 93.0, height: 93.0)
                     let imageSize = dimensions.cgSize.aspectFilled(boundingSize)
+                    let arguments = TransformImageArguments(corners: ImageCorners(), imageSize: imageSize, boundingSize: boundingSize, intrinsicInsets: UIEdgeInsets(), resizeMode: .fill(.clear))
                     
-                    if let image = transform(TransformImageArguments(corners: ImageCorners(), imageSize: imageSize, boundingSize: boundingSize, intrinsicInsets: UIEdgeInsets(), resizeMode: .fill(.clear)))?.generateImage() {
-                        Queue.mainQueue().async {
-                            if let strongSelf = self {
-                                strongSelf.contents = image.cgImage
-                                strongSelf.setupVideo()
-                                strongSelf.started?()
+                    if synchronousLoad {
+                        if let image = transform(arguments)?.generateImage() {
+                            Queue.mainQueue().async {
+                                if let strongSelf = self {
+                                    strongSelf.contents = image.cgImage
+                                    strongSelf.setupVideo()
+                                    strongSelf.started?()
+                                }
                             }
+                        } else {
+                            strongSelf.setupVideo()
                         }
                     } else {
-                        strongSelf.setupVideo()
+                        // Decode and draw the thumbnail off the main thread; only the layer
+                        // update happens on main. An image older than the one already shown is
+                        // dropped so a slow decode cannot overwrite a newer thumbnail; until the
+                        // newer one is ready the older one still shows, as it did before.
+                        strongSelf.thumbnailGeneration += 1
+                        let generation = strongSelf.thumbnailGeneration
+                        Queue.concurrentDefaultQueue().async {
+                            let image = transform(arguments)?.generateImage()
+                            Queue.mainQueue().async {
+                                guard let strongSelf = self, generation > strongSelf.appliedThumbnailGeneration else {
+                                    return
+                                }
+                                if let image {
+                                    strongSelf.appliedThumbnailGeneration = generation
+                                    strongSelf.contents = image.cgImage
+                                    strongSelf.setupVideo()
+                                    strongSelf.started?()
+                                } else {
+                                    strongSelf.setupVideo()
+                                }
+                            }
+                        }
                     }
                 })
             } else {
