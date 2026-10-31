@@ -1,0 +1,42 @@
+{
+  "fill" : {
+    "linear-gradient" : [
+      "srgb:0.00000,0.76078,0.81961,1.00000",
+      "srgb:0.04314,0.16471,0.41961,1.00000"
+    ],
+    "orientation" : {
+      "start" : { "x" : 1, "y" : 0 },
+      "stop" : { "x" : 0, "y" : 1 }
+    }
+  },
+  "groups" : [
+    {
+      "layers" : [
+        {
+          "glass" : true,
+          "image-name" : "Head.svg",
+          "name" : "Head"
+        },
+        {
+          "glass" : false,
+          "image-name" : "Tail.svg",
+          "name" : "Tail"
+        }
+      ],
+      "shadow" : {
+        "kind" : "neutral",
+        "opacity" : 0.5
+      },
+      "translucency" : {
+        "enabled" : true,
+        "value" : 0.5
+      }
+    }
+  ],
+  "supported-platforms" : {
+    "circles" : [
+      "watchOS"
+    ],
+    "squares" : "shared"
+  }
+}

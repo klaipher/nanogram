@@ -328,6 +328,10 @@ filegroup(
 )
 
 alternate_icon_folders = [
+    "FastgramComet",
+    "FastgramDash",
+    "FastgramForward",
+    "FastgramStreak",
     "BlackIcon",
     "BlackClassicIcon",
     "BlackFilledIcon",
@@ -342,16 +346,9 @@ alternate_icon_folders = [
     "PremiumTurbo",
 ]
 
-composer_icon_folders = ["Telegram"]
-
-# Fastgram: the default home-screen icon is the Turbo artwork (PremiumTurbo.alticon),
-# as a classic icon set because only the 120/180 px originals exist.
-filegroup(
-    name = "FastgramAppIcon",
-    srcs = glob([
-        "Telegram-iOS/FastgramIcon.xcassets/AppIcon.appiconset/*",
-    ]),
-)
+# Fastgram's own icon (Comet), an Icon Composer file so iOS draws the glass, dark,
+# tinted and clear styles. Telegram.icon stays in the tree for upstream merges.
+composer_icon_folders = ["Fastgram"]
 
 [
     filegroup(
@@ -1811,17 +1808,17 @@ plist_fragment(
     <key>NSCameraUsageDescription</key>
     <string>We need this so that you can take and share photos and videos.</string>
     <key>NSContactsUsageDescription</key>
-    <string>Telegram stores your contacts heavily encrypted in the cloud to let you connect with your friends across all your devices.</string>
+    <string>Fastgram stores your contacts heavily encrypted in the cloud to let you connect with your friends across all your devices.</string>
     <key>NSFaceIDUsageDescription</key>
     <string>You can use Face ID to unlock the app.</string>
     <key>NSLocationAlwaysUsageDescription</key>
-    <string>When you send your location to your friends, Telegram needs access to show them a map. You also need this to send locations from an Apple Watch.</string>
+    <string>When you send your location to your friends, Fastgram needs access to show them a map. You also need this to send locations from an Apple Watch.</string>
     <key>NSLocationWhenInUseUsageDescription</key>
-    <string>When you send your location to your friends, Telegram needs access to show them a map.</string>
+    <string>When you send your location to your friends, Fastgram needs access to show them a map.</string>
     <key>NSMicrophoneUsageDescription</key>
     <string>We need this so that you can record and share voice messages and videos with sound.</string>
     <key>NSMotionUsageDescription</key>
-    <string>When you send your location to your friends, Telegram needs access to show them a map.</string>
+    <string>When you send your location to your friends, Fastgram needs access to show them a map.</string>
     <key>NSPhotoLibraryAddUsageDescription</key>
     <string>We need this so that you can share photos and videos from your photo library.</string>
     <key>NSPhotoLibraryUsageDescription</key>
@@ -1975,7 +1972,7 @@ ios_application(
         ":RequiredDeviceCapabilitiesPlist",
         ":UrlTypesInfoPlist",
     ],
-    app_icons = [":FastgramAppIcon"],
+    app_icons = [ ":{}_icon".format(name) for name in composer_icon_folders ],
     alternate_icons = [
         ":{}".format(name) for name in alternate_icon_folders
     ],

@@ -1002,7 +1002,12 @@ private func extractAccountManagerState(records: AccountRecordsView<TelegramAcco
         }, getAvailableAlternateIcons: {
             if #available(iOS 10.3, *) {
                 var icons = [
-                    PresentationAppIcon(name: "BlueIcon", imageName: "BlueIcon", isDefault: buildConfig.isAppStoreBuild),
+                    // Fastgram's icons first; Comet is the primary icon (choosing it clears the alternate icon).
+                    PresentationAppIcon(name: "FastgramComet", imageName: "FastgramComet", isDefault: true),
+                    PresentationAppIcon(name: "FastgramDash", imageName: "FastgramDash"),
+                    PresentationAppIcon(name: "FastgramForward", imageName: "FastgramForward"),
+                    PresentationAppIcon(name: "FastgramStreak", imageName: "FastgramStreak"),
+                    PresentationAppIcon(name: "BlueIcon", imageName: "BlueIcon"),
                     PresentationAppIcon(name: "New2", imageName: "New2"),
                     PresentationAppIcon(name: "New1", imageName: "New1"),
                     PresentationAppIcon(name: "BlackIcon", imageName: "BlackIcon"),

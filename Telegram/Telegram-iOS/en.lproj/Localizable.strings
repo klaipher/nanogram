@@ -493,9 +493,9 @@
 "Contacts.TabTitle" = "Contacts";
 "Contacts.Title" = "Contacts";
 "Contacts.FailedToSendInvitesMessage" = "An error occurred.";
-"Contacts.AccessDeniedError" = "Telegram does not have access to your contacts";
-"Contacts.AccessDeniedHelpLandscape" = "Please go to your %@ Settings — Privacy — Contacts.\nThen select ON for Telegram.";
-"Contacts.AccessDeniedHelpPortrait" = "Please go to your %@ Settings — Privacy — Contacts. Then select ON for Telegram.";
+"Contacts.AccessDeniedError" = "Fastgram does not have access to your contacts";
+"Contacts.AccessDeniedHelpLandscape" = "Please go to your %@ Settings — Privacy — Contacts.\nThen select ON for Fastgram.";
+"Contacts.AccessDeniedHelpPortrait" = "Please go to your %@ Settings — Privacy — Contacts. Then select ON for Fastgram.";
 "Contacts.AccessDeniedHelpON" = "ON";
 "Contacts.InviteToTelegram" = "Invite to Telegram";
 "Contacts.InviteFriends" = "Invite Friends";
@@ -1266,32 +1266,32 @@
 
 "AccessDenied.Title" = "Please Allow Access";
 
-"AccessDenied.Contacts" = "Telegram messaging is based on your existing contact list.\n\nPlease go to Settings > Privacy > Contacts and set Telegram to ON.";
+"AccessDenied.Contacts" = "Fastgram messaging is based on your existing contact list.\n\nPlease go to Settings > Privacy > Contacts and set Fastgram to ON.";
 
-"AccessDenied.VoiceMicrophone" = "Telegram needs access to your microphone to send voice messages.\n\nPlease go to Settings > Privacy > Microphone and set Telegram to ON.";
+"AccessDenied.VoiceMicrophone" = "Fastgram needs access to your microphone to send voice messages.\n\nPlease go to Settings > Privacy > Microphone and set Fastgram to ON.";
 
-"AccessDenied.VideoMicrophone" = "Telegram needs access to your microphone to record sound in videos recording.\n\nPlease go to Settings > Privacy > Microphone and set Telegram to ON.";
+"AccessDenied.VideoMicrophone" = "Fastgram needs access to your microphone to record sound in videos recording.\n\nPlease go to Settings > Privacy > Microphone and set Fastgram to ON.";
 
-"AccessDenied.MicrophoneRestricted" = "Microphone access is restricted for Telegram.\n\nPlease go to Settings > General > Restrictions > Microphone and set Telegram to ON.";
+"AccessDenied.MicrophoneRestricted" = "Microphone access is restricted for Fastgram.\n\nPlease go to Settings > General > Restrictions > Microphone and set Fastgram to ON.";
 
 
-"AccessDenied.Camera" = "Telegram needs access to your camera to take photos and videos.\n\nPlease go to Settings > Privacy > Camera and set Telegram to ON.";
+"AccessDenied.Camera" = "Fastgram needs access to your camera to take photos and videos.\n\nPlease go to Settings > Privacy > Camera and set Fastgram to ON.";
 
-"AccessDenied.CameraRestricted" = "Camera access is restricted for Telegram.\n\nPlease go to Settings > General > Restrictions > Camera and set Telegram to ON.";
+"AccessDenied.CameraRestricted" = "Camera access is restricted for Fastgram.\n\nPlease go to Settings > General > Restrictions > Camera and set Fastgram to ON.";
 
 "AccessDenied.CameraDisabled" = "Camera access is globally restricted on your phone.\n\nPlease go to Settings > General > Restrictions and set Camera to ON";
 
-"AccessDenied.PhotosAndVideos" = "Telegram needs access to your photo library to send photos and videos.\n\nPlease go to Settings > Privacy > Photos and set Telegram to ON.";
+"AccessDenied.PhotosAndVideos" = "Fastgram needs access to your photo library to send photos and videos.\n\nPlease go to Settings > Privacy > Photos and set Fastgram to ON.";
 
-"AccessDenied.SaveMedia" = "Telegram needs access to your photo library to save photos and videos.\n\nPlease go to Settings > Privacy > Photos and set Telegram to ON.";
+"AccessDenied.SaveMedia" = "Fastgram needs access to your photo library to save photos and videos.\n\nPlease go to Settings > Privacy > Photos and set Fastgram to ON.";
 
-"AccessDenied.PhotosRestricted" = "Photo access is restricted for Telegram.\n\nPlease go to Settings > General > Restrictions > Photos and set Telegram to ON.";
+"AccessDenied.PhotosRestricted" = "Photo access is restricted for Fastgram.\n\nPlease go to Settings > General > Restrictions > Photos and set Fastgram to ON.";
 
-"AccessDenied.LocationDenied" = "Telegram needs access to your location so that you can share it with your contacts.\n\nPlease go to Settings > Privacy > Location Services and set Telegram to ON.";
+"AccessDenied.LocationDenied" = "Fastgram needs access to your location so that you can share it with your contacts.\n\nPlease go to Settings > Privacy > Location Services and set Fastgram to ON.";
 
-"AccessDenied.LocationDisabled" = "Telegram needs access to your location so that you can share it with your contacts.\n\nPlease go to Settings > Privacy > Location Services and set it to ON.";
+"AccessDenied.LocationDisabled" = "Fastgram needs access to your location so that you can share it with your contacts.\n\nPlease go to Settings > Privacy > Location Services and set it to ON.";
 
-"AccessDenied.LocationTracking" = "Telegram needs access to your location to show you on the map.\n\nPlease go to Settings > Privacy > Location Services and set it to ON.";
+"AccessDenied.LocationTracking" = "Fastgram needs access to your location to show you on the map.\n\nPlease go to Settings > Privacy > Location Services and set it to ON.";
 
 "AccessDenied.Settings" = "Settings";
 
@@ -1465,7 +1465,7 @@
 
 "ChangePhone.ErrorOccupied" = "The number %@ is already connected to a Telegram account. Please delete that account before migrating to the new number.";
 
-"AccessDenied.LocationTracking" = "Telegram needs access to your location to show you on the map.\n\nPlease go to Settings > Privacy > Location Services and set it to ON.";
+"AccessDenied.LocationTracking" = "Fastgram needs access to your location to show you on the map.\n\nPlease go to Settings > Privacy > Location Services and set it to ON.";
 
 "PrivacySettings.AuthSessions" = "Active Sessions";
 "AuthSessions.Title" = "Active Sessions";
@@ -1823,7 +1823,7 @@
 "Watch.Stickers.StickerPacks" = "Sticker Sets";
 
 "Watch.Location.Current" = "Current Location";
-"Watch.Location.Access" = "Allow Telegram to access location on your phone";
+"Watch.Location.Access" = "Allow Fastgram to access location on your phone";
 
 "Watch.AuthRequired" = "Log in to Telegram on your phone to get started";
 
@@ -1872,7 +1872,7 @@
 "Cache.ClearProgress" = "Please Wait...";
 "Cache.ClearEmpty" = "Empty";
 "Cache.ByPeerHeader" = "CHATS";
-"Cache.Indexing" = "Telegram is calculating current cache size.\nThis can take a few minutes.";
+"Cache.Indexing" = "Fastgram is calculating current cache size.\nThis can take a few minutes.";
 
 "ExplicitContent.AlertTitle" = "Sorry";
 "ExplicitContent.AlertChannel" = "You can't access this channel because it violates App Store rules.";
@@ -1953,7 +1953,7 @@
 "PrivacyLastSeenSettings.GroupsAndChannelsHelp" = "Change who can add you to groups and channels.";
 "MusicPlayer.VoiceNote" = "Voice Message";
 
-"Watch.Microphone.Access" = "Allow Telegram to access the microphone on your phone";
+"Watch.Microphone.Access" = "Allow Fastgram to access the microphone on your phone";
 
 "Settings.AppleWatch" = "Apple Watch";
 "AppleWatch.Title" = "Apple Watch";
@@ -2288,7 +2288,7 @@ Unused sets are archived when you add more.";
 "Conversation.JumpToDate" = "Jump To Date";
 "Conversation.AddToReadingList" = "Add to Reading List";
 
-"AccessDenied.CallMicrophone" = "Telegram needs access to your microphone for voice calls.\n\nPlease go to Settings > Privacy > Microphone and set Telegram to ON.";
+"AccessDenied.CallMicrophone" = "Fastgram needs access to your microphone for voice calls.\n\nPlease go to Settings > Privacy > Microphone and set Fastgram to ON.";
 
 "Call.EncryptionKey.Title" = "Encryption Key";
 
@@ -2621,8 +2621,8 @@ Unused sets are archived when you add more.";
 "SharedMedia.CategoryLinks" = "Links";
 "SharedMedia.CategoryOther" = "Audio";
 
-"AccessDenied.VideoMessageCamera" = "Telegram needs access to your camera to send video messages.\n\nPlease go to Settings > Privacy > Camera and set Telegram to ON.";
-"AccessDenied.VideoMessageMicrophone" = "Telegram needs access to your microphone to send video messages.\n\nPlease go to Settings > Privacy > Microphone and set Telegram to ON.";
+"AccessDenied.VideoMessageCamera" = "Fastgram needs access to your camera to send video messages.\n\nPlease go to Settings > Privacy > Camera and set Fastgram to ON.";
+"AccessDenied.VideoMessageMicrophone" = "Fastgram needs access to your microphone to send video messages.\n\nPlease go to Settings > Privacy > Microphone and set Fastgram to ON.";
 
 "ChatSettings.AutomaticVideoMessageDownload" = "AUTOMATIC VIDEO MESSAGE DOWNLOAD";
 
@@ -3072,7 +3072,7 @@ Unused sets are archived when you add more.";
 
 "NotificationSettings.ContactJoined" = "New Contacts";
 
-"AccessDenied.LocationAlwaysDenied" = "If you'd like to share your Live Location with friends, Telegram needs location access when the app is in the background.\n\nPlease go to Settings > Privacy > Location Services and set Telegram to Always.";
+"AccessDenied.LocationAlwaysDenied" = "If you'd like to share your Live Location with friends, Fastgram needs location access when the app is in the background.\n\nPlease go to Settings > Privacy > Location Services and set Fastgram to Always.";
 
 "UserInfo.UnblockConfirmation" = "Unblock %@?";
 
@@ -3160,16 +3160,16 @@ Unused sets are archived when you add more.";
 
 "Privacy.PaymentsClearInfoDoneHelp" = "Payment & shipping info cleared.";
 
-"InfoPlist.NSContactsUsageDescription" = "Telegram will continuously upload your contacts to its heavily encrypted cloud servers to let you connect with your friends across all your devices.";
-"InfoPlist.NSLocationWhenInUseUsageDescription" = "When you send your location to your friends, Telegram needs access to show them a map.";
+"InfoPlist.NSContactsUsageDescription" = "Fastgram will continuously upload your contacts to its heavily encrypted cloud servers to let you connect with your friends across all your devices.";
+"InfoPlist.NSLocationWhenInUseUsageDescription" = "When you send your location to your friends, Fastgram needs access to show them a map.";
 "InfoPlist.NSCameraUsageDescription" = "We need this so that you can take and share photos and videos, as well as make video calls.";
 "InfoPlist.NSPhotoLibraryUsageDescription" = "We need this so that you can share photos and videos from your photo library.";
 "InfoPlist.NSPhotoLibraryAddUsageDescription" = "We need this so that you can save photos and videos to your photo library.";
 "InfoPlist.NSMicrophoneUsageDescription" = "We need this so that you can record and share voice messages and videos with sound.";
 "InfoPlist.NSSiriUsageDescription" = "You can use Siri to send messages.";
-"InfoPlist.NSLocationAlwaysAndWhenInUseUsageDescription" = "When you choose to share your Live Location with friends in a chat, Telegram needs background access to your location to keep them updated for the duration of the live sharing.";
-"InfoPlist.NSLocationAlwaysUsageDescription" = "When you choose to share your live location with friends in a chat, Telegram needs background access to your location to keep them updated for the duration of the live sharing. You also need this to send locations from an Apple Watch.";
-"InfoPlist.NSLocationWhenInUseUsageDescription" = "When you send your location to your friends, Telegram needs access to show them a map.";
+"InfoPlist.NSLocationAlwaysAndWhenInUseUsageDescription" = "When you choose to share your Live Location with friends in a chat, Fastgram needs background access to your location to keep them updated for the duration of the live sharing.";
+"InfoPlist.NSLocationAlwaysUsageDescription" = "When you choose to share your live location with friends in a chat, Fastgram needs background access to your location to keep them updated for the duration of the live sharing. You also need this to send locations from an Apple Watch.";
+"InfoPlist.NSLocationWhenInUseUsageDescription" = "When you send your location to your friends, Fastgram needs access to show them a map.";
 "InfoPlist.NSFaceIDUsageDescription" = "You can use Face ID to unlock the app.";
 
 "Privacy.Calls.P2PNever" = "Never";
@@ -3787,7 +3787,7 @@ Unused sets are archived when you add more.";
 "SocksProxySetup.PasteFromClipboard" = "Paste From Clipboard";
 
 "Share.AuthTitle" = "Log in to Telegram";
-"Share.AuthDescription" = "Open Telegram and log in to share.";
+"Share.AuthDescription" = "Open Fastgram and log in to share.";
 
 "Notifications.DisplayNamesOnLockScreen" = "Names on lock-screen";
 "Notifications.DisplayNamesOnLockScreenInfoWithLink" = "Display names in notifications when the device is locked. To disable, make sure that \"Show Previews\" is also set to \"When Unlocked\" or \"Never\" in [iOS Settings]";
@@ -3916,7 +3916,7 @@ Unused sets are archived when you add more.";
 "Permissions.NotificationsAllowInSettings.v0" = "Turn ON in Settings";
 
 "Permissions.CellularDataTitle.v0" = "Enable Cellular Data";
-"Permissions.CellularDataText.v0" = "Don't worry, Telegram keeps network usage to a minimum. You can further control this in Settings > Data and Storage.";
+"Permissions.CellularDataText.v0" = "Don't worry, Fastgram keeps network usage to a minimum. You can further control this in Settings > Data and Storage.";
 "Permissions.CellularDataAllowInSettings.v0" = "Turn ON in Settings";
 
 "Permissions.SiriTitle.v0" = "Turn ON Siri";
@@ -3927,7 +3927,7 @@ Unused sets are archived when you add more.";
 "Permissions.PrivacyPolicy" = "Privacy Policy";
 
 "Contacts.PermissionsTitle" = "Access to Contacts";
-"Contacts.PermissionsText" = "Please allow Telegram access to your phonebook to seamlessly find all your friends.";
+"Contacts.PermissionsText" = "Please allow Fastgram access to your phonebook to seamlessly find all your friends.";
 "Contacts.PermissionsAllow" = "Allow Access";
 "Contacts.PermissionsAllowInSettings" = "Allow in Settings";
 "Contacts.PermissionsSuppressWarningTitle" = "Keep contacts disabled?";
@@ -4141,7 +4141,7 @@ Unused sets are archived when you add more.";
 "Undo.DeletedChannel" = "Deleted channel";
 "Undo.DeletedGroup" = "Deleted group";
 
-"AccessDenied.Wallpapers" = "Telegram needs access to your photo library to set a custom chat background.\n\nPlease go to Settings > Privacy > Photos and set Telegram to ON.";
+"AccessDenied.Wallpapers" = "Fastgram needs access to your photo library to set a custom chat background.\n\nPlease go to Settings > Privacy > Photos and set Fastgram to ON.";
 
 "Conversation.ChatBackground" = "Chat Background";
 "Conversation.ViewBackground" = "VIEW BACKGROUND";
@@ -5149,7 +5149,7 @@ Sorry for the inconvenience.";
 "Map.Home" = "Home";
 "Map.Work" = "Work";
 "Map.HomeAndWorkTitle" = "Home & Work Addresses";
-"Map.HomeAndWorkInfo" = "Telegram uses the Home and Work addresses from your Contact Card.\n\nKeep your Contact Card up to date for quick access to sending Home and Work addresses.";
+"Map.HomeAndWorkInfo" = "Fastgram uses the Home and Work addresses from your Contact Card.\n\nKeep your Contact Card up to date for quick access to sending Home and Work addresses.";
 "Map.SearchNoResultsDescription" = "There were no results for \"%@\".\nTry a new search.";
 
 "ChatList.Search.ShowMore" = "Show more";
@@ -5704,7 +5704,7 @@ Sorry for the inconvenience.";
 "Call.Audio" = "audio";
 "Call.AudioRouteMute" = "Mute Yourself";
 
-"AccessDenied.VideoCallCamera" = "Telegram needs access to your camera to make video calls.\n\nPlease go to Settings > Privacy > Camera and set Telegram to ON.";
+"AccessDenied.VideoCallCamera" = "Fastgram needs access to your camera to make video calls.\n\nPlease go to Settings > Privacy > Camera and set Fastgram to ON.";
 
 "Call.AccountIsLoggedOnCurrentDevice" = "Sorry, you can't call %@ because that account is logged in to Telegram on the device you're using for the call.";
 
@@ -7330,8 +7330,8 @@ Sorry for the inconvenience.";
 "Contacts.QrCode.MyCode" = "My QR Code";
 "Contacts.QrCode.NoCodeFound" = "No valid QR code found in the image. Please try again.";
 
-"AccessDenied.QrCode" = "Telegram needs access to your photo library to scan QR codes.\n\nOpen your device's Settings > Privacy > Photos and set Telegram to ON.";
-"AccessDenied.QrCamera" = "Telegram needs access to your camera to scan QR codes.\n\nOpen your device's Settings > Privacy > Camera and set Telegram to ON.";
+"AccessDenied.QrCode" = "Fastgram needs access to your photo library to scan QR codes.\n\nOpen your device's Settings > Privacy > Photos and set Fastgram to ON.";
+"AccessDenied.QrCamera" = "Fastgram needs access to your camera to scan QR codes.\n\nOpen your device's Settings > Privacy > Camera and set Fastgram to ON.";
 
 "Share.ShareToInstagramStories" = "Share to Instagram Stories";
 
@@ -7679,7 +7679,7 @@ Sorry for the inconvenience.";
 "Premium.AppIcons.Proceed" = "Unlock Premium Icons";
 "Premium.NoAds.Proceed" = "About Telegram Premium";
 
-"AccessDenied.LocationPreciseDenied" = "To share your specific location in this chat, please go to Settings > Privacy > Location Services > Telegram and set Precise Location to On.";
+"AccessDenied.LocationPreciseDenied" = "To share your specific location in this chat, please go to Settings > Privacy > Location Services > Fastgram and set Precise Location to On.";
 
 "Chat.MultipleTypingPair" = "%@ and %@";
 "Chat.MultipleTypingMore" = "%@ and %@ others";
@@ -12687,7 +12687,7 @@ Sorry for the inconvenience.";
 
 "WebBrowser.Done" = "Done";
 
-"AccessDenied.LocationWeather" = "Telegram needs access to your location so that you can add the weather widget to your stories.\n\nPlease go to Settings > Privacy > Location Services and set Telegram to ON.";
+"AccessDenied.LocationWeather" = "Fastgram needs access to your location so that you can add the weather widget to your stories.\n\nPlease go to Settings > Privacy > Location Services and set Fastgram to ON.";
 
 "Story.Editor.TooltipWeatherLimitText" = "You can't add more than one weather sticker to a story.";
 
@@ -14741,7 +14741,7 @@ Sorry for the inconvenience.";
 
 "Chat.SensitiveContentShort" = "18+";
 
-"AccessDenied.AgeVerificationCamera" = "Telegram needs access to your camera for age verification.\n\nOpen your device's Settings > Privacy > Camera and set Telegram to ON.";
+"AccessDenied.AgeVerificationCamera" = "Fastgram needs access to your camera for age verification.\n\nOpen your device's Settings > Privacy > Camera and set Fastgram to ON.";
 
 "PeerInfo.Gifts.Collections.All" = "All Gifts";
 "PeerInfo.Gifts.Collections.Add" = "Add Collection";
