@@ -110,6 +110,8 @@ public func fetchPhotoLibraryResource(localIdentifier: String, width: Int32?, he
         
         let fetchResult = PHAsset.fetchAssets(withLocalIdentifiers: [localIdentifier], options: nil)
         let requestId = Atomic<RequestId>(value: RequestId())
+        // Shared with the disposable: PHImageManager may never call resultHandler for a cancelled request.
+        let semaphore = DispatchSemaphore(value: 0)
         if fetchResult.count != 0 {
             let asset = fetchResult.object(at: 0)
             let option = PHImageRequestOptions()
@@ -149,9 +151,11 @@ public func fetchPhotoLibraryResource(localIdentifier: String, width: Int32?, he
             }
             
             queue.addTask(ThreadPoolTask({ _ in
+                if requestId.with({ $0.invalidated }) {
+                    return
+                }
                 let startTime = CACurrentMediaTime()
                 
-                let semaphore = DispatchSemaphore(value: 0)
                 let requestIdValue = PHImageManager.default().requestImage(for: asset, targetSize: targetSize, contentMode: .aspectFit, options: option, resultHandler: { (image, info) -> Void in
                     Queue.concurrentDefaultQueue().async {
                         requestId.with { current -> Void in
@@ -205,6 +209,7 @@ public func fetchPhotoLibraryResource(localIdentifier: String, width: Int32?, he
                                 semaphore.signal()
                             }
                         } else {
+                            subscriber.putError(.generic)
                             semaphore.signal()
                         }
                     }
@@ -234,6 +239,7 @@ public func fetchPhotoLibraryResource(localIdentifier: String, width: Int32?, he
             if let requestIdValue = requestIdValue {
                 PHImageManager.default().cancelImageRequest(requestIdValue)
             }
+            semaphore.signal()
         }
     }
 }

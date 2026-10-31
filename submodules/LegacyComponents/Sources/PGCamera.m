@@ -358,7 +358,32 @@ NSString *const PGCameraAdjustingFocusKey = @"adjustingFocus";
     }
     
     CGRect newRect = CGRectMake(0.0f, 0.0f, image.size.width, image.size.height);
-    
+
+    // The camera captures in Display P3 (the session prefers wide color for a photo output), and
+    // UIGraphicsBeginImageContextWithOptions only draws 8-bit DeviceRGB, which clipped every captured
+    // photo to sRGB, including the copy saved to the library. Draw into an 8-bit context in the
+    // photo's own color space instead: same memory, same orientation handling.
+    CGColorSpaceRef sourceColorSpace = image.CGImage != NULL ? CGImageGetColorSpace(image.CGImage) : NULL;
+    if (sourceColorSpace != NULL && CGColorSpaceGetModel(sourceColorSpace) == kCGColorSpaceModelRGB && CGColorSpaceSupportsOutput(sourceColorSpace)) {
+        size_t pixelWidth = (size_t)round(newRect.size.width * image.scale);
+        size_t pixelHeight = (size_t)round(newRect.size.height * image.scale);
+        CGContextRef context = CGBitmapContextCreate(NULL, pixelWidth, pixelHeight, 8, 0, sourceColorSpace, (CGBitmapInfo)kCGImageAlphaNoneSkipFirst | kCGBitmapByteOrder32Host);
+        if (context != NULL) {
+            CGContextTranslateCTM(context, 0.0f, (CGFloat)pixelHeight);
+            CGContextScaleCTM(context, image.scale, -image.scale);
+            UIGraphicsPushContext(context);
+            [image drawInRect:newRect];
+            UIGraphicsPopContext();
+            CGImageRef normalizedImage = CGBitmapContextCreateImage(context);
+            CGContextRelease(context);
+            if (normalizedImage != NULL) {
+                UIImage *normalized = [UIImage imageWithCGImage:normalizedImage scale:image.scale orientation:UIImageOrientationUp];
+                CGImageRelease(normalizedImage);
+                return normalized;
+            }
+        }
+    }
+
     UIGraphicsBeginImageContextWithOptions(newRect.size, true, image.scale);
     [image drawInRect:newRect];
     

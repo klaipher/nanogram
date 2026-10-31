@@ -64,6 +64,46 @@ static float3 readRgb(
     ));
 }
 
+// One bilinear tap per output pixel is a 2x2 box only up to a 2x downscale; past that
+// (rear 1080 crop = 2.25x, front 1440 fallback = 3x) it skips source texels and aliases.
+// Above 2x, luma is averaged over 4 taps at +-0.25 output pixel (each through
+// sourceCoordinate, so rotation and mirroring hold); chroma keeps its single centre tap,
+// since its plane is half resolution and needs no supersampling at these ratios.
+// At 2x or less (front 960 crop, VGA, Lanczos-prescaled input, multi-cam 720p) this is
+// exactly readRgb at the centre coordinate.
+static float3 readRgbSupersampled(
+    texture2d<float, access::sample> yTexture,
+    texture2d<float, access::sample> cbcrTexture,
+    sampler textureSampler,
+    float2 outputCoordinate,
+    float2 outputSize,
+    float4 source,
+    float4 row0,
+    float4 row1,
+    float4 row2,
+    float4 offset
+) {
+    float2 coordinate = sourceCoordinate(outputCoordinate, source);
+    if (min(source.x, source.y) <= 2.0 * min(outputSize.x, outputSize.y)) {
+        return readRgb(yTexture, cbcrTexture, textureSampler, coordinate, row0, row1, row2, offset);
+    }
+
+    float2 d = 0.25 / outputSize;
+    float y = 0.25 * (
+        yTexture.sample(textureSampler, sourceCoordinate(outputCoordinate + float2(-d.x, -d.y), source)).r +
+        yTexture.sample(textureSampler, sourceCoordinate(outputCoordinate + float2(d.x, -d.y), source)).r +
+        yTexture.sample(textureSampler, sourceCoordinate(outputCoordinate + float2(-d.x, d.y), source)).r +
+        yTexture.sample(textureSampler, sourceCoordinate(outputCoordinate + float2(d.x, d.y), source)).r
+    );
+    float2 cbcr = cbcrTexture.sample(textureSampler, coordinate).rg;
+    float3 yuv = float3(y, cbcr) + offset.xyz;
+    return saturate(float3(
+        dot(row0.xyz, yuv),
+        dot(row1.xyz, yuv),
+        dot(row2.xyz, yuv)
+    ));
+}
+
 static float3 readCompositeRgb(
     texture2d<float, access::sample> primaryY,
     texture2d<float, access::sample> primaryCbCr,
@@ -71,14 +111,19 @@ static float3 readCompositeRgb(
     texture2d<float, access::sample> secondaryCbCr,
     sampler textureSampler,
     float2 outputCoordinate,
+    float2 supersampleOutputSize,
     constant FrameUniforms &uniforms
 ) {
-    float2 primaryCoordinate = sourceCoordinate(outputCoordinate, uniforms.primarySource);
-    float3 primaryRgb = readRgb(
+    // supersampleOutputSize is (0, 0) for a single tap (the blur source); otherwise the
+    // output size readRgbSupersampled gates on.
+    float2 outputSize = supersampleOutputSize.x > 0.0 ? supersampleOutputSize : float2(1.0e9);
+    float3 primaryRgb = readRgbSupersampled(
         primaryY,
         primaryCbCr,
         textureSampler,
-        primaryCoordinate,
+        outputCoordinate,
+        outputSize,
+        uniforms.primarySource,
         uniforms.primaryRow0,
         uniforms.primaryRow1,
         uniforms.primaryRow2,
@@ -86,12 +131,13 @@ static float3 readCompositeRgb(
     );
 
     if (uniforms.blend.y > 0.5 && uniforms.blend.x > 0.0) {
-        float2 secondaryCoordinate = sourceCoordinate(outputCoordinate, uniforms.secondarySource);
-        float3 secondaryRgb = readRgb(
+        float3 secondaryRgb = readRgbSupersampled(
             secondaryY,
             secondaryCbCr,
             textureSampler,
-            secondaryCoordinate,
+            outputCoordinate,
+            outputSize,
+            uniforms.secondarySource,
             uniforms.secondaryRow0,
             uniforms.secondaryRow1,
             uniforms.secondaryRow2,
@@ -124,12 +170,13 @@ kernel void convertNV12(
     float2 pixelCoordinate = float2(gid) + 0.5;
     float2 outputCoordinate = pixelCoordinate / outputSize;
 
-    float2 primaryCoordinate = sourceCoordinate(outputCoordinate, uniforms.primarySource);
-    float3 primaryRgb = readRgb(
+    float3 primaryRgb = readRgbSupersampled(
         primaryY,
         primaryCbCr,
         textureSampler,
-        primaryCoordinate,
+        outputCoordinate,
+        outputSize,
+        uniforms.primarySource,
         uniforms.primaryRow0,
         uniforms.primaryRow1,
         uniforms.primaryRow2,
@@ -138,12 +185,13 @@ kernel void convertNV12(
 
     float3 result = primaryRgb;
     if (uniforms.blend.y > 0.5 && uniforms.blend.x > 0.0) {
-        float2 secondaryCoordinate = sourceCoordinate(outputCoordinate, uniforms.secondarySource);
-        float3 secondaryRgb = readRgb(
+        float3 secondaryRgb = readRgbSupersampled(
             secondaryY,
             secondaryCbCr,
             textureSampler,
-            secondaryCoordinate,
+            outputCoordinate,
+            outputSize,
+            uniforms.secondarySource,
             uniforms.secondaryRow0,
             uniforms.secondaryRow1,
             uniforms.secondaryRow2,
@@ -181,6 +229,7 @@ kernel void downsampleNV12(
         secondaryCbCr,
         textureSampler,
         outputCoordinate,
+        float2(0.0),
         uniforms
     );
     output.write(float4(result, 1.0), gid);
@@ -214,6 +263,7 @@ kernel void compositeRoundVideo(
         secondaryCbCr,
         textureSampler,
         outputCoordinate,
+        outputSize,
         uniforms
     );
     float3 darkenedBlur = blurred.sample(textureSampler, outputCoordinate).rgb * 0.25;

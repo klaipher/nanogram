@@ -1103,10 +1103,10 @@ public final class MediaPickerScreenImpl: ViewController, MediaPickerScreen, Att
                                     self.mediaAssetsContext.fetchAssetsCollections(.smartAlbum)
                                 )
                                 |> map { albums, smartAlbums -> [MediaGroupItem] in
-                                    var collections: [PHAssetCollection] = []
+                                    var collections: [(PHAssetCollection, PHFetchResult<PHAsset>)] = []
                                     smartAlbums.enumerateObjects { collection, _, _ in
                                         if [.smartAlbumUserLibrary, .smartAlbumFavorites].contains(collection.assetCollectionSubtype) {
-                                            collections.append(collection)
+                                            collections.append((collection, PHAsset.fetchAssets(in: collection, options: nil)))
                                         }
                                     }
                                     smartAlbums.enumerateObjects { collection, index, _ in
@@ -1138,20 +1138,19 @@ public final class MediaPickerScreenImpl: ViewController, MediaPickerScreen, Att
                                         if supportedAlbums.contains(collection.assetCollectionSubtype) {
                                             let result = PHAsset.fetchAssets(in: collection, options: nil)
                                             if result.count > 0 {
-                                                collections.append(collection)
+                                                collections.append((collection, result))
                                             }
                                         }
                                     }
                                     albums.enumerateObjects(options: [.reverse]) { collection, _, _ in
                                         let result = PHAsset.fetchAssets(in: collection, options: nil)
                                         if result.count > 0 {
-                                            collections.append(collection)
+                                            collections.append((collection, result))
                                         }
                                     }
                                     
                                     var items: [MediaGroupItem] = []
-                                    for collection in collections {
-                                        let result = PHAsset.fetchAssets(in: collection, options: nil)
+                                    for (collection, result) in collections {
                                         let firstItem: PHAsset?
                                         if [.smartAlbumUserLibrary, .smartAlbumFavorites].contains(collection.assetCollectionSubtype) {
                                             firstItem = result.lastObject

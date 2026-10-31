@@ -200,6 +200,7 @@ final class MediaPickerGridItemNode: GridItemNode {
     
     deinit {
         self.spoilerDisposable.dispose()
+        self.progressDisposable.dispose()
     }
 
     var identifier: String {
@@ -352,6 +353,7 @@ final class MediaPickerGridItemNode: GridItemNode {
             self.imageNode.setSignal(imageSignal)
             
             self.currentDraftState = (draft, index)
+            self._cachedTag = nil
             if self.currentAssetState != nil {
                 self.currentAsset = nil
                 self.currentAssetState = nil
@@ -459,8 +461,12 @@ final class MediaPickerGridItemNode: GridItemNode {
             let asset = fetchResult.object(at: index)
             
             if asset.localIdentifier == self.currentAsset?.localIdentifier {
+                self.currentAssetState = (fetchResult, index)
                 return
             }
+            self.isLivePhoto = false
+            self.livePhotoIconName = nil
+            self._cachedTag = nil
             self.backgroundNode.image = nil
             
             self.progressDisposable.set(

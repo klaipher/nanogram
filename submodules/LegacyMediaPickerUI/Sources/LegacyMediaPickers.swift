@@ -871,17 +871,16 @@ public func legacyAssetPickerEnqueueMessages(
                             }
                         
                             let defaultPreset = TGMediaVideoConversionPreset(rawValue: UInt32(UserDefaults.standard.integer(forKey: "TG_preferredVideoPreset_v0")))
-                            var preset: TGMediaVideoConversionPreset = TGMediaVideoConversionPresetCompressedMedium
-                            if let selectedPreset = adjustments?.preset {
-                                preset = selectedPreset
-                            } else if preset == TGMediaVideoConversionPresetCompressedDefault && defaultPreset != TGMediaVideoConversionPresetCompressedDefault {
-                                preset = defaultPreset
+                            // Resolve like TGMediaVideoConverter presetFromAdjustments: so dims and size hint match the real encode.
+                            var preset: TGMediaVideoConversionPreset = adjustments?.preset ?? TGMediaVideoConversionPresetCompressedDefault
+                            if preset == TGMediaVideoConversionPresetCompressedDefault {
+                                preset = defaultPreset != TGMediaVideoConversionPresetCompressedDefault ? defaultPreset : TGMediaVideoConversionPresetCompressedMedium
                             }
                             if asAnimation {
                                 preset = TGMediaVideoConversionPresetAnimation
                             }
                             if !asAnimation {
-                                finalDimensions = TGMediaVideoConverter.dimensions(for: finalDimensions, adjustments: adjustments, preset: TGMediaVideoConversionPresetCompressedMedium)
+                                finalDimensions = TGMediaVideoConverter.dimensions(for: finalDimensions, adjustments: adjustments, preset: preset)
                             }
                             
                             var resourceAdjustments: VideoMediaResourceAdjustments?
