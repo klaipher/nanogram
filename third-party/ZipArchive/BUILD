@@ -16,15 +16,22 @@ objc_library(
     includes = [
       "PublicHeaders",
     ],
+    # SSZipArchive 2.6.0 (minizip-ng 3.0.10); defines mirror upstream Package.swift.
     copts = [
-        "-DHAVE_ZLIB",
+        "-DHAVE_ARC4RANDOM_BUF",
         "-DHAVE_INTTYPES_H",
         "-DHAVE_PKCRYPT",
         "-DHAVE_STDINT_H",
         "-DHAVE_WZAES",
+        "-DHAVE_ZLIB",
+        "-DZLIB_COMPAT",
     ],
     sdk_frameworks = [
       "Foundation",
+      "Security",
+    ],
+    sdk_dylibs = [
+      "libz",
     ],
     visibility = [
         "//visibility:public",
