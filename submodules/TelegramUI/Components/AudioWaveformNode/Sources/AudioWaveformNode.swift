@@ -35,13 +35,8 @@ public final class AudioWaveformNode: ASDisplayNode {
     private var gravity: Gravity?
     public var drawFakeSamplesIfNeeded = false
     
-    public var progress: CGFloat? {
-        didSet {
-            if self.progress != oldValue {
-                self.setNeedsDisplay()
-            }
-        }
-    }
+    // No redraw on change: draw's output does not depend on progress (the scrubber's foreground frame shows it).
+    public var progress: CGFloat?
     
     public var trimRange: Range<CGFloat>? {
         didSet {

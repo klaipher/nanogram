@@ -25,4 +25,26 @@ final class ManagedAudioSessionTypeTests: XCTestCase {
             .record(speaker: true, video: false, withOthers: true)
         )
     }
+
+    /// Voice (and round-video) message recording asks for full-bandwidth Bluetooth recording on
+    /// iOS 26+, so AirPods with support record full-band instead of narrowband HFP.
+    func testVoiceMessageRecordingUsesBluetoothHighQualityRecordingForEveryToggle() {
+        for beginWithTone in [false, true] {
+            for pauseMusicOnRecording in [false, true] {
+                let type = ManagedAudioSessionType.voiceMessageRecording(beginWithTone: beginWithTone, pauseMusicOnRecording: pauseMusicOnRecording)
+                XCTAssertTrue(type.usesBluetoothHighQualityRecording, "beginWithTone=\(beginWithTone) pauseMusicOnRecording=\(pauseMusicOnRecording)")
+            }
+        }
+    }
+
+    /// The option is compatible only with mode .default and adds input latency, so video recording
+    /// (.videoRecording mode), calls and playback never ask for it.
+    func testOnlyNonVideoRecordingUsesBluetoothHighQualityRecording() {
+        XCTAssertFalse(ManagedAudioSessionType.record(speaker: false, video: true, withOthers: true).usesBluetoothHighQualityRecording)
+        XCTAssertFalse(ManagedAudioSessionType.voiceCall.usesBluetoothHighQualityRecording)
+        XCTAssertFalse(ManagedAudioSessionType.videoCall.usesBluetoothHighQualityRecording)
+        XCTAssertFalse(ManagedAudioSessionType.play(mixWithOthers: false).usesBluetoothHighQualityRecording)
+        XCTAssertFalse(ManagedAudioSessionType.playWithPossiblePortOverride.usesBluetoothHighQualityRecording)
+        XCTAssertFalse(ManagedAudioSessionType.ambient.usesBluetoothHighQualityRecording)
+    }
 }

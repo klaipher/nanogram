@@ -38,7 +38,7 @@ public final class ChatTextInputAudioRecordingTimeNode: ASDisplayNode {
         didSet {
             if self.audioRecorder !== oldValue {
                 if let audioRecorder = self.audioRecorder {
-                    self.stateDisposable.set(audioRecorder.recordingState.startStrict(next: { [weak self] state in
+                    self.stateDisposable.set((audioRecorder.recordingState |> deliverOnMainQueue).startStrict(next: { [weak self] state in
                         if let strongSelf = self {
                             switch state {
                                 case let .paused(duration):

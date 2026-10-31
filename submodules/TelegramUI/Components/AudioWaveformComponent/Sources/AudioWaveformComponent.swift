@@ -423,9 +423,16 @@ public final class AudioWaveformComponent: Component {
             return size
         }
         
+        override public func didMoveToWindow() {
+            super.didMoveToWindow()
+            
+            self.updatePlaybackAnimation()
+        }
+        
         private func updatePlaybackAnimation() {
             var needsAnimation = false
-            if let playbackStatus = self.playbackStatus {
+            // No redraw ticks while off-window (e.g. a screen pushed over the chat); didMoveToWindow restarts them.
+            if let playbackStatus = self.playbackStatus, self.window != nil {
                 switch playbackStatus.status {
                 case .playing:
                     needsAnimation = true
@@ -550,30 +557,13 @@ public final class AudioWaveformComponent: Component {
                 }
                 memset(adjustedSamplesMemory, 0, numSamples * 2)
                 
-                var bins: [UInt16: Int] = [:]
                 for i in 0 ..< maxReadSamples {
                     let index = i * numSamples / maxReadSamples
                     let sample = samples[i]
                     if adjustedSamples[index] < sample {
                         adjustedSamples[index] = sample
                     }
-                  
-                    if let count = bins[sample] {
-                        bins[sample] = count + 1
-                    } else {
-                        bins[sample] = 1
-                    }
                 }
-                
-                var sortedSamples: [(UInt16, Int)] = []
-                var totalCount: Int = 0
-                for (sample, count) in bins {
-                    if sample > 0 {
-                        sortedSamples.append((sample, count))
-                        totalCount += count
-                    }
-                }
-                sortedSamples.sort { $0.1 > $1.1 }
                 
                 let invScale = 1.0 / max(1.0, CGFloat(maxSample))
                 

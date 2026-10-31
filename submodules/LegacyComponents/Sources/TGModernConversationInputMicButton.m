@@ -217,8 +217,7 @@ static const CGFloat outerCircleMinScale = innerCircleRadius / outerCircleRadius
 }
 
 - (void)dealloc {
-    _displayLink.paused = true;
-    [_displayLink removeFromRunLoop:[NSRunLoop mainRunLoop] forMode:NSRunLoopCommonModes];
+    [_displayLink invalidate];
 }
 
 - (CADisplayLink *)displayLink {
@@ -572,7 +571,9 @@ static const CGFloat outerCircleMinScale = innerCircleRadius / outerCircleRadius
 - (void)animateOut:(BOOL)toSmallSize {
     _locked = false;
     _animatedIn = false;
-    _displayLink.paused = true;
+    // A run-loop-scheduled CADisplayLink retains its target until -invalidate, so pausing alone leaked the button.
+    [_displayLink invalidate];
+    _displayLink = nil;
     _currentLevel = 0.0f;
     _currentTranslation = 0.0f;
     _targetTranslation = 0.0f;

@@ -1674,7 +1674,7 @@ public final class ChatMessageInteractiveFileNode: ASDisplayNode {
                 var playerPosition: Double?
                 var playerDuration: Double = 0.0
                 if !playerStatus.generationTimestamp.isZero, case .playing = playerStatus.status {
-                    playerPosition = playerStatus.timestamp + (CACurrentMediaTime() - playerStatus.generationTimestamp)
+                    playerPosition = playerStatus.timestamp + (CACurrentMediaTime() - playerStatus.generationTimestamp) * playerStatus.baseRate
                 } else {
                     playerPosition = playerStatus.timestamp
                 }

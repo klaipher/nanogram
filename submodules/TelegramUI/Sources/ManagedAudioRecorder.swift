@@ -347,6 +347,12 @@ final class ManagedAudioRecorderContext {
                 Logger.shared.log("ManagedAudioRecorder", "Failed to resume OggWriter")
                 return
             }
+            // Restore the waveform of the audio recorded before the draft was saved (written by stop()).
+            // Fewer than 200 entries keeps the `== 200` compaction trigger reachable.
+            if let waveformString = stateDict["tg_waveform"] as? String, let waveformData = Data(base64Encoded: waveformString), waveformData.count % 2 == 0, waveformData.count / 2 < 200, let waveformFactor = stateDict["tg_waveformFactor"] as? Int, waveformFactor > 0 {
+                self.compressedWaveformSamples = waveformData
+                self.peakCompressionFactor = waveformFactor
+            }
         } else {
             self.oggWriter.begin(with: self.dataItem)
         }
@@ -495,19 +501,35 @@ final class ManagedAudioRecorderContext {
     func resume() {
         assert(self.queue.isCurrent())
         
-        if let trimRange = self.trimRange, trimRange.upperBound < self.oggWriter.encodedDuration() {
+        if let trimRange = self.trimRange, trimRange.lowerBound > 0.1 || trimRange.upperBound < self.oggWriter.encodedDuration() {
             if self.oggWriter.writeFrame(nil, frameByteCount: 0), let data = self.dataItem.data() {
+                let previousDuration = self.oggWriter.encodedDuration()
+                
                 let tempSourceFile = EngineTempBox.shared.tempFile(fileName: "audio.ogg")
                 let tempDestinationFile = EngineTempBox.shared.tempFile(fileName: "audio.ogg")
                 
                 try? data.write(to: URL(fileURLWithPath: tempSourceFile.path))
                 
-                FFMpegOpusTrimmer.trim(tempSourceFile.path, to: tempDestinationFile.path, start: trimRange.lowerBound, end: trimRange.upperBound)
-                
-                if let trimmedData = try? Data(contentsOf: URL(fileURLWithPath: tempDestinationFile.path), options: []) {
-                    self.dataItem = TGDataItem(data: trimmedData)
-                    self.oggWriter = TGOggOpusWriter()
-                    self.oggWriter.beginAppend(with: self.dataItem)
+                // Swap in the trimmed file only if the trim and the append setup both succeed;
+                // otherwise keep the untrimmed writer (and its waveform) rather than lose the recording.
+                if FFMpegOpusTrimmer.trim(tempSourceFile.path, to: tempDestinationFile.path, start: trimRange.lowerBound, end: trimRange.upperBound), let trimmedData = try? Data(contentsOf: URL(fileURLWithPath: tempDestinationFile.path), options: []), !trimmedData.isEmpty {
+                    let writer = TGOggOpusWriter()
+                    if let item = TGDataItem(data: trimmedData), writer.beginAppend(with: item) {
+                        self.dataItem = item
+                        self.oggWriter = writer
+                        
+                        // Cut the waveform to the same range. Entries are Int16 peaks, each covering
+                        // peakCompressionFactor samples at 48 kHz (the writer and RemoteIO rate), and they
+                        // cover the tail of the audio (a recorder rebuilt from an old draft has no earlier entries).
+                        let n = self.compressedWaveformSamples.count / 2
+                        let entrySeconds = Double(self.peakCompressionFactor) / 48000.0
+                        if n > 0 {
+                            let coveredStart = max(0.0, previousDuration - (Double(n * self.peakCompressionFactor + self.currentPeakCount) / 48000.0))
+                            let lo = max(0, min(n, Int((trimRange.lowerBound - coveredStart) / entrySeconds)))
+                            let hi = max(lo, min(n, Int(((trimRange.upperBound - coveredStart) / entrySeconds).rounded(.up))))
+                            self.compressedWaveformSamples = self.compressedWaveformSamples.subdata(in: lo * 2 ..< hi * 2)
+                        }
+                    }
                 }
                                           
                 EngineTempBox.shared.dispose(tempSourceFile)
@@ -516,6 +538,10 @@ final class ManagedAudioRecorderContext {
                 self.trimRange = nil
                 self.previewState.set(AudioPreviewState(trimRange: self.trimRange))
             }
+        } else if self.trimRange != nil {
+            // A range that trims nothing must not be carried into the next segment.
+            self.trimRange = nil
+            self.previewState.set(AudioPreviewState(trimRange: nil))
         }
         
         self.start()
@@ -558,8 +584,12 @@ final class ManagedAudioRecorderContext {
         audioSessionDisposable?.dispose()
         
         if let stateDict = state as? [String: Any] {
+            // TGOggOpusWriter.restoreState reads only its own keys; the waveform rides along for a draft resume.
+            var dict = stateDict
+            dict["tg_waveform"] = self.compressedWaveformSamples.base64EncodedString()
+            dict["tg_waveformFactor"] = self.peakCompressionFactor
             do {
-                let jsonData = try JSONSerialization.data(withJSONObject: stateDict, options: [])
+                let jsonData = try JSONSerialization.data(withJSONObject: dict, options: [])
                 self.resumeData = jsonData
             } catch {
                 Logger.shared.log("ManagedAudioRecorder", "Failed to JSON: \(error)")
@@ -578,7 +608,8 @@ final class ManagedAudioRecorderContext {
             free(buffer.mData)
         }
         
-        if !self.processSamples {
+        // A buffer that lands after stop() would be encoded after the writer state was saved.
+        if !self.processSamples || self.paused {
             return
         }
         
@@ -651,7 +682,7 @@ final class ManagedAudioRecorderContext {
             self.currentPeak = max(Int64(sample), self.currentPeak)
             self.currentPeakCount += 1
             if self.currentPeakCount == self.peakCompressionFactor {
-                var compressedPeak = self.currentPeak
+                var compressedPeak = Int16(clamping: self.currentPeak)
                 withUnsafeBytes(of: &compressedPeak, { buffer in
                     self.compressedWaveformSamples.append(buffer.bindMemory(to: UInt8.self))
                 })

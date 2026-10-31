@@ -23,7 +23,15 @@ func audioInputStateDescription() -> String {
     let preferred = session.preferredInput.map(describeAudioPort) ?? "<none>"
     let current = session.currentRoute.inputs.map(describeAudioPort).joined(separator: ", ")
     let available = (session.availableInputs ?? []).map(describeAudioPort).joined(separator: ", ")
-    return "preferredInput=\(preferred) route.inputs=[\(current)] available=[\(available)]"
+    #if canImport(AlarmKit) //Xcode 26
+    var bluetoothHighQuality = ""
+    if #available(iOS 26.0, *), let microphone = session.currentRoute.inputs.first?.bluetoothMicrophoneExtension {
+        bluetoothHighQuality = " btHighQualityRecording(supported=\(microphone.highQualityRecording.isSupported) enabled=\(microphone.highQualityRecording.isEnabled))"
+    }
+    #else
+    let bluetoothHighQuality = ""
+    #endif
+    return "preferredInput=\(preferred) route.inputs=[\(current)] available=[\(available)]\(bluetoothHighQuality)"
 }
 
 
@@ -62,6 +70,19 @@ public enum ManagedAudioSessionType: Equatable {
     /// (bugs.telegram.org/c/24902).
     public static func voiceMessageRecording(beginWithTone: Bool, pauseMusicOnRecording: Bool) -> ManagedAudioSessionType {
         return .record(speaker: beginWithTone, video: false, withOthers: !pauseMusicOnRecording)
+    }
+
+    /// Whether the session asks for full-bandwidth Bluetooth recording (iOS 26+, e.g. AirPods with
+    /// H2), with HFP as the fallback on routes that do not support it.
+    ///
+    /// Only non-video recording (voice and round-video messages) qualifies: the option is compatible
+    /// only with `AVAudioSession.Mode.default` (video recording uses `.videoRecording`), and calls
+    /// (`.voiceChat`/`.videoChat`) must not take its added input latency.
+    public var usesBluetoothHighQualityRecording: Bool {
+        if case .record(_, false, _) = self {
+            return true
+        }
+        return false
     }
 }
 
@@ -974,6 +995,12 @@ public final class ManagedAudioSessionImpl: NSObject, ManagedAudioSession {
                         options.insert(.mixWithOthers)
                     }
                 }
+                let optionsWithoutHighQualityBluetooth = options
+                #if canImport(AlarmKit) //Xcode 26
+                if type.usesBluetoothHighQualityRecording, #available(iOS 26.0, *) {
+                    options.insert(.bluetoothHighQualityRecording)
+                }
+                #endif
                 managedAudioSessionLog("ManagedAudioSession setting category and options")
                 let mode: AVAudioSession.Mode
                 switch type {
@@ -1002,7 +1029,20 @@ public final class ManagedAudioSessionImpl: NSObject, ManagedAudioSession {
                     #if DEBUG && false
                     try AVAudioSession.sharedInstance().setCategory(nativeCategory, mode: mode, policy: .longFormVideo, options: options)
                     #else
-                    try AVAudioSession.sharedInstance().setCategory(nativeCategory, options: options)
+                    if options != optionsWithoutHighQualityBluetooth {
+                        // High-quality Bluetooth recording is compatible only with mode .default, so set
+                        // the mode together with the category: the session may still hold a previous
+                        // .videoRecording/.voiceChat mode.
+                        do {
+                            try AVAudioSession.sharedInstance().setCategory(nativeCategory, mode: mode, options: options)
+                        } catch let error {
+                            managedAudioSessionLog("ManagedAudioSession high-quality Bluetooth recording rejected, retrying without it: \(error)")
+                            options = optionsWithoutHighQualityBluetooth
+                            try AVAudioSession.sharedInstance().setCategory(nativeCategory, options: options)
+                        }
+                    } else {
+                        try AVAudioSession.sharedInstance().setCategory(nativeCategory, options: options)
+                    }
                     try AVAudioSession.sharedInstance().setMode(mode)
                     #endif
                 } else {
