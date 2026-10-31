@@ -451,7 +451,7 @@ public final class ChatMessageAccessibilityData {
                 
                 result += "\(text)"
                 
-                let dateString = DateFormatter.localizedString(from: Date(timeIntervalSince1970: Double(message.timestamp)), dateStyle: .medium, timeStyle: .short)
+                let dateString = ChatMessageAccessibilityDateFormatter.shared.string(from: Date(timeIntervalSince1970: Double(message.timestamp)))
                 
                 result += "\n\(dateString)"
                 if !isIncoming && !isReply {
