@@ -701,20 +701,21 @@ private func extractAccountManagerState(records: AccountRecordsView<TelegramAcco
             return true
         }
         
-        var isDebugConfiguration = false
+        // Logging to a file is on by default only in debug-compiled and internal builds (the extensions
+        // never looked at the receipt either). It used to be on for every build with a sandbox receipt
+        // too (TestFlight and development-signed release builds), where it cost ~3 s of CPU per measured
+        // session in unbuffered log writes and full MTProto descriptions; those builds now start with it
+        // off, as App Store builds always have. A choice stored from Settings > Debug ("Log to File") or
+        // the enableLog link always wins over this default (see the loggingSettings read below). A let per
+        // configuration and no branch on it: either way round one configuration warns (never mutated, or
+        // never executed), and TelegramUI builds with warnings as errors.
         #if DEBUG
-        isDebugConfiguration = true
+        let logToFileByDefault = true
+        #else
+        let logToFileByDefault = buildConfig.isInternalBuild
         #endif
         
-        if Bundle.main.appStoreReceiptURL?.lastPathComponent == "sandboxReceipt" {
-            isDebugConfiguration = true
-        }
-        
-        if isDebugConfiguration || buildConfig.isInternalBuild {
-            LoggingSettings.defaultSettings = LoggingSettings(logToFile: true, logToConsole: false, redactSensitiveData: true)
-        } else {
-            LoggingSettings.defaultSettings = LoggingSettings(logToFile: false, logToConsole: false, redactSensitiveData: true)
-        }
+        LoggingSettings.defaultSettings = LoggingSettings(logToFile: logToFileByDefault, logToConsole: false, redactSensitiveData: true)
         
         let isUITest = CommandLine.arguments.contains("--ui-test")
 
