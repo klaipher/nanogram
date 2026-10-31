@@ -524,8 +524,11 @@ final class LocationPickerControllerNode: ViewControllerTracingNode, CLLocationM
             }
         )
         
+        // Read once: the subscription below lives as long as this node, and capturing `controller`
+        // there would make the controller (which owns this node) never deallocate.
+        let initialLocation = controller.initialLocation
         let venuesLocation: Signal<CLLocation?, NoError>
-        if let initialLocation = controller.initialLocation {
+        if let initialLocation {
             venuesLocation = .single(CLLocation(coordinate: initialLocation, altitude: 0.0, horizontalAccuracy: 1.0, verticalAccuracy: 1.0, timestamp: Date()))
         } else {
             venuesLocation = throttledUserLocation(userLocation)
@@ -950,7 +953,7 @@ final class LocationPickerControllerNode: ViewControllerTracingNode, CLLocationM
                         }
                     })
                 } else {
-                    let coordinate = controller.initialLocation ?? userLocation?.coordinate
+                    let coordinate = initialLocation ?? userLocation?.coordinate
                     if case .none = state.selectedLocation, let coordinate, state.city == nil {
                         setupGeocoding(coordinate, true, { [weak self] geoAddress, appxCoordinate, address, cityName, streetName, countryCode, isStreet in
                             self?.updateState { state in
