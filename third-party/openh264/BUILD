@@ -264,7 +264,7 @@ cc_library(
         "-Ithird-party/openh264/third_party/openh264/src/codec/api/wels",
         "-Ithird-party/openh264/third_party/openh264/src/codec/processing/interface",
         "-Ithird-party/openh264/third_party/openh264/src/codec/processing/src/common",
-        "-Os",
+        "-O2",
         "-Wno-all",
     ],
     deps = [
@@ -338,7 +338,7 @@ cc_library(
         "-Ithird-party/openh264/third_party/openh264/src/codec/decoder/plus/inc",
         "-Ithird-party/openh264/third_party/openh264/src/codec/common/inc",
         "-Ithird-party/openh264/third_party/openh264/src/codec/api/wels",
-        "-Os",
+        "-O2",
         "-Wno-all",
     ],
     deps = [":openh264"],
