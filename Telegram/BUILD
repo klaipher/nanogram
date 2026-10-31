@@ -344,6 +344,15 @@ alternate_icon_folders = [
 
 composer_icon_folders = ["Telegram"]
 
+# Fastgram: the default home-screen icon is the Turbo artwork (PremiumTurbo.alticon),
+# as a classic icon set because only the 120/180 px originals exist.
+filegroup(
+    name = "FastgramAppIcon",
+    srcs = glob([
+        "Telegram-iOS/FastgramIcon.xcassets/AppIcon.appiconset/*",
+    ]),
+)
+
 [
     filegroup(
         name = "{}".format(name),
@@ -642,7 +651,7 @@ plist_fragment(
     template =
     """
     <key>CFBundleDisplayName</key>
-    <string>Telegram</string>
+    <string>Fastgram</string>
     """
 )
 
@@ -1740,7 +1749,7 @@ plist_fragment(
     <key>CFBundleDevelopmentRegion</key>
     <string>en</string>
     <key>CFBundleDisplayName</key>
-    <string>Telegram</string>
+    <string>Fastgram</string>
     <key>CFBundleIdentifier</key>
     <string>{telegram_bundle_id}</string>
     <key>CFBundleName</key>
@@ -1966,7 +1975,7 @@ ios_application(
         ":RequiredDeviceCapabilitiesPlist",
         ":UrlTypesInfoPlist",
     ],
-    app_icons = [ ":{}_icon".format(name) for name in composer_icon_folders ],
+    app_icons = [":FastgramAppIcon"],
     alternate_icons = [
         ":{}".format(name) for name in alternate_icon_folders
     ],
