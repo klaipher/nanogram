@@ -100,6 +100,10 @@ class BazelCommandLine:
 
             # Swift modules build with -O (speed) rather than -Osize: swift.opt_uses_osize is off.
 
+            # Thin LTO for C, C++ and Objective-C built by Bazel (target configuration only; the
+            # linker runs LTO when it sees bitcode). Script-built libraries keep their own flags.
+            '--copt=-flto=thin',
+
             # --num-threads 0 forces swiftc to generate one object file per module; it:
             # 1. resolves issues with the linker caused by the swift-objc mixing.
             # 2. makes the resulting binaries significantly smaller (up to 9% for this project).

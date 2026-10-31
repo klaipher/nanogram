@@ -682,6 +682,15 @@ ios_framework(
     minimum_os_version = minimum_os_version,
     extension_safe = True,
     ipa_post_processor = strip_framework,
+    # Release only: lay out the functions that run at launch together (see OrderFiles/README.md).
+    additional_linker_inputs = select({
+        ":debug": [],
+        "//conditions:default": ["OrderFiles/MtProtoKit.order"],
+    }),
+    linkopts = select({
+        ":debug": [],
+        "//conditions:default": ["-order_file", "$(location OrderFiles/MtProtoKit.order)"],
+    }),
     deps = [
         "//submodules/MtProtoKit:MtProtoKit",
     ],
@@ -723,6 +732,15 @@ ios_framework(
     minimum_os_version = minimum_os_version,
     extension_safe = True,
     ipa_post_processor = strip_framework,
+    # Release only: lay out the functions that run at launch together (see OrderFiles/README.md).
+    additional_linker_inputs = select({
+        ":debug": [],
+        "//conditions:default": ["OrderFiles/SwiftSignalKit.order"],
+    }),
+    linkopts = select({
+        ":debug": [],
+        "//conditions:default": ["-order_file", "$(location OrderFiles/SwiftSignalKit.order)"],
+    }),
     deps = [
         "//submodules/SSignalKit/SwiftSignalKit:SwiftSignalKit",
     ],
@@ -767,6 +785,15 @@ ios_framework(
     minimum_os_version = minimum_os_version,
     extension_safe = True,
     ipa_post_processor = strip_framework,
+    # Release only: lay out the functions that run at launch together (see OrderFiles/README.md).
+    additional_linker_inputs = select({
+        ":debug": [],
+        "//conditions:default": ["OrderFiles/Postbox.order"],
+    }),
+    linkopts = select({
+        ":debug": [],
+        "//conditions:default": ["-order_file", "$(location OrderFiles/Postbox.order)"],
+    }),
     deps = [
         "//submodules/Postbox:Postbox",
     ],
@@ -856,6 +883,15 @@ ios_framework(
     minimum_os_version = minimum_os_version,
     extension_safe = True,
     ipa_post_processor = strip_framework,
+    # Release only: lay out the functions that run at launch together (see OrderFiles/README.md).
+    additional_linker_inputs = select({
+        ":debug": [],
+        "//conditions:default": ["OrderFiles/TelegramCore.order"],
+    }),
+    linkopts = select({
+        ":debug": [],
+        "//conditions:default": ["-order_file", "$(location OrderFiles/TelegramCore.order)"],
+    }),
     # Exports only what TelegramUI, the app binary and the extensions use. TelegramApi, private to
     # TelegramCore, is therefore never exported (it used to need -unexported_symbol patterns).
     # Release only: debug keeps every symbol exported (debugger, faster edit-build cycle).
@@ -995,7 +1031,11 @@ ios_framework(
     name = "TelegramUIFramework",
     additional_linker_inputs = [
         "//third-party/boringssl:crypto",
-    ],
+    ] + select({
+        ":debug": [],
+        # Release only: lay out the functions that run at launch together (see OrderFiles/README.md).
+        "//conditions:default": ["OrderFiles/TelegramUI.order"],
+    }),
     bundle_id = "{telegram_bundle_id}.TelegramUI".format(
         telegram_bundle_id = telegram_bundle_id,
     ),
@@ -1025,7 +1065,10 @@ ios_framework(
     }),
     linkopts = [
         "$(location //third-party/boringssl:crypto)",
-    ],
+    ] + select({
+        ":debug": [],
+        "//conditions:default": ["-order_file", "$(location OrderFiles/TelegramUI.order)"],
+    }),
     deps = [
         "//submodules/TelegramUI:TelegramUI",
     ] + debug_deps,
