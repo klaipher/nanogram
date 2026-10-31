@@ -1,5 +1,6 @@
 import Foundation
 import AVFoundation
+import UIKit
 import TelegramCore
 import TelegramAudio
 import SwiftSignalKit
@@ -16,6 +17,28 @@ protocol ChunkMediaPlayerSourceImpl: AnyObject {
     
     func seek(id: Int, position: Double)
     func updatePlaybackState(seekTimestamp: Double, position: Double, isPlaying: Bool)
+}
+
+// Whether the app is in the background, for the players created while it is. Each player follows the
+// transitions itself; this only gives a new player its starting state.
+private final class ChunkMediaPlayerApplicationState {
+    static let shared = ChunkMediaPlayerApplicationState()
+
+    private(set) var isInBackground: Bool = false
+    private var observers: [NSObjectProtocol] = []
+
+    private init() {
+        // An extension has no UIApplication.shared and never posts these notifications.
+        if !Bundle.main.bundlePath.hasSuffix(".appex") {
+            self.isInBackground = UIApplication.shared.applicationState == .background
+        }
+        self.observers.append(NotificationCenter.default.addObserver(forName: UIApplication.didEnterBackgroundNotification, object: nil, queue: nil, using: { [weak self] _ in
+            self?.isInBackground = true
+        }))
+        self.observers.append(NotificationCenter.default.addObserver(forName: UIApplication.willEnterForegroundNotification, object: nil, queue: nil, using: { [weak self] _ in
+            self?.isInBackground = false
+        }))
+    }
 }
 
 private final class ChunkMediaPlayerExternalSourceImpl: ChunkMediaPlayerSourceImpl {
@@ -241,6 +264,25 @@ public final class ChunkMediaPlayerV2: ChunkMediaPlayer {
     private var audioSessionDisposable: Disposable?
     private var hasAudioSession: Bool = false
 
+    private var isApplicationInBackground: Bool
+    private var applicationStateObservers: [NSObjectProtocol] = []
+    private var isSuspendedInBackground: Bool = false
+
+    // In the background nobody sees a video, so one that plays without sound is suspended there: its clock
+    // stops, it requests and decodes no frames and its update timer stops, and it continues from the same
+    // position in the foreground. Sound (music, voice and video messages, also muted ones, which can be
+    // unmuted at any time) keeps it running, and so does Picture in Picture, which shows the video while the
+    // app is in the background (the PiP owner marks the node with setCanPlaybackWithoutHierarchy).
+    private var shouldSuspendInBackground: Bool {
+        if !self.isApplicationInBackground || self.isSoundEnabled {
+            return false
+        }
+        if let playerNode = self.playerNode, playerNode.canPlaybackWithoutHierarchy {
+            return false
+        }
+        return true
+    }
+
     public init(
         params: MediaDataReaderParams,
         audioSessionManager: ManagedAudioSession,
@@ -275,6 +317,7 @@ public final class ChunkMediaPlayerV2: ChunkMediaPlayer {
         self.isAmbientMode = ambient
         self.continuePlayingWithoutSoundOnLostAudioSession = continuePlayingWithoutSoundOnLostAudioSession
         self.baseRate = baseRate
+        self.isApplicationInBackground = ChunkMediaPlayerApplicationState.shared.isInBackground
 
         self.renderSynchronizer = AVSampleBufferRenderSynchronizer()
         self.renderSynchronizer.setRate(0.0, time: CMTime(seconds: 0.0, preferredTimescale: 44000))
@@ -291,6 +334,18 @@ public final class ChunkMediaPlayerV2: ChunkMediaPlayer {
             self.source = ChunkMediaPlayerDirectFetchSourceImpl(resource: resource)
         }
         
+        self.applicationStateObservers.append(NotificationCenter.default.addObserver(forName: UIApplication.didEnterBackgroundNotification, object: nil, queue: nil, using: { [weak self] _ in
+            self?.updateIsApplicationInBackground(true)
+        }))
+        self.applicationStateObservers.append(NotificationCenter.default.addObserver(forName: UIApplication.willEnterForegroundNotification, object: nil, queue: nil, using: { [weak self] _ in
+            self?.updateIsApplicationInBackground(false)
+        }))
+        playerNode.canPlaybackWithoutHierarchyUpdated = { [weak self] in
+            Queue.mainQueue().async {
+                self?.updateInternalState()
+            }
+        }
+
         self.updateTimerState()
 
         self.partsStateDisposable = (self.source.partsState
@@ -313,6 +368,9 @@ public final class ChunkMediaPlayerV2: ChunkMediaPlayer {
     deinit {
         self.partsStateDisposable?.dispose()
         self.updateTimer?.invalidate()
+        for observer in self.applicationStateObservers {
+            NotificationCenter.default.removeObserver(observer)
+        }
         self.audioSessionDisposable?.dispose()
         
         if #available(iOS 17.0, *) {
@@ -332,7 +390,19 @@ public final class ChunkMediaPlayerV2: ChunkMediaPlayer {
         }
     }
     
+    private func updateIsApplicationInBackground(_ value: Bool) {
+        if self.isApplicationInBackground != value {
+            self.isApplicationInBackground = value
+            self.updateInternalState()
+        }
+    }
+
     private func updateTimerState() {
+        if self.shouldSuspendInBackground {
+            self.updateTimer?.invalidate()
+            self.updateTimer = nil
+            return
+        }
         let isFast = self.isPlaying || self.pendingSeekTimestamp != nil || !self.didSeekOnce
         if isFast == self.updateTimerIsFast, self.updateTimer != nil {
             return
@@ -350,6 +420,25 @@ public final class ChunkMediaPlayerV2: ChunkMediaPlayer {
     private func updateInternalState() {
         defer {
             self.updateTimerState()
+        }
+
+        let shouldSuspendInBackground = self.shouldSuspendInBackground
+        if self.isSuspendedInBackground != shouldSuspendInBackground {
+            self.isSuspendedInBackground = shouldSuspendInBackground
+            if shouldSuspendInBackground {
+                // Frames already queued stay in the renderer, so the video shows the same frame when it
+                // continues.
+                self.videoIsRequestingMediaData = false
+                if #available(iOS 17.0, *) {
+                    self.videoRenderer.sampleBufferRenderer.stopRequestingMediaData()
+                } else {
+                    self.videoRenderer.stopRequestingMediaData()
+                }
+            }
+            self.resetMediaDataStarvation()
+            // The status changes from playing (which observers extrapolate) to a stopped clock, which the
+            // throttle below cannot tell from a repeat.
+            self.lastEmittedStatus = nil
         }
 
         if self.isSoundEnabled && self.hasSound {
@@ -753,7 +842,7 @@ public final class ChunkMediaPlayerV2: ChunkMediaPlayer {
         let isTooShortToPlay = duration > 0.0 && duration <= ChunkMediaPlayerV2.endTolerance
 
         var effectiveRate: Double = 0.0
-        if self.isPlaying {
+        if self.isPlaying && !self.isSuspendedInBackground {
             if !isBuffering && !isTooShortToPlay {
                 effectiveRate = self.baseRate
             }
@@ -778,7 +867,7 @@ public final class ChunkMediaPlayerV2: ChunkMediaPlayer {
             self.renderSynchronizer.setRate(0.0, time: .invalid)
         }
 
-        if effectiveRate != 0.0 || (isTooShortToPlay && self.isPlaying) {
+        if effectiveRate != 0.0 || (isTooShortToPlay && self.isPlaying && !self.isSuspendedInBackground) {
             self.triggerRequestMediaData(now: now)
         }
         
@@ -802,7 +891,8 @@ public final class ChunkMediaPlayerV2: ChunkMediaPlayer {
         } else {
             playbackStatus = .paused
         }
-        let isPlayingLike = self.isPlaying
+        // A suspended video keeps reporting that it is playing, but with a clock that does not move.
+        let isPlayingLike = self.isPlaying && !self.isSuspendedInBackground
         let status = MediaPlayerStatus(
             generationTimestamp: isPlayingLike ? CACurrentMediaTime() : 0.0,
             duration: duration,

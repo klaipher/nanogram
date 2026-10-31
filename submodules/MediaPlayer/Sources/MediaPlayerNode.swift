@@ -66,6 +66,9 @@ private enum PollStatus: CustomStringConvertible {
 public final class MediaPlayerNode: ASDisplayNode {
     public var videoInHierarchy: Bool = false
     var canPlaybackWithoutHierarchy: Bool = false
+    // Set by the player that renders into this node (ChunkMediaPlayerV2), which keeps playing in the
+    // background while the node can play without a hierarchy (Picture in Picture).
+    var canPlaybackWithoutHierarchyUpdated: (() -> Void)?
     public var updateVideoInHierarchy: ((Bool) -> Void)?
     
     private var videoNode: MediaPlayerNodeDisplayNode
@@ -441,6 +444,7 @@ public final class MediaPlayerNode: ASDisplayNode {
             if canPlaybackWithoutHierarchy {
                 self.updateState()
             }
+            self.canPlaybackWithoutHierarchyUpdated?()
         }
         self.updateVideoInHierarchy?(self.videoInHierarchy || self.canPlaybackWithoutHierarchy)
     }
