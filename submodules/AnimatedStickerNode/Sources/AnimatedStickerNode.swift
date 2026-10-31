@@ -11,6 +11,58 @@ import UIKit
 
 private let sharedQueue = Queue()
 
+// Audio can keep the app running in the background, where sticker frames are decoded for nobody.
+// There a firing playback timer stops itself instead, and is started again on return, so playback
+// continues from the same frame with the same mode and loop count.
+private final class AnimatedStickerBackgroundGate {
+    static let shared = AnimatedStickerBackgroundGate()
+
+    private struct ParkedTimer {
+        weak var timer: SwiftSignalKit.Timer?
+        let holder: Atomic<SwiftSignalKit.Timer?>
+    }
+
+    private let isInBackground = Atomic<Bool>(value: false)
+    // Accessed on sharedQueue only.
+    private var parkedTimers: [ParkedTimer] = []
+
+    private init() {
+        let _ = NotificationCenter.default.addObserver(forName: UIApplication.didEnterBackgroundNotification, object: nil, queue: nil, using: { [weak self] _ in
+            let _ = self?.isInBackground.swap(true)
+        })
+        let _ = NotificationCenter.default.addObserver(forName: UIApplication.willEnterForegroundNotification, object: nil, queue: nil, using: { [weak self] _ in
+            guard let self else {
+                return
+            }
+            let _ = self.isInBackground.swap(false)
+            sharedQueue.async {
+                self.resumeParkedTimers()
+            }
+        })
+    }
+
+    // Called on sharedQueue by a firing timer.
+    func parkIfInBackground(timer: SwiftSignalKit.Timer, holder: Atomic<SwiftSignalKit.Timer?>) -> Bool {
+        if !self.isInBackground.with({ $0 }) {
+            return false
+        }
+        timer.invalidate()
+        self.parkedTimers.append(ParkedTimer(timer: timer, holder: holder))
+        return true
+    }
+
+    private func resumeParkedTimers() {
+        let parkedTimers = self.parkedTimers
+        self.parkedTimers.removeAll()
+        for parkedTimer in parkedTimers {
+            // Not when the node paused, stopped or restarted playback meanwhile.
+            if let timer = parkedTimer.timer, parkedTimer.holder.with({ $0 === timer }) {
+                timer.start()
+            }
+        }
+    }
+}
+
 private class AnimatedStickerNodeDisplayEvents: ASDisplayNode {
     private var value: Bool = false
     var updated: ((Bool) -> Void)?
@@ -579,7 +631,10 @@ public final class DefaultAnimatedStickerNodeImpl: ASDisplayNode, AnimatedSticke
                     }
                 }
                 
-                let timer = SwiftSignalKit.Timer(timeout: 1.0 / Double(frameRate), repeat: !firstFrame, completion: {
+                let timer = SwiftSignalKit.Timer(timeout: 1.0 / Double(frameRate), repeat: !firstFrame, completion: { firingTimer in
+                    if AnimatedStickerBackgroundGate.shared.parkIfInBackground(timer: firingTimer, holder: timerHolder) {
+                        return
+                    }
                     timerEvent()
                 }, queue: queue)
                 let _ = timerHolder.swap(timer)
@@ -633,7 +688,10 @@ public final class DefaultAnimatedStickerNodeImpl: ASDisplayNode, AnimatedSticke
                 let duration: Double = frameSource.frameRate > 0 ? Double(frameSource.frameCount) / Double(frameSource.frameRate) : 0
                 let frameRate = frameSource.frameRate
                 
-                let timer = SwiftSignalKit.Timer(timeout: 1.0 / Double(frameRate), repeat: !firstFrame, completion: {
+                let timer = SwiftSignalKit.Timer(timeout: 1.0 / Double(frameRate), repeat: !firstFrame, completion: { firingTimer in
+                    if AnimatedStickerBackgroundGate.shared.parkIfInBackground(timer: firingTimer, holder: timerHolder) {
+                        return
+                    }
                     let frame = frameQueue.syncWith { frameQueue in
                         return frameQueue.take(draw: true)
                     }

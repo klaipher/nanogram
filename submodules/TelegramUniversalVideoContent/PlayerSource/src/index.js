@@ -279,6 +279,10 @@ export class HlsPlayerInstance {
         postPlayerEvent(this.id, 'playerCurrentTime', {
             'value': this.video.currentTime
         });
+        // Status events call this while a tick is already scheduled; keep a single chain.
+        if (this.currentTimeUpdateTimeout != null) {
+            clearTimeout(this.currentTimeUpdateTimeout);
+        }
         this.currentTimeUpdateTimeout = setTimeout(() => {
             this.refreshPlayerCurrentTime()
         }, 200);
@@ -306,6 +310,10 @@ window.hlsPlayer_destroyInstance = function(id) {
         delete window.hlsPlayer_instances[id];
         instance.video.pause();
         instance.hls.destroy();
+        if (instance.currentTimeUpdateTimeout != null) {
+            clearTimeout(instance.currentTimeUpdateTimeout);
+            instance.currentTimeUpdateTimeout = null;
+        }
     }
 }
 

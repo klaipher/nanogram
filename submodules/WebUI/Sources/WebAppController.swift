@@ -477,6 +477,9 @@ public final class WebAppController: ViewController, AttachmentContainable {
             if self.motionManager.isGyroActive {
                 self.motionManager.stopGyroUpdates()
             }
+            if self.motionManager.isDeviceMotionActive {
+                self.motionManager.stopDeviceMotionUpdates()
+            }
         }
         
         override func didLoad() {
@@ -2807,7 +2810,8 @@ public final class WebAppController: ViewController, AttachmentContainable {
                 self.webView?.sendEvent(name: "accelerometer_started", data: nil)
                 
                 if let refreshRate {
-                    self.motionManager.accelerometerUpdateInterval = refreshRate * 0.001
+                    // The Mini App API allows 20...1000 ms; lower values would run the sensor at its hardware maximum.
+                    self.motionManager.accelerometerUpdateInterval = max(20.0, refreshRate) * 0.001
                 } else {
                     self.motionManager.accelerometerUpdateInterval = 1.0
                 }
@@ -2848,7 +2852,8 @@ public final class WebAppController: ViewController, AttachmentContainable {
                 self.webView?.sendEvent(name: "device_orientation_started", data: nil)
                 
                 if let refreshRate {
-                    self.motionManager.deviceMotionUpdateInterval = refreshRate * 0.001
+                    // The Mini App API allows 20...1000 ms; lower values would run the sensor at its hardware maximum.
+                    self.motionManager.deviceMotionUpdateInterval = max(20.0, refreshRate) * 0.001
                 } else {
                     self.motionManager.deviceMotionUpdateInterval = 1.0
                 }
@@ -2919,7 +2924,8 @@ public final class WebAppController: ViewController, AttachmentContainable {
                 self.webView?.sendEvent(name: "gyroscope_started", data: nil)
                 
                 if let refreshRate {
-                    self.motionManager.gyroUpdateInterval = refreshRate * 0.001
+                    // The Mini App API allows 20...1000 ms; lower values would run the sensor at its hardware maximum.
+                    self.motionManager.gyroUpdateInterval = max(20.0, refreshRate) * 0.001
                 } else {
                     self.motionManager.gyroUpdateInterval = 1.0
                 }

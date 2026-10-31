@@ -122,7 +122,9 @@ public final class DeviceLocationManager: NSObject {
                 }
             } else {
                 self.currentLocation = nil
+                self.currentHeading = nil
                 self.manager.stopUpdatingLocation()
+                self.manager.stopUpdatingHeading()
                 self.log?("stopped")
             }
         }

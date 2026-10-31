@@ -541,6 +541,7 @@ class MetalVideoRenderingContext {
 
     private var displayLink: ConstantDisplayLinkAnimator?
     private var viewReferences = Bag<ViewReference>()
+    private var isVisible: Bool = true
 
     init?() {
         guard let device = MTLCreateSystemDefaultDevice() else {
@@ -604,26 +605,32 @@ class MetalVideoRenderingContext {
         self.displayLink = ConstantDisplayLinkAnimator(update: { [weak self] in
             self?.redraw()
         })
-        self.displayLink?.isPaused = false
+        self.updateDisplayLinkIsPaused()
     }
 
     func updateVisibility(isVisible: Bool) {
-        self.displayLink?.isPaused = !isVisible
+        self.isVisible = isVisible
+        self.updateDisplayLinkIsPaused()
+    }
+
+    // With no views there is nothing to draw, so the 60 Hz link stops.
+    private func updateDisplayLinkIsPaused() {
+        self.displayLink?.isPaused = !self.isVisible || self.viewReferences.isEmpty
     }
 
     fileprivate func add(view: MetalVideoRenderingView) -> Int {
-        return self.viewReferences.add(ViewReference(view: view))
+        let index = self.viewReferences.add(ViewReference(view: view))
+        self.updateDisplayLinkIsPaused()
+        return index
     }
 
     fileprivate func remove(index: Int) {
         self.viewReferences.remove(index)
+        self.updateDisplayLinkIsPaused()
     }
 
     private func redraw() {
-        guard let commandBuffer = self.commandQueue.makeCommandBuffer() else {
-            return
-        }
-
+        var commandBuffer: MTLCommandBuffer?
         var drawables: [MTLDrawable] = []
         var takenViewReferences: [ViewReference] = []
 
@@ -635,9 +642,16 @@ class MetalVideoRenderingContext {
             if !videoView.needsRedraw {
                 continue
             }
+            // Made only when a view has a new frame: most ticks have nothing to draw.
+            if commandBuffer == nil {
+                guard let value = self.commandQueue.makeCommandBuffer() else {
+                    return
+                }
+                commandBuffer = value
+            }
             videoView.needsRedraw = false
 
-            if let drawable = videoView.encode(commandBuffer: commandBuffer) {
+            if let commandBuffer, let drawable = videoView.encode(commandBuffer: commandBuffer) {
                 let numberOfUsedDrawables = videoView.numberOfUsedDrawables
                 let _ = numberOfUsedDrawables.modify {
                     return $0 + 1
@@ -654,7 +668,7 @@ class MetalVideoRenderingContext {
             }
         }
 
-        if drawables.isEmpty {
+        guard let commandBuffer, !drawables.isEmpty else {
             return
         }
 

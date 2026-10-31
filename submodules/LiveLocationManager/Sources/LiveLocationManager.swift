@@ -47,6 +47,8 @@ public final class LiveLocationManagerImpl: LiveLocationManager {
     
     private var invalidationTimer: (SwiftSignalKit.Timer, Int32)?
     
+    private var lastSentLocation: (messageIds: Set<EngineMessage.Id>, location: CLLocation, heading: Double, timestamp: Double)?
+    
     public init(engine: TelegramEngine, locationManager: DeviceLocationManager, inForeground: Signal<Bool, NoError>) {
         self.engine = engine
         self.locationManager = locationManager
@@ -131,6 +133,9 @@ public final class LiveLocationManagerImpl: LiveLocationManager {
                 var effectiveHeading = heading ?? location.course
                 if location.speed > 1.0 {
                     effectiveHeading = location.course
+                }
+                if strongSelf.isRedundantUpdate(location: location, heading: effectiveHeading) {
+                    return
                 }
                 strongSelf.updateDeviceCoordinate(location.coordinate, accuracyRadius: location.horizontalAccuracy, heading: effectiveHeading)
             }
@@ -224,6 +229,23 @@ public final class LiveLocationManagerImpl: LiveLocationManager {
         }
         
         self.update(broadcastToMessageIds: updatedBroadcastToMessageIds, stopMessageIds: updatedStopMessageIds)
+    }
+    
+    // While standing still, skip edits that change nothing a viewer can see. One is still sent every
+    // 30 s so viewers keep reading "updated just now" (shown for under 60 s).
+    private func isRedundantUpdate(location: CLLocation, heading: Double) -> Bool {
+        let messageIds = Set(self.broadcastToMessageIds.keys)
+        let timestamp = CFAbsoluteTimeGetCurrent()
+        if let last = self.lastSentLocation, last.messageIds == messageIds, location.speed < 0.5 {
+            let elapsed = timestamp - last.timestamp
+            var headingDelta = abs(heading - last.heading).truncatingRemainder(dividingBy: 360.0)
+            headingDelta = min(headingDelta, 360.0 - headingDelta)
+            if elapsed >= 0.0 && elapsed < 30.0 && location.distance(from: last.location) < 5.0 && abs(location.horizontalAccuracy - last.location.horizontalAccuracy) < 5.0 && headingDelta < 2.0 {
+                return true
+            }
+        }
+        self.lastSentLocation = (messageIds: messageIds, location: location, heading: heading, timestamp: timestamp)
+        return false
     }
     
     private func updateDeviceCoordinate(_ coordinate: CLLocationCoordinate2D, accuracyRadius: Double, heading: Double?) {

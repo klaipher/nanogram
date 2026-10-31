@@ -489,6 +489,7 @@ public final class ChatControllerImpl: TelegramBaseController, ChatController, G
     var scheduledActivateInput: ChatControllerActivateInput?
     
     var raiseToListen: RaiseToListenManager?
+    var isRaiseToListenOnScreen = false
     var voicePlaylistDidEndTimestamp: Double = 0.0
 
     weak var emojiTooltipController: TooltipController?
@@ -7014,7 +7015,7 @@ public final class ChatControllerImpl: TelegramBaseController, ChatController, G
         } |> deliverOnMainQueue).startStrict(next: { [weak self] value in
             if let strongSelf = self, strongSelf.canReadHistoryValue != value {
                 strongSelf.canReadHistoryValue = value
-                strongSelf.raiseToListen?.enabled = value
+                strongSelf.updateRaiseToListenEnabled()
             }
         })
         
@@ -7886,6 +7887,7 @@ public final class ChatControllerImpl: TelegramBaseController, ChatController, G
             })
         }
         
+        self.isRaiseToListenOnScreen = true
         if case .standard(.default) = self.presentationInterfaceState.mode, self.raiseToListen == nil {
             self.raiseToListen = RaiseToListenManager(shouldActivate: { [weak self] in
                 if let strongSelf = self, strongSelf.isNodeLoaded && strongSelf.canReadHistoryValue, strongSelf.presentationInterfaceState.interfaceState.editMessage == nil, strongSelf.globalControlPanelsContext?.playlistStateAndType == nil {
@@ -7930,7 +7932,6 @@ public final class ChatControllerImpl: TelegramBaseController, ChatController, G
             }, deactivate: { [weak self] in
                 self?.deactivateRaiseGesture()
             })
-            self.raiseToListen?.enabled = self.canReadHistoryValue
             self.globalControlPanelsContext?.setTempVoicePlaylistEnded({ [weak self] in
                 guard let strongSelf = self else {
                     return
@@ -7957,6 +7958,7 @@ public final class ChatControllerImpl: TelegramBaseController, ChatController, G
                 strongSelf.chatDisplayNode.historyNode.voicePlaylistItemChanged(previousItem, currentItem)
             })
         }
+        self.updateRaiseToListenEnabled()
         
         if let arguments = self.presentationArguments as? ChatControllerOverlayPresentationData {
             //TODO clear arguments
@@ -8311,6 +8313,19 @@ public final class ChatControllerImpl: TelegramBaseController, ChatController, G
                 }
             })
         }
+    }
+    
+    // The CoreMotion gesture manager only needs to run while this chat is on screen and
+    // Raise to Listen is turned on; shouldActivate still re-checks the setting per gesture.
+    func updateRaiseToListenEnabled() {
+        self.raiseToListen?.enabled = self.canReadHistoryValue && self.isRaiseToListenOnScreen && self.context.sharedContext.currentMediaInputSettings.with({ $0.enableRaiseToSpeak })
+    }
+    
+    override public func viewDidDisappear(_ animated: Bool) {
+        super.viewDidDisappear(animated)
+        
+        self.isRaiseToListenOnScreen = false
+        self.updateRaiseToListenEnabled()
     }
     
     override public func viewWillDisappear(_ animated: Bool) {

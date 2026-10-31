@@ -30,7 +30,11 @@ final class UniversalTextureSource: TextureSource {
     private var mainInputContext: InputContext?
     private var additionalInputContexts: [InputContext] = []
     
-    var forceUpdates = false
+    var forceUpdates = false {
+        didSet {
+            self.updateDisplayLinkIsPaused()
+        }
+    }
     private var rate: Float = 1.0
     
     weak var output: MediaEditorRenderer?
@@ -45,6 +49,11 @@ final class UniversalTextureSource: TextureSource {
             autoreleaseFrequency: .workItem,
             target: nil
         )
+    }
+    
+    deinit {
+        // The run loop retains the link, so without this it keeps firing after the source is gone.
+        self.displayLink?.invalidate()
     }
     
     var mainImage: UIImage? {
@@ -73,6 +82,12 @@ final class UniversalTextureSource: TextureSource {
 
     func setRate(_ rate: Float) {
         self.rate = rate
+        self.updateDisplayLinkIsPaused()
+    }
+    
+    // A tick renders nothing unless `rate > 0.0 || forceUpdates` (see `update`), so pause the link otherwise.
+    private func updateDisplayLinkIsPaused() {
+        self.displayLink?.isPaused = !(self.rate > 0.0 || self.forceUpdates)
     }
     
     private var previousAdditionalOutput: [Int: MediaEditorRenderer.Input] = [:]
@@ -104,6 +119,7 @@ final class UniversalTextureSource: TextureSource {
                 displayLink.preferredFramesPerSecond = fps
                 displayLink.add(to: .main, forMode: .common)
                 self.displayLink = displayLink
+                self.updateDisplayLinkIsPaused()
             }
         } else {
             if let displayLink = self.displayLink {

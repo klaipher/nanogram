@@ -889,6 +889,8 @@ public final class DCTMultiAnimationRendererImpl: MultiAnimationRenderer {
     private var groupContext: GroupContext?
     private var frameSkip: Int
     private var displayTimer: Foundation.Timer?
+    private var isInBackground: Bool = false
+    private var applicationStateObservers: [NSObjectProtocol] = []
 
     private(set) var isPlaying: Bool = false {
         didSet {
@@ -934,6 +936,37 @@ public final class DCTMultiAnimationRendererImpl: MultiAnimationRenderer {
             self.frameSkip = 1
         } else {
             self.frameSkip = 2
+        }
+
+        // Audio can keep the app running in the background, where frames are decoded for nobody.
+        // Emoji keep their frame and continue from it on return.
+        self.applicationStateObservers = [
+            NotificationCenter.default.addObserver(forName: UIApplication.didEnterBackgroundNotification, object: nil, queue: nil, using: { [weak self] _ in
+                guard let self else {
+                    return
+                }
+                self.isInBackground = true
+                self.updateIsPlaying()
+            }),
+            NotificationCenter.default.addObserver(forName: UIApplication.willEnterForegroundNotification, object: nil, queue: nil, using: { [weak self] _ in
+                guard let self else {
+                    return
+                }
+                self.isInBackground = false
+                self.updateIsPlaying()
+            })
+        ]
+    }
+
+    deinit {
+        for observer in self.applicationStateObservers {
+            NotificationCenter.default.removeObserver(observer)
+        }
+        // The run loop retains a scheduled timer, so it would keep firing after the renderer is gone.
+        if let displayTimer = self.displayTimer {
+            Queue.mainQueue().async {
+                displayTimer.invalidate()
+            }
         }
     }
 
@@ -1023,7 +1056,7 @@ public final class DCTMultiAnimationRendererImpl: MultiAnimationRenderer {
             }
         }
 
-        self.isPlaying = isPlaying
+        self.isPlaying = isPlaying && !self.isInBackground
     }
 
     private func animationTick(frameInterval: Double) {
