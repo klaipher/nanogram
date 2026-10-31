@@ -98,9 +98,7 @@ class BazelCommandLine:
             # Enable whole module optimization.
             '--features=swift.opt_uses_wmo',
 
-            # https://github.com/bazelbuild/rules_swift
-            # Use -Osize instead of -O when building swift modules.
-            '--features=swift.opt_uses_osize',
+            # Swift modules build with -O (speed) rather than -Osize: swift.opt_uses_osize is off.
 
             # --num-threads 0 forces swiftc to generate one object file per module; it:
             # 1. resolves issues with the linker caused by the swift-objc mixing.
