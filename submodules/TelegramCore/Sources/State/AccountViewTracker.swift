@@ -268,6 +268,37 @@ private final class FeaturedStickerPacksContext {
     }
 }
 
+// Every subscriber (each chat's emoji keyboard among them) opened its own view and decoded the
+// whole featured list, verifying every file of every pack. Entries whose stored bytes are unchanged
+// reuse the item decoded last time; the cache holds only the latest list.
+private final class FeaturedPacksDecodeCache {
+    private let lock = NSLock()
+    private var items: [Data: FeaturedStickerPackItem] = [:]
+    
+    func decode(_ entries: [OrderedItemListEntry]) -> [FeaturedStickerPackItem] {
+        self.lock.lock()
+        defer {
+            self.lock.unlock()
+        }
+        var updatedItems: [Data: FeaturedStickerPackItem] = [:]
+        var result: [FeaturedStickerPackItem] = []
+        result.reserveCapacity(entries.count)
+        for entry in entries {
+            let data = entry.contents.data
+            let item: FeaturedStickerPackItem
+            if let cached = self.items[data] ?? updatedItems[data] {
+                item = cached
+            } else {
+                item = entry.contents.get(FeaturedStickerPackItem.self)!
+            }
+            updatedItems[data] = item
+            result.append(item)
+        }
+        self.items = updatedItems
+        return result
+    }
+}
+
 private struct ViewCountContextState {
     struct ReplyInfo {
         var commentsPeerId: PeerId?
@@ -344,6 +375,8 @@ public final class AccountViewTracker {
     private var channelPollingContexts: [PeerId: ChannelPollingContext] = [:]
     private var featuredStickerPacksContext: FeaturedStickerPacksContext?
     private var featuredEmojiPacksContext: FeaturedStickerPacksContext?
+    private let featuredStickerPacksDecodeCache = FeaturedPacksDecodeCache()
+    private let featuredEmojiPacksDecodeCache = FeaturedPacksDecodeCache()
     
     let chatHistoryPreloadManager: ChatHistoryPreloadManager
     
@@ -2365,9 +2398,10 @@ public final class AccountViewTracker {
     public func featuredStickerPacks() -> Signal<[FeaturedStickerPackItem], NoError> {
         return Signal { subscriber in
             if let account = self.account {
+                let decodeCache = self.featuredStickerPacksDecodeCache
                 let view = account.postbox.combinedView(keys: [.orderedItemList(id: Namespaces.OrderedItemList.CloudFeaturedStickerPacks)]).start(next: { next in
                     if let view = next.views[.orderedItemList(id: Namespaces.OrderedItemList.CloudFeaturedStickerPacks)] as? OrderedItemListView {
-                        subscriber.putNext(view.items.map { $0.contents.get(FeaturedStickerPackItem.self)! })
+                        subscriber.putNext(decodeCache.decode(view.items))
                     } else {
                         subscriber.putNext([])
                     }
@@ -2415,9 +2449,10 @@ public final class AccountViewTracker {
     public func featuredEmojiPacks() -> Signal<[FeaturedStickerPackItem], NoError> {
         return Signal { subscriber in
             if let account = self.account {
+                let decodeCache = self.featuredEmojiPacksDecodeCache
                 let view = account.postbox.combinedView(keys: [.orderedItemList(id: Namespaces.OrderedItemList.CloudFeaturedEmojiPacks)]).start(next: { next in
                     if let view = next.views[.orderedItemList(id: Namespaces.OrderedItemList.CloudFeaturedEmojiPacks)] as? OrderedItemListView {
-                        subscriber.putNext(view.items.map { $0.contents.get(FeaturedStickerPackItem.self)! })
+                        subscriber.putNext(decodeCache.decode(view.items))
                     } else {
                         subscriber.putNext([])
                     }
