@@ -512,8 +512,12 @@ final class AuthorizationSequencePhoneEntryControllerNode: ASDisplayNode {
         self.qrButtonNode.addTarget(self, action: #selector(self.qrButtonPressed), forControlEvents: .touchUpInside)
         
         self.animationNode.completed = { [weak self] _ in
-            self?.animationNode.removeFromSupernode()
-            self?.managedAnimationNode.isHidden = false
+            guard let self else {
+                return
+            }
+            self.animationNode.removeFromSupernode()
+            // The intro animation can finish after the QR code replaced it; keep the phone hidden then.
+            self.managedAnimationNode.isHidden = self.qrContainerNode != nil
         }
     }
     
@@ -626,7 +630,14 @@ final class AuthorizationSequencePhoneEntryControllerNode: ASDisplayNode {
         let titleInset: CGFloat = layout.size.width > 320.0 ? 18.0 : 0.0
         let additionalBottomInset: CGFloat = layout.size.width > 320.0 ? 80.0 : 10.0
         
-        self.titleNode.attributedText = NSAttributedString(string: self.account == nil ? self.strings.Login_NewNumber : self.strings.Login_PhoneTitle, font: Font.bold(28.0), textColor: self.theme.list.itemPrimaryTextColor)
+        let isQrVisible = self.qrContainerNode != nil
+        let title: String
+        if isQrVisible {
+            title = self.strings.AuthSessions_AddDeviceIntro_Title
+        } else {
+            title = self.account == nil ? self.strings.Login_NewNumber : self.strings.Login_PhoneTitle
+        }
+        self.titleNode.attributedText = NSAttributedString(string: title, font: Font.bold(28.0), textColor: self.theme.list.itemPrimaryTextColor)
         self.titleActivateAreaNode.accessibilityLabel = self.titleNode.attributedText?.string ?? ""
         
         // iPhone Duo: beside a side strip the content keeps to the band between the side insets. With equal
@@ -653,37 +664,40 @@ final class AuthorizationSequencePhoneEntryControllerNode: ASDisplayNode {
         let proceedHeight = self.proceedNode.updateLayout(width: bottomMaximumWidth - inset * 2.0, transition: transition)
         let proceedSize = CGSize(width: bottomMaximumWidth - inset * 2.0, height: proceedHeight)
         
-        var items: [AuthorizationLayoutItem] = [
-            AuthorizationLayoutItem(node: self.titleNode, size: titleSize, spacingBefore: AuthorizationLayoutItemSpacing(weight: titleInset, maxValue: titleInset), spacingAfter: AuthorizationLayoutItemSpacing(weight: 0.0, maxValue: 0.0)),
-            AuthorizationLayoutItem(node: self.noticeNode, size: noticeSize, spacingBefore: AuthorizationLayoutItemSpacing(weight: 18.0, maxValue: 18.0), spacingAfter: AuthorizationLayoutItemSpacing(weight: 0.0, maxValue: 0.0)),
-            AuthorizationLayoutItem(node: self.phoneAndCountryNode, size: CGSize(width: maximumWidth, height: 115.0), spacingBefore: AuthorizationLayoutItemSpacing(weight: 30.0, maxValue: 30.0), spacingAfter: AuthorizationLayoutItemSpacing(weight: 0.0, maxValue: 0.0)),
-        ]
-        
-        let isQrVisible = self.qrContainerNode != nil
+        var items: [AuthorizationLayoutItem] = []
+        if let qrContainerNode = self.qrContainerNode {
+            // QR mode: the code, a title and how to scan it. The phone form and the
+            // Continue button belong to phone login and are hidden.
+            let qrInfoSize = self.qrInfoNode.updateLayout(CGSize(width: maximumWidth - inset * 2.0, height: CGFloat.greatestFiniteMagnitude))
+            items.append(AuthorizationLayoutItem(node: qrContainerNode, size: CGSize(width: 224.0, height: 224.0), spacingBefore: AuthorizationLayoutItemSpacing(weight: 10.0, maxValue: 10.0), spacingAfter: AuthorizationLayoutItemSpacing(weight: 0.0, maxValue: 0.0)))
+            items.append(AuthorizationLayoutItem(node: self.titleNode, size: titleSize, spacingBefore: AuthorizationLayoutItemSpacing(weight: 28.0, maxValue: 28.0), spacingAfter: AuthorizationLayoutItemSpacing(weight: 0.0, maxValue: 0.0)))
+            items.append(AuthorizationLayoutItem(node: self.qrInfoNode, size: qrInfoSize, spacingBefore: AuthorizationLayoutItemSpacing(weight: 14.0, maxValue: 14.0), spacingAfter: AuthorizationLayoutItemSpacing(weight: 0.0, maxValue: 0.0)))
+        } else {
+            items.append(AuthorizationLayoutItem(node: self.titleNode, size: titleSize, spacingBefore: AuthorizationLayoutItemSpacing(weight: titleInset, maxValue: titleInset), spacingAfter: AuthorizationLayoutItemSpacing(weight: 0.0, maxValue: 0.0)))
+            items.append(AuthorizationLayoutItem(node: self.noticeNode, size: noticeSize, spacingBefore: AuthorizationLayoutItemSpacing(weight: 18.0, maxValue: 18.0), spacingAfter: AuthorizationLayoutItemSpacing(weight: 0.0, maxValue: 0.0)))
+            items.append(AuthorizationLayoutItem(node: self.phoneAndCountryNode, size: CGSize(width: maximumWidth, height: 115.0), spacingBefore: AuthorizationLayoutItemSpacing(weight: 30.0, maxValue: 30.0), spacingAfter: AuthorizationLayoutItemSpacing(weight: 0.0, maxValue: 0.0)))
+        }
+        self.noticeNode.isHidden = isQrVisible
+        self.noticeActivateAreaNode.isHidden = isQrVisible
+        self.phoneAndCountryNode.isHidden = isQrVisible
+
         if isQrVisible {
             // The code takes the place of the phone animation.
             self.animationNode.isHidden = true
             self.managedAnimationNode.isHidden = true
-        }
-        if layout.size.width > 320.0 && !isQrVisible {
+            self.proceedNode.isHidden = true
+        } else if layout.size.width > 320.0 {
             items.insert(AuthorizationLayoutItem(node: self.animationNode, size: animationSize, spacingBefore: AuthorizationLayoutItemSpacing(weight: 10.0, maxValue: 10.0), spacingAfter: AuthorizationLayoutItemSpacing(weight: 0.0, maxValue: 0.0)), at: 0)
             self.proceedNode.isHidden = false
             self.animationNode.isHidden = false
             self.animationNode.visibility = true
             self.managedAnimationNode.isHidden = self.animationNode.supernode != nil
-        } else if layout.size.width > 320.0 {
-            self.proceedNode.isHidden = false
-        } else {
+        }
+        if layout.size.width <= 320.0 {
             insets.top = navigationBarHeight
             self.proceedNode.isHidden = true
             self.animationNode.isHidden = true
             self.managedAnimationNode.isHidden = true
-        }
-        
-        if let qrContainerNode = self.qrContainerNode {
-            let qrInfoSize = self.qrInfoNode.updateLayout(CGSize(width: maximumWidth - inset * 2.0, height: CGFloat.greatestFiniteMagnitude))
-            items.insert(AuthorizationLayoutItem(node: self.qrInfoNode, size: qrInfoSize, spacingBefore: AuthorizationLayoutItemSpacing(weight: 12.0, maxValue: 12.0), spacingAfter: AuthorizationLayoutItemSpacing(weight: 0.0, maxValue: 0.0)), at: 0)
-            items.insert(AuthorizationLayoutItem(node: qrContainerNode, size: CGSize(width: 224.0, height: 224.0), spacingBefore: AuthorizationLayoutItemSpacing(weight: 10.0, maxValue: 10.0), spacingAfter: AuthorizationLayoutItemSpacing(weight: 0.0, maxValue: 0.0)), at: 0)
         }
         
         let qrButtonSize = self.qrButtonNode.measure(CGSize(width: maximumWidth, height: 44.0))
