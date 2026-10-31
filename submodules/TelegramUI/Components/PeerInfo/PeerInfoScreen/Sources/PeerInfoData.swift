@@ -744,7 +744,15 @@ public func keepPeerInfoScreenDataHot(context: AccountContext, peerId: EnginePee
         case .user, .channel, .group:
             var signals: [Signal<Never, NoError>] = []
             
-            signals.append(context.peerChannelMemberCategoriesContextsManager.profileData(postbox: context.account.postbox, network: context.account.network, peerId: peerId, customData: peerInfoAvailableMediaPanes(context: context, peerId: peerId, chatLocation: chatLocation, isMyProfile: false, chatLocationContextHolder: chatLocationContextHolder, sharedMediaFromForumTopic: nil) |> ignoreValues) |> ignoreValues)
+            // The tag views only need to fill their holes before the profile opens (it opens its own
+            // views). Kept live, they re-emitted on every read-state change and refetched up to 20
+            // open polls every 30 s for as long as the chat stayed open. Hole fills are not
+            // cancelled when a view goes away (ManagedMessageHistoryHoles).
+            let mediaPanesWarmup = peerInfoAvailableMediaPanes(context: context, peerId: peerId, chatLocation: chatLocation, isMyProfile: false, chatLocationContextHolder: chatLocationContextHolder, sharedMediaFromForumTopic: nil)
+            |> filter { $0 != nil }
+            |> take(1)
+            |> ignoreValues
+            signals.append(context.peerChannelMemberCategoriesContextsManager.profileData(postbox: context.account.postbox, network: context.account.network, peerId: peerId, customData: mediaPanesWarmup) |> ignoreValues)
             signals.append(context.peerChannelMemberCategoriesContextsManager.profilePhotos(postbox: context.account.postbox, network: context.account.network, peerId: peerId, fetch: peerInfoProfilePhotos(context: context, peerId: peerId)) |> ignoreValues)
             
             if case .user = inputData {

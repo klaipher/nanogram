@@ -223,18 +223,12 @@ final class PeerInputActivityManager {
                     }
                     self.contexts.removeValue(forKey: peerId)
                     
-                    if let globalContext = self.globalContext {
-                        let activities = self.collectActivities()
-                        globalContext.notify(activities)
-                    }
+                    self.notifyGlobal()
                 }, notifyUpdated: { [weak self] in
                     guard let self else {
                         return
                     }
-                    if let globalContext = self.globalContext {
-                        let activities = self.collectActivities()
-                        globalContext.notify(activities)
-                    }
+                    self.notifyGlobal()
                 })
                 self.contexts[peerId] = context
             }
@@ -287,6 +281,13 @@ final class PeerInputActivityManager {
             }
         }
         
+        // Contexts report every real change via notifyUpdated/notifyEmpty; the direct notifies in add/remove duplicated them.
+        private func notifyGlobal() {
+            if let globalContext = self.globalContext {
+                globalContext.notify(self.collectActivities())
+            }
+        }
+        
         private func collectActivities() -> [PeerActivitySpace: [(PeerId, PeerInputActivityRecord)]] {
             assert(self.queue.isCurrent())
             
@@ -308,18 +309,12 @@ final class PeerInputActivityManager {
                     }
                     self.contexts.removeValue(forKey: chatPeerId)
                     
-                    if let globalContext = self.globalContext {
-                        let activities = self.collectActivities()
-                        globalContext.notify(activities)
-                    }
+                    self.notifyGlobal()
                 }, notifyUpdated: { [weak self] in
                     guard let self else {
                         return
                     }
-                    if let globalContext = self.globalContext {
-                        let activities = self.collectActivities()
-                        globalContext.notify(activities)
-                    }
+                    self.notifyGlobal()
                 })
                 self.contexts[chatPeerId] = context
             }
@@ -338,33 +333,19 @@ final class PeerInputActivityManager {
                 context.removeActivity(peerId: peerId, activity: .typingText, episodeId: nil)
             }
             
+            // The context reports actual changes through notifyUpdated/notifyEmpty.
             context.addActivity(peerId: peerId, activity: activity, timeout: timeout, episodeId: episodeId, nextUpdateId: &self.nextUpdateId)
-            
-            if let globalContext = self.globalContext {
-                let activities = self.collectActivities()
-                globalContext.notify(activities)
-            }
         }
         
         func removeActivity(chatPeerId: PeerActivitySpace, peerId: PeerId, activity: PeerInputActivity, episodeId: Int32?) {
             if let context = self.contexts[chatPeerId] {
                 context.removeActivity(peerId: peerId, activity: activity, episodeId: episodeId)
-                
-                if let globalContext = self.globalContext {
-                    let activities = self.collectActivities()
-                    globalContext.notify(activities)
-                }
             }
         }
         
         func removeAllActivities(chatPeerId: PeerActivitySpace, peerId: PeerId) {
             if let currentContext = self.contexts[chatPeerId] {
                 currentContext.removeAllActivities(peerId: peerId)
-                
-                if let globalContext = self.globalContext {
-                    let activities = self.collectActivities()
-                    globalContext.notify(activities)
-                }
             }
         }
         

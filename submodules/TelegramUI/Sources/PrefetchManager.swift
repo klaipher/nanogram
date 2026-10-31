@@ -41,7 +41,7 @@ private final class PrefetchManagerInnerImpl {
         self.engine = engine
         self.fetchManager = fetchManager
         
-        let networkType = account.networkType
+        let networkType = account.automaticDownloadNetworkType
         |> map { networkType -> MediaAutoDownloadNetworkType in
             switch networkType {
                 case .none, .cellular:

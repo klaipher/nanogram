@@ -482,6 +482,8 @@ public final class ChatMessageInteractiveMediaNode: ASDisplayNode, GalleryItemTr
     private let playerStatusDisposable = MetaDisposable()
     
     private var playerUpdateTimer: SwiftSignalKit.Timer?
+    // Whole-second player position the status was last built with.
+    private var statusPlayerPosition: Double?
     private var playerStatus: MediaPlayerStatus? {
         didSet {
             if self.playerStatus != oldValue {
@@ -2547,10 +2549,29 @@ public final class ChatMessageInteractiveMediaNode: ASDisplayNode, GalleryItemTr
     private func ensureHasTimer() {
         if self.playerUpdateTimer == nil {
             let timer = SwiftSignalKit.Timer(timeout: 0.5, repeat: true, completion: { [weak self] in
-                self?.updateStatus(animated: false)
-                }, queue: Queue.mainQueue())
+                guard let self else {
+                    return
+                }
+                // Between player status changes only the position text moves with time.
+                if self.secretTimer == nil, self.extrapolatedPlayerPosition() == self.statusPlayerPosition {
+                    return
+                }
+                self.updateStatus(animated: false)
+            }, queue: Queue.mainQueue())
             self.playerUpdateTimer = timer
             timer.start()
+        }
+    }
+
+    // Same extrapolation as `playerPosition` in updateStatus, truncated like its Int32 conversion.
+    private func extrapolatedPlayerPosition() -> Double? {
+        guard let playerStatus = self.playerStatus else {
+            return nil
+        }
+        if !playerStatus.generationTimestamp.isZero, case .playing = playerStatus.status {
+            return (playerStatus.timestamp + (CACurrentMediaTime() - playerStatus.generationTimestamp)).rounded(.towardZero)
+        } else {
+            return playerStatus.timestamp.rounded(.towardZero)
         }
     }
     
@@ -2560,6 +2581,8 @@ public final class ChatMessageInteractiveMediaNode: ASDisplayNode, GalleryItemTr
     }
     
     private func updateStatus(animated: Bool) {
+        self.statusPlayerPosition = self.extrapolatedPlayerPosition()
+
         guard let (theme, strings, decimalSeparator, isPreview) = self.themeAndStrings, let sizeCalculation = self.sizeCalculation, let message = self.message?._asMessage(), let attributes = self.attributes, var automaticPlayback = self.automaticPlayback, let wideLayout = self.wideLayout else {
             return
         }

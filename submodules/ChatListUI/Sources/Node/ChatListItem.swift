@@ -1449,6 +1449,9 @@ public class ChatListItemNode: ItemListRevealOptionsItemNode {
     
     private var hierarchyTrackingLayer: HierarchyTrackingLayer?
     private var cachedDataDisposable = MetaDisposable()
+    private var cachedDataPeerId: EnginePeer.Id?
+    private var cachedDataLoopEmoji = false
+    private var cachedDataPeer: EnginePeer?
     
     private var currentTextLeftCutout: CGFloat = 0.0
     private var currentMediaPreviewSpecs: [ContentImageSpec] = []
@@ -2055,79 +2058,90 @@ public class ChatListItemNode: ItemListRevealOptionsItemNode {
             
             if peer.isPremium && peer.id != item.context.account.peerId {
                 let context = item.context
-                self.cachedDataDisposable.set((context.account.postbox.peerView(id: peer.id)
-                |> deliverOnMainQueue).startStrict(next: { [weak self] peerView in
-                    guard let strongSelf = self else {
-                        return
-                    }
-                    let cachedPeerData = peerView.cachedData as? CachedUserData
-                    var personalPhoto: TelegramMediaImage?
-                    var profilePhoto: TelegramMediaImage?
-                    var isKnown = false
-                    
-                    if let cachedPeerData = cachedPeerData {
-                        if case let .known(maybePersonalPhoto) = cachedPeerData.personalPhoto {
-                            personalPhoto = maybePersonalPhoto
-                            isKnown = true
+                let loopEmoji = item.context.sharedContext.energyUsageSettings.loopEmoji
+                self.cachedDataPeer = peer
+                // Row updates arrive on every message and read-state change; keep the peer view open
+                // across them instead of reopening it in Postbox each time.
+                if self.cachedDataPeerId != peer.id || self.cachedDataLoopEmoji != loopEmoji {
+                    self.cachedDataPeerId = peer.id
+                    self.cachedDataLoopEmoji = loopEmoji
+                    self.cachedDataDisposable.set((context.account.postbox.peerView(id: peer.id)
+                    |> deliverOnMainQueue).startStrict(next: { [weak self] peerView in
+                        guard let strongSelf = self else {
+                            return
                         }
-                        if case let .known(maybePhoto) = cachedPeerData.photo {
-                            profilePhoto = maybePhoto
-                            isKnown = true
-                        }
-                        if profilePhoto == nil, case let .known(maybePhoto) = cachedPeerData.fallbackPhoto {
-                            profilePhoto = maybePhoto
-                            isKnown = true
-                        }
-                    }
-                    
-                    if isKnown {
-                        let photo = personalPhoto ?? profilePhoto
-                        if let photo = photo, item.context.sharedContext.energyUsageSettings.loopEmoji, (!photo.videoRepresentations.isEmpty || photo.emojiMarkup != nil) {
-                            let videoNode: AvatarVideoNode
-                            if let current = strongSelf.avatarVideoNode {
-                                videoNode = current
-                            } else {
-                                videoNode = AvatarVideoNode(context: item.context)
-                                strongSelf.avatarNode.contentNode.addSubnode(videoNode)
-                                strongSelf.avatarVideoNode = videoNode
+                        let currentPeer = strongSelf.cachedDataPeer ?? peer
+                        let cachedPeerData = peerView.cachedData as? CachedUserData
+                        var personalPhoto: TelegramMediaImage?
+                        var profilePhoto: TelegramMediaImage?
+                        var isKnown = false
+                        
+                        if let cachedPeerData = cachedPeerData {
+                            if case let .known(maybePersonalPhoto) = cachedPeerData.personalPhoto {
+                                personalPhoto = maybePersonalPhoto
+                                isKnown = true
                             }
-                            videoNode.update(peer: peer, photo: photo, size: CGSize(width: 60.0, height: 60.0))
-                            
-                            if strongSelf.hierarchyTrackingLayer == nil {
-                                let hierarchyTrackingLayer = HierarchyTrackingLayer()
-                                hierarchyTrackingLayer.didEnterHierarchy = { [weak self] in
-                                    guard let strongSelf = self else {
-                                        return
-                                    }
-                                    strongSelf.trackingIsInHierarchy = true
+                            if case let .known(maybePhoto) = cachedPeerData.photo {
+                                profilePhoto = maybePhoto
+                                isKnown = true
+                            }
+                            if profilePhoto == nil, case let .known(maybePhoto) = cachedPeerData.fallbackPhoto {
+                                profilePhoto = maybePhoto
+                                isKnown = true
+                            }
+                        }
+                        
+                        if isKnown {
+                            let photo = personalPhoto ?? profilePhoto
+                            if let photo = photo, item.context.sharedContext.energyUsageSettings.loopEmoji, (!photo.videoRepresentations.isEmpty || photo.emojiMarkup != nil) {
+                                let videoNode: AvatarVideoNode
+                                if let current = strongSelf.avatarVideoNode {
+                                    videoNode = current
+                                } else {
+                                    videoNode = AvatarVideoNode(context: item.context)
+                                    strongSelf.avatarNode.contentNode.addSubnode(videoNode)
+                                    strongSelf.avatarVideoNode = videoNode
                                 }
+                                videoNode.update(peer: currentPeer, photo: photo, size: CGSize(width: 60.0, height: 60.0))
                                 
-                                hierarchyTrackingLayer.didExitHierarchy = { [weak self] in
-                                    guard let strongSelf = self else {
-                                        return
+                                if strongSelf.hierarchyTrackingLayer == nil {
+                                    let hierarchyTrackingLayer = HierarchyTrackingLayer()
+                                    hierarchyTrackingLayer.didEnterHierarchy = { [weak self] in
+                                        guard let strongSelf = self else {
+                                            return
+                                        }
+                                        strongSelf.trackingIsInHierarchy = true
                                     }
-                                    strongSelf.trackingIsInHierarchy = false
+                                    
+                                    hierarchyTrackingLayer.didExitHierarchy = { [weak self] in
+                                        guard let strongSelf = self else {
+                                            return
+                                        }
+                                        strongSelf.trackingIsInHierarchy = false
+                                    }
+                                    strongSelf.hierarchyTrackingLayer = hierarchyTrackingLayer
+                                    strongSelf.layer.addSublayer(hierarchyTrackingLayer)
                                 }
-                                strongSelf.hierarchyTrackingLayer = hierarchyTrackingLayer
-                                strongSelf.layer.addSublayer(hierarchyTrackingLayer)
-                            }
+                            } else {
+                                if let avatarVideoNode = strongSelf.avatarVideoNode {
+                                    avatarVideoNode.removeFromSupernode()
+                                    strongSelf.avatarVideoNode = nil
+                                }
+                                strongSelf.hierarchyTrackingLayer?.removeFromSuperlayer()
+                                strongSelf.hierarchyTrackingLayer = nil
+                            }                 
+                            strongSelf.updateVideoVisibility()
                         } else {
-                            if let avatarVideoNode = strongSelf.avatarVideoNode {
-                                avatarVideoNode.removeFromSupernode()
-                                strongSelf.avatarVideoNode = nil
+                            if let photo = currentPeer.largeProfileImage, photo.hasVideo {
+                                let _ = context.engine.peers.fetchAndUpdateCachedPeerData(peerId: currentPeer.id).startStandalone()
                             }
-                            strongSelf.hierarchyTrackingLayer?.removeFromSuperlayer()
-                            strongSelf.hierarchyTrackingLayer = nil
-                        }                 
-                        strongSelf.updateVideoVisibility()
-                    } else {
-                        if let photo = peer.largeProfileImage, photo.hasVideo {
-                            let _ = context.engine.peers.fetchAndUpdateCachedPeerData(peerId: peer.id).startStandalone()
                         }
-                    }
-                }))
+                    }))
+                }
             } else {
                 self.cachedDataDisposable.set(nil)
+                self.cachedDataPeerId = nil
+                self.cachedDataPeer = nil
                 
                 self.avatarVideoNode?.removeFromSupernode()
                 self.avatarVideoNode = nil

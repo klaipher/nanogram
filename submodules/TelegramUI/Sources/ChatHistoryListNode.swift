@@ -1780,7 +1780,7 @@ public final class ChatHistoryListNodeImpl: ASDisplayNode, ChatHistoryNode, Chat
         }
         
         let previousView = self.previousView
-        let automaticDownloadNetworkType = context.account.networkType
+        let automaticDownloadNetworkType = context.account.automaticDownloadNetworkType
         |> map { type -> MediaAutoDownloadNetworkType in
             switch type {
                 case .none, .wifi:
@@ -2749,6 +2749,8 @@ public final class ChatHistoryListNodeImpl: ASDisplayNode, ChatHistoryNode, Chat
                     strongSelf.controllerInteraction.canReadHistory = value
                     strongSelf.updateReadHistoryActions()
                     strongSelf.messageReadMetricsTracker?.setIsActive(strongSelf.canReadHistoryValue)
+                    // Chat hidden, covered or in background: stop the periodic paid-media refresh; it refreshes again on return.
+                    strongSelf.extendedMediaProcessingManager.setPaused(!value)
 
                     if strongSelf.canReadHistoryValue && !strongSelf.suspendReadingReactions && !strongSelf.messageIdsScheduledForMarkAsSeen.isEmpty {
                         let messageIds = strongSelf.messageIdsScheduledForMarkAsSeen
@@ -3579,9 +3581,8 @@ public final class ChatHistoryListNodeImpl: ASDisplayNode, ChatHistoryNode, Chat
             if !downloadableResourceIds.isEmpty {
                 let _ = markRecentDownloadItemsAsSeen(postbox: self.context.account.postbox, items: downloadableResourceIds).startStandalone()
             }
-            if !messageIdsWithInactiveExtendedMedia.isEmpty {
-                self.extendedMediaProcessingManager.update(Set(messageIdsWithInactiveExtendedMedia.map { MessageAndThreadId(messageId: $0, threadId: nil) }))
-            }
+            // Also sent when empty, so paid media that scrolled away or was unlocked stops being re-requested.
+            self.extendedMediaProcessingManager.update(Set(messageIdsWithInactiveExtendedMedia.map { MessageAndThreadId(messageId: $0, threadId: nil) }))
             if !messageIdsToTranslate.isEmpty {
                 self.translationProcessingManager.add(messageIdsToTranslate.map { MessageAndThreadId(messageId: $0, threadId: nil) })
             }

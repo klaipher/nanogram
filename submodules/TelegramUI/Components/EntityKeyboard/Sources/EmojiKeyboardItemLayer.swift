@@ -16,6 +16,14 @@ final class EmojiKeyboardCloneItemLayer: SimpleLayer {
 }
 
 public final class EmojiKeyboardItemLayer: MultiAnimationRenderTarget {
+    // Unicode glyphs are drawn black (theme-independent), so one rasterization serves every layer.
+    private static let staticEmojiImageCache: NSCache<NSString, CGImage> = {
+        let cache = NSCache<NSString, CGImage>()
+        cache.countLimit = 256
+        cache.totalCostLimit = 8 * 1024 * 1024
+        return cache
+    }()
+    
     public struct Key: Hashable {
         var groupId: AnyHashable
         var itemId: EmojiPagerContentComponent.ItemContent.Id
@@ -275,7 +283,13 @@ public final class EmojiKeyboardItemLayer: MultiAnimationRenderTarget {
                 underlyingContentLayer.addSublayer(starsLayer)
             }
         case let .staticEmoji(staticEmoji):
-            let image = generateImage(pointSize, opaque: false, scale: min(UIScreenScale, 3.0), rotatedContext: { size, context in
+            let imageScale = min(UIScreenScale, 3.0)
+            let cacheKey = "\(staticEmoji)|\(pointSize.width)x\(pointSize.height)@\(imageScale)" as NSString
+            if let cachedImage = EmojiKeyboardItemLayer.staticEmojiImageCache.object(forKey: cacheKey) {
+                self.contents = cachedImage
+                break
+            }
+            let image = generateImage(pointSize, opaque: false, scale: imageScale, rotatedContext: { size, context in
                 context.clear(CGRect(origin: CGPoint(), size: size))
                 
                 let preScaleFactor: CGFloat = 1.0
@@ -290,6 +304,9 @@ public final class EmojiKeyboardItemLayer: MultiAnimationRenderTarget {
                 string.draw(at: CGPoint(x: floorToScreenPixels((scaledSize.width - boundingRect.width) / 2.0 + boundingRect.minX), y: floorToScreenPixels((scaledSize.height - boundingRect.height) / 2.0 + boundingRect.minY)))
                 UIGraphicsPopContext()
             })
+            if let cgImage = image?.cgImage {
+                EmojiKeyboardItemLayer.staticEmojiImageCache.setObject(cgImage, forKey: cacheKey, cost: cgImage.bytesPerRow * cgImage.height)
+            }
             self.contents = image?.cgImage
         case let .icon(icon):
             let image = generateImage(pointSize, opaque: false, scale: min(UIScreenScale, 3.0), rotatedContext: { size, context in

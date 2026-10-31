@@ -2113,7 +2113,7 @@ public class ChatListControllerImpl: TelegramBaseController, ChatListController 
         self.displayNodeDidLoad()
         
         if case .chatList = self.location {
-            let automaticDownloadNetworkType = context.account.networkType
+            let automaticDownloadNetworkType = context.account.automaticDownloadNetworkType
             |> map { type -> MediaAutoDownloadNetworkType in
                 switch type {
                     case .none, .wifi:
@@ -4036,15 +4036,19 @@ public class ChatListControllerImpl: TelegramBaseController, ChatListController 
         var notifiedFirstUpdate = false
         self.filterDisposable.set((combineLatest(queue: .mainQueue(),
             filterItems,
-            self.context.account.postbox.peerView(id: self.context.account.peerId),
+            // Only isPremium is read; the own peer view also fires on presence and cached-data changes.
+            self.context.account.postbox.peerView(id: self.context.account.peerId)
+            |> map { peerView -> Bool? in
+                return peerView.peers[peerView.peerId]?.isPremium
+            }
+            |> distinctUntilChanged,
             self.context.engine.data.get(TelegramEngine.EngineData.Item.Configuration.UserLimits(isPremium: false))
         )
-        |> deliverOnMainQueue).startStrict(next: { [weak self] countAndFilterItems, peerView, limits in
+        |> deliverOnMainQueue).startStrict(next: { [weak self] countAndFilterItems, isPremium, limits in
             guard let strongSelf = self else {
                 return
             }
-            
-            let isPremium = peerView.peers[peerView.peerId]?.isPremium
+
             strongSelf.isPremium = isPremium ?? false
             
             let (_, items) = countAndFilterItems

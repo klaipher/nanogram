@@ -312,5 +312,17 @@ public func chatListFilterItems(context: AccountContext) -> Signal<(Int, [(ChatL
             
             return (totalBadge, result)
         }
+        // The unread views fire on every message-count change; subscribers relayout on each emission.
+        |> distinctUntilChanged(isEqual: { (lhs: (Int, [(ChatListFilter, Int, Bool)]), rhs: (Int, [(ChatListFilter, Int, Bool)])) -> Bool in
+            if lhs.0 != rhs.0 || lhs.1.count != rhs.1.count {
+                return false
+            }
+            for i in 0 ..< lhs.1.count {
+                if lhs.1[i].0 != rhs.1[i].0 || lhs.1[i].1 != rhs.1[i].1 || lhs.1[i].2 != rhs.1[i].2 {
+                    return false
+                }
+            }
+            return true
+        })
     }
 }

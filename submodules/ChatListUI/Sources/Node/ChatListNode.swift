@@ -2913,6 +2913,10 @@ public final class ChatListNode: ListViewImpl {
                 }
             }
         }
+        // Unchanged activities (e.g. typing in a thread or a group call) need no main-thread hop.
+        |> distinctUntilChanged(isEqual: { (lhs: ChatListNodePeerInputActivities?, rhs: ChatListNodePeerInputActivities?) -> Bool in
+            return lhs === rhs
+        })
         |> deliverOnMainQueue).startStrict(next: { [weak self] activities in
             if let strongSelf = self {
                 strongSelf.updateState { state in

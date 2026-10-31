@@ -2,7 +2,6 @@
 
 #import <MtProtoKit/MTLogging.h>
 #import <MtProtoKit/MTQueue.h>
-#import <MtProtoKit/MTTimer.h>
 
 #import <sys/socket.h>
 #import <netinet/in.h>
@@ -39,12 +38,16 @@ static void MTNetworkAvailabilityContextRelease(const void *info)
 @interface MTNetworkAvailability ()
 {
     SCNetworkReachabilityRef _reachability;
-    MTTimer *_timer;
     
     NSString *_lastReachabilityState;
 }
 
 @end
+
+// One 5 s poll for all instances (one per transport) instead of a timer each.
+// Accessed on networkAvailabilityQueue only.
+static NSHashTable<MTNetworkAvailability *> *MTNetworkAvailabilityPollingInstances = nil;
+static dispatch_source_t MTNetworkAvailabilityPollTimer = nil;
 
 @implementation MTNetworkAvailability
 
@@ -72,15 +75,7 @@ static void MTNetworkAvailabilityContextRelease(const void *info)
                  [self updateReachability:kSCNetworkReachabilityFlagsReachable notify:false];
                  [self updateFlags:true];
                  
-                 __weak MTNetworkAvailability *weakSelf = self;
-                 _timer = [[MTTimer alloc] initWithTimeout:5.0 repeat:true completion:^
-                           {
-                               __strong MTNetworkAvailability *strongSelf = weakSelf;
-                               if (strongSelf != nil) {
-                                   [strongSelf updateFlags:true];
-                               }
-                           } queue:[MTNetworkAvailability networkAvailabilityQueue].nativeQueue];
-                 [_timer start];
+                 [MTNetworkAvailability addPollingInstance:self];
                  
                  if (SCNetworkReachabilitySetCallback(_reachability, &MTAvailabilityCallback, &context))
                      SCNetworkReachabilitySetDispatchQueue(_reachability, [MTNetworkAvailability networkAvailabilityQueue].nativeQueue);
@@ -95,12 +90,7 @@ static void MTNetworkAvailabilityContextRelease(const void *info)
     SCNetworkReachabilityRef reachability = _reachability;
     _reachability = nil;
     
-    MTTimer *timer = _timer;
-    _timer = nil;
-    
     [[MTNetworkAvailability networkAvailabilityQueue] dispatchOnQueue:^{
-        [timer invalidate];
-        
         SCNetworkReachabilitySetCallback(reachability, NULL, NULL);
         SCNetworkReachabilitySetDispatchQueue(reachability, NULL);
         CFRelease(reachability);
@@ -116,6 +106,32 @@ static void MTNetworkAvailabilityContextRelease(const void *info)
                       queue = [[MTQueue alloc] initWithName:"org.mtproto.MTNetwotkAvailability"];
                   });
     return queue;
+}
+
++ (void)addPollingInstance:(MTNetworkAvailability *)instance
+{
+    if (MTNetworkAvailabilityPollingInstances == nil) {
+        MTNetworkAvailabilityPollingInstances = [NSHashTable weakObjectsHashTable];
+    }
+    [MTNetworkAvailabilityPollingInstances addObject:instance];
+    
+    if (MTNetworkAvailabilityPollTimer == nil) {
+        dispatch_source_t timer = dispatch_source_create(DISPATCH_SOURCE_TYPE_TIMER, 0, 0, [MTNetworkAvailability networkAvailabilityQueue].nativeQueue);
+        dispatch_source_set_timer(timer, dispatch_time(DISPATCH_TIME_NOW, (int64_t)(5.0 * NSEC_PER_SEC)), (uint64_t)(5.0 * NSEC_PER_SEC), (uint64_t)(0.5 * NSEC_PER_SEC));
+        dispatch_source_set_event_handler(timer, ^{
+            NSArray<MTNetworkAvailability *> *instances = MTNetworkAvailabilityPollingInstances.allObjects;
+            if (instances.count == 0) {
+                dispatch_source_cancel(MTNetworkAvailabilityPollTimer);
+                MTNetworkAvailabilityPollTimer = nil;
+                return;
+            }
+            for (MTNetworkAvailability *availability in instances) {
+                [availability updateFlags:true];
+            }
+        });
+        MTNetworkAvailabilityPollTimer = timer;
+        dispatch_resume(timer);
+    }
 }
 
 - (void)updateFlags:(bool)notify

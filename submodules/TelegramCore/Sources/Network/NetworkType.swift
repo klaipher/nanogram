@@ -161,3 +161,17 @@ func currentNetworkType() -> Signal<NetworkType, NoError> {
         return disposable
     }
 }
+
+// Low Data Mode Wi-Fi is reported as cellular. Only for automatic downloads.
+func automaticDownloadNetworkTypeSignal(_ networkType: Signal<NetworkType, NoError>) -> Signal<NetworkType, NoError> {
+    return combineLatest(networkType, Reachability.isConstrained)
+    |> map { networkType, isConstrained -> NetworkType in
+        #if os(iOS)
+        if isConstrained, case .wifi = networkType {
+            return .cellular(.unknown)
+        }
+        #endif
+        return networkType
+    }
+    |> distinctUntilChanged
+}

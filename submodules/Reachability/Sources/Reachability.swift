@@ -90,6 +90,7 @@ private final class PathMonitor {
     private let monitor: NWPathMonitor
     
     let networkType = Promise<Reachability.NetworkType>()
+    let isConstrained = Promise<Bool>()
     
     init(queue: Queue) {
         self.queue = queue
@@ -112,6 +113,7 @@ private final class PathMonitor {
                 }
                 
                 strongSelf.networkType.set(.single(networkType))
+                strongSelf.isConstrained.set(.single(pathIsConstrained(path)))
             }
         }
         
@@ -130,6 +132,17 @@ private final class PathMonitor {
         }
         
         self.networkType.set(.single(networkType))
+        self.isConstrained.set(.single(pathIsConstrained(path)))
+    }
+}
+
+// Low Data Mode.
+@available(iOSApplicationExtension 12.0, iOS 12.0, macOS 14.0, *)
+private func pathIsConstrained(_ path: NWPath) -> Bool {
+    if #available(iOSApplicationExtension 13.0, iOS 13.0, *) {
+        return path.isConstrained
+    } else {
+        return false
     }
 }
 
@@ -175,6 +188,26 @@ public enum Reachability {
                 return disposable
             }
             |> distinctUntilChanged
+        }
+    }
+    
+    // True while the current path is in Low Data Mode.
+    public static var isConstrained: Signal<Bool, NoError> {
+        if #available(iOSApplicationExtension 12.0, iOS 12.0, macOS 14.0, *) {
+            return Signal { subscriber in
+                let disposable = MetaDisposable()
+
+                SharedPathMonitor.impl.with { impl in
+                    disposable.set(impl.isConstrained.get().start(next: { value in
+                        subscriber.putNext(value)
+                    }))
+                }
+
+                return disposable
+            }
+            |> distinctUntilChanged
+        } else {
+            return .single(false)
         }
     }
 }

@@ -86,29 +86,19 @@ final class ChatMessageVisibleThrottledProcessingManager {
     
     private var currentIds = Set<EngineMessageAndThreadId>()
     
+    private var isPaused = false
+    
     var process: ((Set<EngineMessageAndThreadId>) -> Void)?
     
-    private let timer: SwiftSignalKit.Timer
+    // Runs only while there are ids to refresh and the chat is shown, instead of waking every interval for the node's lifetime.
+    private var timer: SwiftSignalKit.Timer?
     
     init(interval: Double = 5.0) {
         self.interval = interval
-        
-        var completionImpl: (() -> Void)?
-        let timer = SwiftSignalKit.Timer(timeout: self.interval, repeat: true, completion: {
-            completionImpl?()
-        }, queue: self.queue)
-        self.timer = timer
-        timer.start()
-                
-        completionImpl = { [weak self] in
-            if let strongSelf = self, !strongSelf.currentIds.isEmpty {
-                strongSelf.process?(strongSelf.currentIds)
-            }
-        }
     }
     
     deinit {
-        self.timer.invalidate()
+        self.timer?.invalidate()
     }
     
     func setProcess(process: @escaping (Set<EngineMessageAndThreadId>) -> Void) {
@@ -124,7 +114,36 @@ final class ChatMessageVisibleThrottledProcessingManager {
                 if !self.currentIds.isEmpty {
                     self.process?(self.currentIds)
                 }
+                self.updateTimer()
             }
+        }
+    }
+    
+    func setPaused(_ isPaused: Bool) {
+        self.queue.async {
+            if self.isPaused != isPaused {
+                self.isPaused = isPaused
+                if !isPaused && !self.currentIds.isEmpty {
+                    self.process?(self.currentIds)
+                }
+                self.updateTimer()
+            }
+        }
+    }
+    
+    private func updateTimer() {
+        if self.currentIds.isEmpty || self.isPaused {
+            self.timer?.invalidate()
+            self.timer = nil
+        } else if self.timer == nil {
+            let timer = SwiftSignalKit.Timer(timeout: self.interval, repeat: true, completion: { [weak self] in
+                guard let self, !self.currentIds.isEmpty else {
+                    return
+                }
+                self.process?(self.currentIds)
+            }, queue: self.queue)
+            self.timer = timer
+            timer.start()
         }
     }
 }

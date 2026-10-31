@@ -4941,7 +4941,13 @@ func replayFinalState(
                 transaction.setState(currentState.changedState(updatedInnerState))
                 Logger.shared.log("State", "apply state \(updatedInnerState)")
             case let .UpdateChannelState(peerId, pts):
-                var state = (transaction.getPeerChatState(peerId) as? ChannelState) ?? ChannelState(pts: pts, invalidatedPts: nil, synchronizedUntilMessageId: nil)
+                let currentState = transaction.getPeerChatState(peerId) as? ChannelState
+                // An empty channel poll repeats the stored pts; writing it anyway makes the transaction
+                // non-empty and runs every live view.
+                if let currentState, currentState.pts == pts {
+                    break
+                }
+                var state = currentState ?? ChannelState(pts: pts, invalidatedPts: nil, synchronizedUntilMessageId: nil)
                 state = state.withUpdatedPts(pts)
                 transaction.setPeerChatState(peerId, state: state)
                 Logger.shared.log("State", "apply channel state \(peerId): \(state)")

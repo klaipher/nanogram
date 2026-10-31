@@ -12,10 +12,19 @@ public func activeAccountsAndPeers(context: AccountContext, includePrimary: Bool
     return context.sharedContext.activeAccountContexts
     |> mapToSignal { primary, activeAccounts, _ -> Signal<((AccountContext, EnginePeer)?, [(AccountContext, EnginePeer, Int32)]), NoError> in
         var accounts: [Signal<(AccountContext, EnginePeer, Int32)?, NoError>] = []
-        func accountWithPeer(_ context: AccountContext) -> Signal<(AccountContext, EnginePeer, Int32)?, NoError> {
-            return combineLatest(context.account.postbox.peerView(id: context.account.peerId), renderedTotalUnreadCount(accountManager: sharedContext.accountManager, engine: context.engine))
+        func accountWithPeer(_ context: AccountContext, includeUnreadCount: Bool) -> Signal<(AccountContext, EnginePeer, Int32)?, NoError> {
+            let unreadCount: Signal<Int32, NoError>
+            if includeUnreadCount {
+                unreadCount = renderedTotalUnreadCount(accountManager: sharedContext.accountManager, engine: context.engine)
+                |> map { $0.0 }
+            } else {
+                // The primary's count is dropped from the result below; observing it only re-emitted
+                // an unchanged value on every badge change.
+                unreadCount = .single(0)
+            }
+            return combineLatest(context.account.postbox.peerView(id: context.account.peerId), unreadCount)
             |> map { view, totalUnreadCount -> (EnginePeer?, Int32) in
-                return (view.peers[view.peerId].flatMap(EnginePeer.init), totalUnreadCount.0)
+                return (view.peers[view.peerId].flatMap(EnginePeer.init), totalUnreadCount)
             }
             |> distinctUntilChanged { lhs, rhs in
                 if lhs.0 != rhs.0 {
@@ -35,7 +44,7 @@ public func activeAccountsAndPeers(context: AccountContext, includePrimary: Bool
             }
         }
         for (_, context, _) in activeAccounts {
-            accounts.append(accountWithPeer(context))
+            accounts.append(accountWithPeer(context, includeUnreadCount: includePrimary || context.account.id != primary?.account.id))
         }
         
         return combineLatest(accounts)

@@ -1445,8 +1445,15 @@ static void copyKeychainDictionaryKey(NSString * _Nonnull group, NSString * _Non
 
 - (void)reportTransportSchemeSuccessForDatacenterId:(NSInteger)datacenterId transportScheme:(MTTransportScheme *)transportScheme {
     [[MTContext contextQueue] dispatchOnQueue:^{
-        [self _withTransportSchemeStatsForDatacenterId:datacenterId transportScheme:transportScheme process:^(MTTransportSchemeStats *current) {
-            return [current withUpdatedLastResponseTimestamp:(int32_t)CFAbsoluteTimeGetCurrent()];
+        [self _withTransportSchemeStatsForDatacenterId:datacenterId transportScheme:transportScheme process:^MTTransportSchemeStats *(MTTransportSchemeStats *current) {
+            int32_t timestamp = (int32_t)CFAbsoluteTimeGetCurrent();
+            // The only reader uses a 1-hour window; refreshing a recent value on every packet
+            // rewrote the stats to the database every 5 s.
+            int32_t age = timestamp - current.lastResponseTimestamp;
+            if (current.lastResponseTimestamp != 0 && age >= 0 && age < 10 * 60) {
+                return current;
+            }
+            return [current withUpdatedLastResponseTimestamp:timestamp];
         }];
     }];
 }

@@ -553,6 +553,10 @@ struct AccountMutableState {
                         self.addOperation(.UpdateCachedPeerData(chat.peerId, { current in
                             var previous: CachedChannelData
                             if let current = current as? CachedChannelData {
+                                // Nil skips the write and the cached-data view updates when the count is unchanged.
+                                if current.participantsSummary.memberCount == participantsCount {
+                                    return nil
+                                }
                                 previous = current
                             } else {
                                 previous = CachedChannelData()

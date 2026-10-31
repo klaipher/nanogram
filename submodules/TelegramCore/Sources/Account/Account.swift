@@ -1290,6 +1290,11 @@ public class Account {
     public var networkType: Signal<NetworkType, NoError> {
         return self.networkTypeValue.get()
     }
+    private let automaticDownloadNetworkTypeValue = Promise<NetworkType>()
+    // `networkType` with Low Data Mode Wi-Fi reported as cellular. Only for automatic downloads and prefetch.
+    public var automaticDownloadNetworkType: Signal<NetworkType, NoError> {
+        return self.automaticDownloadNetworkTypeValue.get()
+    }
     private let atomicCurrentNetworkType = Atomic<NetworkType>(value: .none)
     public var immediateNetworkType: NetworkType {
         return self.atomicCurrentNetworkType.with { $0 }
@@ -1447,6 +1452,7 @@ public class Account {
         |> distinctUntilChanged)
         
         self.networkTypeValue.set(currentNetworkType())
+        self.automaticDownloadNetworkTypeValue.set(automaticDownloadNetworkTypeSignal(self.networkTypeValue.get()))
         let atomicCurrentNetworkType = self.atomicCurrentNetworkType
         self.networkTypeDisposable = self.networkTypeValue.get().start(next: { value in
             let _ = atomicCurrentNetworkType.swap(value)
