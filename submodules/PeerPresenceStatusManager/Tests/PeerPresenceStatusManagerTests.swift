@@ -120,6 +120,23 @@ final class PeerPresenceStatusManagerTests: XCTestCase {
 
     // The device trace showed ~0.9 s of back-to-back relayouts when "online until" expired:
     // the timer was re-armed with a zero timeout for the rest of that second.
+    // Build 202611011645 crashed at launch: the Telegram service account (777000) is "online" until
+    // Int32.max, and `until + 1` overflowed Int32 while laying out its chat list row.
+    func testExtremeTimestampsDoNotOverflow() {
+        let now = 1_000_000.25
+        let forever = EnginePeer.Presence(status: .present(until: Int32.max), lastActivity: 0)
+        for mode in [PeerPresenceStatusRefreshMode.statusText, .onlineState] {
+            XCTAssertEqual(peerPresenceStatusRefreshTimeout(forever, relativeTo: now, isOnline: true, mode: mode), Double.infinity)
+            XCTAssertEqual(peerPresenceStatusRefreshTimeout(forever, relativeTo: now, isOnline: nil, mode: mode), Double.infinity)
+        }
+        let longAgo = EnginePeer.Presence(status: .present(until: Int32.min), lastActivity: 0)
+        XCTAssertEqual(peerPresenceStatusRefreshTimeout(longAgo, relativeTo: now, isOnline: false, mode: .statusText), Double.infinity)
+        let recently = EnginePeer.Presence(status: .recently(isHidden: false), lastActivity: Int32.max)
+        XCTAssertGreaterThan(peerPresenceStatusRefreshTimeout(recently, relativeTo: now, isOnline: false, mode: .statusText), 0.0)
+        let manager = PeerPresenceStatusManager(update: {})
+        manager.reset(presence: forever, isOnline: true)
+    }
+
     func testOnlineExpiryRefreshesOnceWithoutSpinning() {
         for fraction in [0.0, 0.01, 0.3, 0.5, 0.97, 0.999] {
             let start = 1_000_000.0 + fraction

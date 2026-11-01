@@ -16,12 +16,19 @@ public func peerPresenceStatusRefreshTimeout(_ presence: EnginePeer.Presence, re
     // Presence is compared against whole seconds, so a change at second `s` is visible from `s` on.
     // Aim at that boundary from the precise time: aiming at `s` from a truncated clock fired inside
     // the same second and re-armed with zero timeouts until it passed.
-    func until(_ second: Int32) -> Double {
+    // 64-bit math: presence timestamps come from the server and can be Int32.max ("online with no end",
+    // e.g. the Telegram service account), where adding to them in Int32 traps.
+    func until(_ second: Int64) -> Double {
         return max(0.05, Double(second) - timestamp)
     }
-    let now = Int32(timestamp)
+    let now = Int64(timestamp)
     switch presence.status {
     case let .present(statusTimestamp):
+        let statusTimestamp = Int64(statusTimestamp)
+        if statusTimestamp >= Int64(Int32.max) {
+            // Online with no end: nothing will change.
+            return Double.infinity
+        }
         if statusTimestamp >= now {
             // Online through `statusTimestamp`, offline from the next second.
             return until(statusTimestamp + 1)
@@ -43,7 +50,7 @@ public func peerPresenceStatusRefreshTimeout(_ presence: EnginePeer.Presence, re
             }
         }
     case .recently:
-        let activeUntil = presence.lastActivity + 30
+        let activeUntil = Int64(presence.lastActivity) + 30
         if activeUntil >= now {
             return until(activeUntil + 1)
         } else {
