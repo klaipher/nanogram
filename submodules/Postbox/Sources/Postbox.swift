@@ -1460,7 +1460,7 @@ func debugRestoreState(basePath: String, name: String) {
     }
 }
 
-public func openPostbox(basePath: String, seedConfiguration: SeedConfiguration, encryptionParameters: ValueBoxEncryptionParameters, timestampForAbsoluteTimeBasedOperations: Int32, isMainProcess: Bool, isTemporary: Bool, isReadOnly: Bool, useCopy: Bool, useCaches: Bool, removeDatabaseOnError: Bool) -> Signal<PostboxResult, NoError> {
+public func openPostbox(basePath: String, seedConfiguration: SeedConfiguration, encryptionParameters: ValueBoxEncryptionParameters, timestampForAbsoluteTimeBasedOperations: Int32, isMainProcess: Bool, isTemporary: Bool, isReadOnly: Bool, useCopy: Bool, useCaches: Bool, removeDatabaseOnError: Bool, cacheSizePages: Int? = nil) -> Signal<PostboxResult, NoError> {
     let queue = Postbox.sharedQueue
     return Signal { subscriber in
         queue.async {
@@ -1504,7 +1504,7 @@ public func openPostbox(basePath: String, seedConfiguration: SeedConfiguration, 
 
             postboxLog("openPostbox, initialize SqliteValueBox")
             
-            guard var valueBox = SqliteValueBox(basePath: dbBasePath, queue: queue, isTemporary: isTemporary, isReadOnly: isReadOnly, useCaches: useCaches, removeDatabaseOnError: removeDatabaseOnError, encryptionParameters: encryptionParameters, upgradeProgress: { progress in
+            guard var valueBox = SqliteValueBox(basePath: dbBasePath, queue: queue, isTemporary: isTemporary, isReadOnly: isReadOnly, useCaches: useCaches, removeDatabaseOnError: removeDatabaseOnError, encryptionParameters: encryptionParameters, cacheSizePages: cacheSizePages, upgradeProgress: { progress in
                 postboxLog("openPostbox, SqliteValueBox upgrading progress \(progress)")
                 subscriber.putNext(.upgrading(progress))
             }) else {
@@ -1532,7 +1532,7 @@ public func openPostbox(basePath: String, seedConfiguration: SeedConfiguration, 
                                 postboxLog("Version \(userVersion) is newer than supported")
                                 assertionFailure("Version \(userVersion) is newer than supported")
                                 valueBox.drop()
-                                guard let updatedValueBox = SqliteValueBox(basePath: dbBasePath, queue: queue, isTemporary: isTemporary, isReadOnly: isReadOnly, useCaches: useCaches, removeDatabaseOnError: removeDatabaseOnError, encryptionParameters: encryptionParameters, upgradeProgress: { progress in
+                                guard let updatedValueBox = SqliteValueBox(basePath: dbBasePath, queue: queue, isTemporary: isTemporary, isReadOnly: isReadOnly, useCaches: useCaches, removeDatabaseOnError: removeDatabaseOnError, encryptionParameters: encryptionParameters, cacheSizePages: cacheSizePages, upgradeProgress: { progress in
                                     subscriber.putNext(.upgrading(progress))
                                 }) else {
                                     subscriber.putNext(.error)
@@ -1556,7 +1556,7 @@ public func openPostbox(basePath: String, seedConfiguration: SeedConfiguration, 
                                                 valueBox.internalClose()
                                                 let _ = try? FileManager.default.removeItem(atPath: dbBasePath)
                                                 let _ = try? FileManager.default.moveItem(atPath: updatedPath, toPath: dbBasePath)
-                                                guard let updatedValueBox = SqliteValueBox(basePath: dbBasePath, queue: queue, isTemporary: isTemporary, isReadOnly: isReadOnly, useCaches: useCaches, removeDatabaseOnError: removeDatabaseOnError, encryptionParameters: encryptionParameters, upgradeProgress: { progress in
+                                                guard let updatedValueBox = SqliteValueBox(basePath: dbBasePath, queue: queue, isTemporary: isTemporary, isReadOnly: isReadOnly, useCaches: useCaches, removeDatabaseOnError: removeDatabaseOnError, encryptionParameters: encryptionParameters, cacheSizePages: cacheSizePages, upgradeProgress: { progress in
                                                     subscriber.putNext(.upgrading(progress))
                                                 }) else {
                                                     subscriber.putNext(.error)
@@ -1570,7 +1570,7 @@ public func openPostbox(basePath: String, seedConfiguration: SeedConfiguration, 
                                     assertionFailure("Couldn't find any upgrade for \(userVersion)")
                                     postboxLog("Couldn't find any upgrade for \(userVersion)")
                                     valueBox.drop()
-                                    guard let updatedValueBox = SqliteValueBox(basePath: dbBasePath, queue: queue, isTemporary: isTemporary, isReadOnly: isReadOnly, useCaches: useCaches, removeDatabaseOnError: removeDatabaseOnError, encryptionParameters: encryptionParameters, upgradeProgress: { progress in
+                                    guard let updatedValueBox = SqliteValueBox(basePath: dbBasePath, queue: queue, isTemporary: isTemporary, isReadOnly: isReadOnly, useCaches: useCaches, removeDatabaseOnError: removeDatabaseOnError, encryptionParameters: encryptionParameters, cacheSizePages: cacheSizePages, upgradeProgress: { progress in
                                         subscriber.putNext(.upgrading(progress))
                                     }) else {
                                         subscriber.putNext(.error)
@@ -3005,6 +3005,11 @@ final class PostboxImpl {
         for peerId in peerIds {
             let currentData = self.cachedPeerDataTable.get(peerId)
             if let updatedData = update(peerId, currentData) {
+                // Profile and chat opens re-fetch the same data. Storing it again would be
+                // a write and a replay of every view that shows it, for no change.
+                if let currentData, self.cachedPeerDataTable.encodesIdentically(currentData, updatedData) {
+                    continue
+                }
                 self.cachedPeerDataTable.set(id: peerId, data: updatedData)
                 self.currentUpdatedCachedPeerData[peerId] = (currentData, updatedData)
             }

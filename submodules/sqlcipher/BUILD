@@ -34,6 +34,11 @@ objc_library(
         "-DSQLITE_OMIT_DEPRECATED",
         "-DNDEBUG=1",
         "-DSQLITE_MAX_MMAP_SIZE=0",
+        # Query planner stability on every connection: a `LIMIT ?` statement is otherwise
+        # re-prepared on each call (Postbox clears bindings). Postbox uses no STAT4, LIKE/GLOB or
+        # partial indexes, the only planning that reads bound values. Same as
+        # SQLITE_DBCONFIG_ENABLE_QPSG, which Swift cannot pass (sqlite3_db_config is variadic).
+        "-DSQLITE_ENABLE_QPSG",
         "-Wno-all",
         "-Wno-#warnings",
         # sqlite3.c defines MIN/MAX itself; with modules on, Foundation pulls in

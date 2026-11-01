@@ -218,8 +218,8 @@ believing it is live.
 ### Upgrading the vendored SQLCipher
 
 `submodules/sqlcipher` is the SQLCipher **amalgamation** (one `Sources/sqlite3.c` plus the three
-public headers), not the source tree. Upgraded 4.4.2/SQLite 3.33.0 -> 4.19.0/SQLite 3.53.4 on
-2026-09-22, which picked up the upstream WAL-reset corruption fix (SQLite 3.51.3) that matters
+public headers), not the source tree. Now SQLCipher 4.20.0/SQLite 3.54.1 (from 4.4.2/SQLite
+3.33.0, first upgraded on 2026-09-22), which picked up the upstream WAL-reset corruption fix (SQLite 3.51.3) that matters
 because the app and the notification extension write and checkpoint the same WAL database.
 
 A SQLCipher release archive does not ship the amalgamation; generate it from the tree:
@@ -275,6 +275,10 @@ was the mechanism behind repeated "Corrupted DB at step, dropping": the relaunch
 extension's still-mapped `-shm` with a different WAL file. `.tempkey` creation in `BuildConfig.m`
 is serialized across processes with `flock` on `.tempkey.lock` for the same reason (two generators
 would each key a database with material only one of them persisted).
+One exception to delete-and-crash: `SQLITE_CORRUPT_VTAB` (extended code only) from an FTS5 statement makes
+the owner rebuild that full-text index once per connection instead of deleting the database; plain
+`SQLITE_CORRUPT` keeps the old policy (`SqliteValueBoxConnectionTests`). `releaseMemory()` never
+checkpoints: it runs on entering the background, where a checkpoint's locks and syncs risk 0xdead10cc.
 
 ## Code Style Guidelines
 - **New Swift modules** use `strict_swift_library` / `strict_swift_test` from `//build-system/bazel-utils:swift_strict.bzl` (Swift 6 mode, every Swift 7 upcoming feature, strict memory safety, warnings as errors); `tools/dev/tg new-module <dir>` scaffolds one. Existing modules stay `swift_library` (Swift 5 mode) unless they compile cleanly in Swift 6 mode, in which case they use `swift6_library`. See `docs/local-development.md`, "Swift strictness".
