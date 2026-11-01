@@ -868,10 +868,13 @@ func peerInfoScreenSettingsData(context: AccountContext, peerId: EnginePeer.Id, 
     
     let notificationsAuthorizationStatus = Promise<AccessType>(.allowed)
     if #available(iOSApplicationExtension 10.0, iOS 10.0, *) {
+        // The status is read again on every switch between foreground and background; an unchanged one
+        // rebuilt the whole Settings screen each time (also while the app was going to the background).
         notificationsAuthorizationStatus.set(
             .single(.allowed)
                 |> then(DeviceAccess.authorizationStatus(applicationInForeground: context.sharedContext.applicationBindings.applicationInForeground, subject: .notifications)
             )
+            |> distinctUntilChanged
         )
     }
     

@@ -1,4 +1,5 @@
 import Foundation
+import UIKit
 import CoreLocation
 import SwiftSignalKit
 import StoreKit
@@ -252,6 +253,9 @@ public final class InAppPurchaseManager: NSObject {
     private var productRequest: SKProductsRequest?
     private var productRequestTimeoutTimer: SwiftSignalKit.Timer?
     private var productRequestRetryTimer: SwiftSignalKit.Timer?
+    // Accessed on the main queue only.
+    private var productRequestSchedule: InAppPurchaseProductRequestSchedule?
+    private var applicationStateObservers: [NSObjectProtocol] = []
     
     private let stateQueue = Queue()
     private var paymentContexts: [String: PaymentTransactionContext] = [:]
@@ -268,10 +272,22 @@ public final class InAppPurchaseManager: NSObject {
         super.init()
         
         SKPaymentQueue.default().add(self)
-        self.requestProducts()
+        
+        // Both are posted on the main queue.
+        self.applicationStateObservers.append(NotificationCenter.default.addObserver(forName: UIApplication.didEnterBackgroundNotification, object: nil, queue: nil, using: { [weak self] _ in
+            self?.applicationStateChanged(isInBackground: true)
+        }))
+        self.applicationStateObservers.append(NotificationCenter.default.addObserver(forName: UIApplication.willEnterForegroundNotification, object: nil, queue: nil, using: { [weak self] _ in
+            self?.applicationStateChanged(isInBackground: false)
+        }))
+        
+        self.requestProducts(force: false)
     }
     
     deinit {
+        for observer in self.applicationStateObservers {
+            NotificationCenter.default.removeObserver(observer)
+        }
         self.productRequestTimeoutTimer?.invalidate()
         self.productRequestRetryTimer?.invalidate()
         self.productRequest?.cancel()
@@ -282,50 +298,106 @@ public final class InAppPurchaseManager: NSObject {
         return SKPaymentQueue.canMakePayments()
     }
     
-    private func requestProducts() {
-        Queue.mainQueue().async { [weak self] in
-            guard let self, self.products.isEmpty, self.productRequest == nil, self.productRequestRetryTimer == nil else {
-                return
+    private func withProductRequestSchedule(_ f: (inout InAppPurchaseProductRequestSchedule) -> [InAppPurchaseProductRequestSchedule.Action]) {
+        assert(Queue.mainQueue().isCurrent())
+        var schedule: InAppPurchaseProductRequestSchedule
+        if let current = self.productRequestSchedule {
+            schedule = current
+        } else {
+            var isInBackground = false
+            // An extension has no UIApplication.shared.
+            if !Bundle.main.bundlePath.hasSuffix(".appex") {
+                isInBackground = UIApplication.shared.applicationState == .background
             }
-            Logger.shared.log("InAppPurchaseManager", "Requesting products")
-            let productRequest = SKProductsRequest(productIdentifiers: Set(productIdentifiers))
-            productRequest.delegate = self
-            self.productRequest = productRequest
-
-            let timeoutTimer = SwiftSignalKit.Timer(timeout: 30.0, repeat: false, completion: { [weak self, weak productRequest] in
-                guard let self, let productRequest, self.productRequest === productRequest else {
-                    return
-                }
-                Logger.shared.log("InAppPurchaseManager", "Product request timed out")
-                self.productRequest = nil
-                self.productRequestTimeoutTimer = nil
-                productRequest.cancel()
-                self.scheduleProductRequestRetry()
-            }, queue: Queue.mainQueue())
-            self.productRequestTimeoutTimer = timeoutTimer
-            timeoutTimer.start()
-            productRequest.start()
+            schedule = InAppPurchaseProductRequestSchedule(isInBackground: isInBackground)
+        }
+        let actions = f(&schedule)
+        self.productRequestSchedule = schedule
+        for action in actions {
+            self.perform(action)
         }
     }
-
-    private func scheduleProductRequestRetry() {
-        guard self.products.isEmpty, self.productRequest == nil, self.productRequestRetryTimer == nil else {
-            return
-        }
-        Logger.shared.log("InAppPurchaseManager", "Retrying product request in 10 seconds")
-        let retryTimer = SwiftSignalKit.Timer(timeout: 10.0, repeat: false, completion: { [weak self] in
-            guard let self else {
+    
+    private func applicationStateChanged(isInBackground: Bool) {
+        Queue.mainQueue().async { [weak self] in
+            guard let self, self.productRequestSchedule != nil else {
                 return
             }
+            self.withProductRequestSchedule { schedule in
+                return isInBackground ? schedule.enteredBackground() : schedule.enteredForeground()
+            }
+        }
+    }
+    
+    private func perform(_ action: InAppPurchaseProductRequestSchedule.Action) {
+        switch action {
+        case .startRequest:
+            self.startProductRequest()
+        case .cancelRequest:
+            self.productRequestTimeoutTimer?.invalidate()
+            self.productRequestTimeoutTimer = nil
+            if let productRequest = self.productRequest {
+                self.productRequest = nil
+                productRequest.cancel()
+            }
+            Logger.shared.log("InAppPurchaseManager", "Product request cancelled in background")
+        case let .scheduleRetry(delay):
+            self.productRequestRetryTimer?.invalidate()
+            Logger.shared.log("InAppPurchaseManager", "Retrying product request in \(Int(delay)) seconds")
+            let retryTimer = SwiftSignalKit.Timer(timeout: delay, repeat: false, completion: { [weak self] in
+                guard let self else {
+                    return
+                }
+                self.productRequestRetryTimer = nil
+                self.withProductRequestSchedule { schedule in
+                    return schedule.retryFired()
+                }
+            }, queue: Queue.mainQueue())
+            self.productRequestRetryTimer = retryTimer
+            retryTimer.start()
+        case .cancelRetry:
+            self.productRequestRetryTimer?.invalidate()
             self.productRequestRetryTimer = nil
-            self.requestProducts()
+        }
+    }
+    
+    private func requestProducts(force: Bool) {
+        Queue.mainQueue().async { [weak self] in
+            guard let self, self.products.isEmpty else {
+                return
+            }
+            self.withProductRequestSchedule { schedule in
+                return schedule.requestNeeded(force: force)
+            }
+        }
+    }
+    
+    private func startProductRequest() {
+        Logger.shared.log("InAppPurchaseManager", "Requesting products")
+        let productRequest = SKProductsRequest(productIdentifiers: Set(productIdentifiers))
+        productRequest.delegate = self
+        self.productRequest = productRequest
+
+        self.productRequestTimeoutTimer?.invalidate()
+        let timeoutTimer = SwiftSignalKit.Timer(timeout: 30.0, repeat: false, completion: { [weak self, weak productRequest] in
+            guard let self, let productRequest, self.productRequest === productRequest else {
+                return
+            }
+            Logger.shared.log("InAppPurchaseManager", "Product request timed out")
+            self.productRequest = nil
+            self.productRequestTimeoutTimer = nil
+            productRequest.cancel()
+            self.withProductRequestSchedule { schedule in
+                return schedule.requestFinished(receivedProducts: false)
+            }
         }, queue: Queue.mainQueue())
-        self.productRequestRetryTimer = retryTimer
-        retryTimer.start()
+        self.productRequestTimeoutTimer = timeoutTimer
+        timeoutTimer.start()
+        productRequest.start()
     }
     
     public var availableProducts: Signal<[Product], NoError> {
-        self.requestProducts()
+        self.requestProducts(force: true)
         return self.productsPromise.get()
     }
     
@@ -595,12 +667,12 @@ extension InAppPurchaseManager: SKProductsRequestDelegate {
             let products = response.products.map { Product(skProduct: $0) }
 
             Logger.shared.log("InAppPurchaseManager", "Received products \(products.map({ $0.skProduct.productIdentifier }).joined(separator: ", "))")
+            self.withProductRequestSchedule { schedule in
+                return schedule.requestFinished(receivedProducts: !products.isEmpty)
+            }
             guard !products.isEmpty else {
-                self.scheduleProductRequestRetry()
                 return
             }
-            self.productRequestRetryTimer?.invalidate()
-            self.productRequestRetryTimer = nil
             self.products = products
             self.productsPromise.set(.single(products))
         }
@@ -615,7 +687,9 @@ extension InAppPurchaseManager: SKProductsRequestDelegate {
             self.productRequestTimeoutTimer?.invalidate()
             self.productRequestTimeoutTimer = nil
             Logger.shared.log("InAppPurchaseManager", "Product request failed: \(error.localizedDescription)")
-            self.scheduleProductRequestRetry()
+            self.withProductRequestSchedule { schedule in
+                return schedule.requestFinished(receivedProducts: false)
+            }
         }
     }
 }

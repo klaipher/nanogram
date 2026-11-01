@@ -6811,10 +6811,12 @@ public final class PeerInfoScreenImpl: ViewController, PeerInfoScreen, KeyShortc
             
             let notificationsAuthorizationStatus = Promise<AccessType>(.allowed)
             if #available(iOSApplicationExtension 10.0, iOS 10.0, *) {
+                // Read again on every foreground/background switch: an unchanged status re-set the tab item.
                 notificationsAuthorizationStatus.set(
                     .single(.allowed)
                     |> then(DeviceAccess.authorizationStatus(applicationInForeground: context.sharedContext.applicationBindings.applicationInForeground, subject: .notifications)
                     )
+                    |> distinctUntilChanged
                 )
             }
             
