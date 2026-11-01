@@ -95,6 +95,7 @@
 		C6A64A26FC7DC74BDEC91308 /* ChatHistoryLoader.swift in Sources */ = {isa = PBXBuildFile; fileRef = C2C84B842AD08D079BFF08A0 /* ChatHistoryLoader.swift */; };
 		C94BD040D985FC0090CDBF84 /* StickerPickerLoader.swift in Sources */ = {isa = PBXBuildFile; fileRef = BC230FDDDFAA063019744A0E /* StickerPickerLoader.swift */; };
 		CBA3FEDEEA413559F700B6E3 /* BubbleShape.swift in Sources */ = {isa = PBXBuildFile; fileRef = DD18F48DC98A3857B32BBC6F /* BubbleShape.swift */; };
+		CE7580CEB197603734C0CA2F /* TDLibStorage.swift in Sources */ = {isa = PBXBuildFile; fileRef = 7994AE7EE63412CA072968E2 /* TDLibStorage.swift */; };
 		D1082945B5785B08F820FB78 /* LoadingView.swift in Sources */ = {isa = PBXBuildFile; fileRef = 93535C2021AB2E7B17F593AA /* LoadingView.swift */; };
 		D1E96E63A3AE93646AD3F532 /* AudioBubbleView.swift in Sources */ = {isa = PBXBuildFile; fileRef = 9C3B71804A398A0100375E86 /* AudioBubbleView.swift */; };
 		D5515C5A9286E0372DBFB7F9 /* QRCodeGenerator in Frameworks */ = {isa = PBXBuildFile; productRef = FD6A04697FEA6C4614973F19 /* QRCodeGenerator */; };
@@ -175,6 +176,7 @@
 		7584BF25A84BAD24AB992A79 /* ReplyBar.swift */ = {isa = PBXFileReference; lastKnownFileType = sourcecode.swift; path = ReplyBar.swift; sourceTree = "<group>"; };
 		7889969AFF462911B9828843 /* MessageRowView.swift */ = {isa = PBXFileReference; lastKnownFileType = sourcecode.swift; path = MessageRowView.swift; sourceTree = "<group>"; };
 		78DB439A3F9A5EA35ECDFB86 /* PhotoViewerView.swift */ = {isa = PBXFileReference; lastKnownFileType = sourcecode.swift; path = PhotoViewerView.swift; sourceTree = "<group>"; };
+		7994AE7EE63412CA072968E2 /* TDLibStorage.swift */ = {isa = PBXFileReference; lastKnownFileType = sourcecode.swift; path = TDLibStorage.swift; sourceTree = "<group>"; };
 		7B0F1DD19A57CC68887E4F98 /* ChatListKey.swift */ = {isa = PBXFileReference; lastKnownFileType = sourcecode.swift; path = ChatListKey.swift; sourceTree = "<group>"; };
 		8545CFD4F2B01CDACB225974 /* UnsupportedBubbleView.swift */ = {isa = PBXFileReference; lastKnownFileType = sourcecode.swift; path = UnsupportedBubbleView.swift; sourceTree = "<group>"; };
 		8724043C70C9B97BCBA4712F /* ReviewVoiceBubble.swift */ = {isa = PBXFileReference; lastKnownFileType = sourcecode.swift; path = ReviewVoiceBubble.swift; sourceTree = "<group>"; };
@@ -282,6 +284,7 @@
 				A065521FE790E0BF29D1B3B6 /* Secrets.swift */,
 				4E049ECC956A583A92C5C7CB /* SecretsValidator.swift */,
 				EB5C5FEFC91B0D5FDF164032 /* TDClient.swift */,
+				7994AE7EE63412CA072968E2 /* TDLibStorage.swift */,
 				A4BDBD692A424C5C24D61B4F /* tgwatchApp.swift */,
 				A63843FEEB957FF475FF41D6 /* UserNamesStore.swift */,
 				29C965D314FEDA10CE9863BE /* Accounts */,
@@ -602,6 +605,7 @@
 				546D2929CAE276CCCDA61287 /* StickerVisual.swift in Sources */,
 				DDB206E2134B52F472D5E9FE /* TDClient.swift in Sources */,
 				787D692CF045D92B0DEFC1F2 /* TDClientFactory.swift in Sources */,
+				CE7580CEB197603734C0CA2F /* TDLibStorage.swift in Sources */,
 				B14FB831F58FBE797B2E5E22 /* UnreadDividerView.swift in Sources */,
 				B79AB6E8675A1A32B8DD9E4A /* UnsupportedBubbleView.swift in Sources */,
 				DD9FB33F951CC225F8D5B3EE /* UserNamesStore.swift in Sources */,

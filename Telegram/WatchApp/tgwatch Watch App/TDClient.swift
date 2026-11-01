@@ -53,6 +53,9 @@ final class TDClient {
         guard active != isSceneActive else { return }
         isSceneActive = active
         activeHistory?.setViewingActive(active)
+        if active {
+            optimizeStorageIfDue()
+        }
     }
 
     func makeChatHistoryLoader() -> ChatHistoryLoader? {
@@ -103,14 +106,23 @@ final class TDClient {
     /// force a local-only logout. Cancelled on any other auth-state transition.
     private var stuckLoggingOutTask: Task<Void, Never>?
 
+    private let storageSchedule: TDLibStorageOptimizationSchedule
+    private var storageOptimizationTask: Task<Void, Never>?
+
     convenience init(account: Account, manager: TDLibClientManager, delegate: TDClientLifecycleDelegate) {
         self.init(account: account, makeClient: { manager.createClient(updateHandler: $0) }, delegate: delegate)
     }
 
-    init(account: Account, makeClient: @escaping ClientMaker, delegate: TDClientLifecycleDelegate) {
+    init(
+        account: Account,
+        makeClient: @escaping ClientMaker,
+        delegate: TDClientLifecycleDelegate,
+        storageSchedule: TDLibStorageOptimizationSchedule = .production()
+    ) {
         self.account = account
         self.makeClient = makeClient
         self.delegate = delegate
+        self.storageSchedule = storageSchedule
     }
 
     /// Submits the cloud password. Returns `nil` on success, or a user-facing
@@ -285,6 +297,7 @@ final class TDClient {
                     hasFetchedMe = true
                     fetchMe()
                     sendReadyOptions()
+                    optimizeStorageIfDue()
                 }
                 if chatList == nil, let client {
                     chatList = ChatListStore(
@@ -294,6 +307,13 @@ final class TDClient {
                         coalesceUpdates: true
                     )
                 }
+            }
+            switch mapped {
+            case .ready:
+                break
+            default:
+                storageOptimizationTask?.cancel()
+                storageOptimizationTask = nil
             }
             if case .loggingOut = mapped {
                 chatList = nil
@@ -420,17 +440,21 @@ final class TDClient {
     private func sendTdlibParameters() {
         guard let client else { return }
         let useTest = self.useTestDc
-        let dbDir = Self.databaseDirectory(accountId: account.id)
+        let accountId = account.id
         Task { [weak self, logger, client] in
+            let layout = await Task.detached(priority: .userInitiated) {
+                TDLibStorage.prepareLayout(accountId: accountId, roots: .production)
+            }.value
+            logger.notice("tdlib files in \(layout.filesArePurgeable ? "caches" : "database directory", privacy: .public)")
             do {
                 _ = try await client.setTdlibParameters(
                     apiHash: Secrets.apiHash,
                     apiId: Secrets.apiId,
                     applicationVersion: "0.1",
-                    databaseDirectory: dbDir.path,
+                    databaseDirectory: layout.databaseDirectory.path,
                     databaseEncryptionKey: nil,
                     deviceModel: "Apple Watch",
-                    filesDirectory: dbDir.path,
+                    filesDirectory: layout.filesDirectory.path,
                     systemLanguageCode: "en",
                     systemVersion: nil,
                     useChatInfoDatabase: true,
@@ -461,6 +485,34 @@ final class TDClient {
         }
     }
 
+    /// Trims downloads once the account is ready and whenever the app comes forward, at most
+    /// once per `TDLibStorageOptimization.minimumInterval` per account.
+    private func optimizeStorageIfDue() {
+        guard case .ready = authState, isSceneActive, client != nil, storageOptimizationTask == nil else { return }
+        let accountId = account.id
+        guard storageSchedule.isDue(accountId: accountId) else { return }
+        storageOptimizationTask = Task { [weak self] in
+            try? await Task.sleep(for: TDLibStorageOptimization.startDelay)
+            guard !Task.isCancelled else { return }
+            await self?.runStorageOptimization(accountId: accountId)
+        }
+    }
+
+    private func runStorageOptimization(accountId: UUID) async {
+        // A cancelled run was already replaced by `handle`; leave its successor in place.
+        defer { if !Task.isCancelled { storageOptimizationTask = nil } }
+        guard case .ready = authState, let client else { return }
+        // Marked before the run so a foreground during it does not start a second one.
+        storageSchedule.markRun(accountId: accountId)
+        do {
+            let deleted = try await TDLibStorageOptimization.run(client: client)
+            logger.notice("storage optimized: deleted \(deleted.count, privacy: .public) files, \(deleted.size, privacy: .public) bytes")
+        } catch {
+            logger.warning("optimizeStorage failed: \(error.localizedDescription, privacy: .public)")
+            storageSchedule.clearRun(accountId: accountId)
+        }
+    }
+
     private func fetchMe() {
         guard let client else { return }
         Task { [weak self, logger, client] in
@@ -485,27 +537,21 @@ final class TDClient {
             c.resume()
         }
     }
-
-    /// Per-account TDLib database directory:
-    /// `<applicationSupport>/tdlib/<accountId.uuidString>/`.
-    nonisolated static func databaseDirectory(accountId: UUID) -> URL {
-        let base = FileManager.default
-            .urls(for: .applicationSupportDirectory, in: .userDomainMask)
-            .first!
-            .appendingPathComponent("tdlib", isDirectory: true)
-        let dir = base.appendingPathComponent(accountId.uuidString, isDirectory: true)
-        try? FileManager.default.createDirectory(at: dir, withIntermediateDirectories: true)
-        return dir
-    }
 }
 
 /// Options set each time an account becomes ready.
 enum TDLibReadyOptions {
-    /// TDLib keeps every downloaded file forever unless its storage optimizer runs, which on
-    /// a watch slowly fills the disk. With it on, about once a day TDLib deletes files not
-    /// opened for 23 hours and trims the cache to 100 MB (TDLib's defaults; files created in
-    /// the last hour are kept).
+    /// - use_storage_optimizer: TDLib keeps every downloaded file forever unless its storage
+    ///   optimizer runs, which on a watch slowly fills the disk. With it on, about once a day
+    ///   TDLib deletes files not opened for 23 hours and trims the cache to 100 MB (TDLib's
+    ///   defaults; files created in the last hour are kept). `TDLibStorageOptimization` covers
+    ///   the types it skips.
+    /// - disable_persistent_network_statistics: the watch shows no network statistics, and
+    ///   TDLib writes them to its binlog after every ~1 KB of traffic per network type.
+    ///
+    /// The other disk-saving options are left off; `TDLibDiskOptionsTests` lists why.
     static let all: [SetOption] = [
         SetOption(name: "use_storage_optimizer", value: .optionValueBoolean(OptionValueBoolean(value: true))),
+        SetOption(name: "disable_persistent_network_statistics", value: .optionValueBoolean(OptionValueBoolean(value: true))),
     ]
 }

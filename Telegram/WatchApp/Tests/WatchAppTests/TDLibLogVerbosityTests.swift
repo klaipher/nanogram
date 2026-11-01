@@ -5,13 +5,18 @@ import XCTest
 /// Not in TDShim's generated subset; enough to read the level back through `td_execute`.
 private struct GetLogVerbosityLevel: Codable {}
 
+/// The test process's one TDLib client manager: `td_receive` must be called from one thread
+/// only, so a second manager's receive loop could take this one's responses.
+enum SharedTestTDLib {
+    // Kept for the whole process: TDLibClientManager's deinit waits for its clients to close
+    // on a receive loop that has already stopped.
+    nonisolated(unsafe) static let manager = TDLibClientManager()
+}
+
 /// Runs the real TDLib: the level must reach it synchronously (a wrong JSON shape would be
 /// ignored silently and leave TDLib at its default verbosity 5).
 final class TDLibLogVerbosityTests: XCTestCase {
-    // Kept for the whole process: TDLibClientManager's deinit waits for its clients to close
-    // on a receive loop that has already stopped.
-    nonisolated(unsafe) private static let manager = TDLibClientManager()
-    nonisolated(unsafe) private static let client = manager.createClient { _, _ in }
+    nonisolated(unsafe) private static let client = SharedTestTDLib.manager.createClient { _, _ in }
 
     private func currentLevel() throws -> Int? {
         let client = Self.client

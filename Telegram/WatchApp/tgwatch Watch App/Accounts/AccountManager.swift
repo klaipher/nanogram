@@ -42,8 +42,7 @@ final class AccountManager: TDClientLifecycleDelegate {
             await client.awaitClosed()
         }
         self.accountDirectoryRemover = accountDirectoryRemover ?? { id in
-            let url = TDClient.databaseDirectory(accountId: id)
-            try? FileManager.default.removeItem(at: url)
+            TDLibStorage.removeStorage(accountId: id, roots: .production)
         }
         self.accounts = []
         self.activeAccountId = nil
