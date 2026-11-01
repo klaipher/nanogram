@@ -166,11 +166,10 @@
                     return;
                 }
                 
-                TGDispatchAfter(1.0, queue._dispatch_queue, ^
-                {
-                    if (watcher != nil)
-                        [watcher setupWithFileURL:outputUrl];
-                });
+                // The watcher follows the output file's growth (it waits for the writer to create it),
+                // so the upload runs while the conversion does.
+                if (watcher != nil)
+                    [watcher setupWithFileURL:outputUrl];
                 
                 [self processWithConversionContext:context completionBlock:^
                 {
@@ -1083,43 +1082,50 @@ static CGFloat progressOfSampleBufferInTimeRange(CMSampleBufferRef sampleBuffer,
 
 - (dispatch_source_t)_setup
 {
-    int fd = open([_fileURL.path UTF8String], O_NONBLOCK | O_RDONLY);
-    if (fd > 0)
-    {
-        dispatch_source_t source = dispatch_source_create(DISPATCH_SOURCE_TYPE_TIMER, 0, 0, _queue._dispatch_queue);
-        
-        int32_t interval = 1;
-        dispatch_source_set_timer(source, dispatch_time(DISPATCH_TIME_NOW, interval * NSEC_PER_SEC), interval * NSEC_PER_SEC, (1ull * NSEC_PER_SEC) / 10);
-        
-        __block NSUInteger lastFileSize = 0;
-        __weak TGMediaVideoFileWatcher *weakSelf = self;
-        dispatch_source_set_event_handler(source, ^
-        {
-            __strong TGMediaVideoFileWatcher *strongSelf = weakSelf;
-            if (strongSelf == nil)
-                return;
-            
-            struct stat st;
-            fstat(fd, &st);
-            
-            if (st.st_size > (long long)(lastFileSize + 32 * 1024))
-            {
-                lastFileSize = (NSUInteger)st.st_size;
-                [strongSelf fileUpdated:false];
-            }
-        });
-        
-        dispatch_source_set_cancel_handler(source,^
-        {
-            close(fd);
-        });
-        
-        dispatch_resume(source);
-        
-        return source;
-    }
+    dispatch_source_t source = dispatch_source_create(DISPATCH_SOURCE_TYPE_TIMER, 0, 0, _queue._dispatch_queue);
     
-    return nil;
+    // A cheap fstat; frequent enough that short conversions still upload while they run.
+    uint64_t interval = NSEC_PER_SEC / 4;
+    dispatch_source_set_timer(source, dispatch_time(DISPATCH_TIME_NOW, (int64_t)interval), interval, NSEC_PER_SEC / 20);
+    
+    // The writer may not have created the file yet, so the file is opened on the first tick that finds it.
+    NSString *path = _fileURL.path;
+    __block int fd = -1;
+    __block NSUInteger lastFileSize = 0;
+    __weak TGMediaVideoFileWatcher *weakSelf = self;
+    dispatch_source_set_event_handler(source, ^
+    {
+        __strong TGMediaVideoFileWatcher *strongSelf = weakSelf;
+        if (strongSelf == nil)
+            return;
+        
+        if (fd < 0)
+        {
+            fd = open([path UTF8String], O_NONBLOCK | O_RDONLY);
+            if (fd < 0)
+                return;
+        }
+        
+        struct stat st;
+        if (fstat(fd, &st) != 0)
+            return;
+        
+        if (st.st_size > (long long)(lastFileSize + 32 * 1024))
+        {
+            lastFileSize = (NSUInteger)st.st_size;
+            [strongSelf fileUpdated:false];
+        }
+    });
+    
+    dispatch_source_set_cancel_handler(source, ^
+    {
+        if (fd >= 0)
+            close(fd);
+    });
+    
+    dispatch_resume(source);
+    
+    return source;
 }
 
 - (id)fileUpdated:(bool)__unused completed

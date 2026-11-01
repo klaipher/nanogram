@@ -401,26 +401,21 @@ public func fetchVideoLibraryMediaResource(postbox: Postbox, resource: VideoLibr
                             }
                         }
                         
+                        // Upload while converting: each growth of the output file is handed over as a partial
+                        // data part (the multipart upload starts on full-size parts and sends the header last),
+                        // exactly as camera videos do in fetchLocalFileVideoMediaResource.
                         let signal = TGMediaVideoConverter.convert(avAsset, adjustments: adjustments, path: tempFile.path, watcher: VideoConversionWatcher(update: { path, size in
-                            /*var value = stat()
-                             if stat(path, &value) == 0 {
-                             let remuxedTempFile = TempBox.shared.tempFile(fileName: "video.mp4")
-                             if FFMpegRemuxer.remux(path, to: remuxedTempFile.path) {
-                             TempBox.shared.dispose(tempFile)
-                             subscriber.putNext(.moveTempFile(file: remuxedTempFile))
-                             } else {
-                             TempBox.shared.dispose(remuxedTempFile)
-                             if let data = try? Data(contentsOf: URL(fileURLWithPath: path), options: [.mappedRead]) {
-                             var range: Range<Int64>?
-                             let _ = updatedSize.modify { updatedSize in
-                             range = updatedSize ..< value.st_size
-                             return value.st_size
-                             }
-                             //print("size = \(Int(value.st_size)), range: \(range!)")
-                             subscriber.putNext(.dataPart(resourceOffset: range!.lowerBound, data: data, range: range!, complete: false))
-                             }
-                             }
-                             }*/
+                            var value = stat()
+                            if stat(path, &value) == 0 {
+                                if let data = try? Data(contentsOf: URL(fileURLWithPath: path), options: [.mappedRead]) {
+                                    var range: Range<Int64>?
+                                    let _ = updatedSize.modify { updatedSize in
+                                        range = updatedSize ..< Int64(value.st_size)
+                                        return value.st_size
+                                    }
+                                    subscriber.putNext(.dataPart(resourceOffset: range!.lowerBound, data: data, range: range!, complete: false))
+                                }
+                            }
                         }), entityRenderer: entityRenderer)!
                         let signalDisposable = signal.start(next: { next in
                             if let result = next as? TGMediaVideoConversionResult {

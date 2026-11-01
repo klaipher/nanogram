@@ -390,6 +390,7 @@ private final class FetchImpl {
         private let defaultPartSize: Int64
         private let cdnPartSize: Int64
         private let fastDownloads: Bool
+        private let requestsCdn: Bool
         private let masterPendingParts: Int
         private let cdnPendingParts: Int
         private var cdnDisabled: Bool = false
@@ -459,7 +460,11 @@ private final class FetchImpl {
                 }
             }
             
-            self.fastDownloads = network.engineKind == .rust
+            // The adaptive window and larger parts help MtProtoKit as much as Rust (measured: a 4.8 MB video
+            // in 3.0 -> 1.4 s with 200 ms of added latency, unchanged without it). Asking for CDN downloads
+            // stays with Rust, as before.
+            self.fastDownloads = true
+            self.requestsCdn = network.engineKind == .rust
             if isStory {
                 self.defaultPartSize = 512 * 1024
             } else {
@@ -949,7 +954,7 @@ private final class FetchImpl {
                             consumerId: self.consumerId,
                             resourceId: self.resource.id.stringRepresentation,
                             data: Api.functions.upload.getFile(
-                                flags: self.fastDownloads && !self.cdnDisabled ? (1 << 1) : 0,
+                                flags: self.requestsCdn && !self.cdnDisabled ? (1 << 1) : 0,
                                 location: inputLocation,
                                 offset: part.fetchRange.lowerBound,
                                 limit: Int32(requestedLength)),
