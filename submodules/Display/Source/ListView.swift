@@ -92,6 +92,23 @@ public final class ListViewBackingView: UIView {
     }
 }
 
+/// One tick of `ListViewImpl.transferVelocity`'s coast. `velocity` is the step per 60 fps frame (what
+/// the coast used to add every tick at 60 fps), `offset` that step scaled to the tick's real duration.
+/// A tick longer than two 60 fps frames counts as two, so a stalled frame does not jump.
+struct ListViewTransferVelocityStep {
+    let velocity: CGFloat
+    let offset: CGFloat
+    var isFinished: Bool {
+        return abs(self.velocity) < 0.1
+    }
+}
+
+func listViewTransferVelocityStep(velocity: CGFloat, elapsed: Double, sincePreviousTick: Double) -> ListViewTransferVelocityStep {
+    let frameVelocity = velocity * 15.0 * CGFloat(pow(0.998, 1000.0 * max(0.0, elapsed)))
+    let frames = min(2.0, max(0.0, sincePreviousTick) * 60.0)
+    return ListViewTransferVelocityStep(velocity: frameVelocity, offset: frameVelocity * CGFloat(frames))
+}
+
 private final class ListViewTimerProxy: NSObject {
     private let action: () -> ()
     
@@ -951,15 +968,18 @@ open class ListViewImpl: ASDisplayNode, ListView, ASScrollViewDelegate, ASGestur
     public func transferVelocity(_ velocity: CGFloat) {
         self.decelerationAnimator?.isPaused = true
         let startTime = CACurrentMediaTime()
-        let decelerationRate: CGFloat = 0.998
         self.scroller.forceDecelerating = true
-        self.decelerationAnimator = ConstantDisplayLinkAnimator(update: { [weak self] in
+        var previousTickTime = startTime
+        // Display rate: the step is scaled by the tick's duration, so the coast covers the same distance.
+        self.decelerationAnimator = ConstantDisplayLinkAnimator(framesPerSecond: .max, update: { [weak self] in
             guard let strongSelf = self else {
                 return
             }
-            let t = CACurrentMediaTime() - startTime
-            var currentVelocity = velocity * 15.0 * CGFloat(pow(Double(decelerationRate), 1000.0 * t))
-            strongSelf.accumulatedTransferVelocityOffset += currentVelocity
+            let now = CACurrentMediaTime()
+            let step = listViewTransferVelocityStep(velocity: velocity, elapsed: now - startTime, sincePreviousTick: now - previousTickTime)
+            previousTickTime = now
+            var currentVelocity = step.velocity
+            strongSelf.accumulatedTransferVelocityOffset += step.offset
             let signFactor: CGFloat = strongSelf.accumulatedTransferVelocityOffset >= 0.0 ? 1.0 : -1.0
             let remainder = abs(strongSelf.accumulatedTransferVelocityOffset).remainder(dividingBy: UIScreenPixel)
             //print("accumulated \(strongSelf.accumulatedTransferVelocityOffset), \(remainder), resulting accumulated \(strongSelf.accumulatedTransferVelocityOffset - remainder * signFactor) add delta \(strongSelf.accumulatedTransferVelocityOffset - remainder * signFactor)")

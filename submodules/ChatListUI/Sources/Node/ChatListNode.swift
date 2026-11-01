@@ -4045,7 +4045,7 @@ public final class ChatListNode: ListViewImpl {
                 self.selectionScrollActivationTimer = nil
                 self.selectionScrollDelta = nil
                 self.selectionLastLocation = nil
-                self.selectionScrollSkipUpdate = false
+                self.selectionAutoScroll = ChatListSelectionAutoScroll()
             case .possible:
                 break
             @unknown default:
@@ -4166,25 +4166,25 @@ public final class ChatListNode: ListViewImpl {
             }
         } else {
             self.selectionScrollDisplayLink?.isPaused = true
+            self.selectionAutoScroll.pause()
             self.selectionScrollActivationTimer?.invalidate()
             self.selectionScrollActivationTimer = nil
         }
     }
     
-    private var selectionScrollSkipUpdate = false
+    private var selectionAutoScroll = ChatListSelectionAutoScroll()
     private func setupSelectionScrolling() {
-        self.selectionScrollDisplayLink = ConstantDisplayLinkAnimator(update: { [weak self] in
+        // Display rate (was 60 fps); the step is scaled by the tick's duration.
+        self.selectionAutoScroll = ChatListSelectionAutoScroll()
+        self.selectionScrollDisplayLink = ConstantDisplayLinkAnimator(framesPerSecond: .max, update: { [weak self] in
             self?.selectionScrollActivationTimer = nil
             if let strongSelf = self, let delta = strongSelf.selectionScrollDelta {
-                let distance: CGFloat = 15.0 * min(1.0, 0.15 + abs(delta * delta))
+                let step = strongSelf.selectionAutoScroll.tick(delta: delta, now: CACurrentMediaTime())
                 let direction: ListViewScrollDirection = delta > 0.0 ? .up : .down
-                let _ = strongSelf.scrollWithDirection(direction, distance: distance)
+                let _ = strongSelf.scrollWithDirection(direction, distance: step.distance)
                 
-                if let location = strongSelf.selectionLastLocation {
-                    if !strongSelf.selectionScrollSkipUpdate {
-                        strongSelf.handlePanSelection(location: location)
-                    }
-                    strongSelf.selectionScrollSkipUpdate = !strongSelf.selectionScrollSkipUpdate
+                if let location = strongSelf.selectionLastLocation, step.updatesSelection {
+                    strongSelf.handlePanSelection(location: location)
                 }
             }
         })

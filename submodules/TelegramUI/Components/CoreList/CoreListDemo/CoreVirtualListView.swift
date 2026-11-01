@@ -371,17 +371,27 @@ public final class CoreVirtualListView: UIView {
         var survivorMap: [Int: Int] = [:]
         var inserts: [Int] = []
 
+        // Each new item takes the lowest unmatched old index with its identity, as the pairwise scan
+        // did, but through a per-identity queue of old indices.
+        var oldIndicesByIdentity: [AnyHashable: [Int]] = [:]
+        oldIndicesByIdentity.reserveCapacity(old.count)
+        for oldIndex in old.indices {
+            oldIndicesByIdentity[old[oldIndex].identity, default: []].append(oldIndex)
+        }
+        var consumedByIdentity: [AnyHashable: Int] = [:]
         for newIndex in new.indices {
-            var matched = false
-            for oldIndex in old.indices where !oldMatched[oldIndex] {
-                if old[oldIndex].identity == new[newIndex].identity {
+            let identity = new[newIndex].identity
+            if let candidates = oldIndicesByIdentity[identity] {
+                let consumed = consumedByIdentity[identity] ?? 0
+                if consumed < candidates.count {
+                    let oldIndex = candidates[consumed]
+                    consumedByIdentity[identity] = consumed + 1
                     oldMatched[oldIndex] = true
                     survivorMap[oldIndex] = newIndex
-                    matched = true
-                    break
+                    continue
                 }
             }
-            if !matched { inserts.append(newIndex) }
+            inserts.append(newIndex)
         }
 
         let oldSurvivors = survivorMap.keys.sorted()
@@ -412,15 +422,24 @@ public final class CoreVirtualListView: UIView {
                         moves: moves)
     }
 
+    /// The duplicate with the lowest first index, then the lowest second one. Linear: this runs on
+    /// every pass with items, and the pairwise scan cost a 120 Hz frame at 250 rows.
     static func firstDuplicatePair(in items: [CoreListItem]) -> (first: Int, second: Int)? {
-        for first in items.indices {
-            for second in items.indices where second > first {
-                if items[first].identity == items[second].identity {
-                    return (first, second)
+        var firstIndexByIdentity: [AnyHashable: Int] = [:]
+        firstIndexByIdentity.reserveCapacity(items.count)
+        var result: (first: Int, second: Int)?
+        for index in items.indices {
+            let identity = items[index].identity
+            if let first = firstIndexByIdentity[identity] {
+                // Later indices only raise `second`, so the first hit for a given `first` is its lowest.
+                if result == nil || first < (result?.first ?? Int.max) {
+                    result = (first, index)
                 }
+            } else {
+                firstIndexByIdentity[identity] = index
             }
         }
-        return nil
+        return result
     }
 
     static func longestIncreasingSubsequenceIndices(_ values: [Int]) -> [Int] {

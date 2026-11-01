@@ -1,4 +1,4 @@
-load("@build_bazel_rules_swift//swift:swift.bzl", "swift_library")
+load("@build_bazel_rules_swift//swift:swift.bzl", "swift_library", "swift_test")
 
 swift_library(
     name = "ChatControllerInteraction",
@@ -28,5 +28,17 @@ swift_library(
     ],
     visibility = [
         "//visibility:public",
+    ],
+)
+
+# Host (macOS) test of the unread range arithmetic, which runs on server read marks. Compiles only that file.
+swift_test(
+    name = "UnreadMessageRangeTests",
+    srcs = [
+        "Sources/UnreadMessageRange.swift",
+        "Tests/UnreadMessageRangeTests.swift",
+    ],
+    copts = [
+        "-warnings-as-errors",
     ],
 )

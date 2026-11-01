@@ -3553,8 +3553,9 @@ public class ChatListItemNode: ItemListRevealOptionsItemNode {
             }
             
             // Parsed only for premium peers, the only rows that read it.
+            // Reads the one key instead of parsing the whole PremiumConfiguration (same default: false).
             let isPremiumDisabled: () -> Bool = {
-                return PremiumConfiguration.with(appConfiguration: item.context.currentAppConfiguration.with { $0 }).isPremiumDisabled
+                return item.context.currentAppConfiguration.with { $0 }.data?["premium_purchase_blocked"] as? Bool ?? PremiumConfiguration.defaultValue.isPremiumDisabled
             }
             var isAccountPeer = false
             if case let .chatList(index) = item.index, index.messageIndex.id.peerId == item.context.account.peerId {
@@ -5478,9 +5479,15 @@ public class ChatListItemNode: ItemListRevealOptionsItemNode {
                         strongSelf.setRevealOptionsOpened(item.hasActiveRevealControls, animated: true)
                     }
                     
-                    strongSelf.view.accessibilityLabel = strongSelf.accessibilityLabel
-                    strongSelf.view.accessibilityValue = strongSelf.accessibilityValue
-                    
+                    // Built once rows stop arriving: the strings cost a scroll frame.
+                    ListViewDeferredAccessibility.shared.request(owner: strongSelf, { [weak strongSelf] in
+                        guard let strongSelf else {
+                            return
+                        }
+                        strongSelf.view.accessibilityLabel = strongSelf.accessibilityLabel
+                        strongSelf.view.accessibilityValue = strongSelf.accessibilityValue
+                    })
+
                     if !customActions.isEmpty {
                         strongSelf.view.accessibilityCustomActions = customActions.map({ action -> UIAccessibilityCustomAction in
                             return ChatListItemAccessibilityCustomAction(name: action.name, target: strongSelf, selector: #selector(strongSelf.performLocalAccessibilityCustomAction(_:)), key: action.key)

@@ -74,3 +74,30 @@ ios_unit_test(
         ":CoreListAttachmentFlightTestsLib",
     ],
 )
+
+# Identity scans run on every applyChanges (every chat history transaction): duplicate check and diff.
+swift_library(
+    name = "CoreListIdentityScanTestsLib",
+    testonly = True,
+    srcs = glob(
+        ["CoreListDemoTests/TestSupport/*.swift"],
+        exclude = [
+            "CoreListDemoTests/TestSupport/ManualAutoLoadResponseScheduler.swift",
+        ],
+    ) + [
+        "CoreListDemoTests/IdentityScanTests.swift",
+        "CoreListDemoTests/ItemDiffTests.swift",
+    ],
+    deps = [
+        ":CoreListDemoForTests",
+    ],
+)
+
+ios_unit_test(
+    name = "CoreListIdentityScanTests",
+    minimum_os_version = "15.0",
+    runner = ":CoreListTestRunner",
+    deps = [
+        ":CoreListIdentityScanTestsLib",
+    ],
+)

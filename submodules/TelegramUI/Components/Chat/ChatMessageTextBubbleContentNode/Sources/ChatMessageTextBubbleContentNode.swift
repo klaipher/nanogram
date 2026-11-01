@@ -481,7 +481,7 @@ public class ChatMessageTextBubbleContentNode: ChatMessageBubbleContentNode {
                                 mediaDuration = 60.0 * 60.0 * 24.0
                             }
                         }
-                        if let result = addLocallyGeneratedEntities(rawText, enabledTypes: enabledTypes, entities: entitiesValue, mediaDuration: mediaDuration) {
+                        if let result = LocallyGeneratedEntitiesCache.shared.entities(rawText, enabledTypes: enabledTypes, entities: entitiesValue, mediaDuration: mediaDuration) {
                             entities = result
                         }
                     } else {

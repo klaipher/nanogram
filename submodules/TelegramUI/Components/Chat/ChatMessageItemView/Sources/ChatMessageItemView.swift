@@ -79,15 +79,61 @@ public final class ChatMessageAccessibilityCustomAction: UIAccessibilityCustomAc
     }
 }
 
+/// Built on first use: the strings cost a scroll frame when made in every row's layout, and they are
+/// read only once the list is idle (see `ListViewDeferredAccessibility`) or when VoiceOver asks.
 public final class ChatMessageAccessibilityData {
-    public let label: String?
-    public let value: String?
-    public let hint: String?
-    public let traits: UIAccessibilityTraits
-    public let customActions: [ChatMessageAccessibilityCustomAction]?
-    public let singleUrl: String?
+    private struct Values {
+        let label: String?
+        let value: String?
+        let hint: String?
+        let traits: UIAccessibilityTraits
+        let customActions: [ChatMessageAccessibilityCustomAction]?
+        let singleUrl: String?
+    }
+    
+    private let item: ChatMessageItem
+    private let isSelected: Bool?
+    private let lock = NSLock()
+    private var resolvedValues: Values?
+    
+    public var label: String? {
+        return self.values.label
+    }
+    public var value: String? {
+        return self.values.value
+    }
+    public var hint: String? {
+        return self.values.hint
+    }
+    public var traits: UIAccessibilityTraits {
+        return self.values.traits
+    }
+    public var customActions: [ChatMessageAccessibilityCustomAction]? {
+        return self.values.customActions
+    }
+    public var singleUrl: String? {
+        return self.values.singleUrl
+    }
     
     public init(item: ChatMessageItem, isSelected: Bool?) {
+        self.item = item
+        self.isSelected = isSelected
+    }
+    
+    private var values: Values {
+        self.lock.lock()
+        defer {
+            self.lock.unlock()
+        }
+        if let resolvedValues = self.resolvedValues {
+            return resolvedValues
+        }
+        let values = ChatMessageAccessibilityData.makeValues(item: self.item, isSelected: self.isSelected)
+        self.resolvedValues = values
+        return values
+    }
+    
+    private static func makeValues(item: ChatMessageItem, isSelected: Bool?) -> Values {
         var hint: String?
         var traits: UIAccessibilityTraits = []
         var singleUrl: String?
@@ -598,21 +644,23 @@ public final class ChatMessageAccessibilityData {
             }
             
             if canReply {
-                customActions.append(ChatMessageAccessibilityCustomAction(name: item.presentationData.strings.VoiceOver_MessageContextReply, target: nil, selector: #selector(self.noop), action: .reply))
+                customActions.append(ChatMessageAccessibilityCustomAction(name: item.presentationData.strings.VoiceOver_MessageContextReply, target: nil, selector: #selector(ChatMessageAccessibilityData.noop), action: .reply))
             }
-            customActions.append(ChatMessageAccessibilityCustomAction(name: item.presentationData.strings.VoiceOver_MessageContextOpenMessageMenu, target: nil, selector: #selector(self.noop), action: .options))
+            customActions.append(ChatMessageAccessibilityCustomAction(name: item.presentationData.strings.VoiceOver_MessageContextOpenMessageMenu, target: nil, selector: #selector(ChatMessageAccessibilityData.noop), action: .options))
         }
         
         if let replyValue {
             value = "\(value). \(item.presentationData.strings.VoiceOver_Chat_ReplyingToMessage(replyValue).string)"
         }
         
-        self.label = label
-        self.value = value
-        self.hint = hint
-        self.traits = traits
-        self.customActions = customActions.isEmpty ? nil : customActions
-        self.singleUrl = singleUrl
+        return Values(
+            label: label,
+            value: value,
+            hint: hint,
+            traits: traits,
+            customActions: customActions.isEmpty ? nil : customActions,
+            singleUrl: singleUrl
+        )
     }
     
     @objc private func noop() {
@@ -695,6 +743,17 @@ open class ChatMessageItemView: ListViewItemNode, ChatMessageItemNodeProtocol {
     
     open func updateAccessibilityData(_ accessibilityData: ChatMessageAccessibilityData) {
         self.accessibilityData = accessibilityData
+    }
+    
+    /// Calls `apply` with the latest accessibility data once rows stop arriving, at once while
+    /// VoiceOver or Switch Control is on (see `ListViewDeferredAccessibility`).
+    public func applyAccessibilityDataWhenIdle(_ apply: @escaping (ChatMessageAccessibilityData) -> Void) {
+        ListViewDeferredAccessibility.shared.request(owner: self, { [weak self] in
+            guard let accessibilityData = self?.accessibilityData else {
+                return
+            }
+            apply(accessibilityData)
+        })
     }
     
     override open func layoutForParams(_ params: ListViewItemLayoutParams, item: ListViewItem, neighbors: ListViewItemNeighbors) {

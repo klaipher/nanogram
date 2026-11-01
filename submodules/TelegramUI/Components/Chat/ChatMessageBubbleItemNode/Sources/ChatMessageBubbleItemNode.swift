@@ -5780,17 +5780,23 @@ public class ChatMessageBubbleItemNode: ChatMessageItemView, ChatMessagePreviewI
     override public func updateAccessibilityData(_ accessibilityData: ChatMessageAccessibilityData) {
         super.updateAccessibilityData(accessibilityData)
         
-        self.messageAccessibilityArea.accessibilityLabel = accessibilityData.label
-        self.messageAccessibilityArea.accessibilityValue = accessibilityData.value
-        self.messageAccessibilityArea.accessibilityHint = accessibilityData.hint
-        self.messageAccessibilityArea.accessibilityTraits = accessibilityData.traits
-        if let customActions = accessibilityData.customActions {
-            self.messageAccessibilityArea.accessibilityCustomActions = customActions.map({ action -> UIAccessibilityCustomAction in
-                return ChatMessageAccessibilityCustomAction(name: action.name, target: self, selector: #selector(self.performLocalAccessibilityCustomAction(_:)), action: action.action)
-            })
-        } else {
-            self.messageAccessibilityArea.accessibilityCustomActions = nil
-        }
+        // Built once rows stop arriving: the strings cost a scroll frame.
+        self.applyAccessibilityDataWhenIdle({ [weak self] accessibilityData in
+            guard let self else {
+                return
+            }
+            self.messageAccessibilityArea.accessibilityLabel = accessibilityData.label
+            self.messageAccessibilityArea.accessibilityValue = accessibilityData.value
+            self.messageAccessibilityArea.accessibilityHint = accessibilityData.hint
+            self.messageAccessibilityArea.accessibilityTraits = accessibilityData.traits
+            if let customActions = accessibilityData.customActions {
+                self.messageAccessibilityArea.accessibilityCustomActions = customActions.map({ action -> UIAccessibilityCustomAction in
+                    return ChatMessageAccessibilityCustomAction(name: action.name, target: self, selector: #selector(self.performLocalAccessibilityCustomAction(_:)), action: action.action)
+                })
+            } else {
+                self.messageAccessibilityArea.accessibilityCustomActions = nil
+            }
+        })
     }
     
     @objc private func performLocalAccessibilityCustomAction(_ action: UIAccessibilityCustomAction) {
