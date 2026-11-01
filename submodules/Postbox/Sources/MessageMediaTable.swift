@@ -20,9 +20,56 @@ enum DebugMediaEntry {
     case MessageReference(MessageIndex)
 }
 
+/// A small cache of decoded values. When full, it starts over: the values are cheap to
+/// decode again, and that keeps the cache bounded whatever the access pattern.
+struct BoundedValueCache<Key: Hashable, Value> {
+    let capacity: Int
+    private var values: [Key: Value] = [:]
+    
+    init(capacity: Int) {
+        self.capacity = capacity
+    }
+    
+    var count: Int {
+        return self.values.count
+    }
+    
+    func get(_ key: Key) -> Value? {
+        return self.values[key]
+    }
+    
+    mutating func set(_ key: Key, _ value: Value) {
+        if self.values[key] == nil && self.values.count >= self.capacity {
+            self.values.removeAll(keepingCapacity: true)
+        }
+        self.values[key] = value
+    }
+    
+    mutating func remove(_ key: Key) {
+        self.values.removeValue(forKey: key)
+    }
+    
+    mutating func removeAll() {
+        self.values.removeAll()
+    }
+}
+
 final class MessageMediaTable: Table {
     static func tableSpec(_ id: Int32) -> ValueBoxTable {
         return ValueBoxTable(id: id, keyType: .binary, compactValuesOnCreation: false)
+    }
+    
+    /// Decoded shared (`Direct`) media. Rendering a message decodes each media it
+    /// references, and the same ones are rendered again on every view update. Media
+    /// values are immutable; every write below drops the id it touches.
+    private var directMediaCache = BoundedValueCache<MediaId, Media>(capacity: 256)
+    
+    override func clearMemoryCache() {
+        self.directMediaCache.removeAll()
+    }
+    
+    private func invalidate(_ id: MediaId) {
+        self.directMediaCache.remove(id)
     }
 
     func key(_ id: MediaId, key: ValueBoxKey = ValueBoxKey(length: 4 + 8)) -> ValueBoxKey {
@@ -36,6 +83,9 @@ final class MessageMediaTable: Table {
     }
     
     func get(_ id: MediaId, embedded: (MessageIndex, MediaId) -> Media?) -> (MessageIndex?, Media)? {
+        if let media = self.directMediaCache.get(id) {
+            return (nil, media)
+        }
         if let value = self.valueBox.get(self.table, key: self.key(id)) {
             var type: Int8 = 0
             value.read(&type, offset: 0, length: 1)
@@ -43,6 +93,9 @@ final class MessageMediaTable: Table {
                 var dataLength: Int32 = 0
                 value.read(&dataLength, offset: 0, length: 4)
                 if let media = PostboxDecoder(buffer: MemoryBuffer(memory: value.memory + value.offset, capacity: Int(dataLength), length: Int(dataLength), freeWhenDone: false)).decodeRootObject() as? Media {
+                    if self.useCaches {
+                        self.directMediaCache.set(id, media)
+                    }
                     return (nil, media)
                 }
             } else if type == MediaEntryType.MessageReference.rawValue {
@@ -69,6 +122,7 @@ final class MessageMediaTable: Table {
     
     func set(_ media: Media, index: MessageIndex?, messageHistoryTable: MessageHistoryTable, sharedWriteBuffer: WriteBuffer = WriteBuffer(), sharedEncoder: PostboxEncoder = PostboxEncoder()) -> InsertMediaResult {
         if let id = media.id {
+            self.invalidate(id)
             if let value = self.valueBox.get(self.table, key: self.key(id)) {
                 var type: Int8 = 0
                 value.read(&type, offset: 0, length: 1)
@@ -176,6 +230,7 @@ final class MessageMediaTable: Table {
     }
     
     func removeReference(_ id: MediaId, sharedWriteBuffer: WriteBuffer = WriteBuffer()) -> RemoveMediaResult {
+        self.invalidate(id)
         if let value = self.valueBox.get(self.table, key: self.key(id)) {
             var type: Int8 = 0
             value.read(&type, offset: 0, length: 1)
@@ -225,12 +280,15 @@ final class MessageMediaTable: Table {
     
     func removeEmbeddedMedia(_ media: Media) {
         if let id = media.id {
+            self.invalidate(id)
             self.valueBox.remove(self.table, key: self.key(id), secure: false)
         }
     }
     
     func update(_ id: MediaId, media: Media, messageHistoryTable: MessageHistoryTable, operationsByPeerId: inout [PeerId: [MessageHistoryOperation]], sharedWriteBuffer: WriteBuffer = WriteBuffer(), sharedEncoder: PostboxEncoder = PostboxEncoder())  {
+        self.invalidate(id)
         if let updatedId = media.id {
+            self.invalidate(updatedId)
             if let value = self.valueBox.get(self.table, key: self.key(id)) {
                 var type: Int8 = 0
                 value.read(&type, offset: 0, length: 1)

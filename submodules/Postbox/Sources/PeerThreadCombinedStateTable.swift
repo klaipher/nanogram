@@ -191,10 +191,18 @@ class PeerThreadsSummaryTable: Table {
     
     private(set) var updatedIds = Set<PeerId>()
     
+    /// Decoded summaries, a missing one included. A folder evaluates its filter for every
+    /// forum it scans, on every chat list fill. Only `set` writes this table.
+    private var cachedSummaries = BoundedValueCache<PeerId, StoredPeerThreadsSummary?>(capacity: 512)
+    
     init(valueBox: ValueBox, table: ValueBoxTable, useCaches: Bool, seedConfiguration: SeedConfiguration) {
         self.seedConfiguration = seedConfiguration
         
         super.init(valueBox: valueBox, table: table, useCaches: useCaches)
+    }
+    
+    override func clearMemoryCache() {
+        self.cachedSummaries.removeAll()
     }
     
     private func key(peerId: PeerId) -> ValueBoxKey {
@@ -203,6 +211,7 @@ class PeerThreadsSummaryTable: Table {
     }
     
     private func set(peerId: PeerId, state: StoredPeerThreadsSummary) {
+        self.cachedSummaries.remove(peerId)
         do {
             let data = try AdaptedPostboxEncoder().encode(state)
             self.valueBox.set(self.table, key: self.key(peerId: peerId), value: MemoryBuffer(data: data))
@@ -212,6 +221,17 @@ class PeerThreadsSummaryTable: Table {
     }
     
     func get(peerId: PeerId) -> StoredPeerThreadsSummary? {
+        if let cached = self.cachedSummaries.get(peerId) {
+            return cached
+        }
+        let state = self.read(peerId: peerId)
+        if self.useCaches {
+            self.cachedSummaries.set(peerId, state)
+        }
+        return state
+    }
+    
+    private func read(peerId: PeerId) -> StoredPeerThreadsSummary? {
         do {
             guard let value = self.valueBox.get(self.table, key: self.key(peerId: peerId)) else {
                 return nil

@@ -153,21 +153,85 @@ private func updatedRenderedPeer(postbox: PostboxImpl, renderedPeer: RenderedPee
     return nil
 }
 
+/// Counts the table queries `fillSpace` makes, for tests (debug builds only).
+enum ChatListViewFillCounters {
+    static var queries = 0
+    
+    @inline(__always)
+    static func countQuery() {
+        #if DEBUG
+        ChatListViewFillCounters.queries += 1
+        #endif
+    }
+}
+
+/// Test hook: views created while this is set refill every space on every transaction, as
+/// before the exhausted flags existed. It is read once, when a view is created.
+enum ChatListViewTestHooks {
+    static var alwaysRefillSpaces = false
+}
+
+/// Whether chat list operations change which entries a group's table holds. A chat whose
+/// index did not move is removed and inserted at the same index; that keeps the key set.
+private func chatListOperationsChangeEntries(_ operations: [ChatListOperation]) -> Bool {
+    var delta: [ChatListIndex: Int] = [:]
+    for operation in operations {
+        switch operation {
+        case let .InsertEntry(index, _):
+            delta[index, default: 0] += 1
+        case let .RemoveEntry(indices):
+            for index in indices {
+                delta[index, default: 0] -= 1
+            }
+        case .InsertHole, .RemoveHoles:
+            return true
+        }
+    }
+    return delta.values.contains(where: { $0 != 0 })
+}
+
+/// Whether the transaction may change anything `mappedChatListFilterPredicate` reads.
+private func chatListFilterInputsMayHaveChanged(_ transaction: PostboxTransaction) -> Bool {
+    return !transaction.currentUpdatedPeers.isEmpty
+        || !transaction.currentUpdatedCachedPeerData.isEmpty
+        || !transaction.currentUpdatedPeerNotificationSettings.isEmpty
+        || !transaction.currentUpdatedPendingPeerNotificationSettings.isEmpty
+        || transaction.updatedGlobalNotificationSettings
+        // Global notification settings live in a preferences entry that is not always
+        // written together with updatedGlobalNotificationSettings.
+        || !transaction.currentPreferencesOperations.isEmpty
+        || !transaction.alteredInitialPeerCombinedReadStates.isEmpty
+        || transaction.replaceContactPeerIds != nil
+        || !transaction.updatedPeerThreadsSummaries.isEmpty
+        || !transaction.currentUpdatedMessageTagSummaries.isEmpty
+        || !transaction.currentInvalidateMessageTagSummaries.isEmpty
+        || !transaction.currentUpdatedMessageActionsSummaries.isEmpty
+        || !transaction.currentPendingMessageActionsOperations.isEmpty
+}
+
 private final class ChatListViewSpaceState {
     private let space: ChatListViewSpace
     private let anchorIndex: MutableChatListEntryIndex
     private let summaryComponents: ChatListEntrySummaryComponents
     private let extractCachedData: ((CachedPeerData) -> AnyHashable?)?
     private let halfLimit: Int
+    private let alwaysRefill: Bool
+    
+    /// A direction is exhausted when its last fill asked the table for more entries than
+    /// it had. Until the table, the filter's inputs or the space change, filling that
+    /// direction again would load nothing, so `fillSpace` skips its query.
+    private var lowerExhausted = false
+    private var higherExhausted = false
     
     var orderedEntries: OrderedChatListViewEntries
     
-    init(postbox: PostboxImpl, currentTransaction: Transaction, space: ChatListViewSpace, anchorIndex: MutableChatListEntryIndex, summaryComponents: ChatListEntrySummaryComponents, extractCachedData: ((CachedPeerData) -> AnyHashable?)?, halfLimit: Int) {
+    init(postbox: PostboxImpl, currentTransaction: Transaction, space: ChatListViewSpace, anchorIndex: MutableChatListEntryIndex, summaryComponents: ChatListEntrySummaryComponents, extractCachedData: ((CachedPeerData) -> AnyHashable?)?, halfLimit: Int, alwaysRefill: Bool) {
         self.space = space
         self.anchorIndex = anchorIndex
         self.summaryComponents = summaryComponents
         self.extractCachedData = extractCachedData
         self.halfLimit = halfLimit
+        self.alwaysRefill = alwaysRefill
         self.orderedEntries = OrderedChatListViewEntries(anchorIndex: anchorIndex.index, lowerOrAtAnchor: [], higherThanAnchor: [])
         self.fillSpace(postbox: postbox, currentTransaction: currentTransaction)
         
@@ -222,8 +286,13 @@ private final class ChatListViewSpaceState {
                 unpinnedLowerBound = MutableChatListEntryIndex(index: ChatListIndex.absoluteLowerBound, isMessage: true)
                 let resolvedUnpinnedAnchorIndex = min(unpinnedUpperBound, max(self.anchorIndex, unpinnedLowerBound))
                 
-                if lowerOrAtAnchorMessages.count < self.halfLimit || higherThanAnchorMessages.count < self.halfLimit {
+                if self.needsQuery(lowerCount: lowerOrAtAnchorMessages.count, higherCount: higherThanAnchorMessages.count) {
+                    ChatListViewFillCounters.countQuery()
                     let loadedMessages = postbox.chatListTable.entries(groupId: groupId, from: (ChatListIndex.pinnedLowerBound, true), to: (ChatListIndex.absoluteUpperBound, true), peerChatInterfaceStateTable: postbox.peerChatInterfaceStateTable, count: self.halfLimit * 2, predicate: predicate).map(mapEntry).sorted(by: { $0.entryIndex < $1.entryIndex })
+                    // Fewer than asked for means every matching entry was loaded.
+                    let loadedAll = loadedMessages.count < self.halfLimit * 2
+                    self.lowerExhausted = loadedAll
+                    self.higherExhausted = loadedAll
                     
                     if lowerOrAtAnchorMessages.count < self.halfLimit {
                         var nextLowerIndex: MutableChatListEntryIndex
@@ -255,25 +324,31 @@ private final class ChatListViewSpaceState {
                     }
                 }
             } else {
-                if lowerOrAtAnchorMessages.count < self.halfLimit {
+                if lowerOrAtAnchorMessages.count < self.halfLimit && !(self.lowerExhausted && !self.alwaysRefill) {
                     var nextLowerIndex: MutableChatListEntryIndex
                     if let lastMessage = lowerOrAtAnchorMessages.min(by: { $0.entryIndex < $1.entryIndex }) {
                         nextLowerIndex = lastMessage.entryIndex
                     } else {
                         nextLowerIndex = resolvedAnchorIndex.successor
                     }
-                    let loadedLowerMessages = postbox.chatListTable.entries(groupId: groupId, from: (nextLowerIndex.index, nextLowerIndex.isMessage), to: (lowerBound.index, lowerBound.isMessage), peerChatInterfaceStateTable: postbox.peerChatInterfaceStateTable, count: self.halfLimit - lowerOrAtAnchorMessages.count, predicate: predicate).map(mapEntry)
+                    let requestedCount = self.halfLimit - lowerOrAtAnchorMessages.count
+                    ChatListViewFillCounters.countQuery()
+                    let loadedLowerMessages = postbox.chatListTable.entries(groupId: groupId, from: (nextLowerIndex.index, nextLowerIndex.isMessage), to: (lowerBound.index, lowerBound.isMessage), peerChatInterfaceStateTable: postbox.peerChatInterfaceStateTable, count: requestedCount, predicate: predicate).map(mapEntry)
                     lowerOrAtAnchorMessages.append(contentsOf: loadedLowerMessages)
+                    self.lowerExhausted = loadedLowerMessages.count < requestedCount
                 }
-                if higherThanAnchorMessages.count < self.halfLimit {
+                if higherThanAnchorMessages.count < self.halfLimit && !(self.higherExhausted && !self.alwaysRefill) {
                     var nextHigherIndex: MutableChatListEntryIndex
                     if let lastMessage = higherThanAnchorMessages.max(by: { $0.entryIndex < $1.entryIndex }) {
                         nextHigherIndex = lastMessage.entryIndex
                     } else {
                         nextHigherIndex = resolvedAnchorIndex
                     }
-                    let loadedHigherMessages = postbox.chatListTable.entries(groupId: groupId, from: (nextHigherIndex.index, nextHigherIndex.isMessage), to: (upperBound.index, upperBound.isMessage), peerChatInterfaceStateTable: postbox.peerChatInterfaceStateTable, count: self.halfLimit - higherThanAnchorMessages.count, predicate: predicate).map(mapEntry)
+                    let requestedCount = self.halfLimit - higherThanAnchorMessages.count
+                    ChatListViewFillCounters.countQuery()
+                    let loadedHigherMessages = postbox.chatListTable.entries(groupId: groupId, from: (nextHigherIndex.index, nextHigherIndex.isMessage), to: (upperBound.index, upperBound.isMessage), peerChatInterfaceStateTable: postbox.peerChatInterfaceStateTable, count: requestedCount, predicate: predicate).map(mapEntry)
                     higherThanAnchorMessages.append(contentsOf: loadedHigherMessages)
+                    self.higherExhausted = loadedHigherMessages.count < requestedCount
                 }
             }
             
@@ -304,6 +379,9 @@ private final class ChatListViewSpaceState {
                     }
                 }
                 postboxLog("allIndices not unique, repeated: \(debugRepeatedIndices)")
+                // A dropped duplicate leaves room the next fill may load into.
+                self.lowerExhausted = false
+                self.higherExhausted = false
                 
                 //assert(false)
                 //preconditionFailure()
@@ -326,6 +404,8 @@ private final class ChatListViewSpaceState {
                 }
                 
                 postboxLog("existingEntityIds not unique: \(allEntityIds)")
+                self.lowerExhausted = false
+                self.higherExhausted = false
                 postboxLog("allIndices: \(allIndices)")
                 //assert(false)
                 //preconditionFailure()
@@ -345,7 +425,11 @@ private final class ChatListViewSpaceState {
             unpinnedLowerBound = MutableChatListEntryIndex(index: ChatListIndex.absoluteLowerBound, isMessage: true)
             let resolvedUnpinnedAnchorIndex = min(unpinnedUpperBound, max(self.anchorIndex, unpinnedLowerBound))
             
-            if lowerOrAtAnchorMessages.count < self.halfLimit || higherThanAnchorMessages.count < self.halfLimit {
+            if self.needsQuery(lowerCount: lowerOrAtAnchorMessages.count, higherCount: higherThanAnchorMessages.count) {
+                ChatListViewFillCounters.countQuery()
+                // Every peer of the space is loaded, so nothing is left for a later fill.
+                self.lowerExhausted = true
+                self.higherExhausted = true
                 func mapEntry(_ entry: ChatListIntermediateEntry, pinningIndex: UInt16?) -> MutableChatListEntry {
                     switch entry {
                     case let .message(index, messageIndex):
@@ -413,7 +497,45 @@ private final class ChatListViewSpaceState {
         assert(self.orderedEntries.higherThanAnchor.count <= self.halfLimit)
     }
     
+    /// Whether a fill that loads both directions in one query has to run: some direction
+    /// is underfilled and not exhausted.
+    private func needsQuery(lowerCount: Int, higherCount: Int) -> Bool {
+        let lowerNeeds = lowerCount < self.halfLimit && !(self.lowerExhausted && !self.alwaysRefill)
+        let higherNeeds = higherCount < self.halfLimit && !(self.higherExhausted && !self.alwaysRefill)
+        return lowerNeeds || higherNeeds
+    }
+    
+    /// Whether the transaction may change what a fill of this space loads from the table.
+    private func fillInputsMayHaveChanged(transaction: PostboxTransaction) -> Bool {
+        if !transaction.currentUpdatedChatListInclusions.isEmpty || !transaction.currentUpdatedPeerChatListEmbeddedStates.isEmpty || transaction.updatedHiddenPeerIds {
+            return true
+        }
+        switch self.space {
+        case let .group(groupId, _, filterPredicate):
+            if let operations = transaction.chatListOperations[groupId], chatListOperationsChangeEntries(operations) {
+                return true
+            }
+            if filterPredicate != nil {
+                return chatListFilterInputsMayHaveChanged(transaction)
+            }
+            return false
+        case .peers:
+            // The peers can be in any group.
+            for (_, operations) in transaction.chatListOperations {
+                if chatListOperationsChangeEntries(operations) {
+                    return true
+                }
+            }
+            return false
+        }
+    }
+    
+    private func entryIndices() -> (lower: [MutableChatListEntryIndex], higher: [MutableChatListEntryIndex]) {
+        return (self.orderedEntries.lowerOrAtAnchor.map(\.entryIndex), self.orderedEntries.higherThanAnchor.map(\.entryIndex))
+    }
+    
     func replay(postbox: PostboxImpl, currentTransaction: Transaction, transaction: PostboxTransaction) -> Bool {
+        let initialEntryIndices = self.entryIndices()
         var hasUpdates = false
         var hadRemovals = false
         var globalNotificationSettings: PostboxGlobalNotificationSettings?
@@ -1045,9 +1167,17 @@ private final class ChatListViewSpaceState {
             }
         }
         
-        if true || hadRemovals {
-            self.fillSpace(postbox: postbox, currentTransaction: currentTransaction)
+        // Every transaction runs the fill, but a direction that the last fill found
+        // exhausted is queried again only when something it depends on may have changed:
+        // the group's entries, the filter's inputs, or the entries the space holds.
+        // A chat removed and re-added at the same index leaves the space as it was, so a
+        // removal alone does not count; only a replay that touched entries can change them.
+        let spaceChanged = (hasUpdates || hadRemovals) && self.entryIndices() != initialEntryIndices
+        if spaceChanged || self.fillInputsMayHaveChanged(transaction: transaction) {
+            self.lowerExhausted = false
+            self.higherExhausted = false
         }
+        self.fillSpace(postbox: postbox, currentTransaction: currentTransaction)
         
         self.checkEntries(postbox: postbox)
         self.checkReplayEntries(postbox: postbox)
@@ -1448,14 +1578,14 @@ struct ChatListViewState {
     private let halfLimit: Int
     private var stateBySpace: [ChatListViewSpace: ChatListViewSpaceState] = [:]
     
-    init(postbox: PostboxImpl, currentTransaction: Transaction, spaces: [ChatListViewSpace], anchorIndex: ChatListIndex, summaryComponents: ChatListEntrySummaryComponents, extractCachedData: ((CachedPeerData) -> AnyHashable?)?, halfLimit: Int) {
+    init(postbox: PostboxImpl, currentTransaction: Transaction, spaces: [ChatListViewSpace], anchorIndex: ChatListIndex, summaryComponents: ChatListEntrySummaryComponents, extractCachedData: ((CachedPeerData) -> AnyHashable?)?, halfLimit: Int, alwaysRefillSpaces: Bool = false) {
         self.anchorIndex = MutableChatListEntryIndex(index: anchorIndex, isMessage: true)
         self.summaryComponents = summaryComponents
         self.extractCachedData = extractCachedData
         self.halfLimit = halfLimit
         
         for space in spaces {
-            self.stateBySpace[space] = ChatListViewSpaceState(postbox: postbox, currentTransaction: currentTransaction, space: space, anchorIndex: self.anchorIndex, summaryComponents: summaryComponents, extractCachedData: extractCachedData, halfLimit: halfLimit)
+            self.stateBySpace[space] = ChatListViewSpaceState(postbox: postbox, currentTransaction: currentTransaction, space: space, anchorIndex: self.anchorIndex, summaryComponents: summaryComponents, extractCachedData: extractCachedData, halfLimit: halfLimit, alwaysRefill: alwaysRefillSpaces)
         }
     }
     

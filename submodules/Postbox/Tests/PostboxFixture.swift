@@ -22,7 +22,9 @@ final class PostboxFixture {
     private var storage: Storage?
     private var disposables: [Disposable] = []
 
-    init(name: String) {
+    /// `inMemory: false` keeps the database in a file (`<basePath>/db/db_sqlite`), for tests
+    /// that measure what reaches the WAL.
+    init(name: String, inMemory: Bool = true) {
         let _ = FixtureMedia.register
         let _ = FixturePeer.register
         self.queue = Queue(name: name)
@@ -31,7 +33,7 @@ final class PostboxFixture {
         let basePath = self.basePath
         var valueBox: SqliteValueBox?
         queue.sync {
-            valueBox = SqliteValueBox(basePath: basePath + "/db", queue: queue, isTemporary: true, isReadOnly: false, useCaches: true, removeDatabaseOnError: true, encryptionParameters: nil, upgradeProgress: { _ in }, inMemory: true)
+            valueBox = SqliteValueBox(basePath: basePath + "/db", queue: queue, isTemporary: true, isReadOnly: false, useCaches: true, removeDatabaseOnError: true, encryptionParameters: nil, upgradeProgress: { _ in }, inMemory: inMemory)
         }
         self.storage = Storage(valueBox: valueBox!)
         self.postbox = Postbox(

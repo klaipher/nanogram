@@ -20,6 +20,23 @@ final class OrderedItemListIndexTable: Table {
         }
     }
     
+    /// Every entry of a collection, by id, in one range scan.
+    func getAll(collectionId: Int32) -> [MemoryBuffer: CodableEntry] {
+        var result: [MemoryBuffer: CodableEntry] = [:]
+        let prefix = self.key(collectionId: collectionId, id: MemoryBuffer())
+        self.valueBox.range(self.table, start: prefix, end: prefix.successor, values: { key, value in
+            let length = key.length - 4
+            guard length >= 0, let memory = malloc(max(length, 1)) else {
+                // Callers look up anything missing one by one.
+                return false
+            }
+            memcpy(memory, key.memory.advanced(by: 4), length)
+            result[MemoryBuffer(memory: memory, capacity: length, length: length, freeWhenDone: true)] = CodableEntry(data: value.makeData())
+            return true
+        }, limit: 0)
+        return result
+    }
+    
     func remove(collectionId: Int32, id: MemoryBuffer) {
         self.valueBox.remove(self.table, key: self.key(collectionId: collectionId, id: id), secure: false)
     }

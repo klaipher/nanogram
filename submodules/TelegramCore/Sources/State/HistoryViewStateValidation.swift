@@ -899,24 +899,10 @@ private func validateBatch(postbox: Postbox, network: Network, transaction: Tran
                                                 updatedLocalTags.insert(.OutgoingLiveLocation)
                                             }
                                             return .update(message.withUpdatedLocalTags(updatedLocalTags))
+                                        } else if let restored = historyValidationRestoredMessage(currentMessage, id: id, channelPts: channelPts) {
+                                            return .update(restored)
                                         } else {
-                                            var storeForwardInfo: StoreMessageForwardInfo?
-                                            if let forwardInfo = currentMessage.forwardInfo {
-                                                storeForwardInfo = StoreMessageForwardInfo(authorId: forwardInfo.author?.id, sourceId: forwardInfo.source?.id, sourceMessageId: forwardInfo.sourceMessageId, date: forwardInfo.date, authorSignature: forwardInfo.authorSignature, psaType: forwardInfo.psaType, flags: forwardInfo.flags)
-                                            }
-                                            var attributes = currentMessage.attributes
-                                            if let channelPts = channelPts {
-                                                for i in (0 ..< attributes.count).reversed() {
-                                                    if let _ = attributes[i] as? ChannelMessageStateVersionAttribute {
-                                                        attributes.remove(at: i)
-                                                    }
-                                                }
-                                                attributes.append(ChannelMessageStateVersionAttribute(pts: channelPts))
-                                            }
-                                            
-                                            let updatedFlags = StoreMessageFlags(currentMessage.flags)
-                                            
-                                            return .update(StoreMessage(id: message.id, customStableId: nil, globallyUniqueId: currentMessage.globallyUniqueId, groupingKey: currentMessage.groupingKey, threadId: currentMessage.threadId, timestamp: currentMessage.timestamp, flags: updatedFlags, tags: currentMessage.tags, globalTags: currentMessage.globalTags, localTags: currentMessage.localTags, forwardInfo: storeForwardInfo, authorId: currentMessage.author?.id, text: currentMessage.text, attributes: attributes, media: currentMessage.media))
+                                            return .skip
                                         }
                                     })
                                     
@@ -1143,24 +1129,10 @@ private func validateReplyThreadBatch(postbox: Postbox, network: Network, transa
                                             updatedLocalTags.insert(.OutgoingLiveLocation)
                                         }
                                         return .update(message.withUpdatedLocalTags(updatedLocalTags))
+                                    } else if let restored = historyValidationRestoredMessage(currentMessage, id: id, channelPts: channelPts) {
+                                        return .update(restored)
                                     } else {
-                                        var storeForwardInfo: StoreMessageForwardInfo?
-                                        if let forwardInfo = currentMessage.forwardInfo {
-                                            storeForwardInfo = StoreMessageForwardInfo(authorId: forwardInfo.author?.id, sourceId: forwardInfo.source?.id, sourceMessageId: forwardInfo.sourceMessageId, date: forwardInfo.date, authorSignature: forwardInfo.authorSignature, psaType: forwardInfo.psaType, flags: forwardInfo.flags)
-                                        }
-                                        var attributes = currentMessage.attributes
-                                        if let channelPts = channelPts {
-                                            for i in (0 ..< attributes.count).reversed() {
-                                                if let _ = attributes[i] as? ChannelMessageStateVersionAttribute {
-                                                    attributes.remove(at: i)
-                                                }
-                                            }
-                                            attributes.append(ChannelMessageStateVersionAttribute(pts: channelPts))
-                                        }
-                                        
-                                        let updatedFlags = StoreMessageFlags(currentMessage.flags)
-                                        
-                                        return .update(StoreMessage(id: message.id, customStableId: nil, globallyUniqueId: currentMessage.globallyUniqueId, groupingKey: currentMessage.groupingKey, threadId: currentMessage.threadId, timestamp: currentMessage.timestamp, flags: updatedFlags, tags: currentMessage.tags, globalTags: currentMessage.globalTags, localTags: currentMessage.localTags, forwardInfo: storeForwardInfo, authorId: currentMessage.author?.id, text: currentMessage.text, attributes: attributes, media: currentMessage.media))
+                                        return .skip
                                     }
                                 })
                                 
@@ -1185,4 +1157,40 @@ private func validateReplyThreadBatch(postbox: Postbox, network: Network, transa
             return .complete()
         }
     }
+}
+
+/// What validation stores for a message whose edit date the server confirmed: the stored
+/// message again, with its channel state version set to `channelPts`. Nil when that is
+/// what is already stored. Storing it anyway rewrites the row with a new stable version,
+/// so every view that shows the message renders it again for no change.
+/// A message with unseen reactions or poll votes is always stored again: storing it is
+/// what marks them seen while it is on screen (`InstallInteractiveReadMessagesAction`).
+func historyValidationRestoredMessage(_ currentMessage: Message, id: MessageId, channelPts: Int32?) -> StoreMessage? {
+    var attributes = currentMessage.attributes
+    var attributesChanged = false
+    if let channelPts = channelPts {
+        let versionIsCurrent: Bool
+        if let last = attributes.last as? ChannelMessageStateVersionAttribute, last.pts == channelPts, !attributes.dropLast().contains(where: { $0 is ChannelMessageStateVersionAttribute }) {
+            versionIsCurrent = true
+        } else {
+            versionIsCurrent = false
+        }
+        for i in (0 ..< attributes.count).reversed() {
+            if let _ = attributes[i] as? ChannelMessageStateVersionAttribute {
+                attributes.remove(at: i)
+            }
+        }
+        attributes.append(ChannelMessageStateVersionAttribute(pts: channelPts))
+        attributesChanged = !versionIsCurrent
+    }
+    if !attributesChanged && !currentMessage.tags.contains(.unseenReaction) && !currentMessage.tags.contains(.unseenPollVote) {
+        return nil
+    }
+    
+    var storeForwardInfo: StoreMessageForwardInfo?
+    if let forwardInfo = currentMessage.forwardInfo {
+        storeForwardInfo = StoreMessageForwardInfo(authorId: forwardInfo.author?.id, sourceId: forwardInfo.source?.id, sourceMessageId: forwardInfo.sourceMessageId, date: forwardInfo.date, authorSignature: forwardInfo.authorSignature, psaType: forwardInfo.psaType, flags: forwardInfo.flags)
+    }
+    let updatedFlags = StoreMessageFlags(currentMessage.flags)
+    return StoreMessage(id: id, customStableId: nil, globallyUniqueId: currentMessage.globallyUniqueId, groupingKey: currentMessage.groupingKey, threadId: currentMessage.threadId, timestamp: currentMessage.timestamp, flags: updatedFlags, tags: currentMessage.tags, globalTags: currentMessage.globalTags, localTags: currentMessage.localTags, forwardInfo: storeForwardInfo, authorId: currentMessage.author?.id, text: currentMessage.text, attributes: attributes, media: currentMessage.media)
 }
