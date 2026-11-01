@@ -1,9 +1,10 @@
 import SwiftUI
-import TDShim
+@preconcurrency import TDShim
 
 @main
 struct TgwatchApp: App {
     @State private var manager: AccountManager
+    @Environment(\.scenePhase) private var scenePhase
     /// True when running inside an XCTest process. Computed once and stored so
     /// both `init()` and `body` can reference the same value without repeating
     /// the `NSClassFromString` lookup.
@@ -48,6 +49,10 @@ struct TgwatchApp: App {
                 AccountBootstrapView()
                     .environment(manager)
             }
+        }
+        // Wrist down (inactive) or background: the open chat stops marking messages read.
+        .onChange(of: scenePhase, initial: true) { _, phase in
+            manager.setSceneActive(phase == .active)
         }
     }
 

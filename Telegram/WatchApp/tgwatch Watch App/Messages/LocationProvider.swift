@@ -44,7 +44,9 @@ final class CLLocationProvider: NSObject, LocationProviding {
     }
 }
 
-extension CLLocationProvider: CLLocationManagerDelegate {
+// CLLocationManager calls its delegate on the run loop it was created on (main), so the
+// main-actor conformance holds; @preconcurrency checks that at run time.
+extension CLLocationProvider: @preconcurrency CLLocationManagerDelegate {
     func locationManagerDidChangeAuthorization(_ manager: CLLocationManager) {
         let status = manager.authorizationStatus
         guard status != .notDetermined, let cont = authContinuation else { return }

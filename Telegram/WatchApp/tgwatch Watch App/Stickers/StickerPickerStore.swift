@@ -1,7 +1,7 @@
 import Foundation
 import Observation
 import OSLog
-import TDShim
+@preconcurrency import TDShim
 
 enum PickerLoadState: Equatable {
     case loading
@@ -18,9 +18,11 @@ final class StickerPickerStore {
     private(set) var loadState: PickerLoadState = .loading
 
     private let loader: StickerPickerLoader
-    private let logger = Logger(subsystem: "org.telegram.TelegramWatch", category: "stickerpicker")
+    private let logger = Logger(watchCategory: "stickerpicker")
     private var files: [Int: File] = [:]
-    private var trackedFileIds: Set<Int> = []
+    /// Visible cells per file id. One sticker can be on screen in several cells (Favorites,
+    /// Frequently Used, a set cover), so a download is cancelled only when the last one goes.
+    @ObservationIgnored private var visibleCells: [Int: Int] = [:]
     private var setStickers: [Int64: [PickerSticker]] = [:]
 
     init(loader: StickerPickerLoader) {
@@ -39,8 +41,9 @@ final class StickerPickerStore {
     func fileSnapshot(fileId: Int) -> File? { files[fileId] }
 
     func requestFileDownload(fileId: Int, priority: Int = 2) {
-        guard !trackedFileIds.contains(fileId) else { return }
-        trackedFileIds.insert(fileId)
+        let count = visibleCells[fileId, default: 0]
+        visibleCells[fileId] = count + 1
+        guard count == 0 else { return }
         logger.info("requestFileDownload fileId=\(fileId, privacy: .public) priority=\(priority, privacy: .public)")
         Task { [logger, loader] in
             do {
@@ -52,7 +55,12 @@ final class StickerPickerStore {
     }
 
     func cancelFileDownload(fileId: Int) {
-        trackedFileIds.remove(fileId)
+        let remaining = max(0, visibleCells[fileId, default: 0] - 1)
+        guard remaining == 0 else {
+            visibleCells[fileId] = remaining
+            return
+        }
+        visibleCells[fileId] = nil
         logger.info("cancelFileDownload fileId=\(fileId, privacy: .public)")
         Task { [logger, loader] in
             do {

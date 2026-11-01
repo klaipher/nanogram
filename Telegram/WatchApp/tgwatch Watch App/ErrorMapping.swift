@@ -1,5 +1,5 @@
 import Foundation
-import TDShim
+@preconcurrency import TDShim
 
 func humanMessage(_ error: Swift.Error) -> String {
     if let tdErr = error as? TDError {

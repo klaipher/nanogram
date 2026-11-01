@@ -1,7 +1,7 @@
 import Foundation
 import Observation
 import OSLog
-import TDShim
+@preconcurrency import TDShim
 
 enum LoadState: Equatable {
     case notStarted
@@ -43,7 +43,7 @@ final class ChatListStore {
     private var displayLimits: [ChatListKey: Int] = [:]
 
     private let loader: ChatListLoader
-    private let logger = Logger(subsystem: "org.telegram.TelegramWatch", category: "chatlist")
+    private let logger = Logger(watchCategory: "chatlist")
     private var loadTasks: [ChatListKey: Task<Void, Never>] = [:]
 
     private let initialDisplayLimit = 30
@@ -381,7 +381,7 @@ final class ChatListStore {
         switch update {
         case .updateNewChat(let upd):
             let lists = upd.chat.positions.map { describeList($0.list) + "@\($0.order.rawValue)" }.joined(separator: ",")
-            logger.info("upd.newChat id=\(upd.chat.id, privacy: .public) title=\(upd.chat.title, privacy: .public) positions=[\(lists, privacy: .public)]")
+            logger.info("upd.newChat id=\(upd.chat.id, privacy: .public) title=\(upd.chat.title, privacy: .private) positions=[\(lists, privacy: .public)]")
         case .updateChatPosition(let upd):
             logger.info("upd.chatPosition id=\(upd.chatId, privacy: .public) list=\(self.describeList(upd.position.list), privacy: .public) order=\(upd.position.order.rawValue, privacy: .public)")
         case .updateChatAddedToList(let upd):

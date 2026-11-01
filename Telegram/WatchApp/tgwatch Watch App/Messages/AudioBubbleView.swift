@@ -118,7 +118,7 @@ struct AudioBubbleView: View {
 }
 
 #if DEBUG
-import TDShim
+@preconcurrency import TDShim
 
 private struct AudioPreviewNoopLoader: ChatHistoryLoader {
     func openChat(chatId: Int64) async throws {}

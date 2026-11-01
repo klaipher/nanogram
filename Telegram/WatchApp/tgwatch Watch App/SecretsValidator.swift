@@ -8,7 +8,7 @@ enum ConfigError: Equatable, Swift.Error {
     var humanMessage: String {
         switch self {
         case .missingApiId, .missingApiHash, .placeholderApiHash:
-            return "Missing API credentials. Copy Config/Secrets.example.xcconfig to Config/Secrets.xcconfig and fill in your values."
+            return "Missing API credentials. Build with TG_API_ID and TG_API_HASH set."
         }
     }
 }

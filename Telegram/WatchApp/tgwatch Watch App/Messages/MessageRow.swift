@@ -1,5 +1,5 @@
 import Foundation
-import TDShim
+@preconcurrency import TDShim
 
 enum MessageRow: Identifiable, Equatable, Hashable {
     case bubble(MessageBubble)
@@ -122,14 +122,16 @@ func messageRows(
         return p.userId == selfUserId
     }()
 
-    let dayKeyFormatter = DateFormatter()
-    dayKeyFormatter.calendar = calendar
-    dayKeyFormatter.locale = Locale(identifier: "en_US_POSIX")
-    dayKeyFormatter.timeZone = calendar.timeZone
-    dayKeyFormatter.dateFormat = "yyyy-MM-dd"
-
+    // Calendar components, not a DateFormatter per message: this runs on every history
+    // update. Only a new day pays for a key string and a label. Days start at midnight in
+    // every calendar, so the key uses Gregorian dates, which are unique per day (a Chinese
+    // leap month repeats its month number).
+    var labels = DaySeparatorLabels(today: today, calendar: calendar, locale: locale)
+    var keyCalendar = Calendar(identifier: .gregorian)
+    keyCalendar.timeZone = calendar.timeZone
     var rows: [MessageRow] = []
-    var lastDayKey: String? = nil
+    rows.reserveCapacity(sorted.count + 4)
+    var lastDay: DateComponents? = nil
     var dividerPlaced = false
 
     for msg in sorted {
@@ -141,11 +143,10 @@ func messageRows(
             dividerPlaced = true
         }
         let date = Foundation.Date(timeIntervalSince1970: TimeInterval(msg.date))
-        let dayKey = dayKeyFormatter.string(from: date)
-        if dayKey != lastDayKey {
-            let label = daySeparatorLabel(for: date, today: today, calendar: calendar, locale: locale)
-            rows.append(.daySeparator(.init(key: dayKey, label: label)))
-            lastDayKey = dayKey
+        let day = keyCalendar.dateComponents([.year, .month, .day], from: date)
+        if day != lastDay {
+            rows.append(.daySeparator(.init(key: dayKey(day), label: labels.label(for: date))))
+            lastDay = day
         }
         if let svc = serviceLineText(
             msg,
@@ -192,6 +193,15 @@ func messageRows(
         )))
     }
     return rows
+}
+
+/// "yyyy-MM-dd", as the en_US_POSIX formatter writes it for a Gregorian date.
+private func dayKey(_ day: DateComponents) -> String {
+    func pad(_ value: Int?, _ width: Int) -> String {
+        let digits = String(value ?? 0)
+        return String(repeating: "0", count: max(0, width - digits.count)) + digits
+    }
+    return "\(pad(day.year, 4))-\(pad(day.month, 2))-\(pad(day.day, 2))"
 }
 
 /// Builds a `PhotoVisual` for `messagePhoto` content, or returns `nil` for any other content

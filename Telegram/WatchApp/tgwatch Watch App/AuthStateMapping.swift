@@ -1,5 +1,5 @@
 import Foundation
-import TDShim
+@preconcurrency import TDShim
 
 func mapAuthState(_ s: AuthorizationState) -> AuthState {
     switch s {

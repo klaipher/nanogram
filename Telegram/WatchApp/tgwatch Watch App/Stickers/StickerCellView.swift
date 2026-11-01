@@ -3,7 +3,7 @@ import UIKit
 import WatchKit
 import RLottieKit
 import WebPKit
-import TDShim
+@preconcurrency import TDShim
 
 /// One tappable sticker tile. Downloads its render file when visible and decodes
 /// it (WebPKit for webp, UIImage for jpeg/png, rlottie frame-0 for tgs) once the
@@ -51,29 +51,38 @@ struct StickerCellView: View {
             if visible { store.requestFileDownload(fileId: id, priority: 2) }
             else { store.cancelFileDownload(fileId: id) }
         }
-        .task(id: localPath) { decode() }
+        .task(id: localPath) { await decode() }
     }
 
-    private func decode() {
+    private func decode() async {
         guard image == nil, let path = localPath else { return }
-        let url = URL(fileURLWithPath: path)
-        switch sticker.render {
+        // Tiles are 72 pt (32 pt for set covers); stickers are 512 px.
+        let pixels = Int((edge * screenScale).rounded(.up))
+        image = await Self.decodeTile(path: path, render: sticker.render, pixels: pixels)
+    }
+
+    /// Decodes off the main thread, so scrolling the grid doesn't wait on libwebp or rlottie.
+    @concurrent
+    nonisolated private static func decodeTile(path: String, render: PickerRender, pixels: Int) async -> UIImage? {
+        switch render {
         case .raster(_, let fmt):
             switch fmt {
             case .webp:
-                if let cg = WebPDecoder.decode(url: url) { image = UIImage(cgImage: cg) }
+                return MediaImageCache.image(path: path, format: .webp, maxPixelSize: pixels)
             case .jpeg, .png:
-                image = UIImage(contentsOfFile: path)
+                return MediaImageCache.image(path: path, format: .native, maxPixelSize: pixels)
             case .unsupported:
-                break
+                return nil
             }
         case .lottie:
-            if let anim = LottieAnimation(tgsFileURL: url),
-               let cg = anim.renderFrame(index: 0, size: CGSize(width: edge, height: edge), scale: screenScale) {
-                image = UIImage(cgImage: cg)
+            return MediaImageCache.image(key: "\(path)|lottie0|\(pixels)") {
+                guard let anim = LottieAnimation(tgsFileURL: URL(fileURLWithPath: path)),
+                      let cg = anim.renderFrame(index: 0, size: CGSize(width: pixels, height: pixels), scale: 1)
+                else { return nil }
+                return UIImage(cgImage: cg)
             }
         case .none:
-            break
+            return nil
         }
     }
 }

@@ -1,7 +1,7 @@
 import Foundation
 import Observation
 import OSLog
-import TDShim
+@preconcurrency import TDShim
 
 /// Receives lifecycle events from a `TDClient` that need to be reflected in
 /// the wider app (registry updates, account removal). Held weakly by TDClient.
@@ -42,6 +42,17 @@ final class TDClient {
 
     func setActiveHistory(_ store: ChatHistoryStore?) {
         activeHistory = store
+        store?.setViewingActive(isSceneActive)
+    }
+
+    /// False while the app is not frontmost (wrist down, or in the background). The open chat
+    /// then holds its read receipts until the user looks again.
+    private(set) var isSceneActive = true
+
+    func setSceneActive(_ active: Bool) {
+        guard active != isSceneActive else { return }
+        isSceneActive = active
+        activeHistory?.setViewingActive(active)
     }
 
     func makeChatHistoryLoader() -> ChatHistoryLoader? {
@@ -66,8 +77,10 @@ final class TDClient {
     /// `log show` after a brief window. Without persistence it's impossible to
     /// tell post-hoc whether a logging-out transition came from the user or from
     /// a server-initiated kick.
-    private let logger = Logger(subsystem: "com.isaac.tgwatch", category: "tdlib")
-    private let manager: TDLibClientManager
+    private let logger = Logger(watchCategory: "tdlib")
+    /// Creates the TDLib client; production wraps the process's one `TDLibClientManager`.
+    typealias ClientMaker = @MainActor (@escaping (Data, TDLibClient) -> Void) -> TDLibClient
+    private let makeClient: ClientMaker
     private weak var delegate: TDClientLifecycleDelegate?
     private let qrLinkPublisher: QrLinkPublisher = .defaultProduction()
     /// Per-process UUID exposed to QrLinkPublisher so the CLI can detect a
@@ -90,9 +103,13 @@ final class TDClient {
     /// force a local-only logout. Cancelled on any other auth-state transition.
     private var stuckLoggingOutTask: Task<Void, Never>?
 
-    init(account: Account, manager: TDLibClientManager, delegate: TDClientLifecycleDelegate) {
+    convenience init(account: Account, manager: TDLibClientManager, delegate: TDClientLifecycleDelegate) {
+        self.init(account: account, makeClient: { manager.createClient(updateHandler: $0) }, delegate: delegate)
+    }
+
+    init(account: Account, makeClient: @escaping ClientMaker, delegate: TDClientLifecycleDelegate) {
         self.account = account
-        self.manager = manager
+        self.makeClient = makeClient
         self.delegate = delegate
     }
 
@@ -187,29 +204,58 @@ final class TDClient {
         }
 
         qrLinkPublisher.clear()
-        let logger = self.logger
-        let client = manager.createClient { [weak self] data, callbackClient in
+        let handler = Self.makeUpdateHandler(logger: logger) { [weak self] update in
+            self?.handle(update)
+        }
+        let client = makeClient(handler)
+        self.client = client
+
+        // Synchronous, so the level applies before setTdlibParameters and any chat request.
+        do {
+            try Self.setLogVerbosity(TDLibLogPolicy.current, client: client)
+        } catch {
+            logger.warning("setLogVerbosityLevel failed: \(error.localizedDescription, privacy: .public)")
+        }
+    }
+
+    /// TDLib calls the handler on the client's own update queue. It must be built here, outside
+    /// the main actor: Swift 6 makes a closure written inside a `@MainActor` method main-actor
+    /// isolated and checks that on entry, so the first update would crash the app.
+    nonisolated static func makeUpdateHandler(
+        logger: os.Logger,
+        deliver: @escaping @MainActor (Update) -> Void
+    ) -> (Data, TDLibClient) -> Void {
+        let decodeAndDeliver = makeUpdateDecoder(logger: logger, deliver: deliver)
+        return { data, callbackClient in
+            decodeAndDeliver(data, callbackClient.decoder)
+        }
+    }
+
+    /// Decodes on the calling (TDLib) queue and hands the update to the main actor.
+    nonisolated static func makeUpdateDecoder(
+        logger: os.Logger,
+        deliver: @escaping @MainActor (Update) -> Void
+    ) -> @Sendable (Data, JSONDecoder) -> Void {
+        return { data, decoder in
             let update: Update
             do {
-                update = try callbackClient.decoder.decode(Update.self, from: data)
+                update = try decoder.decode(Update.self, from: data)
             } catch {
                 logger.warning("update decode failed: \(error.localizedDescription, privacy: .public)")
                 return
             }
-            DispatchQueue.main.async { [weak self] in
-                self?.handle(update)
+            DispatchQueue.main.async {
+                deliver(update)
             }
         }
-        self.client = client
+    }
 
-        let verbosity: Int = ProcessInfo.processInfo.environment["TGWATCH_TDLIB_VERBOSITY"]
-            .flatMap { Int($0) } ?? 1
-        Task { [logger, client] in
-            do {
-                _ = try await client.setLogVerbosityLevel(newVerbosityLevel: verbosity)
-            } catch {
-                logger.warning("setLogVerbosityLevel failed: \(error.localizedDescription, privacy: .public)")
-            }
+    /// Sets TDLib's log verbosity with a synchronous `td_execute` (process-wide, not per client).
+    nonisolated static func setLogVerbosity(_ level: Int, client: TDLibClient) throws {
+        let query = DTO(SetLogVerbosityLevel(newVerbosityLevel: level), encoder: client.encoder)
+        let result = try client.execute(query: query)
+        if let type = result?["@type"] as? String, type != "ok" {
+            throw TDError(code: 500, message: "setLogVerbosityLevel returned \(type)")
         }
     }
 
@@ -218,7 +264,7 @@ final class TDClient {
             lastError = nil
             let mapped = mapAuthState(upd.authorizationState)
             authState = mapped
-            logger.notice("authState -> \(String(describing: mapped), privacy: .public)")
+            logger.notice("authState -> \(mapped.logDescription, privacy: .public)")
 
             switch mapped {
             case .waitOtherDeviceConfirmation(let link):
@@ -238,6 +284,7 @@ final class TDClient {
                 if !hasFetchedMe {
                     hasFetchedMe = true
                     fetchMe()
+                    sendReadyOptions()
                 }
                 if chatList == nil, let client {
                     chatList = ChatListStore(
@@ -279,12 +326,12 @@ final class TDClient {
     /// both handled.
     private func requestQrCodeAuthenticationIfNeeded() {
         guard let client else { return }
-        Task { [logger, client] in
+        Task { [weak self, logger, client] in
             do {
                 _ = try await client.requestQrCodeAuthentication(otherUserIds: [])
             } catch {
                 logger.warning("requestQrCodeAuthentication failed: \(error.localizedDescription, privacy: .public)")
-                Task { @MainActor [weak self] in
+                Task { @MainActor in
                     self?.lastError = humanMessage(error)
                     self?.authState = .failed(humanMessage(error))
                 }
@@ -374,7 +421,7 @@ final class TDClient {
         guard let client else { return }
         let useTest = self.useTestDc
         let dbDir = Self.databaseDirectory(accountId: account.id)
-        Task { [logger, client] in
+        Task { [weak self, logger, client] in
             do {
                 _ = try await client.setTdlibParameters(
                     apiHash: Secrets.apiHash,
@@ -394,8 +441,21 @@ final class TDClient {
                 )
             } catch {
                 logger.error("setTdlibParameters failed: \(error.localizedDescription, privacy: .public)")
-                Task { @MainActor [weak self] in
+                Task { @MainActor in
                     self?.authState = .failed(humanMessage(error))
+                }
+            }
+        }
+    }
+
+    private func sendReadyOptions() {
+        guard let client else { return }
+        Task { [logger, client] in
+            for option in TDLibReadyOptions.all {
+                do {
+                    _ = try await client.setOption(name: option.name, value: option.value)
+                } catch {
+                    logger.warning("setOption \(option.name ?? "", privacy: .public) failed: \(error.localizedDescription, privacy: .public)")
                 }
             }
         }
@@ -403,10 +463,10 @@ final class TDClient {
 
     private func fetchMe() {
         guard let client else { return }
-        Task { [logger, client] in
+        Task { [weak self, logger, client] in
             do {
                 let user = try await client.getMe()
-                Task { @MainActor [weak self] in
+                Task { @MainActor in
                     guard let self else { return }
                     self.me = user
                     self.chatList?.setSelfUserId(user.id)
@@ -437,4 +497,15 @@ final class TDClient {
         try? FileManager.default.createDirectory(at: dir, withIntermediateDirectories: true)
         return dir
     }
+}
+
+/// Options set each time an account becomes ready.
+enum TDLibReadyOptions {
+    /// TDLib keeps every downloaded file forever unless its storage optimizer runs, which on
+    /// a watch slowly fills the disk. With it on, about once a day TDLib deletes files not
+    /// opened for 23 hours and trims the cache to 100 MB (TDLib's defaults; files created in
+    /// the last hour are kept).
+    static let all: [SetOption] = [
+        SetOption(name: "use_storage_optimizer", value: .optionValueBoolean(OptionValueBoolean(value: true))),
+    ]
 }

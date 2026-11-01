@@ -8,7 +8,7 @@ import UIKit
 /// quantized coordinate + size, so scrolling and reprojection don't re-render.
 enum MapSnapshotRenderer {
     // NSCache is thread-safe; no actor isolation needed.
-    private static let cache = NSCache<NSString, UIImage>()
+    nonisolated(unsafe) private static let cache = NSCache<NSString, UIImage>()
 
     /// Map span shown in the bubble/snapshot, in meters (square).
     private static let spanMeters: CLLocationDistance = 1000

@@ -1,4 +1,4 @@
-import TDShim
+@preconcurrency import TDShim
 
 /// Abstraction over the TDLib requests `ChatListStore` needs, so the store
 /// can be exercised in tests with a no-op or scripted loader.

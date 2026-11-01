@@ -11,8 +11,9 @@ import OpusKit
 /// (inside `append`, serialized by AVAudioEngine). The encoder, writer, `carry`,
 /// `rms`, and `totalSamples` are touched ONLY on `queue`. The cross-thread handoff
 /// is the `[Float]` mono array dispatched from the audio thread to `queue`.
-final class OpusOggRecordingSink {
-    private let queue = DispatchQueue(label: "org.telegram.TelegramWatch.opusEncode")
+/// `@unchecked Sendable`: the thread model above is what makes it safe; keep it.
+final class OpusOggRecordingSink: @unchecked Sendable {
+    private let queue = DispatchQueue(label: "org.klaipher.Nanogram.watchkitapp.opusEncode")
     private let encoder: OpusEncoder
     private let writer: OggOpusWriter
     private let converter: AVAudioConverter
@@ -153,13 +154,22 @@ final class AVRecordingBackend: RecordingBackend {
         let sink = try OpusOggRecordingSink(outputURL: url, inputFormat: inFormat)
         self.sink = sink
 
-        input.installTap(onBus: 0, bufferSize: 1024, format: inFormat) { buffer, _ in
-            let level = sink.append(buffer)
-            // AVAudioEngine fires this on the audio render thread — hop to main actor.
-            Task { @MainActor in onLevel(level) }
-        }
+        input.installTap(onBus: 0, bufferSize: 1024, format: inFormat, block: Self.makeTapBlock(sink: sink, onLevel: onLevel))
         engine.prepare()
         try engine.start()
+    }
+
+    /// AVAudioEngine calls the tap on its render thread. Built outside the main actor: a
+    /// closure written inside this `@MainActor` class would be main-actor isolated, and
+    /// Swift 6 checks that on entry, so the first buffer would crash the app.
+    nonisolated static func makeTapBlock(
+        sink: OpusOggRecordingSink,
+        onLevel: @escaping @MainActor (Float) -> Void
+    ) -> AVAudioNodeTapBlock {
+        return { buffer, _ in
+            let level = sink.append(buffer)
+            Task { @MainActor in onLevel(level) }
+        }
     }
 
     func finish() async throws -> VoiceRecordingDraft {

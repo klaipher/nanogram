@@ -1,6 +1,6 @@
 import Foundation
 import SwiftUI
-import TDShim
+@preconcurrency import TDShim
 
 /// Distinguishes the Saved-Messages bookmark glyph from a normal chat avatar.
 enum AvatarKind: Equatable, Hashable {

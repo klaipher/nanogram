@@ -155,7 +155,7 @@ struct MessageBubbleView: View {
 }
 
 #if DEBUG
-private let previewSampleBubble = MessageBubble(
+@MainActor private let previewSampleBubble = MessageBubble(
     messageId: 1, isOutgoing: false, senderName: "Alice",
     body: "this is a reply to text",
     photo: nil, video: nil, videoNote: nil, voiceNote: nil, audio: nil, document: nil, sticker: nil, location: nil, poll: nil,

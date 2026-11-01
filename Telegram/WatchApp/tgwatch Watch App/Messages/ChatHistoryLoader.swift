@@ -1,6 +1,6 @@
 import Foundation
 import OSLog
-import TDShim
+@preconcurrency import TDShim
 
 /// Single seam between `ChatHistoryStore` and TDLib. Tests inject a fake; production
 /// uses `TDLibChatHistoryLoader`.
@@ -88,18 +88,22 @@ struct TDLibChatHistoryLoader: ChatHistoryLoader {
                 continuation.resume(throwing: error)
             }
         }
-        return decodeMessagesLeniently(data, chatId: chatId)
+        return try Self.decodeMessagesLeniently(data, chatId: chatId, decoder: client.decoder)
     }
 
-    private func decodeMessagesLeniently(_ data: Data, chatId: Int64) -> [Message] {
-        let logger = Logger(subsystem: "org.telegram.TelegramWatch", category: "chathistory")
+    /// An error response throws: returning no messages would read as "no more history",
+    /// ending pagination for good and showing an empty chat instead of Retry.
+    static func decodeMessagesLeniently(_ data: Data, chatId: Int64, decoder: JSONDecoder) throws -> [Message] {
+        let logger = Logger(watchCategory: "chathistory")
         guard let json = try? JSONSerialization.jsonObject(with: data) as? [String: Any] else {
             logger.warning("getChatHistory chatId=\(chatId, privacy: .public) — response was not JSON object")
-            return []
+            throw TDError(code: 500, message: "Malformed getChatHistory response")
         }
         if let type = json["@type"] as? String, type == "error" {
-            logger.warning("getChatHistory chatId=\(chatId, privacy: .public) — TDLib error response: \(String(describing: json), privacy: .public)")
-            return []
+            let code = json["code"] as? Int ?? 500
+            let message = json["message"] as? String ?? ""
+            logger.warning("getChatHistory chatId=\(chatId, privacy: .public) failed: \(code, privacy: .public) \(message, privacy: .public)")
+            throw TDError(code: code, message: message)
         }
         guard let rawMessages = json["messages"] as? [[String: Any]] else {
             return []
@@ -114,10 +118,10 @@ struct TDLibChatHistoryLoader: ChatHistoryLoader {
                 continue
             }
             do {
-                let m = try client.decoder.decode(Message.self, from: perMessageData)
+                let m = try decoder.decode(Message.self, from: perMessageData)
                 decoded.append(m)
             } catch {
-                logger.warning("getChatHistory chatId=\(chatId, privacy: .public) — skipping message index=\(idx, privacy: .public) due to decode error: \(String(describing: error), privacy: .public)")
+                logger.warning("getChatHistory chatId=\(chatId, privacy: .public) — skipping message index=\(idx, privacy: .public) due to decode error: \(String(describing: error), privacy: .private)")
             }
         }
         return decoded

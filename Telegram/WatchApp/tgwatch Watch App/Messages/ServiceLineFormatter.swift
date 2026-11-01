@@ -1,5 +1,5 @@
 import Foundation
-import TDShim
+@preconcurrency import TDShim
 
 /// Renders the actor token for a service message:
 /// - sender user matches `selfUserId` → "You"

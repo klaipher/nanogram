@@ -1,5 +1,5 @@
 import Foundation
-import TDShim
+@preconcurrency import TDShim
 
 /// Local discriminator for outgoing-message lifecycle. Incoming messages are always `.sent`.
 enum SendingState: Equatable, Hashable {

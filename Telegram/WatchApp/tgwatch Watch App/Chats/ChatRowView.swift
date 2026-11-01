@@ -1,6 +1,6 @@
 import SwiftUI
 #if DEBUG
-import TDShim
+@preconcurrency import TDShim
 #endif
 
 struct ChatRowView: View {

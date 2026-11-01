@@ -1,5 +1,5 @@
 import SwiftUI
-import TDShim
+@preconcurrency import TDShim
 
 struct ChatListView: View {
     @Environment(TDClient.self) private var client

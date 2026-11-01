@@ -19,7 +19,7 @@ struct AccountRegistry {
     let readData: () throws -> Data
     let writeData: (Data, Data.WritingOptions) throws -> Void
 
-    private static let logger = Logger(subsystem: "com.isaac.tgwatch", category: "accounts")
+    private static let logger = Logger(watchCategory: "accounts")
 
     /// Returns the empty state if the file is absent or corrupt. The smaller
     /// recovery surface keeps a single bad write from bricking the app.

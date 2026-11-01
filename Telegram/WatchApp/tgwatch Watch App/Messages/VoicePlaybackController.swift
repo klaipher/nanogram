@@ -9,6 +9,8 @@ protocol VoicePlaybackBackend: AnyObject {
     func pause()
     func resume()
     func stop()
+    /// Stops the audio hardware (a running engine keeps it on even when nothing plays).
+    func releaseHardware()
     var elapsed: Double { get }
     var lastBufferDuration: Double { get }
 }
@@ -85,7 +87,7 @@ final class VoicePlaybackController {
         decodeTask = nil
         currentProgress = 0
         backend.stop()
-        (backend as? AVEngineBackend)?.dropEngine()
+        backend.releaseHardware()
         state = .idle
     }
 
@@ -180,6 +182,7 @@ final class VoicePlaybackController {
         tickerTask = nil
         currentProgress = 0
         backend.stop()
+        backend.releaseHardware()
         state = .idle
     }
 
@@ -269,13 +272,12 @@ final class AVEngineBackend: VoicePlaybackBackend {
     func stop() {
         pendingCompletion = nil
         player.stop()
-        // Leave engine running between toggles within the same chat — saves a
-        // hardware re-prepare. Stopped on tearDown via dropEngine().
+        // The engine stays up while paused; the controller calls `releaseHardware` when a
+        // note ends, on a switch to another note and when the chat closes.
     }
 
-    /// Stops the engine entirely. Called from VoicePlaybackController.tearDown
-    /// via the controller's stop path; safe to call repeatedly.
-    func dropEngine() {
+    /// Stops the engine entirely; `play` starts it again. Safe to call repeatedly.
+    func releaseHardware() {
         player.stop()
         if engine.isRunning { engine.stop() }
     }

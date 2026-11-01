@@ -30,7 +30,7 @@ struct VideoPlayerView: View {
     @State private var endObserver: NSObjectProtocol?
     @State private var statusObserver: AnyCancellable?
 
-    private let logger = Logger(subsystem: "com.isaac.tgwatch", category: "videoplayer")
+    private let logger = Logger(watchCategory: "videoplayer")
 
     enum Phase: Equatable {
         case preparing(progress: Double)   // 0...1
@@ -134,7 +134,7 @@ struct VideoPlayerView: View {
 
     @ViewBuilder
     private var previewBackground: some View {
-        if let path = video.preview.previewLocalPath, let img = UIImage(contentsOfFile: path) {
+        if let path = video.preview.previewLocalPath, let img = MediaImageCache.image(path: path, format: .native) {
             Image(uiImage: img).resizable().scaledToFit()
         } else if let data = video.preview.minithumbnail, let img = UIImage(data: data) {
             Image(uiImage: img).resizable().scaledToFit()
@@ -207,7 +207,9 @@ struct VideoPlayerView: View {
             object: p.currentItem,
             queue: .main
         ) { _ in
-            hasReachedEnd = true
+            MainActor.assumeIsolated {
+                hasReachedEnd = true
+            }
         }
         statusObserver?.cancel()
         statusObserver = p.currentItem?.publisher(for: \.status)

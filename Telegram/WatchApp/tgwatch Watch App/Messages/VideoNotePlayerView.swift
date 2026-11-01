@@ -23,7 +23,7 @@ struct VideoNotePlayerView: View {
     @State private var endObserver: NSObjectProtocol?
     @State private var statusObserver: NSKeyValueObservation?
 
-    private let logger = Logger(subsystem: "com.isaac.tgwatch", category: "videoplayer")
+    private let logger = Logger(watchCategory: "videoplayer")
 
     enum Phase: Equatable {
         case preparing(progress: Double)
@@ -38,14 +38,7 @@ struct VideoNotePlayerView: View {
             Color.black.ignoresSafeArea()
             content
         }
-        .onAppear {
-            if let path = note.videoLocalPath, !path.isEmpty, FileManager.default.fileExists(atPath: path) {
-                setupPlayer(path: path)
-                phase = .playing
-            } else {
-                store.requestFileDownload(fileId: note.videoFileId, priority: 2)
-            }
-        }
+        .onAppear { start() }
         .onChange(of: store.fileSnapshot(fileId: note.videoFileId)) { _, snap in
             guard let snap else { return }
             if snap.local.isDownloadingCompleted, !snap.local.path.isEmpty {
@@ -60,14 +53,7 @@ struct VideoNotePlayerView: View {
             }
         }
         .onDisappear {
-            player?.pause()
-            player = nil
-            if let endObserver {
-                NotificationCenter.default.removeObserver(endObserver)
-            }
-            endObserver = nil
-            statusObserver?.invalidate()
-            statusObserver = nil
+            tearDownPlayer()
             try? AVAudioSession.sharedInstance().setActive(false)
             store.cancelFileDownload(fileId: note.videoFileId)
         }
@@ -120,8 +106,9 @@ struct VideoNotePlayerView: View {
                     .foregroundStyle(.white)
                     .multilineTextAlignment(.center)
                 Button("Retry") {
+                    tearDownPlayer()
                     phase = .preparing(progress: 0)
-                    store.requestFileDownload(fileId: note.videoFileId, priority: 2)
+                    start()
                 }
                 .buttonStyle(.borderedProminent)
             }
@@ -131,13 +118,38 @@ struct VideoNotePlayerView: View {
 
     @ViewBuilder
     private var previewImage: some View {
-        if let path = note.thumbLocalPath, let img = UIImage(contentsOfFile: path) {
+        if let path = note.thumbLocalPath, let img = MediaImageCache.image(path: path, format: .native) {
             Image(uiImage: img).resizable().scaledToFill().blur(radius: 4)
         } else if let data = note.minithumbnail, let img = UIImage(data: data) {
             Image(uiImage: img).resizable().scaledToFill().blur(radius: 4)
         } else {
             Color.gray.opacity(0.3)
         }
+    }
+
+    /// Plays the file if it is on disk (from the tap or from a download that finished
+    /// since), otherwise downloads it: TDLib sends no `updateFile` for a file it already has.
+    private func start() {
+        let snap = store.fileSnapshot(fileId: note.videoFileId)
+        let snapshotPath = snap?.local.isDownloadingCompleted == true ? snap?.local.path : nil
+        if let path = playableVideoPath(visualPath: note.videoLocalPath, snapshotPath: snapshotPath) {
+            setupPlayer(path: path)
+            phase = .playing
+        } else {
+            store.requestFileDownload(fileId: note.videoFileId, priority: 2)
+        }
+    }
+
+    private func tearDownPlayer() {
+        player?.pause()
+        player = nil
+        hasReachedEnd = false
+        if let endObserver {
+            NotificationCenter.default.removeObserver(endObserver)
+        }
+        endObserver = nil
+        statusObserver?.invalidate()
+        statusObserver = nil
     }
 
     private func setupPlayer(path: String) {
@@ -148,7 +160,9 @@ struct VideoNotePlayerView: View {
                 object: item,
                 queue: .main
             ) { _ in
-                hasReachedEnd = true
+                MainActor.assumeIsolated {
+                    hasReachedEnd = true
+                }
             }
             statusObserver = item.observe(\.status, options: [.new]) { item, _ in
                 if item.status == .failed {
@@ -174,4 +188,17 @@ struct VideoNotePlayerView: View {
             logger.error("audio session activation failed: \(error.localizedDescription, privacy: .public)")
         }
     }
+}
+
+/// The downloaded video to play: the path the bubble had when tapped, else the store's
+/// finished download, if either is on disk. Nil means download first.
+func playableVideoPath(
+    visualPath: String?,
+    snapshotPath: String?,
+    fileExists: (String) -> Bool = { FileManager.default.fileExists(atPath: $0) }
+) -> String? {
+    for path in [visualPath, snapshotPath] {
+        if let path, !path.isEmpty, fileExists(path) { return path }
+    }
+    return nil
 }

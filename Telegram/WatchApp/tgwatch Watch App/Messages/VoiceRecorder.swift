@@ -67,6 +67,8 @@ final class VoiceRecorder {
             state = .recording(elapsed: 0, level: 0)
             startTicker()
         } catch {
+            // `begin` may have activated the session or installed the tap before throwing.
+            backend.abort()
             state = .failed("Couldn't start microphone")
         }
     }

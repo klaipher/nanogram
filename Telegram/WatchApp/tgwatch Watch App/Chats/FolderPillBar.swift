@@ -1,7 +1,7 @@
 import SwiftUI
 import OSLog
 
-private let pillLogger = Logger(subsystem: "com.isaac.tgwatch", category: "chatlist")
+private let pillLogger = Logger(watchCategory: "chatlist")
 
 /// Horizontal scroller of folder pills. Embedded as the first item inside the chat list's
 /// scrollable area so it scrolls off with the content. Stable `.id("folderPillBar")` keeps

@@ -73,9 +73,16 @@ struct PhotoBubbleView: View {
         .clipShape(RoundedRectangle(cornerRadius: BubbleShape.cornerRadius))
     }
 
-    @ViewBuilder
     private var imageView: some View {
-        if let path = photo.localPath, let img = UIImage(contentsOfFile: path) {
+        imageContent
+            .accessibilityElement(children: .ignore)
+            .accessibilityLabel("Photo")
+            .accessibilityAddTraits(.isButton)
+    }
+
+    @ViewBuilder
+    private var imageContent: some View {
+        if let path = photo.localPath, let img = MediaImageCache.image(path: path, format: .native) {
             Image(uiImage: img).resizable().scaledToFill()
         } else if let data = photo.minithumbnail, let img = UIImage(data: data) {
             Image(uiImage: img).resizable().scaledToFill().blur(radius: 2)
@@ -102,7 +109,7 @@ struct PhotoBubbleView: View {
 }
 
 #if DEBUG
-import TDShim
+@preconcurrency import TDShim
 
 private struct PhotoPreviewNoopLoader: ChatHistoryLoader {
     func openChat(chatId: Int64) async throws {}

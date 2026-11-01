@@ -1,7 +1,7 @@
-# Committed snapshot of the tgwatch watch app (synced from the standalone tgwatch repo
-# via tools/export-sources.sh). Built by //Telegram:TelegramWatchApp
-# (apple_prebuilt_watchos_application) via xcodebuild. These files are the rule's tracked
-# inputs, so the watch build re-runs only when the snapshot changes.
+# Nanogram's watch app, built by //Telegram:TelegramWatchApp (apple_prebuilt_watchos_application)
+# via xcodebuild. These files are the compile action's inputs, so the watch build re-runs only
+# when one of them changes. The development project, its spec and the app's unit tests are not
+# part of the embedded build (prebuilt_watchos_compile.sh does not copy them either).
 filegroup(
     name = "sources",
     srcs = glob(
@@ -13,6 +13,9 @@ filegroup(
             "**/DerivedData/**",
             "BUILD",
             ".gitignore",
+            "Tests/**",
+            "project-dev.yml",
+            "tgwatch-dev.xcodeproj/**",
         ],
     ),
     visibility = ["//Telegram:__pkg__"],

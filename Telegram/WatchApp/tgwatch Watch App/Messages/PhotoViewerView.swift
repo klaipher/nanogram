@@ -12,7 +12,7 @@ struct PhotoViewerView: View {
     var body: some View {
         ZStack {
             Color.black.ignoresSafeArea()
-            if let path = photo.localPath, let img = UIImage(contentsOfFile: path) {
+            if let path = photo.localPath, let img = MediaImageCache.image(path: path, format: .native) {
                 Image(uiImage: img)
                     .resizable()
                     .scaledToFit()

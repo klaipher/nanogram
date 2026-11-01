@@ -1,7 +1,7 @@
 import Foundation
 import Observation
 import OSLog
-import TDShim
+@preconcurrency import TDShim
 
 @Observable
 @MainActor
@@ -30,7 +30,7 @@ final class ChatHistoryStore {
     private let chatTailIdAtOpen: Int64?
     private let loader: ChatHistoryLoader
     private let selfUserId: Int64?
-    private let logger = Logger(subsystem: "org.telegram.TelegramWatch", category: "chathistory")
+    private let logger = Logger(watchCategory: "chathistory")
 
     let voicePlayback: VoicePlaybackController
     let audioPlayback: AudioPlaybackController
@@ -309,9 +309,28 @@ final class ChatHistoryStore {
     private var pendingViewIds: Set<Int64> = []
     private var viewDrainTask: Task<Void, Never>? = nil
     private static let viewDrainDelayNs: UInt64 = 300_000_000  // 300ms
+    /// False while the app is not frontmost: rows still appear (an incoming message scrolls
+    /// into view with the wrist down), but nobody is reading them, so their ids wait here.
+    private var isViewingActive = true
+
+    func setViewingActive(_ active: Bool) {
+        guard active != isViewingActive else { return }
+        isViewingActive = active
+        if active {
+            if !pendingViewIds.isEmpty { scheduleViewDrain() }
+        } else {
+            viewDrainTask?.cancel()
+            viewDrainTask = nil
+        }
+    }
 
     func markVisible(messageId: Int64) {
         pendingViewIds.insert(messageId)
+        guard isViewingActive else { return }
+        scheduleViewDrain()
+    }
+
+    private func scheduleViewDrain() {
         viewDrainTask?.cancel()
         viewDrainTask = Task { [weak self] in
             try? await Task.sleep(nanoseconds: Self.viewDrainDelayNs)

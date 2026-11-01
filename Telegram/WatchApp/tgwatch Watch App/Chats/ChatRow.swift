@@ -1,4 +1,4 @@
-import TDShim
+@preconcurrency import TDShim
 
 struct ChatRow: Identifiable, Equatable, Hashable {
     let id: Int64

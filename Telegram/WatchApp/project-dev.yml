@@ -1,0 +1,33 @@
+# Development-only project: the embedded app spec (project.yml) plus a unit test target.
+# Generate with `xcodegen generate --spec project-dev.yml` (writes tgwatch-dev.xcodeproj, not
+# committed) and test in the watchOS simulator: `tools/dev/tg watch test` does both.
+# The Bazel embed build never uses this file.
+include:
+  - project.yml
+name: tgwatch-dev
+targets:
+  tgwatchTests:
+    type: bundle.unit-test
+    platform: watchOS
+    deploymentTarget: "26.0"
+    sources:
+      - path: Tests/WatchAppTests
+    dependencies:
+      - target: tgwatch Watch App
+    settings:
+      base:
+        PRODUCT_BUNDLE_IDENTIFIER: org.klaipher.Nanogram.watchkitapp.tests
+        GENERATE_INFOPLIST_FILE: "YES"
+        SWIFT_TREAT_WARNINGS_AS_ERRORS: "YES"
+        TEST_HOST: "$(BUILT_PRODUCTS_DIR)/tgwatch Watch App.app/tgwatch Watch App"
+        BUNDLE_LOADER: "$(TEST_HOST)"
+        CODE_SIGNING_ALLOWED: "NO"
+schemes:
+  tgwatch Watch App:
+    build:
+      targets:
+        tgwatch Watch App: all
+    test:
+      config: Debug
+      targets:
+        - tgwatchTests

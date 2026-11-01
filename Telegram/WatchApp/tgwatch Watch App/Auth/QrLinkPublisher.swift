@@ -20,12 +20,12 @@ struct QrLinkEnvelope: Codable, Equatable {
 
 /// Owns the on-disk lifecycle of `qr-link.json`. All I/O is injected so unit
 /// tests run without touching the real watch container.
-struct QrLinkPublisher {
+struct QrLinkPublisher: Sendable {
     /// `nil` → disabled (release builds, or any path where there's no caches dir).
     let writeURL: URL?
-    let now: () -> Foundation.Date
-    let writeData: (Data, URL) throws -> Void
-    let removeItem: (URL) throws -> Void
+    let now: @Sendable () -> Foundation.Date
+    let writeData: @Sendable (Data, URL) throws -> Void
+    let removeItem: @Sendable (URL) throws -> Void
 
     /// No-op publisher used by release builds and disabled tests.
     static let disabled = QrLinkPublisher(

@@ -1,5 +1,5 @@
 import Foundation
-import TDShim
+@preconcurrency import TDShim
 
 /// Renders the body text of a message bubble. Mirrors `chatPreview`'s content labels for
 /// non-text content but does not prepend a sender prefix (which is drawn as a separate
@@ -57,20 +57,46 @@ func daySeparatorLabel(
     calendar: Calendar,
     locale: Locale = .current
 ) -> String {
-    let dayStart = calendar.startOfDay(for: date)
-    let todayStart = calendar.startOfDay(for: today)
-    let dayDiff = calendar.dateComponents([.day], from: dayStart, to: todayStart).day ?? 0
+    var labels = DaySeparatorLabels(today: today, calendar: calendar, locale: locale)
+    return labels.label(for: date)
+}
 
-    if dayDiff == 0 { return "Today" }
-    if dayDiff == 1 { return "Yesterday" }
+/// `daySeparatorLabel` for many dates against one `today`: the formatters are made once.
+struct DaySeparatorLabels {
+    private let todayStart: Foundation.Date
+    private let calendar: Calendar
+    private let locale: Locale
+    private var weekday: DateFormatter?
+    private var monthDay: DateFormatter?
 
-    let formatter = DateFormatter()
-    formatter.calendar = calendar
-    formatter.locale = locale
-    if dayDiff >= 2 && dayDiff <= 6 {
-        formatter.dateFormat = "EEEE"   // "Sunday", "Monday", …
-    } else {
-        formatter.dateFormat = "MMM d"  // "May 5", "Dec 31"
+    init(today: Foundation.Date, calendar: Calendar, locale: Locale) {
+        self.todayStart = calendar.startOfDay(for: today)
+        self.calendar = calendar
+        self.locale = locale
     }
-    return formatter.string(from: date)
+
+    mutating func label(for date: Foundation.Date) -> String {
+        let dayStart = calendar.startOfDay(for: date)
+        let dayDiff = calendar.dateComponents([.day], from: dayStart, to: todayStart).day ?? 0
+
+        if dayDiff == 0 { return "Today" }
+        if dayDiff == 1 { return "Yesterday" }
+        if dayDiff >= 2 && dayDiff <= 6 {
+            let formatter = weekday ?? makeFormatter("EEEE")   // "Sunday", "Monday", …
+            weekday = formatter
+            return formatter.string(from: date)
+        }
+        let formatter = monthDay ?? makeFormatter("MMM d")     // "May 5", "Dec 31"
+        monthDay = formatter
+        return formatter.string(from: date)
+    }
+
+    private func makeFormatter(_ format: String) -> DateFormatter {
+        let formatter = DateFormatter()
+        formatter.calendar = calendar
+        formatter.locale = locale
+        formatter.timeZone = calendar.timeZone
+        formatter.dateFormat = format
+        return formatter
+    }
 }

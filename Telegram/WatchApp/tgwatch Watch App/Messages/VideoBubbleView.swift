@@ -89,11 +89,14 @@ struct VideoBubbleView: View {
                 }
             playOverlay
         }
+        .accessibilityElement(children: .ignore)
+        .accessibilityLabel("Video, \(formatDuration(video.duration))")
+        .accessibilityAddTraits(.isButton)
     }
 
     @ViewBuilder
     private var imageView: some View {
-        if let path = video.preview.previewLocalPath, let img = UIImage(contentsOfFile: path) {
+        if let path = video.preview.previewLocalPath, let img = MediaImageCache.image(path: path, format: .native) {
             Image(uiImage: img).resizable().scaledToFill()
         } else if let data = video.preview.minithumbnail, let img = UIImage(data: data) {
             Image(uiImage: img).resizable().scaledToFill().blur(radius: 2)
@@ -127,7 +130,7 @@ struct VideoBubbleView: View {
 }
 
 #if DEBUG
-import TDShim
+@preconcurrency import TDShim
 
 private struct VideoPreviewNoopLoader: ChatHistoryLoader {
     func openChat(chatId: Int64) async throws {}

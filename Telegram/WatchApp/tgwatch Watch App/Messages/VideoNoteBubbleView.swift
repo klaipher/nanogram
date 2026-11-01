@@ -51,6 +51,9 @@ struct VideoNoteBubbleView: View {
             }
             .contentShape(Circle())
             .onTapGesture { onTap() }
+            .accessibilityElement(children: .ignore)
+            .accessibilityLabel("Video message, \(formatDuration(note.duration))")
+            .accessibilityAddTraits(.isButton)
             .onScrollVisibilityChange(threshold: 0.01) { visible in
                 guard let id = note.thumbFileId else { return }
                 if visible {
@@ -64,7 +67,7 @@ struct VideoNoteBubbleView: View {
 
     @ViewBuilder
     private var imageView: some View {
-        if let path = note.thumbLocalPath, let img = UIImage(contentsOfFile: path) {
+        if let path = note.thumbLocalPath, let img = MediaImageCache.image(path: path, format: .native) {
             Image(uiImage: img).resizable().scaledToFill()
         } else if let data = note.minithumbnail, let img = UIImage(data: data) {
             Image(uiImage: img).resizable().scaledToFill().blur(radius: 2)
@@ -82,7 +85,7 @@ struct VideoNoteBubbleView: View {
 }
 
 #if DEBUG
-import TDShim
+@preconcurrency import TDShim
 
 private struct VideoNotePreviewNoopLoader: ChatHistoryLoader {
     func openChat(chatId: Int64) async throws {}

@@ -6,3 +6,6 @@
 # generated project (the Bazel embed build uses it directly). Re-include the project
 # directory; xcuserdata inside stays excluded via the rule above.
 !tgwatch.xcodeproj
+
+# Development project generated from project-dev.yml
+tgwatch-dev.xcodeproj/

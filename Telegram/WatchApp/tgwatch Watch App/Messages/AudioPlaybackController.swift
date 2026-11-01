@@ -175,7 +175,7 @@ final class AVPlayerBackend: AudioPlayerBackend {
     private var timeObserver: Any?
     private var endObserver: NSObjectProtocol?
     private var statusObserver: AnyCancellable?
-    private let logger = Logger(subsystem: "com.isaac.tgwatch", category: "audioplayer")
+    private let logger = Logger(watchCategory: "audioplayer")
 
     var elapsed: Double {
         guard let player else { return 0 }
@@ -187,14 +187,19 @@ final class AVPlayerBackend: AudioPlayerBackend {
         teardownObservers()
         let p = AVPlayer(url: url)
         let interval = CMTime(seconds: 0.5, preferredTimescale: 600)
+        // Both observers are delivered on the main queue.
         timeObserver = p.addPeriodicTimeObserver(forInterval: interval, queue: .main) { [weak self] t in
             let secs = CMTimeGetSeconds(t)
-            self?.onProgress?(secs.isFinite ? secs : 0)
+            MainActor.assumeIsolated {
+                self?.onProgress?(secs.isFinite ? secs : 0)
+            }
         }
         endObserver = NotificationCenter.default.addObserver(
             forName: .AVPlayerItemDidPlayToEndTime, object: p.currentItem, queue: .main
         ) { [weak self] _ in
-            self?.onEnded?()
+            MainActor.assumeIsolated {
+                self?.onEnded?()
+            }
         }
         statusObserver = p.currentItem?.publisher(for: \.status)
             .receive(on: DispatchQueue.main)
@@ -203,7 +208,7 @@ final class AVPlayerBackend: AudioPlayerBackend {
             }
         try activatePlaybackSession()
         player = p
-        logger.info("audio load \(url.lastPathComponent, privacy: .public)")
+        logger.info("audio load \(url.lastPathComponent, privacy: .private)")
     }
 
     func play()  { player?.play() }

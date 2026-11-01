@@ -1,4 +1,4 @@
-import TDShim
+@preconcurrency import TDShim
 
 /// Hashable identity for a TDLib `ChatList`. We avoid using `ChatList` directly as a
 /// dictionary key because its `Hashable`/`Equatable` conformance may not synthesize

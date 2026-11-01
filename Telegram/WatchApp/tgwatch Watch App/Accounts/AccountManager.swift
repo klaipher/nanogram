@@ -1,7 +1,7 @@
 import Foundation
 import Observation
 import OSLog
-import TDShim
+@preconcurrency import TDShim
 
 /// App-root orchestrator: owns the account registry and the single live
 /// `TDClient`. Inactive accounts are merely on-disk database dirs.
@@ -19,19 +19,28 @@ final class AccountManager: TDClientLifecycleDelegate {
     private let environment: [String: String]
     private let accountDirectoryRemover: (UUID) -> Void
     private let now: () -> Foundation.Date
-    private let logger = Logger(subsystem: "com.isaac.tgwatch", category: "accounts")
+    private let closeClient: @MainActor (TDClient) async -> Void
+    private let logger = Logger(watchCategory: "accounts")
+    /// The last queued account operation; see `serialized`.
+    private var operationTail: Task<Void, Never>?
+    private var isSceneActive = true
 
     init(
         registry: AccountRegistry,
         factory: TDClientFactory,
         environment: [String: String] = ProcessInfo.processInfo.environment,
         accountDirectoryRemover: ((UUID) -> Void)? = nil,
-        now: @escaping () -> Foundation.Date = { Foundation.Date() }
+        now: @escaping () -> Foundation.Date = { Foundation.Date() },
+        closeClient: (@MainActor (TDClient) async -> Void)? = nil
     ) {
         self.registry = registry
         self.factory = factory
         self.environment = environment
         self.now = now
+        self.closeClient = closeClient ?? { client in
+            await client.close()
+            await client.awaitClosed()
+        }
         self.accountDirectoryRemover = accountDirectoryRemover ?? { id in
             let url = TDClient.databaseDirectory(accountId: id)
             try? FileManager.default.removeItem(at: url)
@@ -90,13 +99,39 @@ final class AccountManager: TDClientLifecycleDelegate {
     /// previous active account (if any) is **closed**, not logged out —
     /// its server-side session and on-disk db stay intact.
     func addAccount(useTestDc: Bool) async {
-        await closePreviousIfAny()
-        appendAndStart(account: makeNewAccount(useTestDc: useTestDc))
+        await serialized {
+            await self.closePreviousIfAny()
+            self.appendAndStart(account: self.makeNewAccount(useTestDc: useTestDc))
+        }
     }
 
     /// Closes the current client and starts the chosen account's client.
     /// Same close-not-logOut semantics as `addAccount`.
     func switchTo(accountId: UUID) async {
+        await serialized { await self.performSwitch(to: accountId) }
+    }
+
+    /// Forwards the app's scene phase to the live client (and to any client started later).
+    func setSceneActive(_ active: Bool) {
+        isSceneActive = active
+        activeClient?.setSceneActive(active)
+    }
+
+    /// Runs account operations one at a time. Each closes one TDLib client and starts another
+    /// across suspension points; two overlapping ones (a double tap while the first close is
+    /// still waiting on TDLib) would start two clients on one database and drop the first
+    /// without closing it.
+    private func serialized(_ operation: @escaping @MainActor () async -> Void) async {
+        let previous = operationTail
+        let task = Task { @MainActor in
+            await previous?.value
+            await operation()
+        }
+        operationTail = task
+        await task.value
+    }
+
+    private func performSwitch(to accountId: UUID) async {
         guard accountId != activeAccountId else { return }
         guard let account = accounts.first(where: { $0.id == accountId }) else { return }
         await closePreviousIfAny()
@@ -111,6 +146,10 @@ final class AccountManager: TDClientLifecycleDelegate {
     /// Uses `logOut()` (not `close()`) so the server-side session is
     /// destroyed for the removed account.
     func removeActive() async {
+        await serialized { await self.performRemoveActive() }
+    }
+
+    private func performRemoveActive() async {
         guard let id = activeAccountId else { return }
         if let current = activeClient {
             await current.logOut()
@@ -131,8 +170,12 @@ final class AccountManager: TDClientLifecycleDelegate {
 
     /// Removes an inactive account. No client teardown needed.
     func remove(accountId: UUID) async {
+        await serialized { await self.performRemove(accountId: accountId) }
+    }
+
+    private func performRemove(accountId: UUID) async {
         guard accountId != activeAccountId else {
-            await removeActive()
+            await performRemoveActive()
             return
         }
         accounts.removeAll { $0.id == accountId }
@@ -170,8 +213,10 @@ final class AccountManager: TDClientLifecycleDelegate {
             let target = client.account.id
             Task { [weak self] in
                 guard let self else { return }
-                guard self.activeAccountId == target else { return }
-                await self.removeActive()
+                await self.serialized {
+                    guard self.activeAccountId == target else { return }
+                    await self.performRemoveActive()
+                }
             }
         }
     }
@@ -180,14 +225,14 @@ final class AccountManager: TDClientLifecycleDelegate {
 
     private func startClient(for account: Account) {
         let client = factory.make(account: account, delegate: self)
+        client.setSceneActive(isSceneActive)
         activeClient = client
         client.start()
     }
 
     private func closePreviousIfAny() async {
         guard let current = activeClient else { return }
-        await current.close()
-        await current.awaitClosed()
+        await closeClient(current)
         activeClient = nil
     }
 

@@ -1,5 +1,5 @@
 import Foundation
-import TDShim
+@preconcurrency import TDShim
 
 /// Renders the preview line for a chat-list row. Pure: same inputs always produce the same output.
 ///

@@ -1,5 +1,5 @@
 import SwiftUI
-import TDShim
+@preconcurrency import TDShim
 
 /// One sticker bubble. No rounded-rect chat-bubble chrome — sticker renders directly
 /// against the chat background, with sender name above (incoming groups only).
@@ -13,6 +13,7 @@ struct StickerBubbleView: View {
 
     @Environment(ChatHistoryStore.self) private var store
     @Environment(\.bubbleMetrics) private var metrics
+    @State private var isVisible = false
 
     private var maxEdgePt: CGFloat { metrics.stickerMaxEdge }
     private var style: BubbleStyle { .resolve(isOutgoing: isOutgoing) }
@@ -54,11 +55,19 @@ struct StickerBubbleView: View {
         switch sticker.format {
         case .webp:
             WebPStickerView(sticker: sticker, displaySize: displaySize)
+                .accessibilityElement(children: .ignore)
+                .accessibilityLabel(accessibilityLabel)
         case .tgs:
-            LottieAnimationView(sticker: sticker, displaySize: displaySize)
+            LottieAnimationView(sticker: sticker, displaySize: displaySize, isVisible: isVisible)
+                .accessibilityElement(children: .ignore)
+                .accessibilityLabel(accessibilityLabel)
         case .unsupported:
             unsupportedBubble
         }
+    }
+
+    private var accessibilityLabel: String {
+        sticker.emoji.isEmpty ? "Sticker" : "Sticker \(sticker.emoji)"
     }
 
     private var unsupportedBubble: some View {
@@ -91,6 +100,7 @@ struct StickerBubbleView: View {
     }
 
     private func handleVisibility(_ visible: Bool) {
+        isVisible = visible
         switch sticker.format {
         case .unsupported:
             return  // No download for unsupported formats.

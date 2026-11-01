@@ -1,5 +1,5 @@
 import Foundation
-import TDShim
+@preconcurrency import TDShim
 
 /// Per-sticker visual data the bubble view consumes. Built by `stickerVisual(for:fileLocals:)`
 /// from `MessageContent.messageSticker` plus the store's latest `files[fileId]` snapshot.

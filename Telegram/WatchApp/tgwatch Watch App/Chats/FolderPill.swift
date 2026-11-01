@@ -1,4 +1,4 @@
-import TDShim
+@preconcurrency import TDShim
 
 /// A single tab in the chat-list folder pill bar.
 ///

@@ -1,5 +1,5 @@
 import Foundation
-import TDShim
+@preconcurrency import TDShim
 
 /// Projects a `Message.replyTo` payload into a renderable `ReplyHeader`. Pure. Returns
 /// `nil` when there's no reply. See the spec at
