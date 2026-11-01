@@ -292,6 +292,15 @@ final class MediaBoxFileSystemEfficiencyTests: XCTestCase {
         XCTAssertEqual(touches.pathsToTouch(["a"], now: 4000.0), ["a"])
     }
 
+    // A clock that is not a number or jumps to an extreme never traps and never stops touching.
+    func testOddClocksStillTouch() {
+        var touches = RecentFileTouches(interval: 300.0, maxCount: 2)
+        for now in [Double.nan, .infinity, -.infinity, Double.greatestFiniteMagnitude, -Double.greatestFiniteMagnitude, 0.0, Double.nan] {
+            XCTAssertEqual(touches.pathsToTouch(["a", "b", "c"], now: now).count, 3, "\(now)")
+        }
+        XCTAssertLessThanOrEqual(touches.count, 2)
+    }
+
     func testTheTouchMemoryStaysBounded() {
         var touches = RecentFileTouches(interval: 3600.0, maxCount: 1000)
         for i in 0 ..< 5 {

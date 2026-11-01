@@ -55,4 +55,44 @@ final class SparseCoefficientsTests: XCTestCase {
         var more = [Int16](repeating: 0, count: values.count + 8)
         XCTAssertFalse(more.withUnsafeMutableBufferPointer { sparseCoefficientsDecode(encoded, length, $0.baseAddress!, values.count + 8) })
     }
+    func testEmptyInput() {
+        XCTAssertEqual(sparseCoefficientsMaxEncodedLength(0), 0)
+        var dest: [Int16] = [0x1234]
+        let source: [UInt8] = [0]
+        XCTAssertTrue(dest.withUnsafeMutableBufferPointer { sparseCoefficientsDecode(source, 0, $0.baseAddress!, 0) })
+        XCTAssertFalse(dest.withUnsafeMutableBufferPointer { sparseCoefficientsDecode(source, 1, $0.baseAddress!, 0) }, "unconsumed input")
+        XCTAssertFalse(dest.withUnsafeMutableBufferPointer { sparseCoefficientsDecode(source, 0, $0.baseAddress!, 1) }, "no input for one value")
+        XCTAssertEqual(dest, [0x1234])
+    }
+
+    // The NEON path loads 16 bytes at a time; input that ends right after a group must not be read past.
+    func testDecodeReadsOnlyItsInput() {
+        for count in [8, 9, 16, 17, 24, 4096] {
+            let values = (0 ..< count).map { Int16(truncatingIfNeeded: $0 &+ 1) }
+            var encoded = [UInt8](repeating: 0, count: sparseCoefficientsMaxEncodedLength(count))
+            let length = values.withUnsafeBufferPointer { sparseCoefficientsEncode($0.baseAddress!, count, &encoded) }
+            // Exactly `length` bytes at the end of a page, the next page unmapped.
+            let pageSize = Int(getpagesize())
+            let mappedLength = ((length + pageSize - 1) / pageSize + 1) * pageSize
+            guard let mapping = mmap(nil, mappedLength, PROT_READ | PROT_WRITE, MAP_PRIVATE | MAP_ANON, -1, 0), mapping != MAP_FAILED else {
+                return XCTFail("mmap failed")
+            }
+            defer {
+                munmap(mapping, mappedLength)
+            }
+            let guardPage = mapping.advanced(by: mappedLength - pageSize)
+            XCTAssertEqual(mprotect(guardPage, pageSize, PROT_NONE), 0)
+            let start = guardPage.advanced(by: -length).assumingMemoryBound(to: UInt8.self)
+            encoded.withUnsafeBufferPointer { start.update(from: $0.baseAddress!, count: length) }
+            var decoded = [Int16](repeating: 0, count: count)
+            XCTAssertTrue(decoded.withUnsafeMutableBufferPointer { sparseCoefficientsDecode(start, length, $0.baseAddress!, count) })
+            XCTAssertEqual(decoded, values)
+            // Every truncation also stays inside the input.
+            for cut in [0, 1, length / 2, length - 1] {
+                let cutStart = guardPage.advanced(by: -cut).assumingMemoryBound(to: UInt8.self)
+                encoded.withUnsafeBufferPointer { cutStart.update(from: $0.baseAddress!, count: cut) }
+                XCTAssertFalse(decoded.withUnsafeMutableBufferPointer { sparseCoefficientsDecode(cutStart, cut, $0.baseAddress!, count) }, "count \(count) cut \(cut)")
+            }
+        }
+    }
 }

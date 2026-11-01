@@ -167,4 +167,17 @@ final class DCTMultiAnimationRendererTickTests: XCTestCase {
         XCTAssertTrue(animationFrameDurationNeedsHighTickRate(1.0 / 25.0))
         XCTAssertTrue(animationFrameDurationNeedsHighTickRate(1.0 / 60.0))
     }
+
+    // Durations come from cache files: odd values must classify without trapping.
+    func testDurationClassificationOfOddValues() {
+        XCTAssertTrue(animationFrameDurationNeedsHighTickRate(0.0))
+        XCTAssertTrue(animationFrameDurationNeedsHighTickRate(-0.0))
+        XCTAssertTrue(animationFrameDurationNeedsHighTickRate(-1.0 / 30.0))
+        XCTAssertTrue(animationFrameDurationNeedsHighTickRate(Double.leastNonzeroMagnitude))
+        XCTAssertFalse(animationFrameDurationNeedsHighTickRate(Double.nan))
+        XCTAssertFalse(animationFrameDurationNeedsHighTickRate(Double.infinity))
+        XCTAssertTrue(animationFrameDurationNeedsHighTickRate(-Double.infinity))
+        XCTAssertFalse(animationFrameDurationNeedsHighTickRate(Double.greatestFiniteMagnitude))
+        XCTAssertFalse(animationFrameDurationNeedsHighTickRate(1e12))
+    }
 }

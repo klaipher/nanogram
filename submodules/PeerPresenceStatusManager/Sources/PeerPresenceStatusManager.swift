@@ -21,6 +21,10 @@ public func peerPresenceStatusRefreshTimeout(_ presence: EnginePeer.Presence, re
     func until(_ second: Int64) -> Double {
         return max(0.05, Double(second) - timestamp)
     }
+    // Int64(timestamp) traps on NaN, infinity and beyond ±2^63; no real clock is near 1e15.
+    guard timestamp.isFinite, abs(timestamp) < 1e15 else {
+        return Double.infinity
+    }
     let now = Int64(timestamp)
     switch presence.status {
     case let .present(statusTimestamp):

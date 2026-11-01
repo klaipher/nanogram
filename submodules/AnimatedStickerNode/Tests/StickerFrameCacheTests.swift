@@ -156,6 +156,46 @@ final class StickerFrameCacheTests: XCTestCase {
         XCTAssertFalse(FileManager.default.fileExists(atPath: videoOldPath))
     }
 
+    // Lengths come from the cache file's frame table: odd ones return nil, never trap.
+    func testDecompressFrameRejectsOddInput() {
+        let decodedLength = yuvaLength(width: 8, height: 8)
+        let original = Data((0 ..< decodedLength).map { UInt8(truncatingIfNeeded: $0 % 7) })
+        var compressed = Data(count: decodedLength + 64)
+        let compressedLength = compressed.withUnsafeMutableBytes { dst in
+            original.withUnsafeBytes { src in
+                compression_encode_buffer(dst.baseAddress!.assumingMemoryBound(to: UInt8.self), dst.count, src.baseAddress!.assumingMemoryBound(to: UInt8.self), src.count, nil, stickerFrameCompressionAlgorithm)
+            }
+        }
+        XCTAssertGreaterThan(compressedLength, 0)
+        compressed.count = compressedLength
+        let scratch = malloc(compression_decode_scratch_buffer_size(stickerFrameCompressionAlgorithm))
+        defer {
+            free(scratch)
+        }
+        compressed.withUnsafeBytes { buffer in
+            let bytes = buffer.baseAddress!.assumingMemoryBound(to: UInt8.self)
+            XCTAssertEqual(decompressFrame(bytes: bytes, length: compressedLength, decodedLength: decodedLength, scratch: scratch), original)
+            for length in [Int.min, -1, 0] {
+                XCTAssertNil(decompressFrame(bytes: bytes, length: length, decodedLength: decodedLength, scratch: scratch))
+            }
+            for length in [1, compressedLength / 2] {
+                XCTAssertNil(decompressFrame(bytes: bytes, length: length, decodedLength: decodedLength, scratch: scratch), "length \(length)")
+            }
+            // Cutting only the stream's end marker still yields the whole frame; anything else is nil.
+            for length in compressedLength - 8 ..< compressedLength {
+                let result = decompressFrame(bytes: bytes, length: length, decodedLength: decodedLength, scratch: scratch)
+                XCTAssertTrue(result == nil || result == original, "length \(length)")
+            }
+            for wrongDecodedLength in [Int.min, -1, 0, decodedLength + 1, decodedLength * 2] {
+                XCTAssertNil(decompressFrame(bytes: bytes, length: compressedLength, decodedLength: wrongDecodedLength, scratch: scratch), "decoded \(wrongDecodedLength)")
+            }
+        }
+        let garbage = Data((0 ..< 300).map { UInt8(truncatingIfNeeded: $0 &* 131 &+ 17) })
+        garbage.withUnsafeBytes { buffer in
+            XCTAssertNil(decompressFrame(bytes: buffer.baseAddress!.assumingMemoryBound(to: UInt8.self), length: buffer.count, decodedLength: decodedLength, scratch: scratch))
+        }
+    }
+
     func testDamagedFrameIsNotReturned() throws {
         let queue = Queue()
         let width = 72, height = 72

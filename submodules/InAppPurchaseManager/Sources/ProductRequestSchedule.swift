@@ -32,7 +32,8 @@ public struct InAppPurchaseProductRequestSchedule: Equatable {
     }
 
     public static func retryDelay(failureCount: Int) -> Double {
-        let exponent = min(max(failureCount - 1, 0), 16)
+        // Clamped before subtracting: Int.min - 1 traps.
+        let exponent = min(max(failureCount, 1), 17) - 1
         return min(initialRetryDelay * Double(1 << exponent), maximumRetryDelay)
     }
 

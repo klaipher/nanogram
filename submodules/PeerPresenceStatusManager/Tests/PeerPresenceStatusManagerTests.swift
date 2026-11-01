@@ -137,6 +137,40 @@ final class PeerPresenceStatusManagerTests: XCTestCase {
         manager.reset(presence: forever, isOnline: true)
     }
 
+    // Every combination of extreme server values and clocks: never traps, never NaN, never a busy timer.
+    func testTimeoutIsSaneForAnyInput() {
+        let seconds: [Int32] = [Int32.min, Int32.min + 1, -31, -1, 0, 1, 30, 31, 3_600, 1_000_000_000, Int32.max - 31, Int32.max - 30, Int32.max - 1, Int32.max]
+        var statuses: [EnginePeer.Presence.Status] = [.recently(isHidden: false), .recently(isHidden: true), .lastWeek(isHidden: false), .lastMonth(isHidden: false), .longTimeAgo]
+        statuses.append(contentsOf: seconds.map { .present(until: $0) })
+        var clocks: [Double] = [0.0, -1.0, 0.5, 1_000_000_000.25, Double(Int32.max), Double(Int32.max) + 0.5, Double(Int32.min), Double(Int32.min) - 1.0, 1e15, -1e15, 1e18, -1e18, 9.3e18, -9.3e18, Double.greatestFiniteMagnitude, -Double.greatestFiniteMagnitude, .infinity, -.infinity, .nan]
+        clocks.append(contentsOf: seconds.map { Double($0) + 0.999 })
+        for status in statuses {
+            for lastActivity in seconds {
+                let presence = EnginePeer.Presence(status: status, lastActivity: lastActivity)
+                for clock in clocks {
+                    for isOnline: Bool? in [nil, true, false] {
+                        for mode in [PeerPresenceStatusRefreshMode.statusText, .onlineState] {
+                            let timeout = peerPresenceStatusRefreshTimeout(presence, relativeTo: clock, isOnline: isOnline, mode: mode)
+                            XCTAssertFalse(timeout.isNaN, "\(status) \(lastActivity) \(clock)")
+                            XCTAssertGreaterThanOrEqual(timeout, 0.05, "\(status) \(lastActivity) \(clock)")
+                        }
+                    }
+                }
+            }
+        }
+    }
+
+    // A clock that is not a real date schedules nothing.
+    func testNonFiniteClockSchedulesNothing() {
+        let presence = EnginePeer.Presence(status: .present(until: 1_000), lastActivity: 0)
+        for clock in [Double.nan, .infinity, -.infinity] {
+            let environment = FakeEnvironment(timestamp: clock)
+            let manager = PeerPresenceStatusManager(mode: .statusText, environment: environment, update: {})
+            manager.reset(presence: presence, isOnline: true)
+            XCTAssertEqual(environment.pendingTimerCount, 0)
+        }
+    }
+
     func testOnlineExpiryRefreshesOnceWithoutSpinning() {
         for fraction in [0.0, 0.01, 0.3, 0.5, 0.97, 0.999] {
             let start = 1_000_000.0 + fraction

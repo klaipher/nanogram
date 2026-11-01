@@ -97,4 +97,13 @@ final class ProductRequestScheduleTests: XCTestCase {
         XCTAssertEqual(schedule.enteredBackground(), [.cancelRequest])
         XCTAssertEqual(schedule.enteredBackground(), [])
     }
+
+    func testRetryDelayForAnyFailureCount() {
+        for count in [Int.min, Int.min + 1, -1, 0, 1] {
+            XCTAssertEqual(Schedule.retryDelay(failureCount: count), Schedule.initialRetryDelay, "\(count)")
+        }
+        for count in [6, 17, 18, 64, 65, Int.max - 1, Int.max] {
+            XCTAssertEqual(Schedule.retryDelay(failureCount: count), Schedule.maximumRetryDelay, "\(count)")
+        }
+    }
 }

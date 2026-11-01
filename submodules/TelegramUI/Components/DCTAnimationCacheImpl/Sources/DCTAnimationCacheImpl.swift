@@ -715,7 +715,8 @@ private final class AnimationCacheItemAccessor {
                     if encodedLength > sparseCoefficientsMaxEncodedLength(coefficientCount) {
                         throw ReadError.generic
                     }
-                    if self.sparseBufferCapacity < encodedLength {
+                    // A first plane with encodedLength 0 would otherwise leave the buffer nil.
+                    if self.sparseBuffer == nil || self.sparseBufferCapacity < encodedLength {
                         self.sparseBuffer?.deallocate()
                         self.sparseBuffer = UnsafeMutablePointer<UInt8>.allocate(capacity: max(encodedLength, 1))
                         self.sparseBufferCapacity = max(encodedLength, 1)
@@ -1131,7 +1132,11 @@ private enum LoadItemError: Error {
     case dataError
 }
 
-private func loadItem(path: String) throws -> AnimationCacheItem {
+private func isUsableCachedItemDimension(_ value: UInt32) -> Bool {
+    return value > 0 && value <= 4096 && value % 16 == 0
+}
+
+func loadItem(path: String) throws -> AnimationCacheItem {
     guard let compressedData = try? Data(contentsOf: URL(fileURLWithPath: path), options: .alwaysMapped) else {
         throw LoadItemError.dataError
     }
@@ -1159,6 +1164,11 @@ private func loadItem(path: String) throws -> AnimationCacheItem {
     }
     let height = readUInt32(data: compressedData, offset: offset)
     offset += 4
+    // The writer rounds both up to 16; the DCT blocks of any other size do not fit the planes.
+    // The bound keeps width * height * 2 from overflowing and the buffers allocatable.
+    if !isUsableCachedItemDimension(width) || !isUsableCachedItemDimension(height) {
+        throw LoadItemError.dataError
+    }
     
     if offset + 4 > dataLength {
         throw LoadItemError.dataError
@@ -1221,8 +1231,18 @@ private func loadItem(path: String) throws -> AnimationCacheItem {
         }
         let frameDuration = readFloat32(data: compressedData, offset: offset)
         offset += 4
+        // Playback loops forever on zero or negative durations and overflows its frame count on tiny ones.
+        // Infinity (a frame rate of 0) is a still frame and is kept.
+        if frameDuration.isNaN || frameDuration < 0.0001 {
+            throw LoadItemError.dataError
+        }
         
         frameMapping.append(AnimationCacheItemAccessor.FrameInfo(duration: Double(frameDuration)))
+    }
+    
+    // Playback indexes the duration table by frame.
+    if frameMapping.isEmpty {
+        throw LoadItemError.dataError
     }
     
     guard let dctData = DctData(lumaTable: dctLumaData, chromaTable: dctChromaData, deltaTable: dctDeltaData) else {
