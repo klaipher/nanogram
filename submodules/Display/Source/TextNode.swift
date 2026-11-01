@@ -1262,7 +1262,7 @@ open class TextNode: ASDisplayNode, TextNodeProtocol {
         public static let all: RenderContentTypes = [.text, .emoji]
     }
     
-    public final class DrawingParameters: NSObject {
+    public final class DrawingParameters: NSObject, ASGrayscaleDrawParameters {
         let cachedLayout: TextNodeLayout?
         let renderContentTypes: RenderContentTypes
         
@@ -1271,6 +1271,14 @@ open class TextNode: ASDisplayNode, TextNodeProtocol {
             self.renderContentTypes = renderContentTypes
             
             super.init()
+        }
+        
+        // Lets ASDK draw gray-only text into a gray bitmap, as the .automatic renderer did.
+        public var asyncDisplayDrawsOnlyGrayscale: Bool {
+            guard let layout = self.cachedLayout else {
+                return false
+            }
+            return layout.drawsOnlyGrayscale
         }
     }
     
@@ -3061,3 +3069,111 @@ open class TextView: UIView {
         }
     }
 }
+
+// A colour in a gray colour space (UIColor.black, .white, UIColor(white:alpha:)). RGB colours with
+// equal channels do not count: the .automatic renderer drew those in RGB as well.
+private func isGrayscaleColor(_ color: UIColor?) -> Bool {
+    guard let color else {
+        return true
+    }
+    let cgColor = color.cgColor
+    guard let colorSpace = cgColor.colorSpace, colorSpace.model == .monochrome, let components = cgColor.components else {
+        return false
+    }
+    for component in components {
+        if !(component >= 0.0 && component <= 1.0) {
+            return false
+        }
+    }
+    return true
+}
+
+private func isGrayscaleAttributeValue(_ value: Any) -> Bool {
+    if let color = value as? UIColor {
+        return isGrayscaleColor(color)
+    }
+    let object = value as AnyObject
+    let typeID = CFGetTypeID(object)
+    if typeID == CGColor.typeID || typeID == CGGradient.typeID || typeID == CGImage.typeID {
+        return false
+    }
+    if value is NSShadow || value is NSTextAttachment || value is UIImage {
+        return false
+    }
+    return true
+}
+
+private func isGrayscaleRun(_ run: CTRun) -> Bool {
+    let attributes = CTRunGetAttributes(run) as NSDictionary
+    guard let font = attributes[kCTFontAttributeName as String] as? UIFont else {
+        return false
+    }
+    // Colour glyphs (emoji); kCTFontTraitColorGlyphs is 1 << 13.
+    if font.fontName.contains("Emoji") || (font.fontDescriptor.symbolicTraits.rawValue & (1 << 13)) != 0 {
+        return false
+    }
+    for (_, value) in attributes {
+        if !isGrayscaleAttributeValue(value) {
+            return false
+        }
+    }
+    return true
+}
+
+private func isGrayscaleLine(_ line: CTLine) -> Bool {
+    guard let runs = CTLineGetGlyphRuns(line) as? [CTRun] else {
+        return false
+    }
+    for run in runs {
+        if !isGrayscaleRun(run) {
+            return false
+        }
+    }
+    return true
+}
+
+extension TextNodeLayout {
+    /// True when every colour this layout draws is gray, so it can go into a gray bitmap.
+    /// Anything not checked here (quotes, attachments, shadows, strokes) counts as colour.
+    var drawsOnlyGrayscale: Bool {
+        if !isGrayscaleColor(self.backgroundColor) {
+            return false
+        }
+        if !self.blockQuotes.isEmpty || self.textShadowColor != nil || self.textStroke != nil {
+            return false
+        }
+        if let attributedString = self.attributedString {
+            var isGray = true
+            attributedString.enumerateAttributes(in: NSRange(location: 0, length: attributedString.length), options: []) { attributes, _, stop in
+                for (_, value) in attributes {
+                    if !isGrayscaleAttributeValue(value) {
+                        isGray = false
+                        stop.pointee = true
+                        return
+                    }
+                }
+            }
+            if !isGray {
+                return false
+            }
+        }
+        for line in self.lines {
+            if !line.attachments.isEmpty {
+                return false
+            }
+            for decoration in line.backgrounds + line.strikethroughs + line.underlines {
+                if !isGrayscaleColor(decoration.color) {
+                    return false
+                }
+            }
+            if !isGrayscaleLine(line.line) {
+                return false
+            }
+            if let (trailingLine, _) = line.additionalTrailingLine, !isGrayscaleLine(trailingLine) {
+                return false
+            }
+        }
+        return true
+    }
+}
+

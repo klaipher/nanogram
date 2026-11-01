@@ -974,7 +974,8 @@ public func chatMessagePhotoInternal(photoData: Signal<Tuple4<Data?, Data?, Chat
                 return context
             }
             
-            guard let context = DrawingContext(size: arguments.drawingSize, scale: arguments.scale ?? 0.0, clear: true) else {
+            // An sRGB photo goes into an sRGB context: no per-pixel conversion to Display P3.
+            guard let context = DrawingContext(size: arguments.drawingSize, scale: arguments.scale ?? 0.0, clear: true, colorSpace: drawingColorSpace(forSourceImage: fullSizeImage)) else {
                 return nil
             }
             

@@ -55,3 +55,25 @@ ios_unit_test(
         "//visibility:public",
     ],
 )
+
+# ListView motion tests alone, so they run while other Display tests are mid-change.
+swift_library(
+    name = "ListViewMotionTestsLib",
+    testonly = True,
+    srcs = [
+        "Tests/ListViewTransferVelocityTests.swift",
+        "Tests/ListViewDeferredAccessibilityTests.swift",
+    ],
+    deps = [
+        ":Display",
+    ],
+)
+
+ios_unit_test(
+    name = "ListViewMotionTests",
+    minimum_os_version = "15.0",
+    runner = ":DisplayTestRunner",
+    deps = [
+        ":ListViewMotionTestsLib",
+    ],
+)

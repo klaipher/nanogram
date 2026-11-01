@@ -28,9 +28,14 @@
 #endif
 
 
+// The default .automatic range records every drawing, inspects it and replays it into the
+// format it picks. Telegram's colours are sRGB, so ask for the standard range directly.
 NS_AVAILABLE_IOS(10)
 NS_INLINE void ASConfigureExtendedRange(UIGraphicsImageRendererFormat *format)
 {
+  if (@available(iOS 12.0, tvOS 12.0, *)) {
+    format.preferredRange = UIGraphicsImageRendererFormatRangeStandard;
+  }
 }
 
 UIImage *ASGraphicsCreateImageWithOptions(CGSize size, BOOL opaque, CGFloat scale, UIImage *sourceImage,
@@ -122,6 +127,48 @@ UIImage *ASGraphicsCreateImage(ASPrimitiveTraitCollection traitCollection, CGSiz
     image = UIGraphicsGetImageFromCurrentImageContext();
   }
   UIGraphicsEndImageContext();
+  return image;
+}
+
+UIImage *ASGraphicsCreateGrayscaleImage(ASPrimitiveTraitCollection traitCollection, CGSize size, CGFloat scale, asdisplaynode_iscancelled_block_t NS_NOESCAPE isCancelled, void (NS_NOESCAPE ^work)()) {
+  // The colour space the .automatic renderer picked for gray drawing.
+  static CGColorSpaceRef grayColorSpace;
+  static dispatch_once_t onceToken;
+  dispatch_once(&onceToken, ^{
+    grayColorSpace = CGColorSpaceCreateWithName(kCGColorSpaceGenericGrayGamma2_2);
+  });
+
+  if (scale == 0) {
+    scale = ASScreenScale();
+  }
+  // Same pixel size as UIGraphicsImageRenderer. NaN, infinite or huge sizes fail the checks.
+  CGFloat pixelWidth = ceil(size.width * scale);
+  CGFloat pixelHeight = ceil(size.height * scale);
+  CGContextRef context = NULL;
+  if (grayColorSpace != NULL && pixelWidth >= 1.0 && pixelHeight >= 1.0 && pixelWidth <= 16384.0 && pixelHeight <= 16384.0) {
+    context = CGBitmapContextCreate(NULL, (size_t)pixelWidth, (size_t)pixelHeight, 8, 0, grayColorSpace, (CGBitmapInfo)kCGImageAlphaPremultipliedLast);
+  }
+  if (context == NULL) {
+    return ASGraphicsCreateImage(traitCollection, size, NO, scale, nil, isCancelled, work);
+  }
+
+  // UIKit coordinates: origin at the top left, in points.
+  CGContextTranslateCTM(context, 0.0, pixelHeight);
+  CGContextScaleCTM(context, scale, -scale);
+
+  UIGraphicsPushContext(context);
+  ASPerformBlockWithTraitCollection(work, traitCollection)
+  UIGraphicsPopContext();
+
+  UIImage *image = nil;
+  if (isCancelled == nil || !isCancelled()) {
+    CGImageRef cgImage = CGBitmapContextCreateImage(context);
+    if (cgImage != NULL) {
+      image = [UIImage imageWithCGImage:cgImage scale:scale orientation:UIImageOrientationUp];
+      CGImageRelease(cgImage);
+    }
+  }
+  CGContextRelease(context);
   return image;
 }
 

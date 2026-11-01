@@ -184,11 +184,18 @@ using AS::MutexLocker;
   CGColorRef borderColor = self.borderColor;
   CGFloat borderWidth = self.borderWidth;
   CGFloat contentsScaleForDisplay = _contentsScaleForDisplay;
+  BOOL hasContextModifiers = (_willDisplayNodeContentWithRenderingContext != nil || _didDisplayNodeContentWithRenderingContext != nil);
     
   __instanceLock__.unlock();
 
   // Capture drawParameters from delegate on main thread, if this node is displaying itself rather than recursively rasterizing.
   id drawParameters = (shouldBeginRasterizing == NO ? [self drawParameters] : nil);
+
+  // The parameters decide on the display queue whether this drawing is gray only.
+  id<ASGrayscaleDrawParameters> grayscaleParameters = nil;
+  if (shouldCreateGraphicsContext && !opaque && !hasContextModifiers && [drawParameters conformsToProtocol:@protocol(ASGrayscaleDrawParameters)]) {
+    grayscaleParameters = (id<ASGrayscaleDrawParameters>)drawParameters;
+  }
   
   // Only the -display methods should be called if we can't size the graphics buffer to use.
   if (CGRectIsEmpty(bounds) && (shouldBeginRasterizing || shouldCreateGraphicsContext)) {
@@ -250,6 +257,9 @@ using AS::MutexLocker;
         };
         
         if (shouldCreateGraphicsContext) {
+            if (grayscaleParameters != nil && grayscaleParameters.asyncDisplayDrawsOnlyGrayscale) {
+                return ASGraphicsCreateGrayscaleImage(self.primitiveTraitCollection, bounds.size, contentsScaleForDisplay, isCancelledBlock, workWithContext);
+            }
             return ASGraphicsCreateImage(self.primitiveTraitCollection, bounds.size, opaque, contentsScaleForDisplay, nil, isCancelledBlock, workWithContext);
         } else {
             workWithContext();

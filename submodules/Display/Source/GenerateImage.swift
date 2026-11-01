@@ -580,6 +580,31 @@ public struct DeviceGraphicsContextSettings {
     }
 }
 
+private let standardRGBColorSpace: CGColorSpace? = CGColorSpace(name: CGColorSpace.sRGB)
+
+/// The colour space to draw `image` into: sRGB when the image has no wide-gamut colours (server
+/// JPEGs, avatars), so CoreGraphics does not convert every pixel to Display P3 on the CPU. Nil
+/// means the device default; wide-gamut images (camera P3) keep it.
+public func drawingColorSpace(forSourceImage image: CGImage?) -> CGColorSpace? {
+    guard let image, let space = image.colorSpace else {
+        return nil
+    }
+    if #available(iOS 14.0, *), CGColorSpaceUsesExtendedRange(space) {
+        return nil
+    }
+    switch space.model {
+    case .rgb:
+        if space.isWideGamutRGB {
+            return nil
+        }
+        return standardRGBColorSpace
+    case .monochrome:
+        return standardRGBColorSpace
+    default:
+        return nil
+    }
+}
+
 public class DrawingContext {
     public let size: CGSize
     public let scale: CGFloat
@@ -587,6 +612,8 @@ public class DrawingContext {
     public let bytesPerRow: Int
     private let bitmapInfo: CGBitmapInfo
     public let length: Int
+    /// The colour space the pixels are in; generateImage() tags the image with it.
+    public let colorSpace: CGColorSpace
     private let imageBuffer: ASCGImageBuffer
     public var bytes: UnsafeMutableRawPointer {
         if self.hasGeneratedImage {
@@ -648,13 +675,15 @@ public class DrawingContext {
             self.bitmapInfo = DeviceGraphicsContextSettings.shared.transparentBitmapInfo
         }
 
+        self.colorSpace = colorSpace ?? DeviceGraphicsContextSettings.shared.colorSpace
+
         guard let context = CGContext(
             data: self.imageBuffer.mutableBytes,
             width: Int(self.scaledSize.width),
             height: Int(self.scaledSize.height),
             bitsPerComponent: DeviceGraphicsContextSettings.shared.bitsPerComponent,
             bytesPerRow: self.bytesPerRow,
-            space: colorSpace ?? DeviceGraphicsContextSettings.shared.colorSpace,
+            space: self.colorSpace,
             bitmapInfo: self.bitmapInfo.rawValue,
             releaseCallback: nil,
             releaseInfo: nil
@@ -686,7 +715,7 @@ public class DrawingContext {
             bitsPerComponent: self.context.bitsPerComponent,
             bitsPerPixel: self.context.bitsPerPixel,
             bytesPerRow: self.context.bytesPerRow,
-            space: colorSpace ?? DeviceGraphicsContextSettings.shared.colorSpace,
+            space: colorSpace ?? self.colorSpace,
             bitmapInfo: self.context.bitmapInfo,
             provider: dataProvider,
             decode: nil,

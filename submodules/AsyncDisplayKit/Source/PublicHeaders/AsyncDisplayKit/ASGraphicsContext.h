@@ -62,4 +62,19 @@ UIImage *ASGraphicsCreateImage(ASPrimitiveTraitCollection traitCollection, CGSiz
 */
 UIImage *ASGraphicsCreateImageWithTraitCollectionAndOptions(ASPrimitiveTraitCollection traitCollection, CGSize size, BOOL opaque, CGFloat scale, UIImage * _Nullable sourceImage, void (NS_NOESCAPE ^work)(void)) ASDISPLAYNODE_DEPRECATED_MSG("Use ASGraphicsCreateImage instead");
 
+/**
+ * Like ASGraphicsCreateImage with opaque = NO, but draws into an 8-bit gray + alpha bitmap
+ * (half the memory of RGBA). Only for drawing that uses gray colours alone.
+ */
+UIImage * _Nullable ASGraphicsCreateGrayscaleImage(ASPrimitiveTraitCollection traitCollection, CGSize size, CGFloat scale, asdisplaynode_iscancelled_block_t _Nullable NS_NOESCAPE isCancelled, void (NS_NOESCAPE ^work)(void));
+
+/**
+ * Draw parameters can adopt this to tell ASDK that the node draws only gray colours (in a gray
+ * colour space). ASDK then rasterizes it with ASGraphicsCreateGrayscaleImage. Called on the
+ * display queue.
+ */
+@protocol ASGrayscaleDrawParameters <NSObject>
+@property (nonatomic, readonly) BOOL asyncDisplayDrawsOnlyGrayscale;
+@end
+
 NS_ASSUME_NONNULL_END

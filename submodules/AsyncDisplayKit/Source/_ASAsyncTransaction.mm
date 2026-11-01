@@ -221,7 +221,13 @@ void ASAsyncTransactionQueue::GroupImpl::schedule(NSInteger priority, dispatch_q
 #if ASDISPLAYNODE_DELAY_DISPLAY
   NSUInteger maxThreads = 1;
 #else 
-  NSUInteger maxThreads = [NSProcessInfo processInfo].activeProcessorCount * 2;
+  // activeProcessorCount is a sysctl on every call (156 ms on the main thread in a device session).
+  static NSUInteger processorCount;
+  static dispatch_once_t processorCountOnce;
+  dispatch_once(&processorCountOnce, ^{
+    processorCount = MAX((NSUInteger)1, [NSProcessInfo processInfo].activeProcessorCount);
+  });
+  NSUInteger maxThreads = processorCount * 2;
 
   // Bit questionable maybe - we can give main thread more CPU time during tracking.
   if ([[NSRunLoop mainRunLoop].currentMode isEqualToString:UITrackingRunLoopMode])
