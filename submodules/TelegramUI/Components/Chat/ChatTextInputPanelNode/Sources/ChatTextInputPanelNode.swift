@@ -2143,7 +2143,7 @@ public class ChatTextInputPanelNode: ChatInputPanelNode, ASEditableTextNodeDeleg
                             } else if case let .replyThread(replyThreadMessage) = interfaceState.chatLocation, !replyThreadMessage.isForumPost, replyThreadMessage.peerId != self.context?.account.peerId {
                                 if replyThreadMessage.isChannelPost {
                                     if let sendPaidMessageStars = interfaceState.sendPaidMessageStars, interfaceState.interfaceState.editMessage == nil {
-                                        placeholder = interfaceState.strings.Chat_InputTextPaidCommentPlaceholder(" # \(presentationStringsFormattedNumber(Int32(sendPaidMessageStars.value), interfaceState.dateTimeFormat.groupingSeparator))").string
+                                        placeholder = interfaceState.strings.Chat_InputTextPaidCommentPlaceholder(" # \(presentationStringsFormattedNumber(sendPaidMessageStars.value, interfaceState.dateTimeFormat.groupingSeparator))").string
                                         placeholderHasStar = true
                                     } else {
                                         placeholder = interfaceState.strings.Conversation_InputTextPlaceholderComment
@@ -2159,7 +2159,7 @@ public class ChatTextInputPanelNode: ChatInputPanelNode, ASEditableTextNodeDeleg
                                 }
                             } else {
                                 if let sendPaidMessageStars = interfaceState.sendPaidMessageStars, interfaceState.interfaceState.editMessage == nil {
-                                    placeholder = interfaceState.strings.Chat_InputTextPaidMessagePlaceholder(" # \(presentationStringsFormattedNumber(Int32(sendPaidMessageStars.value), interfaceState.dateTimeFormat.groupingSeparator))").string
+                                    placeholder = interfaceState.strings.Chat_InputTextPaidMessagePlaceholder(" # \(presentationStringsFormattedNumber(sendPaidMessageStars.value, interfaceState.dateTimeFormat.groupingSeparator))").string
                                     placeholderHasStar = true
                                 } else {
                                     placeholder = interfaceState.strings.Conversation_InputTextPlaceholder

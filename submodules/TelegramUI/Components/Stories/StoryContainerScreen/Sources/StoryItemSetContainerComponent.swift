@@ -2979,7 +2979,7 @@ public final class StoryItemSetContainerComponent: Component {
             } else {
                 if let sendPaidMessageStars = component.slice.additionalPeerData.sendPaidMessageStars {
                     let dateTimeFormat = component.context.sharedContext.currentPresentationData.with { $0 }.dateTimeFormat
-                    inputPlaceholder = .plain(component.strings.Chat_InputTextPaidMessagePlaceholder(" # \(presentationStringsFormattedNumber(Int32(sendPaidMessageStars.value), dateTimeFormat.groupingSeparator))").string)
+                    inputPlaceholder = .plain(component.strings.Chat_InputTextPaidMessagePlaceholder(" # \(presentationStringsFormattedNumber(sendPaidMessageStars.value, dateTimeFormat.groupingSeparator))").string)
                 } else if case .liveStream = component.slice.item.storyItem.media {
                     inputPlaceholder = .plain(component.strings.LiveStream_InputPlaceholder)
                 } else {

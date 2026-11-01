@@ -129,7 +129,7 @@ public class ChatMessageUnlockMediaNode: ASDisplayNode {
             let textFont = Font.medium(fontSize)
                            
             let padding: CGFloat = 10.0
-            let amountString = presentationStringsFormattedNumber(Int32(arguments.media.amount), arguments.presentationData.dateTimeFormat.groupingSeparator)
+            let amountString = presentationStringsFormattedNumber(arguments.media.amount, arguments.presentationData.dateTimeFormat.groupingSeparator)
             let text = NSMutableAttributedString(string: arguments.presentationData.strings.Chat_PaidMedia_UnlockMedia("⭐️ \(amountString)").string, font: textFont, textColor: .white)
             if let range = text.string.range(of: "⭐️") {
                 text.addAttribute(ChatTextInputAttributes.customEmoji, value: ChatTextInputTextCustomEmojiAttribute(interactivelySelectedFromPackId: nil, fileId: 0, file: nil, custom: .stars(tinted: false)), range: NSRange(range, in: text.string))

@@ -234,7 +234,7 @@ public class ChatMessageStarsMediaInfoNode: ASDisplayNode {
                         
             let text: NSMutableAttributedString
             if let peer = arguments.message.peers[arguments.message.id.peerId] as? TelegramChannel, peer.flags.contains(.isCreator) || peer.adminRights != nil, arguments.message.forwardInfo == nil {
-                let amountString = presentationStringsFormattedNumber(Int32(arguments.media.amount), arguments.presentationData.dateTimeFormat.groupingSeparator)
+                let amountString = presentationStringsFormattedNumber(arguments.media.amount, arguments.presentationData.dateTimeFormat.groupingSeparator)
                 text = NSMutableAttributedString(string: "⭐️\(amountString)", font: textFont, textColor: .white)
             } else {
                 text = NSMutableAttributedString(string: arguments.presentationData.strings.Chat_PaidMedia_Purchased, font: textFont, textColor: .white)

@@ -385,7 +385,7 @@ public enum TelegramMediaFileAttribute: PostboxCoding, Equatable {
                     coverTime = Double(Float32(coverTimeValue))
                 }
             
-                self = .Video(duration: Double(Float32(duration)), size: PixelDimensions(width: decoder.decodeInt32ForKey("w", orElse: 0), height: decoder.decodeInt32ForKey("h", orElse: 0)), flags: TelegramMediaVideoFlags(rawValue: decoder.decodeInt32ForKey("f", orElse: 0)), preloadSize: decoder.decodeOptionalInt32ForKey("prs"), coverTime: coverTime, videoCodec: decoder.decodeOptionalStringForKey("vc"))
+                self = .Video(duration: sanitizedVideoDuration(Double(Float32(duration))), size: PixelDimensions(width: decoder.decodeInt32ForKey("w", orElse: 0), height: decoder.decodeInt32ForKey("h", orElse: 0)), flags: TelegramMediaVideoFlags(rawValue: decoder.decodeInt32ForKey("f", orElse: 0)), preloadSize: decoder.decodeOptionalInt32ForKey("prs"), coverTime: coverTime, videoCodec: decoder.decodeOptionalStringForKey("vc"))
             case typeAudio:
                 let waveformBuffer = decoder.decodeBytesForKeyNoCopy("wf")
                 var waveform: Data?
@@ -516,7 +516,7 @@ public enum TelegramMediaFileAttribute: PostboxCoding, Equatable {
             guard let value = flatBuffersObject.value(type: TelegramCore_TelegramMediaFileAttribute_Video.self) else {
                 throw FlatBuffersError.missingRequiredField()
             }
-            self = .Video(duration: Double(value.duration), size: PixelDimensions(width: value.width, height: value.height), flags: TelegramMediaVideoFlags(rawValue: value.flags), preloadSize: value.preloadSize == 0 ? nil : value.preloadSize, coverTime: value.coverTime == 0.0 ? nil : Double(value.coverTime), videoCodec: value.videoCodec)
+            self = .Video(duration: sanitizedVideoDuration(Double(value.duration)), size: PixelDimensions(width: value.width, height: value.height), flags: TelegramMediaVideoFlags(rawValue: value.flags), preloadSize: value.preloadSize == 0 ? nil : value.preloadSize, coverTime: value.coverTime == 0.0 ? nil : Double(value.coverTime), videoCodec: value.videoCodec)
         case .telegrammediafileattributeAudio:
             guard let value = flatBuffersObject.value(type: TelegramCore_TelegramMediaFileAttribute_Audio.self) else {
                 throw FlatBuffersError.missingRequiredField()

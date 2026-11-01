@@ -1134,7 +1134,7 @@ public final class ChatEmptyNodePremiumRequiredChatContent: ASDisplayNode, ChatE
             }
         )
         if let amount = self.stars {
-            let starsString = presentationStringsFormattedNumber(Int32(amount), interfaceState.dateTimeFormat.groupingSeparator)
+            let starsString = presentationStringsFormattedNumber(amount, interfaceState.dateTimeFormat.groupingSeparator)
             let rawText: String
             
             if let channel = interfaceState.renderedPeer?.peer as? TelegramChannel, channel.isMonoForum {

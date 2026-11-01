@@ -23,64 +23,31 @@ public func compactNumericCountString(_ count: Int, decimalSeparator: String = "
 }
 
 public func presentationStringsFormattedNumber(_ count: Int32, _ groupingSeparator: String = "") -> String {
-    let string = "\(count)"
-    if groupingSeparator.isEmpty || abs(count) < 1000 {
-        return string
-    } else {
-        if count < 0 {
-            return "-\(presentationStringsFormattedNumber(abs(count), groupingSeparator))"
-        } else {
-            var groupedString: String = ""
-            for i in 0 ..< Int(ceil(Double(string.count) / 3.0)) {
-                let index = string.count - Int(i + 1) * 3
-                if !groupedString.isEmpty {
-                    groupedString = groupingSeparator + groupedString
-                }
-                groupedString = String(string[string.index(string.startIndex, offsetBy: max(0, index)) ..< string.index(string.startIndex, offsetBy: index + 3)]) + groupedString
-            }
-            return groupedString
-        }
-    }
+    return presentationStringsFormattedNumber(Int64(count), groupingSeparator)
 }
 
 public func presentationStringsFormattedNumber(_ count: Int64, _ groupingSeparator: String = "") -> String {
-    let string = "\(count)"
-    if groupingSeparator.isEmpty || abs(count) < 1000 {
-        return string
-    } else {
-        if count < 0 {
-            return "-\(presentationStringsFormattedNumber(abs(count), groupingSeparator))"
-        } else {
-            var groupedString: String = ""
-            for i in 0 ..< Int(ceil(Double(string.count) / 3.0)) {
-                let index = string.count - Int(i + 1) * 3
-                if !groupedString.isEmpty {
-                    groupedString = groupingSeparator + groupedString
-                }
-                groupedString = String(string[string.index(string.startIndex, offsetBy: max(0, index)) ..< string.index(string.startIndex, offsetBy: index + 3)]) + groupedString
-            }
-            return groupedString
-        }
+    // magnitude, not abs(): abs(.min) traps.
+    let magnitude = count.magnitude
+    if groupingSeparator.isEmpty || magnitude < 1000 {
+        return "\(count)"
     }
+    let string = "\(magnitude)"
+    var groupedString: String = ""
+    for i in 0 ..< Int(ceil(Double(string.count) / 3.0)) {
+        let index = string.count - Int(i + 1) * 3
+        if !groupedString.isEmpty {
+            groupedString = groupingSeparator + groupedString
+        }
+        groupedString = String(string[string.index(string.startIndex, offsetBy: max(0, index)) ..< string.index(string.startIndex, offsetBy: index + 3)]) + groupedString
+    }
+    return count < 0 ? "-" + groupedString : groupedString
 }
 
 public func presentationStringsFormattedNumber(_ starsAmount: StarsAmount, _ groupingSeparator: String = "") -> String {
     if starsAmount.nanos == 0 {
-        let count = Int32(starsAmount.value)
-        let string = "\(count)"
-        if groupingSeparator.isEmpty || abs(count) < 1000 {
-            return string
-        } else {
-            var groupedString: String = ""
-            for i in 0 ..< Int(ceil(Double(string.count) / 3.0)) {
-                let index = string.count - Int(i + 1) * 3
-                if !groupedString.isEmpty {
-                    groupedString = groupingSeparator + groupedString
-                }
-                groupedString = String(string[string.index(string.startIndex, offsetBy: max(0, index)) ..< string.index(string.startIndex, offsetBy: index + 3)]) + groupedString
-            }
-            return groupedString
-        }
+        // The value is Int64 from the server; converting it to Int32 trapped above Int32.max.
+        return presentationStringsFormattedNumber(starsAmount.value, groupingSeparator)
     } else {
         return starsAmount.stringValue
     }

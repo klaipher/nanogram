@@ -324,6 +324,18 @@ public func humanReadableStringForTimestamp(strings: PresentationStrings, dateTi
     }
 }
 
+// Presence and message timestamps come from the server and can be any Int32 (Int32.max is
+// "online with no end"). Int32 arithmetic on them traps, so differences are taken in 64 bits
+// and clamped.
+public func clampedTimestampDifference(_ lhs: Int32, _ rhs: Int32) -> Int32 {
+    return Int32(clamping: Int64(lhs) - Int64(rhs))
+}
+
+// A "recently" user counts as online for 30 seconds after their last activity.
+func userPresenceActiveUntil(lastActivity: Int32) -> Int32 {
+    return Int32(clamping: Int64(lastActivity) + 30)
+}
+
 public enum RelativeUserPresenceLastSeen {
     case justNow
     case minutesAgo(Int32)
@@ -354,7 +366,7 @@ public func relativeUserPresenceStatus(_ presence: EnginePeer.Presence, relative
             return .lastSeen(at: statusTimestamp)
         }
     case .recently:
-        let activeUntil = presence.lastActivity + 30
+        let activeUntil = userPresenceActiveUntil(lastActivity: presence.lastActivity)
         if activeUntil >= timestamp {
             return .online(at: activeUntil)
         } else {
@@ -410,7 +422,7 @@ public func stringForPreciseRelativeTimestamp(strings: PresentationStrings, rela
 }
 
 public func stringForRelativeLiveLocationTimestamp(strings: PresentationStrings, relativeTimestamp: Int32, relativeTo timestamp: Int32, dateTimeFormat: PresentationDateTimeFormat) -> String {
-    let difference = timestamp - relativeTimestamp
+    let difference = clampedTimestampDifference(timestamp, relativeTimestamp)
     if difference < 60 {
         return strings.LiveLocationUpdated_JustNow
     } else if difference < 60 * 60 {
@@ -485,7 +497,7 @@ public func stringForRelativeLiveLocationUpdateTimestamp(strings: PresentationSt
 }
 
 public func stringForRelativeActivityTimestamp(strings: PresentationStrings, dateTimeFormat: PresentationDateTimeFormat, preciseTime: Bool = false, relativeTimestamp: Int32, relativeTo timestamp: Int32) -> String {
-    let difference = timestamp - relativeTimestamp
+    let difference = clampedTimestampDifference(timestamp, relativeTimestamp)
     if difference < 60 {
         return strings.Time_JustNow
     } else if difference < 60 * 60 {
@@ -523,7 +535,7 @@ public func stringForRelativeActivityTimestamp(strings: PresentationStrings, dat
 }
 
 public func stringForStoryActivityTimestamp(strings: PresentationStrings, dateTimeFormat: PresentationDateTimeFormat, preciseTime: Bool = false, relativeTimestamp: Int32, relativeTo timestamp: Int32, short: Bool = false) -> String {
-    let difference = timestamp - relativeTimestamp
+    let difference = clampedTimestampDifference(timestamp, relativeTimestamp)
     if difference < 60 {
         return short ? strings.ShortTime_JustNow : strings.Time_JustNow
     } else if difference < 60 * 60 {
@@ -577,7 +589,7 @@ public func stringAndActivityForUserPresence(strings: PresentationStrings, dateT
         if statusTimestamp >= timestamp {
             return (strings.Presence_online, true)
         } else {
-            let difference = timestamp - statusTimestamp
+            let difference = clampedTimestampDifference(timestamp, statusTimestamp)
             if difference < 60 {
                 return (strings.LastSeen_JustNow, false)
             } else if difference < 60 * 60 && !expanded {
@@ -616,7 +628,7 @@ public func stringAndActivityForUserPresence(strings: PresentationStrings, dateT
             }
         }
     case .recently:
-        let activeUntil = presence.lastActivity + 30
+        let activeUntil = userPresenceActiveUntil(lastActivity: presence.lastActivity)
         if activeUntil >= timestamp {
             return (strings.Presence_online, true)
         } else {
@@ -632,7 +644,7 @@ public func stringAndActivityForUserPresence(strings: PresentationStrings, dateT
 }
 
 public func peerStatusExpirationString(statusTimestamp: Int32, relativeTo timestamp: Int32, strings: PresentationStrings, dateTimeFormat: PresentationDateTimeFormat) -> String {
-    let difference = max(statusTimestamp - timestamp, 60)
+    let difference = max(clampedTimestampDifference(statusTimestamp, timestamp), 60)
     if difference < 60 * 60 {
         return strings.PeerStatusExpiration_Minutes(Int32(round(Double(difference) / Double(60))))
     } else if difference < 24 * 60 * 60 {
@@ -659,9 +671,9 @@ public func userPresenceStringRefreshTimeout(_ presence: TelegramUserPresence, r
     switch presence.status {
     case let .present(statusTimestamp):
         if statusTimestamp >= timestamp {
-            return Double(statusTimestamp - timestamp)
+            return Double(Int64(statusTimestamp) - Int64(timestamp))
         } else {
-            let difference = timestamp - statusTimestamp
+            let difference = clampedTimestampDifference(timestamp, statusTimestamp)
             if difference < 30 {
                 return Double((30 - difference) + 1)
             } else if difference < 60 * 60 {
@@ -671,9 +683,9 @@ public func userPresenceStringRefreshTimeout(_ presence: TelegramUserPresence, r
             }
         }
     case .recently:
-        let activeUntil = presence.lastActivity + 30
+        let activeUntil = userPresenceActiveUntil(lastActivity: presence.lastActivity)
         if activeUntil >= timestamp {
-            return Double(activeUntil - timestamp + 1)
+            return Double(Int64(activeUntil) - Int64(timestamp) + 1)
         } else {
             return Double.infinity
         }
@@ -685,7 +697,7 @@ public func userPresenceStringRefreshTimeout(_ presence: TelegramUserPresence, r
 
 public func stringForRemainingMuteInterval(strings: PresentationStrings, muteInterval value: Int32) -> String {
     let timestamp = Int32(CFAbsoluteTimeGetCurrent() + NSTimeIntervalSince1970)
-    let value = max(1 * 60, value - timestamp)
+    let value = max(1 * 60, clampedTimestampDifference(value, timestamp))
     if value <= 1 * 60 * 60 {
         return strings.MuteExpires_Minutes(Int32(round(Float(value) / 60)))
     } else if value <= 24 * 60 * 60 {
@@ -697,7 +709,7 @@ public func stringForRemainingMuteInterval(strings: PresentationStrings, muteInt
 
 public func stringForIntervalSinceUpdateAction(strings: PresentationStrings, value: Int32) -> String {
     let timestamp = Int32(CFAbsoluteTimeGetCurrent() + NSTimeIntervalSince1970)
-    let value = max(1 * 60, timestamp - value)
+    let value = max(1 * 60, clampedTimestampDifference(timestamp, value))
     if value <= 1 * 60 * 60 {
         return strings.Chat_NonContactUser_UpdatedMinutes(Int32(round(Float(value) / 60)))
     } else if value <= 24 * 60 * 60 {

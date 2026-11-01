@@ -272,7 +272,7 @@ public class ChatMessageGiveawayBubbleContentNode: ChatMessageBubbleContentNode,
                 case .premium:
                     badgeText = "X\(giveaway.quantity)"
                 case let .stars(amount):
-                    badgeText = "⭐️\(presentationStringsFormattedNumber(Int32(amount), item.presentationData.dateTimeFormat.groupingSeparator)) "
+                    badgeText = "⭐️\(presentationStringsFormattedNumber(amount, item.presentationData.dateTimeFormat.groupingSeparator)) "
                     isStars = true
                 }
             } else if let giveawayResults {
@@ -280,7 +280,7 @@ public class ChatMessageGiveawayBubbleContentNode: ChatMessageBubbleContentNode,
                 case .premium:
                     badgeText = "X\(giveawayResults.winnersCount)"
                 case let .stars(amount):
-                    badgeText = "⭐️\(presentationStringsFormattedNumber(Int32(amount), item.presentationData.dateTimeFormat.groupingSeparator)) "
+                    badgeText = "⭐️\(presentationStringsFormattedNumber(amount, item.presentationData.dateTimeFormat.groupingSeparator)) "
                     isStars = true
                 }
             } else {

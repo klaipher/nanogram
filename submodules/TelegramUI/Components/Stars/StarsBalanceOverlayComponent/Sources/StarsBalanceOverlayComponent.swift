@@ -133,7 +133,7 @@ public final class StarsBalanceOverlayComponent: Component {
             }
             
             let presentationData = component.context.sharedContext.currentPresentationData.with { $0 }
-            let balance = presentationStringsFormattedNumber(Int32(self.starsBalance), presentationData.dateTimeFormat.groupingSeparator)
+            let balance = presentationStringsFormattedNumber(self.starsBalance, presentationData.dateTimeFormat.groupingSeparator)
             
             let rawString: String
             if component.peerId == component.context.account.peerId {
