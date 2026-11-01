@@ -1,4 +1,4 @@
-load("@build_bazel_rules_swift//swift:swift.bzl", "swift_library")
+load("@build_bazel_rules_swift//swift:swift.bzl", "swift_library", "swift_test")
 load(
     "@build_bazel_rules_apple//apple:resources.bzl",
     "apple_resource_bundle",
@@ -75,5 +75,18 @@ swift_library(
     ],
     visibility = [
         "//visibility:public",
+    ],
+)
+
+# Host (macOS) test of the pattern cache slots. It compiles only the Foundation-only slots file.
+# Run with `./build-input/bazel-9.3.1-darwin-arm64 test //submodules/WallpaperBackgroundNode:WallpaperPatternImageSlotsTests`.
+swift_test(
+    name = "WallpaperPatternImageSlotsTests",
+    srcs = [
+        "Sources/WallpaperPatternImageSlots.swift",
+        "Tests/WallpaperPatternImageSlotsTests.swift",
+    ],
+    copts = [
+        "-warnings-as-errors",
     ],
 )

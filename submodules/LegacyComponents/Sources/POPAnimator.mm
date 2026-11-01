@@ -125,6 +125,24 @@ static CVReturn displayLinkCallback(CVDisplayLinkRef displayLink, const CVTimeSt
 }
 #endif
 
+#if TARGET_OS_IPHONE
+// call while holding lock
+// True when only forever loops run (typing dots, download spinners). Gestures, springs, decays and
+// transitions never repeat forever, so they keep the default (full) rate.
+static BOOL onlyRepeatingAnimations(POPAnimator *self)
+{
+  if (self->_observers.count != 0 || self->_list.empty()) {
+    return NO;
+  }
+  for (const POPAnimatorItemRef &item : self->_list) {
+    if (item->animation == nil || !item->animation.repeatForever) {
+      return NO;
+    }
+  }
+  return YES;
+}
+#endif
+
 // call while holding lock
 static void updateDisplayLink(POPAnimator *self)
 {
@@ -134,6 +152,16 @@ static void updateDisplayLink(POPAnimator *self)
   if (paused != self->_displayLink.paused) {
     FBLogAnimInfo(paused ? @"pausing display link" : @"unpausing display link");
     self->_displayLink.paused = paused;
+  }
+  if (!paused) {
+    if (@available(iOS 15.0, *)) {
+      // Apple's ProMotion guidance puts progress spinners at the default rate; without a hint this
+      // link runs at 120 Hz (the app sets CADisableMinimumFrameDurationOnPhone).
+      CAFrameRateRange range = onlyRepeatingAnimations(self) ? CAFrameRateRangeMake(30.0f, 60.0f, 60.0f) : CAFrameRateRangeDefault;
+      if (!CAFrameRateRangeIsEqualToRange(self->_displayLink.preferredFrameRateRange, range)) {
+        self->_displayLink.preferredFrameRateRange = range;
+      }
+    }
   }
 #else
   if (paused == CVDisplayLinkIsRunning(self->_displayLink)) {

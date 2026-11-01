@@ -1080,7 +1080,50 @@ public final class WallpaperBackgroundNodeImpl: ASDisplayNode, WallpaperBackgrou
         let image: UIImage
     }
 
-    private static var cachedValidPatternImage: CachedValidPatternImage?
+    // Rendered patterns, one slot for full chats and one for previews (see WallpaperPatternImageSlots).
+    private static var cachedPatternImages = WallpaperPatternImageSlots<CachedValidPatternImage>()
+    private static var cachedPatternImageObservers: [NSObjectProtocol] = []
+
+    private static func storeCachedPatternImage(_ value: CachedValidPatternImage, isShared: Bool) {
+        if WallpaperBackgroundNodeImpl.cachedPatternImageObservers.isEmpty {
+            WallpaperBackgroundNodeImpl.cachedPatternImageObservers = [
+                NotificationCenter.default.addObserver(forName: UIApplication.didEnterBackgroundNotification, object: nil, queue: .main, using: { _ in
+                    WallpaperBackgroundNodeImpl.cachedPatternImages.removeNonShared()
+                }),
+                NotificationCenter.default.addObserver(forName: UIApplication.didReceiveMemoryWarningNotification, object: nil, queue: .main, using: { _ in
+                    WallpaperBackgroundNodeImpl.cachedPatternImages.removeAll()
+                })
+            ]
+        }
+        WallpaperBackgroundNodeImpl.cachedPatternImages.store(value, isShared: isShared)
+    }
+
+    private static func patternCacheMissReason(_ key: ValidPatternGeneratedImage) -> String {
+        guard let closest = WallpaperBackgroundNodeImpl.cachedPatternImages.first(where: { $0.generated.wallpaper == key.wallpaper }) ?? WallpaperBackgroundNodeImpl.cachedPatternImages.first(where: { _ in true }) else {
+            return "empty"
+        }
+        let other = closest.generated
+        var reasons: [String] = []
+        if other.wallpaper != key.wallpaper {
+            reasons.append("wallpaper")
+        }
+        if other.size != key.size {
+            reasons.append("size \(other.size.width)x\(other.size.height)")
+        }
+        if other.displayMode != key.displayMode {
+            reasons.append("displayMode")
+        }
+        if other.patternColor != key.patternColor || other.backgroundColor != key.backgroundColor {
+            reasons.append("colors")
+        }
+        if other.invertPattern != key.invertPattern {
+            reasons.append("invert")
+        }
+        if other.starGift?.slug != key.starGift?.slug || other.modelRectIndex != key.modelRectIndex {
+            reasons.append("gift")
+        }
+        return reasons.joined(separator: ",")
+    }
 
     private struct ValidPatternImage {
         let wallpaper: TelegramWallpaper
@@ -1607,7 +1650,7 @@ public final class WallpaperBackgroundNodeImpl: ASDisplayNode, WallpaperBackgrou
                 self.invalidatePatternImageGeneration()
                 self.validPatternImage = nil
 
-                if let cachedValidPatternImage = WallpaperBackgroundNodeImpl.cachedValidPatternImage, cachedValidPatternImage.generated.wallpaper == wallpaper && cachedValidPatternImage.generated.invertPattern == invertPattern && cachedValidPatternImage.starGift == starGift && cachedValidPatternImage.modelRectIndex == modelRectIndex {
+                if let cachedValidPatternImage = WallpaperBackgroundNodeImpl.cachedPatternImages.first(where: { $0.generated.wallpaper == wallpaper && $0.generated.invertPattern == invertPattern && $0.starGift == starGift && $0.modelRectIndex == modelRectIndex }) {
                     self.validPatternImage = ValidPatternImage(wallpaper: cachedValidPatternImage.generated.wallpaper, invertPattern: invertPattern, rects: cachedValidPatternImage.rects, starGift: cachedValidPatternImage.starGift, symbolImage: cachedValidPatternImage.symbolImage, modelRectIndex: cachedValidPatternImage.modelRectIndex, generate: cachedValidPatternImage.generate)
                 } else {
                     func reference(for resource: EngineMediaResource, media: EngineMedia) -> MediaResourceReference {
@@ -1679,7 +1722,8 @@ public final class WallpaperBackgroundNodeImpl: ASDisplayNode, WallpaperBackgrou
                 // Cached and synchronous replacements must also reject pending renders for an older layout.
                 self.invalidatePatternImageGeneration()
                 self.validPatternGeneratedImage = updatedGeneratedImage
-                if let cachedValidPatternImage = WallpaperBackgroundNodeImpl.cachedValidPatternImage, cachedValidPatternImage.generated == updatedGeneratedImage {
+                if let cachedValidPatternImage = WallpaperBackgroundNodeImpl.cachedPatternImages.first(where: { $0.generated == updatedGeneratedImage }) {
+                    Logger.shared.log("WallpaperBackground", "pattern cache hit, shared: \(self.useSharedAnimationPhase), size: \(size.width)x\(size.height)")
                     self.patternImageLayer.suspendCompositionUpdates = true
                     self.updatePatternPresentation()
                     self.patternImageLayer.patternContentImage = cachedValidPatternImage.image
@@ -1687,7 +1731,9 @@ public final class WallpaperBackgroundNodeImpl: ASDisplayNode, WallpaperBackgrou
                     self.patternImageLayer.updateCompositionIfNeeded()
                 } else {
                     let patternArguments = TransformImageArguments(corners: ImageCorners(), imageSize: size, boundingSize: size, intrinsicInsets: UIEdgeInsets(), custom: PatternWallpaperArguments(colors: [patternBackgroundColor], rotation: nil, customPatternColor: patternColor, preview: false, displayMode: displayMode.argumentsDisplayMode, symbolImage: generateTintedImage(image: validPatternImage.symbolImage, color: .white), modelRectIndex: self.modelRectIndex), scale: min(2.0, UIScreenScale))
-                    if self.useSharedAnimationPhase || self.patternImageLayer.contents == nil {
+                    let isSynchronous = self.useSharedAnimationPhase || self.patternImageLayer.contents == nil
+                    Logger.shared.log("WallpaperBackground", "pattern cache miss (\(WallpaperBackgroundNodeImpl.patternCacheMissReason(updatedGeneratedImage))), shared: \(self.useSharedAnimationPhase), synchronous: \(isSynchronous), size: \(size.width)x\(size.height)")
+                    if isSynchronous {
                         if let drawingContext = validPatternImage.generate(patternArguments) {
                             if let image = drawingContext.generateImage() {
                                 self.patternImageLayer.suspendCompositionUpdates = true
@@ -1696,9 +1742,7 @@ public final class WallpaperBackgroundNodeImpl: ASDisplayNode, WallpaperBackgrou
                                 self.patternImageLayer.suspendCompositionUpdates = false
                                 self.patternImageLayer.updateCompositionIfNeeded()
 
-                                if self.useSharedAnimationPhase {
-                                    WallpaperBackgroundNodeImpl.cachedValidPatternImage = CachedValidPatternImage(generate: validPatternImage.generate, generated: updatedGeneratedImage, rects: validPatternImage.rects, starGift: validPatternImage.starGift, symbolImage: validPatternImage.symbolImage, modelRectIndex: validPatternImage.modelRectIndex, image: image)
-                                }
+                                WallpaperBackgroundNodeImpl.storeCachedPatternImage(CachedValidPatternImage(generate: validPatternImage.generate, generated: updatedGeneratedImage, rects: validPatternImage.rects, starGift: validPatternImage.starGift, symbolImage: validPatternImage.symbolImage, modelRectIndex: validPatternImage.modelRectIndex, image: image), isShared: self.useSharedAnimationPhase)
                             } else {
                                 self.updatePatternPresentation()
                             }
@@ -1718,8 +1762,8 @@ public final class WallpaperBackgroundNodeImpl: ASDisplayNode, WallpaperBackgrou
                                 strongSelf.patternImageLayer.patternContentImage = image
                                 strongSelf.updatePatternPresentation()
 
-                                if let image = image, strongSelf.useSharedAnimationPhase {
-                                    WallpaperBackgroundNodeImpl.cachedValidPatternImage = CachedValidPatternImage(generate: validPatternImage.generate, generated: updatedGeneratedImage, rects: validPatternImage.rects, starGift: validPatternImage.starGift, symbolImage: validPatternImage.symbolImage, modelRectIndex: validPatternImage.modelRectIndex, image: image)
+                                if let image = image {
+                                    WallpaperBackgroundNodeImpl.storeCachedPatternImage(CachedValidPatternImage(generate: validPatternImage.generate, generated: updatedGeneratedImage, rects: validPatternImage.rects, starGift: validPatternImage.starGift, symbolImage: validPatternImage.symbolImage, modelRectIndex: validPatternImage.modelRectIndex, image: image), isShared: strongSelf.useSharedAnimationPhase)
                                 }
                             }
                         }

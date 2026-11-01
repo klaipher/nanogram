@@ -52,18 +52,53 @@ public extension CAAnimation {
     }
 }
 
+// Apple's ProMotion table: alpha or color transitions need no higher rate than the system default
+// ("optimizing-iphone-and-ipad-apps-to-support-promotion-displays").
+private let systemDefaultRateKeyPaths: Set<String> = [
+    "opacity", "backgroundColor", "borderColor", "shadowColor", "shadowOpacity", "fillColor", "strokeColor", "foregroundColor"
+]
+
+// Repeating decorative loops (shimmers, spinners). Apple lists "progress spinner" with alpha and color
+// changes; 60 Hz keeps them as smooth as on a 60 Hz screen without holding ProMotion at 120 Hz.
+@available(iOS 15.0, *)
+let decorativeLoopFrameRateRange = CAFrameRateRange(minimum: 30.0, maximum: 60.0, preferred: 60.0)
+
+/// nil leaves the system default in place.
+@available(iOS 15.0, *)
+func animationFrameRateRange(keyPath: String?, repeatCount: Float, maximumFramesPerSecond maxFps: Float) -> CAFrameRateRange? {
+    if maxFps <= 61.0 {
+        return nil
+    }
+    if repeatCount.isInfinite {
+        return decorativeLoopFrameRateRange
+    }
+    if let keyPath, systemDefaultRateKeyPaths.contains(keyPath) {
+        return nil
+    }
+    return CAFrameRateRange(minimum: 30.0, maximum: maxFps, preferred: maxFps)
+}
+
 private func adjustFrameRate(animation: CAAnimation) {
     if #available(iOS 15.0, *) {
-        let maxFps = Float(UIScreen.main.maximumFramesPerSecond)
-        if maxFps > 61.0 {
-            var preferredFps: Float = maxFps
-            if let animation = animation as? CABasicAnimation {
-                if animation.keyPath == "opacity" {
-                    preferredFps = 60.0
-                    return
-                }
+        let keyPath = (animation as? CAPropertyAnimation)?.keyPath
+        if let range = animationFrameRateRange(keyPath: keyPath, repeatCount: animation.repeatCount, maximumFramesPerSecond: Float(UIScreen.main.maximumFramesPerSecond)) {
+            animation.preferredFrameRateRange = range
+        }
+    }
+}
+
+public extension CAAnimation {
+    /// For a repeating decorative animation (shimmer, spinner). Call after setting `repeatCount`:
+    /// `makeAnimation` cannot see a repeat count set later.
+    func setDecorativeLoopFrameRate() {
+        self.setDecorativeLoopFrameRate(maximumFramesPerSecond: Float(UIScreen.main.maximumFramesPerSecond))
+    }
+
+    internal func setDecorativeLoopFrameRate(maximumFramesPerSecond: Float) {
+        if #available(iOS 15.0, *) {
+            if maximumFramesPerSecond > 61.0 {
+                self.preferredFrameRateRange = decorativeLoopFrameRateRange
             }
-            animation.preferredFrameRateRange = CAFrameRateRange(minimum: 30.0, maximum: preferredFps, preferred: maxFps)
         }
     }
 }

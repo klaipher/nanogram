@@ -157,6 +157,7 @@ public final class ShimmerEffectForegroundView: UIView {
             self.image.frame = CGRect(origin: CGPoint(x: -gradientSize, y: 0.0), size: CGSize(width: gradientSize, height: containerSize.height))
             let animation = self.image.makeAnimation(from: 0.0 as NSNumber, to: (containerSize.width + gradientSize) as NSNumber, keyPath: "position.x", timingFunction: CAMediaTimingFunctionName.easeOut.rawValue, duration: self.currentDuration ?? 1.3, delay: 0.0, mediaTimingFunction: nil, removeOnCompletion: true, additive: true)
             animation.repeatCount = Float.infinity
+            animation.setDecorativeLoopFrameRate()
             if self.globalTimeOffset {
                 animation.beginTime = 1.0
             }
@@ -166,6 +167,7 @@ public final class ShimmerEffectForegroundView: UIView {
             self.image.frame = CGRect(origin: CGPoint(x: 0.0, y: -gradientSize), size: CGSize(width: containerSize.width, height: gradientSize))
             let animation = self.image.makeAnimation(from: 0.0 as NSNumber, to: (containerSize.height + gradientSize) as NSNumber, keyPath: "position.y", timingFunction: CAMediaTimingFunctionName.easeOut.rawValue, duration: self.currentDuration ?? 1.3, delay: 0.0, mediaTimingFunction: nil, removeOnCompletion: true, additive: true)
             animation.repeatCount = Float.infinity
+            animation.setDecorativeLoopFrameRate()
             if self.globalTimeOffset {
                 animation.beginTime = 1.0
             }
@@ -330,6 +332,7 @@ public final class ShimmerEffectForegroundNode: ASDisplayNode {
             self.imageNode.frame = CGRect(origin: CGPoint(x: -gradientHeight, y: 0.0), size: CGSize(width: gradientHeight, height: containerSize.height))
             let animation = self.imageNode.layer.makeAnimation(from: 0.0 as NSNumber, to: (containerSize.width + gradientHeight) as NSNumber, keyPath: "position.x", timingFunction: CAMediaTimingFunctionName.easeOut.rawValue, duration: duration ?? 1.3, delay: 0.0, mediaTimingFunction: nil, removeOnCompletion: true, additive: true)
             animation.repeatCount = Float.infinity
+            animation.setDecorativeLoopFrameRate()
             if self.globalTimeOffset {
                 animation.beginTime = 1.0
             }
@@ -339,6 +342,7 @@ public final class ShimmerEffectForegroundNode: ASDisplayNode {
             self.imageNode.frame = CGRect(origin: CGPoint(x: 0.0, y: -gradientHeight), size: CGSize(width: containerSize.width, height: gradientHeight))
             let animation = self.imageNode.layer.makeAnimation(from: 0.0 as NSNumber, to: (containerSize.height + gradientHeight) as NSNumber, keyPath: "position.y", timingFunction: CAMediaTimingFunctionName.easeOut.rawValue, duration: duration ?? 1.3, delay: 0.0, mediaTimingFunction: nil, removeOnCompletion: true, additive: true)
             animation.repeatCount = Float.infinity
+            animation.setDecorativeLoopFrameRate()
             if self.globalTimeOffset {
                 animation.beginTime = 1.0
             }
@@ -551,6 +555,7 @@ public final class StandaloneShimmerEffect {
             animation.toValue = -1.0 as NSNumber
             animation.isAdditive = true
             animation.repeatCount = .infinity
+            animation.setDecorativeLoopFrameRate()
             animation.duration = 0.8
             animation.beginTime = layer.convertTime(1.0, from: nil)
             layer.add(animation, forKey: "shimmer")
@@ -571,6 +576,7 @@ public final class StandaloneShimmerEffect {
             animation.toValue = NSNumber(floatLiteral: -delay)
             animation.isAdditive = true
             animation.repeatCount = .infinity
+            animation.setDecorativeLoopFrameRate()
             animation.duration = 0.8 * delay
             animation.timingFunction = .init(name: .easeInEaseOut)
             layer.add(animation, forKey: "shimmer")

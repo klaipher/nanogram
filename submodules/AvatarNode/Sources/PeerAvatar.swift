@@ -187,199 +187,9 @@ public func peerAvatarImage(postbox: Postbox, peerReference: PeerReference?, aut
     if let imageData = peerAvatarImageData(postbox: postbox, peerReference: peerReference, authorOfMessage: authorOfMessage, representation: representation, synchronousLoad: synchronousLoad) {
         return imageData
         |> mapToSignal { data -> Signal<(UIImage, UIImage)?, NoError> in
+            let resourceId = representation?.resource.id.stringRepresentation
             let generate = deferred { () -> Signal<(UIImage, UIImage)?, NoError> in
-                if emptyColor == nil && data == nil {
-                    return .single(nil)
-                }
-                let roundedImage = generateImage(displayDimensions, contextGenerator: { size, context -> Void in
-                    if let (data, dataType) = data {
-                        if let imageSource = CGImageSourceCreateWithData(data as CFData, nil), var dataImage = CGImageSourceCreateImageAtIndex(imageSource, 0, nil) {
-                            context.clear(CGRect(origin: CGPoint(), size: displayDimensions))
-                            context.setBlendMode(.copy)
-                            
-                            switch clipStyle {
-                            case .none:
-                                break
-                            case .round:
-                                if displayDimensions.width != 60.0 {
-                                    context.addEllipse(in: CGRect(origin: CGPoint(), size: displayDimensions).insetBy(dx: inset, dy: inset))
-                                    context.clip()
-                                }
-                            case .roundedRect:
-                                context.addPath(UIBezierPath(roundedRect: CGRect(x: 0.0, y: 0.0, width: displayDimensions.width, height: displayDimensions.height).insetBy(dx: inset, dy: inset), cornerRadius: floor(displayDimensions.width * 0.25)).cgPath)
-                                context.clip()
-                            case .bubble:
-                                let rect = CGRect(origin: CGPoint(), size: displayDimensions).insetBy(dx: inset, dy: inset)
-                                context.translateBy(x: rect.midX, y: rect.midY)
-                                context.scaleBy(x: 1.0, y: -1.0)
-                                context.translateBy(x: -rect.midX, y: -rect.midY)
-                                AvatarNode.addAvatarBubblePath(context: context, rect: rect)
-                                context.translateBy(x: rect.midX, y: rect.midY)
-                                context.scaleBy(x: 1.0, y: -1.0)
-                                context.translateBy(x: -rect.midX, y: -rect.midY)
-                                context.clip()
-                            }
-
-                            var shouldBlur = false
-                            if case .blurred = dataType {
-                                shouldBlur = true
-                            } else if blurred {
-                                shouldBlur = true
-                            }
-                            if shouldBlur {
-                                let imageContextSize = size.width > 200.0 ? CGSize(width: 192.0, height: 192.0) : CGSize(width: 64.0, height: 64.0)
-                                if let imageContext = DrawingContext(size: imageContextSize, scale: 1.0, clear: true) {
-                                    imageContext.withFlippedContext { c in
-                                        c.draw(dataImage, in: CGRect(origin: CGPoint(), size: imageContextSize))
-                                        
-                                        context.setBlendMode(.saturation)
-                                        context.setFillColor(UIColor(rgb: 0xffffff, alpha: 1.0).cgColor)
-                                        context.fill(CGRect(origin: CGPoint(), size: size))
-                                        context.setBlendMode(.copy)
-                                    }
-                                    
-                                    telegramFastBlurMore(Int32(imageContext.size.width * imageContext.scale), Int32(imageContext.size.height * imageContext.scale), Int32(imageContext.bytesPerRow), imageContext.bytes)
-                                    if size.width > 200.0 {
-                                        telegramFastBlurMore(Int32(imageContext.size.width * imageContext.scale), Int32(imageContext.size.height * imageContext.scale), Int32(imageContext.bytesPerRow), imageContext.bytes)
-                                        telegramFastBlurMore(Int32(imageContext.size.width * imageContext.scale), Int32(imageContext.size.height * imageContext.scale), Int32(imageContext.bytesPerRow), imageContext.bytes)
-                                        telegramFastBlurMore(Int32(imageContext.size.width * imageContext.scale), Int32(imageContext.size.height * imageContext.scale), Int32(imageContext.bytesPerRow), imageContext.bytes)
-                                        telegramFastBlurMore(Int32(imageContext.size.width * imageContext.scale), Int32(imageContext.size.height * imageContext.scale), Int32(imageContext.bytesPerRow), imageContext.bytes)
-                                    }
-                                    
-                                    dataImage = imageContext.generateImage()!.cgImage!
-                                }
-                            }
-                            
-                            let filledSize = CGSize(width: dataImage.width, height: dataImage.height).aspectFilled(displayDimensions)
-                            
-                            context.draw(dataImage, in: CGRect(origin: CGPoint(x: floor((displayDimensions.width - filledSize.width) / 2.0), y: floor((displayDimensions.height - filledSize.height) / 2.0)), size: filledSize).insetBy(dx: inset, dy: inset))
-                            if blurred {
-                                context.setBlendMode(.normal)
-                                context.setFillColor(UIColor(rgb: 0x000000, alpha: 0.45).cgColor)
-                                context.fill(CGRect(origin: CGPoint(), size: size))
-                                context.setBlendMode(.copy)
-                            }
-                            switch clipStyle {
-                            case .none:
-                                break
-                            case .round:
-                                if displayDimensions.width == 60.0 {
-                                    context.setBlendMode(.destinationOut)
-                                    context.draw(roundCorners.cgImage!, in: CGRect(origin: CGPoint(), size: displayDimensions).insetBy(dx: inset, dy: inset))
-                                }
-                            case .roundedRect:
-                                break
-                            case .bubble:
-                                break
-                            }
-                        } else {
-                            if let emptyColor = emptyColor {
-                                context.clear(CGRect(origin: CGPoint(), size: displayDimensions))
-                                context.setFillColor(emptyColor.cgColor)
-                                switch clipStyle {
-                                case .none:
-                                    context.fill(CGRect(origin: CGPoint(), size: displayDimensions).insetBy(dx: inset, dy: inset))
-                                case .round:
-                                    context.fillEllipse(in: CGRect(origin: CGPoint(), size: displayDimensions).insetBy(dx: inset, dy: inset))
-                                case .roundedRect:
-                                    context.beginPath()
-                                    context.addPath(UIBezierPath(roundedRect: CGRect(x: 0.0, y: 0.0, width: displayDimensions.width, height: displayDimensions.height).insetBy(dx: inset, dy: inset), cornerRadius: floor(displayDimensions.width * 0.25)).cgPath)
-                                    context.fillPath()
-                                case .bubble:
-                                    let rect = CGRect(origin: CGPoint(), size: displayDimensions).insetBy(dx: inset, dy: inset)
-                                    context.translateBy(x: rect.midX, y: rect.midY)
-                                    context.scaleBy(x: 1.0, y: -1.0)
-                                    context.translateBy(x: -rect.midX, y: -rect.midY)
-                                    AvatarNode.addAvatarBubblePath(context: context, rect: rect)
-                                    context.translateBy(x: rect.midX, y: rect.midY)
-                                    context.scaleBy(x: 1.0, y: -1.0)
-                                    context.translateBy(x: -rect.midX, y: -rect.midY)
-                                    context.clip()
-                                }
-                            }
-                        }
-                    } else if let emptyColor = emptyColor {
-                        context.clear(CGRect(origin: CGPoint(), size: displayDimensions))
-                        context.setFillColor(emptyColor.cgColor)
-                        
-                        switch clipStyle {
-                        case .none:
-                            context.fill(CGRect(origin: CGPoint(), size: displayDimensions).insetBy(dx: inset, dy: inset))
-                        case .round:
-                            context.fillEllipse(in: CGRect(origin: CGPoint(), size: displayDimensions).insetBy(dx: inset, dy: inset))
-                        case .roundedRect:
-                            context.beginPath()
-                            context.addPath(UIBezierPath(roundedRect: CGRect(x: 0.0, y: 0.0, width: displayDimensions.width, height: displayDimensions.height).insetBy(dx: inset, dy: inset), cornerRadius: floor(displayDimensions.width * 0.25)).cgPath)
-                            context.fillPath()
-                        case .bubble:
-                            let rect = CGRect(origin: CGPoint(), size: displayDimensions).insetBy(dx: inset, dy: inset)
-                            context.translateBy(x: rect.midX, y: rect.midY)
-                            context.scaleBy(x: 1.0, y: -1.0)
-                            context.translateBy(x: -rect.midX, y: -rect.midY)
-                            AvatarNode.addAvatarBubblePath(context: context, rect: rect)
-                            context.translateBy(x: rect.midX, y: rect.midY)
-                            context.scaleBy(x: 1.0, y: -1.0)
-                            context.translateBy(x: -rect.midX, y: -rect.midY)
-                            context.clip()
-                        }
-                    }
-                    
-                    if let cutoutRect {
-                        context.setBlendMode(.copy)
-                        context.setFillColor(UIColor.clear.cgColor)
-                        //TODO:fix
-                        context.fillEllipse(in: cutoutRect)
-                    }
-                })
-                let unroundedImage: UIImage?
-                if provideUnrounded {
-                    unroundedImage = generateImage(displayDimensions, contextGenerator: { size, context -> Void in
-                        if let (data, _) = data {
-                            if let imageSource = CGImageSourceCreateWithData(data as CFData, nil), let dataImage = CGImageSourceCreateImageAtIndex(imageSource, 0, nil) {
-                                context.clear(CGRect(origin: CGPoint(), size: displayDimensions))
-                                context.setBlendMode(.copy)
-                                
-                                context.draw(dataImage, in: CGRect(origin: CGPoint(), size: displayDimensions).insetBy(dx: inset, dy: inset))
-                            } else {
-                                if let emptyColor = emptyColor {
-                                    context.clear(CGRect(origin: CGPoint(), size: displayDimensions))
-                                    context.setFillColor(emptyColor.cgColor)
-                                    context.fill(CGRect(origin: CGPoint(), size: displayDimensions).insetBy(dx: inset, dy: inset))
-                                }
-                            }
-                        } else if let emptyColor = emptyColor {
-                            context.clear(CGRect(origin: CGPoint(), size: displayDimensions))
-                            context.setFillColor(emptyColor.cgColor)
-                            switch clipStyle {
-                            case .none:
-                                context.fill(CGRect(origin: CGPoint(), size: displayDimensions).insetBy(dx: inset, dy: inset))
-                            case .round:
-                                context.fillEllipse(in: CGRect(origin: CGPoint(), size: displayDimensions).insetBy(dx: inset, dy: inset))
-                            case .roundedRect:
-                                context.beginPath()
-                                context.addPath(UIBezierPath(roundedRect: CGRect(x: 0.0, y: 0.0, width: displayDimensions.width, height: displayDimensions.height).insetBy(dx: inset, dy: inset), cornerRadius: floor(displayDimensions.width * 0.25)).cgPath)
-                                context.fillPath()
-                            case .bubble:
-                                let rect = CGRect(origin: CGPoint(), size: displayDimensions).insetBy(dx: inset, dy: inset)
-                                context.translateBy(x: rect.midX, y: rect.midY)
-                                context.scaleBy(x: 1.0, y: -1.0)
-                                context.translateBy(x: -rect.midX, y: -rect.midY)
-                                AvatarNode.addAvatarBubblePath(context: context, rect: rect)
-                                context.translateBy(x: rect.midX, y: rect.midY)
-                                context.scaleBy(x: 1.0, y: -1.0)
-                                context.translateBy(x: -rect.midX, y: -rect.midY)
-                                context.clip()
-                            }
-                        }
-                    })
-                } else {
-                    unroundedImage = roundedImage
-                }
-                if let roundedImage = roundedImage, let unroundedImage = unroundedImage {
-                    return .single((roundedImage, unroundedImage))
-                } else {
-                    return .single(nil)
-                }
+                return .single(peerAvatarRenderedImages(resourceId: resourceId, data: data, displayDimensions: displayDimensions, clipStyle: clipStyle, blurred: blurred, inset: inset, emptyColor: emptyColor, provideUnrounded: provideUnrounded, cutoutRect: cutoutRect, cache: PeerAvatarImageCache.shared))
             }
             if synchronousLoad {
                 return generate
@@ -387,6 +197,220 @@ public func peerAvatarImage(postbox: Postbox, peerReference: PeerReference?, aut
                 return generate |> runOn(Queue.concurrentDefaultQueue())
             }
         }
+    } else {
+        return nil
+    }
+}
+
+/// Decodes, scales and clips one avatar. Results for complete photos are kept in `cache`.
+func peerAvatarRenderedImages(resourceId: String?, data: (Data, PeerAvatarImageType)?, displayDimensions: CGSize, clipStyle: AvatarNodeClipStyle, blurred: Bool, inset: CGFloat, emptyColor: UIColor?, provideUnrounded: Bool, cutoutRect: CGRect?, cache: PeerAvatarImageCache?) -> (UIImage, UIImage)? {
+    if emptyColor == nil && data == nil {
+        return nil
+    }
+    var cacheKey: NSString?
+    if let cache, let resourceId, let (bytes, dataType) = data, case .complete = dataType {
+        let key = PeerAvatarImageCache.key(resourceId: resourceId, dataLength: bytes.count, displayDimensions: displayDimensions, clipStyle: clipStyle, blurred: blurred, inset: inset, provideUnrounded: provideUnrounded, cutoutRect: cutoutRect)
+        if let cached = cache.get(key) {
+            return cached
+        }
+        cacheKey = key
+    }
+    // Only a decoded photo is worth keeping; placeholders are cheap.
+    var decodedPhoto = false
+    let roundedImage = generateImage(displayDimensions, contextGenerator: { size, context -> Void in
+        if let (data, dataType) = data {
+            if let imageSource = CGImageSourceCreateWithData(data as CFData, nil), var dataImage = CGImageSourceCreateImageAtIndex(imageSource, 0, nil) {
+                decodedPhoto = true
+                context.clear(CGRect(origin: CGPoint(), size: displayDimensions))
+                context.setBlendMode(.copy)
+
+                switch clipStyle {
+                case .none:
+                    break
+                case .round:
+                    if displayDimensions.width != 60.0 {
+                        context.addEllipse(in: CGRect(origin: CGPoint(), size: displayDimensions).insetBy(dx: inset, dy: inset))
+                        context.clip()
+                    }
+                case .roundedRect:
+                    context.addPath(UIBezierPath(roundedRect: CGRect(x: 0.0, y: 0.0, width: displayDimensions.width, height: displayDimensions.height).insetBy(dx: inset, dy: inset), cornerRadius: floor(displayDimensions.width * 0.25)).cgPath)
+                    context.clip()
+                case .bubble:
+                    let rect = CGRect(origin: CGPoint(), size: displayDimensions).insetBy(dx: inset, dy: inset)
+                    context.translateBy(x: rect.midX, y: rect.midY)
+                    context.scaleBy(x: 1.0, y: -1.0)
+                    context.translateBy(x: -rect.midX, y: -rect.midY)
+                    AvatarNode.addAvatarBubblePath(context: context, rect: rect)
+                    context.translateBy(x: rect.midX, y: rect.midY)
+                    context.scaleBy(x: 1.0, y: -1.0)
+                    context.translateBy(x: -rect.midX, y: -rect.midY)
+                    context.clip()
+                }
+
+                var shouldBlur = false
+                if case .blurred = dataType {
+                    shouldBlur = true
+                } else if blurred {
+                    shouldBlur = true
+                }
+                if shouldBlur {
+                    let imageContextSize = size.width > 200.0 ? CGSize(width: 192.0, height: 192.0) : CGSize(width: 64.0, height: 64.0)
+                    if let imageContext = DrawingContext(size: imageContextSize, scale: 1.0, clear: true) {
+                        imageContext.withFlippedContext { c in
+                            c.draw(dataImage, in: CGRect(origin: CGPoint(), size: imageContextSize))
+
+                            context.setBlendMode(.saturation)
+                            context.setFillColor(UIColor(rgb: 0xffffff, alpha: 1.0).cgColor)
+                            context.fill(CGRect(origin: CGPoint(), size: size))
+                            context.setBlendMode(.copy)
+                        }
+
+                        let blurWidth = Int32(clamping: Int(imageContextSize.width))
+                        let blurHeight = Int32(clamping: Int(imageContextSize.height))
+                        let blurBytesPerRow = Int32(clamping: imageContext.bytesPerRow)
+                        let blurPasses = size.width > 200.0 ? 5 : 1
+                        for _ in 0 ..< blurPasses {
+                            telegramFastBlurMore(blurWidth, blurHeight, blurBytesPerRow, imageContext.bytes)
+                        }
+
+                        if let blurredImage = imageContext.generateImage()?.cgImage {
+                            dataImage = blurredImage
+                        }
+                    }
+                }
+
+                let filledSize = CGSize(width: dataImage.width, height: dataImage.height).aspectFilled(displayDimensions)
+
+                context.draw(dataImage, in: CGRect(origin: CGPoint(x: floor((displayDimensions.width - filledSize.width) / 2.0), y: floor((displayDimensions.height - filledSize.height) / 2.0)), size: filledSize).insetBy(dx: inset, dy: inset))
+                if blurred {
+                    context.setBlendMode(.normal)
+                    context.setFillColor(UIColor(rgb: 0x000000, alpha: 0.45).cgColor)
+                    context.fill(CGRect(origin: CGPoint(), size: size))
+                    context.setBlendMode(.copy)
+                }
+                switch clipStyle {
+                case .none:
+                    break
+                case .round:
+                    if displayDimensions.width == 60.0 {
+                        context.setBlendMode(.destinationOut)
+                        if let roundCornersImage = roundCorners.cgImage {
+                            context.draw(roundCornersImage, in: CGRect(origin: CGPoint(), size: displayDimensions).insetBy(dx: inset, dy: inset))
+                        }
+                    }
+                case .roundedRect:
+                    break
+                case .bubble:
+                    break
+                }
+            } else {
+                if let emptyColor = emptyColor {
+                    context.clear(CGRect(origin: CGPoint(), size: displayDimensions))
+                    context.setFillColor(emptyColor.cgColor)
+                    switch clipStyle {
+                    case .none:
+                        context.fill(CGRect(origin: CGPoint(), size: displayDimensions).insetBy(dx: inset, dy: inset))
+                    case .round:
+                        context.fillEllipse(in: CGRect(origin: CGPoint(), size: displayDimensions).insetBy(dx: inset, dy: inset))
+                    case .roundedRect:
+                        context.beginPath()
+                        context.addPath(UIBezierPath(roundedRect: CGRect(x: 0.0, y: 0.0, width: displayDimensions.width, height: displayDimensions.height).insetBy(dx: inset, dy: inset), cornerRadius: floor(displayDimensions.width * 0.25)).cgPath)
+                        context.fillPath()
+                    case .bubble:
+                        let rect = CGRect(origin: CGPoint(), size: displayDimensions).insetBy(dx: inset, dy: inset)
+                        context.translateBy(x: rect.midX, y: rect.midY)
+                        context.scaleBy(x: 1.0, y: -1.0)
+                        context.translateBy(x: -rect.midX, y: -rect.midY)
+                        AvatarNode.addAvatarBubblePath(context: context, rect: rect)
+                        context.translateBy(x: rect.midX, y: rect.midY)
+                        context.scaleBy(x: 1.0, y: -1.0)
+                        context.translateBy(x: -rect.midX, y: -rect.midY)
+                        context.clip()
+                    }
+                }
+            }
+        } else if let emptyColor = emptyColor {
+            context.clear(CGRect(origin: CGPoint(), size: displayDimensions))
+            context.setFillColor(emptyColor.cgColor)
+
+            switch clipStyle {
+            case .none:
+                context.fill(CGRect(origin: CGPoint(), size: displayDimensions).insetBy(dx: inset, dy: inset))
+            case .round:
+                context.fillEllipse(in: CGRect(origin: CGPoint(), size: displayDimensions).insetBy(dx: inset, dy: inset))
+            case .roundedRect:
+                context.beginPath()
+                context.addPath(UIBezierPath(roundedRect: CGRect(x: 0.0, y: 0.0, width: displayDimensions.width, height: displayDimensions.height).insetBy(dx: inset, dy: inset), cornerRadius: floor(displayDimensions.width * 0.25)).cgPath)
+                context.fillPath()
+            case .bubble:
+                let rect = CGRect(origin: CGPoint(), size: displayDimensions).insetBy(dx: inset, dy: inset)
+                context.translateBy(x: rect.midX, y: rect.midY)
+                context.scaleBy(x: 1.0, y: -1.0)
+                context.translateBy(x: -rect.midX, y: -rect.midY)
+                AvatarNode.addAvatarBubblePath(context: context, rect: rect)
+                context.translateBy(x: rect.midX, y: rect.midY)
+                context.scaleBy(x: 1.0, y: -1.0)
+                context.translateBy(x: -rect.midX, y: -rect.midY)
+                context.clip()
+            }
+        }
+
+        if let cutoutRect {
+            context.setBlendMode(.copy)
+            context.setFillColor(UIColor.clear.cgColor)
+            //TODO:fix
+            context.fillEllipse(in: cutoutRect)
+        }
+    })
+    let unroundedImage: UIImage?
+    if provideUnrounded {
+        unroundedImage = generateImage(displayDimensions, contextGenerator: { size, context -> Void in
+            if let (data, _) = data {
+                if let imageSource = CGImageSourceCreateWithData(data as CFData, nil), let dataImage = CGImageSourceCreateImageAtIndex(imageSource, 0, nil) {
+                    context.clear(CGRect(origin: CGPoint(), size: displayDimensions))
+                    context.setBlendMode(.copy)
+
+                    context.draw(dataImage, in: CGRect(origin: CGPoint(), size: displayDimensions).insetBy(dx: inset, dy: inset))
+                } else {
+                    if let emptyColor = emptyColor {
+                        context.clear(CGRect(origin: CGPoint(), size: displayDimensions))
+                        context.setFillColor(emptyColor.cgColor)
+                        context.fill(CGRect(origin: CGPoint(), size: displayDimensions).insetBy(dx: inset, dy: inset))
+                    }
+                }
+            } else if let emptyColor = emptyColor {
+                context.clear(CGRect(origin: CGPoint(), size: displayDimensions))
+                context.setFillColor(emptyColor.cgColor)
+                switch clipStyle {
+                case .none:
+                    context.fill(CGRect(origin: CGPoint(), size: displayDimensions).insetBy(dx: inset, dy: inset))
+                case .round:
+                    context.fillEllipse(in: CGRect(origin: CGPoint(), size: displayDimensions).insetBy(dx: inset, dy: inset))
+                case .roundedRect:
+                    context.beginPath()
+                    context.addPath(UIBezierPath(roundedRect: CGRect(x: 0.0, y: 0.0, width: displayDimensions.width, height: displayDimensions.height).insetBy(dx: inset, dy: inset), cornerRadius: floor(displayDimensions.width * 0.25)).cgPath)
+                    context.fillPath()
+                case .bubble:
+                    let rect = CGRect(origin: CGPoint(), size: displayDimensions).insetBy(dx: inset, dy: inset)
+                    context.translateBy(x: rect.midX, y: rect.midY)
+                    context.scaleBy(x: 1.0, y: -1.0)
+                    context.translateBy(x: -rect.midX, y: -rect.midY)
+                    AvatarNode.addAvatarBubblePath(context: context, rect: rect)
+                    context.translateBy(x: rect.midX, y: rect.midY)
+                    context.scaleBy(x: 1.0, y: -1.0)
+                    context.translateBy(x: -rect.midX, y: -rect.midY)
+                    context.clip()
+                }
+            }
+        })
+    } else {
+        unroundedImage = roundedImage
+    }
+    if let roundedImage = roundedImage, let unroundedImage = unroundedImage {
+        if let cache, let cacheKey, decodedPhoto {
+            cache.set(cacheKey, rounded: roundedImage, unrounded: unroundedImage)
+        }
+        return (roundedImage, unroundedImage)
     } else {
         return nil
     }
