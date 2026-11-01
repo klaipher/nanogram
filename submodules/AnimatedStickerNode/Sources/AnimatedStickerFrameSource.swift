@@ -281,8 +281,19 @@ final class AnimatedStickerDirectFrameSourceCache {
     let path: String
     private let previousVersionPath: String
     
-    static func path(pathPrefix: String, width: Int, height: Int, suffix: String, version: Int, useHardware: Bool) -> String {
-        return "\(pathPrefix)_\(width):\(height)\(suffix).stickerframecachev\(version)\(useHardware ? "-mtl" : "")"
+    // The Metal (DCT) cache's own format version. 2: the encoder flushes its last block, and frames
+    // whose planes were read back from a failed or reused command buffer are no longer stored.
+    // Files of version 1 may hold such frames, so they are not read.
+    static let metalVersion = 2
+    
+    static func path(pathPrefix: String, width: Int, height: Int, suffix: String, version: Int, useHardware: Bool, metalVersion: Int = AnimatedStickerDirectFrameSourceCache.metalVersion) -> String {
+        let metalSuffix: String
+        if useHardware {
+            metalSuffix = metalVersion == 1 ? "-mtl" : "-mtl\(metalVersion)"
+        } else {
+            metalSuffix = ""
+        }
+        return "\(pathPrefix)_\(width):\(height)\(suffix).stickerframecachev\(version)\(metalSuffix)"
     }
     
     init?(queue: Queue, pathPrefix: String, width: Int, height: Int, frameCount: Int, fitzModifier: EmojiFitzModifier?, useHardware: Bool) {
@@ -325,6 +336,9 @@ final class AnimatedStickerDirectFrameSourceCache {
         if self.initializeFrameTable() {
             // A new file replaces the previous version's, which nothing reads any more.
             unlink(self.previousVersionPath)
+            if useHardware {
+                unlink(AnimatedStickerDirectFrameSourceCache.path(pathPrefix: pathPrefix, width: width, height: height, suffix: suffix, version: AnimatedStickerDirectFrameSourceCache.version, useHardware: true, metalVersion: AnimatedStickerDirectFrameSourceCache.metalVersion - 1))
+            }
         }
     }
     
@@ -383,7 +397,7 @@ final class AnimatedStickerDirectFrameSourceCache {
             return
         }
         // The DCT encoder works on 8x8 blocks of full-size luma and alpha and half-size chroma.
-        if self.width % 16 != 0 || self.height % 16 != 0 {
+        if !AnimationCompressor.canCompress(width: self.width, height: self.height) {
             return
         }
         if self.isStoringFrames.contains(index) {
@@ -406,6 +420,12 @@ final class AnimatedStickerDirectFrameSourceCache {
             frameCompressor?.compress(image: AnimationCompressor.ImageData(width: width, height: height, bytesPerRow: bytesPerRow, data: rgbData), completion: { compressedData in
                 queue.async {
                     guard let strongSelf = self else {
+                        return
+                    }
+                    guard let compressedData else {
+                        // Not compressed (see AnimationCompressor.compress): stays uncached, so the
+                        // CPU-rendered frame is used and a later pass tries again.
+                        strongSelf.isStoringFrames.remove(index)
                         return
                     }
                     guard let currentSize = strongSelf.file.getSize() else {

@@ -59,19 +59,23 @@ final class CompressedAnimationRenderer: ASDisplayNode, AnimationRenderer {
     }
         
     func render(queue: Queue, width: Int, height: Int, bytesPerRow: Int, data: Data, type: AnimationRendererFrameType, mulAlpha: Bool, completion: @escaping () -> Void, averageColor: ((UIColor) -> Void)?) {
+        guard let layer = self.layer as? MetalImageLayer else {
+            completion()
+            return
+        }
         switch type {
         case .dct:
-            self.renderer.renderIdct(layer: self.layer as! MetalImageLayer, compressedImage: AnimationCompressor.CompressedImageData(data: data), completion: { [weak self] in
+            self.renderer.renderIdct(layer: layer, compressedImage: AnimationCompressor.CompressedImageData(data: data), completion: { [weak self] in
                 self?.updateHighlightedContentNode()
                 completion()
             })
         case .argb:
-            self.renderer.renderRgb(layer: self.layer as! MetalImageLayer, width: width, height: height, bytesPerRow: bytesPerRow, data: data, completion: { [weak self] in
+            self.renderer.renderRgb(layer: layer, width: width, height: height, bytesPerRow: bytesPerRow, data: data, multiplyAlpha: mulAlpha, completion: { [weak self] in
                 self?.updateHighlightedContentNode()
                 completion()
             })
         case .yuva:
-            self.renderer.renderYuva(layer: self.layer as! MetalImageLayer, width: width, height: height, data: data, completion: { [weak self] in
+            self.renderer.renderYuva(layer: layer, width: width, height: height, data: data, completion: { [weak self] in
                 self?.updateHighlightedContentNode()
                 completion()
             })

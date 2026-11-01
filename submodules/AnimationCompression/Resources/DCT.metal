@@ -77,20 +77,26 @@ fragment float4 samplingIdctShader(
     
     const half4 color = rgb(yuva);
     
-    return float4(color.r * color.a, color.g * color.a, color.b * color.a, color.a);
+    // The compressed frames are premultiplied (rlottie's output, as AnimationCompressor gets it),
+    // and so is the drawable: multiplying by alpha again darkened every soft edge.
+    return float4(color.r, color.g, color.b, color.a);
 }
 
 fragment float4 samplingRgbShader(
     RasterizerData in [[stage_in]],
-    texture2d<half, access::sample> colorTexture [[texture(0)]]
+    texture2d<half, access::sample> colorTexture [[texture(0)]],
+    constant uint &multiplyAlpha [[buffer(0)]]
 ) {
     constexpr sampler textureSampler(mag_filter::linear, min_filter::linear);
 
+    // rlottie frames are premultiplied already; decoded video frames are not (multiplyAlpha).
     half4 color = colorTexture.sample(textureSampler, in.textureCoordinate);
     
-    color.r *= color.a;
-    color.g *= color.a;
-    color.b *= color.a;
+    if (multiplyAlpha != 0) {
+        color.r *= color.a;
+        color.g *= color.a;
+        color.b *= color.a;
+    }
     
     return float4(color.r, color.g, color.b, color.a);
 }

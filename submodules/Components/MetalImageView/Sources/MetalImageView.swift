@@ -15,6 +15,9 @@ open class MetalImageLayer: CALayer {
         let width: Int
         let height: Int
         
+        // Contents come back from the CGImage data provider's deallocator, on whichever thread
+        // releases the image, while drawables are taken on the renderer's.
+        private let lock = NSLock()
         private var items: [TextureStorage.Content] = []
         
         init(width: Int, height: Int) {
@@ -23,14 +26,20 @@ open class MetalImageLayer: CALayer {
         }
         
         func recycle(content: TextureStorage.Content) {
+            self.lock.lock()
+            defer {
+                self.lock.unlock()
+            }
             if self.items.count < 4 {
                 self.items.append(content)
-            } else {
-                print("Warning: over-recycling texture storage")
             }
         }
         
         func take() -> TextureStorage.Content? {
+            self.lock.lock()
+            defer {
+                self.lock.unlock()
+            }
             if self.items.isEmpty {
                 return nil
             }

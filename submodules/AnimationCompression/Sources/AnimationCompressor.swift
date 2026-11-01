@@ -257,79 +257,51 @@ public final class AnimationCompressor {
             self.commandQueue = commandQueue
         }
         
-        func compress(compressor: AnimationCompressor, image: ImageData, completion: @escaping (CompressedImageData) -> Void) {
-            let threadgroupSize = MTLSize(width: 8, height: 8, depth: 1)
-            
-            assert(image.width % 8 == 0)
-            assert(image.height % 8 == 0)
-            
-            let inputTexture: Texture
-            if let current = compressor.inputTexture, current.width == image.width, current.height == image.height {
-                inputTexture = current
-            } else {
-                guard let texture = Texture(
-                    device: self.device,
-                    width: image.width,
-                    height: image.height,
-                    pixelFormat: .bgra8Unorm,
-                    usage: .shaderRead,
-                    isShared: true
-                ) else {
-                    return
+        func compress(compressor: AnimationCompressor, image: ImageData, completion: @escaping (CompressedImageData?) -> Void) {
+            let fail = {
+                DispatchQueue.main.async {
+                    completion(nil)
                 }
-                inputTexture = texture
-                compressor.inputTexture = texture
             }
+            
+            guard AnimationCompressor.canCompress(width: image.width, height: image.height) else {
+                fail()
+                return
+            }
+            guard image.bytesPerRow >= image.width * 4, image.data.count >= image.bytesPerRow * image.height else {
+                fail()
+                return
+            }
+            
+            // The frame owns its textures until its planes are read back. One set per compressor,
+            // rewritten by the next frame while this one's planes were read back, gave read-backs
+            // mixing two frames (frames queued on the main queue are issued back to back).
+            guard let slot = compressor.takeSlot(device: self.device, width: image.width, height: image.height) else {
+                fail()
+                return
+            }
+            let inputTexture = slot.input
+            let compressedTextures = slot.planes
             
             inputTexture.replace(with: image)
             
-            let compressedTextures: TextureSet
-            if let current = compressor.compressedTextures, current.width == image.width, current.height == image.height {
-                compressedTextures = current
-            } else {
-                guard let textures = TextureSet(
-                    device: self.device,
-                    width: image.width,
-                    height: image.height,
-                    descriptions: [
-                        TextureSet.Description(
-                            fractionWidth: 1, fractionHeight: 1,
-                            pixelFormat: .r32Float
-                        ),
-                        TextureSet.Description(
-                            fractionWidth: 2, fractionHeight: 2,
-                            pixelFormat: .r32Float
-                        ),
-                        TextureSet.Description(
-                            fractionWidth: 2, fractionHeight: 2,
-                            pixelFormat: .r32Float
-                        ),
-                        TextureSet.Description(
-                            fractionWidth: 1, fractionHeight: 1,
-                            pixelFormat: .r32Float
-                        )
-                    ],
-                    usage: [.shaderWrite],
-                    isShared: false
-                ) else {
-                    return
-                }
-                compressedTextures = textures
-                compressor.compressedTextures = textures
-            }
-            
             guard let commandBuffer = self.commandQueue.makeCommandBuffer() else {
+                compressor.returnSlot(slot)
+                fail()
                 return
             }
             commandBuffer.label = "ImageCompressor"
             
             guard let computeEncoder = commandBuffer.makeComputeCommandEncoder() else {
+                compressor.returnSlot(slot)
+                fail()
                 return
             }
             computeEncoder.setComputePipelineState(self.computeDctPipelineState)
             
             computeEncoder.setTexture(inputTexture.texture, index: 0)
             
+            let threadgroupSize = MTLSize(width: 8, height: 8, depth: 1)
             for colorPlane in 0 ..< 4 {
                 computeEncoder.setTexture(compressedTextures.textures[colorPlane].texture, index: 1)
                 
@@ -343,34 +315,64 @@ public final class AnimationCompressor {
             
             computeEncoder.endEncoding()
             
-            commandBuffer.addCompletedHandler { _ in
-                let buffer = WriteBuffer()
-                
-                buffer.writeInt32(0x543ee445)
-                buffer.writeInt32(4)
-                buffer.writeInt32(Int32(compressedTextures.textures[0].width))
-                buffer.writeInt32(Int32(compressedTextures.textures[0].height))
-                
-                for i in 0 ..< 4 {
-                    let region = MTLRegion(origin: MTLOrigin(x: 0, y: 0, z: 0), size: MTLSize(width: compressedTextures.textures[i].width, height: compressedTextures.textures[i].height, depth: 1))
-                    let bytesPerRow = 4 * compressedTextures.textures[i].width
-                    
-                    buffer.writeInt32(Int32(compressedTextures.textures[i].width))
-                    buffer.writeInt32(Int32(compressedTextures.textures[i].height))
-                    buffer.writeInt32(Int32(bytesPerRow))
-                    
-                    var textureBytes = Data(count: bytesPerRow * compressedTextures.textures[i].height)
-                    textureBytes.withUnsafeMutableBytes { bytes in
-                        compressedTextures.textures[i].texture.getBytes(bytes.baseAddress!, bytesPerRow: bytesPerRow, bytesPerImage: bytesPerRow * compressedTextures.textures[i].height, from: region, mipmapLevel: 0, slice: 0)
-                        
-                        let huffmanData = writeDCTBlocks(Int32(compressedTextures.textures[i].width), Int32(compressedTextures.textures[i].height), bytes.baseAddress!.assumingMemoryBound(to: Float32.self))!
-                        buffer.writeInt32(Int32(huffmanData.count))
-                        buffer.write(huffmanData)
-                    }
+            commandBuffer.addCompletedHandler { [weak compressor] commandBuffer in
+                // A command buffer that did not complete (an app in the background may not use the
+                // GPU, a GPU timeout or reset) leaves the planes as they were: not this frame.
+                guard commandBuffer.status == .completed, commandBuffer.error == nil else {
+                    compressor?.returnSlot(slot)
+                    fail()
+                    return
                 }
                 
+                var planeBytes: [Data] = []
+                for i in 0 ..< 4 {
+                    let plane = compressedTextures.textures[i]
+                    let region = MTLRegion(origin: MTLOrigin(x: 0, y: 0, z: 0), size: MTLSize(width: plane.width, height: plane.height, depth: 1))
+                    let bytesPerRow = 4 * plane.width
+                    var textureBytes = Data(count: bytesPerRow * plane.height)
+                    textureBytes.withUnsafeMutableBytes { bytes in
+                        guard let baseAddress = bytes.baseAddress else {
+                            return
+                        }
+                        plane.texture.getBytes(baseAddress, bytesPerRow: bytesPerRow, bytesPerImage: bytesPerRow * plane.height, from: region, mipmapLevel: 0, slice: 0)
+                    }
+                    planeBytes.append(textureBytes)
+                }
+                compressor?.returnSlot(slot)
+                
+                let buffer = WriteBuffer()
+                
+                buffer.writeInt32(CompressedImageLayout.magic)
+                buffer.writeInt32(4)
+                buffer.writeInt32(Int32(clamping: compressedTextures.textures[0].width))
+                buffer.writeInt32(Int32(clamping: compressedTextures.textures[0].height))
+                
+                for i in 0 ..< 4 {
+                    let plane = compressedTextures.textures[i]
+                    let bytesPerRow = 4 * plane.width
+                    
+                    let huffmanData = planeBytes[i].withUnsafeBytes { bytes -> Data? in
+                        guard let baseAddress = bytes.baseAddress else {
+                            return nil
+                        }
+                        return writeDCTBlocks(Int32(clamping: plane.width), Int32(clamping: plane.height), baseAddress.assumingMemoryBound(to: Float32.self))
+                    }
+                    // nil: a coefficient the kernel cannot have produced. The frame is not cached.
+                    guard let huffmanData else {
+                        fail()
+                        return
+                    }
+                    
+                    buffer.writeInt32(Int32(clamping: plane.width))
+                    buffer.writeInt32(Int32(clamping: plane.height))
+                    buffer.writeInt32(Int32(clamping: bytesPerRow))
+                    buffer.writeInt32(Int32(clamping: huffmanData.count))
+                    buffer.write(huffmanData)
+                }
+                
+                let data = buffer.makeData()
                 DispatchQueue.main.async {
-                    completion(CompressedImageData(data: buffer.makeData()))
+                    completion(CompressedImageData(data: data))
                 }
             }
             
@@ -378,16 +380,105 @@ public final class AnimationCompressor {
         }
     }
     
-    private let sharedContext: SharedContext
+    /// Whether frames of this size can be DCT-compressed: whole 16x16 blocks, so that the half-size
+    /// chroma planes are whole 8x8 blocks too. The sticker cache and the Metal renderer only use the
+    /// DCT format for such sizes; any other size stays on the CPU path.
+    public static func canCompress(width: Int, height: Int) -> Bool {
+        return width > 0 && height > 0 && width % 16 == 0 && height % 16 == 0 && width <= maxDimension && height <= maxDimension
+    }
     
-    private var inputTexture: Texture?
-    private var compressedTextures: TextureSet?
+    static let maxDimension = 4096
+    
+    /// The textures one frame uses from upload to read-back.
+    final class FrameSlot {
+        let input: Texture
+        let planes: TextureSet
+        
+        init(input: Texture, planes: TextureSet) {
+            self.input = input
+            self.planes = planes
+        }
+    }
+    
+    /// More frames than this waiting for the GPU are dropped (not cached) rather than queued.
+    static let maxFramesInFlight = 4
+    
+    private let slotsLock = NSLock()
+    private var freeSlots: [FrameSlot] = []
+    private var slotsInFlight = 0
+    
+    func takeSlot(device: MTLDevice, width: Int, height: Int) -> FrameSlot? {
+        self.slotsLock.lock()
+        if self.slotsInFlight >= AnimationCompressor.maxFramesInFlight {
+            self.slotsLock.unlock()
+            return nil
+        }
+        self.freeSlots.removeAll(where: { $0.input.width != width || $0.input.height != height })
+        let reused = self.freeSlots.popLast()
+        self.slotsInFlight += 1
+        self.slotsLock.unlock()
+        
+        if let reused {
+            return reused
+        }
+        
+        guard let input = Texture(
+            device: device,
+            width: width,
+            height: height,
+            pixelFormat: .bgra8Unorm,
+            usage: .shaderRead,
+            isShared: true
+        ), let planes = TextureSet(
+            device: device,
+            width: width,
+            height: height,
+            descriptions: [
+                TextureSet.Description(
+                    fractionWidth: 1, fractionHeight: 1,
+                    pixelFormat: .r32Float
+                ),
+                TextureSet.Description(
+                    fractionWidth: 2, fractionHeight: 2,
+                    pixelFormat: .r32Float
+                ),
+                TextureSet.Description(
+                    fractionWidth: 2, fractionHeight: 2,
+                    pixelFormat: .r32Float
+                ),
+                TextureSet.Description(
+                    fractionWidth: 1, fractionHeight: 1,
+                    pixelFormat: .r32Float
+                )
+            ],
+            usage: [.shaderWrite],
+            isShared: false
+        ) else {
+            self.slotsLock.lock()
+            self.slotsInFlight -= 1
+            self.slotsLock.unlock()
+            return nil
+        }
+        return FrameSlot(input: input, planes: planes)
+    }
+    
+    func returnSlot(_ slot: FrameSlot) {
+        self.slotsLock.lock()
+        self.slotsInFlight -= 1
+        self.freeSlots.append(slot)
+        self.slotsLock.unlock()
+    }
+    
+    private let sharedContext: SharedContext
     
     public init(sharedContext: SharedContext) {
         self.sharedContext = sharedContext
     }
     
-    public func compress(image: ImageData, completion: @escaping (CompressedImageData) -> Void) {
+    /// Compresses one frame on the GPU. `completion` runs on the main queue, with nil when the frame
+    /// was not compressed (a size `canCompress` rejects, too many frames in flight, a command
+    /// buffer that failed, planes that are not DCT output); the caller keeps the frame uncached.
+    public func compress(image: ImageData, completion: @escaping (CompressedImageData?) -> Void) {
         self.sharedContext.compress(compressor: self, image: image, completion: completion)
     }
 }

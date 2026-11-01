@@ -1,5 +1,6 @@
 #import <DctHuffman/DctHuffman.h>
 
+#include <cmath>
 #include <functional>
 #include <vector>
 
@@ -258,7 +259,10 @@ bool readMoreData(std::vector<uint8_t> const &bytes, int &readPosition, unsigned
         return true;
     }
     
-    if (readPosition + 1 >= bytes.size()) {
+    // Every byte is data: the encoder flushes its last bits (see writeDCTBlocks), so the final
+    // byte holds the end of the last block. This used to stop one byte early, which lost the last
+    // block of every plane; readDCTBlocks then zeroed that block, a grey square in the corner.
+    if (readPosition >= (int)bytes.size()) {
         return false;
     }
     binaryData = bytes[readPosition];
@@ -269,7 +273,7 @@ bool readMoreData(std::vector<uint8_t> const &bytes, int &readPosition, unsigned
         data = (data << 8) + binaryData;
         currentDataLength += 8; // Increase current data length for 8 because we read one new byte
         
-        if (readPosition + 1 >= bytes.size()) {
+        if (readPosition >= (int)bytes.size()) {
             return false;
         }
         binaryData = bytes[readPosition];
@@ -315,9 +319,6 @@ bool readMoreData(std::vector<uint8_t> const &bytes, int &readPosition, unsigned
 }
 
 bool readHuffmanBlock(std::vector<uint8_t> const &bytes, int &readPosition, int *dataBlock, unsigned int &data, unsigned int &currentDataLength, int currentComponent, BitCode const *componentTablesDC, BitCode const *componentTablesAC, int &previousDC) {
-    // Debugging
-    static unsigned int byteno = 0;
-    
     // Description of the 8x8 block currently being read
     enum { AC, DC } ACDC = DC;
     
@@ -338,8 +339,6 @@ bool readHuffmanBlock(std::vector<uint8_t> const &bytes, int &readPosition, int 
             continue;
         }
         
-        // Some stats
-        byteno++;
         
         // Current Huffman table
         BitCode const *htable = componentTablesDC;
@@ -376,7 +375,6 @@ bool readHuffmanBlock(std::vector<uint8_t> const &bytes, int &readPosition, int 
                             endOfFile = true;
                             break;
                         }
-                        byteno++;
                     }
                     
                     // Read out DC coefficient
@@ -460,7 +458,6 @@ bool readHuffmanBlock(std::vector<uint8_t> const &bytes, int &readPosition, int 
                                 //qDebug() << "End of file encountered inside a Huffman code!";
                                 break;
                             }
-                            byteno++;
                         }
                         
                         // Read out AC coefficient
@@ -493,7 +490,27 @@ bool readHuffmanBlock(std::vector<uint8_t> const &bytes, int &readPosition, int 
     return endOfFile;
 }
 
+// Every coefficient is coded through `codewords`, which covers |value| < CodeWordLimit, and a DC
+// coefficient as the difference from the previous block's. The DCT kernel's output is far inside
+// that (8-bit samples, a quantizer of at least 6.5: |value| < 160). Anything else is not DCT output
+// (planes read back from a command buffer that did not complete, or that another frame was
+// writing) and would index outside the table; a non-finite or huge float converts to INT_MIN.
+static const float MaxCodedCoefficient = 1023.0f;
+
+static bool isCodable(float value) {
+    return std::isfinite(value) && std::fabs(value) <= MaxCodedCoefficient;
+}
+
 NSData * _Nullable writeDCTBlocks(int width, int height, float const *coefficients) {
+    if (width <= 0 || height <= 0 || width % 8 != 0 || height % 8 != 0 || coefficients == nullptr) {
+        return nil;
+    }
+    for (long i = 0; i < (long)width * (long)height; i++) {
+        if (!isCodable(coefficients[i])) {
+            return nil;
+        }
+    }
+    
     NSMutableData *result = [[NSMutableData alloc] initWithCapacity:width * 4 * height];
     BitWriter bitWriter([result](unsigned char byte) {
         [result appendBytes:&byte length:1];
@@ -538,7 +555,8 @@ NSData * _Nullable writeDCTBlocks(int width, int height, float const *coefficien
         }
     }
     
-    //bitWriter.flush();
+    // The last block's final bits are still in the writer.
+    bitWriter.flush();
     
     return result;
 }
@@ -595,6 +613,9 @@ NSData * _Nullable writeDCTBlocks(int width, int height, float const *coefficien
 
 extern "C"
 void readDCTBlocks(int width, int height, NSData * _Nonnull blockData, float *coefficients, int elementsPerRow) {
+    if (width <= 0 || height <= 0 || width % 8 != 0 || height % 8 != 0 || elementsPerRow < width || coefficients == nullptr) {
+        return;
+    }
     std::vector<uint8_t> bytes((uint8_t *)blockData.bytes, ((uint8_t *)blockData.bytes) + blockData.length);
     int readPosition = 0;
     
@@ -616,14 +637,6 @@ void readDCTBlocks(int width, int height, NSData * _Nonnull blockData, float *co
             DctHuffman::readHuffmanBlock(bytes, readPosition, Yzig, data, currentDataLength, 0, huffmanLuminanceDC, huffmanLuminanceAC, previousDC);
             for (int i = 0; i < 64; i++) {
                 coefficients[(blockY + (i / 8)) * elementsPerRow + blockX + (i % 8)] = Yzig[ZigZag[i]];
-            }
-        }
-    }
-    
-    for (auto blockY = height - 8; blockY < height; blockY += 8) {
-        for (auto blockX = width - 8; blockX < width; blockX += 8) {
-            for (int i = 0; i < 64; i++) {
-                coefficients[(blockY + (i / 8)) * elementsPerRow + blockX + (i % 8)] = 0.0f;
             }
         }
     }

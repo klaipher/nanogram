@@ -78,6 +78,57 @@ larger.
   the next multiple of 16 (the layer scales it), and the cache refuses other sizes.
 - The Metal store now ignores out-of-range frame indices, as the CPU store does.
 
+## The first device run crashed (build 202611012130), and what changed
+
+`EXC_BAD_ACCESS` at `0xffffffff6dd50120` in `writeDCTBlocks`, on Metal's completion queue. The
+faulting load was `ldr w20, [x9, w8, sxtw #2]` with `w8 = 0x80000000` and `x9` the coder's stack
+`codewords` table: the DC difference was `INT_MIN`, so a plane read back from the GPU held a
+coefficient that was not finite or beyond `Int32` (a float like that converts to `INT_MIN`). A DCT
+kernel that ran cannot produce one (8-bit samples, quantizer at least 6.5: |value| < 160). Two
+paths hand the coder planes the kernel did not write:
+
+- **One texture set per compressor, rewritten while in flight.** Frames are queued on the main queue
+  and issued back to back after a busy stretch (scrolling); frame N's completion handler read its
+  planes while frame N+1's kernel wrote the same textures. Reproduced on a Mac: read-backs that mix
+  two frames (decoded error 7.9/255 mean back to back against 1.2 spaced out). On the Mac the torn
+  values stay finite; that a torn or unwritten read-back on the phone held garbage floats is the
+  inference from the fault, not reproduced.
+- **The command buffer's status was never checked**, so planes of a command buffer that failed (GPU
+  use in the background, a timeout or reset) were read back and coded too.
+
+The fix:
+
+- `AnimationCompressor`: per-frame texture sets from a pool, returned after the read-back (at most
+  4 in flight, extra frames are not cached); the command buffer's status is checked;
+  `canCompress(width:height:)` (whole 16x16 blocks, at most 4096) is the one size rule, used by the
+  sticker cache too. `compress` completes with nil when a frame is not compressed, and the cache
+  then frees the index so a later pass retries; the frame is shown from the CPU render meanwhile.
+- `writeDCTBlocks` refuses partial blocks and any coefficient that is not finite or beyond ±1023
+  (returns nil) instead of indexing with it; `readDCTBlocks` ignores sizes it cannot fill.
+- The coder lost the last block of every plane (the writer never flushed its last bits, the reader
+  stopped one byte early, and `readDCTBlocks` then zeroed that block): a half-transparent grey 8x8
+  square in the corner of every cached frame. Fixed both ends; the cache file is now `-mtl2`, and the
+  old `-mtl` file is deleted, since its frames may also hold torn planes.
+- `CompressedImageRenderer`: a cached frame's header is validated (`CompressedImageLayout`: plane
+  sizes, strides and lengths must match the format) before anything is decoded into a texture;
+  uploads happen on one serial queue into per-frame textures returned when the command buffer
+  completes (they were rewritten from a global queue, by several frames at once, while the GPU read
+  them); drawables are taken on the main queue only, and `MetalImageLayer`'s storage pool is locked
+  (contents come back from a `CGImage` deallocator on any thread).
+- The IDCT and ARGB shaders multiplied premultiplied input by alpha again (soft edges darkened:
+  2.6% of channel values more than 16/255 off, 0.6% without). ARGB frames from video stickers are
+  not premultiplied, so `renderRgb` takes `multiplyAlpha` from the frame.
+
+Checked with a scratch macOS harness (not checked in: a SwiftPM package compiling
+`AnimationCompression`'s sources and `DCT.metal` for the Mac's GPU, rendering `Slot_M_Berries.tgs`
+with the watch app's RLottieKit) that drives the compressor as the cache does and decodes as the
+renderer does. After the fix, under Address
+Sanitizer: every frame at 384x384, 384x160, 160x160 and 400x400 at 60 fps round-trips within a mean
+of 1.42/255 and 1.8% outliers; back-to-back bursts and 8 compressors at once do not crash (frames
+beyond 4 in flight are skipped, not torn); an injected `-inf`, `NaN` or `3e9` coefficient is refused
+instead of crashing. `DctCodecTests` pins the coder, the size rules and the frame-format checks
+without a Metal device.
+
 **Not verified at run time.** `StickerMetalRenderingTests` renders a real sticker through the `-mtl`
 cache and `CompressedAnimationRenderer` and compares it with the CPU frame (ARGB within 2/255; DCT and
 YUVA within a mean of 3/255). The Bazel runner runs the bundle as a logic test, where the simulator

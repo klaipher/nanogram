@@ -66,6 +66,8 @@ swift_library(
         "//submodules/AnimatedStickerNode/VP9Hardware:VP9Hardware",
         "//submodules/LottieSettings:LottieSettings",
         "//submodules/MediaResources:MediaResources",
+        "//submodules/AnimationCompression:AnimationCompression",
+        "//submodules/AnimationCompression:DctHuffman",
     ],
 )
 
