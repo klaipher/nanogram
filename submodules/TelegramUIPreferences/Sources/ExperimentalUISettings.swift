@@ -10,6 +10,15 @@ public struct ExperimentalUISettings: Codable, Equatable {
         case hdLanczos
     }
 
+    /// Debug Settings ▸ "Stickers: renderer". Which renderer an animated sticker node uses, together
+    /// with the matching frame cache: today's CPU path, the Metal renderer for large stickers only, or
+    /// the Metal renderer for every sticker node. Read when a node is created.
+    public enum StickerRendererMode: String, CaseIterable {
+        case cpu
+        case gpuLarge
+        case gpuAll
+    }
+
     public struct AccountReactionOverrides: Equatable, Codable {
         public struct Item: Equatable, Codable {
             public var key: MessageReaction.Reaction
@@ -94,6 +103,7 @@ public struct ExperimentalUISettings: Codable, Equatable {
     public var showCrashReportAlerts: Bool?
     public var useModernVideoMessagePipeline: Bool?
     public var videoMessageCameraMode: VideoMessageCameraMode
+    public var stickerRendererMode: StickerRendererMode
 
     public static var defaultSettings: ExperimentalUISettings {
         return ExperimentalUISettings(
@@ -213,6 +223,7 @@ public struct ExperimentalUISettings: Codable, Equatable {
         fakeWalletTransfers: Bool,
         useModernVideoMessagePipeline: Bool? = nil,
         videoMessageCameraMode: VideoMessageCameraMode = .hdBilinear,
+        stickerRendererMode: StickerRendererMode = .cpu,
         showCrashReportAlerts: Bool? = nil
     ) {
         self.keepChatNavigationStack = keepChatNavigationStack
@@ -272,6 +283,7 @@ public struct ExperimentalUISettings: Codable, Equatable {
         self.showCrashReportAlerts = showCrashReportAlerts
         self.useModernVideoMessagePipeline = useModernVideoMessagePipeline
         self.videoMessageCameraMode = videoMessageCameraMode
+        self.stickerRendererMode = stickerRendererMode
     }
     
     public init(from decoder: Decoder) throws {
@@ -336,6 +348,7 @@ public struct ExperimentalUISettings: Codable, Equatable {
         self.showCrashReportAlerts = try container.decodeIfPresent(Bool.self, forKey: "showCrashReportAlerts")
         self.useModernVideoMessagePipeline = try container.decodeIfPresent(Bool.self, forKey: "useModernVideoMessagePipeline")
         self.videoMessageCameraMode = (try container.decodeIfPresent(String.self, forKey: "videoMessageCameraMode")).flatMap(VideoMessageCameraMode.init(rawValue:)) ?? .hdBilinear
+        self.stickerRendererMode = (try container.decodeIfPresent(String.self, forKey: "stickerRendererMode")).flatMap(StickerRendererMode.init(rawValue:)) ?? .cpu
     }
     
     public func encode(to encoder: Encoder) throws {
@@ -398,6 +411,7 @@ public struct ExperimentalUISettings: Codable, Equatable {
         try container.encodeIfPresent(self.showCrashReportAlerts, forKey: "showCrashReportAlerts")
         try container.encodeIfPresent(self.useModernVideoMessagePipeline, forKey: "useModernVideoMessagePipeline")
         try container.encode(self.videoMessageCameraMode.rawValue, forKey: "videoMessageCameraMode")
+        try container.encode(self.stickerRendererMode.rawValue, forKey: "stickerRendererMode")
     }
 }
 

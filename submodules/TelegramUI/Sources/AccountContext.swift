@@ -31,6 +31,7 @@ import WalletContext
 import WalletConnectScreen
 import AlertUI
 import MetalEngine
+import AnimatedStickerNode
 
 private final class DeviceSpecificContactImportContext {
     let disposable = MetaDisposable()
@@ -394,6 +395,7 @@ public final class AccountContextImpl: AccountContext {
         })
         self.animationRenderer = DCTMultiAnimationRendererImpl()
         (self.animationRenderer as? DCTMultiAnimationRendererImpl)?.useYuvA = sharedContext.immediateExperimentalUISettings.compressedEmojiCache
+        AnimatedStickerRendererMode.processWide = AnimatedStickerRendererMode(sharedContext.immediateExperimentalUISettings.stickerRendererMode)
         
         let updatedLimitsConfiguration = self.engine.data.subscribe(TelegramEngine.EngineData.Item.Configuration.ApplicationSpecificPreference(key: PreferencesKeys.limitsConfiguration))
         |> map { preferences -> LimitsConfiguration in
@@ -637,6 +639,7 @@ public final class AccountContextImpl: AccountContext {
                 return
             }
             (self.animationRenderer as? DCTMultiAnimationRendererImpl)?.useYuvA = settings.compressedEmojiCache
+            AnimatedStickerRendererMode.processWide = AnimatedStickerRendererMode(settings.stickerRendererMode)
 
             let _ = self.cachedLottieRenderingSettings.swap(AccountContextImpl.resolveLottieRenderingSettings(
                 appConfiguration: self.currentAppConfiguration.with { $0 },
@@ -1358,6 +1361,19 @@ private extension AccountContextImpl {
         if case let .url(url) = target {
             self.sharedContext.openExternalUrl(context: self, urlContext: .external, url: url, forceExternal: true,
                 presentationData: self.sharedContext.currentPresentationData.with { $0 }, navigationController: nil, dismissInput: {})
+        }
+    }
+}
+
+private extension AnimatedStickerRendererMode {
+    init(_ mode: ExperimentalUISettings.StickerRendererMode) {
+        switch mode {
+        case .cpu:
+            self = .cpu
+        case .gpuLarge:
+            self = .gpuLarge
+        case .gpuAll:
+            self = .gpuAll
         }
     }
 }

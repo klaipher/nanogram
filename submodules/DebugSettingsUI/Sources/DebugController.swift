@@ -128,6 +128,19 @@ private extension ExperimentalUISettings.VideoMessageCameraMode {
     }
 }
 
+private extension ExperimentalUISettings.StickerRendererMode {
+    var debugTitle: String {
+        switch self {
+        case .cpu:
+            return "CPU"
+        case .gpuLarge:
+            return "GPU for large"
+        case .gpuAll:
+            return "GPU for all"
+        }
+    }
+}
+
 private enum DebugControllerItemTag: ItemListItemTag {
     case sendLogs
 
@@ -735,6 +748,7 @@ private enum DebugControllerEntry: ItemListNodeEntry {
     case coreListChatBackend(Bool)
     case springSendAnimation(Bool)
     case fakeWalletTransfers(Bool)
+    case stickerRendererMode(ExperimentalUISettings.StickerRendererMode)
     case forceRLottieBackend(Bool)
     case respectSystemMicrophone(Bool)
     case useModernVideoMessagePipeline(Bool)
@@ -788,7 +802,7 @@ private enum DebugControllerEntry: ItemListNodeEntry {
             return DebugControllerSection.experiments.rawValue
         case .crash, .resetBiometricsData, .photoPreview, .knockoutWallpaper, .compressedEmojiCache, .storiesJpegExperiment, .checkSerializedData, .enableQuickReactionSwitch, .experimentalCompatibility, .enableDebugDataDisplay, .fakeGlass, .forceClearGlass, .debugRipple, .inputDecEngineEditor, .coreListChatBackend, .forceRLottieBackend, .respectSystemMicrophone, .useModernVideoMessagePipeline, .videoMessageCameraMode, .browserExperiment, .allForumsHaveTabs, .enableReactionOverrides, .disableReloginTokens, .liveStreamV2, .experimentalCallMute, .groupCallReferenceEngine, .playerV2, .devRequests, .enableUpdates, .pwa, .enableLocalTranslation, .testPasscodeMigration:
             return DebugControllerSection.experiments.rawValue
-        case .inputDecTextBackend, .springSendAnimation, .fakeWalletTransfers:
+        case .inputDecTextBackend, .springSendAnimation, .fakeWalletTransfers, .stickerRendererMode:
             return DebugControllerSection.experiments.rawValue
         case .logTranslationRecognition, .resetTranslationStates:
             return DebugControllerSection.translation.rawValue
@@ -910,7 +924,9 @@ private enum DebugControllerEntry: ItemListNodeEntry {
         case .resetTranslationStates:
             return 69
         case .compressedEmojiCache:
-            return 55
+            // Appended right after `stickerRendererMode`, so the two GPU renderer settings sit
+            // together; see the ordering note at `inputDecTextBackend`.
+            return 76
         case .storiesJpegExperiment:
             return 56
         case .disableReloginTokens:
@@ -947,6 +963,9 @@ private enum DebugControllerEntry: ItemListNodeEntry {
         case .fakeWalletTransfers:
             // Appended right after `springSendAnimation`; see the ordering note above.
             return 74
+        case .stickerRendererMode:
+            // Appended right after `fakeWalletTransfers`; see the ordering note above.
+            return 75
         case .disableVideoAspectScaling:
             return 104
         case .enableNetworkFramework:
@@ -1552,8 +1571,35 @@ private enum DebugControllerEntry: ItemListNodeEntry {
                     })
                 }).start()
             })
+        case let .stickerRendererMode(value):
+            return ItemListDisclosureItem(presentationData: presentationData, systemStyle: .glass, title: "Stickers: renderer", label: value.debugTitle, sectionId: self.section, style: .blocks, action: {
+                let presentationData = arguments.sharedContext.currentPresentationData.with { $0 }
+                let actionSheet = ActionSheetController(presentationData: presentationData)
+                var items: [ActionSheetItem] = [
+                    ActionSheetTextItem(title: "Reopen open chats to apply. GPU renders animated stickers with Metal from a separate DCT frame cache; \"large\" means at least 200×200 pixels (chat stickers and previews, not panels or emoji).")
+                ]
+                for mode in ExperimentalUISettings.StickerRendererMode.allCases {
+                    items.append(ActionSheetButtonItem(title: mode.debugTitle, color: .accent, action: { [weak actionSheet] in
+                        actionSheet?.dismissAnimated()
+                        let _ = updateExperimentalUISettingsInteractively(accountManager: arguments.sharedContext.accountManager, { settings in
+                            var settings = settings
+                            settings.stickerRendererMode = mode
+                            return settings
+                        }).start()
+                    }))
+                }
+                actionSheet.setItemGroups([
+                    ActionSheetItemGroup(items: items),
+                    ActionSheetItemGroup(items: [
+                        ActionSheetButtonItem(title: presentationData.strings.Common_Cancel, color: .accent, font: .bold, action: { [weak actionSheet] in
+                            actionSheet?.dismissAnimated()
+                        })
+                    ])
+                ])
+                arguments.presentController(actionSheet, nil)
+            })
         case let .compressedEmojiCache(value):
-            return ItemListSwitchItem(presentationData: presentationData, systemStyle: .glass, title: "Compressed Emoji Cache", value: value, sectionId: self.section, style: .blocks, updated: { value in
+            return ItemListSwitchItem(presentationData: presentationData, systemStyle: .glass, title: "Emoji: GPU renderer (YUVA)", value: value, sectionId: self.section, style: .blocks, updated: { value in
                 let _ = arguments.sharedContext.accountManager.transaction ({ transaction in
                     transaction.updateSharedData(ApplicationSpecificSharedDataKeys.experimentalUISettings, { settings in
                         var settings = settings?.get(ExperimentalUISettings.self) ?? ExperimentalUISettings.defaultSettings
@@ -1950,7 +1996,6 @@ private func debugControllerEntries(context: AccountContext?, sharedContext: Sha
             entries.append(.enableReactionOverrides(experimentalSettings.enableReactionOverrides))
         }
         
-        entries.append(.compressedEmojiCache(experimentalSettings.compressedEmojiCache))
         entries.append(.storiesJpegExperiment(experimentalSettings.storiesJpegExperiment))
         entries.append(.disableReloginTokens(experimentalSettings.disableReloginTokens))
         
@@ -1988,6 +2033,8 @@ private func debugControllerEntries(context: AccountContext?, sharedContext: Sha
         if let data = context?.currentAppConfiguration.with({ $0 }).data, let isDev = data["dev"] as? Double, isDev == 1.0 {
             entries.append(.fakeWalletTransfers(experimentalSettings.fakeWalletTransfers))
         }
+        entries.append(.stickerRendererMode(experimentalSettings.stickerRendererMode))
+        entries.append(.compressedEmojiCache(experimentalSettings.compressedEmojiCache))
         
         entries.append(.logTranslationRecognition(experimentalSettings.logLanguageRecognition))
         entries.append(.resetTranslationStates)

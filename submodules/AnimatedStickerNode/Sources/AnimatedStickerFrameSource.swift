@@ -379,6 +379,13 @@ final class AnimatedStickerDirectFrameSourceCache {
     }
     
     func storeUncompressedRgbFrameMetal(index: Int, rgbData: Data) {
+        if index < 0 || index >= self.frameCount {
+            return
+        }
+        // The DCT encoder works on 8x8 blocks of full-size luma and alpha and half-size chroma.
+        if self.width % 16 != 0 || self.height % 16 != 0 {
+            return
+        }
         if self.isStoringFrames.contains(index) {
             return
         }
@@ -392,8 +399,11 @@ final class AnimatedStickerDirectFrameSourceCache {
         let frameCompressor = self.frameCompressor
         let width = self.width
         let height = self.height
+        // Rows of a rendered frame are padded to the device's row alignment, so the stride is not
+        // always width * 4 (72 pixels at 64-byte alignment: 320 bytes, not 288).
+        let bytesPerRow = rgbData.count / height
         DispatchQueue.main.async { [weak self] in
-            frameCompressor?.compress(image: AnimationCompressor.ImageData(width: width, height: height, bytesPerRow: width * 4, data: rgbData), completion: { compressedData in
+            frameCompressor?.compress(image: AnimationCompressor.ImageData(width: width, height: height, bytesPerRow: bytesPerRow, data: rgbData), completion: { compressedData in
                 queue.async {
                     guard let strongSelf = self else {
                         return
@@ -582,6 +592,14 @@ public final class AnimatedStickerDirectFrameSource: AnimatedStickerFrameSource 
     }
     
     public init?(queue: Queue, data: Data, width: Int, height: Int, cachePathPrefix: String?, useMetalCache: Bool = false, fitzModifier: EmojiFitzModifier?, lottieSettings: LottieRenderingSettings) {
+        var width = width
+        var height = height
+        if useMetalCache && cachePathPrefix != nil {
+            // The Metal cache stores whole 16x16 blocks (see storeUncompressedRgbFrameMetal). Rendering
+            // a few pixels larger keeps every frame cacheable; the layer scales it to the node's size.
+            width = alignUp(size: width, align: 16)
+            height = alignUp(size: height, align: 16)
+        }
         self.queue = queue
         self.data = data
         self.width = width

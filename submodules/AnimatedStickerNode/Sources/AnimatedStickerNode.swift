@@ -266,7 +266,13 @@ public final class DefaultAnimatedStickerNodeImpl: ASDisplayNode, AnimatedSticke
     private var directData: (Data, String, Int, Int, String?, EmojiFitzModifier?, Bool)?
     private var cachedData: (Data, Bool, EmojiFitzModifier?)?
     
-    private let useMetalCache: Bool
+    // Renderer selection (see AnimatedStickerRendererSelection.swift). The decision is made once,
+    // as soon as it can be: in didLoad when it does not depend on size, else at the first setup.
+    // The renderer and every frame source of the node take it from `useMetalCache`, so a Metal
+    // renderer never gets the CPU cache's frames or the reverse.
+    private let explicitlyUsesMetalCache: Bool
+    private let rendererMode: AnimatedStickerRendererMode
+    private var useMetalCache: Bool?
     private var renderer: AnimationRendererPool.Holder?
     
     public var isPlaying: Bool = false
@@ -327,7 +333,8 @@ public final class DefaultAnimatedStickerNodeImpl: ASDisplayNode, AnimatedSticke
         self.queue = sharedQueue
         self.eventsNode = AnimatedStickerNodeDisplayEvents()
         
-        self.useMetalCache = useMetalCache
+        self.explicitlyUsesMetalCache = useMetalCache
+        self.rendererMode = AnimatedStickerRendererMode.processWide
         self.lottieSettings = lottieSettings
         
         super.init()
@@ -363,7 +370,26 @@ public final class DefaultAnimatedStickerNodeImpl: ASDisplayNode, AnimatedSticke
     override public func didLoad() {
         super.didLoad()
         
-        if #available(iOS 10.0, *), (self.useMetalCache/* || "".isEmpty*/) {
+        // With `.gpuLarge` the node waits for setup, which gives its size, before taking a renderer.
+        if self.resolveUseMetalCache(width: nil, height: nil) != nil {
+            self.installRenderer()
+        }
+    }
+    
+    private func resolveUseMetalCache(width: Int?, height: Int?) -> Bool? {
+        if let useMetalCache = self.useMetalCache {
+            return useMetalCache
+        }
+        let useMetalCache = animatedStickerUsesMetalRenderer(mode: self.rendererMode, explicitlyRequested: self.explicitlyUsesMetalCache, width: width, height: height)
+        self.useMetalCache = useMetalCache
+        return useMetalCache
+    }
+    
+    private func installRenderer() {
+        guard let useMetalCache = self.useMetalCache, self.renderer == nil else {
+            return
+        }
+        if #available(iOS 10.0, *), useMetalCache {
             self.renderer = DefaultAnimatedStickerNodeImpl.hardwareRendererPool.take()
         } else {
             self.renderer = DefaultAnimatedStickerNodeImpl.softwareRendererPool.take()
@@ -404,6 +430,9 @@ public final class DefaultAnimatedStickerNodeImpl: ASDisplayNode, AnimatedSticke
     public func setup(source: AnimatedStickerNodeSource, width: Int, height: Int, playbackMode: AnimatedStickerPlaybackMode = .loop, mode: AnimatedStickerMode) {
         if width < 2 || height < 2 {
             return
+        }
+        if self.resolveUseMetalCache(width: width, height: height) != nil, self.isNodeLoaded {
+            self.installRenderer()
         }
         self.playbackMode = playbackMode
         switch mode {
@@ -529,7 +558,7 @@ public final class DefaultAnimatedStickerNodeImpl: ASDisplayNode, AnimatedSticke
             let queue = self.queue
             let timerHolder = self.timer
             let frameSourceHolder = self.frameSource
-            let useMetalCache = self.useMetalCache
+            let useMetalCache = self.useMetalCache ?? false
             let lottieSettings = self.lottieSettings
             self.queue.async { [weak self] in
                 var maybeFrameSource: AnimatedStickerFrameSource? = frameSourceHolder.with { $0 }?.syncWith { $0 }.value
@@ -651,7 +680,7 @@ public final class DefaultAnimatedStickerNodeImpl: ASDisplayNode, AnimatedSticke
             let queue = self.queue
             let timerHolder = self.timer
             let frameSourceHolder = self.frameSource
-            let useMetalCache = self.useMetalCache
+            let useMetalCache = self.useMetalCache ?? false
             let lottieSettings = self.lottieSettings
             self.queue.async { [weak self] in
                 var maybeFrameSource: AnimatedStickerFrameSource?
@@ -780,7 +809,7 @@ public final class DefaultAnimatedStickerNodeImpl: ASDisplayNode, AnimatedSticke
         let queue = self.queue
         let frameSourceHolder = self.frameSource
         let timerHolder = self.timer
-        let useMetalCache = self.useMetalCache
+        let useMetalCache = self.useMetalCache ?? false
         let lottieSettings = self.lottieSettings
         
         let action = { [weak self] in
