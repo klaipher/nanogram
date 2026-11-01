@@ -215,6 +215,27 @@ def cmd_apns_pem(args):
     print('Upload this file at my.telegram.org/apps (APNS certificate, both sandbox and production):\n  ' + out)
 
 
+def adhoc_sign_unsigned_watch_code(app):
+    """Give unsigned code inside the embedded watch app an ad-hoc signature.
+
+    Without a watch provisioning profile the build embeds the watch app unsigned. App Store export
+    re-signs bundles it can see, but leaves nested frameworks that were never signed as they are,
+    and the upload then fails with ITMS-90035 on Watch/<app>/Frameworks/TDLibFramework.framework.
+    Ad-hoc signing them first lets export re-sign everything with the distribution certificate.
+    """
+    for watch_app in glob.glob(os.path.join(app, 'Watch', '*.app')):
+        frameworks = glob.glob(os.path.join(watch_app, 'Frameworks', '*.framework')) + \
+            glob.glob(os.path.join(watch_app, 'Frameworks', '*.dylib'))
+        signed_any = False
+        for item in frameworks:
+            if subprocess.run(['codesign', '--verify', item], capture_output=True).returncode != 0:
+                subprocess.run(['codesign', '--force', '--sign', '-', '--timestamp=none', item], check=True)
+                signed_any = True
+        if signed_any or subprocess.run(['codesign', '--verify', watch_app], capture_output=True).returncode != 0:
+            subprocess.run(['codesign', '--force', '--sign', '-', '--timestamp=none', watch_app], check=True)
+            print('Ad-hoc signed the embedded watch app for App Store re-signing: ' + os.path.basename(watch_app), flush=True)
+
+
 def app_store_connect_key():
     """The App Store Connect API key, if one is configured, else None.
 
@@ -248,6 +269,7 @@ def cmd_testflight(args):
     subprocess.run(['ditto', '-x', '-k', args.ipa, unpacked], check=True)
     app = os.path.join(apps_dir, 'Telegram.app')
     subprocess.run(['ditto', os.path.join(unpacked, 'Payload', 'Telegram.app'), app], check=True)
+    adhoc_sign_unsigned_watch_code(app)
     for dsym in glob.glob(os.path.join(os.path.dirname(os.path.realpath(args.ipa)), '*.dSYM')):
         subprocess.run(['ditto', dsym, os.path.join(archive, 'dSYMs', os.path.basename(dsym))], check=True)
     with open(os.path.join(app, 'Info.plist'), 'rb') as f:
