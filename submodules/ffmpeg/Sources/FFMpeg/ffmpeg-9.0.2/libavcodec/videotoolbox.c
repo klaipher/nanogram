@@ -118,6 +118,52 @@ int ff_videotoolbox_buffer_append(VTContext *vtctx,
     return 0;
 }
 
+/*
+ * Local patch (Nanogram): VideoToolbox already tags its output buffers with the
+ * stream's colours. When they equal what av_vt_pixbuf_set_attachments would
+ * write, only the chroma location is written. The full rewrite, and reading all
+ * attachments back for the colour space, is IOSurface IPC on every frame.
+ */
+#pragma clang diagnostic push
+#pragma clang diagnostic ignored "-Wdeprecated-declarations"
+static int videotoolbox_attachment_equals(CVPixelBufferRef pixbuf, CFStringRef key, CFTypeRef expected)
+{
+    CFTypeRef current = CVBufferGetAttachment(pixbuf, key, NULL);
+    if (!current || !expected)
+        return current == expected;
+    return CFEqual(current, expected);
+}
+
+static int videotoolbox_attachments_already_set(CVPixelBufferRef pixbuf, const AVFrame *frame)
+{
+    if (frame->sample_aspect_ratio.num != 0 ||
+        frame->color_trc == AVCOL_TRC_GAMMA22 || frame->color_trc == AVCOL_TRC_GAMMA28)
+        return 0;
+    if (!CVBufferGetAttachment(pixbuf, kCVImageBufferCGColorSpaceKey, NULL))
+        return 0;
+    return videotoolbox_attachment_equals(pixbuf, kCVImageBufferPixelAspectRatioKey, NULL) &&
+           videotoolbox_attachment_equals(pixbuf, kCVImageBufferGammaLevelKey, NULL) &&
+           videotoolbox_attachment_equals(pixbuf, kCVImageBufferYCbCrMatrixKey,
+                                          av_map_videotoolbox_color_matrix_from_av(frame->colorspace)) &&
+           videotoolbox_attachment_equals(pixbuf, kCVImageBufferColorPrimariesKey,
+                                          av_map_videotoolbox_color_primaries_from_av(frame->color_primaries)) &&
+           videotoolbox_attachment_equals(pixbuf, kCVImageBufferTransferFunctionKey,
+                                          av_map_videotoolbox_color_trc_from_av(frame->color_trc));
+}
+#pragma clang diagnostic pop
+
+static void videotoolbox_set_chroma_location(CVPixelBufferRef pixbuf, const AVFrame *frame)
+{
+    CFStringRef loc = av_map_videotoolbox_chroma_loc_from_av(frame->chroma_location);
+    if (videotoolbox_attachment_equals(pixbuf, kCVImageBufferChromaLocationTopFieldKey, loc))
+        return;
+    if (loc)
+        CVBufferSetAttachment(pixbuf, kCVImageBufferChromaLocationTopFieldKey, loc,
+                              kCVAttachmentMode_ShouldPropagate);
+    else
+        CVBufferRemoveAttachment(pixbuf, kCVImageBufferChromaLocationTopFieldKey);
+}
+
 static int videotoolbox_postproc_frame(void *avctx, AVFrame *frame)
 {
     int ret;
@@ -134,7 +180,9 @@ static int videotoolbox_postproc_frame(void *avctx, AVFrame *frame)
     frame->crop_top = 0;
     frame->crop_bottom = 0;
 
-    if ((ret = av_vt_pixbuf_set_attachments(avctx, ref->pixbuf, frame)) < 0)
+    if (videotoolbox_attachments_already_set(ref->pixbuf, frame))
+        videotoolbox_set_chroma_location(ref->pixbuf, frame);
+    else if ((ret = av_vt_pixbuf_set_attachments(avctx, ref->pixbuf, frame)) < 0)
         return ret;
 
     frame->data[3] = (uint8_t*)ref->pixbuf;
@@ -749,6 +797,7 @@ static OSStatus videotoolbox_session_decode_frame(AVCodecContext *avctx)
     CMSampleBufferRef sample_buf;
     AVVideotoolboxContext *videotoolbox = videotoolbox_get_context(avctx);
     VTContext *vtctx = avctx->internal->hwaccel_priv_data;
+    CVPixelBufferRef previous_frame;
 
     sample_buf = videotoolbox_sample_buffer_create(videotoolbox->cm_fmt_desc,
                                                    vtctx->bitstream,
@@ -757,12 +806,16 @@ static OSStatus videotoolbox_session_decode_frame(AVCodecContext *avctx)
     if (!sample_buf)
         return -1;
 
+    previous_frame = vtctx->frame;
     status = VTDecompressionSessionDecodeFrame(videotoolbox->session,
                                                sample_buf,
                                                0,       // decodeFlags
                                                NULL,    // sourceFrameRefCon
                                                0);      // infoFlagsOut
-    if (status == noErr)
+    /* Local patch (Nanogram): with no decode flags the output callback runs
+     * before DecodeFrame returns (VTDecompressionSession.h), so the wait is an
+     * extra IPC round trip. Wait only if no new frame has arrived. */
+    if (status == noErr && vtctx->frame == previous_frame)
         status = VTDecompressionSessionWaitForAsynchronousFrames(videotoolbox->session);
 
     CFRelease(sample_buf);

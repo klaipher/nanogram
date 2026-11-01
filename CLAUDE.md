@@ -175,8 +175,13 @@ archive's checksum is at `static.rust-lang.org/dist/<archive>.sha256`).
 FFmpeg is built from source by the `libffmpeg_build` genrule in `submodules/ffmpeg/BUILD`. Dropping in
 a new `Sources/FFMpeg/ffmpeg-<ver>/` tree needs exactly two edits, both in that file (7.1.1 → 8.1.2,
 done 2026-08-01, was a two-line change; 8.1.3 → 9.0.2, done 2026-10-31, needed only the version), plus re-applying the
-one local patch: `libavformat/mov.c` resets `sc->stsd_count` before allocating and after freeing the
-stsd extradata arrays. Find it by diffing the outgoing tree against its pristine release tarball:
+local patches: `libavformat/mov.c` resets `sc->stsd_count` before allocating and after freeing the
+stsd extradata arrays; `libavcodec/videotoolbox.c` (marked "Local patch (Nanogram)") writes only the
+chroma location when VideoToolbox already tagged the frame with the colours FFmpeg would set (the full
+rewrite plus read-back was 0.74 s of IOSurface IPC per device session), and skips
+`VTDecompressionSessionWaitForAsynchronousFrames` once the synchronous decode has delivered its frame.
+`UniversalMediaPlayerTests` (`FFMpegVideoToolboxAttachmentTests`) pins the resulting attachments.
+Find them by diffing the outgoing tree against its pristine release tarball:
 
 1. **`FFMPEG_VERSION`** — the only place the version is pinned. `build-ffmpeg-bazel.sh` takes it as
    `$5` and derives `$SOURCE_DIR/ffmpeg-$FF_VERSION`.

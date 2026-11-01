@@ -263,11 +263,15 @@ public final class FFMpegFileReader {
         self.init(source: source, passthroughDecoder: passthroughDecoder, useHardwareAcceleration: useHardwareAcceleration, skipLoopFilter: skipLoopFilter, selectedStream: selectedStream, seek: seek, maxReadablePts: maxReadablePts, ignoreEditList: false)
     }
 
+    // Streams that findStreamInfo did not decode while probing. For tests.
+    private(set) var streamInfoProbeSkippedStreamCount: Int = 0
+
     // `reusesPixelBuffers` draws converted frames from a CVPixelBufferPool instead of creating an
     // IOSurface-backed buffer per frame. A pooled buffer is recycled only after every holder (a display
     // layer, a CGImage, a queued sample buffer) has released it, and no consumer writes to a frame it
     // was handed, so this does not change what is shown. It is a parameter only so tests can compare.
-    init?(source: SourceDescription, passthroughDecoder: Bool = false, useHardwareAcceleration: Bool, skipLoopFilter: Bool = false, selectedStream: SelectedStream, seek: Seek?, maxReadablePts: (streamIndex: Int, pts: Int64, isEnded: Bool)?, ignoreEditList: Bool, reusesPixelBuffers: Bool = true) {
+    // `fullStreamInfoProbe` restores FFmpeg's default probe, which decodes frames; only tests use it.
+    init?(source: SourceDescription, passthroughDecoder: Bool = false, useHardwareAcceleration: Bool, skipLoopFilter: Bool = false, selectedStream: SelectedStream, seek: Seek?, maxReadablePts: (streamIndex: Int, pts: Int64, isEnded: Bool)?, ignoreEditList: Bool, reusesPixelBuffers: Bool = true, fullStreamInfoProbe: Bool = false) {
         let _ = FFMpegMediaFrameSourceContextHelpers.registerFFMpegGlobals
         
         switch source {
@@ -298,10 +302,11 @@ public final class FFMpegFileReader {
             return nil
         }
         
-        if !avFormatContext.findStreamInfo() {
+        if !avFormatContext.findStreamInfo(withFullProbe: fullStreamInfoProbe) {
             self.readingError = true
             return nil
         }
+        self.streamInfoProbeSkippedStreamCount = Int(avFormatContext.streamInfoProbeSkippedStreamCount)
         
         self.avFormatContext = avFormatContext
         
@@ -542,6 +547,24 @@ public final class FFMpegFileReader {
         }
     }
     
+    // Starts again from the first frame, for looping without reopening the file.
+    // Returns false when this reader cannot do that and a new one is needed.
+    public func rewind() -> Bool {
+        guard let stream = self.stream, let avFormatContext = self.avFormatContext, !self.readingError else {
+            return false
+        }
+        guard case let .video(decoder) = stream.decoder else {
+            return false
+        }
+        avFormatContext.seekFrame(forStreamIndex: Int32(clamping: stream.info.index), pts: 0, positionOnKeyframe: true)
+        decoder.reset()
+        self.hasReadToEnd = false
+        self.didSendEndToDecoder = false
+        self.isWaitingForMoreData = false
+        self.lastReadPts = nil
+        return true
+    }
+
     public func updateMaxReadablePts(pts: (streamIndex: Int, pts: Int64, isEnded: Bool)?) {
         if self.maxReadablePts?.streamIndex != pts?.streamIndex || self.maxReadablePts?.pts != pts?.pts {
             self.maxReadablePts = pts

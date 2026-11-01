@@ -100,6 +100,8 @@ public final class BatchVideoRenderingContext {
         // whole file again and never return from this call — pinning a core and leaving
         // `isRendering` stuck true, which freezes every other target sharing the queue.
         var readerDidProduceFrame: Bool = false
+        // The current reader was rewound to loop instead of being opened again.
+        var readerWasRewound: Bool = false
         
         init(dataPath: String) {
             self.dataPath = dataPath
@@ -137,6 +139,7 @@ public final class BatchVideoRenderingContext {
                     }
                     self.reader = reader
                     self.readerDidProduceFrame = false
+                    self.readerWasRewound = false
                 }
                 
                 guard let reader = self.reader else {
@@ -152,13 +155,23 @@ public final class BatchVideoRenderingContext {
                     break outer
                 case .endOfStream:
                     if !self.readerDidProduceFrame {
+                        if self.readerWasRewound {
+                            // The rewind produced nothing: open the file again, as before.
+                            self.reader = nil
+                            continue outer
+                        }
                         // Nothing decodable in the whole file — fail permanently instead of
                         // looping. The target keeps its static thumbnail.
                         self.isFailed = true
                         break outer
                     }
-                    // Loop the clip.
-                    self.reader = nil
+                    // Loop the clip. Rewinding skips reopening and probing the file.
+                    if reader.rewind() {
+                        self.readerDidProduceFrame = false
+                        self.readerWasRewound = true
+                    } else {
+                        self.reader = nil
+                    }
                 case .waitingForMoreData:
                     // Invariant: the reader is only constructed once the consumer's
                     // `data.isComplete == true` (see `BatchVideoRenderingContext.update`),
