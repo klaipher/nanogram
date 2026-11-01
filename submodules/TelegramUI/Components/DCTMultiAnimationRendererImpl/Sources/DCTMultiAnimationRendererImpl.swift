@@ -7,7 +7,7 @@ import MultiAnimationRenderer
 import Accelerate
 import IOSurface
 
-private final class LoadFrameGroupTask {
+final class LoadFrameGroupTask {
     let task: () -> () -> Void
     let queueAffinity: Int
 
@@ -25,6 +25,34 @@ func animationFrameDurationNeedsHighTickRate(_ duration: Double) -> Bool {
     return abs(ticks - ticks.rounded()) > 0.01 || ticks.rounded() < 1.0
 }
 
+// Starts a repeating tick on the main thread and returns a function that stops it.
+// Tests pass a manual one, so frame counts do not depend on wall-clock time.
+struct DCTAnimationTickScheduler {
+    let start: (_ interval: Double, _ tick: @escaping () -> Void) -> () -> Void
+
+    static let runLoopTimer = DCTAnimationTickScheduler(start: { interval, tick in
+        final class TimerTarget: NSObject {
+            private let f: () -> Void
+
+            init(_ f: @escaping () -> Void) {
+                self.f = f
+            }
+
+            @objc func timerEvent() {
+                self.f()
+            }
+        }
+        let timer = Foundation.Timer(timeInterval: interval, target: TimerTarget(tick), selector: #selector(TimerTarget.timerEvent), userInfo: nil, repeats: true)
+        // Apple's guidance for energy: a tolerance lets the system batch this wake-up
+        // with others. 10% of a frame is below what can be seen.
+        timer.tolerance = interval * 0.1
+        RunLoop.main.add(timer, forMode: .common)
+        return {
+            timer.invalidate()
+        }
+    })
+}
+
 private var yuvToRgbConversion: vImage_YpCbCrToARGB = {
     var info = vImage_YpCbCrToARGB()
     var pixelRange = vImage_YpCbCrPixelRange(Yp_bias: 16, CbCr_bias: 128, YpRangeMax: 235, CbCrRangeMax: 240, YpMax: 255, YpMin: 0, CbCrMax: 255, CbCrMin: 0)
@@ -32,8 +60,137 @@ private var yuvToRgbConversion: vImage_YpCbCrToARGB = {
     return info
 }()
 
-private final class ItemAnimationContext {
-    fileprivate final class Frame {
+// The cache stores full-range BT.709 YUV with premultiplied alpha. 'v0a8' (the only 4:2:0 format
+// with alpha) is video range, so the values are remapped, and the matrix is attached; without it
+// Core Animation assumes BT.601.
+private let fullToVideoRangeLuma: [UInt8] = (0 ... 255).map { value in
+    return UInt8(clamping: Int((16.0 + Double(value) * 219.0 / 255.0).rounded()))
+}
+private let fullToVideoRangeChroma: [UInt8] = (0 ... 255).map { value in
+    return UInt8(clamping: Int((128.0 + (Double(value) - 128.0) * 224.0 / 255.0).rounded()))
+}
+
+// One pool per frame size; buffers return to it when Core Animation and the frame let go of them.
+final class YuvaPixelBufferPools {
+    static let shared = YuvaPixelBufferPools()
+
+    private struct Key: Hashable {
+        let width: Int
+        let height: Int
+    }
+
+    private let lock = NSLock()
+    private var pools: [Key: CVPixelBufferPool] = [:]
+
+    func makeBuffer(width: Int, height: Int) -> CVPixelBuffer? {
+        guard width > 0, height > 0, width <= 4096, height <= 4096 else {
+            return nil
+        }
+        let key = Key(width: width, height: height)
+        self.lock.lock()
+        var pool = self.pools[key]
+        if pool == nil {
+            if self.pools.count >= 16 {
+                self.pools.removeAll()
+            }
+            let attributes: [String: Any] = [
+                kCVPixelBufferPixelFormatTypeKey as String: kCVPixelFormatType_420YpCbCr8VideoRange_8A_TriPlanar,
+                kCVPixelBufferWidthKey as String: width,
+                kCVPixelBufferHeightKey as String: height,
+                kCVPixelBufferIOSurfacePropertiesKey as String: [String: Any]()
+            ]
+            var created: CVPixelBufferPool?
+            CVPixelBufferPoolCreate(kCFAllocatorDefault, nil, attributes as CFDictionary, &created)
+            pool = created
+            self.pools[key] = created
+        }
+        self.lock.unlock()
+        guard let pool else {
+            return nil
+        }
+        var pixelBuffer: CVPixelBuffer?
+        CVPixelBufferPoolCreatePixelBuffer(kCFAllocatorDefault, pool, &pixelBuffer)
+        guard let pixelBuffer else {
+            return nil
+        }
+        CVBufferSetAttachment(pixelBuffer, kCVImageBufferYCbCrMatrixKey, kCVImageBufferYCbCrMatrix_ITU_R_709_2, .shouldPropagate)
+        return pixelBuffer
+    }
+}
+
+func makeVideoRangeYuvaPixelBuffer(y: AnimationCacheItemFrame.Plane, u: AnimationCacheItemFrame.Plane, v: AnimationCacheItemFrame.Plane, a: AnimationCacheItemFrame.Plane) -> CVPixelBuffer? {
+    guard y.width > 0, y.height > 0, a.width == y.width, a.height == y.height, u.width == v.width, u.height == v.height, u.width >= y.width / 2, u.height >= y.height / 2 else {
+        return nil
+    }
+    guard y.bytesPerRow >= y.width, a.bytesPerRow >= a.width, u.bytesPerRow >= u.width, v.bytesPerRow >= v.width else {
+        return nil
+    }
+    guard y.data.count >= y.bytesPerRow * y.height, a.data.count >= a.bytesPerRow * a.height, u.data.count >= u.bytesPerRow * u.height, v.data.count >= v.bytesPerRow * v.height else {
+        return nil
+    }
+    guard let pixelBuffer = YuvaPixelBufferPools.shared.makeBuffer(width: y.width, height: y.height) else {
+        return nil
+    }
+    guard CVPixelBufferLockBaseAddress(pixelBuffer, []) == kCVReturnSuccess else {
+        return nil
+    }
+    defer {
+        CVPixelBufferUnlockBaseAddress(pixelBuffer, [])
+    }
+    guard let baseAddressY = CVPixelBufferGetBaseAddressOfPlane(pixelBuffer, 0), let baseAddressCbCr = CVPixelBufferGetBaseAddressOfPlane(pixelBuffer, 1), let baseAddressA = CVPixelBufferGetBaseAddressOfPlane(pixelBuffer, 2) else {
+        return nil
+    }
+    let chromaWidth = y.width / 2
+    let chromaHeight = y.height / 2
+    var dstY = vImage_Buffer(data: baseAddressY, height: vImagePixelCount(y.height), width: vImagePixelCount(y.width), rowBytes: CVPixelBufferGetBytesPerRowOfPlane(pixelBuffer, 0))
+    var dstCbCr = vImage_Buffer(data: baseAddressCbCr, height: vImagePixelCount(chromaHeight), width: vImagePixelCount(chromaWidth * 2), rowBytes: CVPixelBufferGetBytesPerRowOfPlane(pixelBuffer, 1))
+    let dstARowBytes = CVPixelBufferGetBytesPerRowOfPlane(pixelBuffer, 2)
+
+    var ok = true
+    y.data.withUnsafeBytes { yBytes in
+        guard let base = yBytes.baseAddress else {
+            ok = false
+            return
+        }
+        var src = vImage_Buffer(data: UnsafeMutableRawPointer(mutating: base), height: vImagePixelCount(y.height), width: vImagePixelCount(y.width), rowBytes: y.bytesPerRow)
+        ok = ok && vImageTableLookUp_Planar8(&src, &dstY, fullToVideoRangeLuma, vImage_Flags(kvImageDoNotTile)) == kvImageNoError
+    }
+    a.data.withUnsafeBytes { aBytes in
+        guard let base = aBytes.baseAddress else {
+            ok = false
+            return
+        }
+        for row in 0 ..< a.height {
+            memcpy(baseAddressA.advanced(by: row * dstARowBytes), base.advanced(by: row * a.bytesPerRow), a.width)
+        }
+    }
+    u.data.withUnsafeBytes { uBytes in
+        v.data.withUnsafeBytes { vBytes in
+            guard let uBase = uBytes.baseAddress, let vBase = vBytes.baseAddress else {
+                ok = false
+                return
+            }
+            // The cache's v plane is Cb and its u plane is Cr (see combineYUVAPlanesIntoARGB).
+            var sourceU = vImage_Buffer(data: UnsafeMutableRawPointer(mutating: uBase), height: vImagePixelCount(chromaHeight), width: vImagePixelCount(chromaWidth), rowBytes: u.bytesPerRow)
+            var sourceV = vImage_Buffer(data: UnsafeMutableRawPointer(mutating: vBase), height: vImagePixelCount(chromaHeight), width: vImagePixelCount(chromaWidth), rowBytes: v.bytesPerRow)
+            withUnsafePointer(to: &sourceV) { sourceV in
+                withUnsafePointer(to: &sourceU) { sourceU in
+                    var srcPlanarBuffers: [UnsafePointer<vImage_Buffer>?] = [sourceV, sourceU]
+                    var destChannels: [UnsafeMutableRawPointer?] = [baseAddressCbCr, baseAddressCbCr.advanced(by: 1)]
+                    ok = ok && vImageConvert_PlanarToChunky8(&srcPlanarBuffers, &destChannels, 2, 2, vImagePixelCount(chromaWidth), vImagePixelCount(chromaHeight), dstCbCr.rowBytes, vImage_Flags(kvImageDoNotTile)) == kvImageNoError
+                }
+            }
+        }
+    }
+    ok = ok && vImageTableLookUp_Planar8(&dstCbCr, &dstCbCr, fullToVideoRangeChroma, vImage_Flags(kvImageDoNotTile)) == kvImageNoError
+    return ok ? pixelBuffer : nil
+}
+
+// Items smaller than this (pixels) always use images when useYuvA is on.
+let yuvaMinimumPixelSize: CGFloat = 128.0
+
+final class ItemAnimationContext {
+    final class Frame {
         let frame: AnimationCacheItemFrame
         let duration: Double
 
@@ -69,94 +226,9 @@ private final class ItemAnimationContext {
                 self.contentsAsCVPixelBuffer = nil
                 self.size = CGSize(width: CGFloat(width), height: CGFloat(height))
             case let .yuva(y, u, v, a):
-                var pixelBuffer: CVPixelBuffer? = nil
-                let _ = CVPixelBufferCreate(kCFAllocatorDefault, y.width, y.height, kCVPixelFormatType_420YpCbCr8VideoRange_8A_TriPlanar, [
-                    kCVPixelBufferIOSurfacePropertiesKey: NSDictionary()
-                ] as CFDictionary, &pixelBuffer)
-                guard let pixelBuffer else {
+                guard let pixelBuffer = makeVideoRangeYuvaPixelBuffer(y: y, u: u, v: v, a: a) else {
                     return nil
                 }
-
-                CVPixelBufferLockBaseAddress(pixelBuffer, CVPixelBufferLockFlags(rawValue: 0))
-                defer {
-                    CVPixelBufferUnlockBaseAddress(pixelBuffer, CVPixelBufferLockFlags(rawValue: 0))
-                }
-                guard let baseAddressY = CVPixelBufferGetBaseAddressOfPlane(pixelBuffer, 0) else {
-                    return nil
-                }
-                guard let baseAddressCbCr = CVPixelBufferGetBaseAddressOfPlane(pixelBuffer, 1) else {
-                    return nil
-                }
-                guard let baseAddressA = CVPixelBufferGetBaseAddressOfPlane(pixelBuffer, 2) else {
-                    return nil
-                }
-
-                let dstBufferY = vImage_Buffer(data: UnsafeMutableRawPointer(mutating: baseAddressY), height: vImagePixelCount(y.height), width: vImagePixelCount(y.width), rowBytes: CVPixelBufferGetBytesPerRowOfPlane(pixelBuffer, 0))
-                let dstBufferCbCr = vImage_Buffer(data: UnsafeMutableRawPointer(mutating: baseAddressCbCr), height: vImagePixelCount(y.height / 2), width: vImagePixelCount(y.width / 2), rowBytes: CVPixelBufferGetBytesPerRowOfPlane(pixelBuffer, 1))
-                let dstBufferA = vImage_Buffer(data: UnsafeMutableRawPointer(mutating: baseAddressA), height: vImagePixelCount(y.height), width: vImagePixelCount(y.width), rowBytes: CVPixelBufferGetBytesPerRowOfPlane(pixelBuffer, 2))
-
-                y.data.withUnsafeBytes { (yBytes: UnsafeRawBufferPointer) -> Void in
-                    if dstBufferY.rowBytes == y.bytesPerRow {
-                        memcpy(dstBufferY.data, yBytes.baseAddress!, yBytes.count)
-                    } else {
-                        for i in 0 ..< y.height {
-                            memcpy(dstBufferY.data.advanced(by: dstBufferY.rowBytes * i), yBytes.baseAddress!.advanced(by: y.bytesPerRow * i), y.bytesPerRow)
-                        }
-                    }
-                }
-
-                a.data.withUnsafeBytes { (aBytes: UnsafeRawBufferPointer) -> Void in
-                    if dstBufferA.rowBytes == a.bytesPerRow {
-                        memcpy(dstBufferA.data, aBytes.baseAddress!, aBytes.count)
-                    } else {
-                        for i in 0 ..< y.height {
-                            memcpy(dstBufferA.data.advanced(by: dstBufferA.rowBytes * i), aBytes.baseAddress!.advanced(by: a.bytesPerRow * i), a.bytesPerRow)
-                        }
-                    }
-                }
-
-                u.data.withUnsafeBytes { (uBytes: UnsafeRawBufferPointer) -> Void in
-                    v.data.withUnsafeBytes { (vBytes: UnsafeRawBufferPointer) -> Void in
-                        let sourceU = vImage_Buffer(
-                            data: UnsafeMutableRawPointer(mutating: uBytes.baseAddress!),
-                            height: vImagePixelCount(u.height),
-                            width: vImagePixelCount(u.width),
-                            rowBytes: u.bytesPerRow
-                        )
-                        let sourceV = vImage_Buffer(
-                            data: UnsafeMutableRawPointer(mutating: vBytes.baseAddress!),
-                            height: vImagePixelCount(v.height),
-                            width: vImagePixelCount(v.width),
-                            rowBytes: v.bytesPerRow
-                        )
-
-                        withUnsafePointer(to: sourceU, { sourceU in
-                            withUnsafePointer(to: sourceV, { sourceV in
-                                var srcPlanarBuffers: [
-                                    UnsafePointer<vImage_Buffer>?
-                                ] = [sourceU, sourceV]
-                                var destChannels: [UnsafeMutableRawPointer?] = [
-                                    dstBufferCbCr.data.advanced(by: 1),
-                                    dstBufferCbCr.data
-                                ]
-
-                                let channelCount = 2
-
-                                vImageConvert_PlanarToChunky8(
-                                    &srcPlanarBuffers,
-                                    &destChannels,
-                                    UInt32(channelCount),
-                                    MemoryLayout<Pixel_8>.stride * channelCount,
-                                    vImagePixelCount(u.width),
-                                    vImagePixelCount(u.height),
-                                    dstBufferCbCr.rowBytes,
-                                    vImage_Flags(kvImageDoNotTile)
-                                )
-                            })
-                        })
-                    }
-                }
-
                 self.contentsAsImage = nil
                 self.contentsAsCVPixelBuffer = pixelBuffer
                 self.size = CGSize(width: CGFloat(y.width), height: CGFloat(y.height))
@@ -457,7 +529,8 @@ private final class ItemAnimationContext {
     init(cache: AnimationCache, queueAffinity: Int, itemId: String, size: CGSize, useYuvA: Bool, fetch: @escaping (AnimationCacheFetchOptions) -> Disposable, stateUpdated: @escaping () -> Void) {
         self.cache = cache
         self.queueAffinity = queueAffinity
-        self.useYuvA = useYuvA
+        // Small emoji gain nothing from a YUVA surface (measured), so they keep the image path.
+        self.useYuvA = useYuvA && min(size.width, size.height) >= yuvaMinimumPixelSize
         self.stateUpdated = stateUpdated
 
         self.disposable = cache.get(sourceId: itemId, size: size, fetch: fetch).start(next: { [weak self] result in
@@ -920,7 +993,9 @@ public final class DCTMultiAnimationRendererImpl: MultiAnimationRenderer {
     public var useYuvA: Bool = false
     private var groupContext: GroupContext?
     private var frameSkip: Int
-    private var displayTimer: Foundation.Timer?
+    private let tickScheduler: DCTAnimationTickScheduler
+    private var stopDisplayTimer: (() -> Void)?
+    private var pendingFrameLoads: Int = 0
     private var isInBackground: Bool = false
     private var applicationStateObservers: [NSObjectProtocol] = []
 
@@ -933,6 +1008,11 @@ public final class DCTMultiAnimationRendererImpl: MultiAnimationRenderer {
         return self.displayTimerInterval
     }
 
+    // Ticks whose frames have not reached the targets yet.
+    var pendingFrameLoadsForTesting: Int {
+        return self.pendingFrameLoads
+    }
+
     private func updateDisplayTimer() {
         var frameInterval: Double?
         if self.isPlaying {
@@ -943,38 +1023,27 @@ public final class DCTMultiAnimationRendererImpl: MultiAnimationRenderer {
             return
         }
         self.displayTimerInterval = frameInterval
-        if let displayTimer = self.displayTimer {
-            self.displayTimer = nil
-            displayTimer.invalidate()
+        if let stopDisplayTimer = self.stopDisplayTimer {
+            self.stopDisplayTimer = nil
+            stopDisplayTimer()
         }
         guard let frameInterval else {
             return
         }
-        final class TimerTarget: NSObject {
-            private let f: () -> Void
-
-            init(_ f: @escaping () -> Void) {
-                self.f = f
-            }
-
-            @objc func timerEvent() {
-                self.f()
-            }
-        }
-        let displayTimer = Foundation.Timer(timeInterval: frameInterval, target: TimerTarget { [weak self] in
+        self.stopDisplayTimer = self.tickScheduler.start(frameInterval, { [weak self] in
             guard let strongSelf = self else {
                 return
             }
             strongSelf.animationTick(frameInterval: frameInterval)
-        }, selector: #selector(TimerTarget.timerEvent), userInfo: nil, repeats: true)
-        // Apple's guidance for energy: a tolerance lets the system batch this wake-up
-        // with others. 10% of a frame is below what can be seen.
-        displayTimer.tolerance = frameInterval * 0.1
-        self.displayTimer = displayTimer
-        RunLoop.main.add(displayTimer, forMode: .common)
+        })
     }
 
-    public init() {
+    public convenience init() {
+        self.init(tickScheduler: .runLoopTimer)
+    }
+
+    init(tickScheduler: DCTAnimationTickScheduler) {
+        self.tickScheduler = tickScheduler
         if !ProcessInfo.processInfo.isLowPowerModeEnabled && ProcessInfo.processInfo.processorCount > 2 {
             self.frameSkip = 1
         } else {
@@ -1006,9 +1075,9 @@ public final class DCTMultiAnimationRendererImpl: MultiAnimationRenderer {
             NotificationCenter.default.removeObserver(observer)
         }
         // The run loop retains a scheduled timer, so it would keep firing after the renderer is gone.
-        if let displayTimer = self.displayTimer {
+        if let stopDisplayTimer = self.stopDisplayTimer {
             Queue.mainQueue().async {
-                displayTimer.invalidate()
+                stopDisplayTimer()
             }
         }
     }
@@ -1123,11 +1192,12 @@ public final class DCTMultiAnimationRendererImpl: MultiAnimationRenderer {
 
             let taskCompletions = Atomic<[Int: [() -> Void]]>(value: [:])
             let queues: [Queue] = [ItemAnimationContext.queue0, ItemAnimationContext.queue1]
+            self.pendingFrameLoads += 1
 
             for i in 0 ..< 2 {
                 let partTasks = allTasks[i]
                 let id = i
-                queues[i].async {
+                queues[i].async { [weak self] in
                     var completions: [() -> Void] = []
                     for task in partTasks {
                         let complete = task.task()
@@ -1145,13 +1215,14 @@ public final class DCTMultiAnimationRendererImpl: MultiAnimationRenderer {
                     }
 
                     if complete {
-                        Queue.mainQueue().async {
+                        Queue.mainQueue().async { [weak self] in
                             let allCompletions = taskCompletions.with { $0 }
                             for (_, fs) in allCompletions {
                                 for f in fs {
                                     f()
                                 }
                             }
+                            self?.pendingFrameLoads -= 1
                         }
                     }
                 }

@@ -67,13 +67,49 @@ private final class CountingTarget: MultiAnimationRenderTarget {
     }
 }
 
-final class DCTMultiAnimationRendererTickTests: XCTestCase {
-    private func spin(_ seconds: Double) {
-        RunLoop.main.run(until: Date().addingTimeInterval(seconds))
+// Ticks only when the test fires it, so frame counts do not depend on wall-clock time or CPU load.
+private final class ManualTicker {
+    private(set) var interval: Double?
+    private var tick: (() -> Void)?
+    private(set) var startCount = 0
+
+    func makeScheduler() -> DCTAnimationTickScheduler {
+        return DCTAnimationTickScheduler(start: { [weak self] interval, tick in
+            guard let self else {
+                return {}
+            }
+            self.interval = interval
+            self.tick = tick
+            self.startCount += 1
+            return { [weak self] in
+                self?.interval = nil
+                self?.tick = nil
+            }
+        })
     }
 
-    private func play(frameDurations: [Double], seconds: Double) -> (renderer: DCTMultiAnimationRendererImpl, targets: [CountingTarget], disposables: [Disposable]) {
-        let renderer = DCTMultiAnimationRendererImpl()
+    func fire() {
+        self.tick?()
+    }
+}
+
+final class DCTMultiAnimationRendererTickTests: XCTestCase {
+    private func spin(until condition: () -> Bool, timeout: Double = 10.0) {
+        let deadline = Date().addingTimeInterval(timeout)
+        while !condition() && Date() < deadline {
+            RunLoop.main.run(until: Date().addingTimeInterval(0.005))
+        }
+    }
+
+    // Fires one tick and waits until the frames it requested have been delivered.
+    private func tick(_ renderer: DCTMultiAnimationRendererImpl, _ ticker: ManualTicker) {
+        ticker.fire()
+        self.spin(until: { renderer.pendingFrameLoadsForTesting == 0 })
+        XCTAssertEqual(renderer.pendingFrameLoadsForTesting, 0)
+    }
+
+    private func play(frameDurations: [Double], ticker: ManualTicker) -> (renderer: DCTMultiAnimationRendererImpl, targets: [CountingTarget], disposables: [Disposable]) {
+        let renderer = DCTMultiAnimationRendererImpl(tickScheduler: ticker.makeScheduler())
         var targets: [CountingTarget] = []
         var disposables: [Disposable] = []
         for (index, duration) in frameDurations.enumerated() {
@@ -83,7 +119,9 @@ final class DCTMultiAnimationRendererTickTests: XCTestCase {
             disposables.append(renderer.add(target: target, cache: cache, itemId: "item\(index)", unique: false, size: CGSize(width: 16, height: 16), fetch: { _ in EmptyDisposable }))
             targets.append(target)
         }
-        self.spin(seconds)
+        // Items arrive through the main queue; then the first tick loads every first frame.
+        self.spin(until: { ticker.interval != nil })
+        self.tick(renderer, ticker)
         return (renderer, targets, disposables)
     }
 
@@ -92,69 +130,99 @@ final class DCTMultiAnimationRendererTickTests: XCTestCase {
     }
 
     func testThirtyFpsContentTicksAtThirtyHertz() {
-        let (renderer, targets, disposables) = self.play(frameDurations: [1.0 / 30.0, 2.0 / 30.0, 1.0], seconds: 0.3)
+        let ticker = ManualTicker()
+        let (renderer, targets, disposables) = self.play(frameDurations: [1.0 / 30.0, 2.0 / 30.0, 1.0], ticker: ticker)
         XCTAssertEqual(renderer.currentTickIntervalForTesting ?? 0.0, 2.0 / 60.0, accuracy: 0.0001)
+        XCTAssertEqual(ticker.interval ?? 0.0, 2.0 / 60.0, accuracy: 0.0001)
 
-        // Frames still change at the content's own rate.
-        let before = targets[0].transitions
-        self.spin(1.0)
-        let shown = targets[0].transitions - before
-        XCTAssertGreaterThan(shown, 24)
-        XCTAssertLessThan(shown, 34)
+        // One second of ticks: 30 frames of the 30 fps item, 15 of the 15 fps item.
+        let before = targets.map(\.transitions)
+        for _ in 0 ..< 30 {
+            self.tick(renderer, ticker)
+        }
+        XCTAssertEqual(targets[0].transitions - before[0], 30)
+        XCTAssertEqual(targets[1].transitions - before[1], 15)
+        XCTAssertLessThanOrEqual(targets[2].transitions - before[2], 1)
         disposables.forEach { $0.dispose() }
     }
 
     func testOtherFrameRatesKeepSixtyHertz() throws {
         try XCTSkipUnless(self.highRateAvailable)
-        let (renderer, targets, disposables) = self.play(frameDurations: [1.0 / 30.0, 1.0 / 24.0], seconds: 0.3)
+        let ticker = ManualTicker()
+        let (renderer, targets, disposables) = self.play(frameDurations: [1.0 / 30.0, 1.0 / 24.0], ticker: ticker)
         XCTAssertEqual(renderer.currentTickIntervalForTesting ?? 0.0, 1.0 / 60.0, accuracy: 0.0001)
+        XCTAssertEqual(ticker.interval ?? 0.0, 1.0 / 60.0, accuracy: 0.0001)
 
-        let before = targets[1].transitions
-        self.spin(1.0)
-        let shown = targets[1].transitions - before
-        XCTAssertGreaterThan(shown, 19)
-        XCTAssertLessThan(shown, 27)
+        // One second at 60 Hz: 30 frames of the 30 fps item. A 1/24 s frame is shown for
+        // 3 ticks (the overshoot is not carried into the next frame), so 20 frames today.
+        let before = targets.map(\.transitions)
+        for _ in 0 ..< 60 {
+            self.tick(renderer, ticker)
+        }
+        XCTAssertEqual(targets[0].transitions - before[0], 30)
+        XCTAssertTrue((20 ... 24).contains(targets[1].transitions - before[1]), "\(targets[1].transitions - before[1])")
 
         // When the 24 fps item goes away, the tick drops back to 30 Hz.
         targets[1].shouldBeAnimating = false
-        self.spin(0.1)
+        self.spin(until: { renderer.currentTickIntervalForTesting.map { abs($0 - 2.0 / 60.0) < 0.0001 } ?? false })
         XCTAssertEqual(renderer.currentTickIntervalForTesting ?? 0.0, 2.0 / 60.0, accuracy: 0.0001)
+        XCTAssertEqual(ticker.interval ?? 0.0, 2.0 / 60.0, accuracy: 0.0001)
         disposables.forEach { $0.dispose() }
     }
 
     func testStoppedRendererHasNoTimer() {
-        let (renderer, targets, disposables) = self.play(frameDurations: [1.0 / 30.0], seconds: 0.2)
+        let ticker = ManualTicker()
+        let (renderer, targets, disposables) = self.play(frameDurations: [1.0 / 30.0], ticker: ticker)
         XCTAssertNotNil(renderer.currentTickIntervalForTesting)
         targets[0].shouldBeAnimating = false
-        self.spin(0.1)
+        self.spin(until: { renderer.currentTickIntervalForTesting == nil })
         XCTAssertNil(renderer.currentTickIntervalForTesting)
+        XCTAssertNil(ticker.interval)
         disposables.forEach { $0.dispose() }
     }
 
     // Leaving a screen with animated emoji disposes its items; the timer must stop with them.
     func testTimerStopsWhenLastPlayingItemIsRemoved() {
-        let (renderer, targets, disposables) = self.play(frameDurations: [1.0 / 30.0, 1.0 / 24.0], seconds: 0.2)
+        let ticker = ManualTicker()
+        let (renderer, targets, disposables) = self.play(frameDurations: [1.0 / 30.0, 1.0 / 24.0], ticker: ticker)
         XCTAssertNotNil(renderer.currentTickIntervalForTesting)
         disposables[1].dispose()
-        self.spin(0.1)
+        self.spin(until: { renderer.currentTickIntervalForTesting.map { abs($0 - 2.0 / 60.0) < 0.0001 } ?? false })
         XCTAssertEqual(renderer.currentTickIntervalForTesting ?? 0.0, 2.0 / 60.0, accuracy: 0.0001)
         disposables[0].dispose()
-        self.spin(0.1)
+        self.spin(until: { renderer.currentTickIntervalForTesting == nil })
         XCTAssertNil(renderer.currentTickIntervalForTesting)
+        XCTAssertNil(ticker.interval)
         _ = targets
     }
 
     func testTimerStopsWhenLayerIsReleased() {
-        let renderer = DCTMultiAnimationRendererImpl()
+        let ticker = ManualTicker()
+        let renderer = DCTMultiAnimationRendererImpl(tickScheduler: ticker.makeScheduler())
         var target: CountingTarget? = CountingTarget()
         target?.shouldBeAnimating = true
         let disposable = renderer.add(target: target!, cache: FakeAnimationCache(frameDuration: 1.0 / 30.0), itemId: "item", unique: false, size: CGSize(width: 16, height: 16), fetch: { _ in EmptyDisposable })
-        self.spin(0.2)
+        self.spin(until: { ticker.interval != nil })
+        self.tick(renderer, ticker)
         XCTAssertNotNil(renderer.currentTickIntervalForTesting)
         target = nil
-        self.spin(0.1)
+        self.spin(until: { renderer.currentTickIntervalForTesting == nil })
         XCTAssertNil(renderer.currentTickIntervalForTesting)
+        XCTAssertNil(ticker.interval)
         disposable.dispose()
+    }
+
+    // The default scheduler is a real run loop timer.
+    func testDefaultSchedulerTicks() {
+        let renderer = DCTMultiAnimationRendererImpl()
+        let target = CountingTarget()
+        target.shouldBeAnimating = true
+        let disposable = renderer.add(target: target, cache: FakeAnimationCache(frameDuration: 1.0 / 30.0), itemId: "item", unique: false, size: CGSize(width: 16, height: 16), fetch: { _ in EmptyDisposable })
+        self.spin(until: { target.transitions >= 3 })
+        XCTAssertGreaterThanOrEqual(target.transitions, 3)
+        disposable.dispose()
+        self.spin(until: { renderer.currentTickIntervalForTesting == nil })
+        XCTAssertNil(renderer.currentTickIntervalForTesting)
     }
 
     func testDurationClassification() {

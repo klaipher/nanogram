@@ -41,6 +41,7 @@ swift_library(
         "//submodules/AnimationCompression:AnimationCompression",
         "//submodules/Components/MetalImageView:MetalImageView",
         "//submodules/WebPBinding:WebPBinding",
+        "//submodules/AnimatedStickerNode/VP9Hardware:VP9Hardware",
     ],
     visibility = [
         "//visibility:public",
@@ -57,6 +58,12 @@ swift_library(
         ":AnimatedStickerNode",
         "//submodules/SSignalKit/SwiftSignalKit:SwiftSignalKit",
         "//submodules/YuvConversion:YuvConversion",
+        "//submodules/AsyncDisplayKit:AsyncDisplayKit",
+        "//submodules/Display:Display",
+        "//submodules/MediaPlayer:UniversalMediaPlayer",
+        "//submodules/TelegramCore:TelegramCore",
+        "//submodules/FFMpegBinding:FFMpegBinding",
+        "//submodules/AnimatedStickerNode/VP9Hardware:VP9Hardware",
     ],
 )
 
@@ -72,6 +79,7 @@ ios_unit_test(
     runner = ":AnimatedStickerNodeTestRunner",
     resources = glob([
         "Tests/Resources/*.bin",
+        "Tests/Resources/*.webm",
     ]),
     deps = [
         ":AnimatedStickerNodeTestsLib",

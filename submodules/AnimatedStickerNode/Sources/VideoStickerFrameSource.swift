@@ -8,6 +8,7 @@ import ManagedFile
 import Accelerate
 import TelegramCore
 import WebPBinding
+import VP9Hardware
 import UIKit
 
 private let sharedStoreQueue = Queue.concurrentDefaultQueue()
@@ -272,6 +273,21 @@ public func makeVideoStickerDirectFrameSource(queue: Queue, path: String, hintVP
     return VideoStickerDirectFrameSource(queue: queue, path: path, isVP9: hintVP9, width: width, height: height, cachePathPrefix: cachePathPrefix, unpremultiplyAlpha: unpremultiplyAlpha)
 }
 
+// Files opened by video sticker frame sources, for tests.
+let videoStickerReaderOpenCount = Atomic<Int>(value: 0)
+
+private func makeVideoStickerReader(path: String) -> FFMpegFileReader? {
+    let _ = videoStickerReaderOpenCount.modify { $0 + 1 }
+    return FFMpegFileReader(
+        source: .file(path),
+        passthroughDecoder: false,
+        useHardwareAcceleration: false,
+        selectedStream: .mediaType(.video),
+        seek: nil,
+        maxReadablePts: nil
+    )
+}
+
 public final class VideoStickerDirectFrameSource: AnimatedStickerFrameSource {
     private let queue: Queue
     private let path: String
@@ -286,6 +302,15 @@ public final class VideoStickerDirectFrameSource: AnimatedStickerFrameSource {
     fileprivate var currentFrame: Int
     
     private var source: FFMpegFileReader?
+    // Set at the end of the stream; the reader is rewound when it is read from again.
+    private var sourceNeedsRewind = false
+    // Hardware VP9 decoding, when the device has it; the reader above stays for metadata and fallback.
+    private var hardwareStream: VideoStickerHardwareStream?
+    private lazy var hardwareConverter = VideoStickerHardwareFrameConverter()
+
+    var usesHardwareDecoderForTesting: Bool {
+        return self.hardwareStream != nil
+    }
     
     public var frameIndex: Int {
         if self.frameCount == 0 {
@@ -324,18 +349,14 @@ public final class VideoStickerDirectFrameSource: AnimatedStickerFrameSource {
             self.frameCount = 1
             self.duration = 0.0
         } else {
-            let source = FFMpegFileReader(
-                source: .file(path),
-                passthroughDecoder: false,
-                useHardwareAcceleration: false,
-                selectedStream: .mediaType(.video),
-                seek: nil,
-                maxReadablePts: nil
-            )
+            let source = makeVideoStickerReader(path: path)
             if let source {
                 self.source = source
                 self.frameRate = min(30, source.frameRate())
                 self.duration = source.duration().seconds
+                if isVP9 {
+                    self.hardwareStream = makeVideoStickerHardwareStream(path)
+                }
             } else {
                 self.source = nil
                 self.frameRate = 30
@@ -372,75 +393,161 @@ public final class VideoStickerDirectFrameSource: AnimatedStickerFrameSource {
                 return AnimatedStickerFrame(data: frameData, type: .argb, width: self.width, height: self.height, bytesPerRow: self.bytesPerRow, index: frameIndex, isLastFrame: frameIndex == self.frameCount - 1, totalFrames: self.frameCount, multiplyAlpha: true)
             } else if useCache, let cache = self.cache, let yuvData = cache.readUncompressedYuvaFrame(index: frameIndex) {
                 return AnimatedStickerFrame(data: yuvData, type: .yuva, width: self.width, height: self.height, bytesPerRow: self.width * 2, index: frameIndex, isLastFrame: frameIndex == self.frameCount - 1, totalFrames: self.frameCount)
-            } else if let source = self.source {
-                let frameAndLoop = source.readFrame(argb: true)
-                switch frameAndLoop {
+            } else if let hardwareStream = self.hardwareStream {
+                switch self.takeHardwareFrame(hardwareStream, frameIndex: frameIndex) {
                 case let .frame(frame):
-                    var frameData = Data(count: self.bytesPerRow * self.height)
-                    frameData.withUnsafeMutableBytes { buffer -> Void in
-                        guard let bytes = buffer.baseAddress?.assumingMemoryBound(to: UInt8.self) else {
-                            return
-                        }
-                        
-                        let imageBuffer = CMSampleBufferGetImageBuffer(frame.sampleBuffer)
-                        CVPixelBufferLockBaseAddress(imageBuffer!, CVPixelBufferLockFlags(rawValue: 0))
-                        let bytesPerRow = CVPixelBufferGetBytesPerRow(imageBuffer!)
-                        let width = CVPixelBufferGetWidth(imageBuffer!)
-                        let height = CVPixelBufferGetHeight(imageBuffer!)
-                        let srcData = CVPixelBufferGetBaseAddress(imageBuffer!)
-                        
-                        var sourceBuffer = vImage_Buffer(data: srcData, height: vImagePixelCount(height), width: vImagePixelCount(width), rowBytes: bytesPerRow)
-                        var destBuffer = vImage_Buffer(data: bytes, height: vImagePixelCount(self.height), width: vImagePixelCount(self.width), rowBytes: self.bytesPerRow)
-                                   
-                        let _ = vImageScale_ARGB8888(&sourceBuffer, &destBuffer, nil, vImage_Flags(kvImageDoNotTile))
-                        
-                        CVPixelBufferUnlockBaseAddress(imageBuffer!, CVPixelBufferLockFlags(rawValue: 0))
-                    }
-
-                    self.cache?.storeUncompressedRgbFrame(index: frameIndex, rgbData: frameData)
-                                    
-                    return AnimatedStickerFrame(data: frameData, type: .argb, width: self.width, height: self.height, bytesPerRow: self.bytesPerRow, index: frameIndex, isLastFrame: frameIndex == self.frameCount - 1, totalFrames: self.frameCount, multiplyAlpha: true)
+                    return frame
                 case .endOfStream:
-                    if self.frameCount == 0 {
-                        if let cache = self.cache {
-                            if cache.storedFrames == frameIndex {
-                                self.frameCount = frameIndex
-                                cache.storeFrameRateAndCount(frameRate: self.frameRate, frameCount: self.frameCount)
-                            } else {
-                                Logger.shared.log("VideoSticker", "Missed a frame? \(frameIndex) \(cache.storedFrames)")
-                            }
-                        } else {
-                            self.frameCount = frameIndex
-                        }
-                    }
-                    self.currentFrame = 0
-                    self.source = FFMpegFileReader(
-                        source: .file(self.path),
-                        passthroughDecoder: false,
-                        useHardwareAcceleration: false,
-                        selectedStream: .mediaType(.video),
-                        seek: nil,
-                        maxReadablePts: nil
-                    )
-                    
-                    if let cache = self.cache {
-                        if let yuvData = cache.readUncompressedYuvaFrame(index: self.currentFrame) {
-                            return AnimatedStickerFrame(data: yuvData, type: .yuva, width: self.width, height: self.height, bytesPerRow: self.width * 2, index: frameIndex, isLastFrame: frameIndex == self.frameCount - 1, totalFrames: self.frameCount)
-                        }
-                    }
-                    
-                    return nil
-                case .waitingForMoreData, .error:
-                    return nil
+                    return self.endOfStream(frameIndex: frameIndex)
+                case .failed:
+                    self.fallBackToSoftwareDecoding(hardwareStream)
+                    return self.takeSoftwareFrame(frameIndex: frameIndex)
                 }
             } else {
-                return nil
+                return self.takeSoftwareFrame(frameIndex: frameIndex)
             }
         } else {
             return nil
         }
     }
-    
+
+    private func takeSoftwareFrame(frameIndex: Int) -> AnimatedStickerFrame? {
+        guard let source = self.rewoundSource() else {
+            return nil
+        }
+        var frameAndLoop = source.readFrame(argb: true)
+        if case .endOfStream = frameAndLoop, self.sourceWasJustRewound, self.frameCount > 0 {
+            // The seek did not work: read from a new reader, as before.
+            self.sourceWasJustRewound = false
+            if let newSource = makeVideoStickerReader(path: self.path) {
+                self.source = newSource
+                frameAndLoop = newSource.readFrame(argb: true)
+            }
+        }
+        self.sourceWasJustRewound = false
+        switch frameAndLoop {
+        case let .frame(frame):
+            guard let imageBuffer = CMSampleBufferGetImageBuffer(frame.sampleBuffer) else {
+                return nil
+            }
+            CVPixelBufferLockBaseAddress(imageBuffer, CVPixelBufferLockFlags(rawValue: 0))
+            defer {
+                CVPixelBufferUnlockBaseAddress(imageBuffer, CVPixelBufferLockFlags(rawValue: 0))
+            }
+            guard let srcData = CVPixelBufferGetBaseAddress(imageBuffer) else {
+                return nil
+            }
+            return self.makeArgbFrame(source: UnsafeRawPointer(srcData), width: CVPixelBufferGetWidth(imageBuffer), height: CVPixelBufferGetHeight(imageBuffer), bytesPerRow: CVPixelBufferGetBytesPerRow(imageBuffer), frameIndex: frameIndex)
+        case .endOfStream:
+            return self.endOfStream(frameIndex: frameIndex)
+        case .waitingForMoreData, .error:
+            return nil
+        }
+    }
+
+    // Scales a decoded BGRA frame to the sticker size and stores it in the frame cache.
+    private func makeArgbFrame(source: UnsafeRawPointer, width: Int, height: Int, bytesPerRow: Int, frameIndex: Int) -> AnimatedStickerFrame {
+        var frameData = Data(count: self.bytesPerRow * self.height)
+        frameData.withUnsafeMutableBytes { buffer -> Void in
+            guard let bytes = buffer.baseAddress else {
+                return
+            }
+            var sourceBuffer = vImage_Buffer(data: UnsafeMutableRawPointer(mutating: source), height: vImagePixelCount(height), width: vImagePixelCount(width), rowBytes: bytesPerRow)
+            var destBuffer = vImage_Buffer(data: bytes, height: vImagePixelCount(self.height), width: vImagePixelCount(self.width), rowBytes: self.bytesPerRow)
+            let _ = vImageScale_ARGB8888(&sourceBuffer, &destBuffer, nil, vImage_Flags(kvImageDoNotTile))
+        }
+
+        self.cache?.storeUncompressedRgbFrame(index: frameIndex, rgbData: frameData)
+
+        return AnimatedStickerFrame(data: frameData, type: .argb, width: self.width, height: self.height, bytesPerRow: self.bytesPerRow, index: frameIndex, isLastFrame: frameIndex == self.frameCount - 1, totalFrames: self.frameCount, multiplyAlpha: true)
+    }
+
+    private func endOfStream(frameIndex: Int) -> AnimatedStickerFrame? {
+        if self.frameCount == 0 {
+            if let cache = self.cache {
+                if cache.storedFrames == frameIndex {
+                    self.frameCount = frameIndex
+                    cache.storeFrameRateAndCount(frameRate: self.frameRate, frameCount: self.frameCount)
+                } else {
+                    Logger.shared.log("VideoSticker", "Missed a frame? \(frameIndex) \(cache.storedFrames)")
+                }
+            } else {
+                self.frameCount = frameIndex
+            }
+        }
+        self.currentFrame = 0
+        self.sourceNeedsRewind = true
+
+        if let cache = self.cache {
+            if let yuvData = cache.readUncompressedYuvaFrame(index: self.currentFrame) {
+                return AnimatedStickerFrame(data: yuvData, type: .yuva, width: self.width, height: self.height, bytesPerRow: self.width * 2, index: frameIndex, isLastFrame: frameIndex == self.frameCount - 1, totalFrames: self.frameCount)
+            }
+        }
+
+        return nil
+    }
+
+    private enum HardwareFrameResult {
+        case frame(AnimatedStickerFrame)
+        case endOfStream
+        case failed
+    }
+
+    private func takeHardwareFrame(_ stream: VideoStickerHardwareStream, frameIndex: Int) -> HardwareFrameResult {
+        if stream.nextFrameIndex >= stream.frames.count {
+            stream.nextFrameIndex = 0
+            stream.decoder.reset()
+            return .endOfStream
+        }
+        guard let decoded = stream.decoder.decode(stream.frames[stream.nextFrameIndex]) else {
+            return .failed
+        }
+        var result: AnimatedStickerFrame?
+        let converted = self.hardwareConverter.convert(decoded) { source, width, height, bytesPerRow in
+            result = self.makeArgbFrame(source: source, width: width, height: height, bytesPerRow: bytesPerRow, frameIndex: frameIndex)
+        }
+        guard converted, let result else {
+            return .failed
+        }
+        stream.nextFrameIndex += 1
+        return .frame(result)
+    }
+
+    // Continues with libvpx from the frame the hardware decoder could not decode.
+    private func fallBackToSoftwareDecoding(_ stream: VideoStickerHardwareStream) {
+        let position = stream.nextFrameIndex
+        stream.decoder.invalidate()
+        self.hardwareStream = nil
+        Logger.shared.log("VideoSticker", "Hardware VP9 decoding stopped at frame \(position), continuing with libvpx")
+        guard let source = self.rewoundSource() else {
+            return
+        }
+        self.sourceWasJustRewound = false
+        for _ in 0 ..< position {
+            guard case .frame = source.readFrame(argb: true) else {
+                break
+            }
+        }
+    }
+
+    private var sourceWasJustRewound = false
+
+    private func rewoundSource() -> FFMpegFileReader? {
+        guard let source = self.source else {
+            return nil
+        }
+        if !self.sourceNeedsRewind {
+            return source
+        }
+        self.sourceNeedsRewind = false
+        if source.rewind() {
+            self.sourceWasJustRewound = true
+            return source
+        }
+        self.source = makeVideoStickerReader(path: self.path)
+        return self.source
+    }
+
     public func skipToEnd() {
         self.currentFrame = self.frameCount - 1
     }
