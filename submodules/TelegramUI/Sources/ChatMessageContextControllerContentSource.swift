@@ -69,6 +69,9 @@ final class ChatMessageContextExtractedContentSource: ContextExtractedContentSou
         self.centerVertically = centerVertically
         self.keepDefaultContentTouches = keepDefaultContentTouches
         self.snapshot = snapshot
+        
+        // The menu may delete the message.
+        prewarmDustEffect()
     }
     
     private(set) var snapshotView: UIView?
@@ -186,6 +189,9 @@ final class ChatViewOnceMessageContextExtractedContentSource: ContextExtractedCo
         self.engine = engine
         self.message = message
         self.present = present
+        
+        // The message dissolves when the menu closes.
+        prewarmDustEffect()
     }
     
     deinit {
@@ -383,7 +389,6 @@ final class ChatViewOnceMessageContextExtractedContentSource: ContextExtractedCo
         return result
     }
     
-    private var dustEffectLayer: DustEffectLayer?
     func putBack() -> ContextControllerPutBackViewInfo? {
         guard let chatNode = self.chatNode else {
             return nil
@@ -396,15 +401,20 @@ final class ChatViewOnceMessageContextExtractedContentSource: ContextExtractedCo
         }
         
         if let messageNodeCopy = self.messageNodeCopy, let sourceView = messageNodeCopy.supernode?.view, let contentNode = messageNodeCopy.getMessageContextSourceNode(stableId: nil)?.contentNode, let parentNode = contentNode.supernode?.supernode?.supernode {
+            guard let (image, subFrame) = messageNodeCopy.makeContentSnapshot() else {
+                return nil
+            }
+            
             let dustEffectLayer = DustEffectLayer()
             dustEffectLayer.position = sourceView.bounds.center.offsetBy(dx: (parentNode.frame.width - messageNodeCopy.frame.width), dy: 0.0)
             dustEffectLayer.bounds = CGRect(origin: CGPoint(), size: sourceView.bounds.size)
             dustEffectLayer.zPosition = 10.0
+            // Gone, with its rendering surface, once the dust has settled.
+            dustEffectLayer.becameEmpty = { [weak dustEffectLayer] in
+                dustEffectLayer?.removeFromSuperlayer()
+            }
             parentNode.layer.addSublayer(dustEffectLayer)
             
-            guard let (image, subFrame) = messageNodeCopy.makeContentSnapshot() else {
-                return nil
-            }
             var itemFrame = subFrame
             itemFrame.origin.y = floorToScreenPixels((sourceView.frame.height - subFrame.height) / 2.0)
             dustEffectLayer.addItem(frame: itemFrame, image: image)

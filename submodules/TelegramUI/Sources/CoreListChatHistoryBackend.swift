@@ -842,6 +842,25 @@ final class CoreListChatHistoryBackend: ASDisplayNode, ChatHistoryListViewBacken
         self.coreList.center = CGPoint(x: self.bounds.midX, y: self.bounds.midY)
     }
 
+    // The longest custom delete duration among the rows `deleteIndices` removes. Read before the entries change: the
+    // indices are into the old array, which is what the loaded window still shows.
+    private func customDeleteAnimationDuration(deleteIndices: [ListViewDeleteItem]) -> Double? {
+        guard let getCustomItemDeleteAnimationDuration = self.getCustomItemDeleteAnimationDuration, !deleteIndices.isEmpty else {
+            return nil
+        }
+        let deletedIndices = Set(deleteIndices.map { $0.index })
+        var result: Double?
+        for entry in self.coreList.loadedItemEntries {
+            guard deletedIndices.contains(entry.index), let hostView = entry.view as? CoreListNodeHostView, let itemNode = hostView.itemNode else {
+                continue
+            }
+            if let duration = getCustomItemDeleteAnimationDuration(itemNode), duration.isFinite {
+                result = max(result ?? 0.0, duration)
+            }
+        }
+        return result
+    }
+
     // MARK: - Transaction
     // Applies a ListView-style batch to the entry array (mirroring ListView's own ordering:
     // deletes first, then inserts, then updates), maps size/insets, and re-renders the full settled
@@ -1098,7 +1117,13 @@ final class CoreListChatHistoryBackend: ASDisplayNode, ChatHistoryListViewBacken
             // be recorded as "the chat sets it in exactly one place".
             transition = CoreListTransition(.animated(duration: duration, curve: curve))
         } else if options.contains(.AnimateInsertion) {
-            transition = .spring(duration: 0.4)
+            // A deleted row may ask for a longer collapse (the chat's dust effect: 0.8s), as on ListViewImpl, where it
+            // sets the deleted node's height animation and its neighbours follow it.
+            if let duration = self.customDeleteAnimationDuration(deleteIndices: deleteIndices), duration > 0.4 {
+                transition = .spring(duration: duration)
+            } else {
+                transition = .spring(duration: 0.4)
+            }
         }
 
         // `additionalScrollDistance` displaces content by a caller-chosen delta in the same pass that

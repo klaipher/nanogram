@@ -1079,6 +1079,13 @@ public final class ChatHistoryListNodeImpl: ASDisplayNode, ChatHistoryNode, Chat
             return nil
         }
 
+        if self.allowDustEffect, case .bubbles = mode {
+            // Auto-deleted messages dissolve without a menu first: have the pipelines ready, after the chat has opened.
+            Queue.mainQueue().after(1.0, {
+                prewarmDustEffect(qos: .utility)
+            })
+        }
+
         self.beginAdMessageManagement(adMessages: adMessages)
         
         self.listView.accessibilityPageScrolledString = { [weak self] row, count in
@@ -2068,6 +2075,7 @@ public final class ChatHistoryListNodeImpl: ASDisplayNode, ChatHistoryNode, Chat
                 
         let startTime = CFAbsoluteTimeGetCurrent()
         var measure_isFirstTime = true
+        var didPrewarmDustEffectForSelection = false
         let messageViewQueue = Queue.mainQueue()
         let historyViewTransitionDisposable = (combineLatest(queue: messageViewQueue,
             historyViewUpdate |> debug_measureTimeToFirstEvent(label: "chatHistoryNode_historyViewUpdate"),
@@ -2099,6 +2107,12 @@ public final class ChatHistoryListNodeImpl: ASDisplayNode, ChatHistoryNode, Chat
         ) |> debug_measureTimeToFirstEvent(label: "chatHistoryNode_firstChatHistoryTransition")).startStrict(next: { [weak self] update, chatPresentationData, selectedMessages, updatingMedia, networkType, preferredStoryHighQuality, animatedEmojiAndGiftStickers, additionalAnimatedEmojiStickers, customChannelDiscussionReadState, customThreadOutgoingReadState, availableReactions, availableMessageEffects, savedMessageTags, defaultReaction, accountPeer, accountCountry, suggestAudioTranscription, promises, topicAuthorId, translationState, maxReadStoryId, recommendedChannels, audioTranscriptionTrial, chatThemes, deviceContactsNumbers, contentSettings in
             let (animatedEmojiStickers, premiumGiftStickers, tonGiftStickers) = animatedEmojiAndGiftStickers
             let (historyAppearsCleared, pendingUnpinnedAllMessages, pendingRemovedMessages, currentlyPlayingMessageIdAndType, scrollToMessageId, chatHasBots, allAdMessages) = promises
+            
+            if selectedMessages != nil && !didPrewarmDustEffectForSelection {
+                // Selecting messages is often followed by deleting them.
+                didPrewarmDustEffectForSelection = true
+                prewarmDustEffect()
+            }
             
             if measure_isFirstTime {
                 measure_isFirstTime = false
@@ -4296,9 +4310,16 @@ public final class ChatHistoryListNodeImpl: ASDisplayNode, ChatHistoryNode, Chat
         
         var appliedDeleteAnimationCorrelationIds = Set<UInt32>()
         if !self.currentDeleteAnimationCorrelationIds.isEmpty && self.allowDustEffect {
+            // Only what is on screen dissolves: not the preloaded rows beyond the edges, nor rows under the bars.
+            var visibleItemNodes = Set<ObjectIdentifier>()
+            self.forEachVisibleItemNode { itemNode in
+                visibleItemNodes.insert(ObjectIdentifier(itemNode))
+            }
             var foundItemNodes: [ChatMessageItemView] = []
             self.forEachItemNode { itemNode in
                 if let itemNode = itemNode as? ChatMessageItemView, let item = itemNode.item {
+                    let isVisible = visibleItemNodes.contains(ObjectIdentifier(itemNode))
+                    var isFound = false
                     for (message, _) in item.content {
                         if let itemNode = itemNode as? ChatMessageBubbleItemNode {
                             if itemNode.isServiceLikeMessage() {
@@ -4307,10 +4328,16 @@ public final class ChatHistoryListNodeImpl: ASDisplayNode, ChatHistoryNode, Chat
                         }
                         
                         if self.currentDeleteAnimationCorrelationIds.contains(message.stableId) {
-                            appliedDeleteAnimationCorrelationIds.insert(message.stableId)
                             self.currentDeleteAnimationCorrelationIds.remove(message.stableId)
-                            foundItemNodes.append(itemNode)
+                            // An item off screen takes the list's own delete animation.
+                            if isVisible {
+                                appliedDeleteAnimationCorrelationIds.insert(message.stableId)
+                                isFound = true
+                            }
                         }
+                    }
+                    if isFound {
+                        foundItemNodes.append(itemNode)
                     }
                 }
             }
@@ -4375,21 +4402,12 @@ public final class ChatHistoryListNodeImpl: ASDisplayNode, ChatHistoryNode, Chat
                                 case let .idBased(previousIncomingId, _, _, _, _):
                                     if case let .idBased(updatedIncomingId, _, _, _, _) = updatedState, previousIncomingId <= updatedIncomingId {
                                         let rangeKey = UnreadMessageRangeKey(peerId: peerId, namespace: namespace)
-
-                                        if let currentRange = self.controllerInteraction.unreadMessageRange[rangeKey] {
-                                            if currentRange.upperBound < (updatedIncomingId + 1) {
-                                                let updatedRange = currentRange.lowerBound ..< (updatedIncomingId + 1)
-                                                if self.controllerInteraction.unreadMessageRange[rangeKey] != updatedRange {
-                                                    self.controllerInteraction.unreadMessageRange[rangeKey] = updatedRange
-                                                    unreadMessageRangeUpdated = true
-                                                }
-                                            }
-                                        } else {
-                                            let updatedRange = (previousIncomingId + 1) ..< (updatedIncomingId + 1)
-                                            if self.controllerInteraction.unreadMessageRange[rangeKey] != updatedRange {
-                                                self.controllerInteraction.unreadMessageRange[rangeKey] = updatedRange
-                                                unreadMessageRangeUpdated = true
-                                            }
+                                        // Read marks come from the server and can be Int32.max: no plain `+ 1` here.
+                                        let currentRange = self.controllerInteraction.unreadMessageRange[rangeKey]
+                                        let updatedRange = updatedUnreadMessageRange(current: currentRange, previousMaxIncomingReadId: previousIncomingId, maxIncomingReadId: updatedIncomingId)
+                                        if let updatedRange, currentRange != updatedRange {
+                                            self.controllerInteraction.unreadMessageRange[rangeKey] = updatedRange
+                                            unreadMessageRangeUpdated = true
                                         }
                                     }
                                 case .indexBased:
@@ -4409,21 +4427,11 @@ public final class ChatHistoryListNodeImpl: ASDisplayNode, ChatHistoryNode, Chat
                     switch updatedState {
                     case let .idBased(updatedIncomingId, _, _, _, _):
                         let rangeKey = UnreadMessageRangeKey(peerId: peerId, namespace: namespace)
-
-                        if let currentRange = self.controllerInteraction.unreadMessageRange[rangeKey] {
-                            if currentRange.upperBound < (updatedIncomingId + 1) {
-                                let updatedRange = currentRange.lowerBound ..< (updatedIncomingId + 1)
-                                if self.controllerInteraction.unreadMessageRange[rangeKey] != updatedRange {
-                                    self.controllerInteraction.unreadMessageRange[rangeKey] = updatedRange
-                                    unreadMessageRangeUpdated = true
-                                }
-                            }
-                        } else {
-                            let updatedRange = (updatedIncomingId + 1) ..< (Int32.max - 1)
-                            if self.controllerInteraction.unreadMessageRange[rangeKey] != updatedRange {
-                                self.controllerInteraction.unreadMessageRange[rangeKey] = updatedRange
-                                unreadMessageRangeUpdated = true
-                            }
+                        let currentRange = self.controllerInteraction.unreadMessageRange[rangeKey]
+                        let updatedRange = updatedUnreadMessageRange(current: currentRange, previousMaxIncomingReadId: nil, maxIncomingReadId: updatedIncomingId)
+                        if let updatedRange, currentRange != updatedRange {
+                            self.controllerInteraction.unreadMessageRange[rangeKey] = updatedRange
+                            unreadMessageRangeUpdated = true
                         }
                     case .indexBased:
                         break

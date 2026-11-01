@@ -452,10 +452,9 @@ private func extractAccountManagerState(records: AccountRecordsView<TelegramAcco
         self.nativeWindow = window
         
         hostView.containerView.layer.addSublayer(MetalEngine.shared.rootLayer)
-        // On the first start after an update, compile the pipelines that would otherwise stall their first use.
-        if MetalEngine.shared.pipelineCache.isFresh {
-            prewarmLiquidGlassShapes([.crest], qos: .utility)
-        }
+        // Compile the pipelines that would otherwise stall their first use. Not only on a fresh archive: while the
+        // archive is switched off `isFresh` is always false and every launch compiles them on first use.
+        prewarmLiquidGlassShapes([.crest], qos: .utility)
         
         if !UIDevice.current.isBatteryMonitoringEnabled {
             UIDevice.current.isBatteryMonitoringEnabled = true

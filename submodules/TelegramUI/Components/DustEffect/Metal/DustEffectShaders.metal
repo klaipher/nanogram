@@ -9,10 +9,9 @@ struct Rectangle {
     float2 size;
 };
 
-constant static float2 quadVertices[6] = {
+// A triangle strip: the same two triangles, and the same diagonal, as six separate vertices would give.
+constant static float2 quadVertices[4] = {
     float2(0.0, 0.0),
-    float2(1.0, 0.0),
-    float2(0.0, 1.0),
     float2(1.0, 0.0),
     float2(0.0, 1.0),
     float2(1.0, 1.0)
@@ -273,6 +272,8 @@ vertex QuadVertexOut dustEffectVertex(
     const device float2 &size [[ buffer(1) ]],
     const device uint2 &particleResolution [[ buffer(2) ]],
     const device Particle *particles [[ buffer(3) ]],
+    // The size of one pixel of the render target, in points.
+    const device float &onePixel [[ buffer(4) ]],
     unsigned int vid [[ vertex_id ]],
     unsigned int particleId [[ instance_id ]]
 ) {
@@ -294,7 +295,6 @@ vertex QuadVertexOut dustEffectVertex(
     // turns into a round grain of its own size and quickly dwindles, most of it at once, to a single pixel; that pixel
     // glitters until it goes out. Each grain keeps its own pace (done between 0.35 and 1.5 in simulation time), so big
     // grains, shrinking ones and glittering pixels mix in one cloud instead of following each other as two stages.
-    constexpr float onePixel = 1.0 / 3.0;
     float released = smoothstep(0.0, 0.25, particle.age);
     float grainSize = 0.6 + 1.2 * pow(dustRandom(particleId, 3), 2.2);
     float dwindleStart = 0.1 + 0.3 * dustRandom(particleId, 9);
