@@ -41,6 +41,7 @@ profiles disabled, the same setup upstream's own CI uses.
 | `tg disk` / `tg clean` / `tg prune --yes` | inspect / trim / wipe build state |
 | `tg new-module submodules/MyFeature` | a new Swift module with the strict Swift 6 preset and a host test |
 | `tg strict-report` | Swift 6 concurrency problems per module (~15 min, see below) |
+| `tg watch test` / `tg watch build` | the Apple Watch app (`Telegram/WatchApp`) and its unit tests in the watchOS simulator (xcodebuild, not Bazel; see `CLAUDE.md`, "Embedded watch app") |
 
 Simulator builds produce `bazel-bin/Telegram/Telegram.app` (a directory, not a zipped `.ipa`); `tg run` installs and
 launches it. Device builds still produce `bazel-bin/Telegram/Telegram.ipa`.
@@ -201,6 +202,20 @@ next `tg build` restores them from the disk cache in about 20 seconds.
 After an Xcode update, `xcrun swift-frontend -print-supported-features` lists new upcoming features to add to the
 strict preset.
 
+## Guardrails
+
+`tools/dev/lint/` lints only the changed lines of Swift code with a pinned SwiftLint (force unwraps,
+`try!`, `as!`, `Int32` timestamp arithmetic, narrowing conversions). It also has an opt-in pre-push
+hook that runs the lint and the tests of the modules a push touches:
+
+```sh
+python3 tools/dev/lint/tglint.py install        # SwiftLint 0.65.1, checksum verified
+python3 tools/dev/lint/tglint.py lint           # working tree vs HEAD
+python3 tools/dev/lint/tglint.py install-hook   # pre-push: lint + affected tests
+```
+
+See [guardrails.md](guardrails.md) for the rules, the sanitizer test and the reasoning.
+
 ## Where the disk space goes
 
 | Location | What | Controlled by |
@@ -211,6 +226,7 @@ strict preset.
 | `~/.cache/telegram-ios/bazel-disk-cache` | Content-addressed cache of action outputs | GC limits in `.bazelrc` / `user.bazelrc` |
 | Repository cache (`bazel info repository_cache`) | Downloaded archives (`content_addressable/`) and extracted dependencies (`contents/`) | Shared by all Bazel projects of this user. Bazel deletes extracted dependencies unused for 14 days (`--repo_contents_cache_gc_max_age`); old archives stay until you delete them |
 | `~/Library/Developer/Xcode/DerivedData/Telegram-*` | Xcode index and logs | `tg prune` |
+| `~/.cache/telegram-ios/watch` | The watch app's DerivedData (~0.6 GB) and SwiftPM checkouts (~1.5 GB, mostly TDLib for every platform) | `tg watch clean` (DerivedData only) |
 
 Each configuration you build (`debug_sim_arm64`, `release_arm64`, …) keeps its own output tree, so sticking to
 one configuration for day-to-day work saves the most space.

@@ -338,7 +338,7 @@ class BazelCommandLine:
         combined_arguments += self.get_user_arguments()
 
         print('TelegramBuild: running')
-        print(subprocess.list2cmdline(combined_arguments))
+        print(subprocess.list2cmdline(redacted_arguments(combined_arguments)))
         call_executable(combined_arguments)
 
     def invoke_test(self, test_target='Tests/AllTests'):
@@ -372,7 +372,7 @@ class BazelCommandLine:
         combined_arguments += self.get_user_arguments()
 
         print('TelegramBuild: running')
-        print(subprocess.list2cmdline(combined_arguments))
+        print(subprocess.list2cmdline(redacted_arguments(combined_arguments)))
         call_executable(combined_arguments)
 
     def invoke_query(self, query_args):
@@ -405,7 +405,7 @@ class BazelCommandLine:
         combined_arguments += query_args
 
         print('TelegramBuild: running')
-        print(subprocess.list2cmdline(combined_arguments))
+        print(subprocess.list2cmdline(redacted_arguments(combined_arguments)))
         call_executable(combined_arguments)
 
 
@@ -571,6 +571,14 @@ def generate_project(bazel, arguments):
     )
 
     call_executable(['open', xcodeproj_path])
+
+
+SECRET_DEFINE_PREFIXES = ('--define=watchApiHash=',)
+
+
+def redacted_arguments(arguments):
+    """The command line for printing: secret values (the watch api_hash) are masked."""
+    return [a.split('=', 2)[0] + '=' + a.split('=', 2)[1] + '=<redacted>' if a.startswith(SECRET_DEFINE_PREFIXES) else a for a in arguments]
 
 
 def resolve_watch_provisioning_profile(arguments, base_path):

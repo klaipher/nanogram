@@ -416,10 +416,11 @@ Upstream-Commit: $commit")"
 cmd_device() {
   local config="${TG_DEVICE_CONFIG:-$HOME/.config/telegram-ios/device-configuration.json}"
   local signing="${TG_DEVICE_CODESIGNING:-$HOME/.config/telegram-ios/codesigning}"
-  local install=1 udid="${TG_DEVICE_UDID:-}"
+  local install=1 watch=0 udid="${TG_DEVICE_UDID:-}"
   while [ $# -gt 0 ]; do
     case "$1" in
       --no-install) install=0 ;;
+      --watch) watch=1 ;;
       *) die "unknown device option: $1" ;;
     esac
     shift
@@ -435,9 +436,22 @@ cmd_device() {
     signing_args=(--xcodeManagedCodesigning)
     make_args=("--bazelArguments=--//Telegram:disableExtensions")
   fi
+  local watch_args=()
+  if [ $watch -eq 1 ]; then
+    # The embedded Apple Watch app (Telegram/WatchApp) uses the same api_id as the phone app.
+    # Without a WatchApp.mobileprovision it is built unsigned; tg testflight signs it for the App Store.
+    local creds="$HOME/.config/telegram-ios/api-credentials.json"
+    [ -f "$creds" ] || die "no API credentials at $creds"
+    watch_args=(--embedWatchApp
+      --watchApiId="$(python3 -c 'import json,sys; print(json.load(open(sys.argv[1]))["api_id"])' "$creds")"
+      --watchApiHash="$(python3 -c 'import json,sys; print(json.load(open(sys.argv[1]))["api_hash"])' "$creds")")
+    [ -f "$signing/profiles/WatchApp.mobileprovision" ] \
+      && watch_args+=(--watchProvisioningProfile="$signing/profiles/WatchApp.mobileprovision")
+  fi
   make_py ${make_args[@]+"${make_args[@]}"} build \
     --configurationPath="$config" \
     "${signing_args[@]}" \
+    ${watch_args[@]+"${watch_args[@]}"} \
     --buildNumber="${TG_BUILD_NUMBER:-1}" \
     --configuration=release_arm64
   say "Built: $ROOT/bazel-bin/Telegram/Telegram.ipa"
@@ -462,8 +476,66 @@ cmd_device() {
 cmd_testflight() {
   # Every upload needs a higher build number than the last one.
   export TG_BUILD_NUMBER="${TG_BUILD_NUMBER:-$(date +%Y%m%d%H%M)}"
-  cmd_device --no-install
+  cmd_device --no-install --watch
   python3 "$ROOT/tools/dev/device_signing.py" testflight "$ROOT/bazel-bin/Telegram/Telegram.ipa" "$@"
+}
+
+# tg watch <build|test|project|clean> — the Apple Watch app (Telegram/WatchApp) in the
+# watchOS simulator. Uses the dev project (project-dev.yml: the app plus its unit tests),
+# regenerated on every run, and fixed DerivedData and SwiftPM directories under
+# ~/.cache/telegram-ios/watch, so TDLib (~1.5 GB of SwiftPM checkouts) downloads once.
+WATCH_DIR="$ROOT/Telegram/WatchApp"
+WATCH_CACHE="${TG_WATCH_CACHE_DIR:-$HOME/.cache/telegram-ios/watch}"
+
+watch_generate() {
+  command -v xcodegen >/dev/null || die "xcodegen not found (brew install xcodegen)"
+  # Both projects: the committed tgwatch.xcodeproj (Bazel embed build) and the dev one.
+  (cd "$WATCH_DIR" && xcodegen generate --quiet && xcodegen generate --quiet --spec project-dev.yml)
+}
+
+# TG_WATCH_SIM picks the simulator (UDID or name); otherwise the first available watch.
+watch_simulator() {
+  if [ -n "${TG_WATCH_SIM:-}" ]; then echo "$TG_WATCH_SIM"; return; fi
+  xcrun simctl list devices available -j | python3 -c '
+import json, sys
+runtimes = json.load(sys.stdin)["devices"]
+for runtime in sorted((r for r in runtimes if ".watchOS-" in r), reverse=True):
+    for device in runtimes[runtime]:
+        print(device["udid"]); sys.exit(0)
+sys.exit(1)' || die "no watchOS simulator (create one in Xcode, or set TG_WATCH_SIM)"
+}
+
+# watch_xcodebuild <action...> [-- extra xcodebuild args]
+watch_xcodebuild() {
+  local sim dest
+  sim="$(watch_simulator)"
+  if [[ "$sim" =~ ^[0-9A-F-]{36}$ ]]; then dest="id=$sim"; else dest="name=$sim"; fi
+  mkdir -p "$WATCH_CACHE"
+  say "watchOS simulator $sim, DerivedData $WATCH_CACHE/DerivedData"
+  # No api credentials: the app builds and its tests run, but it cannot log in.
+  xcodebuild "$@" \
+    -project "$WATCH_DIR/tgwatch-dev.xcodeproj" \
+    -scheme "tgwatch Watch App" \
+    -destination "platform=watchOS Simulator,$dest" \
+    -derivedDataPath "$WATCH_CACHE/DerivedData" \
+    -clonedSourcePackagesDirPath "$WATCH_CACHE/SourcePackages" \
+    -quiet \
+    TG_API_ID=0 TG_API_HASH=placeholder
+}
+
+cmd_watch() {
+  local sub="${1:-help}"; shift || true
+  [ "${1:-}" != "--" ] || shift
+  case "$sub" in
+    build) watch_generate; watch_xcodebuild build "$@"
+      say "Built: $WATCH_CACHE/DerivedData/Build/Products/Debug-watchsimulator/tgwatch Watch App.app" ;;
+    test) watch_generate; watch_xcodebuild test "$@"; say "Watch tests passed" ;;
+    project) watch_generate
+      say "Generated tgwatch.xcodeproj (Bazel embed) and tgwatch-dev.xcodeproj (with tests)"
+      [ "${1:-}" = "--no-open" ] || open "$WATCH_DIR/tgwatch-dev.xcodeproj" ;;
+    clean) rm -rf "$WATCH_CACHE/DerivedData"; say "Removed $WATCH_CACHE/DerivedData (SwiftPM checkouts kept)" ;;
+    *) die "usage: tools/dev/tg watch <build|test|project|clean> (see: tools/dev/tg help)" ;;
+  esac
 }
 
 cmd_help() {
@@ -475,7 +547,8 @@ Usage: tools/dev/tg <command> [options]
   build [--release] [--device] [--full] [-- <Make.py build args>]
                         Build the app (default: debug simulator, no app extensions)
   run [build options]   Build, install and launch on the test simulator
-  device [--no-install] Release build signed for your iPhone, then install it
+  device [--no-install] [--watch]  Release build signed for your iPhone, then install it
+                        (--watch embeds the Apple Watch app)
                         (signing: python3 tools/dev/device_signing.py --help)
   testflight [--export-only]  Release build uploaded to TestFlight (new build number)
   project [--full]      Generate and open the Xcode project (simulator, no extensions)
@@ -484,12 +557,19 @@ Usage: tools/dev/tg <command> [options]
   strict-report         Count Swift 6 concurrency problems per module (~15 min)
   refresh-fake-profiles Re-date and re-sign the fake provisioning profiles (device builds)
   fake-signing [--remove]  Install (or remove) the fake signing identity for device builds
+  lint [args]           Lint changed Swift lines (tools/dev/lint/tglint.py; default: lint)
   disk                  Show what is using disk space
   clean                 Remove build outputs, keep downloads and caches
   prune [--yes]         Remove all Bazel outputs, the disk cache and DerivedData
   sync-upstream <tag>   Import an official release tag onto the `upstream` branch
+  watch build [-- <xcodebuild args>]  Build the Apple Watch app for the watchOS simulator
+  watch test [-- <xcodebuild args>]   Run the watch app's unit tests
+                        (e.g. tg watch test -- -only-testing:tgwatchTests/SmokeTests)
+  watch project [--no-open]  Regenerate the watch app's Xcode projects and open the dev one
+  watch clean           Remove the watch app's DerivedData, keep its SwiftPM checkouts
 
-Environment: TG_CACHE_DIR, TG_CONFIG, TG_CODESIGNING, TG_BUILD_NUMBER
+Environment: TG_CACHE_DIR, TG_CONFIG, TG_CODESIGNING, TG_BUILD_NUMBER,
+             TG_WATCH_SIM, TG_WATCH_CACHE_DIR
 EOF
 }
 
@@ -507,10 +587,12 @@ case "$command" in
   new-module) cmd_new_module "$@" ;;
   strict-report) cmd_strict_report "$@" ;;
   refresh-fake-profiles) python3 "$ROOT/build-system/Make/RefreshFakeProfiles.py" "$@" ;;
+  lint) if [ $# -eq 0 ]; then set -- lint; fi; python3 "$ROOT/tools/dev/lint/tglint.py" "$@" ;;
   disk) cmd_disk "$@" ;;
   clean) cmd_clean "$@" ;;
   prune) cmd_prune "$@" ;;
   sync-upstream) cmd_sync_upstream "$@" ;;
+  watch) cmd_watch "$@" ;;
   help|-h|--help) cmd_help ;;
   *) die "unknown command: $command (see: tools/dev/tg help)" ;;
 esac
