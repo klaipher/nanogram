@@ -65,6 +65,7 @@ swift_library(
         "//submodules/FFMpegBinding:FFMpegBinding",
         "//submodules/AnimatedStickerNode/VP9Hardware:VP9Hardware",
         "//submodules/LottieSettings:LottieSettings",
+        "//submodules/MediaResources:MediaResources",
     ],
 )
 
