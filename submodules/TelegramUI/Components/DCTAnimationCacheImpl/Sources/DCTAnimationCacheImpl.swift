@@ -5,6 +5,18 @@ import CryptoUtils
 import ManagedFile
 import Compression
 import AnimationCache
+import ImageDCT
+
+// Format 6: raw int16 DCT coefficients in an LZFSE stream.
+// Format 7: the same coefficients packed by sparseCoefficientsEncode, in an LZFSE stream.
+// The coefficients are ~92% zeros, so packing first leaves LZFSE ~6x less input.
+// Measured on real emoji and stickers: writing 1.9-2.3x faster, files 12% smaller,
+// playback no slower. LZ4 instead of LZFSE wrote 3x faster but files were 33% larger
+// than format 6. Older builds reject format 7 files and regenerate them.
+private let currentFormatVersion: UInt32 = 7
+
+// Tests write format 6 through this to compare the two.
+var dctAnimationCacheWriterFormatVersion: UInt32 = currentFormatVersion
 
 private let algorithm: compression_algorithm = COMPRESSION_LZFSE
 
@@ -33,6 +45,24 @@ private func fileSize(_ path: String, useTotalFileAllocatedSize: Bool = false) -
     } else {
         return nil
     }
+}
+
+// The media cache cleanup removes files by modification date, and a hit never writes the
+// file, so items in daily use were deleted and converted again. A hit moves the date
+// forward, at most once an hour per file. Returns false if the file does not exist.
+// The shortest "keep media" setting is one day and the cleanup runs at launch, so a
+// once-a-day refresh would almost never land before the file was already past the limit.
+private let modificationDateRefreshInterval: Int = 60 * 60
+
+private func cachedItemExists(path: String) -> Bool {
+    var value = stat()
+    if stat(path, &value) != 0 {
+        return false
+    }
+    if Int(Date().timeIntervalSince1970) - Int(value.st_mtimespec.tv_sec) > modificationDateRefreshInterval {
+        utime(path, nil)
+    }
+    return true
 }
 
 private func md5Hash(_ string: String) -> String {
@@ -144,7 +174,15 @@ private final class AnimationCacheItemWriterImpl: AnimationCacheItemWriter {
         return self.innerQueue
     }
     let innerQueue: Queue
-    var isCancelled: Bool = false
+    private var isCancelledValue: Bool = false
+    // A failed writer drops every further frame, so producers can stop decoding them.
+    var isCancelled: Bool {
+        get {
+            return self.isCancelledValue || self.isFailed
+        } set {
+            self.isCancelledValue = newValue
+        }
+    }
     
     private let compressedPath: String
     private var file: ManagedFile?
@@ -166,6 +204,9 @@ private final class AnimationCacheItemWriterImpl: AnimationCacheItemWriter {
     private var isFinished: Bool = false
     
     private var frames: [FrameMetadata] = []
+    private let formatVersion: UInt32
+    private var sparseBuffer: UnsafeMutablePointer<UInt8>?
+    private var sparseBufferCapacity: Int = 0
     
     private let dctQualityLuma: Int
     private let dctQualityChroma: Int
@@ -179,6 +220,7 @@ private final class AnimationCacheItemWriterImpl: AnimationCacheItemWriter {
         self.dctQualityDelta = 22
         
         self.innerQueue = queue
+        self.formatVersion = dctAnimationCacheWriterFormatVersion
         self.compressedPath = allocateTempFile()
         
         guard let file = ManagedFile(queue: nil, path: self.compressedPath, mode: .readwrite) else {
@@ -187,6 +229,10 @@ private final class AnimationCacheItemWriterImpl: AnimationCacheItemWriter {
         self.file = file
         self.compressedWriter = CompressedFileWriter(file: file)
         self.completion = completion
+    }
+    
+    deinit {
+        self.sparseBuffer?.deallocate()
     }
     
     func add(with drawingBlock: (AnimationCacheItemDrawingSurface) -> Double?, proposedWidth: Int, proposedHeight: Int, insertKeyframe: Bool) {
@@ -394,7 +440,7 @@ private final class AnimationCacheItemWriterImpl: AnimationCacheItemWriter {
         }
         
         if isFirstFrame {
-            file.write(6 as UInt32)
+            file.write(self.formatVersion)
             
             file.write(UInt32(dctCoefficients.yPlane.width))
             file.write(UInt32(dctCoefficients.yPlane.height))
@@ -437,9 +483,27 @@ private final class AnimationCacheItemWriterImpl: AnimationCacheItemWriter {
                 }
                 
                 try compressedWriter.writeUInt32(UInt32(dctPlane.data.count))
-                try dctPlane.data.withUnsafeBytes { bytes in
-                    try compressedWriter.write(bytes: bytes.baseAddress!.assumingMemoryBound(to: UInt8.self), count: bytes.count)
+                
+                if self.formatVersion < 7 {
+                    try dctPlane.data.withUnsafeBytes { bytes in
+                        try compressedWriter.write(bytes: bytes.baseAddress!.assumingMemoryBound(to: UInt8.self), count: bytes.count)
+                    }
+                    continue
                 }
+                
+                let coefficientCount = dctPlane.data.count / 2
+                let maxEncodedLength = sparseCoefficientsMaxEncodedLength(coefficientCount)
+                if self.sparseBufferCapacity < maxEncodedLength {
+                    self.sparseBuffer?.deallocate()
+                    self.sparseBuffer = UnsafeMutablePointer<UInt8>.allocate(capacity: maxEncodedLength)
+                    self.sparseBufferCapacity = maxEncodedLength
+                }
+                let sparseBuffer = self.sparseBuffer!
+                let encodedLength = dctPlane.data.withUnsafeBytes { bytes -> Int in
+                    return sparseCoefficientsEncode(bytes.baseAddress!.assumingMemoryBound(to: Int16.self), coefficientCount, sparseBuffer)
+                }
+                try compressedWriter.writeUInt32(UInt32(encodedLength))
+                try compressedWriter.write(bytes: sparseBuffer, count: encodedLength)
             }
             
             self.frames.append(FrameMetadata(duration: duration))
@@ -533,7 +597,10 @@ private final class AnimationCacheItemAccessor {
     }
     
     private let data: Data
+    private let formatVersion: UInt32
     private var compressedDataReader: DecompressedData?
+    private var sparseBuffer: UnsafeMutablePointer<UInt8>?
+    private var sparseBufferCapacity: Int = 0
     private let range: Range<Int>
     private let frameMapping: [Int: FrameInfo]
     private let width: Int
@@ -548,8 +615,9 @@ private final class AnimationCacheItemAccessor {
     private var sharedDctCoefficients: DctCoefficientsYUVA420?
     private var deltaCoefficients: DctCoefficientsYUVA420?
     
-    init(data: Data, range: Range<Int>, frameMapping: [FrameInfo], width: Int, height: Int, dctData: DctData) {
+    init(data: Data, formatVersion: UInt32, range: Range<Int>, frameMapping: [FrameInfo], width: Int, height: Int, dctData: DctData) {
         self.data = data
+        self.formatVersion = formatVersion
         self.range = range
         self.width = width
         self.height = height
@@ -567,6 +635,10 @@ private final class AnimationCacheItemAccessor {
         self.durationMapping = durationMapping
         
         self.currentDctData = dctData
+    }
+    
+    deinit {
+        self.sparseBuffer?.deallocate()
     }
     
     private func loadNextFrame() -> Bool {
@@ -600,7 +672,8 @@ private final class AnimationCacheItemAccessor {
             let frameType = Int(try compressedDataReader.readUInt32())
             
             let dctCoefficients: DctCoefficientsYUVA420
-            if let sharedDctCoefficients = self.sharedDctCoefficients, sharedDctCoefficients.yPlane.width == self.width, sharedDctCoefficients.yPlane.height == self.height, !"".isEmpty {
+            // Every plane is fully overwritten below, so one buffer serves all frames.
+            if let sharedDctCoefficients = self.sharedDctCoefficients, sharedDctCoefficients.yPlane.width == self.width, sharedDctCoefficients.yPlane.height == self.height {
                 dctCoefficients = sharedDctCoefficients
             } else {
                 dctCoefficients = DctCoefficientsYUVA420(width: self.width, height: self.height)
@@ -636,8 +709,31 @@ private final class AnimationCacheItemAccessor {
                     throw ReadError.generic
                 }
                 
-                try plane.data.withUnsafeMutableBytes { bytes in
-                    try compressedDataReader.read(bytes: bytes.baseAddress!.assumingMemoryBound(to: UInt8.self), count: bytes.count)
+                if self.formatVersion >= 7 {
+                    let coefficientCount = plane.data.count / 2
+                    let encodedLength = Int(try compressedDataReader.readUInt32())
+                    if encodedLength > sparseCoefficientsMaxEncodedLength(coefficientCount) {
+                        throw ReadError.generic
+                    }
+                    if self.sparseBufferCapacity < encodedLength {
+                        self.sparseBuffer?.deallocate()
+                        self.sparseBuffer = UnsafeMutablePointer<UInt8>.allocate(capacity: max(encodedLength, 1))
+                        self.sparseBufferCapacity = max(encodedLength, 1)
+                    }
+                    let sparseBuffer = self.sparseBuffer!
+                    if encodedLength != 0 {
+                        try compressedDataReader.read(bytes: sparseBuffer, count: encodedLength)
+                    }
+                    let decoded = plane.data.withUnsafeMutableBytes { bytes -> Bool in
+                        return sparseCoefficientsDecode(sparseBuffer, encodedLength, bytes.baseAddress!.assumingMemoryBound(to: Int16.self), coefficientCount)
+                    }
+                    if !decoded {
+                        throw ReadError.generic
+                    }
+                } else {
+                    try plane.data.withUnsafeMutableBytes { bytes in
+                        try compressedDataReader.read(bytes: bytes.baseAddress!.assumingMemoryBound(to: UInt8.self), count: bytes.count)
+                    }
                 }
                 frameOffset += plane.data.count
             }
@@ -647,6 +743,9 @@ private final class AnimationCacheItemAccessor {
                 yuvaSurface = currentYUVASurface
             } else {
                 yuvaSurface = ImageYUVA420(width: dctCoefficients.yPlane.width, height: dctCoefficients.yPlane.height, rowAlignment: nil)
+                // Fully rewritten by each frame. Planes handed out as .yuva are value
+                // copies, so writing the next frame copies them first if still in use.
+                self.currentYUVASurface = yuvaSurface
             }
             
             let currentCoefficients: DctCoefficientsYUVA420
@@ -1045,7 +1144,7 @@ private func loadItem(path: String) throws -> AnimationCacheItem {
     }
     let formatVersion = readUInt32(data: compressedData, offset: offset)
     offset += 4
-    if formatVersion != 6 {
+    if formatVersion != 6 && formatVersion != 7 {
         throw LoadItemError.dataError
     }
     
@@ -1103,6 +1202,9 @@ private func loadItem(path: String) throws -> AnimationCacheItem {
     let contentLength = Int(readUInt32(data: compressedData, offset: offset))
     offset += 4
     
+    if contentLength < 0 || offset + contentLength > dataLength {
+        throw LoadItemError.dataError
+    }
     let compressedFrameDataRange = offset ..< (offset + contentLength)
     offset += contentLength
     
@@ -1127,7 +1229,7 @@ private func loadItem(path: String) throws -> AnimationCacheItem {
         throw LoadItemError.dataError
     }
     
-    let itemAccessor = AnimationCacheItemAccessor(data: compressedData, range: compressedFrameDataRange, frameMapping: frameMapping, width: Int(width), height: Int(height), dctData: dctData)
+    let itemAccessor = AnimationCacheItemAccessor(data: compressedData, formatVersion: formatVersion, range: compressedFrameDataRange, frameMapping: frameMapping, width: Int(width), height: Int(height), dctData: dctData)
     
     return AnimationCacheItem(numFrames: frameMapping.count, advanceImpl: { advance, requestedFormat in
         return itemAccessor.advance(advance: advance, requestedFormat: requestedFormat)
@@ -1335,7 +1437,7 @@ public final class DCTAnimationCacheImpl: AnimationCache {
             let itemPath = "\(itemDirectoryPath)/\(sourceIdPath.fileName)"
             let itemFirstFramePath = "\(itemDirectoryPath)/\(sourceIdPath.fileName)-f"
             
-            if FileManager.default.fileExists(atPath: itemPath), let item = try? loadItem(path: itemPath) {
+            if cachedItemExists(path: itemPath), let item = try? loadItem(path: itemPath) {
                 updateResult(AnimationCacheItemResult(item: item, isFinal: true))
                 
                 return EmptyDisposable
@@ -1429,7 +1531,7 @@ public final class DCTAnimationCacheImpl: AnimationCache {
             let itemDirectoryPath = "\(basePath)/\(sourceIdPath.directory)"
             let itemFirstFramePath = "\(itemDirectoryPath)/\(sourceIdPath.fileName)-f"
             
-            if FileManager.default.fileExists(atPath: itemFirstFramePath) {
+            if cachedItemExists(path: itemFirstFramePath) {
                 if let item = try? loadItem(path: itemFirstFramePath) {
                     return item
                 }
@@ -1450,7 +1552,7 @@ public final class DCTAnimationCacheImpl: AnimationCache {
             let itemDirectoryPath = "\(basePath)/\(sourceIdPath.directory)"
             let itemFirstFramePath = "\(itemDirectoryPath)/\(sourceIdPath.fileName)-f"
             
-            if FileManager.default.fileExists(atPath: itemFirstFramePath), let item = try? loadItem(path: itemFirstFramePath) {
+            if cachedItemExists(path: itemFirstFramePath), let item = try? loadItem(path: itemFirstFramePath) {
                 completion(AnimationCacheItemResult(item: item, isFinal: true))
                 return EmptyDisposable
             }

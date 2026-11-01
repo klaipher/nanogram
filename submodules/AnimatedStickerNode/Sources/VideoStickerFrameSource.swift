@@ -14,7 +14,7 @@ private let sharedStoreQueue = Queue.concurrentDefaultQueue()
 
 private let maximumFrameCount = 30 * 10
 
-private final class VideoStickerFrameSourceCache {
+final class VideoStickerFrameSourceCache {
     private enum FrameRangeResult {
         case range(Range<Int>)
         case notFound
@@ -37,7 +37,14 @@ private final class VideoStickerFrameSourceCache {
     }
     
     private var scratchBuffer: Data
-    private var decodeBuffer: Data
+    private let decodedFrameLength: Int
+    
+    // 4: frames are LZ4 (3 was LZFSE).
+    static let version: Int = 4
+    
+    static func path(pathPrefix: String, width: Int, height: Int, version: Int) -> String {
+        return "\(pathPrefix)_\(width)x\(height)-v\(version).vstickerframecache"
+    }
     
     init?(queue: Queue, pathPrefix: String, width: Int, height: Int) {
         self.queue = queue
@@ -46,8 +53,7 @@ private final class VideoStickerFrameSourceCache {
         self.width = width
         self.height = height
         
-        let version: Int = 3
-        self.path = "\(pathPrefix)_\(width)x\(height)-v\(version).vstickerframecache"
+        self.path = VideoStickerFrameSourceCache.path(pathPrefix: pathPrefix, width: width, height: height, version: VideoStickerFrameSourceCache.version)
         var file = ManagedFile(queue: queue, path: self.path, mode: .readwrite)
         if let file = file {
             self.file = file
@@ -61,13 +67,16 @@ private final class VideoStickerFrameSourceCache {
             }
         }
         
-        self.scratchBuffer = Data(count: compression_decode_scratch_buffer_size(COMPRESSION_LZFSE))
+        self.scratchBuffer = Data(count: compression_decode_scratch_buffer_size(stickerFrameCompressionAlgorithm))
         
         let yuvaPixelsPerAlphaRow = (Int(width) + 1) & (~1)
         let yuvaLength = Int(width) * Int(height) * 2 + yuvaPixelsPerAlphaRow * Int(height) / 2
-        self.decodeBuffer = Data(count: yuvaLength)
+        self.decodedFrameLength = yuvaLength
         
-        self.initializeFrameTable()
+        if self.initializeFrameTable() {
+            // A new file replaces the previous version's, which nothing reads any more.
+            unlink(VideoStickerFrameSourceCache.path(pathPrefix: pathPrefix, width: width, height: height, version: VideoStickerFrameSourceCache.version - 1))
+        }
     }
     
     deinit {
@@ -76,7 +85,8 @@ private final class VideoStickerFrameSourceCache {
         }
     }
     
-    private func initializeFrameTable() {
+    @discardableResult
+    private func initializeFrameTable() -> Bool {
         var reset = true
         if let size = self.file.getSize(), size >= maximumFrameCount {
             if self.readFrameRate() {
@@ -94,6 +104,7 @@ private final class VideoStickerFrameSourceCache {
                 let _ = self.file.write(&zero, count: 4)
             }
         }
+        return reset
     }
     
     private func readFrameRate() -> Bool {
@@ -234,33 +245,16 @@ private final class VideoStickerFrameSourceCache {
                 return nil
             }
             
-            var frameData: Data?
-            
-            let decodeBufferLength = self.decodeBuffer.count
-            
-            compressedData.withUnsafeBytes { buffer -> Void in
+            // Straight into the frame's own buffer: copying a decoded frame cost a vm_copy per frame.
+            let decodedFrameLength = self.decodedFrameLength
+            return compressedData.withUnsafeBytes { buffer -> Data? in
                 guard let bytes = buffer.baseAddress?.assumingMemoryBound(to: UInt8.self) else {
-                    return
+                    return nil
                 }
-                
-                self.scratchBuffer.withUnsafeMutableBytes { scratchBuffer -> Void in
-                    guard let scratchBytes = scratchBuffer.baseAddress?.assumingMemoryBound(to: UInt8.self) else {
-                        return
-                    }
-
-                    self.decodeBuffer.withUnsafeMutableBytes { decodeBuffer -> Void in
-                        guard let decodeBytes = decodeBuffer.baseAddress?.assumingMemoryBound(to: UInt8.self) else {
-                            return
-                        }
-
-                        let resultLength = compression_decode_buffer(decodeBytes, decodeBufferLength, bytes, length, UnsafeMutableRawPointer(scratchBytes), COMPRESSION_LZFSE)
-                        
-                        frameData = Data(bytes: decodeBytes, count: resultLength)
-                    }
+                return self.scratchBuffer.withUnsafeMutableBytes { scratchBuffer -> Data? in
+                    return decompressFrame(bytes: bytes, length: length, decodedLength: decodedFrameLength, scratch: scratchBuffer.baseAddress)
                 }
             }
-            
-            return frameData
         case .notFound:
             return nil
         case .corruptedFile:

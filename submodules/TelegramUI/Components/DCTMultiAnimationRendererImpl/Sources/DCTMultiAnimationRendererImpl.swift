@@ -17,6 +17,14 @@ private final class LoadFrameGroupTask {
     }
 }
 
+// Every cached animation is at most 30 fps (lottie is cached at every other frame of 60).
+// A frame lasting a whole number of 1/30 s shows at the same moments with a 30 Hz tick,
+// so the 60 Hz tick is only kept while some item needs it.
+func animationFrameDurationNeedsHighTickRate(_ duration: Double) -> Bool {
+    let ticks = duration * 30.0
+    return abs(ticks - ticks.rounded()) > 0.01 || ticks.rounded() < 1.0
+}
+
 private var yuvToRgbConversion: vImage_YpCbCrToARGB = {
     var info = vImage_YpCbCrToARGB()
     var pixelRange = vImage_YpCbCrPixelRange(Yp_bias: 16, CbCr_bias: 128, YpRangeMax: 235, CbCrRangeMax: 240, YpMax: 255, YpMin: 0, CbCrMax: 255, CbCrMin: 0)
@@ -423,7 +431,16 @@ private final class ItemAnimationContext {
     private var item: Atomic<AnimationCacheItem>?
     private var itemPlaceholderAndFrameIndex: (UIImage, Int)?
 
-    private var currentFrame: Frame?
+    private var currentFrame: Frame? {
+        didSet {
+            let needsHighTickRate = self.currentFrame.flatMap { animationFrameDurationNeedsHighTickRate($0.duration) } ?? false
+            if self.needsHighTickRate != needsHighTickRate {
+                self.needsHighTickRate = needsHighTickRate
+                self.stateUpdated()
+            }
+        }
+    }
+    private(set) var needsHighTickRate: Bool = false
     private var loadingFrameTaskId: Int?
     private var nextLoadingFrameTaskId: Int = 0
 
@@ -677,6 +694,13 @@ public final class DCTMultiAnimationRendererImpl: MultiAnimationRenderer {
                 }
             }
         }
+        private(set) var needsHighTickRate: Bool = false {
+            didSet {
+                if self.needsHighTickRate != oldValue {
+                    self.stateUpdated()
+                }
+            }
+        }
 
         init(firstFrameQueue: Queue, stateUpdated: @escaping () -> Void) {
             self.firstFrameQueue = firstFrameQueue
@@ -717,6 +741,8 @@ public final class DCTMultiAnimationRendererImpl: MultiAnimationRenderer {
                     itemContext.targets.remove(index)
                     if itemContext.targets.isEmpty {
                         strongSelf.itemContexts.removeValue(forKey: itemKey)
+                        // Without this the timer kept ticking after the last item was gone.
+                        strongSelf.updateIsPlaying()
                     }
                 }
             }
@@ -739,6 +765,7 @@ public final class DCTMultiAnimationRendererImpl: MultiAnimationRenderer {
                 itemContext.targets.remove(index)
                 if itemContext.targets.isEmpty {
                     strongSelf.itemContexts.removeValue(forKey: itemKey)
+                    strongSelf.updateIsPlaying()
                 }
             }.strict()
         }
@@ -859,14 +886,19 @@ public final class DCTMultiAnimationRendererImpl: MultiAnimationRenderer {
 
         private func updateIsPlaying() {
             var isPlaying = false
+            var needsHighTickRate = false
             for (_, itemContext) in self.itemContexts {
                 if itemContext.isPlaying {
                     isPlaying = true
-                    break
+                    if itemContext.needsHighTickRate {
+                        needsHighTickRate = true
+                        break
+                    }
                 }
             }
 
             self.isPlaying = isPlaying
+            self.needsHighTickRate = needsHighTickRate
         }
 
         func animationTick(advanceTimestamp: Double) -> [LoadFrameGroupTask] {
@@ -892,43 +924,54 @@ public final class DCTMultiAnimationRendererImpl: MultiAnimationRenderer {
     private var isInBackground: Bool = false
     private var applicationStateObservers: [NSObjectProtocol] = []
 
-    private(set) var isPlaying: Bool = false {
-        didSet {
-            if self.isPlaying != oldValue {
-                if self.isPlaying {
-                    if self.displayTimer == nil {
-                        final class TimerTarget: NSObject {
-                            private let f: () -> Void
+    private(set) var isPlaying: Bool = false
+    private var needsHighTickRate: Bool = false
+    private var displayTimerInterval: Double?
 
-                            init(_ f: @escaping () -> Void) {
-                                self.f = f
-                            }
+    // The tick interval in use, nil while stopped.
+    var currentTickIntervalForTesting: Double? {
+        return self.displayTimerInterval
+    }
 
-                            @objc func timerEvent() {
-                                self.f()
-                            }
-                        }
-                        let frameInterval = Double(self.frameSkip) / 60.0
-                        let displayTimer = Foundation.Timer(timeInterval: frameInterval, target: TimerTarget { [weak self] in
-                            guard let strongSelf = self else {
-                                return
-                            }
-                            strongSelf.animationTick(frameInterval: frameInterval)
-                        }, selector: #selector(TimerTarget.timerEvent), userInfo: nil, repeats: true)
-                        // Apple's guidance for energy: a tolerance lets the system batch this wake-up
-                        // with others. 10% of a frame is below what can be seen.
-                        displayTimer.tolerance = frameInterval * 0.1
-                        self.displayTimer = displayTimer
-                        RunLoop.main.add(displayTimer, forMode: .common)
-                    }
-                } else {
-                    if let displayTimer = self.displayTimer {
-                        self.displayTimer = nil
-                        displayTimer.invalidate()
-                    }
-                }
+    private func updateDisplayTimer() {
+        var frameInterval: Double?
+        if self.isPlaying {
+            let frameSkip = self.needsHighTickRate ? self.frameSkip : 2
+            frameInterval = Double(frameSkip) / 60.0
+        }
+        if self.displayTimerInterval == frameInterval {
+            return
+        }
+        self.displayTimerInterval = frameInterval
+        if let displayTimer = self.displayTimer {
+            self.displayTimer = nil
+            displayTimer.invalidate()
+        }
+        guard let frameInterval else {
+            return
+        }
+        final class TimerTarget: NSObject {
+            private let f: () -> Void
+
+            init(_ f: @escaping () -> Void) {
+                self.f = f
+            }
+
+            @objc func timerEvent() {
+                self.f()
             }
         }
+        let displayTimer = Foundation.Timer(timeInterval: frameInterval, target: TimerTarget { [weak self] in
+            guard let strongSelf = self else {
+                return
+            }
+            strongSelf.animationTick(frameInterval: frameInterval)
+        }, selector: #selector(TimerTarget.timerEvent), userInfo: nil, repeats: true)
+        // Apple's guidance for energy: a tolerance lets the system batch this wake-up
+        // with others. 10% of a frame is below what can be seen.
+        displayTimer.tolerance = frameInterval * 0.1
+        self.displayTimer = displayTimer
+        RunLoop.main.add(displayTimer, forMode: .common)
     }
 
     public init() {
@@ -1050,13 +1093,17 @@ public final class DCTMultiAnimationRendererImpl: MultiAnimationRenderer {
 
     private func updateIsPlaying() {
         var isPlaying = false
+        var needsHighTickRate = false
         if let groupContext = self.groupContext {
             if groupContext.isPlaying {
                 isPlaying = true
+                needsHighTickRate = groupContext.needsHighTickRate
             }
         }
 
         self.isPlaying = isPlaying && !self.isInBackground
+        self.needsHighTickRate = needsHighTickRate
+        self.updateDisplayTimer()
     }
 
     private func animationTick(frameInterval: Double) {

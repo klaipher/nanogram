@@ -4,6 +4,7 @@
 #import <Foundation/Foundation.h>
 
 #import <ImageDCT/YuvConversion.h>
+#import <ImageDCT/SparseCoefficients.h>
 
 typedef NS_ENUM(NSUInteger, ImageDCTTableType) {
     ImageDCTTableTypeLuma,

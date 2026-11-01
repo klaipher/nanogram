@@ -1,6 +1,23 @@
 
 load("@rules_cc//cc:objc_library.bzl", "objc_library")
 
+config_setting(
+    name = "debug_build",
+    values = {
+        "compilation_mode": "dbg",
+    },
+)
+
+# Pixel and coefficient loops run per frame; at -O0 they are several times slower,
+# which also makes debug-build timings of the animation cache meaningless.
+# Release builds keep their default flags.
+optimization_flags = select({
+    ":debug_build": [
+        "-O2",
+    ],
+    "//conditions:default": [],
+})
+
 objc_library(
     name = "ImageDCT",
     enable_modules = True,
@@ -18,8 +35,7 @@ objc_library(
     includes = [
         "PublicHeaders",
     ],
-    copts = [
-    ],
+    copts = optimization_flags,
     sdk_frameworks = [
         "Foundation",
         "Accelerate",

@@ -253,7 +253,7 @@ private func alignUp(size: Int, align: Int) -> Int {
     return (size + alignmentMask) & ~alignmentMask
 }
 
-private final class AnimatedStickerDirectFrameSourceCache {
+final class AnimatedStickerDirectFrameSourceCache {
     private enum FrameRangeResult {
         case range(Range<Int>)
         case notFound
@@ -272,9 +272,18 @@ private final class AnimatedStickerDirectFrameSourceCache {
     private var isStoringFrames = Set<Int>()
     
     private var scratchBuffer: Data
-    private var decodeBuffer: Data
+    private let decodedFrameLength: Int
     
     private var frameCompressor: AnimationCompressor?
+    
+    // 4: software frames are LZ4 (3 was LZFSE).
+    static let version = 4
+    let path: String
+    private let previousVersionPath: String
+    
+    static func path(pathPrefix: String, width: Int, height: Int, suffix: String, version: Int, useHardware: Bool) -> String {
+        return "\(pathPrefix)_\(width):\(height)\(suffix).stickerframecachev\(version)\(useHardware ? "-mtl" : "")"
+    }
     
     init?(queue: Queue, pathPrefix: String, width: Int, height: Int, frameCount: Int, fitzModifier: EmojiFitzModifier?, useHardware: Bool) {
         self.queue = queue
@@ -291,7 +300,9 @@ private final class AnimatedStickerDirectFrameSourceCache {
         } else {
             suffix = ""
         }
-        let path = "\(pathPrefix)_\(width):\(height)\(suffix).stickerframecachev3\(useHardware ? "-mtl" : "")"
+        self.path = AnimatedStickerDirectFrameSourceCache.path(pathPrefix: pathPrefix, width: width, height: height, suffix: suffix, version: AnimatedStickerDirectFrameSourceCache.version, useHardware: useHardware)
+        self.previousVersionPath = AnimatedStickerDirectFrameSourceCache.path(pathPrefix: pathPrefix, width: width, height: height, suffix: suffix, version: AnimatedStickerDirectFrameSourceCache.version - 1, useHardware: useHardware)
+        let path = self.path
         var file = ManagedFile(queue: queue, path: path, mode: .readwrite)
         if let file = file {
             self.file = file
@@ -305,17 +316,22 @@ private final class AnimatedStickerDirectFrameSourceCache {
             }
         }
         
-        self.scratchBuffer = Data(count: compression_decode_scratch_buffer_size(COMPRESSION_LZFSE))
+        self.scratchBuffer = Data(count: compression_decode_scratch_buffer_size(stickerFrameCompressionAlgorithm))
         
         let yuvaPixelsPerAlphaRow = (Int(width) + 1) & (~1)
         let yuvaLength = Int(width) * Int(height) * 2 + yuvaPixelsPerAlphaRow * Int(height) / 2
-        self.decodeBuffer = Data(count: yuvaLength)
+        self.decodedFrameLength = yuvaLength
         
-        self.initializeFrameTable()
+        if self.initializeFrameTable() {
+            // A new file replaces the previous version's, which nothing reads any more.
+            unlink(self.previousVersionPath)
+        }
     }
     
-    private func initializeFrameTable() {
+    @discardableResult
+    private func initializeFrameTable() -> Bool {
         if let size = self.file.getSize(), size >= self.frameCount * 4 * 2 {
+            return false
         } else {
             self.file.truncate(count: 0)
             for _ in 0 ..< self.frameCount {
@@ -323,6 +339,7 @@ private final class AnimatedStickerDirectFrameSourceCache {
                 let _ = self.file.write(&zero, count: 4)
                 let _ = self.file.write(&zero, count: 4)
             }
+            return true
         }
     }
     
@@ -520,29 +537,14 @@ private final class AnimatedStickerDirectFrameSourceCache {
                 }
             }
             
-            var frameData: Data?
-            
-            let decodeBufferLength = self.decodeBuffer.count
-            
-            compressedData.withUnsafeBytes { buffer -> Void in
+            // Straight into the frame's own buffer: copying a decoded frame cost a vm_copy per frame.
+            let decodedFrameLength = self.decodedFrameLength
+            let frameData = compressedData.withUnsafeBytes { buffer -> Data? in
                 guard let bytes = buffer.baseAddress?.assumingMemoryBound(to: UInt8.self) else {
-                    return
+                    return nil
                 }
-                
-                self.scratchBuffer.withUnsafeMutableBytes { scratchBuffer -> Void in
-                    guard let scratchBytes = scratchBuffer.baseAddress?.assumingMemoryBound(to: UInt8.self) else {
-                        return
-                    }
-
-                    self.decodeBuffer.withUnsafeMutableBytes { decodeBuffer -> Void in
-                        guard let decodeBytes = decodeBuffer.baseAddress?.assumingMemoryBound(to: UInt8.self) else {
-                            return
-                        }
-
-                        let resultLength = compression_decode_buffer(decodeBytes, decodeBufferLength, bytes, length, UnsafeMutableRawPointer(scratchBytes), COMPRESSION_LZFSE)
-                        
-                        frameData = Data(bytes: decodeBytes, count: resultLength)
-                    }
+                return self.scratchBuffer.withUnsafeMutableBytes { scratchBuffer -> Data? in
+                    return decompressFrame(bytes: bytes, length: length, decodedLength: decodedFrameLength, scratch: scratchBuffer.baseAddress)
                 }
             }
             
