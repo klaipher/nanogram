@@ -10,8 +10,9 @@ Subcommands:
              that my.telegram.org/apps expects, so Telegram's servers can push to your app.
   testflight Wrap a built Telegram.ipa into an Xcode archive, let Xcode re-sign it for the App
              Store (distribution certificate and profiles are created automatically) and upload
-             it to App Store Connect with the Apple ID signed in to Xcode. The app record must
-             exist in App Store Connect first.
+             it to App Store Connect with the Apple ID signed in to Xcode, or with an App Store
+             Connect API team key when asc/asc.json and asc/AuthKey_<key id>.p8 exist. The app
+             record must exist in App Store Connect first.
 
 Everything is written under ~/.config/telegram-ios (private, outside the repository).
 Xcode must be signed in to the Apple ID of the team (Xcode > Settings > Accounts).
@@ -29,6 +30,7 @@ HOME_DIR = os.path.expanduser('~/.config/telegram-ios')
 CONFIG = os.path.join(HOME_DIR, 'device-configuration.json')
 CODESIGNING = os.path.join(HOME_DIR, 'codesigning')
 APNS_DIR = os.path.join(HOME_DIR, 'apns')
+ASC_DIR = os.path.join(HOME_DIR, 'asc')
 XCODE_PROFILES = os.path.expanduser('~/Library/Developer/Xcode/UserData/Provisioning Profiles')
 
 # Suffixes match build-system/Make/BuildConfiguration.py (profile_name_mapping).
@@ -213,6 +215,24 @@ def cmd_apns_pem(args):
     print('Upload this file at my.telegram.org/apps (APNS certificate, both sandbox and production):\n  ' + out)
 
 
+def app_store_connect_key():
+    """The App Store Connect API key, if one is configured, else None.
+
+    asc/asc.json holds {"key_id": "...", "issuer_id": "..."} next to asc/AuthKey_<key_id>.p8. It must be a
+    team key with the Admin role: only Admin may use the cloud-managed distribution certificate. With a key,
+    uploads do not depend on the Apple ID signed in to Xcode.
+    """
+    config_path = os.path.join(ASC_DIR, 'asc.json')
+    if not os.path.exists(config_path):
+        return None
+    with open(config_path) as f:
+        config = json.load(f)
+    key_path = os.path.join(ASC_DIR, 'AuthKey_{}.p8'.format(config['key_id']))
+    if not os.path.exists(key_path):
+        sys.exit('App Store Connect key file not found: ' + key_path)
+    return {'path': key_path, 'id': config['key_id'], 'issuer': config['issuer_id']}
+
+
 def cmd_testflight(args):
     import tempfile
     import zipfile
@@ -249,21 +269,36 @@ def cmd_testflight(args):
             'Name': 'Nanogram',
             'SchemeName': 'Nanogram',
         }, f)
+    key = app_store_connect_key()
+    # With an API key xcodebuild can sign but its upload is refused ("Cannot verify client's JWT headers"),
+    # so it only exports and altool uploads the signed package with the same key.
+    xcodebuild_uploads = not args.export_only and key is None
     options = os.path.join(work, 'ExportOptions.plist')
     with open(options, 'wb') as f:
         plistlib.dump({
             'method': 'app-store-connect',
-            'destination': 'export' if args.export_only else 'upload',
+            'destination': 'upload' if xcodebuild_uploads else 'export',
             'teamID': team_id,
             'signingStyle': 'automatic',
             'uploadSymbols': True,
             'manageAppVersionAndBuildNumber': False,
         }, f)
     print('{} {} {} ({})'.format('Exporting' if args.export_only else 'Uploading', info['CFBundleIdentifier'], info['CFBundleShortVersionString'], info['CFBundleVersion']), flush=True)
-    result = subprocess.run(['xcodebuild', '-exportArchive', '-archivePath', archive, '-exportOptionsPlist', options,
-                             '-exportPath', os.path.join(work, 'out'), '-allowProvisioningUpdates'])
+    command = ['xcodebuild', '-exportArchive', '-archivePath', archive, '-exportOptionsPlist', options,
+               '-exportPath', os.path.join(work, 'out'), '-allowProvisioningUpdates']
+    if key is not None:
+        print('Using App Store Connect API key ' + key['id'], flush=True)
+        command += ['-authenticationKeyPath', key['path'], '-authenticationKeyID', key['id'],
+                    '-authenticationKeyIssuerID', key['issuer']]
+    result = subprocess.run(command)
     if result.returncode != 0:
         sys.exit('Export failed; logs are in ' + work)
+    if not args.export_only and not xcodebuild_uploads:
+        env = dict(os.environ, API_PRIVATE_KEYS_DIR=ASC_DIR)
+        result = subprocess.run(['xcrun', 'altool', '--upload-app', '-f', os.path.join(work, 'out', 'Telegram.ipa'),
+                                 '-t', 'ios', '--apiKey', key['id'], '--apiIssuer', key['issuer']], env=env)
+        if result.returncode != 0:
+            sys.exit('Upload failed; logs are in ' + work)
     if args.export_only:
         print('Signed for the App Store (not uploaded): ' + os.path.join(work, 'out'))
     else:
