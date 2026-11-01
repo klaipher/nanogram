@@ -95,6 +95,9 @@ final class OrderedItemListTable: Table {
             currentIds.append(value)
             return true
         }, limit: 0)
+        // One range scan of the contents (OrderedItemListIndexTable.getAll) measured no
+        // faster than a lookup per item: the table has a rowid and a BLOB key, so each row is
+        // a lookup either way (PostboxRedundantWriteTests.testBenchmarkOrderedListRead).
         var items: [OrderedItemListEntry] = []
         for id in currentIds {
             if let contents = self.indexTable.get(collectionId: collectionId, id: id) {
@@ -125,12 +128,6 @@ final class OrderedItemListTable: Table {
     }
     
     func replaceItems(collectionId: Int32, items: [OrderedItemListEntry], operations: inout [Int32: [OrderedItemListOperation]]) {
-        if operations[collectionId] == nil {
-            operations[collectionId] = [.replace(items)]
-        } else {
-            operations[collectionId]!.append(.replace(items))
-        }
-        
         var currentIds: [MemoryBuffer] = []
         var currentIndices: [UInt32] = []
         self.valueBox.range(self.table, start: self.keyIndexToId(collectionId: collectionId, itemIndex: 0).predecessor, end: self.keyIndexToId(collectionId: collectionId, itemIndex: UInt32.max), values: { key, value in
@@ -138,22 +135,48 @@ final class OrderedItemListTable: Table {
             currentIds.append(value)
             return true
         }, limit: 0)
+        let currentContents = currentIds.isEmpty ? [:] : self.indexTable.getAll(collectionId: collectionId)
         
+        // Sync replaces lists with what they already hold. Then nothing is written and no
+        // operation is reported, so views that show the list are not recomputed.
+        var unchanged = currentIds.count == items.count
+        if unchanged {
+            for i in 0 ..< items.count {
+                if currentIds[i] != items[i].id || currentContents[currentIds[i]]?.data != items[i].contents.data {
+                    unchanged = false
+                    break
+                }
+            }
+        }
+        if unchanged {
+            return
+        }
+        
+        operations[collectionId, default: []].append(.replace(items))
+        
+        assert(Set(items.map({ $0.id.makeData() })).count == items.count)
+        
+        // The new list is written over the old one. Deleting rows first would dirty pages
+        // even for rows that come back the same; only rows the new list lacks are removed.
+        let updatedIds = Set(items.map(\.id))
         for index in currentIndices {
-            self.valueBox.remove(self.table, key: self.keyIndexToId(collectionId: collectionId, itemIndex: index), secure: false)
+            if Int(index) >= items.count {
+                self.valueBox.remove(self.table, key: self.keyIndexToId(collectionId: collectionId, itemIndex: index), secure: false)
+            }
         }
         for id in currentIds {
-            self.valueBox.remove(self.table, key: self.keyIdToIndex(collectionId: collectionId, id: id), secure: false)
-            self.indexTable.remove(collectionId: collectionId, id: id)
+            if !updatedIds.contains(id) {
+                self.valueBox.remove(self.table, key: self.keyIdToIndex(collectionId: collectionId, id: id), secure: false)
+                self.indexTable.remove(collectionId: collectionId, id: id)
+            }
         }
-        
-
-        assert(Set(items.map({ $0.id.makeData() })).count == items.count)
         for i in 0 ..< items.count {
             self.valueBox.set(self.table, key: self.keyIndexToId(collectionId: collectionId, itemIndex: UInt32(i)), value: items[i].id)
             var indexValue: UInt32 = UInt32(i)
             self.valueBox.set(self.table, key: self.keyIdToIndex(collectionId: collectionId, id: items[i].id), value: MemoryBuffer(memory: &indexValue, capacity: 4, length: 4, freeWhenDone: false))
-            self.indexTable.set(collectionId: collectionId, id: items[i].id, content: items[i].contents)
+            if currentContents[items[i].id]?.data != items[i].contents.data {
+                self.indexTable.set(collectionId: collectionId, id: items[i].id, content: items[i].contents)
+            }
         }
         #if ((arch(i386) || arch(x86_64)) && os(iOS)) || DEBUG
             assert(self.testIntegrity(collectionId: collectionId))

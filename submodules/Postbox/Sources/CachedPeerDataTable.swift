@@ -32,6 +32,21 @@ final class CachedPeerDataTable: Table {
         self.updatedPeers[id] = (previousValue, data)
     }
     
+    private let comparisonEncoder = PostboxEncoder()
+    
+    /// True when both values encode to the same bytes, i.e. storing `updated` would change
+    /// nothing. Unequal bytes (a different field order, say) only mean it is stored as before.
+    func encodesIdentically(_ current: CachedPeerData, _ updated: CachedPeerData) -> Bool {
+        if current === updated {
+            return true
+        }
+        self.sharedEncoder.reset()
+        self.sharedEncoder.encodeRootObject(current)
+        self.comparisonEncoder.reset()
+        self.comparisonEncoder.encodeRootObject(updated)
+        return self.sharedEncoder.makeData() == self.comparisonEncoder.makeData()
+    }
+    
     func get(_ id: PeerId) -> CachedPeerData? {
         if let status = self.cachedDatas[id] {
             return status
