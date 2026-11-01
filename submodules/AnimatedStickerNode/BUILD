@@ -64,6 +64,7 @@ swift_library(
         "//submodules/TelegramCore:TelegramCore",
         "//submodules/FFMpegBinding:FFMpegBinding",
         "//submodules/AnimatedStickerNode/VP9Hardware:VP9Hardware",
+        "//submodules/LottieSettings:LottieSettings",
     ],
 )
 
@@ -80,6 +81,7 @@ ios_unit_test(
     resources = glob([
         "Tests/Resources/*.bin",
         "Tests/Resources/*.webm",
+        "Tests/Resources/*.tgs",
     ]),
     deps = [
         ":AnimatedStickerNodeTestsLib",

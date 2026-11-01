@@ -746,6 +746,9 @@ buffer silently discards that and leaves untouched regions reading uninitialised
 used to validate the compose must use a transparent, premultiplied, **two-colour** pattern — the symbol
 image is tinted white while `customPatternColor` may be black, so "the pattern is monochrome" is false.
 
+GPU (Metal) rendering of stickers and emoji, its debug switches and how to measure it on a phone:
+[`docs/research/gpu-sticker-rendering.md`](docs/research/gpu-sticker-rendering.md).
+
 ## Framework export lists (computed by the build)
 
 `TelegramUIFramework` and `TelegramCoreFramework` export only the symbols their clients use.
