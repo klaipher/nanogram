@@ -6,9 +6,33 @@ import ShareExtensionContext
 import SwiftSignalKit
 import TelegramCore
 
+/// Keeps the process running while the share extension may hold a database lock in the shared
+/// container (Apple's 0xdead10cc guidance for app extensions); see ExtensionRequestCompletion
+/// in the notification service for the same pattern.
+private final class ShareProcessActivity {
+    private let semaphore = DispatchSemaphore(value: 0)
+
+    init(reason: String) {
+        let semaphore = self.semaphore
+        ProcessInfo.processInfo.performExpiringActivity(withReason: reason, using: { expired in
+            if expired {
+                semaphore.signal()
+            } else {
+                semaphore.wait()
+            }
+        })
+    }
+
+    deinit {
+        self.semaphore.signal()
+    }
+}
+
 @objc(ShareRootController)
 class ShareRootController: UIViewController {
     private var impl: ShareRootControllerImpl?
+    // Released with the controller, after the request completed.
+    private var activity: ShareProcessActivity?
     
     override init(nibName nibNameOrNil: String?, bundle nibBundleOrNil: Bundle?) {
         super.init(nibName: nibNameOrNil, bundle: nibBundleOrNil)
@@ -24,6 +48,9 @@ class ShareRootController: UIViewController {
         super.loadView()
         
         if self.impl == nil {
+            if self.activity == nil {
+                self.activity = ShareProcessActivity(reason: "Share extension")
+            }
             let appBundleIdentifier = Bundle.main.bundleIdentifier!
             guard let lastDotRange = appBundleIdentifier.range(of: ".", options: [.backwards]) else {
                 return

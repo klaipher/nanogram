@@ -2676,6 +2676,23 @@ private final class NotificationServiceHandler {
         self.pollDisposable.dispose()
         self.stateManager?.network.shouldKeepConnection.set(.single(false))
     }
+
+    /// Stops new transactions on this request's databases: the account's Postbox with its media
+    /// indexes, then the account manager's media indexes. `completion` runs once a transaction
+    /// already running has ended.
+    func pauseDatabases(completion: @escaping () -> Void) {
+        let accountManagerMediaBox = self.accountManager.mediaBox
+        let pauseAccountManagerMedia: () -> Void = {
+            accountManagerMediaBox.storageBox.setCanBeginTransactions(false, afterTransactionIfRunning: {
+                accountManagerMediaBox.cacheStorageBox.setCanBeginTransactions(false, afterTransactionIfRunning: completion)
+            })
+        }
+        if let postbox = self.stateManager?.postbox {
+            postbox.setCanBeginTransactions(false, afterTransactionIfRunning: pauseAccountManagerMedia)
+        } else {
+            pauseAccountManagerMedia()
+        }
+    }
 }
 
 @available(iOSApplicationExtension 10.0, iOS 10.0, *)
@@ -2696,6 +2713,7 @@ final class NotificationService: UNNotificationServiceExtension {
     private let content = Atomic<NotificationContent?>(value: nil)
     private var contentHandler: ((UNNotificationContent) -> Void)?
     private var episode: String?
+    private var requestCompletion: ExtensionRequestCompletion?
     
     override init() {
         super.init()
@@ -2710,6 +2728,16 @@ final class NotificationService: UNNotificationServiceExtension {
 
         self.impl = nil
 
+        // Keeps the process running until the databases are paused; a request replaced before
+        // it finished ends its activity when released.
+        let requestCompletion = ExtensionRequestCompletion(beginActivity: {
+            let activity = ExpiringProcessActivity(reason: "NotificationService request")
+            return {
+                activity.end()
+            }
+        })
+        self.requestCompletion = requestCompletion
+
         let content = self.content
 
         self.impl = QueueLocalObject(queue: queue, generate: { [weak self] in
@@ -2723,6 +2751,7 @@ final class NotificationService: UNNotificationServiceExtension {
                     guard let strongSelf = self else {
                         return
                     }
+                    let impl = strongSelf.impl
                     strongSelf.impl = nil
 
                     if let contentHandler = strongSelf.contentHandler {
@@ -2730,11 +2759,18 @@ final class NotificationService: UNNotificationServiceExtension {
                         
                         strongSelf.contentHandler = nil
                         
+                        let result: UNNotificationContent?
                         if let content = content.with({ $0 }) {
-                            contentHandler(content.generate())
-                        } else if let initialContent = strongSelf.initialContent {
-                            contentHandler(initialContent)
+                            result = content.generate()
+                        } else {
+                            result = strongSelf.initialContent
                         }
+                        // Content goes back once no transaction is running (or after 1 s).
+                        NotificationService.finish(requestCompletion, impl: impl, deliverTimeout: 1.0, deliver: {
+                            if let result {
+                                contentHandler(result)
+                            }
+                        })
                     } else {
                         Logger.shared.log("NotificationService \(episode)", "Attempted to repeatedly complete handling notification")
                     }
@@ -2750,19 +2786,58 @@ final class NotificationService: UNNotificationServiceExtension {
         // poll (getDifference/state replay) and drops the keep-alive network connection.
         // Without this, that work keeps running after the system takes back control and
         // continues to consume CPU for as long as the extension process stays alive.
+        let impl = self.impl
         self.impl = nil
+
+        // Content already waiting for the databases to pause goes back now.
+        self.requestCompletion?.expire()
 
         if let contentHandler = self.contentHandler {
             self.contentHandler = nil
             
             Logger.shared.log("NotificationService \(self.episode ?? "???")", "Completing due to serviceExtensionTimeWillExpire")
             
+            let result: UNNotificationContent?
             if let content = self.content.with({ $0 }) {
-                contentHandler(content.generate())
-            } else if let initialContent = self.initialContent {
-                contentHandler(initialContent)
+                result = content.generate()
+            } else {
+                result = self.initialContent
             }
+            // Delivered right away; the pause still runs under the activity.
+            NotificationService.finish(self.requestCompletion, impl: impl, deliverTimeout: 0.0, deliver: {
+                if let result {
+                    contentHandler(result)
+                }
+            })
         }
+    }
+
+    private static func finish(_ requestCompletion: ExtensionRequestCompletion?, impl: QueueLocalObject<BoxedNotificationServiceHandler>?, deliverTimeout: Double, deliver: @escaping () -> Void) {
+        guard let requestCompletion else {
+            deliver()
+            return
+        }
+        requestCompletion.finish(
+            pauseDatabases: { done in
+                guard let impl else {
+                    done()
+                    return
+                }
+                impl.with { box in
+                    if let handler = box.value {
+                        handler.pauseDatabases(completion: done)
+                    } else {
+                        done()
+                    }
+                }
+            },
+            deliverTimeout: deliverTimeout,
+            activityTimeout: 5.0,
+            schedule: { delay, action in
+                DispatchQueue.global().asyncAfter(deadline: .now() + delay, execute: action)
+            },
+            deliver: deliver
+        )
     }
 }
 

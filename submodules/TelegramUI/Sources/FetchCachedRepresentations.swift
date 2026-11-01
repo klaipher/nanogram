@@ -30,14 +30,54 @@ import PassRenderer
 // ios_killswitch_disable_modern_video_pipeline. The Debug Settings switch is
 // deliberately not consulted here: there is no SharedAccountContext on this
 // path, and a cached representation outlives the toggle anyway.
-private func lottieRenderingSettings(postbox: Postbox) -> Signal<LottieRenderingSettings, NoError> {
-    return postbox.transaction { transaction -> LottieRenderingSettings in
-        let appConfiguration = currentAppConfiguration(transaction: transaction)
-        if let data = appConfiguration.data, let _ = data["ios_killswitch_disable_tlottie"] {
-            return LottieRenderingSettings(backend: .rlottie)
+//
+// Each conversion used to open a Postbox transaction (a write lock) just to read the app
+// configuration. The value is now kept from one live preferences view per Postbox and read from
+// memory; the view follows server changes to the killswitch.
+private final class LottieRenderingSettingsCache {
+    private final class Entry {
+        weak var postbox: Postbox?
+        let settings = Promise<LottieRenderingSettings>()
+
+        init(postbox: Postbox) {
+            self.postbox = postbox
+            self.settings.set(postbox.preferencesView(keys: [PreferencesKeys.appConfiguration])
+            |> map { view -> LottieRenderingSettings in
+                let appConfiguration = view.values[PreferencesKeys.appConfiguration]?.get(AppConfiguration.self) ?? AppConfiguration.defaultValue
+                if let data = appConfiguration.data, let _ = data["ios_killswitch_disable_tlottie"] {
+                    return LottieRenderingSettings(backend: .rlottie)
+                }
+                return LottieRenderingSettings(backend: .tlottie)
+            })
         }
-        return LottieRenderingSettings(backend: .tlottie)
     }
+
+    static let shared = LottieRenderingSettingsCache()
+
+    private let lock = NSLock()
+    private var entries: [ObjectIdentifier: Entry] = [:]
+
+    func settings(postbox: Postbox) -> Signal<LottieRenderingSettings, NoError> {
+        self.lock.lock()
+        // A released Postbox took its view with it; drop its entry.
+        if self.entries.values.contains(where: { $0.postbox == nil }) {
+            self.entries = self.entries.filter { $0.value.postbox != nil }
+        }
+        let key = ObjectIdentifier(postbox)
+        let entry: Entry
+        if let current = self.entries[key], current.postbox === postbox {
+            entry = current
+        } else {
+            entry = Entry(postbox: postbox)
+            self.entries[key] = entry
+        }
+        self.lock.unlock()
+        return entry.settings.get() |> take(1)
+    }
+}
+
+private func lottieRenderingSettings(postbox: Postbox) -> Signal<LottieRenderingSettings, NoError> {
+    return LottieRenderingSettingsCache.shared.settings(postbox: postbox)
 }
 
 public func fetchCachedResourceRepresentation(account: Account, resource: MediaResource, representation: CachedMediaResourceRepresentation) -> Signal<CachedMediaResourceRepresentationResult, NoError> {
