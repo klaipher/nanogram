@@ -72,12 +72,27 @@ static bool strokeProp(rlottie::Property prop)
     }
 }
 
+static constexpr int    kMaxLayerDepth = 32;      // precomp nesting-depth limit
+static constexpr size_t kMaxLayerNodes = 100000;  // global render-node budget
+
 static renderer::Layer *createLayerItem(model::Layer *layerData,
-                                        VArenaAlloc * allocator)
+                                        VArenaAlloc *allocator, int depth,
+                                        size_t &nodeBudget)
 {
+    if (depth >= kMaxLayerDepth) {
+        vWarning << "Max precomp nesting depth (" << kMaxLayerDepth << ") exceeded";
+        return nullptr;
+    }
+    if (nodeBudget == 0) {
+        vWarning << "Max render node budget (" << kMaxLayerNodes << ") exceeded";
+        return nullptr;
+    }
+    --nodeBudget;
+
     switch (layerData->mLayerType) {
     case model::Layer::Type::Precomp: {
-        return allocator->make<renderer::CompLayer>(layerData, allocator);
+        return allocator->make<renderer::CompLayer>(layerData, allocator,
+                                                    depth + 1, nodeBudget);
     }
     case model::Layer::Type::Solid: {
         return allocator->make<renderer::SolidLayer>(layerData);
@@ -101,7 +116,8 @@ renderer::Composition::Composition(std::shared_ptr<model::Composition> model)
     : mCurFrameNo(-1)
 {
     mModel = std::move(model);
-    mRootLayer = createLayerItem(mModel->mRootLayer, &mAllocator);
+    size_t nodeBudget = kMaxLayerNodes;
+    mRootLayer = createLayerItem(mModel->mRootLayer, &mAllocator, 0, nodeBudget);
     mRootLayer->setComplexContent(false);
     mViewSize = mModel->size();
 }
@@ -435,8 +451,16 @@ void renderer::Layer::update(int frameNumber, const VMatrix &parentMatrix,
 
 VMatrix renderer::Layer::matrix(int frameNo) const
 {
+    return matrix(frameNo, 0);
+}
+
+VMatrix renderer::Layer::matrix(int frameNo, int depth) const
+{
+    // Prevent infinite recursion from cyclic parent references
+    if (depth > 64) return VMatrix{};
+
     return mParentLayer
-               ? (mLayerData->matrix(frameNo) * mParentLayer->matrix(frameNo))
+               ? (mLayerData->matrix(frameNo) * mParentLayer->matrix(frameNo, depth + 1))
                : mLayerData->matrix(frameNo);
 }
 
@@ -457,7 +481,8 @@ void renderer::Layer::preprocess(const VRect &clip)
     preprocessStage(clip);
 }
 
-renderer::CompLayer::CompLayer(model::Layer *layerModel, VArenaAlloc *allocator)
+renderer::CompLayer::CompLayer(model::Layer *layerModel, VArenaAlloc *allocator,
+                               int depth, size_t &nodeBudget)
     : renderer::Layer(layerModel)
 {
     if (!mLayerData->mChildren.empty())
@@ -467,8 +492,9 @@ renderer::CompLayer::CompLayer(model::Layer *layerModel, VArenaAlloc *allocator)
     // as lottie model keeps the data in front-toback-order.
     for (auto it = mLayerData->mChildren.crbegin();
          it != mLayerData->mChildren.rend(); ++it) {
+        if ((*it)->type() != model::Object::Type::Layer) continue;
         auto model = static_cast<model::Layer *>(*it);
-        auto item = createLayerItem(model, allocator);
+        auto item = createLayerItem(model, allocator, depth, nodeBudget);
         if (item) mLayers.push_back(item);
     }
 
@@ -520,6 +546,17 @@ void renderer::CompLayer::renderHelper(VPainter *    painter,
                                        const VRle &  matteRle,
                                        SurfaceCache &cache)
 {
+    if (cache.mRenderDepth >= kMaxLayerDepth) {
+        vWarning << "Max precomp render depth (" << kMaxLayerDepth << ") exceeded";
+        return;
+    }
+    ++cache.mRenderDepth;
+    // Decrement on every exit path (including the early returns below).
+    struct DepthGuard {
+        SurfaceCache &c;
+        ~DepthGuard() { --c.mRenderDepth; }
+    } depthGuard{cache};
+
     VRle mask;
     if (mLayerMask) {
         mask = mLayerMask->maskRle(painter->clipBoundingRect());

@@ -75,12 +75,11 @@ public enum OpusDecoder {
         let sampleRate: Int32 = 48000
         var preSkip: Int32 = 0
 
-        // Output PCM accumulators (deinterleaved). Sized generously; will grow
-        // if needed. 30 s of voice at 48 kHz is ~1.44 M samples — fine in memory.
+        // Output PCM accumulators (deinterleaved), reserved for 30 s at 48 kHz (~5.8 MB per
+        // channel) once the header gives the channel count: voice notes are mono, so the
+        // right channel stays empty.
         var leftSamples: [Float] = []
         var rightSamples: [Float] = []
-        leftSamples.reserveCapacity(48_000 * 30)
-        rightSamples.reserveCapacity(48_000 * 30)
 
         // Per-packet decode buffer; sized for 120 ms × 48 kHz × stereo.
         let maxFramesPerPacket = 5760
@@ -129,6 +128,8 @@ public enum OpusDecoder {
                     guard channelCount == 1 || channelCount == 2 else {
                         throw OpusDecoderError.notOggOpus
                     }
+                    leftSamples.reserveCapacity(48_000 * 30)
+                    if channelCount == 2 { rightSamples.reserveCapacity(48_000 * 30) }
 
                     var err: Int32 = 0
                     decoder = opus_decoder_create(sampleRate, channelCount, &err)

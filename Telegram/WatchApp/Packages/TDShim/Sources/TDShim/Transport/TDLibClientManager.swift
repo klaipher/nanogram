@@ -105,7 +105,6 @@ open class TDLibClientManager {
     ///
     /// - Parameter logger: The logger object for debug print all queries and responses
     public init(logger: TDLibLogger? = nil) {
-        #warning("Breaking changes may be introduced to TDLibClientManager without major version bump.")
         self.logger = logger
         self.receiveQueue.async { [weak self] in
             while (true) {

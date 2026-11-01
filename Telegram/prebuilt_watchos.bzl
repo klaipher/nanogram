@@ -4,12 +4,12 @@
 it through the providers that `ios_application(watch_application = ...)` consumes:
 
   1. PrebuiltWatchosCompile (prebuilt_watchos_compile.sh) — runs `xcodebuild` against
-     the exported tgwatch source tree, baking the api credentials and the bundle id but
+     Telegram/WatchApp, baking the api credentials and the bundle id but
      leaving PLACEHOLDER versions, and emits an unsigned .app archive.
   2. PrebuiltWatchosPatchSign (prebuilt_watchos_patch.sh) — rewrites the two per-build
      Info.plist version keys on the compiled app, then optionally codesigns it.
 
-Splitting them lets Bazel cache the expensive (~4-min) compile across build numbers and
+Splitting them lets Bazel cache the expensive compile across build numbers and
 version bumps — which is every CI build, since `--define=buildNumber` changes each time.
 Only the version is deferred to the patch step: the api id/hash and the bundle id are
 stable for a given host configuration, so they stay baked by xcodebuild (the watch
@@ -23,9 +23,9 @@ The providers exposed:
   * AppleBundleInfo      — bundle metadata (the host reads only `.product_type`).
   * AppleEmbeddableInfo  — `watch_bundles` (the zipped .app placed under Watch/).
 
-The watch source tree is the committed in-repo snapshot at `Telegram/WatchApp/` (tracked
-inputs). To update it, re-sync from the standalone tgwatch repo via
-`tgwatch/tools/export-sources.sh`.
+The watch sources are `Telegram/WatchApp/` (tracked inputs), edited in this repo. The compile
+action keeps SwiftPM checkouts in ~/.cache/telegram-ios/watch-spm across runs (outside the
+action; they do not affect its output), so only the first build on a machine downloads them.
 
 Notes on the rules_apple providers used here:
   * AppleBundleInfo's public init is banned; we build it with the internal raw

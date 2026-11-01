@@ -27,6 +27,13 @@ final class LottieAnimationDecodeTests: XCTestCase {
         XCTAssertNil(LottieAnimation(tgsFileURL: url))
     }
 
+    func testDotLottieZipReturnsNil() throws {
+        // A sticker whose payload is a dotLottie zip (valid Lottie JSON inside) is refused:
+        // stickers are JSON, and rlottie's zip reader is not reachable from a sticker.
+        let url = Bundle.module.url(forResource: "dotlottie", withExtension: "tgs")!
+        XCTAssertNil(LottieAnimation(tgsFileURL: url))
+    }
+
     func testRenderFrameProducesNonEmptyImage() throws {
         let url = Bundle.module.url(forResource: "tiny", withExtension: "tgs")!
         let animation = try XCTUnwrap(LottieAnimation(tgsFileURL: url))

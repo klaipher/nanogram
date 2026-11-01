@@ -18,6 +18,7 @@ let package = Package(
                 // License files — not source
                 "rlottie/COPYING",
                 "rlottie/COPYING.MIT",
+                "rlottie/NANOGRAM.md",
                 // C API surface — we use the C++ Animation:: interface directly.
                 // lottieitem_capi.cpp is NOT excluded: it contains buildLayerNode()
                 // implementations for SolidLayer/ImageLayer/CompLayer/Layer and
@@ -47,7 +48,7 @@ let package = Package(
                 // in pixman .S assembly that SPM won't assemble). Undefining __ARM_NEON__
                 // activates the scalar memfill32 fallback in vdrawhelper.cpp and prevents
                 // RenderFuncTable::RenderFuncTable() from calling the missing neon() stub.
-                .unsafeFlags(["-U__ARM_NEON__"]),
+                .unsafeFlags(["-U__ARM_NEON__", "-Wno-shorten-64-to-32"]),
             ]
         ),
         .target(
@@ -65,6 +66,8 @@ let package = Package(
             resources: [
                 .copy("Resources/tiny.tgs"),
                 .copy("Resources/tiny.json"),
+                .copy("Resources/sticker_lottie.tgs"),
+                .copy("Resources/dotlottie.tgs"),
             ]
         ),
     ],

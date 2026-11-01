@@ -127,4 +127,7 @@ fi
 # (that would resolve $OUT_ZIP against the temp dir). --keepParent makes the archive
 # root the .app itself even when $APP is an absolute path.
 rm -f "$OUT_ZIP"
-/usr/bin/ditto -c -k --keepParent "$APP" "$OUT_ZIP"
+# No extended attributes: ditto would store them as ._ AppleDouble entries (every file
+# Xcode writes carries com.apple.provenance), and rules_apple unpacks the archive with
+# Python zipfile, so they would land in the bundle as files outside its code seal.
+/usr/bin/ditto -c -k --norsrc --noextattr --noqtn --noacl --keepParent "$APP" "$OUT_ZIP"

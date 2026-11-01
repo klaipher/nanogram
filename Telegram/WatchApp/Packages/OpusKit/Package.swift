@@ -11,6 +11,8 @@ let package = Package(
         .library(name: "OpusKit", targets: ["OpusKit"]),
     ],
     targets: [
+        // Vendored: libogg 1.3.6 (xiph/ogg tag v1.3.6, be05b13e98b048f0b5a0f5fa8ce514d56db5f822):
+        // src/ and include/ogg/ogg.h; os_types.h and src/config.h are hand-written for Apple.
         .target(
             name: "COgg",
             path: "Sources/COgg",
@@ -18,9 +20,12 @@ let package = Package(
             publicHeadersPath: "include",
             cSettings: [
                 .headerSearchPath("libogg/include"),
+                // Upstream code; its 64-to-32-bit conversions are intentional.
+                .unsafeFlags(["-Wno-shorten-64-to-32"]),
             ]
         ),
-        // Vendored: libopus 1.5.2 (https://opus-codec.org).
+        // Vendored: libopus 1.6.1 (xiph/opus tag v1.6.1, 22244de5a79bd1d6d623c32e72bf1954b56235be):
+        // celt/, silk/, src/, include/ minus build files, dump_modes, fixed_c5x/c6x.h, tansig_table.h.
         // Exclude list is version-specific — verify on upgrade.
         // arm_celt_map.c and armcpu.c are intentionally kept; both are fully
         // wrapped in `#ifdef OPUS_HAVE_RTCD` (never defined here) and compile
@@ -42,7 +47,6 @@ let package = Package(
                 // (silk/fixed/arm files already covered by the silk/fixed directory exclude below)
                 // ARM .s assembly (GAS/RVCT)
                 "libopus/celt/arm/celt_pitch_xcorr_arm.s",
-                "libopus/celt/arm/celt_pitch_xcorr_arm-gnu.S",
                 // ARM NE10 FFT (external dep) — not used
                 "libopus/celt/arm/celt_mdct_ne10.c",
                 "libopus/celt/arm/celt_fft_ne10.c",
@@ -68,6 +72,9 @@ let package = Package(
                 "libopus/src/opus_compare.c",
                 "libopus/src/opus_demo.c",
                 "libopus/src/repacketizer_demo.c",
+                "libopus/src/qext_compare.c",
+                // Included by the demo/test programs only (Makefile.am EXTRA_DIST)
+                "libopus/celt/mini_kfft.c",
                 "libopus/celt/opus_custom_demo.c",
                 "libopus/celt/tests",
                 "libopus/silk/tests",
@@ -83,7 +90,7 @@ let package = Package(
                 .headerSearchPath("libopus/silk/float"),
                 .headerSearchPath("libopus/src"),
                 .define("HAVE_CONFIG_H"),
-                .unsafeFlags(["-U__ARM_NEON__", "-U__SSE2__", "-U__SSE4_1__", "-U__AVX2__"]),
+                .unsafeFlags(["-U__ARM_NEON__", "-U__SSE2__", "-U__SSE4_1__", "-U__AVX2__", "-Wno-shorten-64-to-32"]),
             ]
         ),
         .target(

@@ -11,6 +11,9 @@ let package = Package(
         .library(name: "WebPKit", targets: ["WebPKit"]),
     ],
     targets: [
+        // Vendored: libwebp 1.6.0 (webmproject/libwebp tag v1.6.0,
+        // 4fa21912338357f89e4fd51cf2368325b59e9bd9): src/dec, dsp, utils, webp plus four
+        // src/enc headers the decoder DSP includes; src/webp/config.h is hand-written.
         .target(
             name: "WebPCore",
             path: "Sources/WebPCore",
@@ -46,6 +49,9 @@ let package = Package(
                 "libwebp/src/dsp/alpha_processing_sse2.c",
                 "libwebp/src/dsp/alpha_processing_sse41.c",
                 "libwebp/src/dsp/ssim_sse2.c",
+                // AVX2 (x86) variants
+                "libwebp/src/dsp/lossless_avx2.c",
+                "libwebp/src/dsp/lossless_enc_avx2.c",
                 // MIPS variants
                 "libwebp/src/dsp/cost_mips32.c",
                 "libwebp/src/dsp/cost_mips_dsp_r2.c",

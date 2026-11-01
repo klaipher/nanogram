@@ -54,6 +54,8 @@
 // the parse.
 
 #include <array>
+#include <queue>
+#include <unordered_set>
 
 #include "lottiemodel.h"
 #include "rapidjson/document.h"
@@ -361,6 +363,7 @@ protected:
     model::Layer *                                   curLayerRef{nullptr};
     std::vector<model::Layer *>                      mLayersToUpdate;
     std::string                                      mDirPath;
+    int                                              mGroupDepth{0};
     void                                             SkipOut(int depth);
 };
 
@@ -627,12 +630,48 @@ model::BlendMode LottieParserImpl::getBlendMode()
 
 void LottieParserImpl::resolveLayerRefs()
 {
+    // Build directed graph: assetId → direct precomp refIds.
+    // Then BFS from each asset to detect if it can reach itself (cycle).
+    std::unordered_set<std::string> cyclicAssets;
+    {
+        std::unordered_map<std::string, std::vector<std::string>> deps;
+        for (const auto &kv : compRef->mAssets) {
+            for (const auto &obj : kv.second->mLayers) {
+                if (obj->type() != model::Object::Type::Layer) continue;
+                auto layer = static_cast<model::Layer *>(obj);
+                if (layer->mLayerType == model::Layer::Type::Precomp &&
+                    layer->mExtra && !layer->mExtra->mPreCompRefId.empty()) {
+                    deps[kv.first].push_back(layer->mExtra->mPreCompRefId);
+                }
+            }
+        }
+        for (const auto &kv : deps) {
+            const std::string &           startId = kv.first;
+            std::unordered_set<std::string> visited;
+            std::queue<std::string>         q;
+            for (const auto &dep : kv.second) q.push(dep);
+            while (!q.empty()) {
+                std::string id = q.front(); q.pop();
+                if (id == startId) { cyclicAssets.insert(startId); break; }
+                if (!visited.insert(id).second) continue;
+                auto it = deps.find(id);
+                if (it != deps.end())
+                    for (const auto &dep : it->second) q.push(dep);
+            }
+        }
+    }
+
     for (const auto &layer : mLayersToUpdate) {
         auto search = compRef->mAssets.find(layer->extra()->mPreCompRefId);
         if (search != compRef->mAssets.end()) {
             if (layer->mLayerType == model::Layer::Type::Image) {
                 layer->extra()->mAsset = search->second;
             } else if (layer->mLayerType == model::Layer::Type::Precomp) {
+                if (cyclicAssets.count(search->first)) {
+                    vWarning << "Circular asset reference detected, ignoring: "
+                             << search->first;
+                    continue;
+                }
                 layer->mChildren = search->second->mLayers;
                 layer->setStatic(layer->isStatic() &&
                                  search->second->isStatic());
@@ -796,6 +835,46 @@ static std::string convertFromBase64(const std::string &str)
     return b64decode(b64Data, length);
 }
 
+static bool isResourcePathSafe(const std::string& baseDir, const std::string& userPath)
+{
+    char resolvedBase[PATH_MAX] = {};
+    char resolvedTarget[PATH_MAX] = {};
+
+    // Resolve base directory
+    if (!realpath(baseDir.c_str(), resolvedBase)) {
+#ifdef DEBUG_PARSER
+        vWarning << "Error: Cannot resolve base path: " << baseDir.c_str();
+#endif
+        return false;
+    }
+
+    // Resolve target path
+    std::string fullPath = baseDir;
+    if (!baseDir.empty() && baseDir.back() != '/') fullPath += "/";
+    fullPath += userPath;
+
+    if (!realpath(fullPath.c_str(), resolvedTarget)) {
+#ifdef DEBUG_PARSER
+        vWarning << "Error: Cannot resolve target path: " << fullPath.c_str();
+#endif
+        return false;
+    }
+
+    std::string base(resolvedBase);
+    std::string target(resolvedTarget);
+
+    // Ensure target starts with base
+    bool result = target.compare(0, base.length(), base) == 0 &&
+         (target.length() == base.length() || target[base.length()] == '/');
+
+    if (!result) {
+#ifdef DEBUG_PARSER
+        vWarning << "Error: Dangerous path blocked: " << fullPath.c_str();
+#endif
+    }
+    return result;
+}
+
 /*
  *  std::to_string() function is missing in VS2017
  *  so this is workaround for windows build
@@ -820,7 +899,7 @@ model::Asset *LottieParserImpl::parseAsset()
     auto        asset = allocator().make<model::Asset>();
     std::string filename;
     std::string relativePath;
-    bool        embededResource = false;
+    bool        embeddedResource = false;
     EnterObject();
     while (const char *key = NextObjectKey()) {
         if (0 == strcmp(key, "w")) {
@@ -837,7 +916,7 @@ model::Asset *LottieParserImpl::parseAsset()
             RAPIDJSON_ASSERT(PeekType() == kStringType);
             relativePath = std::string(GetString());
         } else if (0 == strcmp(key, "e")) { /* relative image path */
-            embededResource = GetInt();
+            embeddedResource = GetInt();
         } else if (0 == strcmp(key, "id")) { /* reference id*/
             if (PeekType() == kStringType) {
                 asset->mRefId = std::string(GetString());
@@ -866,14 +945,18 @@ model::Asset *LottieParserImpl::parseAsset()
         }
     }
 
-    if (asset->mAssetType == model::Asset::Type::Image) {
-        if (embededResource) {
-            // embeder resource should start with "data:"
-            if (filename.compare(0, 5, "data:") == 0) {
+    if (asset->mAssetType == model::Asset::Type::Image && !filename.empty()) {
+        if (embeddedResource) {
+            // embedded resource should start with "data:"
+            // URL Scheme: "data:[<mediatype>][;base64],<data>"
+            if (filename.compare(0, 5, "data:") == 0 && filename.find(',') != std::string::npos) {
                 asset->loadImageData(convertFromBase64(filename));
             }
         } else {
-            asset->loadImagePath(mDirPath + relativePath + filename);
+            // reject dangerous paths
+            if (isResourcePathSafe(mDirPath, relativePath + filename)) {
+                asset->loadImagePath(mDirPath + relativePath + filename);
+            }
         }
     }
 
@@ -1221,18 +1304,29 @@ model::Object *LottieParserImpl::parseGroupObject()
 {
     auto group = allocator().make<model::Group>();
 
+    bool tooDeep = mGroupDepth >= kMaxModelTreeDepth;
+    if (tooDeep) {
+        vWarning << "Max shape-group nesting depth (" << kMaxModelTreeDepth << ") exceeded, discarding deeper content";
+    }
+
     while (const char *key = NextObjectKey()) {
         if (0 == strcmp(key, "nm")) {
             group->setName(GetString());
         } else if (0 == strcmp(key, "it")) {
-            RAPIDJSON_ASSERT(PeekType() == kArrayType);
+            if (tooDeep) {
+                Skip(key);
+                continue;
+            }
             EnterArray();
+            ++mGroupDepth;
             while (NextArrayValue()) {
                 RAPIDJSON_ASSERT(PeekType() == kObjectType);
                 parseObject(group);
             }
-            if (group->mChildren.back()->type() ==
-                model::Object::Type::Transform) {
+            --mGroupDepth;
+            if (!group->mChildren.empty()
+                    && group->mChildren.back()->type()
+                            == model::Object::Type::Transform) {
                 group->mTransform =
                     static_cast<model::Transform *>(group->mChildren.back());
                 group->mChildren.pop_back();

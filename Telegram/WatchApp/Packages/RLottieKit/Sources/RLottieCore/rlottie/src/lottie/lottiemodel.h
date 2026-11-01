@@ -45,6 +45,12 @@ namespace rlottie {
 
 namespace internal {
 
+// Maximum nesting depth allowed for the shape-group / layer model tree.
+// Upstream uses 32; 65 is tlottie's MAX_GROUP_DEPTH, as in the iOS app's rlottie,
+// so no sticker Telegram renders elsewhere loses content here. Layer (precomp)
+// depth stays capped at 32 by kMaxLayerDepth in lottieitem.cpp.
+constexpr int kMaxModelTreeDepth = 65;
+
 using Marker = std::tuple<std::string, int, int>;
 
 using LayerInfo = Marker;
@@ -234,20 +240,23 @@ public:
 
     T value(int frameNo) const
     {
-        if (frames_.front().start_ >= frameNo)
-            return frames_.front().value_.start_;
-        if (frames_.back().end_ <= frameNo) return frames_.back().value_.end_;
+        if (!frames_.empty()) {
+            if (frames_.front().start_ >= frameNo)
+                return frames_.front().value_.start_;
+            if (frames_.back().end_ <= frameNo) return frames_.back().value_.end_;
 
-        for (const auto &keyFrame : frames_) {
-            if (frameNo >= keyFrame.start_ && frameNo < keyFrame.end_)
-                return keyFrame.value(frameNo);
+            for (const auto &keyFrame : frames_) {
+                if (frameNo >= keyFrame.start_ && frameNo < keyFrame.end_)
+                    return keyFrame.value(frameNo);
+            }
         }
         return {};
     }
 
     float angle(int frameNo) const
     {
-        if ((frames_.front().start_ >= frameNo) ||
+        if (frames_.empty() ||
+            (frames_.front().start_ >= frameNo) ||
             (frames_.back().end_ <= frameNo))
             return 0;
 
@@ -260,6 +269,8 @@ public:
 
     bool changed(int prevFrame, int curFrame) const
     {
+        if (frames_.empty()) return false;
+
         auto first = frames_.front().start_;
         auto last = frames_.back().end_;
 
@@ -335,6 +346,7 @@ public:
             value().toPath(path);
         } else {
             const auto &vec = animation().frames_;
+            if (vec.empty()) return;
             if (vec.front().start_ >= frameNo)
                 return vec.front().value_.start_.toPath(path);
             if (vec.back().end_ <= frameNo)
@@ -956,7 +968,13 @@ public:
     Repeater() : Object(Object::Type::Repeater) {}
     Group *content() const { return mContent ? mContent : nullptr; }
     void   setContent(Group *content) { mContent = content; }
-    int    maxCopies() const { return int(mMaxCopies); }
+    static constexpr float kMaxRepeaterCopies = 10000.0f;
+    int    maxCopies() const
+    {
+        if (!std::isfinite(mMaxCopies) || mMaxCopies <= 0.0f) return 0;
+        if (mMaxCopies > kMaxRepeaterCopies) return int(kMaxRepeaterCopies);
+        return int(mMaxCopies);
+    }
     float  copies(int frameNo) const { return mCopies.value(frameNo); }
     float  offset(int frameNo) const { return mOffset.value(frameNo); }
     bool   processed() const { return mProcessed; }
