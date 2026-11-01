@@ -503,40 +503,79 @@ public final class StorageBox {
             return peerIds
         }
         
+        // Size updates arrive for every cached file and downloaded chunk. They are applied in one
+        // transaction per batch instead of one each: after `pendingSizeUpdatesDelay`, at
+        // `maxPendingSizeUpdates`, or before any other operation (beginInternalTransaction), so
+        // every reader and writer sees them in order. A crash loses at most one batch of size
+        // bookkeeping; the MediaBox scan re-adds files it does not know.
+        private static let maxPendingSizeUpdates = 64
+        private static let pendingSizeUpdatesDelay = 1.0
+        private var pendingSizeUpdates: [(id: Data, size: Int64)] = []
+        private var isPendingSizeUpdatesFlushScheduled = false
+        
         func update(id: Data, size: Int64) {
+            assert(self.queue.isCurrent())
+            self.pendingSizeUpdates.append((id, size))
+            if self.pendingSizeUpdates.count >= Impl.maxPendingSizeUpdates {
+                self.flushPendingSizeUpdates()
+            } else if !self.isPendingSizeUpdatesFlushScheduled {
+                self.isPendingSizeUpdatesFlushScheduled = true
+                self.queue.after(Impl.pendingSizeUpdatesDelay, { [weak self] in
+                    guard let self else {
+                        return
+                    }
+                    self.isPendingSizeUpdatesFlushScheduled = false
+                    self.flushPendingSizeUpdates()
+                })
+            }
+        }
+        
+        func flushPendingSizeUpdates() {
+            if self.pendingSizeUpdates.isEmpty {
+                return
+            }
+            let updates = self.pendingSizeUpdates
+            self.pendingSizeUpdates.removeAll()
+            
             self.beginInternalTransaction {
                 self.valueBox.begin()
                 
-                let hashId = md5Hash(id)
-                
-                let mainKey = ValueBoxKey(length: 16)
-                mainKey.setData(0, value: hashId.data)
-                
-                if let currentInfoValue = self.valueBox.get(self.hashIdToInfoTable, key: mainKey) {
-                    var info = ItemInfo(buffer: currentInfoValue)
-                    
-                    var sizeDelta: Int64 = 0
-                    if info.size != size {
-                        sizeDelta = size - info.size
-                        info.size = size
-                        
-                        self.valueBox.set(self.hashIdToInfoTable, key: mainKey, value: info.serialize())
-                    }
-                    
-                    if sizeDelta != 0 {
-                        self.internalAddSize(contentType: info.contentType, delta: sizeDelta)
-                    }
-                    
-                    for peerId in self.peerIdsReferencing(hashId: hashId) {
-                        self.internalAddSize(peerId: peerId, contentType: info.contentType, delta: sizeDelta)
-                    }
-                } else {
-                    self.internalAdd(reference: StorageBox.Reference(peerId: 0, messageNamespace: 0, messageId: 0), to: id, contentType: 0, size: size)
+                for update in updates {
+                    self.internalUpdate(id: update.id, size: update.size)
                 }
                 
                 self.valueBox.commit()
                 
                 self.incrementalUpdateTotalSize()
+            }
+        }
+        
+        private func internalUpdate(id: Data, size: Int64) {
+            let hashId = md5Hash(id)
+            
+            let mainKey = ValueBoxKey(length: 16)
+            mainKey.setData(0, value: hashId.data)
+            
+            if let currentInfoValue = self.valueBox.get(self.hashIdToInfoTable, key: mainKey) {
+                var info = ItemInfo(buffer: currentInfoValue)
+                
+                var sizeDelta: Int64 = 0
+                if info.size != size {
+                    sizeDelta = size - info.size
+                    info.size = size
+                    
+                    self.valueBox.set(self.hashIdToInfoTable, key: mainKey, value: info.serialize())
+                }
+                
+                if sizeDelta != 0 {
+                    self.internalAddSize(contentType: info.contentType, delta: sizeDelta)
+                }
+                
+                for peerId in self.peerIdsReferencing(hashId: hashId) {
+                    self.internalAddSize(peerId: peerId, contentType: info.contentType, delta: sizeDelta)
+                }
+            } else {
+                self.internalAdd(reference: StorageBox.Reference(peerId: 0, messageNamespace: 0, messageId: 0), to: id, contentType: 0, size: size)
             }
         }
         
@@ -769,6 +808,7 @@ public final class StorageBox {
         }
         
         func subscribeTotalSize(next: @escaping (Int64) -> Void) -> Disposable {
+            self.flushPendingSizeUpdates()
             let index = self.totalSizeSubscribers.add(next)
             
             next(self.totalSize)
@@ -1042,6 +1082,8 @@ public final class StorageBox {
         
         private func beginInternalTransaction(ignoreDisabled: Bool = false, _ f: @escaping () -> Void) {
             assert(self.queue.isCurrent())
+            // Pending size updates go first, so `f` sees them.
+            self.flushPendingSizeUpdates()
             if ignoreDisabled || self.canBeginTransactionsValue.with({ $0 }) {
                 f()
             } else {
@@ -1055,6 +1097,10 @@ public final class StorageBox {
         
         let canBeginTransactionsValue = Atomic<Bool>(value: true)
         func setCanBeginTransactions(_ value: Bool, afterTransactionIfRunning: @escaping () -> Void) {
+            if !value {
+                // Write what is pending while writes are still allowed (the app is about to suspend).
+                self.flushPendingSizeUpdates()
+            }
             let previous = self.canBeginTransactionsValue.swap(value)
             if previous != value && value {
                 let fs = self.queuedInternalTransactions.swap([])
@@ -1193,6 +1239,7 @@ public final class StorageBox {
     /// Frees SQLite page-cache memory (background, memory warning).
     public func releaseMemory() {
         self.impl.with { impl in
+            impl.flushPendingSizeUpdates()
             impl.valueBox.releaseMemory()
         }
     }

@@ -78,7 +78,7 @@ public extension ReplyMarkupButtonAction {
             guard let value = flatBuffersObject.value(type: TelegramCore_InstantPageButtonAction_Callback.self) else {
                 throw FlatBuffersError.missingRequiredField()
             }
-            self = .callback(requiresPassword: value.requiresPassword, data: MemoryBuffer(data: Data(value.data)))
+            self = .callback(requiresPassword: value.requiresPassword, data: MemoryBuffer(data: value.data.makeData()))
         case .instantpagebuttonactionOpenwebapp:
             self = .openWebApp
         case .instantpagebuttonactionPayment:

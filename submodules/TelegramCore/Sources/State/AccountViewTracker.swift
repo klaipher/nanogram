@@ -2509,8 +2509,8 @@ public final class AccountViewTracker {
             }()
             
             let groupingPredicate: (Message, Message) -> Bool = { lhs, rhs in
-                let lhsTimestamp = ((lhs.timestamp + timezoneOffset) / (granularity)) * (granularity)
-                let rhsTimestamp = ((rhs.timestamp + timezoneOffset) / (granularity)) * (granularity)
+                let lhsTimestamp = timestampRoundedToGranularity(lhs.timestamp, offset: timezoneOffset, granularity: granularity)
+                let rhsTimestamp = timestampRoundedToGranularity(rhs.timestamp, offset: timezoneOffset, granularity: granularity)
                 if lhsTimestamp != rhsTimestamp {
                     return false
                 }

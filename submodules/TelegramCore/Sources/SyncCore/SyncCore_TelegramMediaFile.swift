@@ -521,7 +521,7 @@ public enum TelegramMediaFileAttribute: PostboxCoding, Equatable {
             guard let value = flatBuffersObject.value(type: TelegramCore_TelegramMediaFileAttribute_Audio.self) else {
                 throw FlatBuffersError.missingRequiredField()
             }
-            self = .Audio(isVoice: value.isVoice, duration: Int(value.duration), title: value.title, performer: value.performer, waveform: value.waveform.isEmpty ? nil : Data(value.waveform))
+            self = .Audio(isVoice: value.isVoice, duration: Int(value.duration), title: value.title, performer: value.performer, waveform: value.waveform.isEmpty ? nil : value.waveform.makeData())
         case .telegrammediafileattributeHaslinkedstickers:
             self = .HasLinkedStickers
         case .telegrammediafileattributeHintfileislarge:
@@ -904,7 +904,7 @@ public final class TelegramMediaFile: Media, Equatable, Codable {
             return try VideoThumbnail(flatBuffersObject: item)
         }
         self.videoCover = try flatBuffersObject.videoCover.flatMap { try TelegramMediaImage(flatBuffersObject: $0) }
-        self.immediateThumbnailData = flatBuffersObject.immediateThumbnailData.isEmpty ? nil : Data(flatBuffersObject.immediateThumbnailData)
+        self.immediateThumbnailData = flatBuffersObject.immediateThumbnailData.isEmpty ? nil : flatBuffersObject.immediateThumbnailData.makeData()
         self.mimeType = flatBuffersObject.mimeType
         self.size = flatBuffersObject.size == Int64.min ? nil : flatBuffersObject.size
         self.attributes = try flatBuffersObject.attributes.map { item in
@@ -1800,6 +1800,10 @@ public extension TelegramMediaFile.Accessor {
             return _wrappedFile.immediateThumbnailData
         }
         
-        return _wrapped!.immediateThumbnailData.isEmpty ? nil : Data(_wrapped!.immediateThumbnailData)
+        guard let wrapped = self._wrapped else {
+            return nil
+        }
+        let vector = wrapped.immediateThumbnailData
+        return vector.isEmpty ? nil : vector.makeData()
     }
 }

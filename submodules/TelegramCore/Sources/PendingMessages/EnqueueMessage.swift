@@ -62,10 +62,18 @@ public struct EngineMessageReplyQuote: Codable, Equatable {
     /// which is what every display and search path reads.
     public var richText: [RichText]?
     
+    /// With `richText`, `text` and `entities` are ignored and derived from it, so a quote never
+    /// carries rich fragments whose flat form says something else.
     public init(text: String, offset: Int?, entities: [MessageTextEntity], media: Media?, richText: [RichText]? = nil) {
-        self.text = text
+        if let richText {
+            let flat = richReplyQuoteTextAndEntities(richText)
+            self.text = flat.text
+            self.entities = flat.entities
+        } else {
+            self.text = text
+            self.entities = entities
+        }
         self.offset = offset
-        self.entities = entities
         self.media = media
         self.richText = richText
     }
@@ -73,21 +81,25 @@ public struct EngineMessageReplyQuote: Codable, Equatable {
     public init(from decoder: Decoder) throws {
         let container = try decoder.container(keyedBy: CodingKeys.self)
         
-        self.text = try container.decode(String.self, forKey: .text)
-        self.offset = (try container.decodeIfPresent(Int32.self, forKey: .offset)).flatMap(Int.init)
-        self.entities = try container.decode([MessageTextEntity].self, forKey: .entities)
+        let text = try container.decode(String.self, forKey: .text)
+        let offset = (try container.decodeIfPresent(Int32.self, forKey: .offset)).flatMap(Int.init)
+        let entities = try container.decode([MessageTextEntity].self, forKey: .entities)
         
+        let media: Media?
         if let mediaData = try container.decodeIfPresent(Data.self, forKey: .media) {
-            self.media = PostboxDecoder(buffer: MemoryBuffer(data: mediaData)).decodeRootObject() as? Media
+            media = PostboxDecoder(buffer: MemoryBuffer(data: mediaData)).decodeRootObject() as? Media
         } else {
-            self.media = nil
+            media = nil
         }
         
+        let richText: [RichText]?
         if let richTextData = try container.decodeIfPresent(Data.self, forKey: .richText) {
-            self.richText = PostboxDecoder(buffer: MemoryBuffer(data: richTextData)).decodeObjectArrayWithDecoderForKey("f") as [RichText]
+            richText = PostboxDecoder(buffer: MemoryBuffer(data: richTextData)).decodeObjectArrayWithDecoderForKey("f") as [RichText]
         } else {
-            self.richText = nil
+            richText = nil
         }
+        
+        self.init(text: text, offset: offset, entities: entities, media: media, richText: richText)
     }
     
     public func encode(to encoder: Encoder) throws {

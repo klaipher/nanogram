@@ -165,7 +165,7 @@ public class ChatMessageGiftOfferBubbleContentNode: ChatMessageBubbleContentNode
                                 return item.presentationData.strings.Notification_StarGiftOffer_Expiration_Hours(hours) + item.presentationData.strings.Notification_StarGiftOffer_Expiration_Delimiter + item.presentationData.strings.Notification_StarGiftOffer_Expiration_Minutes(minutes)
                             }
                         }
-                        let delta = expireDate - currentTimestamp
+                        let delta = clampedTimestampDifference(expireDate, currentTimestamp)
                         additionalText = item.presentationData.strings.Notification_StarGiftOffer_Status_Expires(textForTimeout(delta)).string
 
                         if incoming {

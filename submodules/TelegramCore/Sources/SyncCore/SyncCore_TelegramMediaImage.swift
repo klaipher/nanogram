@@ -60,7 +60,7 @@ public enum TelegramMediaImageReference: PostboxCoding, Equatable {
         self = .cloud(
             imageId: flatBuffersObject.imageId,
             accessHash: flatBuffersObject.accessHash,
-            fileReference: flatBuffersObject.fileReference.isEmpty ? nil : Data(flatBuffersObject.fileReference)
+            fileReference: flatBuffersObject.fileReference.isEmpty ? nil : flatBuffersObject.fileReference.makeData()
         )
     }
     
@@ -381,7 +381,7 @@ public final class TelegramMediaImage: Media, Equatable, Codable {
         self.videoRepresentations = try flatBuffersObject.videoRepresentations.map { item in
             return try TelegramMediaImage.VideoRepresentation(flatBuffersObject: item)
         }
-        self.immediateThumbnailData = flatBuffersObject.immediateThumbnailData.isEmpty ? nil : Data(flatBuffersObject.immediateThumbnailData)
+        self.immediateThumbnailData = flatBuffersObject.immediateThumbnailData.isEmpty ? nil : flatBuffersObject.immediateThumbnailData.makeData()
         self.emojiMarkup = try flatBuffersObject.emojiMarkup.flatMap { try EmojiMarkup(flatBuffersObject: $0) }
         self.reference = try flatBuffersObject.reference.flatMap { try TelegramMediaImageReference(flatBuffersObject: $0) }
         self.partialReference = try flatBuffersObject.partialReference.flatMap { try PartialMediaReference(flatBuffersObject: $0) }
@@ -591,7 +591,7 @@ public final class TelegramMediaImageRepresentation: PostboxCoding, Equatable, C
         self.dimensions = PixelDimensions(width: flatBuffersObject.width, height: flatBuffersObject.height)
         self.resource = try TelegramMediaResource_parse(flatBuffersObject: flatBuffersObject.resource)
         self.progressiveSizes = Array(flatBuffersObject.progressiveSizes)
-        self.immediateThumbnailData = flatBuffersObject.immediateThumbnailData.isEmpty ? nil : Data(flatBuffersObject.immediateThumbnailData)
+        self.immediateThumbnailData = flatBuffersObject.immediateThumbnailData.isEmpty ? nil : flatBuffersObject.immediateThumbnailData.makeData()
         self.hasVideo = flatBuffersObject.hasVideo
         self.isPersonal = flatBuffersObject.isPersonal
         

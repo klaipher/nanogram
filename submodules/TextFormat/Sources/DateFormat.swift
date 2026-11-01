@@ -6,29 +6,24 @@ import TelegramUIPreferences
 public func stringForEntityFormattedDate(timestamp: Int32, format: MessageTextEntityType.DateTimeFormat, strings: PresentationStrings, dateTimeFormat: PresentationDateTimeFormat) -> String {
     switch format {
     case .relative:
-        let currentTimestamp = Int32(CFAbsoluteTimeGetCurrent() + NSTimeIntervalSince1970)
-        let value = currentTimestamp - timestamp
-        if value > 0 {
-            if value < 60 {
-                return strings.FormattedDate_SecondsAgo(value)
-            } else if value <= 1 * 60 * 60 {
-                return strings.FormattedDate_MinutesAgo(Int32(round(Float(value) / 60)))
-            } else if value <= 24 * 60 * 60 {
-                return strings.FormattedDate_HoursAgo(Int32(round(Float(value) / (60 * 60))))
-            } else {
-                return strings.FormattedDate_DaysAgo(Int32(round(Float(value) / (24 * 60 * 60))))
-            }
-        } else {
-            let value = abs(value)
-            if value < 60 {
-                return strings.FormattedDate_InSeconds(value)
-            } else if value <= 1 * 60 * 60 {
-                return strings.FormattedDate_InMinutes(Int32(round(Float(value) / 60)))
-            } else if value <= 24 * 60 * 60 {
-                return strings.FormattedDate_InHours(Int32(round(Float(value) / (60 * 60))))
-            } else {
-                return strings.FormattedDate_InDays(Int32(round(Float(value) / (24 * 60 * 60))))
-            }
+        let currentTimestamp = Int64(CFAbsoluteTimeGetCurrent() + NSTimeIntervalSince1970)
+        switch relativeEntityDate(timestamp: timestamp, now: currentTimestamp) {
+        case let .secondsAgo(value):
+            return strings.FormattedDate_SecondsAgo(value)
+        case let .minutesAgo(value):
+            return strings.FormattedDate_MinutesAgo(value)
+        case let .hoursAgo(value):
+            return strings.FormattedDate_HoursAgo(value)
+        case let .daysAgo(value):
+            return strings.FormattedDate_DaysAgo(value)
+        case let .inSeconds(value):
+            return strings.FormattedDate_InSeconds(value)
+        case let .inMinutes(value):
+            return strings.FormattedDate_InMinutes(value)
+        case let .inHours(value):
+            return strings.FormattedDate_InHours(value)
+        case let .inDays(value):
+            return strings.FormattedDate_InDays(value)
         }
     case let .full(timeFormat, dateFormat, dayOfWeek):
         let _ = dayOfWeek
@@ -205,4 +200,46 @@ private func stringForFullDate(timestamp: Int32, strings: PresentationStrings, d
     }
 
     return monthFormat(dayString, yearString).string
+}
+
+enum RelativeEntityDate: Equatable {
+    case secondsAgo(Int32)
+    case minutesAgo(Int32)
+    case hoursAgo(Int32)
+    case daysAgo(Int32)
+    case inSeconds(Int32)
+    case inMinutes(Int32)
+    case inHours(Int32)
+    case inDays(Int32)
+}
+
+/// The sender picks a date entity's timestamp, so the distance to it is computed in 64 bits:
+/// `now - Int32.min` and `abs(Int32.min)` used to trap in Int32.
+func relativeEntityDate(timestamp: Int32, now: Int64) -> RelativeEntityDate {
+    let difference = now - Int64(timestamp)
+    let value = difference.magnitude
+    func rounded(_ divisor: Float) -> Int32 {
+        return Int32(clamping: Int64((Float(value) / divisor).rounded()))
+    }
+    if difference > 0 {
+        if value < 60 {
+            return .secondsAgo(Int32(clamping: value))
+        } else if value <= 1 * 60 * 60 {
+            return .minutesAgo(rounded(60))
+        } else if value <= 24 * 60 * 60 {
+            return .hoursAgo(rounded(60 * 60))
+        } else {
+            return .daysAgo(rounded(24 * 60 * 60))
+        }
+    } else {
+        if value < 60 {
+            return .inSeconds(Int32(clamping: value))
+        } else if value <= 1 * 60 * 60 {
+            return .inMinutes(rounded(60))
+        } else if value <= 24 * 60 * 60 {
+            return .inHours(rounded(60 * 60))
+        } else {
+            return .inDays(rounded(24 * 60 * 60))
+        }
+    }
 }

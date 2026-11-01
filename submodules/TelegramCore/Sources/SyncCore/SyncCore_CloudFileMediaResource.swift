@@ -978,7 +978,7 @@ public func TelegramMediaResource_parse(flatBuffersObject: TelegramCore_Telegram
             localId: value.localId,
             secret: value.secret,
             size: value.size == 0 ? nil : value.size,
-            fileReference: value.fileReference.isEmpty ? nil : Data(value.fileReference)
+            fileReference: value.fileReference.isEmpty ? nil : value.fileReference.makeData()
         )
     case .telegrammediaresourceClouddocumentsizemediaresource:
         guard let value = flatBuffersObject.value(type: TelegramCore_TelegramMediaResource_CloudDocumentSizeMediaResource.self) else {
@@ -989,7 +989,7 @@ public func TelegramMediaResource_parse(flatBuffersObject: TelegramCore_Telegram
             documentId: value.documentId,
             accessHash: value.accessHash,
             sizeSpec: value.sizeSpec,
-            fileReference: value.fileReference.isEmpty ? nil : Data(value.fileReference)
+            fileReference: value.fileReference.isEmpty ? nil : value.fileReference.makeData()
         )
     case .telegrammediaresourceCloudphotosizemediaresource:
         guard let value = flatBuffersObject.value(type: TelegramCore_TelegramMediaResource_CloudPhotoSizeMediaResource.self) else {
@@ -1001,7 +1001,7 @@ public func TelegramMediaResource_parse(flatBuffersObject: TelegramCore_Telegram
             accessHash: value.accessHash,
             sizeSpec: value.sizeSpec,
             size: value.size == 0 ? nil : value.size,
-            fileReference: value.fileReference.isEmpty ? nil : Data(value.fileReference)
+            fileReference: value.fileReference.isEmpty ? nil : value.fileReference.makeData()
         )
     case .telegrammediaresourceCloudpeerphotosizemediaresource:
         guard let value = flatBuffersObject.value(type: TelegramCore_TelegramMediaResource_CloudPeerPhotoSizeMediaResource.self) else {
@@ -1040,7 +1040,7 @@ public func TelegramMediaResource_parse(flatBuffersObject: TelegramCore_Telegram
             fileId: value.fileId,
             accessHash: value.accessHash,
             size: value.size == 0 ? nil : value.size,
-            fileReference: value.fileReference.isEmpty ? nil : Data(value.fileReference),
+            fileReference: value.fileReference.isEmpty ? nil : value.fileReference.makeData(),
             fileName: value.fileName
         )
     case .telegrammediaresourceLocalfilemediaresource:

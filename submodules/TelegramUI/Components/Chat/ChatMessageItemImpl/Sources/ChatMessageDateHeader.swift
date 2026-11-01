@@ -153,7 +153,7 @@ private func dateHeaderTimestampId(timestamp: Int32) -> Int32 {
     } else if timestamp == Int32.max {
         return timestamp / (granularity) * (granularity)
     } else {
-        return ((timestamp + timezoneOffset) / (granularity)) * (granularity)
+        return timestampRoundedToGranularity(timestamp, offset: timezoneOffset, granularity: granularity)
     }
 }
 

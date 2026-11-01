@@ -67,6 +67,19 @@ public struct FlatbufferVector<
   }
 }
 
+extension FlatbufferVector where Element == UInt8 {
+  /// The bytes in one copy. `Data(vector)` reads them one subscript call at a time.
+  /// A vector that does not fit in the buffer (a damaged record) gives empty data.
+  public func makeData() -> Data {
+    guard count > 0 else { return Data() }
+    let start = Int(startPosition)
+    guard start >= 0, count <= bb.capacity, start <= bb.capacity - count else {
+      return Data()
+    }
+    return bb.withUnsafePointerToSlice(index: start, count: count) { Data($0) }
+  }
+}
+
 extension FlatbufferVector: Encodable where Element: Encodable {
   public func encode(to encoder: Encoder) throws {
     var container = encoder.unkeyedContainer()

@@ -422,7 +422,7 @@ final class ChatListIndexTable: Table {
                             summary.all.chatCount = max(0, summary.all.chatCount)
                         }
                     }
-                    summary.all.messageCount += updatedCount - previousCount
+                    summary.all.messageCount = Int32(clamping: Int64(summary.all.messageCount) + Int64(updatedCount) - Int64(previousCount))
                     summary.all.messageCount = max(0, summary.all.messageCount)
                 }
             }
@@ -576,19 +576,19 @@ final class ChatListIndexTable: Table {
                             alterTags(&totalGroupUnreadState, peerId, tag, { absolute, filtered in
                                 var absolute = absolute
                                 var filtered = filtered
-                                absolute.messageCount -= initialValue.0
+                                absolute.messageCount = clampedUnreadCountSum(absolute.messageCount, clampedUnreadCountNegation(initialValue.0))
                                 if initialValue.1 {
                                     absolute.chatCount -= 1
                                 }
                                 if initialValue.2 && initialValue.0 == 0 {
-                                    absolute.messageCount -= 1
+                                    absolute.messageCount = clampedUnreadCountSum(absolute.messageCount, -1)
                                 }
-                                filtered.messageCount -= initialFilteredValue.0
+                                filtered.messageCount = clampedUnreadCountSum(filtered.messageCount, clampedUnreadCountNegation(initialFilteredValue.0))
                                 if initialFilteredValue.1 {
                                     filtered.chatCount -= 1
                                 }
                                 if initialFilteredValue.2 && initialFilteredValue.0 == 0 {
-                                    filtered.messageCount -= 1
+                                    filtered.messageCount = clampedUnreadCountSum(filtered.messageCount, -1)
                                 }
                                 return (absolute, filtered)
                             })
@@ -597,19 +597,19 @@ final class ChatListIndexTable: Table {
                             alterTags(&totalGroupUnreadState, peerId, tag, { absolute, filtered in
                                 var absolute = absolute
                                 var filtered = filtered
-                                absolute.messageCount += currentValue.0
+                                absolute.messageCount = clampedUnreadCountSum(absolute.messageCount, currentValue.0)
                                 if currentValue.2 && currentValue.0 == 0 {
-                                    absolute.messageCount += 1
+                                    absolute.messageCount = clampedUnreadCountSum(absolute.messageCount, 1)
                                 }
                                 if currentValue.1 {
                                     absolute.chatCount += 1
                                 }
-                                filtered.messageCount += currentFilteredValue.0
+                                filtered.messageCount = clampedUnreadCountSum(filtered.messageCount, currentFilteredValue.0)
                                 if currentFilteredValue.1 {
                                     filtered.chatCount += 1
                                 }
                                 if currentFilteredValue.2 && currentFilteredValue.0 == 0 {
-                                    filtered.messageCount += 1
+                                    filtered.messageCount = clampedUnreadCountSum(filtered.messageCount, 1)
                                 }
                                 return (absolute, filtered)
                             })
@@ -630,7 +630,7 @@ final class ChatListIndexTable: Table {
                             
                             let currentUnreadMark: Int32 = currentValue.2 ? 1 : 0
                             let initialUnreadMark: Int32 = initialValue.2 ? 1 : 0
-                            let messageDifference = max(currentValue.0, currentUnreadMark) - max(initialValue.0, initialUnreadMark)
+                            let messageDifference = Int64(max(currentValue.0, currentUnreadMark)) - Int64(max(initialValue.0, initialUnreadMark))
                             
                             let chatFilteredDifference: Int32
                             if initialFilteredValue.1 != currentFilteredValue.1 {
@@ -640,11 +640,11 @@ final class ChatListIndexTable: Table {
                             }
                             let currentFilteredUnreadMark: Int32 = currentFilteredValue.2 ? 1 : 0
                             let initialFilteredUnreadMark: Int32 = initialFilteredValue.2 ? 1 : 0
-                            let messageFilteredDifference = max(currentFilteredValue.0, currentFilteredUnreadMark) - max(initialFilteredValue.0, initialFilteredUnreadMark)
+                            let messageFilteredDifference = Int64(max(currentFilteredValue.0, currentFilteredUnreadMark)) - Int64(max(initialFilteredValue.0, initialFilteredUnreadMark))
                             
-                            absolute.messageCount += messageDifference
+                            absolute.messageCount = Int32(clamping: Int64(absolute.messageCount) + messageDifference)
                             absolute.chatCount += chatDifference
-                            filtered.messageCount += messageFilteredDifference
+                            filtered.messageCount = Int32(clamping: Int64(filtered.messageCount) + messageFilteredDifference)
                             filtered.chatCount += chatFilteredDifference
                             
                             return (absolute, filtered)
@@ -798,7 +798,7 @@ final class ChatListIndexTable: Table {
                     }
                     if state.count > 0 {
                         summaries[groupId]!.namespaces[namespace]!.all.chatCount += 1
-                        summaries[groupId]!.namespaces[namespace]!.all.messageCount += state.count
+                        summaries[groupId]?.namespaces[namespace]?.all.addMessageCount(state.count)
                     }
                 }
             }
@@ -838,7 +838,7 @@ final class ChatListIndexTable: Table {
                     }
                     if state.count > 0 {
                         summary.namespaces[namespace]!.all.chatCount += 1
-                        summary.namespaces[namespace]!.all.messageCount += state.count
+                        summary.namespaces[namespace]?.all.addMessageCount(state.count)
                     }
                 }
             }

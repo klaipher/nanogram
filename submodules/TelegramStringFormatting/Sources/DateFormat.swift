@@ -145,5 +145,10 @@ public func roundDateToDays(_ timestamp: Int32) -> Int32 {
         assertionFailure()
         return timestamp
     }
-    return Int32(date.timeIntervalSince1970)
+    // The start of the day of Int32.min is before Int32.min; clamp instead of trapping.
+    let dayStart = date.timeIntervalSince1970
+    if let value = Int32(exactly: dayStart.rounded(.towardZero)) {
+        return value
+    }
+    return dayStart < 0.0 ? Int32.min : Int32.max
 }

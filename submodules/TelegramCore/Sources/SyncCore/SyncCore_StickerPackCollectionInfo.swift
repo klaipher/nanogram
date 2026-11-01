@@ -124,7 +124,7 @@ public final class StickerPackCollectionInfo: ItemCollectionInfo, Equatable {
         self.shortName = flatBuffersObject.shortName
         self.thumbnail = try flatBuffersObject.thumbnail.flatMap(TelegramMediaImageRepresentation.init(flatBuffersObject:))
         self.thumbnailFileId = flatBuffersObject.thumbnailFileId == Int64.min ? nil : flatBuffersObject.thumbnailFileId
-        self.immediateThumbnailData = flatBuffersObject.immediateThumbnailData.isEmpty ? nil : Data(flatBuffersObject.immediateThumbnailData)
+        self.immediateThumbnailData = flatBuffersObject.immediateThumbnailData.isEmpty ? nil : flatBuffersObject.immediateThumbnailData.makeData()
         self.hash = flatBuffersObject.hash
         self.count = flatBuffersObject.count
     }
@@ -279,7 +279,11 @@ public extension StickerPackCollectionInfo.Accessor {
             return _wrappedObject.immediateThumbnailData
         }
         
-        return self._wrapped!.immediateThumbnailData.isEmpty ? nil : Data(self._wrapped!.immediateThumbnailData)
+        guard let wrapped = self._wrapped else {
+            return nil
+        }
+        let vector = wrapped.immediateThumbnailData
+        return vector.isEmpty ? nil : vector.makeData()
     }
     
     var thumbnailFileId: Int64? {
