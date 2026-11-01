@@ -26,5 +26,8 @@ jobs:
       - name: Make.py unit tests
         run: python3 -m unittest discover -s build-system/Make/tests -v
 
+      - name: tglint unit tests
+        run: python3 -m unittest discover -s tools/dev/lint/tests -v
+
       - name: shellcheck
-        run: shellcheck -S warning tools/dev/tg
+        run: shellcheck -S warning tools/dev/tg tools/dev/lint/pre-push

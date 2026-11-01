@@ -1,4 +1,5 @@
 
+load("@rules_cc//cc:cc_test.bzl", "cc_test")
 load("@rules_cc//cc:objc_library.bzl", "objc_library")
 
 config_setting(
@@ -42,5 +43,30 @@ objc_library(
     ],
     visibility = [
         "//visibility:public",
+    ],
+)
+
+# Host test of the coefficient decoder with AddressSanitizer and UndefinedBehaviorSanitizer.
+# The flags apply to this test binary only; the app's ImageDCT is unchanged.
+cc_test(
+    name = "SparseCoefficientsSanitizerTests",
+    srcs = [
+        "Sources/SparseCoefficients.c",
+        "PublicHeaders/ImageDCT/SparseCoefficients.h",
+        "Tests/SparseCoefficientsSanitizerTests.c",
+    ],
+    copts = [
+        "-Isubmodules/TelegramUI/Components/AnimationCache/ImageDCT/PublicHeaders",
+        "-O1",
+        "-fsanitize=address,undefined",
+        "-fno-sanitize-recover=all",
+        "-fno-omit-frame-pointer",
+        "-Wall",
+        "-Werror",
+        # ASan defines _FORTIFY_SOURCE 0; the toolchain's -D_FORTIFY_SOURCE=1 then redefines it.
+        "-Wno-macro-redefined",
+    ],
+    linkopts = [
+        "-fsanitize=address,undefined",
     ],
 )
