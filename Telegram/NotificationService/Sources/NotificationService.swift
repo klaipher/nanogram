@@ -2714,6 +2714,10 @@ final class NotificationService: UNNotificationServiceExtension {
     private var contentHandler: ((UNNotificationContent) -> Void)?
     private var episode: String?
     private var requestCompletion: ExtensionRequestCompletion?
+    private var requestIdentifier: String?
+    private let canFilterNotifications: Bool = Bundle.main.bundleIdentifier
+        .flatMap(ServicePushPresentation.baseAppBundleId(extensionBundleId:))
+        .map(ServicePushPresentation.appCanFilterNotifications(baseAppBundleId:)) ?? false
     
     override init() {
         super.init()
@@ -2725,8 +2729,13 @@ final class NotificationService: UNNotificationServiceExtension {
         
         self.initialContent = request.content
         self.contentHandler = contentHandler
+        self.requestIdentifier = request.identifier
 
         self.impl = nil
+
+        if !self.canFilterNotifications {
+            ServicePushPresentation.removeDeliveredPlaceholders()
+        }
 
         // Keeps the process running until the databases are paused; a request replaced before
         // it finished ends its activity when released.
@@ -2759,17 +2768,11 @@ final class NotificationService: UNNotificationServiceExtension {
                         
                         strongSelf.contentHandler = nil
                         
-                        let result: UNNotificationContent?
-                        if let content = content.with({ $0 }) {
-                            result = content.generate()
-                        } else {
-                            result = strongSelf.initialContent
-                        }
+                        let result = strongSelf.resultContent(generated: content.with({ $0 })?.generate())
+                        let requestIdentifier = strongSelf.requestIdentifier
                         // Content goes back once no transaction is running (or after 1 s).
                         NotificationService.finish(requestCompletion, impl: impl, deliverTimeout: 1.0, deliver: {
-                            if let result {
-                                contentHandler(result)
-                            }
+                            NotificationService.deliver(result, requestIdentifier: requestIdentifier, contentHandler: contentHandler)
                         })
                     } else {
                         Logger.shared.log("NotificationService \(episode)", "Attempted to repeatedly complete handling notification")
@@ -2797,18 +2800,39 @@ final class NotificationService: UNNotificationServiceExtension {
             
             Logger.shared.log("NotificationService \(self.episode ?? "???")", "Completing due to serviceExtensionTimeWillExpire")
             
-            let result: UNNotificationContent?
-            if let content = self.content.with({ $0 }) {
-                result = content.generate()
-            } else {
-                result = self.initialContent
-            }
+            let result = self.resultContent(generated: self.content.with({ $0 })?.generate())
+            let requestIdentifier = self.requestIdentifier
             // Delivered right away; the pause still runs under the activity.
             NotificationService.finish(self.requestCompletion, impl: impl, deliverTimeout: 0.0, deliver: {
-                if let result {
-                    contentHandler(result)
-                }
+                NotificationService.deliver(result, requestIdentifier: requestIdentifier, contentHandler: contentHandler)
             })
+        }
+    }
+
+    /// The content to hand back: the generated content, or the server's own alert when the
+    /// extension produced nothing (it never finished processing, so a message may be behind it).
+    /// Generated content with nothing to show is a service push (see `ServicePushPresentation`).
+    private func resultContent(generated: UNNotificationContent?) -> (content: UNNotificationContent, isQuietPlaceholder: Bool)? {
+        guard let generated else {
+            return self.initialContent.flatMap { ($0, false) }
+        }
+        return ServicePushPresentation.presentation(generated: generated, initialContent: self.initialContent, canFilter: self.canFilterNotifications)
+    }
+
+    private static func deliver(_ result: (content: UNNotificationContent, isQuietPlaceholder: Bool)?, requestIdentifier: String?, contentHandler: (UNNotificationContent) -> Void) {
+        guard let result else {
+            return
+        }
+        contentHandler(result.content)
+        guard result.isQuietPlaceholder, let requestIdentifier else {
+            return
+        }
+        // Kept alive long enough to take the placeholder down; a later request or the next one
+        // clears it otherwise.
+        let activity = ExpiringProcessActivity(reason: "NotificationService placeholder removal")
+        DispatchQueue.global().asyncAfter(deadline: .now() + ServicePushPresentation.removalDelay) {
+            UNUserNotificationCenter.current().removeDeliveredNotifications(withIdentifiers: [requestIdentifier])
+            activity.end()
         }
     }
 
