@@ -83,6 +83,16 @@ public final class Logger {
     private var file: (ManagedFile, Int)?
     private var shortFile: (ManagedFile, Int)?
     
+    // Short-log entries are written in batches: one write() per entry cost ~0.3 s per session on
+    // device. Pending bytes always belong to `pendingShortLogFile` and reach it within
+    // `shortLogFlushDelay`, on sync() and before the logs are collected.
+    private let shortLogFlushDelay: Double = 0.5
+    // Internal so a benchmark can compare with one write per entry (1).
+    var shortLogFlushSize: Int = 32 * 1024
+    private var pendingShortLogFile: ManagedFile?
+    private var pendingShortLogData = Data()
+    private var isShortLogFlushScheduled: Bool = false
+    
     public var logToFile: Bool = true {
         didSet {
             let oldEnabled = self.logToConsole || oldValue
@@ -132,9 +142,46 @@ public final class Logger {
     
     public func sync() {
         self.queue.sync {
+            self.flushShortLog()
             if let (currentFile, _) = self.file {
                 let _ = currentFile.sync()
             }
+        }
+    }
+    
+    private func flushShortLog() {
+        assert(self.queue.isCurrent())
+        guard let file = self.pendingShortLogFile, !self.pendingShortLogData.isEmpty else {
+            self.pendingShortLogFile = nil
+            return
+        }
+        let data = self.pendingShortLogData
+        self.pendingShortLogData = Data()
+        self.pendingShortLogFile = nil
+        let count = data.count
+        data.withUnsafeBytes { rawBytes -> Void in
+            let _ = file.write(rawBytes.baseAddress!, count: count)
+        }
+    }
+    
+    private func appendShortLog(_ data: Data, to file: ManagedFile) {
+        assert(self.queue.isCurrent())
+        if let pendingFile = self.pendingShortLogFile, pendingFile !== file {
+            self.flushShortLog()
+        }
+        self.pendingShortLogFile = file
+        self.pendingShortLogData.append(data)
+        if self.pendingShortLogData.count >= self.shortLogFlushSize {
+            self.flushShortLog()
+        } else if !self.isShortLogFlushScheduled {
+            self.isShortLogFlushScheduled = true
+            self.queue.after(self.shortLogFlushDelay, { [weak self] in
+                guard let self else {
+                    return
+                }
+                self.isShortLogFlushScheduled = false
+                self.flushShortLog()
+            })
         }
     }
     
@@ -194,6 +241,7 @@ public final class Logger {
     public func collectShortLogFiles() -> Signal<[(String, String)], NoError> {
         return Signal { subscriber in
             self.queue.async {
+                self.flushShortLog()
                 var result: [(Date, String, String)] = []
                 if let files = try? FileManager.default.contentsOfDirectory(at: URL(fileURLWithPath: self.basePath), includingPropertiesForKeys: [URLResourceKey.creationDateKey], options: []) {
                     for url in files {
@@ -216,6 +264,7 @@ public final class Logger {
     public func collectShortLog() -> Signal<[(Double, String)], NoError> {
         return Signal { subscriber in
             self.queue.async {
+                self.flushShortLog()
                 var result: [(Date, String, String)] = []
                 if let files = try? FileManager.default.contentsOfDirectory(at: URL(fileURLWithPath: self.basePath), includingPropertiesForKeys: [URLResourceKey.creationDateKey], options: []) {
                     for url in files {
@@ -435,6 +484,8 @@ public final class Logger {
                 openNew = true
             }
             if openNew {
+                // Pending bytes count towards the current file's size on disk.
+                self.flushShortLog()
                 let _ = try? FileManager.default.createDirectory(atPath: self.basePath, withIntermediateDirectories: true, attributes: nil)
                 
                 var createNew = false
@@ -487,11 +538,7 @@ public final class Logger {
             
             if let currentFile = currentFile {
                 let contentDataCount = contentData.count
-                contentData.withUnsafeBytes { rawBytes -> Void in
-                    let bytes = rawBytes.baseAddress!.assumingMemoryBound(to: UInt8.self)
-                    
-                    let _ = currentFile.write(bytes, count: contentDataCount)
-                }
+                self.appendShortLog(contentData, to: currentFile)
                 if let shortFile = self.shortFile {
                     self.shortFile = (shortFile.0, shortFile.1 + contentDataCount)
                 } else {

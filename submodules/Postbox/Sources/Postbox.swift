@@ -4581,6 +4581,7 @@ final class PostboxImpl {
             for table in self.tables {
                 table.clearMemoryCache()
             }
+            self.valueBox.releaseMemory()
         }).start()
     }
     
@@ -5312,6 +5313,7 @@ public class Postbox {
     }
 
     public func clearCaches() {
+        self.mediaBox.releaseMemory()
         self.impl.with { impl in
             impl.clearCaches()
         }

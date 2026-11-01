@@ -1190,6 +1190,13 @@ public final class StorageBox {
         }
     }
     
+    /// Frees SQLite page-cache memory (background, memory warning).
+    public func releaseMemory() {
+        self.impl.with { impl in
+            impl.valueBox.releaseMemory()
+        }
+    }
+    
     public func reset() {
         self.impl.with { impl in
             impl.reset()

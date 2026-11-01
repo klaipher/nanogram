@@ -684,6 +684,27 @@ public final class SqliteValueBox: ValueBox {
         checkTransactionResult(resultCode, database: self.database, operation: "COMMIT")
     }
     
+    /// Frees the page-cache memory SQLite does not need right now; pages are read back on demand.
+    /// Called when the app enters the background or gets a memory warning.
+    public func releaseMemory() {
+        precondition(self.queue.isCurrent())
+        if let handle = self.database?.handle {
+            sqlite3_db_release_memory(handle)
+        }
+    }
+    
+    /// Bytes held by this connection's page cache (for tests).
+    func pageCacheMemoryUsed() -> Int {
+        precondition(self.queue.isCurrent())
+        guard let handle = self.database?.handle else {
+            return 0
+        }
+        var current: Int32 = 0
+        var highwater: Int32 = 0
+        sqlite3_db_status(handle, SQLITE_DBSTATUS_CACHE_USED, &current, &highwater, 0)
+        return Int(current)
+    }
+    
     public func checkpoint() {
         precondition(self.queue.isCurrent())
         let resultCode = self.database.execute("PRAGMA wal_checkpoint(PASSIVE)")

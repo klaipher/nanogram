@@ -330,6 +330,49 @@ private func statForDirectory(path: String) -> Int64 {
     }
 }
 
+/// Files are touched (mtime set to now) when used, so the size-limit cleanup removes the least
+/// recently used first. A file used again within `interval` keeps its recent mtime: touching it
+/// again only costs a utime syscall and a metadata write (0.49 s of utime per session on device).
+/// The mtime also decides age-based removal, and short-cache keeps files for only 1 hour since
+/// their last use (`setMaxStoreTimes(shortLived:)`), so the interval must stay well below that:
+/// an mtime up to an hour stale let the launch scan delete a file used minutes earlier.
+struct RecentFileTouches {
+    static let defaultInterval: Double = 5.0 * 60.0
+
+    let interval: Double
+    let maxCount: Int
+    private var lastTouchTimes: [String: Double] = [:]
+
+    init(interval: Double = RecentFileTouches.defaultInterval, maxCount: Int = 20_000) {
+        self.interval = interval
+        self.maxCount = maxCount
+    }
+
+    var count: Int {
+        return self.lastTouchTimes.count
+    }
+
+    /// Returns the paths that need a utime now and records them as touched.
+    mutating func pathsToTouch(_ paths: Set<String>, now: Double) -> [String] {
+        var result: [String] = []
+        for path in paths {
+            if let lastTime = self.lastTouchTimes[path], now - lastTime < self.interval, now >= lastTime {
+                continue
+            }
+            self.lastTouchTimes[path] = now
+            result.append(path)
+        }
+        if self.lastTouchTimes.count > self.maxCount {
+            let interval = self.interval
+            self.lastTouchTimes = self.lastTouchTimes.filter { now - $0.value < interval && now >= $0.value }
+            if self.lastTouchTimes.count > self.maxCount {
+                self.lastTouchTimes.removeAll()
+            }
+        }
+        return result
+    }
+}
+
 private final class TimeBasedCleanupImpl {
     private let queue: Queue
     private let storageBox: StorageBox
@@ -340,6 +383,7 @@ private final class TimeBasedCleanupImpl {
     
     private var scheduledTouches = Set<String>()
     private var scheduledTouchesTimer: SignalKitTimer?
+    private var recentTouches = RecentFileTouches()
     
     private var generalMaxStoreTime: Int32?
     private var shortLivedMaxStoreTime: Int32?
@@ -601,13 +645,16 @@ private final class TimeBasedCleanupImpl {
     }
     
     private func processScheduledTouches() {
-        let scheduledTouches = self.scheduledTouches
+        let scheduledTouches = self.recentTouches.pathsToTouch(self.scheduledTouches, now: CFAbsoluteTimeGetCurrent())
+        self.scheduledTouches = []
+        if scheduledTouches.isEmpty {
+            return
+        }
         DispatchQueue.global(qos: .utility).async {
             for item in scheduledTouches {
                 utime(item, nil)
             }
         }
-        self.scheduledTouches = []
     }
 }
 

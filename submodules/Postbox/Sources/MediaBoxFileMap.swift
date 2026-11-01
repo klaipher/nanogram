@@ -11,6 +11,11 @@ final class MediaBoxFileMap {
     private(set) var ranges: RangeSet<Int64>
     private(set) var truncationSize: Int64?
     private(set) var progress: Float?
+    
+    // From the second serialization on, the meta file stays open: it is rewritten after every
+    // partial write. A map serialized once (a state opened only for its status) keeps nothing open.
+    private var serializeCount: Int = 0
+    private var serializeFile: (manager: MediaBoxFileManager, path: String, item: MediaBoxFileManager.Item)?
 
     init() {
         self.sum = 0
@@ -29,6 +34,15 @@ final class MediaBoxFileMap {
         self.ranges = ranges
         self.truncationSize = truncationSize
         self.progress = progress
+    }
+    
+    deinit {
+        guard let manager = self.serializeFile?.manager else {
+            return
+        }
+        var item: MediaBoxFileManager.Item? = self.serializeFile?.item
+        self.serializeFile = nil
+        manager.releaseOnQueue(&item)
     }
     
     static func read(manager: MediaBoxFileManager, path: String) throws -> MediaBoxFileMap {
@@ -202,9 +216,19 @@ final class MediaBoxFileMap {
     }
     
     func serialize(manager: MediaBoxFileManager, to path: String) {
-        guard let fileItem = manager.open(path: path, mode: .readwrite) else {
-            postboxLog("MediaBoxFile: serialize: cannot open file")
-            return
+        let fileItem: MediaBoxFileManager.Item
+        if let serializeFile = self.serializeFile, serializeFile.manager === manager, serializeFile.path == path {
+            fileItem = serializeFile.item
+        } else {
+            guard let item = manager.open(path: path, mode: .readwrite) else {
+                postboxLog("MediaBoxFile: serialize: cannot open file")
+                return
+            }
+            fileItem = item
+            self.serializeCount += 1
+            if self.serializeCount >= 2 {
+                self.serializeFile = (manager, path, item)
+            }
         }
         
         let _ = try? fileItem.access { file in

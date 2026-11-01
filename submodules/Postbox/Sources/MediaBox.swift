@@ -217,6 +217,12 @@ public final class MediaBox {
         }
     }
     
+    /// Frees memory that is rebuilt on demand: the SQLite page caches of the storage indexes.
+    public func releaseMemory() {
+        self.storageBox.releaseMemory()
+        self.cacheStorageBox.releaseMemory()
+    }
+    
     public func setMaxStoreTimes(general: Int32, shortLived: Int32, gigabytesLimit: Int32) {
         self.timeBasedCleanup.setMaxStoreTimes(general: general, shortLived: shortLived, gigabytesLimit: gigabytesLimit)
     }
@@ -1874,26 +1880,7 @@ public final class MediaBox {
     func removeStaleEmptyPartialFiles(olderThan minTimestamp: Int, completion: @escaping (Int) -> Void) {
         let basePath = self.basePath
         Queue.concurrentBackgroundQueue().async { [weak self] in
-            var candidateIds: [String] = []
-            var seenIds = Set<String>()
-            for name in (try? FileManager.default.contentsOfDirectory(atPath: basePath)) ?? [] {
-                let id: String
-                if name.hasSuffix("_partial.meta") {
-                    id = String(name.dropLast("_partial.meta".count))
-                } else if name.hasSuffix("_partial") {
-                    id = String(name.dropLast("_partial".count))
-                } else {
-                    continue
-                }
-                if id.isEmpty || seenIds.contains(id) {
-                    continue
-                }
-                let partialPath = basePath + "/" + id + "_partial"
-                if staleEmptyPartialFileState(partialPath: partialPath, metaPath: partialPath + ".meta", olderThan: minTimestamp) != nil {
-                    seenIds.insert(id)
-                    candidateIds.append(id)
-                }
-            }
+            let candidateIds = staleEmptyPartialFileCandidateIds(basePath: basePath, olderThan: minTimestamp)
             guard let strongSelf = self, !candidateIds.isEmpty else {
                 completion(0)
                 return
@@ -1901,7 +1888,7 @@ public final class MediaBox {
             strongSelf.removeStaleEmptyPartialFiles(candidateIds: candidateIds, from: 0, olderThan: minTimestamp, removedCount: 0, completion: completion)
         }
     }
-    
+
     private func removeStaleEmptyPartialFiles(candidateIds: [String], from startIndex: Int, olderThan minTimestamp: Int, removedCount: Int, completion: @escaping (Int) -> Void) {
         self.dataQueue.justDispatch {
             var removedCount = removedCount
@@ -2146,4 +2133,72 @@ private func staleEmptyPartialFileState(partialPath: String, metaPath: String, o
         return nil
     }
     return .emptyPartial
+}
+
+private func partialFileResourceId(name: String) -> String? {
+    let id: String
+    if name.hasSuffix("_partial.meta") {
+        id = String(name.dropLast("_partial.meta".count))
+    } else if name.hasSuffix("_partial") {
+        id = String(name.dropLast("_partial".count))
+    } else {
+        return nil
+    }
+    return id.isEmpty ? nil : id
+}
+
+/// Same rule as the lstat-based `staleEmptyPartialFileState`, applied to directory-listing entries.
+/// A nil entry means the file is not in the directory.
+private func staleEmptyPartialFileState(meta: BulkDirectoryEntry?, partial: BulkDirectoryEntry?, olderThan minTimestamp: Int) -> StaleEmptyPartialFileState? {
+    if let meta = meta {
+        if !meta.isRegularFile || meta.modificationTime >= minTimestamp {
+            return nil
+        }
+    }
+    guard let partial = partial else {
+        return meta != nil ? .orphanedMeta : nil
+    }
+    if !partial.isRegularFile || partial.size != 0 || partial.linkCount != 1 || partial.modificationTime >= minTimestamp {
+        return nil
+    }
+    return .emptyPartial
+}
+
+/// Ids whose partial leftovers look stale. Uses one bulk directory listing instead of an lstat
+/// per file (0.57 s of lstat on device at every cold start); the removal step re-checks each
+/// candidate with lstat on the data queue before unlinking anything.
+func staleEmptyPartialFileCandidateIds(basePath: String, olderThan minTimestamp: Int, allowBulk: Bool = true) -> [String] {
+    var candidateIds: [String] = []
+    var seenIds = Set<String>()
+    if allowBulk, let entries = bulkDirectoryEntries(path: basePath) {
+        var entriesByName: [String: BulkDirectoryEntry] = [:]
+        entriesByName.reserveCapacity(entries.count)
+        for entry in entries {
+            if entry.name.hasSuffix("_partial") || entry.name.hasSuffix("_partial.meta") {
+                entriesByName[entry.name] = entry
+            }
+        }
+        for entry in entries {
+            guard let id = partialFileResourceId(name: entry.name), !seenIds.contains(id) else {
+                continue
+            }
+            let partialName = id + "_partial"
+            if staleEmptyPartialFileState(meta: entriesByName[partialName + ".meta"], partial: entriesByName[partialName], olderThan: minTimestamp) != nil {
+                seenIds.insert(id)
+                candidateIds.append(id)
+            }
+        }
+        return candidateIds
+    }
+    for name in (try? FileManager.default.contentsOfDirectory(atPath: basePath)) ?? [] {
+        guard let id = partialFileResourceId(name: name), !seenIds.contains(id) else {
+            continue
+        }
+        let partialPath = basePath + "/" + id + "_partial"
+        if staleEmptyPartialFileState(partialPath: partialPath, metaPath: partialPath + ".meta", olderThan: minTimestamp) != nil {
+            seenIds.insert(id)
+            candidateIds.append(id)
+        }
+    }
+    return candidateIds
 }

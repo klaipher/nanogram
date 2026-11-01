@@ -128,10 +128,31 @@ public final class MediaBoxFileManager {
     private var contexts: [Int: ItemContext] = [:]
     private var nextItemId: Int = 0
     private let maxOpenFiles: Int
+    /// Number of files opened so far (for tests).
+    private(set) var openedFileCount: Int = 0
+    /// Number of files open right now (for tests).
+    var currentlyOpenFileCount: Int {
+        return self.contexts.count
+    }
     
     public init(queue: Queue?) {
         self.queue = queue
         self.maxOpenFiles = 16
+    }
+    
+    /// Items must be released on the manager's queue. Takes over `item` and releases it there.
+    /// No other strong reference may be held by the caller, or the last release could still
+    /// happen on the calling thread.
+    func releaseOnQueue(_ item: inout Item?) {
+        guard item != nil, let queue = self.queue, !queue.isCurrent() else {
+            item = nil
+            return
+        }
+        let unmanaged = Unmanaged.passRetained(item!)
+        item = nil
+        queue.async {
+            unmanaged.release()
+        }
     }
     
     func open(path: String, mode: Mode) -> Item? {
@@ -156,6 +177,9 @@ public final class MediaBoxFileManager {
         let id = self.nextItemId
         self.nextItemId += 1
         let context = ItemContext(id: id, path: path, mode: mode)
+        if context != nil {
+            self.openedFileCount += 1
+        }
         self.contexts[id] = context
         return context
     }
