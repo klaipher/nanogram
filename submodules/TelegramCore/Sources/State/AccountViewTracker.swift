@@ -546,15 +546,17 @@ public final class AccountViewTracker {
                         if let message = messages[messageId] {
                             for media in message.media {
                                 if let poll = media as? TelegramMediaPoll {
-                                    if let _ = poll.deadlineTimeout, message.id.namespace == Namespaces.Message.Cloud {
+                                    if !poll.isClosed, message.id.namespace == Namespaces.Message.Cloud {
                                         let startDate: Int32
                                         if let forwardInfo = message.forwardInfo {
                                             startDate = forwardInfo.date
                                         } else {
                                             startDate = message.timestamp
                                         }
-                                        let timestamp = Int32(CFAbsoluteTimeGetCurrent() + NSTimeIntervalSince1970)
-                                        let remainingTime = timestamp - startDate - 1
+                                        let timestamp = Int32(CFAbsoluteTimeGetCurrent() + NSTimeIntervalSince1970 + account.network.globalTimeDifference)
+                                        guard let remainingTime = pollRefreshRemainingTime(startDate: startDate, deadlineTimeout: poll.deadlineTimeout, deadlineDate: poll.deadlineDate, now: timestamp) else {
+                                            continue
+                                        }
                                         
                                         if remainingTime > 0 {
                                             deadlineTimer = .single(false)
@@ -573,25 +575,7 @@ public final class AccountViewTracker {
                         let pollSignal: Signal<Never, NoError> = deadlineTimer
                         |> distinctUntilChanged
                         |> mapToSignal { reachedDeadline -> Signal<Never, NoError> in
-                            if reachedDeadline {
-                                var signal = fetchPoll(account: account, messageId: messageId)
-                                |> ignoreValues
-                                signal = (signal |> then(
-                                    .complete()
-                                    |> delay(0.5, queue: Queue.concurrentDefaultQueue())
-                                ))
-                                |> restart
-                                return signal
-                            } else {
-                                var signal = fetchPoll(account: account, messageId: messageId)
-                                |> ignoreValues
-                                signal = (signal |> then(
-                                    .complete()
-                                    |> delay(30.0, queue: Queue.concurrentDefaultQueue())
-                                ))
-                                |> restart
-                                return signal
-                            }
+                            return pollRefreshSignal(fetch: fetchPoll(account: account, messageId: messageId) |> ignoreValues, reachedDeadline: reachedDeadline, burstInterval: 0.5, regularInterval: 30.0)
                         }
                         self.pollDisposables[messageId] = pollSignal.start()
                     } else {
