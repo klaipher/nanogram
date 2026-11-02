@@ -218,30 +218,7 @@ extension ChatControllerImpl {
                                         }
                                     }
                                     
-                                    let _ = (enqueueMessages(account: strongSelf.context.account, peerId: peer.id, messages: peerMessages)
-                                    |> deliverOnMainQueue).startStandalone(next: { messageIds in
-                                        if let strongSelf = self {
-                                            let signals: [Signal<Bool, NoError>] = messageIds.compactMap({ id -> Signal<Bool, NoError>? in
-                                                guard let id = id else {
-                                                    return nil
-                                                }
-                                                return strongSelf.context.account.pendingMessageManager.pendingMessageStatus(id)
-                                                |> mapToSignal { status, _ -> Signal<Bool, NoError> in
-                                                    if status != nil {
-                                                        return .never()
-                                                    } else {
-                                                        return .single(true)
-                                                    }
-                                                }
-                                                |> take(1)
-                                            })
-                                            if strongSelf.shareStatusDisposable == nil {
-                                                strongSelf.shareStatusDisposable = MetaDisposable()
-                                            }
-                                            strongSelf.shareStatusDisposable?.set((combineLatest(signals)
-                                            |> deliverOnMainQueue).startStrict())
-                                        }
-                                    })
+                                    let _ = enqueueMessages(account: strongSelf.context.account, peerId: peer.id, messages: peerMessages).startStandalone()
                                     
                                     if case let .secretChat(secretPeer) = peer {
                                         if let peer = peerMap[secretPeer.regularPeerId] {
@@ -424,30 +401,7 @@ extension ChatControllerImpl {
                         }, additionalView: messages.count > 0 ? chatShareToSavedMessagesAdditionalView(strongSelf, reactionItems: reactionItems, correlationIds: correlationIds) : nil), in: .current)
                     })
                     
-                    let _ = (enqueueMessages(account: strongSelf.context.account, peerId: peerId, messages: mappedMessages)
-                    |> deliverOnMainQueue).startStandalone(next: { messageIds in
-                        if let strongSelf = self {
-                            let signals: [Signal<Bool, NoError>] = messageIds.compactMap({ id -> Signal<Bool, NoError>? in
-                                guard let id = id else {
-                                    return nil
-                                }
-                                return strongSelf.context.account.pendingMessageManager.pendingMessageStatus(id)
-                                |> mapToSignal { status, _ -> Signal<Bool, NoError> in
-                                    if status != nil {
-                                        return .never()
-                                    } else {
-                                        return .single(true)
-                                    }
-                                }
-                                |> take(1)
-                            })
-                            if strongSelf.shareStatusDisposable == nil {
-                                strongSelf.shareStatusDisposable = MetaDisposable()
-                            }
-                            strongSelf.shareStatusDisposable?.set((combineLatest(signals)
-                            |> deliverOnMainQueue).startStrict())
-                        }
-                    })
+                    let _ = enqueueMessages(account: strongSelf.context.account, peerId: peerId, messages: mappedMessages).startStandalone()
                     strongSelf.updateChatPresentationInterfaceState(animated: false, interactive: true, { $0.updatedInterfaceState({ $0.withoutSelectionState() }) })
                     strongController.dismiss()
                 } else {

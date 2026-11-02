@@ -367,7 +367,6 @@ final class PeerInfoScreenNode: ViewControllerTracingNode, PeerInfoScreenNodePro
     let selectAddMemberDisposable = MetaDisposable()
     let addMemberDisposable = MetaDisposable()
     let preloadHistoryDisposable = MetaDisposable()
-    var shareStatusDisposable: MetaDisposable?
     let joinChannelDisposable = MetaDisposable()
     
     let updateAvatarDisposable = MetaDisposable()
@@ -2706,7 +2705,6 @@ final class PeerInfoScreenNode: ViewControllerTracingNode, PeerInfoScreenNodePro
         self.openSavedMusicDisposable.dispose()
         self.supportPeerDisposable.dispose()
         self.tipsPeerDisposable.dispose()
-        self.shareStatusDisposable?.dispose()
         self.customStatusDisposable?.dispose()
         self.refreshMessageTagStatsDisposable?.dispose()
         self.forumTopicNotificationExceptionsDisposable?.dispose()

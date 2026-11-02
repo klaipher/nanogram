@@ -338,7 +338,6 @@ public final class ChatControllerImpl: TelegramBaseController, ChatController, G
     let editMessageErrorsDisposable = MetaDisposable()
     let enqueueMediaMessageDisposable = MetaDisposable()
     var resolvePeerByNameDisposable: MetaDisposable?
-    var shareStatusDisposable: MetaDisposable?
     var clearCacheDisposable: MetaDisposable?
     var bankCardDisposable: MetaDisposable?
     var hasActiveGroupCallDisposable: Disposable?
@@ -7105,7 +7104,6 @@ public final class ChatControllerImpl: TelegramBaseController, ChatController, G
         self.editMessageErrorsDisposable.dispose()
         self.enqueueMediaMessageDisposable.dispose()
         self.resolvePeerByNameDisposable?.dispose()
-        self.shareStatusDisposable?.dispose()
         self.clearCacheDisposable?.dispose()
         self.bankCardDisposable?.dispose()
         self.botCallbackAlertMessageDisposable?.dispose()
@@ -7136,7 +7134,6 @@ public final class ChatControllerImpl: TelegramBaseController, ChatController, G
         self.applicationInFocusDisposable?.dispose()
         self.canReadHistoryDisposable?.dispose()
         self.networkStateDisposable?.dispose()
-        self.shareStatusDisposable?.dispose()
         self.context.sharedContext.mediaManager.galleryHiddenMediaManager.removeTarget(self)
         self.updateSlowmodeStatusDisposable.dispose()
         self.keepPeerInfoScreenDataHotDisposable.dispose()

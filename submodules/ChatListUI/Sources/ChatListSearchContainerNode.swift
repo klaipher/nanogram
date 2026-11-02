@@ -157,7 +157,6 @@ public final class ChatListSearchContainerNode: SearchDisplayControllerContentNo
     private var showPublicPostsTab = false
     public var displayGlobalPostsNewBadge = false
     
-    private var shareStatusDisposable: MetaDisposable?
     
     private var stateValue = ChatListSearchContainerNodeSearchState()
     private let statePromise = ValuePromise<ChatListSearchContainerNodeSearchState>()
@@ -592,7 +591,6 @@ public final class ChatListSearchContainerNode: SearchDisplayControllerContentNo
         self.activeActionDisposable.dispose()
         self.presentationDataDisposable?.dispose()
         self.suggestedFiltersDisposable.dispose()
-        self.shareStatusDisposable?.dispose()
         self.sharedOpenStoryDisposable.dispose()
         self.recentAppsDisposable?.dispose()
         self.refreshedGlobalPostSearchStateDisposable?.dispose()
@@ -1549,30 +1547,7 @@ public final class ChatListSearchContainerNode: SearchDisplayControllerContentNo
                 
                 var displayPeers: [EnginePeer] = []
                 for peer in peers {
-                    let _ = (enqueueMessages(account: strongSelf.context.account, peerId: peer.id, messages: result)
-                    |> deliverOnMainQueue).startStandalone(next: { messageIds in
-                        if let strongSelf = self {
-                            let signals: [Signal<Bool, NoError>] = messageIds.compactMap({ id -> Signal<Bool, NoError>? in
-                                guard let id = id else {
-                                    return nil
-                                }
-                                return strongSelf.context.account.pendingMessageManager.pendingMessageStatus(id)
-                                |> mapToSignal { status, _ -> Signal<Bool, NoError> in
-                                    if status != nil {
-                                        return .never()
-                                    } else {
-                                        return .single(true)
-                                    }
-                                }
-                                |> take(1)
-                            })
-                            if strongSelf.shareStatusDisposable == nil {
-                                strongSelf.shareStatusDisposable = MetaDisposable()
-                            }
-                            strongSelf.shareStatusDisposable?.set((combineLatest(signals)
-                            |> deliverOnMainQueue).startStrict())
-                        }
-                    })
+                    let _ = enqueueMessages(account: strongSelf.context.account, peerId: peer.id, messages: result).startStandalone()
                     if case let .secretChat(secretPeer) = peer {
                         if let peer = peerMap[secretPeer.regularPeerId] {
                             displayPeers.append(peer)
