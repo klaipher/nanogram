@@ -83,6 +83,21 @@ public final class ManagedFile {
         return wrappedRead(self.fd, data, count)
     }
     
+    /// Reads at `offset` without moving the file position (one `pread`, no `lseek`).
+    public func read(_ data: UnsafeMutableRawPointer, _ count: Int, at offset: Int64) -> Int {
+        if let queue = self.queue {
+            assert(queue.isCurrent())
+        }
+        assert(!self.isClosed)
+        while true {
+            let result = pread(self.fd, data, count, off_t(offset))
+            if result < 0 && errno == EINTR {
+                continue
+            }
+            return max(0, result)
+        }
+    }
+    
     public func readData(count: Int) -> Data {
         if let queue = self.queue {
             assert(queue.isCurrent())

@@ -776,6 +776,10 @@ GPU (Metal) rendering of stickers and emoji, its debug switches and how to measu
 
 ## Media I/O invariants (MediaBox maps, lookahead reader, RangeSet, VACUUM)
 
+- **The direct-fetch lookahead (`FFMpegLookahead`) reads from memory, not MediaBox, per read.** It
+  answers "is it cached" from MediaBox's live range status and, once that covers the whole file,
+  reads the complete file through one `pread` handle. Do not route its per-read path back through
+  `MediaBox.resourceData`/`internal_*` calls (each one stat'ed and opened files: 38% of the thread).
 - **RangeSet is `@inlinable`** (clients specialize it; 57-100x faster than the unspecialized calls,
   benchmark under the deep-audit fix-bench). Its invariant check runs only with `DEBUG`. Its
   `intersects` also returns true for a range that only touches the set (pinned by
