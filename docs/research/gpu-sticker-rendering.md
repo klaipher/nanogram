@@ -1,7 +1,9 @@
 # GPU rendering of animated stickers and emoji (research note, 2026-11-01)
 
-Status: both GPU paths are **off by default**. Two Debug Settings rows, side by side in Experiments,
-turn them on so they can be measured on a phone.
+Status (2026-11-02): both GPU paths are **on by default** ("GPU for large" stickers and the emoji YUVA
+path), after the owner checked them on an iPhone 17 Pro Max. Settings saved by earlier builds are upgraded
+once (`ExperimentalUISettings.nanogramDefaultsRevision`); the two Debug Settings rows, side by side in
+Experiments, still switch them back to the CPU, and that choice is kept.
 
 ## What GPU paths exist
 

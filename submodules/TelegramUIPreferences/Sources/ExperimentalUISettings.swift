@@ -61,7 +61,7 @@ public struct ExperimentalUISettings: Codable, Equatable {
             crashOnLongQueries: false,
             enableVoipTcp: false,
             fakeGlass: false,
-            compressedEmojiCache: false,
+            compressedEmojiCache: true,
             localTranscription: false,
             disableQuickReaction: false,
             disableLanguageRecognition: false,
@@ -107,7 +107,7 @@ public struct ExperimentalUISettings: Codable, Equatable {
         fakeWalletTransfers: Bool,
         useModernVideoMessagePipeline: Bool? = nil,
         videoMessageCameraMode: VideoMessageCameraMode = .hdBilinear,
-        stickerRendererMode: StickerRendererMode = .cpu,
+        stickerRendererMode: StickerRendererMode = .gpuLarge,
         showCrashReportAlerts: Bool? = nil
     ) {
         self.keepChatNavigationStack = keepChatNavigationStack
@@ -138,8 +138,14 @@ public struct ExperimentalUISettings: Codable, Equatable {
         self.stickerRendererMode = stickerRendererMode
     }
     
+    /// Revision of Nanogram's defaults that a saved blob was written with. Revision 1 turned on large
+    /// stickers on the Metal renderer and custom emoji on the YUVA path. Every save writes the current
+    /// revision, so an older blob is upgraded once and a later choice is kept.
+    static let nanogramDefaultsRevision: Int32 = 1
+
     public init(from decoder: Decoder) throws {
         let container = try decoder.container(keyedBy: StringCodingKey.self)
+        let savedDefaultsRevision = try container.decodeIfPresent(Int32.self, forKey: "nanogramDefaultsRevision") ?? 0
 
         self.keepChatNavigationStack = (try container.decodeIfPresent(Int32.self, forKey: "keepChatNavigationStack") ?? 0) != 0
         self.skipReadHistory = (try container.decodeIfPresent(Int32.self, forKey: "skipReadHistory") ?? 0) != 0
@@ -147,7 +153,7 @@ public struct ExperimentalUISettings: Codable, Equatable {
         self.crashOnLongQueries = (try container.decodeIfPresent(Int32.self, forKey: "crashOnLongQueries") ?? 0) != 0
         self.enableVoipTcp = (try container.decodeIfPresent(Int32.self, forKey: "enableVoipTcp") ?? 0) != 0
         self.fakeGlass = (try container.decodeIfPresent(Int32.self, forKey: "fakeGlass") ?? 0) != 0
-        self.compressedEmojiCache = (try container.decodeIfPresent(Int32.self, forKey: "compressedEmojiCache") ?? 0) != 0
+        self.compressedEmojiCache = (try container.decodeIfPresent(Int32.self, forKey: "compressedEmojiCache") ?? 1) != 0
         self.localTranscription = (try container.decodeIfPresent(Int32.self, forKey: "localTranscription") ?? 0) != 0
         self.disableQuickReaction = try container.decodeIfPresent(Bool.self, forKey: "disableQuickReaction") ?? false
         self.disableLanguageRecognition = try container.decodeIfPresent(Bool.self, forKey: "disableLanguageRecognition") ?? false
@@ -168,7 +174,15 @@ public struct ExperimentalUISettings: Codable, Equatable {
         self.showCrashReportAlerts = try container.decodeIfPresent(Bool.self, forKey: "showCrashReportAlerts")
         self.useModernVideoMessagePipeline = try container.decodeIfPresent(Bool.self, forKey: "useModernVideoMessagePipeline")
         self.videoMessageCameraMode = (try container.decodeIfPresent(String.self, forKey: "videoMessageCameraMode")).flatMap(VideoMessageCameraMode.init(rawValue:)) ?? .hdBilinear
-        self.stickerRendererMode = (try container.decodeIfPresent(String.self, forKey: "stickerRendererMode")).flatMap(StickerRendererMode.init(rawValue:)) ?? .cpu
+        self.stickerRendererMode = (try container.decodeIfPresent(String.self, forKey: "stickerRendererMode")).flatMap(StickerRendererMode.init(rawValue:)) ?? .gpuLarge
+
+        if savedDefaultsRevision < 1 {
+            // Saved before the GPU renderers became the default: both were the old CPU defaults.
+            if self.stickerRendererMode == .cpu {
+                self.stickerRendererMode = .gpuLarge
+            }
+            self.compressedEmojiCache = true
+        }
     }
     
     public func encode(to encoder: Encoder) throws {
@@ -200,6 +214,7 @@ public struct ExperimentalUISettings: Codable, Equatable {
         try container.encodeIfPresent(self.useModernVideoMessagePipeline, forKey: "useModernVideoMessagePipeline")
         try container.encode(self.videoMessageCameraMode.rawValue, forKey: "videoMessageCameraMode")
         try container.encode(self.stickerRendererMode.rawValue, forKey: "stickerRendererMode")
+        try container.encode(ExperimentalUISettings.nanogramDefaultsRevision, forKey: "nanogramDefaultsRevision")
     }
 }
 
