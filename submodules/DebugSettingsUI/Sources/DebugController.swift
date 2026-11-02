@@ -171,6 +171,19 @@ private extension ExperimentalUISettings.VideoMessageCameraMode {
     }
 }
 
+private extension ExperimentalUISettings.RoundVideoCameraMatrix {
+    var debugTitle: String {
+        switch self {
+        case .bt709:
+            return "BT.709 (default)"
+        case .cameraTag:
+            return "Camera tag (old)"
+        case .bt601:
+            return "BT.601"
+        }
+    }
+}
+
 private extension ExperimentalUISettings.StickerRendererMode {
     var debugTitle: String {
         switch self {
@@ -674,6 +687,7 @@ enum DebugControllerEntry: ItemListNodeEntry {
     case respectSystemMicrophone(Bool)
     case videoMessageCameraMode(ExperimentalUISettings.VideoMessageCameraMode)
     case videoMessageCloseFocus(Bool)
+    case videoMessageCameraMatrix(ExperimentalUISettings.RoundVideoCameraMatrix)
     case compressedEmojiCache(Bool)
     case checkSerializedData(Bool)
     case enableQuickReactionSwitch(Bool)
@@ -702,7 +716,7 @@ enum DebugControllerEntry: ItemListNodeEntry {
             return DebugControllerSection.web.rawValue
         case .experimentsHeader, .keepChatNavigationStack, .skipReadHistory, .alwaysDisplayTyping, .crashOnSlowQueries, .crashOnMemoryPressure:
             return DebugControllerSection.experiments.rawValue
-        case .compressedEmojiCache, .checkSerializedData, .enableQuickReactionSwitch, .fakeGlass, .inputDecEngineEditor, .forceListViewImplChatBackend, .forceRLottieBackend, .respectSystemMicrophone, .videoMessageCameraMode, .videoMessageCloseFocus, .liveStreamV2, .groupCallReferenceEngine:
+        case .compressedEmojiCache, .checkSerializedData, .enableQuickReactionSwitch, .fakeGlass, .inputDecEngineEditor, .forceListViewImplChatBackend, .forceRLottieBackend, .respectSystemMicrophone, .videoMessageCameraMode, .videoMessageCloseFocus, .videoMessageCameraMatrix, .liveStreamV2, .groupCallReferenceEngine:
             return DebugControllerSection.experiments.rawValue
         case .springSendAnimation, .fakeWalletTransfers, .stickerRendererMode, .disableImageContentAnalysis, .disableLanguageRecognition, .localTranscription, .enableVoipTcp:
             return DebugControllerSection.experiments.rawValue
@@ -755,10 +769,14 @@ enum DebugControllerEntry: ItemListNodeEntry {
             // Appended right after `videoMessageCameraMode` (moved from 26 to 25 to make room); see the
             // ordering note at `springSendAnimation`.
             return 26
-        case .crashOnSlowQueries:
+        case .videoMessageCameraMatrix:
+            // Appended right after `videoMessageCloseFocus` (the two crash switches after it moved up by one
+            // to make room); see the ordering note at `springSendAnimation`.
             return 27
-        case .crashOnMemoryPressure:
+        case .crashOnSlowQueries:
             return 28
+        case .crashOnMemoryPressure:
+            return 29
         case .resetNotifications:
             return 30
         case .resetDatabase:
@@ -1139,6 +1157,33 @@ enum DebugControllerEntry: ItemListNodeEntry {
                     return settings
                 }).start()
             })
+        case let .videoMessageCameraMatrix(value):
+            return ItemListDisclosureItem(presentationData: presentationData, systemStyle: .glass, title: "Circle Colour Decode", label: value.debugTitle, sectionId: self.section, style: .blocks, action: {
+                let presentationData = arguments.sharedContext.currentPresentationData.with { $0 }
+                let actionSheet = ActionSheetController(presentationData: presentationData)
+                var items: [ActionSheetItem] = [
+                    ActionSheetTextItem(title: "The YCbCr matrix the Modern pipeline decodes the camera's frames with. The camera tags them BT.601; BT.709 matches Legacy and the official app. Reopen the circle camera to apply.")
+                ]
+                for matrix in ExperimentalUISettings.RoundVideoCameraMatrix.allCases {
+                    items.append(ActionSheetButtonItem(title: matrix.debugTitle, color: .accent, action: { [weak actionSheet] in
+                        actionSheet?.dismissAnimated()
+                        let _ = updateExperimentalUISettingsInteractively(accountManager: arguments.sharedContext.accountManager, { settings in
+                            var settings = settings
+                            settings.videoMessageCameraMatrix = matrix
+                            return settings
+                        }).start()
+                    }))
+                }
+                actionSheet.setItemGroups([
+                    ActionSheetItemGroup(items: items),
+                    ActionSheetItemGroup(items: [
+                        ActionSheetButtonItem(title: presentationData.strings.Common_Cancel, color: .accent, font: .bold, action: { [weak actionSheet] in
+                            actionSheet?.dismissAnimated()
+                        })
+                    ])
+                ])
+                arguments.presentController(actionSheet, nil)
+            })
         case let .videoMessageCameraMode(value):
             return ItemListDisclosureItem(presentationData: presentationData, systemStyle: .glass, title: "Video Message Camera", label: value.debugTitle, sectionId: self.section, style: .blocks, action: {
                 let presentationData = arguments.sharedContext.currentPresentationData.with { $0 }
@@ -1421,6 +1466,7 @@ func debugControllerEntries(environment: DebugControllerEntriesEnvironment, them
     let useModernVideoMessagePipeline = (experimentalSettings.useModernVideoMessagePipeline ?? !environment.modernVideoMessagePipelineKilled) && experimentalSettings.videoMessageCameraMode != .legacy
     entries.append(.videoMessageCameraMode(useModernVideoMessagePipeline ? experimentalSettings.videoMessageCameraMode : .legacy))
     entries.append(.videoMessageCloseFocus(experimentalSettings.videoMessageCloseFocus))
+    entries.append(.videoMessageCameraMatrix(experimentalSettings.videoMessageCameraMatrix))
     entries.append(.crashOnSlowQueries(theme, experimentalSettings.crashOnLongQueries))
     entries.append(.crashOnMemoryPressure(theme, experimentalSettings.crashOnMemoryPressure))
     if isMainApp {

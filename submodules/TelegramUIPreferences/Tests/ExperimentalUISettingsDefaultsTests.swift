@@ -43,6 +43,20 @@ final class ExperimentalUISettingsDefaultsTests: XCTestCase {
         XCTAssertEqual(try self.roundTrip(saved).stickerRendererMode, .cpu)
     }
 
+    /// Debug Settings ▸ "Circle Colour Decode": a new key, so existing installs (any revision) and unknown values
+    /// get the BT.709 default, and a choice is kept.
+    func testCircleColourDecodeDefaultsToBT709() throws {
+        XCTAssertEqual(ExperimentalUISettings.defaultSettings.videoMessageCameraMatrix, .bt709)
+        XCTAssertEqual(try self.decode("{}").videoMessageCameraMatrix, .bt709)
+        XCTAssertEqual(try self.decode(#"{"nanogramDefaultsRevision": 1, "videoMessageCameraMode": "vga"}"#).videoMessageCameraMatrix, .bt709)
+        XCTAssertEqual(try self.decode(#"{"videoMessageCameraMatrix": "unknown"}"#).videoMessageCameraMatrix, .bt709)
+        for matrix in ExperimentalUISettings.RoundVideoCameraMatrix.allCases {
+            var settings = ExperimentalUISettings.defaultSettings
+            settings.videoMessageCameraMatrix = matrix
+            XCTAssertEqual(try self.roundTrip(settings).videoMessageCameraMatrix, matrix)
+        }
+    }
+
     func testGPUForAllIsNotDowngraded() throws {
         let settings = try self.decode(#"{"compressedEmojiCache": 1, "stickerRendererMode": "gpuAll"}"#)
         XCTAssertEqual(settings.stickerRendererMode, .gpuAll)

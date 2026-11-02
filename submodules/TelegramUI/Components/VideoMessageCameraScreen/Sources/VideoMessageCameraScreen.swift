@@ -972,7 +972,16 @@ public class VideoMessageCameraScreen: ViewController {
                 mode = .hdLanczos
             }
             if let mode {
-                self.cameraImpl = NeoCameraImpl(roundVideoMode: mode, closeFocus: experimentalSettings.videoMessageCloseFocus, log: { message in
+                let cameraMatrix: NeoCameraImpl.RoundVideoCameraMatrix
+                switch experimentalSettings.videoMessageCameraMatrix {
+                case .bt709:
+                    cameraMatrix = .bt709
+                case .cameraTag:
+                    cameraMatrix = .cameraTag
+                case .bt601:
+                    cameraMatrix = .bt601
+                }
+                self.cameraImpl = NeoCameraImpl(roundVideoMode: mode, closeFocus: experimentalSettings.videoMessageCloseFocus, cameraMatrix: cameraMatrix, log: { message in
                     Logger.shared.log("CameraNeo", message)
                 })
             } else {

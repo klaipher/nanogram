@@ -13,7 +13,10 @@ final class RoundVideoColorTests: XCTestCase {
     private let width = RoundVideoFrameProcessor.outputWidth
     private let height = RoundVideoFrameProcessor.outputHeight
 
-    // What the front camera delivers: NV12 tagged 709 primaries and transfer with the 601 matrix.
+    // What the front camera delivers: 420f tagged 709 primaries and transfer with the 601 matrix. The data
+    // behaves as BT.709 (it matches the camera's own BGRA conversion only when decoded with 709), so the
+    // processor decodes it with 709 by default (`RoundVideoFrameProcessor.decodeMatrix`, Debug Settings ▸
+    // "Circle Colour Decode"); the file is tagged 709 whatever the decode.
     private func cameraSource() throws -> VideoFrameSource {
         var pixelBuffer: CVPixelBuffer?
         XCTAssertEqual(CVPixelBufferCreate(kCFAllocatorDefault, 640, 480, kCVPixelFormatType_420YpCbCr8BiPlanarFullRange, nil, &pixelBuffer), kCVReturnSuccess)

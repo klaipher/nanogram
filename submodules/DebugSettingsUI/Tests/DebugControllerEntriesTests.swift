@@ -34,6 +34,7 @@ final class DebugControllerEntriesTests: XCTestCase {
         settings.useModernVideoMessagePipeline = on ? nil : false
         settings.videoMessageCameraMode = on ? .hdLanczos : .legacy
         settings.videoMessageCloseFocus = on
+        settings.videoMessageCameraMatrix = on ? .cameraTag : .bt709
         settings.stickerRendererMode = on ? .gpuAll : .cpu
         return settings
     }
@@ -70,6 +71,33 @@ final class DebugControllerEntriesTests: XCTestCase {
             XCTAssertTrue(index + 1 < entries.count)
             XCTAssertEqual(entries[index + 1].stableId, DebugControllerEntry.videoMessageCloseFocus(false).stableId)
         }
+    }
+
+    func testCircleColourDecodeRowFollowsTheCloseFocusSwitch() {
+        for isMainApp in [true, false] {
+            for on in [true, false] {
+                let entries = self.entries(isMainApp: isMainApp, isDevAccount: false, engineKind: nil, settings: self.allSettings(on))
+                guard let index = entries.firstIndex(where: { $0.stableId == DebugControllerEntry.videoMessageCloseFocus(false).stableId }) else {
+                    XCTFail("no Circle Close Focus row")
+                    continue
+                }
+                XCTAssertTrue(index + 1 < entries.count)
+                let expected: DebugControllerEntry = .videoMessageCameraMatrix(on ? .cameraTag : .bt709)
+                XCTAssertEqual(entries[index + 1].stableId, expected.stableId)
+                guard case let .videoMessageCameraMatrix(value) = entries[index + 1] else {
+                    XCTFail("Circle Colour Decode row missing")
+                    continue
+                }
+                XCTAssertEqual(value, on ? .cameraTag : .bt709)
+            }
+        }
+        let defaults = self.entries(isMainApp: true, isDevAccount: false, engineKind: nil, settings: .defaultSettings)
+        XCTAssertTrue(defaults.contains(where: {
+            if case .videoMessageCameraMatrix(.bt709) = $0 {
+                return true
+            }
+            return false
+        }))
     }
 
     func testCpuSavingSwitchesAreShown() {
@@ -133,11 +161,18 @@ final class ExperimentalUISettingsCompatibilityTests: XCTestCase {
         XCTAssertFalse(settings.videoMessageCloseFocus)
     }
 
+    func testCircleColourDecodeDefaultsToBT709AndInOldBlobs() throws {
+        XCTAssertEqual(ExperimentalUISettings.defaultSettings.videoMessageCameraMatrix, .bt709)
+        let settings = try EngineDecoder.decode(ExperimentalUISettings.self, from: try EngineEncoder.encode(OldSettings()))
+        XCTAssertEqual(settings.videoMessageCameraMatrix, .bt709)
+    }
+
     func testRoundTrip() throws {
         var settings = ExperimentalUISettings.defaultSettings
         settings.forceListViewImplChatBackend = true
         settings.enableVoipTcp = true
         settings.videoMessageCloseFocus = true
+        settings.videoMessageCameraMatrix = .cameraTag
         let decoded = try EngineDecoder.decode(ExperimentalUISettings.self, from: try EngineEncoder.encode(settings))
         XCTAssertEqual(decoded, settings)
     }
