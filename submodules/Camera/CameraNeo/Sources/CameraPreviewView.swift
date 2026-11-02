@@ -82,9 +82,32 @@ final class CameraPreviewView: UIView, CameraSimplePreviewView {
         return self.videoPreviewLayer.connection?.videoOrientation ?? .portrait
     }
 
+    /// The camera's session queue (set by `CameraNeo`). Enabling or disabling the preview connection is a capture
+    /// graph change that AVFoundation serializes with the session's own work, and `startRunning()`/`stopRunning()`
+    /// (run on that queue) block for as long as they take. Done on main, a round video paused or resumed while the
+    /// session was still stopping or starting could hold the main thread for that long; on the session queue the
+    /// change also keeps its order relative to the start or stop queued right after it.
+    var connectionQueue: DispatchQueue?
+
     var isEnabled: Bool = true {
         didSet {
-            self.videoPreviewLayer.connection?.isEnabled = self.isEnabled
+            Self.applyConnectionEnabled(self.isEnabled, layer: self.videoPreviewLayer, queue: self.connectionQueue)
+        }
+    }
+
+    /// Applies `isEnabled` to the preview layer's connection: asynchronously on `queue`, in the order the changes
+    /// were made, or directly when there is no queue.
+    static func applyConnectionEnabled(_ isEnabled: Bool, layer: AVCaptureVideoPreviewLayer, queue: DispatchQueue?) {
+        Self.perform(on: queue) { [weak layer] in
+            layer?.connection?.isEnabled = isEnabled
+        }
+    }
+
+    static func perform(on queue: DispatchQueue?, _ f: @escaping () -> Void) {
+        if let queue {
+            queue.async(execute: f)
+        } else {
+            f()
         }
     }
 

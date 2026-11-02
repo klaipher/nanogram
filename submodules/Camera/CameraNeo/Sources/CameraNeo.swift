@@ -114,8 +114,10 @@ final class CameraNeo: NSObject, CameraProtocol {
 
         self.sessionQueue.setSpecific(key: self.sessionQueueKey, value: ())
         self.mediaQueue.setSpecific(key: self.mediaQueueKey, value: ())
+        self.previewView?.connectionQueue = self.sessionQueue
         self.previewView?.setSession(self.session, automaticallyConnect: !useMultiCam)
         if useMultiCam {
+            self.secondaryPreviewView?.connectionQueue = self.sessionQueue
             self.secondaryPreviewView?.setSession(self.session, automaticallyConnect: false)
         }
 

@@ -846,6 +846,12 @@ GPU (Metal) rendering of stickers and emoji, its debug switches and how to measu
   the tag while the encoder converted with 709, so skin decoded pinker (7d600b48's message wrongly
   says circles already tagged 709). Never tag with the camera's matrix: the shader has already
   decoded it. `//submodules/Camera/CameraNeo:CameraNeoTests` decodes red and a skin tone back.
+- **Circle pause/resume** (`VideoMessageCameraScreen.resumeCameraCapture`): the paused frame stays sharp until
+  the preview runs again, then cross-fades out on main (`isPreviewing` is KVO and may arrive off main). No blur,
+  no loading shimmer on resume: the shimmer used to be faded in there and never out, and `LoadingEffectView`
+  restarted its sweep on every layout (0.09 s while recording), a glow blinking at the circle's left edge
+  (`VideoMessageCameraScreenTests`). CameraNeo's preview views switch their connection on the session queue
+  (`CameraPreviewView.connectionQueue`), never on main, where it could wait for a `startRunning`/`stopRunning` in progress.
 - **Gallery photo upload decodes at the upload size** (`downsampledPhotoLibraryImage`: PhotoKit
   image data, ImageIO thumbnail with the EXIF transform, then the same `resizedImage` step for the
   exact size and sRGB). Photos deeper than 8 bits, camera RAW and unreadable data fall back to the
