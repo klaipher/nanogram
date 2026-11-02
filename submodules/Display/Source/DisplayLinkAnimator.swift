@@ -129,6 +129,21 @@ public final class SharedDisplayLinkDriver {
         self.update()
     }
     
+    /// For the background diagnostic: live links, those not paused, and whether the CADisplayLink itself runs.
+    public var diagnosticCounts: (registered: Int, running: Int, driverRunning: Bool) {
+        var registered = 0
+        var running = 0
+        for request in self.requests {
+            if let link = request.link, link.isValid {
+                registered += 1
+                if !link.isPaused {
+                    running += 1
+                }
+            }
+        }
+        return (registered, running, self.displayLink.flatMap { !$0.isPaused } ?? false)
+    }
+
     public func updateForegroundState(_ isActive: Bool) {
         if self.isInForeground != isActive {
             self.isInForeground = isActive

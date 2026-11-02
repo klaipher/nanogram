@@ -55,6 +55,17 @@ public final class PresentationsResourceCache {
     private let imageCache = Atomic<PresentationsResourceCacheHolder>(value: PresentationsResourceCacheHolder())
     private let objectCache = Atomic<PresentationsResourceAnyCacheHolder>(value: PresentationsResourceAnyCacheHolder())
     
+    /// The decoded size of the cached images (4 bytes per pixel), for the background diagnostic.
+    public var diagnosticImageBytes: UInt64 {
+        return self.imageCache.with { holder -> UInt64 in
+            var total: UInt64 = 0
+            for image in Array(holder.images.values) + Array(holder.parameterImages.values) {
+                total += UInt64(max(0.0, image.size.width * image.scale)) * UInt64(max(0.0, image.size.height * image.scale)) * 4
+            }
+            return total
+        }
+    }
+
     public func image(_ key: Int32, _ theme: PresentationTheme, _ generate: (PresentationTheme) -> UIImage?) -> UIImage? {
         let result = self.imageCache.with { holder -> UIImage? in
             return holder.images[key]

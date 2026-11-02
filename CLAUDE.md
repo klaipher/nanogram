@@ -1270,6 +1270,15 @@ byte-identical and the decoder pixel-identical (`MozjpegBindingTests` pins golde
   any failure returns nil so the caller falls back to `UIImage(data:)`; sides over 8192 are refused.
 - The JPEG XL functions compile to stubs returning nil: `USE_JPEGXL` is undefined and libjxl is not linked.
 
+## Background diagnostic and the "lock" task
+
+With Settings ▸ Debug "Log to File" on, the app logs a `Background diagnostic:` line 5 s and 60 s after entering
+the background (`BackgroundDiagnostics` module, `AppDelegate.logBackgroundDiagnostics`): footprint by kind
+(`task_vm_info`: internal, compressed, graphics, media, purgeable, malloc), background time remaining, the background
+tasks the app holds, whether the audio session is active, display links, and cache sizes. `after` far above the
+scheduled time means the process was suspended in between. Nothing leaves the device. The "lock" task begun on
+entering the background is a `OneShotBackgroundTask`: ended once, by its 5 s deadline or the expiration handler.
+
 ## Postbox history views and read state
 
 A `MessageHistoryView`'s output depends on peer read state only through its transient read states (the entries'
