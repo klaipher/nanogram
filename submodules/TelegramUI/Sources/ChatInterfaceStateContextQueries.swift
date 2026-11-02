@@ -529,26 +529,7 @@ func searchQuerySuggestionResultStateForChatInterfacePresentationState(_ chatPre
 private let dataDetector = try? NSDataDetector(types: NSTextCheckingResult.CheckingType([.link]).rawValue)
 
 func detectUrls(_ inputText: NSAttributedString?) -> [String] {
-    var detectedUrls: [String] = []
-    if let text = inputText, let dataDetector = dataDetector {
-        let utf16 = text.string.utf16
-        
-        let nsRange = NSRange(location: 0, length: utf16.count)
-        let matches = dataDetector.matches(in: text.string, options: [], range: nsRange)
-        for match in matches {
-            let urlText = (text.string as NSString).substring(with: match.range)
-            detectedUrls.append(urlText)
-        }
-        
-        inputText?.enumerateAttribute(ChatTextInputAttributes.textUrl, in: nsRange, options: [], using: { value, range, stop in
-            if let value = value as? ChatTextInputTextUrlAttribute {
-                if !detectedUrls.contains(value.url) {
-                    detectedUrls.append(value.url)
-                }
-            }
-        })
-    }
-    return detectedUrls
+    return ChatInputUrlDetector.shared.detectUrls(inputText)
 }
 
 struct UrlPreviewState {

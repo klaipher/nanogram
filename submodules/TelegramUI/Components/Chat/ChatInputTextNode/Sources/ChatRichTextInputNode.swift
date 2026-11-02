@@ -454,7 +454,7 @@ public extension ChatRichTextInputNode {
         return (self.attributedText?.length ?? 0) == 0
     }
     var inputContentIsEmptyWhitespaceTrimmed: Bool {
-        return (self.attributedText?.string.trimmingCharacters(in: .whitespacesAndNewlines).isEmpty) ?? true
+        return self.attributedText.flatMap { stringIsEmptyOrWhitespace($0.string) } ?? true
     }
     func currentInputContent() -> (content: ChatInputContent, selection: ChatInputSelection) {
         let attr = self.attributedText ?? NSAttributedString()
