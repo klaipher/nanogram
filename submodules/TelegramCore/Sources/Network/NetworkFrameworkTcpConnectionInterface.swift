@@ -24,7 +24,6 @@ private func describeState(_ state: NWConnection.State) -> String {
     }
 }
 
-@available(iOS 12.0, macOS 14.0, *)
 /// TCP options of every Network.framework MTProto connection.
 ///
 /// Keepalive: first probe after 30 s idle, then every 10 s, 3 probes (a dead peer is noticed
@@ -33,6 +32,7 @@ private func describeState(_ state: NWConnection.State) -> String {
 /// sooner by the connection's viability handler and by MTProto's own pings. The 30 s figure
 /// needs the device Power Profiler check (cellular, 5 min idle, and a reconnect timed after a
 /// Wi-Fi to cellular switch) before it is tuned further; see CLAUDE.md.
+@available(iOS 12.0, macOS 14.0, *)
 func configureNetworkFrameworkTcpOptions(_ tcpOptions: NWProtocolTCP.Options) {
     tcpOptions.noDelay = true
     tcpOptions.enableKeepalive = true
@@ -42,6 +42,7 @@ func configureNetworkFrameworkTcpOptions(_ tcpOptions: NWProtocolTCP.Options) {
     tcpOptions.enableFastOpen = true
 }
 
+@available(iOS 12.0, macOS 14.0, *)
 final class NetworkFrameworkTcpConnectionInterface: NSObject, MTTcpConnectionInterface {
     private struct ReadRequest {
         let length: Int
