@@ -810,6 +810,39 @@ GPU (Metal) rendering of stickers and emoji, its debug switches and how to measu
 - **Legacy camera shutter:** `TGCameraCapturedPhoto` is built off the main thread; the first screen
   image of the most recent capture is decoded from its JPEG bytes kept in a single static slot.
 
+## Media decode, animation caches and the voice recorder input (2026-11)
+
+- **FFmpeg `get_format`** (`FFMpegAVCodecContext.m`) must return VideoToolbox only when it is in the
+  offered list, else the last (software) entry: FFmpeg calls it again without VideoToolbox when the
+  hwaccel setup fails, and any format not in the list fails the decoder. The iOS 27.2 simulator has
+  no working VideoToolbox hwaccel, so hardware readers there run FFmpeg's software fallback and the
+  VideoToolbox-only tests skip (`FFMpegHardwareFallbackTests` forces the failure on purpose).
+- **GIF tiles** (`BatchVideoRenderingContext`) use the hwaccel for clips whose longer side is
+  >= 320 px and hold one of 16 `HardwareDecoderBudget` slots per hardware reader; every path that
+  drops a reader must go through `releaseReader()` or the slot leaks. The tiles detect a loop by pts
+  going backwards, so they need presentation-order frames: never feed them passthrough samples.
+- **Video-sticker `.cached` files** (`makeVideoStickerFrameCache`, AnimatedStickerNode) stay LZFSE:
+  on their XOR deltas LZ4 decodes slower and every displayed frame is decoded again. The hardware
+  VP9 path must produce byte-identical files to libvpx (`VideoStickerFrameCacheTests` keeps the
+  previous writer as the golden reference).
+- **DCT animation cache format 8**: the codec byte follows the version; blocks end only at frame
+  boundaries (`BlockCompressedFileWriter.endFrame`). The writer uses LZBITMAP (LZMESH is read on
+  iOS 27+ but decodes no faster). First-frame adaptation lists each shard directory once per process
+  (`AdaptationSizeIndex`) and then only stats sizes this process has seen; every place that stores
+  an item must call `adaptationSizeIndex.noteSize`. Its lock guards only its two sets: listing and
+  stat run outside it, because `getFirstFrameSynchronously` runs on the main thread and must not wait
+  for a fetch queue's listing. After a full conversion the `-f` file is made
+  only if missing, on the fetch queue, while the item context stays registered.
+- **Voice recorder input** (`submodules/VoiceRecorderInput`, C): RemoteIO's input callback is
+  `VoiceRecorderInputRenderCallback` with the `VoiceRecorderInput` as refCon; nothing Swift runs on
+  the IO thread. `ManagedAudioRecorderContext` sets the unit after `AudioUnitInitialize`, clears it
+  right after `AudioOutputUnitStop` and before disposing, destroys the input only in deinit (after
+  `stop()`), and drains whole 20 ms packets on a 1/40 s timer and once in `stop()`. The recording
+  state goes out at most every 1/30 s (`VoiceRecordingStateThrottle`, TelegramAudio); with the
+  1/40 s drain that is every other tick, so the time label updates at ~20 Hz (it was ~47 Hz). Tests:
+  `//submodules/VoiceRecorderInput:VoiceRecorderInputTests` (Opus output identical to the old
+  packetizer for a synthetic producer).
+
 ## Framework export lists (computed by the build)
 
 `TelegramUIFramework` and `TelegramCoreFramework` export only the symbols their clients use.

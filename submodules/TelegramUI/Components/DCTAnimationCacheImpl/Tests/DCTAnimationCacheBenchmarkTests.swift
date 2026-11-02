@@ -26,18 +26,23 @@ final class DCTAnimationCacheBenchmarkTests: XCTestCase {
             }
             let frames = Support.decodeFrames(item)
 
-            for formatVersion: UInt32 in [6, 7] {
+            for (formatVersion, codec): (UInt32, DCTAnimationCacheCodec?) in [(6, nil), (7, nil), (8, .lzbitmap), (8, .lzmesh)] {
+            if codec == .lzmesh, #unavailable(iOS 27.0) {
+                continue
+            }
+            dctAnimationCacheWriterCodecOverride = codec
             dctAnimationCacheWriterFormatVersion = formatVersion
             defer {
-                dctAnimationCacheWriterFormatVersion = 7
+                dctAnimationCacheWriterFormatVersion = 8
+                dctAnimationCacheWriterCodecOverride = nil
             }
             let writeIterations = 8
             var bytes = 0
             var written: AnimationCacheItem?
             let writeStart = CFAbsoluteTimeGetCurrent()
             for i in 0 ..< writeIterations {
-                written = Support.writeFrames(cache: cache, sourceId: "bench-\(name)-\(formatVersion)-\(i)", width: width, height: height, frames: frames)
-                let path = Support.itemPath(basePath: basePath, sourceId: "bench-\(name)-\(formatVersion)-\(i)", width: width, height: height)
+                written = Support.writeFrames(cache: cache, sourceId: "bench-\(name)-\(formatVersion)-\(String(describing: codec))-\(i)", width: width, height: height, frames: frames)
+                let path = Support.itemPath(basePath: basePath, sourceId: "bench-\(name)-\(formatVersion)-\(String(describing: codec))-\(i)", width: width, height: height)
                 bytes = (try? FileManager.default.attributesOfItem(atPath: path)[.size] as? Int) ?? -1
             }
             let writeTime = (CFAbsoluteTimeGetCurrent() - writeStart) / Double(writeIterations)
@@ -59,7 +64,7 @@ final class DCTAnimationCacheBenchmarkTests: XCTestCase {
             }
             let fixtureTime = (CFAbsoluteTimeGetCurrent() - fixtureStart) / Double(loops * item.numFrames)
 
-            Support.log(String(format: "BENCH %@ format=%d frames=%d write=%.2fms/item bytes=%d play=%.1fus/frame playV6Fixture=%.1fus/frame", name, Int(formatVersion), frames.count, writeTime * 1000.0, bytes, playTime * 1e6, fixtureTime * 1e6))
+            Support.log(String(format: "BENCH %@ format=%d codec=%@ frames=%d write=%.2fms/item bytes=%d play=%.1fus/frame playV6Fixture=%.1fus/frame", name, Int(formatVersion), String(describing: codec), frames.count, writeTime * 1000.0, bytes, playTime * 1e6, fixtureTime * 1e6))
             }
         }
     }

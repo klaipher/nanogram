@@ -102,9 +102,23 @@ public final class BatchVideoRenderingContext {
         var readerDidProduceFrame: Bool = false
         // The current reader was rewound to loop instead of being opened again.
         var readerWasRewound: Bool = false
+        // The current reader decodes with VideoToolbox and holds a slot of `hardwareReaders`.
+        private var holdsHardwareSlot: Bool = false
         
         init(dataPath: String) {
             self.dataPath = dataPath
+        }
+        
+        deinit {
+            self.releaseReader()
+        }
+        
+        private func releaseReader() {
+            self.reader = nil
+            if self.holdsHardwareSlot {
+                self.holdsHardwareSlot = false
+                BatchVideoRenderingContext.hardwareReaders.release()
+            }
         }
         
         func advance() -> CMSampleBuffer? {
@@ -113,11 +127,16 @@ public final class BatchVideoRenderingContext {
                     break outer
                 }
                 if self.reader == nil {
+                    let hardwareSlot = BatchVideoRenderingContext.hardwareReaders.tryAcquire()
                     let reader = FFMpegFileReader(
                         source: .file(self.dataPath),
-                        useHardwareAcceleration: false,
+                        // VideoToolbox costs a flat ~75 us of CPU per frame and hands its buffer
+                        // over without a copy; software decoding of a tiny clip costs less.
+                        useHardwareAcceleration: hardwareSlot,
+                        hardwareAccelerationMinimumLongSide: BatchVideoRenderingContext.hardwareMinimumLongSide,
                         // These render into ~93pt tiles, where deblocking is not visible but
                         // is a large fraction of the decode cost of a grid of animating GIFs.
+                        // VideoToolbox ignores it.
                         skipLoopFilter: true,
                         selectedStream: .mediaType(.video),
                         seek: nil,
@@ -133,6 +152,13 @@ public final class BatchVideoRenderingContext {
                         seek: nil,
                         maxReadablePts: nil
                     )
+                    if hardwareSlot {
+                        if reader?.isHardwareAccelerated == true {
+                            self.holdsHardwareSlot = true
+                        } else {
+                            BatchVideoRenderingContext.hardwareReaders.release()
+                        }
+                    }
                     if reader == nil {
                         self.isFailed = true
                         break outer
@@ -152,12 +178,13 @@ public final class BatchVideoRenderingContext {
                     return createSampleBuffer(fromSampleBuffer: frame.sampleBuffer, withTimeOffset: .zero, duration: nil, displayImmediately: true)
                 case .error:
                     self.isFailed = true
+                    self.releaseReader()
                     break outer
                 case .endOfStream:
                     if !self.readerDidProduceFrame {
                         if self.readerWasRewound {
                             // The rewind produced nothing: open the file again, as before.
-                            self.reader = nil
+                            self.releaseReader()
                             continue outer
                         }
                         // Nothing decodable in the whole file — fail permanently instead of
@@ -170,7 +197,7 @@ public final class BatchVideoRenderingContext {
                         self.readerDidProduceFrame = false
                         self.readerWasRewound = true
                     } else {
-                        self.reader = nil
+                        self.releaseReader()
                     }
                 case .waitingForMoreData:
                     // Invariant: the reader is only constructed once the consumer's
@@ -212,6 +239,11 @@ public final class BatchVideoRenderingContext {
     }
     
     private static let sharedQueue = Queue(name: "BatchVideoRenderingContext", qos: .default)
+    // At most this many tiles decode with VideoToolbox at once (a grid shows ~18-24); the rest
+    // decode in software. Session limits are not documented.
+    fileprivate static let hardwareReaders = HardwareDecoderBudget(limit: 16)
+    // Clips whose longer side is shorter decode in software, which costs less for them.
+    fileprivate static let hardwareMinimumLongSide = 320
     
     private let context: AccountContext
     

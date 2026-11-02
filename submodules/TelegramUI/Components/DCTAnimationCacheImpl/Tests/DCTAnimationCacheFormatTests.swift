@@ -58,7 +58,7 @@ final class DCTAnimationCacheFormatTests: XCTestCase {
         for formatVersion: UInt32 in [7, 6] {
             dctAnimationCacheWriterFormatVersion = formatVersion
             defer {
-                dctAnimationCacheWriterFormatVersion = 7
+                dctAnimationCacheWriterFormatVersion = 8
             }
             let cache = Support.makeCache(basePath: self.basePath + "/v\(formatVersion)")
             for golden in Self.reencodeGoldens {
@@ -96,15 +96,15 @@ final class DCTAnimationCacheFormatTests: XCTestCase {
         }
     }
 
-    func testNewItemsAreWrittenInFormat7() throws {
+    func testNewItemsAreWrittenInTheCurrentFormat() throws {
         let cache = Support.makeCache(basePath: self.basePath)
         _ = try Support.installFixture("emoji62_v6", basePath: self.basePath, sourceId: "source", width: 62, height: 62)
         let item = try XCTUnwrap(Support.getItem(cache: cache, sourceId: "source", width: 62, height: 62, fetch: Support.failingFetch))
         let frames = Support.decodeFrames(item)
         XCTAssertNotNil(Support.writeFrames(cache: cache, sourceId: "new", width: 62, height: 62, frames: frames))
-        XCTAssertEqual(Support.storedFormatVersion(path: Support.itemPath(basePath: self.basePath, sourceId: "new", width: 62, height: 62)), 7)
+        XCTAssertEqual(Support.storedFormatVersion(path: Support.itemPath(basePath: self.basePath, sourceId: "new", width: 62, height: 62)), 8)
         // The first-frame file written next to it uses the same format.
-        XCTAssertEqual(Support.storedFormatVersion(path: Support.itemPath(basePath: self.basePath, sourceId: "new", width: 62, height: 62) + "-f"), 7)
+        XCTAssertEqual(Support.storedFormatVersion(path: Support.itemPath(basePath: self.basePath, sourceId: "new", width: 62, height: 62) + "-f"), 8)
     }
 
     func testTruncatedFilesFailWithoutCrashing() throws {

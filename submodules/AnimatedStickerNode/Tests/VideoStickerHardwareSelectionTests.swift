@@ -13,7 +13,7 @@ private func fixturePath(_ name: String, _ type: String) -> String? {
     return bundles.lazy.compactMap({ $0.path(forResource: name, ofType: type) }).first
 }
 
-private func copyPlane(from source: UnsafeMutablePointer<UInt8>, stride: Int, to destination: CVPixelBuffer, plane: Int, rowBytes: Int, rows: Int) -> Bool {
+func copyPlane(from source: UnsafeMutablePointer<UInt8>, stride: Int, to destination: CVPixelBuffer, plane: Int, rowBytes: Int, rows: Int) -> Bool {
     guard let dst = CVPixelBufferGetBaseAddressOfPlane(destination, plane) else {
         return false
     }
@@ -51,7 +51,7 @@ private func firstDifference(_ actual: [[Data]], _ expected: [[Data]]) -> String
 
 // libvpx through FFmpeg, giving the decoded planes as they are (FFMpegFileReader's tri-planar
 // output premultiplies luma, which VideoToolbox does not).
-private final class RawLibvpxReader {
+final class RawLibvpxReader {
     private let format = FFMpegAVFormatContext()
     private let codecContext: FFMpegAVCodecContext
     private let streamIndex: Int32
@@ -109,7 +109,7 @@ private final class RawLibvpxReader {
 // Stands in for the hardware decoder in the simulator (which has none): it returns libvpx's own
 // planes as 420v colour and alpha buffers, which is what VideoToolbox returns (the host test
 // checks that the planes are identical). It can fail at a given frame.
-private final class LibvpxBackedDecoder: VideoStickerHardwareDecoder {
+final class LibvpxBackedDecoder: VideoStickerHardwareDecoder {
     private let path: String
     private var reader: RawLibvpxReader?
     private let failAt: Int?
