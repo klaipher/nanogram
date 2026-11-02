@@ -1223,7 +1223,7 @@ enum DebugControllerEntry: ItemListNodeEntry {
                 }).start()
             })
         case let .localTranscription(value):
-            return ItemListSwitchItem(presentationData: presentationData, systemStyle: .glass, title: "Voice messages: transcribe on this device", value: value, sectionId: self.section, style: .blocks, updated: { value in
+            return ItemListSwitchItem(presentationData: presentationData, systemStyle: .glass, title: "Voice messages: on-device transcription", value: value, maximumNumberOfLines: 2, sectionId: self.section, style: .blocks, updated: { value in
                 let _ = updateExperimentalUISettingsInteractively(accountManager: arguments.sharedContext.accountManager, { settings in
                     var settings = settings
                     settings.localTranscription = value
@@ -1231,7 +1231,7 @@ enum DebugControllerEntry: ItemListNodeEntry {
                 }).start()
             })
         case let .enableVoipTcp(value):
-            return ItemListSwitchItem(presentationData: presentationData, systemStyle: .glass, title: "Calls: allow TCP (networks that block UDP)", value: value, sectionId: self.section, style: .blocks, updated: { value in
+            return ItemListSwitchItem(presentationData: presentationData, systemStyle: .glass, title: "Calls: allow TCP fallback", value: value, maximumNumberOfLines: 2, sectionId: self.section, style: .blocks, updated: { value in
                 let _ = updateExperimentalUISettingsInteractively(accountManager: arguments.sharedContext.accountManager, { settings in
                     var settings = settings
                     settings.enableVoipTcp = value
