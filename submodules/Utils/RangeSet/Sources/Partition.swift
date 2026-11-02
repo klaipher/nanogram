@@ -195,6 +195,7 @@ extension Collection {
   ///
   /// - Complexity: O(log *n*), where *n* is the length of this collection if
   ///   the collection conforms to `RandomAccessCollection`, otherwise O(*n*).
+  @inlinable
   internal func _partitioningIndex(
     where predicate: (Element) throws -> Bool
   ) rethrows -> Index {

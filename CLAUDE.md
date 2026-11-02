@@ -774,6 +774,13 @@ GPU (Metal) rendering of stickers and emoji, its debug switches and how to measu
   Power Profiler on cellular, 5 min idle with the old and new values, and time a reconnect after a
   Wi-Fi to cellular switch for each.
 
+## Media I/O invariants (MediaBox maps, lookahead reader, RangeSet, VACUUM)
+
+- **RangeSet is `@inlinable`** (clients specialize it; 57-100x faster than the unspecialized calls,
+  benchmark under the deep-audit fix-bench). Its invariant check runs only with `DEBUG`. Its
+  `intersects` also returns true for a range that only touches the set (pinned by
+  `//submodules/Utils/RangeSet:RangeSetTests`); keep that unless every caller is checked.
+
 ## Framework export lists (computed by the build)
 
 `TelegramUIFramework` and `TelegramCoreFramework` export only the symbols their clients use.

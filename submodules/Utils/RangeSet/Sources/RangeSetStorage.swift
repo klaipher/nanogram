@@ -9,20 +9,23 @@
 //
 //===----------------------------------------------------------------------===//
 
+@usableFromInline
 struct _RangeSetStorage<T: Comparable> {
-  fileprivate enum _Storage {
+  @usableFromInline
+  enum _Storage {
     case empty
     case singleRange(high: Int, low: Int32)
     case variadic([Range<T>])
   }
   
-  fileprivate var _storage: _Storage
+  @usableFromInline
+  var _storage: _Storage
   
-  init() {
+  @inlinable init() {
     _storage = .empty
   }
   
-  init(_ range: Range<T>) {
+  @inlinable init(_ range: Range<T>) {
     if let intRange = range as? Range<Int>,
       let lowerBound = Int32(exactly: intRange.lowerBound)
     {
@@ -32,11 +35,11 @@ struct _RangeSetStorage<T: Comparable> {
     }
   }
   
-  init(_ ranges: [Range<T>]) {
+  @inlinable init(_ ranges: [Range<T>]) {
     _storage = .variadic(ranges)
   }
   
-  func unsafeRange(low: Int32, high: Int) -> Range<T> {
+  @inlinable func unsafeRange(low: Int32, high: Int) -> Range<T> {
     unsafeBitCast(Int(low)..<high, to: Range<T>.self)
   }
 }
@@ -49,7 +52,7 @@ struct _RangeSetStorage<T: Comparable> {
 // with a single-element array.
 
 extension _RangeSetStorage: Equatable {
-  static func == (lhs: _RangeSetStorage, rhs: _RangeSetStorage) -> Bool {
+  @inlinable static func == (lhs: _RangeSetStorage, rhs: _RangeSetStorage) -> Bool {
     switch (lhs._storage, rhs._storage) {
     case (.empty, .empty):
       return true
@@ -74,7 +77,7 @@ extension _RangeSetStorage: Equatable {
 }
 
 extension _RangeSetStorage: Hashable where T: Hashable {
-  func hash(into hasher: inout Hasher) {
+  @inlinable func hash(into hasher: inout Hasher) {
     for range in self {
       hasher.combine(range)
     }
@@ -82,9 +85,9 @@ extension _RangeSetStorage: Hashable where T: Hashable {
 }
 
 extension _RangeSetStorage: RandomAccessCollection, MutableCollection {
-  var startIndex: Int { 0 }
+  @inlinable var startIndex: Int { 0 }
   
-  var endIndex: Int {
+  @inlinable var endIndex: Int {
     switch _storage {
     case .empty: return 0
     case .singleRange: return 1
@@ -92,7 +95,7 @@ extension _RangeSetStorage: RandomAccessCollection, MutableCollection {
     }
   }
   
-  subscript(i: Int) -> Range<T> {
+  @inlinable subscript(i: Int) -> Range<T> {
     get {
       switch _storage {
       case .empty: fatalError("Can't access elements of empty storage")
@@ -124,7 +127,7 @@ extension _RangeSetStorage: RandomAccessCollection, MutableCollection {
     }
   }
   
-  var count: Int {
+  @inlinable var count: Int {
     switch _storage {
     case .empty: return 0
     case .singleRange: return 1
@@ -134,7 +137,7 @@ extension _RangeSetStorage: RandomAccessCollection, MutableCollection {
 }
 
 extension _RangeSetStorage: RangeReplaceableCollection {
-  mutating func replaceSubrange<C>(_ subrange: Range<Int>, with newElements: C) where C : Collection, C.Element == Element {
+  @inlinable mutating func replaceSubrange<C>(_ subrange: Range<Int>, with newElements: C) where C : Collection, C.Element == Element {
     switch _storage {
     case .empty:
       if !newElements.isEmpty {
