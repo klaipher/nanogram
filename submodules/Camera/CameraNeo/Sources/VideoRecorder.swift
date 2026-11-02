@@ -702,6 +702,21 @@ final class VideoRecorder {
         }
     }
 
+    static func videoSettings(source: VideoFrameSource) -> [String: Any] {
+        let compressionProperties: [String: Any] = [
+            AVVideoAverageBitRateKey: 1_200_000,
+            AVVideoProfileLevelKey: AVVideoProfileLevelH264HighAutoLevel,
+            AVVideoH264EntropyModeKey: AVVideoH264EntropyModeCABAC
+        ]
+        return [
+            AVVideoCodecKey: AVVideoCodecType.h264,
+            AVVideoWidthKey: RoundVideoFrameProcessor.outputWidth,
+            AVVideoHeightKey: RoundVideoFrameProcessor.outputHeight,
+            AVVideoCompressionPropertiesKey: compressionProperties,
+            AVVideoColorPropertiesKey: RoundVideoFrameProcessor.videoColorProperties(from: source)
+        ]
+    }
+
     private func prepareWriterIfNeeded(firstVideoFrame: PendingVideoFrame) {
         guard self.assetWriter == nil else {
             return
@@ -717,18 +732,7 @@ final class VideoRecorder {
         }
         assetWriter.shouldOptimizeForNetworkUse = false
 
-        let compressionProperties: [String: Any] = [
-            AVVideoAverageBitRateKey: 1_200_000,
-            AVVideoProfileLevelKey: AVVideoProfileLevelH264HighAutoLevel,
-            AVVideoH264EntropyModeKey: AVVideoH264EntropyModeCABAC
-        ]
-        let videoSettings: [String: Any] = [
-            AVVideoCodecKey: AVVideoCodecType.h264,
-            AVVideoWidthKey: RoundVideoFrameProcessor.outputWidth,
-            AVVideoHeightKey: RoundVideoFrameProcessor.outputHeight,
-            AVVideoCompressionPropertiesKey: compressionProperties,
-            AVVideoColorPropertiesKey: RoundVideoFrameProcessor.videoColorProperties(from: firstVideoFrame.source)
-        ]
+        let videoSettings = Self.videoSettings(source: firstVideoFrame.source)
         guard assetWriter.canApply(outputSettings: videoSettings, forMediaType: .video) else {
             self.fail()
             return

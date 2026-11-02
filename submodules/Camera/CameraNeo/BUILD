@@ -77,6 +77,7 @@ swift_library(
     ]),
     deps = [
         ":CameraNeo",
+        "//submodules/Camera",
     ],
 )
 
