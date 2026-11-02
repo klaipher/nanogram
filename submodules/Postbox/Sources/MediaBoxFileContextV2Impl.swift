@@ -3,6 +3,11 @@ import RangeSet
 import SwiftSignalKit
 
 public final class MediaBoxFileContextV2Impl: MediaBoxFileContext {
+    /// The file map is written to disk after this many partial writes, and always on completion,
+    /// reset, truncation and close. It was written after every write. Readers in this process
+    /// see the live map through `MediaBoxLiveFileMaps`; see its comment for crash behaviour.
+    public static let defaultWritesPerMapSerialization = 16
+    
     private final class RangeRequest {
         let value: Range<Int64>
         let priority: MediaBoxFetchPriority
@@ -108,6 +113,9 @@ public final class MediaBoxFileContextV2Impl: MediaBoxFileContext {
         private let destinationFile: MediaBoxFileManager.Item?
         
         private let fileMap: MediaBoxFileMap
+        private let liveFileMaps: MediaBoxLiveFileMaps?
+        private let writesPerMapSerialization: Int
+        private var unsavedMapWrites: Int = 0
         private var rangeRequests = Bag<RangeRequest>()
         private var statusRequests = Bag<StatusRequest>()
         private var rangeStatusRequests = Bag<RangeStatusRequest>()
@@ -128,7 +136,9 @@ public final class MediaBoxFileContextV2Impl: MediaBoxFileContext {
             resourceId: Data,
             partialPath: String,
             fullPath: String,
-            metaPath: String
+            metaPath: String,
+            liveFileMaps: MediaBoxLiveFileMaps?,
+            writesPerMapSerialization: Int
         ) {
             self.queue = queue
             self.manager = manager
@@ -137,6 +147,8 @@ public final class MediaBoxFileContextV2Impl: MediaBoxFileContext {
             self.partialPath = partialPath
             self.fullPath = fullPath
             self.metaPath = metaPath
+            self.liveFileMaps = liveFileMaps
+            self.writesPerMapSerialization = max(1, writesPerMapSerialization)
             
             if !FileManager.default.fileExists(atPath: self.partialPath) {
                 let _ = try? FileManager.default.removeItem(atPath: self.metaPath)
@@ -168,10 +180,37 @@ public final class MediaBoxFileContextV2Impl: MediaBoxFileContext {
             if FileManager.default.fileExists(atPath: self.fullPath) {
                 self.isComplete = true
             }
+            
+            self.publishMap()
         }
         
         deinit {
             self.pendingFetch?.disposable.dispose()
+            
+            if self.unsavedMapWrites != 0 {
+                if self.queue.isCurrent() {
+                    self.fileMap.serialize(manager: self.manager, to: self.metaPath)
+                } else {
+                    let fileMap = self.fileMap
+                    let manager = self.manager
+                    let metaPath = self.metaPath
+                    self.queue.async {
+                        fileMap.serialize(manager: manager, to: metaPath)
+                    }
+                }
+            }
+            self.liveFileMaps?.remove(metaPath: self.metaPath, owner: self)
+        }
+        
+        /// Lets this process's direct readers see the map before it reaches the disk.
+        private func publishMap() {
+            self.liveFileMaps?.update(metaPath: self.metaPath, owner: self, ranges: self.fileMap.ranges, truncationSize: self.fileMap.truncationSize)
+        }
+        
+        private func saveMap() {
+            self.fileMap.serialize(manager: self.manager, to: self.metaPath)
+            self.unsavedMapWrites = 0
+            self.publishMap()
         }
         
         func request(
@@ -418,14 +457,14 @@ public final class MediaBoxFileContextV2Impl: MediaBoxFileContext {
                         let maxValue = max(resourceOffset + Int64(dataRange.count), Int64(maxOffset))
                         if self.fileMap.truncationSize != maxValue {
                             self.fileMap.truncate(maxValue)
-                            self.fileMap.serialize(manager: self.manager, to: self.metaPath)
+                            self.saveMap()
                         }
                     }
                 }
             case let .resourceSizeUpdated(size):
                 if self.fileMap.truncationSize != size {
                     self.fileMap.truncate(size)
-                    self.fileMap.serialize(manager: self.manager, to: self.metaPath)
+                    self.saveMap()
                 }
             case let .progressUpdated(progress):
                 self.fileMap.progressUpdated(progress)
@@ -462,7 +501,7 @@ public final class MediaBoxFileContextV2Impl: MediaBoxFileContext {
             case .reset:
                 if !self.fileMap.ranges.isEmpty {
                     self.fileMap.reset()
-                    self.fileMap.serialize(manager: self.manager, to: self.metaPath)
+                    self.saveMap()
                 }
                 
             }
@@ -480,7 +519,12 @@ public final class MediaBoxFileContextV2Impl: MediaBoxFileContext {
             if !self.isComplete, let truncationSize = self.fileMap.truncationSize, truncationSize == self.fileMap.sum {
                 self.isComplete = true
                 
-                self.destinationFile?.sync()
+                if self.unsavedMapWrites != 0 {
+                    self.saveMap()
+                }
+                // Only ordering is needed here (the data before the link that publishes it), not
+                // a full drive-cache flush: F_BARRIERFSYNC instead of fsync.
+                self.destinationFile?.barrierSync()
                 let linkResult = link(self.partialPath, self.fullPath)
                 if linkResult != 0 {
                     postboxLog("MediaBoxFileContextV2Impl: error while linking \(self.partialPath): \(linkResult)")
@@ -527,7 +571,12 @@ public final class MediaBoxFileContextV2Impl: MediaBoxFileContext {
             } else {
                 let range: Range<Int64> = resourceOffset ..< (resourceOffset + Int64(dataRange.count))
                 self.fileMap.fill(range)
-                self.fileMap.serialize(manager: self.manager, to: self.metaPath)
+                self.unsavedMapWrites += 1
+                if self.unsavedMapWrites >= self.writesPerMapSerialization {
+                    self.saveMap()
+                } else {
+                    self.publishMap()
+                }
                 
                 self.storageBox?.update(id: self.resourceId, size: self.fileMap.sum)
                 return true
@@ -554,6 +603,8 @@ public final class MediaBoxFileContextV2Impl: MediaBoxFileContext {
                 // would describe storage that no longer holds anything.
                 unlink(self.partialPath)
                 unlink(self.metaPath)
+                self.unsavedMapWrites = 0
+                self.liveFileMaps?.remove(metaPath: self.metaPath, owner: self)
             } else {
                 // The fetcher claimed to have delivered the file but nothing is there.
                 // Fail the waiting requests rather than leaving them pending forever.
@@ -737,6 +788,8 @@ public final class MediaBoxFileContextV2Impl: MediaBoxFileContext {
     private let path: String
     private let partialPath: String
     private let metaPath: String
+    private let liveFileMaps: MediaBoxLiveFileMaps?
+    private let writesPerMapSerialization: Int
     
     private let references = Bag<Void>()
     
@@ -753,7 +806,9 @@ public final class MediaBoxFileContextV2Impl: MediaBoxFileContext {
         resourceId: Data,
         path: String,
         partialPath: String,
-        metaPath: String
+        metaPath: String,
+        liveFileMaps: MediaBoxLiveFileMaps? = nil,
+        writesPerMapSerialization: Int = MediaBoxFileContextV2Impl.defaultWritesPerMapSerialization
     ) {
         self.queue = queue
         self.manager = manager
@@ -762,6 +817,8 @@ public final class MediaBoxFileContextV2Impl: MediaBoxFileContext {
         self.path = path
         self.partialPath = partialPath
         self.metaPath = metaPath
+        self.liveFileMaps = liveFileMaps
+        self.writesPerMapSerialization = writesPerMapSerialization
     }
     
     func addReference() -> Int {
@@ -785,7 +842,9 @@ public final class MediaBoxFileContextV2Impl: MediaBoxFileContext {
                 resourceId: self.resourceId,
                 partialPath: self.partialPath,
                 fullPath: self.path,
-                metaPath: self.metaPath
+                metaPath: self.metaPath,
+                liveFileMaps: self.liveFileMaps,
+                writesPerMapSerialization: self.writesPerMapSerialization
             )
             self.partialState = partialState
             return f(partialState)

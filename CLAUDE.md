@@ -776,6 +776,15 @@ GPU (Metal) rendering of stickers and emoji, its debug switches and how to measu
 
 ## Media I/O invariants (MediaBox maps, lookahead reader, RangeSet, VACUUM)
 
+- **`<id>_partial.meta` lags the partial file.** `MediaBoxFileContextV2Impl` writes the map every
+  `defaultWritesPerMapSerialization` (16) writes and on completion, reset, truncation and close; the
+  live map is in `MediaBox.liveFileMaps`. Any in-process reader that reads a partial file without
+  the file context must consult `liveFileMaps` first (as `internal_resourceData` and
+  `internal_resourceDataIsCached` do); reading the `.meta` from disk alone can miss up to 15 chunks
+  and stall a streaming reader. The on-disk map only ever claims less than was written, so a crash
+  costs a re-download; a torn map still fails its CRC/length check and is discarded
+  (`MediaBoxMapSerializationBatchingTests`). Before `link()` publishes a completed file the data is
+  ordered with `F_BARRIERFSYNC` (`ManagedFile.barrierSync`), not `fsync`.
 - **The direct-fetch lookahead (`FFMpegLookahead`) reads from memory, not MediaBox, per read.** It
   answers "is it cached" from MediaBox's live range status and, once that covers the whole file,
   reads the complete file through one `pread` handle. Do not route its per-read path back through
