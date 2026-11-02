@@ -8,6 +8,7 @@ import Postbox
 import PushKit
 import AsyncDisplayKit
 import TelegramUIPreferences
+import NotificationsPresentationData
 import TelegramPresentationData
 import TelegramCallsUI
 import TelegramVoip
@@ -473,9 +474,11 @@ private func extractAccountManagerState(records: AccountRecordsView<TelegramAcco
             UIDevice.current.isBatteryMonitoringEnabled = true
         }
         
-        let clearNotificationsManager = ClearNotificationsManager(getNotificationIds: { completion in
+        let clearNotificationsManager = ClearNotificationsManager(getNotificationIds: { [weak self] completion in
             if #available(iOS 10.0, *) {
                 UNUserNotificationCenter.current().getDeliveredNotifications(completionHandler: { notifications in
+                    self?.removeStaleServicePushNotifications(notifications)
+
                     var result: [(String, NotificationManagedNotificationRequestId)] = []
                     for notification in notifications {
                         if let requestId = NotificationManagedNotificationRequestId(string: notification.request.identifier) {
@@ -2232,6 +2235,10 @@ private func extractAccountManagerState(records: AccountRecordsView<TelegramAcco
         self.isActivePromise.set(true)
 
         self.resetBadge()
+
+        UNUserNotificationCenter.current().getDeliveredNotifications(completionHandler: { [weak self] notifications in
+            self?.removeStaleServicePushNotifications(notifications)
+        })
         
         SharedDisplayLinkDriver.shared.updateForegroundState(self.isActiveValue)
         
@@ -2252,6 +2259,26 @@ private func extractAccountManagerState(records: AccountRecordsView<TelegramAcco
         //cancelWindowPanGestures(view: self.mainWindow.hostView.containerView)
     }
     
+    /// Service pushes the notification service extension could not take down (see
+    /// `ServicePushNotifications`): its quiet placeholders, and, once the app is active and shows
+    /// the chats, the server's own alerts. Neither carries a message id the read-state clearing
+    /// could match.
+    private func removeStaleServicePushNotifications(_ notifications: [UNNotification]) {
+        let delivered = notifications.map { notification -> (identifier: String, userInfo: [AnyHashable: Any]) in
+            return (notification.request.identifier, notification.request.content.userInfo)
+        }
+        Queue.mainQueue().async { [weak self] in
+            guard let self else {
+                return
+            }
+            let identifiers = ServicePushNotifications.staleIdentifiers(delivered: delivered, includeServerFallbacks: self.isActiveValue)
+            if !identifiers.isEmpty {
+                Logger.shared.log("App \(self.episodeId)", "Removing \(identifiers.count) service push notifications")
+                UNUserNotificationCenter.current().removeDeliveredNotifications(withIdentifiers: identifiers)
+            }
+        }
+    }
+
     func applicationWillTerminate(_ application: UIApplication) {
         Logger.shared.log("App \(self.episodeId)", "terminating")
     }

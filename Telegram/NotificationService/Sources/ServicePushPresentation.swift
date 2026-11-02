@@ -1,5 +1,6 @@
 import Foundation
 import UserNotifications
+import NotificationsPresentationData
 
 /// Service pushes (a chat read on another device, deleted messages, read reactions, read
 /// stories) carry no message: the extension answers them with empty content. Only an app with
@@ -7,11 +8,13 @@ import UserNotifications
 /// server's placeholder alert ("You have a new message") instead, so a build without the
 /// entitlement delivers that placeholder quietly (no sound, no screen wake) and removes it again.
 enum ServicePushPresentation {
-    /// Marks a quiet placeholder this extension delivered, so later requests can remove leftovers.
-    static let userInfoKey = "nanogram.servicePush"
+    /// Marks a quiet placeholder this extension delivered, so later requests and the app can
+    /// remove leftovers.
+    static let userInfoKey = ServicePushNotifications.placeholderUserInfoKey
     static let threadIdentifier = "nanogram.servicePush"
-    /// Removing a notification right after handing it back can race its posting.
-    static let removalDelay: Double = 1.0
+    /// Removing a notification right after handing it back can race its posting, and the
+    /// extension may be suspended before a late attempt runs: try early, then once more.
+    static let removalDelays: [Double] = [0.3, 1.0]
 
     /// Telegram/BUILD grants `com.apple.developer.usernotifications.filtering` to this bundle only.
     static func appCanFilterNotifications(baseAppBundleId: String) -> Bool {
@@ -52,7 +55,7 @@ enum ServicePushPresentation {
     }
 
     static func isQuietPlaceholder(userInfo: [AnyHashable: Any]) -> Bool {
-        return (userInfo[userInfoKey] as? Bool) == true
+        return ServicePushNotifications.isQuietPlaceholder(userInfo: userInfo)
     }
 
     /// Removes quiet placeholders still in Notification Center.
