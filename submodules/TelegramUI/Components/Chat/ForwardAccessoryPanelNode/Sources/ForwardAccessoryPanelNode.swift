@@ -104,7 +104,7 @@ public final class ForwardAccessoryPanelNode: AccessoryPanelNode {
     let textNode: ImmediateTextNodeWithEntities
     private var originalText: NSAttributedString?
     
-    private let actionArea: AccessibilityAreaNode
+    let actionArea: AccessibilityAreaNode
     
     let context: AccountContext
     var theme: PresentationTheme

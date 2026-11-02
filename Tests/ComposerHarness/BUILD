@@ -257,3 +257,44 @@ ios_ui_test(
     deps = [":ComposerHarnessUITestsLib"],
     visibility = ["//Tests:__subpackages__"],
 )
+
+# The forward flow (the picker's forward panel, enqueueing forwards) against the harness's real
+# account. Hostless: the bundle carries the two localization resources and the tests point the app
+# bundle's lookups at them (`ForwardFlowResources`). Its own runner has no uninstall pre-action,
+# since there is no host app to go stale.
+swift_library(
+    name = "ForwardFlowTestsLib",
+    testonly = True,
+    srcs = glob(["ForwardFlowTests/**/*.swift"]),
+    deps = [
+        ":HarnessAppContext",
+        "//submodules/SSignalKit/SwiftSignalKit",
+        "//submodules/Postbox",
+        "//submodules/TelegramCore",
+        "//submodules/AccountContext",
+        "//submodules/AppBundle",
+        "//submodules/Display",
+        "//submodules/TelegramPresentationData",
+        "//submodules/TelegramUIPreferences",
+        "//submodules/ChatPresentationInterfaceState",
+        "//submodules/ChatInterfaceState",
+        "//submodules/TelegramUI/Components/Chat/ForwardAccessoryPanelNode",
+    ],
+)
+
+ios_test_runner(
+    name = "ForwardFlowTestRunner",
+    device_type = TEST_SIMULATOR_DEVICE,
+    os_version = TEST_SIMULATOR_OS,
+)
+
+ios_unit_test(
+    name = "ForwardFlowTests",
+    env = {"REUSE_GLOBAL_SIMULATOR": "1"},
+    linkopts = ["-framework", "MediaPlayer"],
+    minimum_os_version = "15.0",
+    resources = ["//Telegram:InstantPagePreviewTestStrings"],
+    runner = ":ForwardFlowTestRunner",
+    deps = [":ForwardFlowTestsLib"],
+    visibility = ["//Tests:__subpackages__"],
+)
