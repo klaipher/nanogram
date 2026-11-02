@@ -133,6 +133,8 @@ private final class HistoryPreloadViewContext {
     var isMuted: Bool?
     var isPriority: Bool
     let disposable = MetaDisposable()
+    var isWatching = false
+    var watchGeneration = 0
     var hole: MessageOfInterestHole?
     var media: [HolesViewMedia] = []
     
@@ -416,6 +418,7 @@ final class ChatHistoryPreloadManager {
                 if let view = self.views[index.entity] {
                     if view.index != index.index || view.hasUnread != hasUnread || view.isMuted != isMuted {
                         let previousHole = view.currentHole
+                        let needsWatching = historyPreloadNeedsWatching(isWatching: view.isWatching, previousIndex: view.index, index: index.index)
                         view.index = index.index
                         view.hasUnread = hasUnread
                         view.isMuted = isMuted
@@ -423,6 +426,9 @@ final class ChatHistoryPreloadManager {
                         let updatedHole = view.currentHole
                         if previousHole != updatedHole {
                             self.update(from: previousHole, to: updatedHole)
+                        }
+                        if needsWatching {
+                            self.watch(entity: index.entity, view: view)
                         }
                     }
                 } else {
@@ -433,52 +439,64 @@ final class ChatHistoryPreloadManager {
                     }
                     let view = HistoryPreloadViewContext(index: index.index, threadId: threadId, hasUnread: hasUnread, isMuted: isMuted, isPriority: isPriority)
                     self.views[index.entity] = view
-                    let key: PostboxViewKey
-                    switch index.entity {
-                    case let .peer(peerId, threadId):
-                        key = .messageOfInterestHole(location: .peer(peerId: peerId, threadId: threadId), namespace: Namespaces.Message.Cloud, count: 50)
-                    }
-                    view.disposable.set((self.postbox.combinedView(keys: [key])
-                    |> deliverOn(self.queue)).start(next: { [weak self] next in
-                        if let strongSelf = self, let value = next.views[key] as? MessageOfInterestHolesView {
-                            if let view = strongSelf.views[index.entity] {
-                                let previousHole = view.currentHole
-                                view.hole = value.closestHole
-                                
-                                var mediaUpdated = false
-                                if view.media.count != value.closestLaterMedia.count {
-                                    mediaUpdated = true
-                                } else {
-                                    for i in 0 ..< view.media.count {
-                                        if view.media[i] != value.closestLaterMedia[i] {
-                                            mediaUpdated = true
-                                            break
-                                        }
-                                    }
-                                }
-                                if mediaUpdated {
-                                    view.media = value.closestLaterMedia
-                                    strongSelf.updateMedia()
-                                }
-                                
-                                let updatedHole = view.currentHole
-                                
-                                let holeIsUpdated = previousHole != updatedHole
-                                
-                                switch index.entity {
-                                case let .peer(peerId, threadId):
-                                    Logger.shared.log("HistoryPreload", "view \(peerId) (threadId: \(String(describing: threadId)) hole \(String(describing: updatedHole)) isUpdated: \(holeIsUpdated)")
-                                }
-                                
-                                if previousHole != updatedHole {
-                                    strongSelf.update(from: previousHole, to: updatedHole)
-                                }
-                            }
-                        }
-                    }))
+                    self.watch(entity: index.entity, view: view)
                 }
             }
         }
+    }
+    
+    private func watch(entity: ChatHistoryPreloadEntity, view: HistoryPreloadViewContext) {
+        view.isWatching = true
+        view.watchGeneration += 1
+        let generation = view.watchGeneration
+        let key: PostboxViewKey
+        switch entity {
+        case let .peer(peerId, threadId):
+            key = .messageOfInterestHole(location: .peer(peerId: peerId, threadId: threadId), namespace: Namespaces.Message.Cloud, count: 50)
+        }
+        view.disposable.set((self.postbox.combinedView(keys: [key])
+        |> deliverOn(self.queue)).start(next: { [weak self] next in
+            if let strongSelf = self, let value = next.views[key] as? MessageOfInterestHolesView {
+                if let view = strongSelf.views[entity], view.watchGeneration == generation {
+                    let previousHole = view.currentHole
+                    view.hole = value.closestHole
+                    
+                    var mediaUpdated = false
+                    if view.media.count != value.closestLaterMedia.count {
+                        mediaUpdated = true
+                    } else {
+                        for i in 0 ..< view.media.count {
+                            if view.media[i] != value.closestLaterMedia[i] {
+                                mediaUpdated = true
+                                break
+                            }
+                        }
+                    }
+                    if mediaUpdated {
+                        view.media = value.closestLaterMedia
+                        strongSelf.updateMedia()
+                    }
+                    
+                    let updatedHole = view.currentHole
+                    
+                    let holeIsUpdated = previousHole != updatedHole
+                    
+                    switch entity {
+                    case let .peer(peerId, threadId):
+                        Logger.shared.log("HistoryPreload", "view \(peerId) (threadId: \(String(describing: threadId)) hole \(String(describing: updatedHole)) isUpdated: \(holeIsUpdated)")
+                    }
+                    
+                    if previousHole != updatedHole {
+                        strongSelf.update(from: previousHole, to: updatedHole)
+                    }
+                    
+                    if !historyPreloadKeepsWatching(hasHole: value.closestHole != nil) {
+                        view.isWatching = false
+                        view.disposable.set(nil)
+                    }
+                }
+            }
+        }))
     }
     
     private func updateMedia() {
