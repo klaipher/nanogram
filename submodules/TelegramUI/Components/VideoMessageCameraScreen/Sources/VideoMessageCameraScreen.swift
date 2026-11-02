@@ -1069,6 +1069,7 @@ public class VideoMessageCameraScreen: ViewController {
         deinit {
             self.cameraStateDisposable?.dispose()
             self.idleTimerExtensionDisposable.dispose()
+            self.resumePreviewDisposable.dispose()
             self.backgroundView.removeFromSuperview()
         }
         
@@ -1254,39 +1255,50 @@ public class VideoMessageCameraScreen: ViewController {
             self.requestUpdateLayout(transition: .immediate)
         }
         
+        private let resumePreviewDisposable = MetaDisposable()
+
+        // Resuming after a pause keeps the paused frame on screen, sharp, until the camera preview runs again and
+        // then cross-fades it to the live preview. It used to blur it (`previewBlurView`, ~0.5 s of a dark blurred
+        // circle) and fade in the loading shimmer, which was never faded out again: from then on it kept
+        // restarting at the circle's left edge on every duration update (LoadingEffectView), a blinking glow.
         func resumeCameraCapture() {
             if !self.mainPreviewView.isEnabled {
-                if let snapshotView = self.resultPreviewView?.snapshotView(afterScreenUpdates: false) {
+                self.previewSnapshotView?.removeFromSuperview()
+                self.previewSnapshotView = nil
+                let snapshotView = self.resultPreviewView?.snapshotView(afterScreenUpdates: false)
+                if let snapshotView {
                     self.previewContainerContentView.insertSubview(snapshotView, belowSubview: self.previewBlurView)
                     self.previewSnapshotView = snapshotView
                 }
                 self.mainPreviewView.isEnabled = true
                 self.additionalPreviewView.isEnabled = true
                 self.camera?.startCapture()
-                
-                UIView.animate(withDuration: 0.25, animations: {
-                    self.loadingView.alpha = 1.0
-                    self.previewBlurView.effect = UIBlurEffect(style: .dark)
-                })
-                
-                let action = { [weak self] in
-                    guard let self else {
+
+                self.loadingView.alpha = 0.0
+                self.previewBlurView.effect = nil
+
+                // `isPreviewing` is a KVO signal that AVFoundation may deliver off the main thread; the cross-fade
+                // touches UIKit, so it must run on main (as `withReadyCamera` does).
+                self.resumePreviewDisposable.set((self.mainPreviewView.isPreviewing
+                |> filter { $0 }
+                |> take(1)
+                |> deliverOnMainQueue).startStrict(next: { [weak self, weak snapshotView] _ in
+                    guard let self, let snapshotView, self.previewSnapshotView === snapshotView else {
                         return
                     }
-                    UIView.animate(withDuration: 0.4, animations: {
-                        self.previewBlurView.effect = nil
-                        self.previewSnapshotView?.alpha = 0.0
-                    }, completion: { [weak self] _ in
-                        self?.previewSnapshotView?.removeFromSuperview()
-                        self?.previewSnapshotView = nil
+                    UIView.animate(withDuration: 0.2, animations: {
+                        snapshotView.alpha = 0.0
+                    }, completion: { [weak self, weak snapshotView] _ in
+                        guard let snapshotView else {
+                            return
+                        }
+                        snapshotView.removeFromSuperview()
+                        if let self, self.previewSnapshotView === snapshotView {
+                            self.previewSnapshotView = nil
+                        }
                     })
-                }
-                let _ = (self.mainPreviewView.isPreviewing
-                |> filter { $0 }
-                |> take(1)).startStandalone(next: { _ in
-                    action()
-                })
-                
+                }))
+
                 self.cameraIsActive = true
                 self.requestUpdateLayout(transition: .immediate)
             }

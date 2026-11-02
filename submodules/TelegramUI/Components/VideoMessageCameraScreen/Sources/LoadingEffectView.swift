@@ -94,10 +94,17 @@ final class LoadingEffectView: UIView {
         self.borderGradientView.layer.add(animation, forKey: "shimmer")
     }
     
+    // The size the shimmer was laid out for. Comparing with `backgroundView.bounds.size` (the 200pt-wide
+    // gradient strip) was never equal, so every layout pass removed and restarted the sweep: while recording,
+    // the 0.09 s duration updates restarted it before the band got past the circle's left edge.
+    private var currentSize: CGSize?
+
     func update(size: CGSize, transition: ComponentTransition) {
-        if self.backgroundView.bounds.size != size {
+        if self.currentSize != size {
+            self.currentSize = size
             self.backgroundView.layer.removeAllAnimations()
-            
+            self.borderGradientView.layer.removeAllAnimations()
+
             self.borderMaskLayer.fillColor = nil
             self.borderMaskLayer.strokeColor = UIColor.white.cgColor
             let lineWidth: CGFloat = 3.0
