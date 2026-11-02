@@ -178,7 +178,6 @@ submodules/TelegramUI/Components/PeerInfo/PeerInfoScreen/Sources/PeerInfoMembers
 submodules/TelegramUI/Components/PeerInfo/PeerInfoScreen/Sources/PeerInfoScreen.swift
 submodules/TelegramUI/Components/PeerInfo/PeerInfoScreen/Sources/PeerInfoScreenAvatarSetup.swift
 submodules/TelegramUI/Components/PeerInfo/PeerInfoScreen/Sources/PresentAddMembers.swift
-submodules/TelegramUI/Components/PeerInfo/PeerInfoVisualMediaPaneNode/Sources/PeerInfoVisualMediaPaneNode.swift
 submodules/TelegramUI/Components/PeerSelectionController/Sources/PeerSelectionController.swift
 submodules/TelegramUI/Components/PeerSelectionController/Sources/PeerSelectionControllerNode.swift
 submodules/TelegramUI/Components/RichTextEditorMediaView/Sources/RichTextMediaContentComponent.swift
