@@ -77,6 +77,12 @@ public final class MediaBoxFileManager {
                 context.sync()
             }
         }
+        
+        func barrierSync() {
+            if let context = self.context {
+                context.barrierSync()
+            }
+        }
     }
     
     final class ItemContext {
@@ -121,6 +127,10 @@ public final class MediaBoxFileManager {
         
         func sync() {
             self.file.sync()
+        }
+        
+        func barrierSync() {
+            self.file.barrierSync()
         }
     }
     
