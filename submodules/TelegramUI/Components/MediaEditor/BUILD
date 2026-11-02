@@ -93,6 +93,7 @@ swift_library(
     ]),
     deps = [
         ":MediaEditor",
+        "//submodules/TelegramCore:TelegramCore",
     ],
 )
 
