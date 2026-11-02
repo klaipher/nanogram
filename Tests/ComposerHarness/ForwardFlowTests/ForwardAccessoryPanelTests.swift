@@ -143,6 +143,19 @@ final class ForwardAccessoryPanelTests: XCTestCase {
 
     // MARK: - Repeated layouts
 
+    /// A layout with the same messages, options, theme and geometry builds nothing new: the text
+    /// node keeps the attributed string it already lays out.
+    func testRepeatedLayoutKeepsTheBuiltText() {
+        let (panel, state) = self.makePanel(count: 10, authorCount: 3)
+        let title = panel.titleNode.attributedText
+        let text = panel.textNode.attributedText
+        for _ in 0 ..< 3 {
+            panel.updateState(size: panel.bounds.size, inset: 0.0, interfaceState: state)
+        }
+        XCTAssertTrue(panel.titleNode.attributedText === title, "the title was rebuilt by an unchanged layout")
+        XCTAssertTrue(panel.textNode.attributedText === text, "the text was rebuilt by an unchanged layout")
+    }
+
     /// Prints the cost of one picker layout's `updateState` (what a keystroke in the comment field
     /// costs the panel). Not an assertion: the numbers go into the commit message.
     func testBenchmarkRepeatedLayout() {
