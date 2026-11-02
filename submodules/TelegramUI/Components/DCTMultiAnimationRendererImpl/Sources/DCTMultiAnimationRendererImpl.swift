@@ -203,6 +203,9 @@ final class ItemAnimationContext {
 
         private var blurredRepresentationValue: UIImage?
 
+        // Badges made on the main thread (cache misses there), for tests.
+        static var mainThreadBlurredRepresentationBuildsForTesting: Int = 0
+
         init?(frame: AnimationCacheItemFrame) {
             self.frame = frame
             self.duration = frame.duration
@@ -238,6 +241,9 @@ final class ItemAnimationContext {
         func blurredRepresentation(color: UIColor?) -> UIImage? {
             if let blurredRepresentationValue = self.blurredRepresentationValue {
                 return blurredRepresentationValue
+            }
+            if Thread.isMainThread {
+                Frame.mainThreadBlurredRepresentationBuildsForTesting += 1
             }
 
             switch frame.format {
@@ -674,6 +680,17 @@ final class ItemAnimationContext {
 
             self.loadingFrameTaskId = taskId
             let useYuvA = self.useYuvA
+            // Locked premium emoji show a blurred badge made from every frame (a 12x12 draw, box blur and
+            // saturation matrix). It is made here with the frame, on the loading queue, so main only assigns it;
+            // made on main it took about 5% of the main thread while the emoji panel was open. Same colour choice
+            // as the main-thread path: the first target that shows a badge.
+            var blurredRepresentationColor: UIColor??
+            for target in self.targets.copyItems() {
+                if let target = target.value, target.blurredRepresentationTarget != nil {
+                    blurredRepresentationColor = .some(target.blurredRepresentationBackgroundColor)
+                    break
+                }
+            }
 
             return LoadFrameGroupTask(task: { [weak self] in
                 let currentFrame: (frame: Frame, didLoop: Bool)?
@@ -699,6 +716,9 @@ final class ItemAnimationContext {
                 } catch {
                     assertionFailure()
                     currentFrame = nil
+                }
+                if let currentFrame, let blurredRepresentationColor {
+                    let _ = currentFrame.frame.blurredRepresentation(color: blurredRepresentationColor)
                 }
 
                 return {
