@@ -259,9 +259,14 @@ public final class FFMpegFileReader {
     private var lastReadPts: (streamIndex: Int, pts: Int64)?
     private var isWaitingForMoreData: Bool = false
     
-    public convenience init?(source: SourceDescription, passthroughDecoder: Bool = false, useHardwareAcceleration: Bool, skipLoopFilter: Bool = false, selectedStream: SelectedStream, seek: Seek?, maxReadablePts: (streamIndex: Int, pts: Int64, isEnded: Bool)?) {
-        self.init(source: source, passthroughDecoder: passthroughDecoder, useHardwareAcceleration: useHardwareAcceleration, skipLoopFilter: skipLoopFilter, selectedStream: selectedStream, seek: seek, maxReadablePts: maxReadablePts, ignoreEditList: false)
+    // `hardwareAccelerationMinimumLongSide`: with `useHardwareAcceleration`, a video whose longer
+    // side is shorter than this decodes in software (with `skipLoopFilter`) instead.
+    public convenience init?(source: SourceDescription, passthroughDecoder: Bool = false, useHardwareAcceleration: Bool, hardwareAccelerationMinimumLongSide: Int = 0, skipLoopFilter: Bool = false, selectedStream: SelectedStream, seek: Seek?, maxReadablePts: (streamIndex: Int, pts: Int64, isEnded: Bool)?) {
+        self.init(source: source, passthroughDecoder: passthroughDecoder, useHardwareAcceleration: useHardwareAcceleration, hardwareAccelerationMinimumLongSide: hardwareAccelerationMinimumLongSide, skipLoopFilter: skipLoopFilter, selectedStream: selectedStream, seek: seek, maxReadablePts: maxReadablePts, ignoreEditList: false)
     }
+
+    // Whether the video decoder was set up for the VideoToolbox hwaccel.
+    public private(set) var isHardwareAccelerated: Bool = false
 
     // Streams that findStreamInfo did not decode while probing. For tests.
     private(set) var streamInfoProbeSkippedStreamCount: Int = 0
@@ -272,7 +277,7 @@ public final class FFMpegFileReader {
     // was handed, so this does not change what is shown. It is a parameter only so tests can compare.
     // `fullStreamInfoProbe` restores FFmpeg's default probe, which decodes frames; only tests use it.
     // `forceHardwareSetupFailure` (tests) makes the VideoToolbox hwaccel setup fail inside FFmpeg.
-    init?(source: SourceDescription, passthroughDecoder: Bool = false, useHardwareAcceleration: Bool, skipLoopFilter: Bool = false, selectedStream: SelectedStream, seek: Seek?, maxReadablePts: (streamIndex: Int, pts: Int64, isEnded: Bool)?, ignoreEditList: Bool, reusesPixelBuffers: Bool = true, fullStreamInfoProbe: Bool = false, forceHardwareSetupFailure: Bool = false) {
+    init?(source: SourceDescription, passthroughDecoder: Bool = false, useHardwareAcceleration: Bool, hardwareAccelerationMinimumLongSide: Int = 0, skipLoopFilter: Bool = false, selectedStream: SelectedStream, seek: Seek?, maxReadablePts: (streamIndex: Int, pts: Int64, isEnded: Bool)?, ignoreEditList: Bool, reusesPixelBuffers: Bool = true, fullStreamInfoProbe: Bool = false, forceHardwareSetupFailure: Bool = false) {
         let _ = FFMpegMediaFrameSourceContextHelpers.registerFFMpegGlobals
         
         switch source {
@@ -381,21 +386,27 @@ public final class FFMpegFileReader {
                             break outer
                         }
                     } else {
-                        if let codec = FFMpegAVCodec.find(forId: codecId, preferHardwareAccelerationCapable: useHardwareAcceleration) {
+                        // Below the size threshold software decoding costs less CPU than a hardware session.
+                        let useHardware = useHardwareAcceleration && max(Int(metrics.width), Int(metrics.height)) >= hardwareAccelerationMinimumLongSide
+                        if let codec = FFMpegAVCodec.find(forId: codecId, preferHardwareAccelerationCapable: useHardware) {
                             let codecContext = FFMpegAVCodecContext(codec: codec)
                             if avFormatContext.codecParams(atStreamIndex: Int32(streamIndex), to: codecContext) {
-                                if useHardwareAcceleration {
+                                if useHardware {
                                     if forceHardwareSetupFailure {
                                         codecContext.setupHardwareAccelerationForcingSetupFailureForTesting()
                                     } else {
                                         codecContext.setupHardwareAccelerationIfPossible()
                                     }
                                 }
+                                // VideoToolbox decodes the whole bitstream and ignores this; it applies
+                                // to software decoding, including FFmpeg's fallback when the hwaccel
+                                // setup fails.
                                 if skipLoopFilter {
                                     codecContext.setSkipLoopFilterToAll()
                                 }
                                 
                                 if codecContext.open() {
+                                    self.isHardwareAccelerated = useHardware
                                     let decoder = FFMpegMediaVideoFrameDecoder(codecContext: codecContext)
                                     decoder.reusesPixelBuffers = reusesPixelBuffers
                                     stream = Stream(
