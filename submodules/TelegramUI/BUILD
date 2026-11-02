@@ -206,6 +206,7 @@ swift_library(
         "//submodules/DeviceProximity:DeviceProximity",
         "//submodules/RaiseToListen:RaiseToListen",
         "//submodules/OpusBinding:OpusBinding",
+        "//submodules/VoiceRecorderInput:VoiceRecorderInput",
         "//third-party/opus:opus",
         "//submodules/ShareItems:ShareItems",
         "//submodules/ShareItems/Impl:ShareItemsImpl",

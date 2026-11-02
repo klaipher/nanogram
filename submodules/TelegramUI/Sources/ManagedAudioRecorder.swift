@@ -10,6 +10,7 @@ import OpusBinding
 import ChatPresentationInterfaceState
 import AudioWaveform
 import FFMpegBinding
+import VoiceRecorderInput
 
 private let kOutputBus: UInt32 = 0
 private let kInputBus: UInt32 = 1
@@ -27,116 +28,6 @@ private func audioRecorderNativeStreamDescription(sampleRate: Float64) -> AudioS
     return canonicalBasicStreamDescription
 }
 
-private var nextRecorderContextId: Int32 = 0
-private func getNextRecorderContextId() -> Int32 {
-    return OSAtomicIncrement32(&nextRecorderContextId)
-}
-
-private final class RecorderContextHolder {
-    weak var context: ManagedAudioRecorderContext?
-    
-    init(context: ManagedAudioRecorderContext?) {
-        self.context = context
-    }
-}
-
-private final class AudioUnitHolder {
-    let queue: Queue
-    let audioUnit: Atomic<AudioUnit?>
-    
-    init(queue: Queue, audioUnit: Atomic<AudioUnit?>) {
-        self.queue = queue
-        self.audioUnit = audioUnit
-    }
-}
-
-private var audioRecorderContexts: [Int32: RecorderContextHolder] = [:]
-private var audioUnitHolders = Atomic<[Int32: AudioUnitHolder]>(value: [:])
-
-private func addAudioRecorderContext(_ id: Int32, _ context: ManagedAudioRecorderContext) {
-    audioRecorderContexts[id] = RecorderContextHolder(context: context)
-}
-
-private func removeAudioRecorderContext(_ id: Int32) {
-    audioRecorderContexts.removeValue(forKey: id)
-}
-
-private func addAudioUnitHolder(_ id: Int32, _ queue: Queue, _ audioUnit: Atomic<AudioUnit?>) {
-    let _ = audioUnitHolders.modify { dict in
-        var dict = dict
-        dict[id] = AudioUnitHolder(queue: queue, audioUnit: audioUnit)
-        return dict
-    }
-}
-
-private func removeAudioUnitHolder(_ id: Int32) {
-    let _ = audioUnitHolders.modify { dict in
-        var dict = dict
-        dict.removeValue(forKey: id)
-        return dict
-    }
-}
-
-private func withAudioRecorderContext(_ id: Int32, _ f: (ManagedAudioRecorderContext?) -> Void) {
-    if let holder = audioRecorderContexts[id], let context = holder.context {
-        f(context)
-    } else {
-        f(nil)
-    }
-}
-
-private func withAudioUnitHolder(_ id: Int32, _ f: (Atomic<AudioUnit?>, Queue) -> Void) {
-    let audioUnitAndQueue = audioUnitHolders.with { dict -> (Atomic<AudioUnit?>, Queue)? in
-        if let record = dict[id] {
-            return (record.audioUnit, record.queue)
-        } else {
-            return nil
-        }
-    }
-    if let (audioUnit, queue) = audioUnitAndQueue {
-        f(audioUnit, queue)
-    }
-}
-
-private func rendererInputProc(refCon: UnsafeMutableRawPointer, ioActionFlags: UnsafeMutablePointer<AudioUnitRenderActionFlags>, inTimeStamp: UnsafePointer<AudioTimeStamp>, inBusNumber: UInt32, inNumberFrames: UInt32, ioData: UnsafeMutablePointer<AudioBufferList>?) -> OSStatus {
-    let id = Int32(intptr_t(bitPattern: refCon))
-    
-    withAudioUnitHolder(id, { (holder, queue) in
-        var buffer = AudioBuffer()
-        buffer.mNumberChannels = 1;
-        buffer.mDataByteSize = inNumberFrames * 2;
-        buffer.mData = malloc(Int(inNumberFrames) * 2)
-        
-        var bufferList = AudioBufferList(mNumberBuffers: 1, mBuffers: buffer)
-        
-        var status = noErr
-        holder.with { audioUnit in
-            if let audioUnit = audioUnit {
-                status = AudioUnitRender(audioUnit, ioActionFlags, inTimeStamp, inBusNumber, inNumberFrames, &bufferList)
-            } else {
-                status = kAudioUnitErr_FailedInitialization
-            }
-        }
-        
-        if status == noErr {
-            queue.async {
-                withAudioRecorderContext(id, { context in
-                    if let context = context {
-                        context.processAndDisposeAudioBuffer(buffer)
-                    } else {
-                        free(buffer.mData)
-                    }
-                })
-            }
-        } else {
-            free(buffer.mData)
-            Logger.shared.log("ManagedAudioRecorder", "AudioUnitRender returned \(status)")
-        }
-    })
-    
-    return noErr
-}
-
 private let beginToneData: TonePlayerData? = {
     guard let url = Bundle.main.url(forResource: "begin_record", withExtension: "mp3") else {
         return nil
@@ -145,7 +36,6 @@ private let beginToneData: TonePlayerData? = {
 }()
 
 final class ManagedAudioRecorderContext {
-    private let id: Int32
     private let micLevel: ValuePromise<Float>
     private let recordingState: ValuePromise<AudioRecordingState>
     private let previewState: ValuePromise<AudioPreviewState>
@@ -162,7 +52,15 @@ final class ManagedAudioRecorderContext {
     private let mediaManager: MediaManager
     private var oggWriter: TGOggOpusWriter
     private var dataItem: TGDataItem
-    private var audioBuffer = Data()
+    // RemoteIO renders into this from its real-time thread (VoiceRecorderInputRenderCallback: no
+    // Swift, locks, allocation or dispatch there); `drainTimer` takes 20 ms encoder packets from it
+    // on `queue`. Freed in deinit, after the audio unit is disposed.
+    private let input: OpaquePointer
+    private static let encoderPacketSize = 16000 / 1000 * 60 * 2
+    private let encoderPacket = UnsafeMutableRawPointer.allocate(byteCount: ManagedAudioRecorderContext.encoderPacketSize, alignment: 2)
+    private var drainTimer: SwiftSignalKit.Timer?
+    private var loggedRenderErrorCount: UInt32 = 0
+    private var loggedDroppedBytes: UInt32 = 0
     
     private let audioUnit = Atomic<AudioUnit?>(value: nil)
     
@@ -175,7 +73,7 @@ final class ManagedAudioRecorderContext {
     private var micLevelPeakCount: Int = 0
     private var audioLevelPeakUpdate: Double = 0.0
     
-    private var recordingStateUpdateTimestamp: Double?
+    private var recordingStateThrottle = VoiceRecordingStateThrottle()
     
     private var hasAudioSession = false
     private var audioSessionDisposable: Disposable?
@@ -204,7 +102,12 @@ final class ManagedAudioRecorderContext {
     ) {
         assert(queue.isCurrent())
         
-        self.id = getNextRecorderContextId()
+        // Two seconds of 48 kHz 16-bit mono; RemoteIO cycles are at most a few thousand frames.
+        // It returns nil only when these ~200 KB cannot be allocated.
+        guard let input = VoiceRecorderInputCreate(192_000, 8192) else {
+            fatalError("VoiceRecorderInputCreate failed")
+        }
+        self.input = input
         self.micLevel = micLevel
         self.beginWithTone = beginWithTone
         self.pauseMusicOnRecording = pauseMusicOnRecording
@@ -334,9 +237,6 @@ final class ManagedAudioRecorderContext {
          self.processSamples = true
          }*/
         
-        addAudioRecorderContext(self.id, self)
-        addAudioUnitHolder(self.id, queue, self.audioUnit)
-        
         if let resumeData {
             guard let stateDict = try? JSONSerialization.jsonObject(with: resumeData.resumeData, options: []) as? [String: Any] else {
                 Logger.shared.log("ManagedAudioRecorder", "Failed to deserialize JSON")
@@ -367,15 +267,16 @@ final class ManagedAudioRecorderContext {
         
         self.idleTimerExtensionDisposable?.dispose()
         
-        removeAudioRecorderContext(self.id)
-        removeAudioUnitHolder(self.id)
-        
         self.stop()
         
         self.audioSessionDisposable?.dispose()
         
         self.toneRenderer?.stop()
         self.toneTimer?.invalidate()
+        
+        // stop() disposed the audio unit, so the callback no longer runs.
+        VoiceRecorderInputDestroy(self.input)
+        self.encoderPacket.deallocate()
     }
     
     private func setupAudioUnit() {
@@ -416,8 +317,8 @@ final class ManagedAudioRecorderContext {
         }
         
         var callbackStruct = AURenderCallbackStruct()
-        callbackStruct.inputProc = rendererInputProc
-        callbackStruct.inputProcRefCon = UnsafeMutableRawPointer(bitPattern: intptr_t(self.id))
+        callbackStruct.inputProc = VoiceRecorderInputRenderCallback
+        callbackStruct.inputProcRefCon = UnsafeMutableRawPointer(self.input)
         guard AudioUnitSetProperty(audioUnit, kAudioOutputUnitProperty_SetInputCallback, kAudioUnitScope_Global, 0, &callbackStruct, UInt32(MemoryLayout<AURenderCallbackStruct>.size)) == noErr else {
             AudioComponentInstanceDispose(audioUnit)
             return
@@ -436,6 +337,7 @@ final class ManagedAudioRecorderContext {
             return
         }
         
+        VoiceRecorderInputSetAudioUnit(self.input, audioUnit)
         let _ = self.audioUnit.swap(audioUnit)
     }
     
@@ -488,6 +390,14 @@ final class ManagedAudioRecorderContext {
             guard AudioOutputUnitStart(audioUnit) == noErr else {
                 self.stop()
                 return
+            }
+            if self.drainTimer == nil {
+                // About one RemoteIO cycle (~21 ms) and one mic-level update (25 ms) per tick.
+                let drainTimer = SwiftSignalKit.Timer(timeout: 1.0 / 40.0, repeat: true, completion: { [weak self] in
+                    self?.drainInput()
+                }, queue: self.queue)
+                self.drainTimer = drainTimer
+                drainTimer.start()
             }
         }
     }
@@ -551,17 +461,26 @@ final class ManagedAudioRecorderContext {
     func stop() {
         assert(self.queue.isCurrent())
         
+        var stoppedAudioUnit: AudioUnit?
+        if let audioUnit = self.audioUnit.swap(nil) {
+            stoppedAudioUnit = audioUnit
+            let status = AudioOutputUnitStop(audioUnit)
+            if status != noErr {
+                Logger.shared.log("ManagedAudioRecorder", "AudioOutputUnitStop returned \(status)")
+            }
+            VoiceRecorderInputSetAudioUnit(self.input, nil)
+        }
+        self.drainTimer?.invalidate()
+        self.drainTimer = nil
+        // Encode what was recorded up to the stop; less than a packet stays for a resume.
+        self.drainInput()
+        
         let state = self.oggWriter.pause()
         
         self.paused = true
         
-        if let audioUnit = self.audioUnit.swap(nil) {
+        if let audioUnit = stoppedAudioUnit {
             var status = noErr
-            
-            status = AudioOutputUnitStop(audioUnit)
-            if status != noErr {
-                Logger.shared.log("ManagedAudioRecorder", "AudioOutputUnitStop returned \(status)")
-            }
             
             status = AudioUnitUninitialize(audioUnit)
             if status != noErr {
@@ -601,69 +520,44 @@ final class ManagedAudioRecorderContext {
         self.trimRange = start..<end
     }
     
-    func processAndDisposeAudioBuffer(_ buffer: AudioBuffer) {
+    // Takes whole encoder packets from the input ring; a partial packet waits there for more
+    // samples (also across a pause), as the previous per-buffer packetizer kept it.
+    private func drainInput() {
         assert(self.queue.isCurrent())
         
-        defer {
-            free(buffer.mData)
+        let renderErrorCount = VoiceRecorderInputRenderErrorCount(self.input)
+        if renderErrorCount != self.loggedRenderErrorCount {
+            Logger.shared.log("ManagedAudioRecorder", "AudioUnitRender returned \(VoiceRecorderInputLastRenderError(self.input)) (\(renderErrorCount &- self.loggedRenderErrorCount) times)")
+            self.loggedRenderErrorCount = renderErrorCount
+        }
+        let droppedBytes = VoiceRecorderInputDroppedBytes(self.input)
+        if droppedBytes != self.loggedDroppedBytes {
+            Logger.shared.log("ManagedAudioRecorder", "input ring full, dropped \(droppedBytes &- self.loggedDroppedBytes) bytes")
+            self.loggedDroppedBytes = droppedBytes
         }
         
-        // A buffer that lands after stop() would be encoded after the writer state was saved.
-        if !self.processSamples || self.paused {
+        if self.paused {
+            return
+        }
+        // Samples recorded while the start tone plays are not encoded.
+        if !self.processSamples {
+            VoiceRecorderInputDiscardAll(self.input)
             return
         }
         
-        let millisecondsPerPacket = 60
-        let encoderPacketSizeInBytes = 16000 / 1000 * millisecondsPerPacket * 2
-        
-        let currentEncoderPacket = malloc(encoderPacketSizeInBytes)!
-        defer {
-            free(currentEncoderPacket)
+        let packetSize = ManagedAudioRecorderContext.encoderPacketSize
+        var encodedPacket = false
+        while VoiceRecorderInputReadExactly(self.input, self.encoderPacket, UInt32(packetSize)) {
+            self.processWaveformPreview(samples: self.encoderPacket.assumingMemoryBound(to: Int16.self), count: packetSize / 2)
+            
+            self.oggWriter.writeFrame(self.encoderPacket.assumingMemoryBound(to: UInt8.self), frameByteCount: UInt(packetSize))
+            encodedPacket = true
         }
-        
-        var bufferOffset = 0
-        
-        while true {
-            var currentEncoderPacketSize = 0
-            
-            while currentEncoderPacketSize < encoderPacketSizeInBytes {
-                if self.audioBuffer.count != 0 {
-                    let takenBytes = min(self.audioBuffer.count, encoderPacketSizeInBytes - currentEncoderPacketSize)
-                    if takenBytes != 0 {
-                        self.audioBuffer.withUnsafeBytes { rawBytes -> Void in
-                            let bytes = rawBytes.baseAddress!.assumingMemoryBound(to: Int8.self)
-
-                            memcpy(currentEncoderPacket.advanced(by: currentEncoderPacketSize), bytes, takenBytes)
-                        }
-                        self.audioBuffer.replaceSubrange(0 ..< takenBytes, with: Data())
-                        currentEncoderPacketSize += takenBytes
-                    }
-                } else if bufferOffset < Int(buffer.mDataByteSize) {
-                    let takenBytes = min(Int(buffer.mDataByteSize) - bufferOffset, encoderPacketSizeInBytes - currentEncoderPacketSize)
-                    if takenBytes != 0 {
-                        memcpy(currentEncoderPacket.advanced(by: currentEncoderPacketSize), buffer.mData?.advanced(by: bufferOffset), takenBytes)
-
-                        bufferOffset += takenBytes
-                        currentEncoderPacketSize += takenBytes
-                    }
-                } else {
-                    break
-                }
-            }
-            
-            if currentEncoderPacketSize < encoderPacketSizeInBytes {
-                self.audioBuffer.append(currentEncoderPacket.assumingMemoryBound(to: UInt8.self), count: currentEncoderPacketSize)
-                break
-            } else {
-                self.processWaveformPreview(samples: currentEncoderPacket.assumingMemoryBound(to: Int16.self), count: currentEncoderPacketSize / 2)
-                
-                self.oggWriter.writeFrame(currentEncoderPacket.assumingMemoryBound(to: UInt8.self), frameByteCount: UInt(currentEncoderPacketSize))
-                
-                let timestamp = CACurrentMediaTime()
-                if self.recordingStateUpdateTimestamp == nil || self.recordingStateUpdateTimestamp! < timestamp + 0.1 {
-                    self.recordingStateUpdateTimestamp = timestamp
-                    self.recordingState.set(.recording(duration: oggWriter.encodedDuration(), durationMediaTimestamp: timestamp))
-                }
+        // The duration after the packets of this tick, at most 30 times a second.
+        if encodedPacket {
+            let timestamp = CACurrentMediaTime()
+            if self.recordingStateThrottle.shouldPublish(at: timestamp) {
+                self.recordingState.set(.recording(duration: self.oggWriter.encodedDuration(), durationMediaTimestamp: timestamp))
             }
         }
     }
