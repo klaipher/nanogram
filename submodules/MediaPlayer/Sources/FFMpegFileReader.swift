@@ -271,7 +271,8 @@ public final class FFMpegFileReader {
     // layer, a CGImage, a queued sample buffer) has released it, and no consumer writes to a frame it
     // was handed, so this does not change what is shown. It is a parameter only so tests can compare.
     // `fullStreamInfoProbe` restores FFmpeg's default probe, which decodes frames; only tests use it.
-    init?(source: SourceDescription, passthroughDecoder: Bool = false, useHardwareAcceleration: Bool, skipLoopFilter: Bool = false, selectedStream: SelectedStream, seek: Seek?, maxReadablePts: (streamIndex: Int, pts: Int64, isEnded: Bool)?, ignoreEditList: Bool, reusesPixelBuffers: Bool = true, fullStreamInfoProbe: Bool = false) {
+    // `forceHardwareSetupFailure` (tests) makes the VideoToolbox hwaccel setup fail inside FFmpeg.
+    init?(source: SourceDescription, passthroughDecoder: Bool = false, useHardwareAcceleration: Bool, skipLoopFilter: Bool = false, selectedStream: SelectedStream, seek: Seek?, maxReadablePts: (streamIndex: Int, pts: Int64, isEnded: Bool)?, ignoreEditList: Bool, reusesPixelBuffers: Bool = true, fullStreamInfoProbe: Bool = false, forceHardwareSetupFailure: Bool = false) {
         let _ = FFMpegMediaFrameSourceContextHelpers.registerFFMpegGlobals
         
         switch source {
@@ -384,7 +385,11 @@ public final class FFMpegFileReader {
                             let codecContext = FFMpegAVCodecContext(codec: codec)
                             if avFormatContext.codecParams(atStreamIndex: Int32(streamIndex), to: codecContext) {
                                 if useHardwareAcceleration {
-                                    codecContext.setupHardwareAccelerationIfPossible()
+                                    if forceHardwareSetupFailure {
+                                        codecContext.setupHardwareAccelerationForcingSetupFailureForTesting()
+                                    } else {
+                                        codecContext.setupHardwareAccelerationIfPossible()
+                                    }
                                 }
                                 if skipLoopFilter {
                                     codecContext.setSkipLoopFilterToAll()

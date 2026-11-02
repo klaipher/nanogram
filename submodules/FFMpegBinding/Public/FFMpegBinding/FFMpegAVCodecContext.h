@@ -26,6 +26,9 @@ typedef NS_ENUM(NSUInteger, FFMpegAVCodecContextReceiveResult)
 - (bool)open;
 - (bool)sendEnd;
 - (void)setupHardwareAccelerationIfPossible;
+// For tests: asks for the VideoToolbox format without a hardware device, so FFmpeg's hwaccel setup
+// fails inside get_format and decoding has to continue in software. Must be called before `open`.
+- (void)setupHardwareAccelerationForcingSetupFailureForTesting;
 // Sets `skip_loop_filter = AVDISCARD_ALL`, disabling H.264/HEVC in-loop deblocking.
 // Deblocked frames are also prediction references, so this drifts from the encoder's
 // reconstruction until the next IDR, on top of the visible blocking. Only appropriate

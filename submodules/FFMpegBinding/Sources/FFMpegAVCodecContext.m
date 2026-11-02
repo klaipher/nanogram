@@ -6,8 +6,18 @@
 #import "libavformat/avformat.h"
 #import "libavcodec/avcodec.h"
 
-static enum AVPixelFormat getPreferredPixelFormat(__unused AVCodecContext *ctx, __unused const enum AVPixelFormat *pix_fmts) {
-    return AV_PIX_FMT_VIDEOTOOLBOX;
+// VideoToolbox when FFmpeg offers it. When the hwaccel setup fails (no device, session limit, a
+// profile VideoToolbox cannot decode), FFmpeg calls this again without it; then the software
+// format, which FFmpeg puts last. Returning a format that is not in the list fails the decoder.
+static enum AVPixelFormat getPreferredPixelFormat(__unused AVCodecContext *ctx, const enum AVPixelFormat *pix_fmts) {
+    enum AVPixelFormat last = AV_PIX_FMT_NONE;
+    for (const enum AVPixelFormat *format = pix_fmts; *format != AV_PIX_FMT_NONE; format++) {
+        if (*format == AV_PIX_FMT_VIDEOTOOLBOX) {
+            return *format;
+        }
+        last = *format;
+    }
+    return last;
 }
 
 @interface FFMpegAVCodecContext () {
@@ -66,7 +76,13 @@ static enum AVPixelFormat getPreferredPixelFormat(__unused AVCodecContext *ctx, 
 }
 
 - (void)setupHardwareAccelerationIfPossible {
-    av_hwdevice_ctx_create(&_impl->hw_device_ctx, AV_HWDEVICE_TYPE_VIDEOTOOLBOX, nil, nil, 0);
+    // Without a device FFmpeg's default get_format picks the software format.
+    if (av_hwdevice_ctx_create(&_impl->hw_device_ctx, AV_HWDEVICE_TYPE_VIDEOTOOLBOX, nil, nil, 0) >= 0) {
+        _impl->get_format = getPreferredPixelFormat;
+    }
+}
+
+- (void)setupHardwareAccelerationForcingSetupFailureForTesting {
     _impl->get_format = getPreferredPixelFormat;
 }
 
