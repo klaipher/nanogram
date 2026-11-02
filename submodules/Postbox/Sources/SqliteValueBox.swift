@@ -348,6 +348,8 @@ public final class SqliteValueBox: ValueBox {
     private var fullTextMatchCollectionStatements: [Int32 : SqlitePreparedStatement] = [:]
     private var fullTextMatchCollectionTagsStatements: [Int32 : SqlitePreparedStatement] = [:]
     private var preparedPageCountStatement: SqlitePreparedStatement?
+    private var beginStatement: SqlitePreparedStatement?
+    private var commitStatement: SqlitePreparedStatement?
     
     private var secureDeleteEnabled: Bool = false
     
@@ -606,8 +608,8 @@ public final class SqliteValueBox: ValueBox {
 
         postboxLog("Did set up pragmas")
 
-        //resultCode = database.execute("PRAGMA wal_autocheckpoint=500")
-        //database.execute("PRAGMA journal_size_limit=1536")
+        resultCode = database.execute("PRAGMA journal_size_limit=\(SqliteValueBox.walJournalSizeLimit)")
+        assert(resultCode)
         
         /*#if DEBUG
         var statement: OpaquePointer? = nil
@@ -669,19 +671,34 @@ public final class SqliteValueBox: ValueBox {
     
     public func begin() {
         precondition(self.queue.isCurrent())
-        if self.isReadOnly {
-            let resultCode = self.database.execute("BEGIN DEFERRED")
-            checkTransactionResult(resultCode, database: self.database, operation: "BEGIN DEFERRED")
-        } else {
-            let resultCode = self.database.execute("BEGIN IMMEDIATE")
-            checkTransactionResult(resultCode, database: self.database, operation: "BEGIN IMMEDIATE")
-        }
+        let sql = self.isReadOnly ? "BEGIN DEFERRED" : "BEGIN IMMEDIATE"
+        let resultCode = self.runTransactionStatement(sql, cached: &self.beginStatement)
+        checkTransactionResult(resultCode, database: self.database, operation: sql)
     }
 
     public func commit() {
         precondition(self.queue.isCurrent())
-        let resultCode = self.database.execute("COMMIT")
+        let resultCode = self.runTransactionStatement("COMMIT", cached: &self.commitStatement)
         checkTransactionResult(resultCode, database: self.database, operation: "COMMIT")
+    }
+    
+    private func runTransactionStatement(_ sql: String, cached: inout SqlitePreparedStatement?) -> Bool {
+        let preparedStatement: SqlitePreparedStatement
+        if let cached {
+            preparedStatement = cached
+        } else {
+            var statement: OpaquePointer? = nil
+            let status = sqlite3_prepare_v3(self.database.handle, sql, -1, UInt32(SQLITE_PREPARE_PERSISTENT), &statement, nil)
+            guard status == SQLITE_OK, statement != nil else {
+                sqlite3_finalize(statement)
+                return self.database.execute(sql)
+            }
+            preparedStatement = SqlitePreparedStatement(statement: statement)
+            cached = preparedStatement
+        }
+        let result = sqlite3_step(preparedStatement.statement)
+        sqlite3_reset(preparedStatement.statement)
+        return result == SQLITE_DONE
     }
     
     public func releaseMemory() {
@@ -1893,76 +1910,33 @@ public final class SqliteValueBox: ValueBox {
     }
     
     public func filteredRange(_ table: ValueBoxTable, start: ValueBoxKey, end: ValueBoxKey, values: (ValueBoxKey, ReadBuffer) -> ValueBoxFilterResult, limit: Int) {
-        var currentStart = start
         var acceptedCount = 0
-        while true {
-            if limit > 0 && acceptedCount >= limit {
-                break
+        self.range(table, start: start, end: end, values: { key, value in
+            switch values(key, value) {
+            case .accept:
+                acceptedCount += 1
+                return limit <= 0 || acceptedCount < limit
+            case .skip:
+                return true
+            case .stop:
+                return false
             }
-            var hadStop = false
-            var lastKey: ValueBoxKey?
-            self.range(table, start: currentStart, end: end, values: { key, value in
-                lastKey = key
-                let result = values(key, value)
-                switch result {
-                case .accept:
-                    acceptedCount += 1
-                    if limit > 0 && acceptedCount >= limit {
-                        hadStop = true
-                        return false
-                    } else {
-                        return true
-                    }
-                case .skip:
-                    return true
-                case .stop:
-                    hadStop = true
-                    return false
-                }
-            }, limit: limit)
-            if let lastKey = lastKey {
-                currentStart = lastKey
-            } else {
-                break
-            }
-            if hadStop {
-                break
-            }
-        }
+        }, limit: 0)
     }
     
     public func filteredRange(_ table: ValueBoxTable, start: ValueBoxKey, end: ValueBoxKey, keys: (ValueBoxKey) -> ValueBoxFilterResult, limit: Int) {
-        var currentStart = start
         var acceptedCount = 0
-        while true {
-            if limit > 0 && acceptedCount >= limit {
-                break
+        self.range(table, start: start, end: end, keys: { key in
+            switch keys(key) {
+            case .accept:
+                acceptedCount += 1
+                return limit <= 0 || acceptedCount < limit
+            case .skip:
+                return true
+            case .stop:
+                return false
             }
-            var hadStop = false
-            var lastKey: ValueBoxKey?
-            self.range(table, start: currentStart, end: end, keys: { key in
-                lastKey = key
-                let result = keys(key)
-                switch result {
-                case .accept:
-                    acceptedCount += 1
-                    return true
-                case .skip:
-                    return true
-                case .stop:
-                    hadStop = true
-                    return false
-                }
-            }, limit: limit)
-            if let lastKey = lastKey {
-                currentStart = lastKey
-            } else {
-                break
-            }
-            if hadStop {
-                break
-            }
-        }
+        }, limit: 0)
     }
     
     public func range(_ table: ValueBoxTable, start: ValueBoxKey, end: ValueBoxKey, keys: (ValueBoxKey) -> Bool, limit: Int) {
@@ -2450,6 +2424,14 @@ public final class SqliteValueBox: ValueBox {
             self.preparedPageCountStatement = nil
             preparedPageCountStatement.destroy()
         }
+        if let beginStatement = self.beginStatement {
+            self.beginStatement = nil
+            beginStatement.destroy()
+        }
+        if let commitStatement = self.commitStatement {
+            self.commitStatement = nil
+            commitStatement.destroy()
+        }
     }
     
     public func removeAllFromTable(_ table: ValueBoxTable) {
@@ -2562,4 +2544,36 @@ private func hexString(_ data: Data) -> String {
     }
     
     return hexString as String
+}
+
+extension SqliteValueBox {
+    static let walJournalSizeLimit: Int = 8 * 1024 * 1024
+    
+    func statementStatusTotal(_ counter: Int32) -> Int {
+        precondition(self.queue.isCurrent())
+        var total = 0
+        var statement = sqlite3_next_stmt(self.database.handle, nil)
+        while let current = statement {
+            total += Int(sqlite3_stmt_status(current, counter, 0))
+            statement = sqlite3_next_stmt(self.database.handle, current)
+        }
+        return total
+    }
+    
+    func liveStatementSQL() -> [String] {
+        precondition(self.queue.isCurrent())
+        var result: [String] = []
+        var statement = sqlite3_next_stmt(self.database.handle, nil)
+        while let current = statement {
+            if let sql = sqlite3_sql(current) {
+                result.append(String(cString: sql))
+            }
+            statement = sqlite3_next_stmt(self.database.handle, current)
+        }
+        return result
+    }
+    
+    func pragmaValue(_ name: String) -> String {
+        return self.runPragma(self.database, name)
+    }
 }
