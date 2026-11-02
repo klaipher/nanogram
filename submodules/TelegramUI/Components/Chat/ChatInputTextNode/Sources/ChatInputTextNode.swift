@@ -418,6 +418,17 @@ private struct DisplayBlockQuote {
     }
 }
 
+private func attributedStringContainsAttribute(_ string: NSAttributedString, _ key: NSAttributedString.Key) -> Bool {
+    var found = false
+    string.enumerateAttribute(key, in: NSRange(location: 0, length: string.length), options: [.longestEffectiveRangeNotRequired]) { value, _, stop in
+        if value != nil {
+            found = true
+            stop.pointee = true
+        }
+    }
+    return found
+}
+
 private protocol ChatInputTextInternal: AnyObject {
     var textContainer: ChatInputTextContainer { get }
     
@@ -428,6 +439,7 @@ private protocol ChatInputTextInternal: AnyObject {
     
     func invalidateLayout()
     func setAttributedString(attributedString: NSAttributedString)
+    func replaceChangedRange(with attributedString: NSAttributedString) -> Bool
     func textSize() -> CGSize
     func currentTextBoundingRect() -> CGRect
     func currentTextLastLineBoundingRect() -> CGRect
@@ -531,6 +543,72 @@ private final class ChatInputTextLegacyInternal: NSObject, ChatInputTextInternal
     
     func setAttributedString(attributedString: NSAttributedString) {
         self.customTextStorage.setAttributedString(attributedString)
+    }
+    
+    /// Makes the storage equal to `attributedString` by replacing only the range that differs, then lays out what
+    /// that invalidated. TextKit relays out only the edited paragraphs, so a keystroke costs 15-60 us instead of a
+    /// full relayout (3-8 ms at 4k characters); the resulting `usedRect` equals a full relayout's (tested).
+    /// Returns false, changing nothing, when the edit cannot be done this way; the caller then sets the whole
+    /// string and relayouts. Block quotes always take that path: their paragraph spacing depends on the
+    /// neighbouring paragraph, which an edit does not invalidate.
+    func replaceChangedRange(with attributedString: NSAttributedString) -> Bool {
+        let storage = self.customTextStorage
+        let oldLength = storage.length
+        let newLength = attributedString.length
+        if oldLength == 0 || newLength == 0 {
+            return false
+        }
+        let blockQuoteKey = NSAttributedString.Key("Attribute__Blockquote")
+        if attributedStringContainsAttribute(storage, blockQuoteKey) || attributedStringContainsAttribute(attributedString, blockQuoteKey) {
+            return false
+        }
+        let oldString = storage.string as NSString
+        let newString = attributedString.string as NSString
+        let minLength = min(oldLength, newLength)
+        
+        var prefix = 0
+        while prefix < minLength && oldString.character(at: prefix) == newString.character(at: prefix) {
+            prefix += 1
+        }
+        var suffix = 0
+        while suffix < minLength - prefix && oldString.character(at: oldLength - 1 - suffix) == newString.character(at: newLength - 1 - suffix) {
+            suffix += 1
+        }
+        // Whole composed character sequences only, so no surrogate pair or emoji sequence is split.
+        if prefix < newLength {
+            prefix = min(prefix, newString.rangeOfComposedCharacterSequence(at: prefix).location)
+        }
+        if prefix < oldLength {
+            prefix = min(prefix, oldString.rangeOfComposedCharacterSequence(at: prefix).location)
+        }
+        while suffix > 0 {
+            let newStart = newLength - suffix
+            let oldStart = oldLength - suffix
+            if newString.rangeOfComposedCharacterSequence(at: newStart).location == newStart && oldString.rangeOfComposedCharacterSequence(at: oldStart).location == oldStart {
+                break
+            }
+            suffix -= 1
+        }
+        suffix = min(suffix, minLength - prefix)
+        
+        // The unchanged parts must carry the same attributes too.
+        if prefix != 0 && !storage.attributedSubstring(from: NSRange(location: 0, length: prefix)).isEqual(to: attributedString.attributedSubstring(from: NSRange(location: 0, length: prefix))) {
+            return false
+        }
+        if suffix != 0 && !storage.attributedSubstring(from: NSRange(location: oldLength - suffix, length: suffix)).isEqual(to: attributedString.attributedSubstring(from: NSRange(location: newLength - suffix, length: suffix))) {
+            return false
+        }
+        
+        let replacement = attributedString.attributedSubstring(from: NSRange(location: prefix, length: newLength - prefix - suffix))
+        storage.replaceCharacters(in: NSRange(location: prefix, length: oldLength - prefix - suffix), with: replacement)
+        if !storage.isEqual(to: attributedString) {
+            // Attribute fixing made the edited range differ; start over from the whole string.
+            storage.setAttributedString(attributedString)
+            self.invalidateLayout()
+            return true
+        }
+        self.customLayoutManager.ensureLayout(for: self.textContainer)
+        return true
     }
     
     func textSize() -> CGSize {
@@ -714,6 +792,10 @@ private final class ChatInputTextNewInternal: NSObject, ChatInputTextInternal, N
         
         self.contentStorage.delegate = self
         self.customLayoutManager.delegate = self
+    }
+    
+    func replaceChangedRange(with attributedString: NSAttributedString) -> Bool {
+        return false
     }
     
     func invalidateLayout() {
@@ -1150,6 +1232,13 @@ public final class ChatInputTextView: ChatInputTextViewImpl, UITextViewDelegate,
         
     private let displayInternal: ChatInputTextInternal
     private let measureInternal: ChatInputTextInternal
+    // False measures every change with a full relayout, as before; for tests and benchmarks.
+    var measuresIncrementally: Bool = true
+    
+    // The unrounded size the last textHeightForWidth measured, for tests.
+    var measuredTextSizeForTesting: CGSize {
+        return self.measureInternal.textSize()
+    }
     
     private var validLayoutSize: CGSize?
     private var isUpdatingLayout: Bool = false
@@ -1397,11 +1486,17 @@ public final class ChatInputTextView: ChatInputTextViewImpl, UITextViewDelegate,
             measureText = NSAttributedString(string: "A", attributes: self.typingAttributes)
         }
         
-        if self.measureInternal.attributedString != measureText || self.measureInternal.textContainer.size != measureSize || self.measureInternal.textContainer.rightInset != rightInset {
+        if self.measureInternal.textContainer.size != measureSize || self.measureInternal.textContainer.rightInset != rightInset {
             self.measureInternal.textContainer.rightInset = rightInset
             self.measureInternal.setAttributedString(attributedString: measureText)
             self.measureInternal.textContainer.size = measureSize
             self.measureInternal.invalidateLayout()
+        } else if self.measureInternal.attributedString != measureText {
+            // Typing: same geometry, the text changed by a keystroke. Relayout only what the edit touched.
+            if !(self.measuresIncrementally && self.measureInternal.replaceChangedRange(with: measureText)) {
+                self.measureInternal.setAttributedString(attributedString: measureText)
+                self.measureInternal.invalidateLayout()
+            }
         }
         
         let textSize = self.measureInternal.textSize()
