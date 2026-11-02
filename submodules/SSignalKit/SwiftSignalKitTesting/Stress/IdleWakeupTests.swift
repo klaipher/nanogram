@@ -50,9 +50,9 @@ final class IdleWakeupTests: XCTestCase {
         }
         print("IdleWakeupTests: \(wakeups) process wakeups in 1 s with 200 pending suspendAwareDelay(3600, granularity: 0.01)")
         XCTAssertEqual(fired.with { $0 }, 0)
-        #if !SSK_LEGACY
+        // Both libraries use one wall-clock deadline per delay now (legacy since the
+        // 2026-11 port), so pending delays must not wake the process periodically.
         XCTAssertLessThan(wakeups, 30)
-        #endif
     }
 
     func testLongSuspendAwareDelayStillFiresAfterItsTimeout() {

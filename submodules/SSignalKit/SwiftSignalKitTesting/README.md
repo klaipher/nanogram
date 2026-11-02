@@ -78,7 +78,6 @@ configurations). v2 mirrors legacy's code shape, so `ReleaseOrderTests` and the 
 | A `weak` reference to the disposable returned by `start()` | dies when the caller releases it | lives while the source still holds the subscriber (it is the subscriber's state). Not observable without a weak reference |
 | `DisposableDict.set(nil, forKey:)` | disposes the previous entry but keeps it, so later `set(nil)`/`dispose()` dispose it again and it stays retained | removes the entry |
 | `DisposableSet.removeLast()` on an empty set | crash | no-op |
-| `suspendAwareDelay` longer than 1.1 × granularity | wakes every `granularity` seconds to compare the wall clock, then arms an exact final timer | one wall-clock (`DispatchWallTime`) deadline with `granularity` as leeway: it still fires after system sleep, without the periodic wakeups. `Stress/IdleWakeupTests` measures it: 50 pending hour-long delays add about 10 wakeups/s on legacy and none on v2 |
 | `Multicast.get` | never disposes the upstream subscription | disposes it when its last subscriber leaves |
 | `feedbackLoop` | retain cycle: every subscription leaks its subscriber and loop state | cycle broken on dispose and termination |
 | `runOn(Queue)` cancellation flag | unsynchronized `var` shared across threads (TSan race) | lock-protected flag |
@@ -98,6 +97,11 @@ removed from `DisposableDict`, the previous `Timer` source and values replaced i
 When a `combineLatest` subscription ends, v2 releases the latest values it still holds in index order. Legacy
 releases them in the order of a `[Int: Any]` dictionary, which changes from launch to launch with the hash seed, so
 v2's order is one legacy can also produce.
+
+`suspendAwareDelay` longer than 1.1 × granularity is the same in both since 2026-11: one wall-clock
+(`DispatchWallTime`) deadline with `granularity` as leeway, so it still fires after system sleep without periodic
+wakeups. Legacy used to wake every `granularity` seconds to compare the wall clock; `Stress/IdleWakeupTests` measures
+it on both (200 pending hour-long delays, granularity 0.01: 2362 wakeups/s on the old legacy loop).
 
 Everything else is identical, including the deliberate legacy quirks (`take(0)` never completes, `MetaDisposable`
 does not dispose on deinit, `Signal.get()` never resumes for a signal that completes without a value).
