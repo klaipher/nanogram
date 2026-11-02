@@ -44,6 +44,7 @@ swift_library(
         ":NotificationServiceExtensionLib",
         "//submodules/Postbox:Postbox",
         "//submodules/TelegramCore:TelegramCore",
+        "//submodules/NotificationsPresentationData:NotificationsPresentationData",
     ],
 )
 

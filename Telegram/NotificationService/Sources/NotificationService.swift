@@ -2827,12 +2827,19 @@ final class NotificationService: UNNotificationServiceExtension {
         guard result.isQuietPlaceholder, let requestIdentifier else {
             return
         }
-        // Kept alive long enough to take the placeholder down; a later request or the next one
-        // clears it otherwise.
+        Logger.shared.log("NotificationService", "placeholder delivered \(requestIdentifier)")
+        // Kept alive long enough to take the placeholder down; the next request or the app
+        // clears it otherwise. The activity ends after the last attempt.
         let activity = ExpiringProcessActivity(reason: "NotificationService placeholder removal")
-        DispatchQueue.global().asyncAfter(deadline: .now() + ServicePushPresentation.removalDelay) {
-            UNUserNotificationCenter.current().removeDeliveredNotifications(withIdentifiers: [requestIdentifier])
-            activity.end()
+        let delays = ServicePushPresentation.removalDelays
+        for (index, delay) in delays.enumerated() {
+            DispatchQueue.global().asyncAfter(deadline: .now() + delay) {
+                UNUserNotificationCenter.current().removeDeliveredNotifications(withIdentifiers: [requestIdentifier])
+                Logger.shared.log("NotificationService", "placeholder removed \(requestIdentifier)")
+                if index == delays.count - 1 {
+                    activity.end()
+                }
+            }
         }
     }
 
