@@ -1016,8 +1016,19 @@ private func extractAccountManagerState(records: AccountRecordsView<TelegramAcco
             if #available(iOS 10.3, *) {
                 // Only Nanogram's own icons, all free. Comet is the primary icon (choosing it clears the
                 // alternate icon). Telegram's icons are not bundled (Telegram/BUILD, alternate_icon_folders).
+                // The alternates' images are rendered from Telegram/Telegram-iOS/AlternateIconSources.
                 return [
                     PresentationAppIcon(name: "NanogramComet", imageName: "NanogramComet", isDefault: true),
+                    PresentationAppIcon(name: "NanogramWhite", imageName: "NanogramWhite"),
+                    PresentationAppIcon(name: "NanogramGlass", imageName: "NanogramGlass"),
+                    PresentationAppIcon(name: "NanogramOrbit", imageName: "NanogramOrbit"),
+                    PresentationAppIcon(name: "NanogramBubble", imageName: "NanogramBubble"),
+                    PresentationAppIcon(name: "NanogramSpeed", imageName: "NanogramSpeed"),
+                    PresentationAppIcon(name: "NanogramSplitN", imageName: "NanogramSplitN"),
+                    PresentationAppIcon(name: "NanogramRibbon", imageName: "NanogramRibbon"),
+                    PresentationAppIcon(name: "NanogramDot", imageName: "NanogramDot"),
+                    PresentationAppIcon(name: "NanogramNight", imageName: "NanogramNight"),
+                    PresentationAppIcon(name: "NanogramClassic", imageName: "NanogramClassic"),
                     PresentationAppIcon(name: "NanogramDash", imageName: "NanogramDash"),
                     PresentationAppIcon(name: "NanogramForward", imageName: "NanogramForward"),
                     PresentationAppIcon(name: "NanogramStreak", imageName: "NanogramStreak")

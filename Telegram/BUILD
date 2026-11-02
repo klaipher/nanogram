@@ -331,12 +331,22 @@ filegroup(
 # merges but are not shipped.
 alternate_icon_folders = [
     "NanogramComet",
+    "NanogramWhite",
+    "NanogramGlass",
+    "NanogramOrbit",
+    "NanogramBubble",
+    "NanogramSpeed",
+    "NanogramSplitN",
+    "NanogramRibbon",
+    "NanogramDot",
+    "NanogramNight",
+    "NanogramClassic",
     "NanogramDash",
     "NanogramForward",
     "NanogramStreak",
 ]
 
-# Nanogram's own icon (Comet), an Icon Composer file so iOS draws the glass, dark,
+# Nanogram's own icon (the Comet: a light-blue comet on a navy tile), an Icon Composer file so iOS draws the glass, dark,
 # tinted and clear styles. Telegram.icon stays in the tree for upstream merges.
 composer_icon_folders = ["Nanogram"]
 

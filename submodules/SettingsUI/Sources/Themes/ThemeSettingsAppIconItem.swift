@@ -382,9 +382,33 @@ class ThemeSettingsAppIconItemNode: ListViewItemNode, ItemListItemNode {
 
                             var name = "Icon"
                             var bordered = true
+                            // White-background icons keep the border so they stand out on a light list.
                             switch icon.name {
                                 case "NanogramComet":
                                     name = "Comet"
+                                    bordered = false
+                                case "NanogramWhite":
+                                    name = "White"
+                                case "NanogramGlass":
+                                    name = "Glass"
+                                case "NanogramOrbit":
+                                    name = "Orbit"
+                                case "NanogramBubble":
+                                    name = "Bubble"
+                                case "NanogramSpeed":
+                                    name = "Speed"
+                                case "NanogramSplitN":
+                                    name = "Split N"
+                                    bordered = false
+                                case "NanogramRibbon":
+                                    name = "Ribbon"
+                                case "NanogramDot":
+                                    name = "N-dot"
+                                case "NanogramNight":
+                                    name = "Night"
+                                    bordered = false
+                                case "NanogramClassic":
+                                    name = "Classic"
                                     bordered = false
                                 case "NanogramDash":
                                     name = "Dash"

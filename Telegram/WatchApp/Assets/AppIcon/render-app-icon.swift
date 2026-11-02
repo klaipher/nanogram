@@ -17,23 +17,27 @@ ctx.scaleBy(x: 1, y: -1)
 func color(_ r: CGFloat, _ g: CGFloat, _ b: CGFloat, _ a: CGFloat) -> CGColor {
     CGColor(colorSpace: cs, components: [r, g, b, a])!
 }
-// icon.json fill: linear gradient from top-right to bottom-left.
-let fill = CGGradient(colorsSpace: cs, colors: [color(0.0, 0.76078, 0.81961, 1), color(0.04314, 0.16471, 0.41961, 1)] as CFArray, locations: [0, 1])!
-ctx.drawLinearGradient(fill, start: CGPoint(x: 1024, y: 0), end: CGPoint(x: 0, y: 1024), options: [.drawsBeforeStartLocation, .drawsAfterEndLocation])
+// icon.json fill: navy #111722.
+ctx.setFillColor(color(0.06667, 0.09020, 0.13333, 1))
+ctx.fill(CGRect(x: 0, y: 0, width: size, height: size))
+// The comet's light blue, #508FFF.
+let blue: (CGFloat, CGFloat, CGFloat) = (0.31373, 0.56078, 1.0)
 
-// Tail.svg: triangle M752 550 L176 848 L474 272 Z, white 0.95 -> 0 from (613,411) to (176,848).
+// Tail.svg: triangle M752 550 L176 848 L474 272 Z, blue 0.95 -> 0 from (613,411) to (176,848).
 ctx.saveGState()
 ctx.move(to: CGPoint(x: 752, y: 550))
 ctx.addLine(to: CGPoint(x: 176, y: 848))
 ctx.addLine(to: CGPoint(x: 474, y: 272))
 ctx.closePath()
 ctx.clip()
-let tail = CGGradient(colorsSpace: cs, colors: [color(1, 1, 1, 0.95), color(1, 1, 1, 0)] as CFArray, locations: [0, 1])!
+guard let tail = CGGradient(colorsSpace: cs, colors: [color(blue.0, blue.1, blue.2, 0.95), color(blue.0, blue.1, blue.2, 0)] as CFArray, locations: [0, 1]) else {
+    fatalError("could not create the tail gradient")
+}
 ctx.drawLinearGradient(tail, start: CGPoint(x: 613, y: 411), end: CGPoint(x: 176, y: 848), options: [.drawsBeforeStartLocation, .drawsAfterEndLocation])
 ctx.restoreGState()
 
-// Head.svg: white circle at (613, 411), r 196.
-ctx.setFillColor(color(1, 1, 1, 1))
+// Head.svg: blue circle at (613, 411), r 196.
+ctx.setFillColor(color(blue.0, blue.1, blue.2, 1))
 ctx.fillEllipse(in: CGRect(x: 613 - 196, y: 411 - 196, width: 392, height: 392))
 
 let image = ctx.makeImage()!
