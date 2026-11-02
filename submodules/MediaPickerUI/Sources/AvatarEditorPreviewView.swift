@@ -119,7 +119,7 @@ final class AvatarEditorPreviewView: UIView {
                 if let size = self.currentSize {
                     self.updateLayout(size: size)
                 }
-            }, queue: Queue.mainQueue())
+            }, queue: Queue.mainQueue(), leeway: .precise)
             self.timer?.start()
         }
         

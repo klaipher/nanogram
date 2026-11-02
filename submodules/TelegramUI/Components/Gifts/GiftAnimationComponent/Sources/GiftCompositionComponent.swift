@@ -768,7 +768,7 @@ public final class GiftCompositionComponent: Component {
                         self.animatePreviewTransition = true
                         self.componentState?.updated(transition: .easeInOut(duration: 0.25))
                         self.component?.requestUpdate(.easeInOut(duration: 0.25))
-                    }, queue: Queue.mainQueue())
+                    }, queue: Queue.mainQueue(), leeway: .precise)
                     self.previewTimer?.start()
                 }
             }

@@ -181,7 +181,7 @@ private final class AlertEmojiStatusComponent: Component {
                     }
                     self.switchingToNext = true
                     self.state?.updated()
-                }, queue: Queue.mainQueue())
+                }, queue: Queue.mainQueue(), leeway: .precise)
                 self.timer?.start()
             }
             

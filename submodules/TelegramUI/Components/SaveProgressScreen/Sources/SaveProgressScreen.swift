@@ -559,7 +559,7 @@ public final class SaveProgressScreen: ViewController {
                             }
                         })
                     }
-                }, queue: Queue.mainQueue())
+                }, queue: Queue.mainQueue(), leeway: .precise)
                 timer.start()
                 self.dismissTimer = timer
             }

@@ -644,7 +644,7 @@ final class OverlayAudioPlayerControlsNode: ASDisplayNode {
                             strongSelf.seekTimer = nil
                         }
                     }
-                }, queue: Queue.mainQueue())
+                }, queue: Queue.mainQueue(), leeway: .precise)
                 self.seekTimer = seekTimer
                 seekTimer.start()
             case .ended, .cancelled:

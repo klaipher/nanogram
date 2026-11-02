@@ -364,7 +364,7 @@ private final class GiftUpgradeVariantsScreenComponent: Component {
                         return
                     }
                     self.previewTimerTick()
-                }, queue: Queue.mainQueue())
+                }, queue: Queue.mainQueue(), leeway: .precise)
                 self.previewTimer?.start()
             } else {
                 self.previewTimer?.invalidate()

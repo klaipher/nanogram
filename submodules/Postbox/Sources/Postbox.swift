@@ -2583,7 +2583,7 @@ final class PostboxImpl {
                     let _ = self.transaction { _ in
                         self.processTypingDraftExpirations(expirationTimeout: expirationTimeout)
                     }.startStandalone()
-                }, queue: self.queue)
+                }, queue: self.queue, leeway: .precise)
                 self.nextTypingDraftExpirationTimer?.start()
                 self.nextTypingDraftExpirationTimestamp = nextTypingDraftExpirationTimestamp
             }

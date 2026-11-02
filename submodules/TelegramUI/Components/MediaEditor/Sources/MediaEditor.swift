@@ -1370,7 +1370,7 @@ public final class MediaEditor {
                                 self.videoDelayTimer[index] = SwiftSignalKit.Timer(timeout: videoDelay, repeat: false, completion: { [weak additionalPlayer] in
                                     additionalPlayer?.seek(to: videoTime, toleranceBefore: .zero, toleranceAfter: .zero)
                                     additionalPlayer?.play()
-                                }, queue: Queue.mainQueue())
+                                }, queue: Queue.mainQueue(), leeway: .precise)
                                 self.videoDelayTimer[index]?.start()
                             } else {
                                 additionalPlayer.seek(to: videoTime, toleranceBefore: .zero, toleranceAfter: .zero)
@@ -1389,7 +1389,7 @@ public final class MediaEditor {
                         self.audioDelayTimer = SwiftSignalKit.Timer(timeout: audioDelay, repeat: false, completion: { [weak self] in
                             self?.audioPlayer?.seek(to: audioTime, toleranceBefore: .zero, toleranceAfter: .zero)
                             self?.audioPlayer?.play()
-                        }, queue: Queue.mainQueue())
+                        }, queue: Queue.mainQueue(), leeway: .precise)
                         self.audioDelayTimer?.start()
                     } else {
                         self.audioPlayer?.seek(to: audioTime, toleranceBefore: .zero, toleranceAfter: .zero)
@@ -1629,7 +1629,7 @@ public final class MediaEditor {
                                 self.videoDelayTimer[index] = SwiftSignalKit.Timer(timeout: videoDelay, repeat: false, completion: { [weak additionalPlayer] in
                                     additionalPlayer?.seek(to: videoTime, toleranceBefore: .zero, toleranceAfter: .zero)
                                     additionalPlayer?.play()
-                                }, queue: Queue.mainQueue())
+                                }, queue: Queue.mainQueue(), leeway: .precise)
                                 self.videoDelayTimer[index]?.start()
                             } else {
                                 if additionalPlayer.status == .readyToPlay {
@@ -1669,7 +1669,7 @@ public final class MediaEditor {
                         self.audioDelayTimer = SwiftSignalKit.Timer(timeout: audioDelay, repeat: false, completion: { [weak self] in
                             self?.audioPlayer?.seek(to: audioTime, toleranceBefore: .zero, toleranceAfter: .zero)
                             self?.audioPlayer?.play()
-                        }, queue: Queue.mainQueue())
+                        }, queue: Queue.mainQueue(), leeway: .precise)
                         self.audioDelayTimer?.start()
                     } else {
                         if audioPlayer.status == .readyToPlay {

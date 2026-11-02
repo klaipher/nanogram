@@ -753,6 +753,21 @@ image is tinted white while `customPatternColor` may be black, so "the pattern i
 GPU (Metal) rendering of stickers and emoji, its debug switches and how to measure it on a phone:
 [`docs/research/gpu-sticker-rendering.md`](docs/research/gpu-sticker-rendering.md).
 
+## Timers and wake-ups (SwiftSignalKit, Network.framework keepalive)
+
+- **`SwiftSignalKit.Timer` has leeway by default.** Timeouts of 1 s or longer get
+  `min(10% of the timeout, 1 s)` (`TimerLeeway.automatic`), so the kernel can fire them together
+  with other wake-ups (Mac benchmark, 40 staggered 1-5 s repeating timers: 15.1 -> 4.3 wake-ups/s).
+  `delay()`/`timeout()` inherit it. Pass `leeway: .precise` for any timer the user can see:
+  count-downs, recording and playback timers, animation loops, gestures (long press), typing
+  indicators, and timers that show or hide UI. A new visible timer without it can tick up to 1 s late.
+  Legacy (`SwiftSignalKit/Source`, iOS) and v2 (`SwiftSignalKit2/Source`, macOS SwiftPM) must keep
+  the same API; the shared `SwiftSignalKitTesting/Behavior` tests compile against both.
+- **`suspendAwareDelay` is one wall-clock deadline** (`DispatchWallTime`, `granularity` as leeway)
+  in both libraries. Do not reintroduce a repeating check: ~45 per-account pollers sit in hour-long
+  delays and the old 4 s loop caused most background wake-ups (`Stress/IdleWakeupTests`, 2362 -> 10
+  wake-ups/s with 200 pending delays).
+
 ## Framework export lists (computed by the build)
 
 `TelegramUIFramework` and `TelegramCoreFramework` export only the symbols their clients use.

@@ -1168,7 +1168,7 @@ public final class InviteLinkViewController: ViewController {
                                     if let strongSelf = self, let layout = strongSelf.validLayout {
                                         strongSelf.containerLayoutUpdated(layout, transition: .immediate)
                                     }
-                                }, queue: Queue.mainQueue())
+                                }, queue: Queue.mainQueue(), leeway: .precise)
                                 self.countdownTimer = countdownTimer
                                 countdownTimer.start()
                             }

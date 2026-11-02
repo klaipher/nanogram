@@ -218,7 +218,7 @@ public final class MediaStreamComponent: CombinedComponent {
                     if strongSelf.displayUI {
                         strongSelf.toggleDisplayUI()
                     }
-                }, queue: .mainQueue())
+                }, queue: .mainQueue(), leeway: .precise)
                 self.scheduledDismissUITimer?.start()
             }
         }

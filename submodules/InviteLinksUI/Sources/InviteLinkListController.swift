@@ -921,7 +921,7 @@ public func inviteLinkListController(context: AccountContext, updatedPresentatio
     let timerPromise = ValuePromise<Int32>(0)
     let timer = SwiftSignalKit.Timer(timeout: 1.0, repeat: true, completion: {
         timerPromise.set(Int32(CFAbsoluteTimeGetCurrent()))
-    }, queue: Queue.mainQueue())
+    }, queue: Queue.mainQueue(), leeway: .precise)
     timer.start()
     
     let previousInvites = Atomic<PeerExportedInvitationsState?>(value: nil)

@@ -245,7 +245,7 @@ public final class PasscodeSetupController: ViewController {
                 let timer = SwiftSignalKit.Timer(timeout: 1.0, repeat: true, completion: { [weak self] in
                     guard let authentication = self?.authentication, case .cooldown = authentication.state else { return }
                     authentication.refreshCooldown()
-                }, queue: Queue.mainQueue())
+                }, queue: Queue.mainQueue(), leeway: .precise)
                 self.cooldownTimer = timer
                 timer.start()
             }

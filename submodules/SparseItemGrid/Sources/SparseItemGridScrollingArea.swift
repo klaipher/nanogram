@@ -1340,7 +1340,7 @@ public final class SparseItemGridScrollingArea: ASDisplayNode {
                 strongSelf.requestUpdate(animated: true)
                 
                 strongSelf.dismissLineTooltip()
-            }, queue: .mainQueue())
+            }, queue: .mainQueue(), leeway: .precise)
             self.activityTimer?.start()
         }
     }
