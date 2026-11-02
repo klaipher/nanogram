@@ -2,8 +2,8 @@
 
 #define USE_JPEGLI false
 
-#import <mozjpeg/turbojpeg.h>
-#import <mozjpeg/jpeglib.h>
+#import <libjpeg-turbo/turbojpeg.h>
+#import <libjpeg-turbo/jpeglib.h>
 
 #import <Accelerate/Accelerate.h>
 
@@ -479,7 +479,6 @@ NSData * _Nullable compressJPEGData(UIImage * _Nonnull sourceImage, NSString * _
     cinfo.image_height = (uint32_t)height;
     cinfo.input_components = 3;
     cinfo.in_color_space = JCS_RGB;
-    jpeg_c_set_int_param(&cinfo, JINT_COMPRESS_PROFILE, JCP_FASTEST);
     jpeg_set_defaults(&cinfo);
     cinfo.arith_code = FALSE;
     cinfo.dct_method = JDCT_ISLOW;
@@ -680,7 +679,6 @@ NSData * _Nullable compressMiniThumbnail(UIImage * _Nonnull image, CGSize size) 
     cinfo.image_height = (uint32_t)height;
     cinfo.input_components = 3;
     cinfo.in_color_space = JCS_RGB;
-    jpeg_c_set_int_param(&cinfo, JINT_COMPRESS_PROFILE, JCP_FASTEST);
     jpeg_set_defaults(&cinfo);
     cinfo.arith_code = FALSE;
     cinfo.dct_method = JDCT_ISLOW;
@@ -732,24 +730,47 @@ UIImage * _Nullable decompressImage(NSData * _Nonnull sourceData) {
     return [UIImage imageWithData:sourceData];
 }
 #else
+// Decodes JPEGs that arrive from chats (tiny thumbnails) and the media cache, so the input is untrusted. Every
+// failure gives nil (DirectMediaImageCache then falls back to UIImage(data:)); a decoder warning (corrupt or truncated
+// entropy data) still gives the partly decoded image, as before.
 UIImage * _Nullable decompressImage(NSData * _Nonnull sourceData) {
+    // Generously above anything decoded here (thumbnails and cached squares of a few hundred pixels); also keeps the
+    // buffer sizes below far from overflow.
+    static const int maxSide = 8192;
+
     long unsigned int jpegSize = sourceData.length;
     unsigned char *_compressedImage = (unsigned char *)sourceData.bytes;
+    if (jpegSize == 0 || _compressedImage == NULL) {
+        return nil;
+    }
 
     int jpegSubsamp, width, height;
 
     tjhandle _jpegDecompressor = tjInitDecompress();
-
-    if (tjDecompressHeader2(_jpegDecompressor, _compressedImage, jpegSize, &width, &height, &jpegSubsamp) != 0) {
+    if (_jpegDecompressor == NULL) {
         return nil;
     }
 
-    int sourceBytesPerRow = (3 * width + 31) & ~0x1F;
-    int targetBytesPerRow = (4 * width + 31) & ~0x1F;
+    if (tjDecompressHeader2(_jpegDecompressor, _compressedImage, jpegSize, &width, &height, &jpegSubsamp) != 0 || width <= 0 || height <= 0 || width > maxSide || height > maxSide) {
+        tjDestroy(_jpegDecompressor);
+        return nil;
+    }
 
-    unsigned char *buffer = (uint8_t *)malloc(sourceBytesPerRow * height);
+    size_t sourceBytesPerRow = ((size_t)3 * (size_t)width + 31) & ~(size_t)0x1F;
+    size_t targetBytesPerRow = ((size_t)4 * (size_t)width + 31) & ~(size_t)0x1F;
 
-    tjDecompress2(_jpegDecompressor, _compressedImage, jpegSize, buffer, width, sourceBytesPerRow, height, TJPF_RGB, TJFLAG_FASTDCT | TJFLAG_FASTUPSAMPLE);
+    unsigned char *buffer = (uint8_t *)malloc(sourceBytesPerRow * (size_t)height);
+    if (buffer == NULL) {
+        tjDestroy(_jpegDecompressor);
+        return nil;
+    }
+
+    if (tjDecompress2(_jpegDecompressor, _compressedImage, jpegSize, buffer, width, (int)sourceBytesPerRow, height, TJPF_RGB, TJFLAG_FASTDCT | TJFLAG_FASTUPSAMPLE) != 0 && tjGetErrorCode(_jpegDecompressor) != TJERR_WARNING) {
+        // A fatal error (an unsupported colour space such as CMYK, a damaged header): the buffer holds nothing decoded.
+        tjDestroy(_jpegDecompressor);
+        free(buffer);
+        return nil;
+    }
 
     tjDestroy(_jpegDecompressor);
 
@@ -764,7 +785,11 @@ UIImage * _Nullable decompressImage(NSData * _Nonnull sourceData) {
     target.height = height;
     target.rowBytes = targetBytesPerRow;
 
-    unsigned char *targetBuffer = (uint8_t *)malloc(targetBytesPerRow * height);
+    unsigned char *targetBuffer = (uint8_t *)malloc(targetBytesPerRow * (size_t)height);
+    if (targetBuffer == NULL) {
+        free(buffer);
+        return nil;
+    }
     target.data = targetBuffer;
 
     vImageConvert_RGB888toARGB8888(&source, nil, 0xff, &target, false, kvImageDoNotTile);
@@ -776,7 +801,11 @@ UIImage * _Nullable decompressImage(NSData * _Nonnull sourceData) {
     permuteTarget.height = height;
     permuteTarget.rowBytes = targetBytesPerRow;
 
-    unsigned char *permuteTargetBuffer = (uint8_t *)malloc(targetBytesPerRow * height);
+    unsigned char *permuteTargetBuffer = (uint8_t *)malloc(targetBytesPerRow * (size_t)height);
+    if (permuteTargetBuffer == NULL) {
+        free(targetBuffer);
+        return nil;
+    }
     permuteTarget.data = permuteTargetBuffer;
 
     const uint8_t permuteMap[4] = {3,2,1,0};
