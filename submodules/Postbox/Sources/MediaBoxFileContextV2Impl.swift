@@ -187,7 +187,10 @@ public final class MediaBoxFileContextV2Impl: MediaBoxFileContext {
         deinit {
             self.pendingFetch?.disposable.dispose()
             
-            if self.unsavedMapWrites != 0 {
+            // Not when the partial file is gone (MediaBox.removeCachedResources unlinks it and its
+            // map behind the context's back): the map would be an orphan, and a fresh partial file
+            // created later would inherit ranges it does not hold.
+            if self.unsavedMapWrites != 0 && FileManager.default.fileExists(atPath: self.partialPath) {
                 if self.queue.isCurrent() {
                     self.fileMap.serialize(manager: self.manager, to: self.metaPath)
                 } else {

@@ -108,6 +108,23 @@ final class MediaBoxMapSerializationBatchingTests: XCTestCase {
         XCTAssertNil(self.liveFileMaps.snapshot(metaPath: self.metaPath))
     }
 
+    // MediaBox.removeCachedResources(force: true) unlinks the partial file and its map behind the
+    // file context's back and drops the context. Closing it must not write the map back: a map
+    // without its partial file is an orphan, and one that a fresh partial file (another process
+    // starting the same download) inherits claims bytes that file does not hold.
+    func testClosingAfterTheFilesWereRemovedDoesNotRecreateTheMap() {
+        var context: MediaBoxFileContextV2Impl? = self.makeContext()
+        self.store(context!, chunks: 0 ..< 3)
+        XCTAssertTrue(FileManager.default.fileExists(atPath: self.partialPath))
+        unlink(self.partialPath)
+        unlink(self.metaPath)
+        self.queue.sync {
+            context = nil
+        }
+        XCTAssertFalse(FileManager.default.fileExists(atPath: self.metaPath), "the map of a removed partial file was written back")
+        XCTAssertNil(self.liveFileMaps.snapshot(metaPath: self.metaPath))
+    }
+
     // A process killed between two map writes leaves a map that claims less than the partial
     // file holds. Reopening it keeps exactly what the map claims; the rest is downloaded again.
     func testMapLeftBehindByACrashOnlyClaimsWrittenBytes() throws {
@@ -219,6 +236,24 @@ final class MediaBoxMapSerializationBatchingTests: XCTestCase {
         XCTAssertEqual(length, Int(2 * self.chunk))
         XCTAssertEqual(file.readData(count: length), self.chunkData(1) + self.chunkData(2))
         keepOpen.dispose()
+
+        // The storage boxes open their databases lazily on their own queues (the writes above
+        // queued size updates). Let them finish before tearDown deletes the directory, or the
+        // open fails there and precondition-crashes the whole test process.
+        let releasedContext = self.expectation(description: "context released")
+        mediaBox.dataQueue.async {
+            releasedContext.fulfill()
+        }
+        self.wait(for: [releasedContext], timeout: 10.0)
+        for storageBox in [mediaBox.storageBox, mediaBox.cacheStorageBox] {
+            let drained = self.expectation(description: "storage box drained")
+            drained.assertForOverFulfill = false
+            let disposable = storageBox.get(ids: []).start(next: { _ in
+                drained.fulfill()
+            })
+            self.wait(for: [drained], timeout: 10.0)
+            disposable.dispose()
+        }
     }
 
     func testBenchmarkMapWritesPerChunk() {
