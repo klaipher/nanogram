@@ -136,6 +136,39 @@ final class CoreAudioDownloadTests: XCTestCase {
         XCTAssertTrue(cancelled)
     }
 
+    /// A voice note tapped while a track waits for its file stops the track, so its download
+    /// stops too.
+    func testTappingAVoiceNoteCancelsAPendingTrack() async {
+        let loader = CoreFakeHistoryLoader()
+        let store = CoreFixtures.historyStore(loader: loader)
+        store.toggleAudioPlayback(track(9))
+        store.togglePlayback(VoiceNoteVisual(voiceFileId: 42, duration: 1, mimeType: "audio/ogg", waveform: Data(), caption: "", localPath: nil))
+        XCTAssertEqual(store.audioPlayback.state, .idle)
+        let cancelled = await coreWait { await loader.cancelledDownloads == [9] }
+        XCTAssertTrue(cancelled)
+    }
+
+    /// Starting to record stops playback; a track still waiting for its file stops downloading.
+    func testStoppingPlaybackForRecordingCancelsAPendingTrack() async {
+        let loader = CoreFakeHistoryLoader()
+        let store = CoreFixtures.historyStore(loader: loader)
+        store.toggleAudioPlayback(track(9))
+        store.stopPlayback()
+        XCTAssertEqual(store.audioPlayback.state, .idle)
+        let cancelled = await coreWait { await loader.cancelledDownloads == [9] }
+        XCTAssertTrue(cancelled)
+    }
+
+    /// Stopping a track that is already playing has no download to cancel.
+    func testStoppingAPlayingTrackCancelsNothing() async {
+        let loader = CoreFakeHistoryLoader()
+        let store = CoreFixtures.historyStore(loader: loader)
+        store.stopPlayback()
+        try? await Task.sleep(nanoseconds: 100_000_000)
+        let cancelled = await loader.cancelledDownloads
+        XCTAssertEqual(cancelled, [])
+    }
+
     /// The bubble no longer asks for its file when it scrolls into view.
     func testBubbleSourceHasNoViewportDownload() throws {
         let source = try String(contentsOf: URL(fileURLWithPath: #filePath)

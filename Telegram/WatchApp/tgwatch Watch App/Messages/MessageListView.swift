@@ -88,10 +88,7 @@ struct MessageListView: View {
                 stickerPickerStore: stickerPickerStore,
                 onSendSticker: { await store.sendSticker($0) },
                 onSendVoiceNote: { await store.sendVoiceNote($0) },
-                onPrepareVoice: {
-                    store.voicePlayback.tearDown()
-                    store.audioPlayback.tearDown()
-                },
+                onPrepareVoice: { store.stopPlayback() },
                 onSendLocation: { latitude, longitude in
                     await store.sendLocation(latitude: latitude, longitude: longitude)
                 }

@@ -222,11 +222,7 @@ final class ChatHistoryStore {
     }
 
     func stop() async {
-        voicePlayback.tearDown()
-        if let waiting = pendingAudioFileId {
-            cancelFileDownload(fileId: waiting)
-        }
-        audioPlayback.tearDown()
+        stopPlayback()
         // Drain task was scheduled by markVisible during scroll; cancel so it
         // doesn't fire viewMessages against a soon-to-be-closed chat.
         viewDrainTask?.cancel()
@@ -513,7 +509,7 @@ final class ChatHistoryStore {
     }
 
     func togglePlayback(_ note: VoiceNoteVisual) {
-        audioPlayback.tearDown()
+        stopMusic()
         if note.localPath == nil {
             requestFileDownload(fileId: note.voiceFileId, priority: 2)
         }
@@ -532,6 +528,21 @@ final class ChatHistoryStore {
         if case .preparing(let id) = audioPlayback.state, id == audio.audioFileId, id != waiting {
             requestFileDownload(fileId: id, priority: 2)
         }
+    }
+
+    /// Stops voice and music (recording starts, the chat closes).
+    func stopPlayback() {
+        voicePlayback.tearDown()
+        stopMusic()
+    }
+
+    /// Every way music stops goes through here: a track still waiting for its file stops
+    /// downloading too, since only a tap asks for it.
+    private func stopMusic() {
+        if let waiting = pendingAudioFileId {
+            cancelFileDownload(fileId: waiting)
+        }
+        audioPlayback.tearDown()
     }
 
     private var pendingAudioFileId: Int? {
