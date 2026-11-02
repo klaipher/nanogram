@@ -43,6 +43,7 @@ final class TDClient {
     func setActiveHistory(_ store: ChatHistoryStore?) {
         activeHistory = store
         store?.setViewingActive(isSceneActive)
+        store?.setProjectionPaused(!isSceneActive)
     }
 
     /// False while the app is not frontmost (wrist down, or in the background). The open chat
@@ -53,6 +54,8 @@ final class TDClient {
         guard active != isSceneActive else { return }
         isSceneActive = active
         activeHistory?.setViewingActive(active)
+        activeHistory?.setProjectionPaused(!active)
+        chatList?.setProjectionPaused(!active)
         if active {
             optimizeStorageIfDue()
         }
@@ -306,6 +309,7 @@ final class TDClient {
                         userNames: userNames,
                         coalesceUpdates: true
                     )
+                    chatList?.setProjectionPaused(!isSceneActive)
                 }
             }
             switch mapped {

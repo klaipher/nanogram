@@ -539,6 +539,29 @@ final class ChatHistoryStore {
 
     // MARK: - Update dispatch
 
+    /// True while the app is not frontmost (wrist down, or in the background). The system does
+    /// not redraw an inactive app, so updates still land in the caches but the projection waits
+    /// for `setProjectionPaused(false)`, which runs it once if anything changed.
+    private var projectionPaused = false
+    private var reprojectDeferred = false
+
+    func setProjectionPaused(_ paused: Bool) {
+        guard paused != projectionPaused else { return }
+        projectionPaused = paused
+        if !paused, reprojectDeferred {
+            reproject()
+        }
+    }
+
+    /// A voice note or track tapped just before the wrist went down starts from `reproject()`
+    /// when its file arrives, so projection keeps running while one is waiting.
+    private var defersProjection: Bool {
+        guard projectionPaused else { return false }
+        if case .preparing = voicePlayback.state { return false }
+        if case .preparing = audioPlayback.state { return false }
+        return true
+    }
+
     func handle(_ update: Update) {
         switch update {
         case .updateNewMessage(let upd) where upd.message.chatId == chatId:
@@ -628,6 +651,10 @@ final class ChatHistoryStore {
     /// See `ChatListStore.scheduleReproject`. Tail-of-runloop deferral for
     /// production; passthrough for tests (default).
     private func scheduleReproject() {
+        if defersProjection {
+            reprojectDeferred = true
+            return
+        }
         guard coalesceUpdates else {
             reproject()
             return
@@ -637,6 +664,11 @@ final class ChatHistoryStore {
         DispatchQueue.main.async { [weak self] in
             guard let self else { return }
             guard self.reprojectPending else { return }
+            if self.defersProjection {
+                self.reprojectPending = false
+                self.reprojectDeferred = true
+                return
+            }
             self.reproject()
         }
     }
@@ -651,6 +683,7 @@ final class ChatHistoryStore {
 
     private func reproject() {
         reprojectPending = false
+        reprojectDeferred = false
         #if DEBUG
         debugReprojectCount += 1
         #endif

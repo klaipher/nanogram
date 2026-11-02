@@ -172,6 +172,20 @@ final class ChatListStore {
         }
     }
 
+    /// True while the app is not frontmost (wrist down, or in the background). The system does
+    /// not redraw an inactive app, so updates still land in the caches but the projection waits
+    /// for `setProjectionPaused(false)`, which runs it once if anything changed.
+    private var projectionPaused = false
+    private var reprojectDeferred = false
+
+    func setProjectionPaused(_ paused: Bool) {
+        guard paused != projectionPaused else { return }
+        projectionPaused = paused
+        if !paused, reprojectDeferred {
+            reproject()
+        }
+    }
+
     func handle(_ update: Update) {
         diagnosticLog(update)
         switch update {
@@ -281,6 +295,10 @@ final class ChatListStore {
     /// `ensureChatsLoaded`) clears the pending flag, so the deferred job
     /// no-ops if it loses the race.
     private func scheduleReproject() {
+        if projectionPaused {
+            reprojectDeferred = true
+            return
+        }
         guard coalesceUpdates else {
             reproject()
             return
@@ -290,6 +308,11 @@ final class ChatListStore {
         DispatchQueue.main.async { [weak self] in
             guard let self else { return }
             guard self.reprojectPending else { return }
+            if self.projectionPaused {
+                self.reprojectPending = false
+                self.reprojectDeferred = true
+                return
+            }
             self.reproject()
         }
     }
@@ -304,6 +327,7 @@ final class ChatListStore {
 
     private func reproject() {
         reprojectPending = false
+        reprojectDeferred = false
         #if DEBUG
         debugReprojectCount += 1
         #endif
