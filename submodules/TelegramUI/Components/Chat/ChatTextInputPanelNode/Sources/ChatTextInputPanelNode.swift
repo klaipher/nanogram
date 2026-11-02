@@ -284,9 +284,8 @@ public class ChatTextInputPanelNode: ChatInputPanelNode, ASEditableTextNodeDeleg
     private var enableRichTextInput: Bool = false
     private var alwaysUseNativeInput: Bool = false
     // Which input backend a NATIVE composer is built for — orthogonal to the two flags above, which
-    // decide WHETHER the native composer is used at all. Production stays `.legacy`; Debug Settings ▸
-    // "Text Field v2: InputDec backend" (`inputDecTextBackend`) selects `.inputDecIfSupported`, which
-    // itself falls back to legacy on a runtime the InputDec backend cannot drive.
+    // decide WHETHER the native composer is used at all. Always `.legacy` since the Debug Settings row
+    // that selected `.inputDecIfSupported` was removed (2026-11, superseded by Input V3).
     private var richTextInputBackendPreference: RichTextEditorInputBackendPreference = .legacy
     /// Debug Settings ▸ "Input V3". Selects the engine-backed editor
     /// rather than a backend of the legacy one — a different type, read once at panel setup.
@@ -820,9 +819,6 @@ public class ChatTextInputPanelNode: ChatInputPanelNode, ASEditableTextNodeDeleg
             } else if mode == 2.0 {
                 self.enableRichTextInput = false
             }
-        }
-        if context.sharedContext.immediateExperimentalUISettings.inputDecTextBackend {
-            self.richTextInputBackendPreference = .inputDecIfSupported
         }
         // Below iOS 18.4 the engine editor cannot be built (`RichTextEditorChatInputNode` checks the
         // same availability), so the flag must change nothing there — not even force the composer

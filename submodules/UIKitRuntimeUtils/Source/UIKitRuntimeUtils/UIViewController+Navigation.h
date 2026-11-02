@@ -112,9 +112,3 @@ void snapshotViewByDrawingInContext(UIView * _Nonnull view);
 
 @end
 
-@interface WebHelpers : NSObject
-
-+ (dispatch_block_t _Nonnull)addTrustedDomain:(NSString * _Nonnull)domain;
-+ (void)forceRefreshTrustedDomains:(WKWebsiteDataStore * _Nonnull)websiteDataStore;
-
-@end

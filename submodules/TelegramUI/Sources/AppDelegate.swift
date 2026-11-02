@@ -1632,8 +1632,6 @@ private func extractAccountManagerState(records: AccountRecordsView<TelegramAcco
             }
         }
         
-        self.maybeCheckForUpdates()
-
         #if canImport(AppCenter)
         if !buildConfig.isAppStoreBuild, let appCenterId = buildConfig.appCenterId, !appCenterId.isEmpty {
             AppCenter.start(withAppSecret: buildConfig.appCenterId, services: [
@@ -1729,13 +1727,6 @@ private func extractAccountManagerState(records: AccountRecordsView<TelegramAcco
                     if let memoryUsageOverlayView = self.memoryUsageOverlayView {
                         self.memoryUsageOverlayView = nil
                         memoryUsageOverlayView.removeFromSuperview()
-                    }
-                }
-                
-                if !buildConfig.isAppStoreBuild {
-                    if value >= 2000 * 1024 * 1024 {
-                        if self.contextValue?.context.sharedContext.immediateExperimentalUISettings.crashOnMemoryPressure == true {
-                        }
                     }
                 }
             }
@@ -2181,8 +2172,6 @@ private func extractAccountManagerState(records: AccountRecordsView<TelegramAcco
         self.isActivePromise.set(true)
 
         self.resetBadge()
-        
-        self.maybeCheckForUpdates()
         
         SharedDisplayLinkDriver.shared.updateForegroundState(self.isActiveValue)
         
@@ -3272,72 +3261,6 @@ private func extractAccountManagerState(records: AccountRecordsView<TelegramAcco
         completionHandler()
     }
     
-    private var lastCheckForUpdatesTimestamp: Double?
-    private let currentCheckForUpdatesDisposable = MetaDisposable()
-    
-    private func maybeCheckForUpdates() {
-        #if targetEnvironment(simulator)
-        #else
-        guard let buildConfig = self.buildConfig else {
-            return
-        }
-        let timestamp = CFAbsoluteTimeGetCurrent()
-        if self.lastCheckForUpdatesTimestamp == nil || self.lastCheckForUpdatesTimestamp! < timestamp - 10.0 * 60.0 {
-            self.lastCheckForUpdatesTimestamp = timestamp
-            
-            let _ = (self.sharedContextPromise.get()
-            |> take(1)
-            |> mapToSignal { sharedContext in
-                return sharedContext.sharedContext.accountManager.sharedData(keys: [ApplicationSpecificSharedDataKeys.updateSettings])
-                |> map { sharedData in
-                    return (sharedContext, sharedData.entries[ApplicationSpecificSharedDataKeys.updateSettings]?.get(UpdateSettings.self)?.url)
-                }
-            }
-            |> deliverOnMainQueue).start(next: { sharedContext, urlString in
-                guard buildConfig.isInternalBuild || sharedContext.sharedContext.immediateExperimentalUISettings.enableUpdates else {
-                    return
-                }
-                guard let url = urlString.flatMap({ URL(string: $0) }) else {
-                    return
-                }
-                self.currentCheckForUpdatesDisposable.set((downloadHTTPData(url: url)
-                |> deliverOnMainQueue).start(next: { data in
-                    guard let json = try? JSONSerialization.jsonObject(with: data, options: []) else {
-                        return
-                    }
-                    guard let dict = json as? [String: Any] else {
-                        return
-                    }
-                    guard let versionString = dict["version"] as? String, let version = Int(versionString) else {
-                        return
-                    }
-                    guard let releaseNotesUrl = dict["url"] as? String else {
-                        return
-                    }
-                    guard let currentVersionString = Bundle.main.infoDictionary?["CFBundleVersion"] as? String, let currentVersion = Int(currentVersionString) else {
-                        return
-                    }
-                    if currentVersion < version {
-                        let presentationData = sharedContext.sharedContext.currentPresentationData.with { $0 }
-                        let alertController = textAlertController(
-                            sharedContext: sharedContext.sharedContext,
-                            title: "A new build is available",
-                            text: "",
-                            actions: [
-                                TextAlertAction(type: .genericAction, title: presentationData.strings.Common_Cancel, action: {}),
-                                TextAlertAction(type: .defaultAction, title: "Show", action: {
-                                    sharedContext.sharedContext.applicationBindings.openUrl(releaseNotesUrl)
-                                })
-                            ]
-                        )
-                        sharedContext.sharedContext.mainWindow?.present(alertController, on: .root, blockInteraction: false, completion: {})
-                    }
-                }))
-            })
-        }
-        #endif
-    }
-    
     override var next: UIResponder? {
         if let context = self.contextValue, let controller = context.context.keyShortcutsController {
             return controller
@@ -3499,32 +3422,6 @@ private func storyIdFromNotification(peerId: PeerId, notification: UNNotificatio
     return nil
 }
 
-private enum DownloadFileError {
-    case network
-}
-
-private func downloadHTTPData(url: URL) -> Signal<Data, DownloadFileError> {
-    return Signal { subscriber in
-        let completed = Atomic<Bool>(value: false)
-        let downloadTask = URLSession.shared.downloadTask(with: url, completionHandler: { location, _, error in
-            let _ = completed.swap(true)
-            if let location = location, let data = try? Data(contentsOf: location) {
-                subscriber.putNext(data)
-                subscriber.putCompletion()
-            } else {
-                subscriber.putError(.network)
-            }
-        })
-        downloadTask.resume()
-        
-        return ActionDisposable {
-            if !completed.with({ $0 }) {
-                downloadTask.cancel()
-            }
-        }
-    }
-}
-
 private func getMemoryConsumption() -> Int {
     guard let memory_offset = MemoryLayout.offset(of: \task_vm_info_data_t.min_address) else {
         return 0
@@ -3542,18 +3439,6 @@ private func getMemoryConsumption() -> Int {
         return 0
     }
     return Int(info.phys_footprint)
-}
-
-final class UpdateSettings: Codable, Equatable {
-    let url: String?
-    
-    init(url: String?) {
-        self.url = url
-    }
-    
-    static func ==(lhs: UpdateSettings, rhs: UpdateSettings) -> Bool {
-        return lhs.url == rhs.url
-    }
 }
 
 private final class NavigationBarOverflowMenuReferenceSource: ContextReferenceContentSource {

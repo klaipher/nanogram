@@ -780,9 +780,6 @@ public final class ChatControllerImpl: TelegramBaseController, ChatController, G
             if !self.presentationData.theme.overallDarkAppearance {
                 preferredGlassType = .default
             }
-            if self.context.sharedContext.immediateExperimentalUISettings.forceClearGlass {
-                preferredGlassType = .clear
-            }
             if self.presentationInterfaceState.preferredGlassType != preferredGlassType {
                 self.updateChatPresentationInterfaceState(transition: .immediate, interactive: false, { state in
                     return state.updatedPreferredGlassType(preferredGlassType)
@@ -7280,9 +7277,6 @@ public final class ChatControllerImpl: TelegramBaseController, ChatController, G
         var preferredGlassType: ChatPresentationInterfaceState.GlassType = self.chatBackgroundNode.contentStats?.isSaturated == true ? .clear : .default
         if !self.presentationData.theme.overallDarkAppearance {
             preferredGlassType = .default
-        }
-        if self.context.sharedContext.immediateExperimentalUISettings.forceClearGlass {
-            preferredGlassType = .clear
         }
         self.updateChatPresentationInterfaceState(animated: false, interactive: false, { state in
             var state = state

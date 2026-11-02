@@ -934,89 +934,7 @@ public final class ChatHistoryListNodeImpl: ASDisplayNode, ChatHistoryNode, Chat
             if peerId.namespace == Namespaces.Peer.CloudUser {
                 adMessages = .single((nil, [], nil, nil))
             } else {
-                if context.sharedContext.immediateExperimentalUISettings.fakeAds {
-                    adMessages = context.engine.data.get(
-                        TelegramEngine.EngineData.Item.Peer.Peer(id: peerId)
-                    )
-                    |> map { peer -> (interPostInterval: Int32?, messages: [Message], startDelay: Int32?, betweenDelay: Int32?) in
-                        let fakeAdMessages: [Message] = (0 ..< 10).map { i -> Message in
-                            var attributes: [MessageAttribute] = []
-                            
-                            let mappedMessageType: AdMessageAttribute.MessageType = .sponsored
-                            attributes.append(AdMessageAttribute(opaqueId: "fake_ad_\(i)".data(using: .utf8)!, messageType: mappedMessageType, url: "t.me/telegram", buttonText: "VIEW", sponsorInfo: nil, additionalInfo: nil, canReport: false, hasContentMedia: false, minDisplayDuration: nil, maxDisplayDuration: nil))
-                            
-                            var messagePeers = SimpleDictionary<PeerId, Peer>()
-                            
-                            if let peer {
-                                messagePeers[peer.id] = peer._asPeer()
-                            }
-                            
-                            let author: Peer = TelegramChannel(
-                                id: PeerId(namespace: Namespaces.Peer.CloudChannel, id: PeerId.Id._internalFromInt64Value(1)),
-                                accessHash: nil,
-                                title: "Fake Ad",
-                                username: nil,
-                                photo: [],
-                                creationDate: 0,
-                                version: 0,
-                                participationStatus: .left,
-                                info: .broadcast(TelegramChannelBroadcastInfo(flags: [])),
-                                flags: [],
-                                restrictionInfo: nil,
-                                adminRights: nil,
-                                bannedRights: nil,
-                                defaultBannedRights: nil,
-                                usernames: [],
-                                storiesHidden: nil,
-                                nameColor: .blue,
-                                backgroundEmojiId: nil,
-                                profileColor: nil,
-                                profileBackgroundEmojiId: nil,
-                                emojiStatus: nil,
-                                approximateBoostLevel: nil,
-                                subscriptionUntilDate: nil,
-                                verificationIconFileId: nil,
-                                sendPaidMessageStars: nil,
-                                linkedMonoforumId: nil
-                            )
-                            messagePeers[author.id] = author
-                            
-                            let messageText = "Fake Ad N\(i)"
-                            let messageHash = (messageText.hashValue &+ 31 &* peerId.hashValue) &* 31 &+ author.id.hashValue
-                            let messageStableVersion = UInt32(bitPattern: Int32(truncatingIfNeeded: messageHash))
-                            
-                            return Message(
-                                stableId: 0,
-                                stableVersion: messageStableVersion,
-                                id: MessageId(peerId: peerId, namespace: Namespaces.Message.Local, id: 0),
-                                globallyUniqueId: nil,
-                                groupingKey: nil,
-                                groupInfo: nil,
-                                threadId: nil,
-                                timestamp: Int32.max - 1,
-                                flags: [.Incoming],
-                                tags: [],
-                                globalTags: [],
-                                localTags: [],
-                                customTags: [],
-                                forwardInfo: nil,
-                                author: author,
-                                text: messageText,
-                                attributes: attributes,
-                                media: [],
-                                peers: messagePeers,
-                                associatedMessages: SimpleDictionary<MessageId, Message>(),
-                                associatedMessageIds: [],
-                                associatedMedia: [:],
-                                associatedThreadInfo: nil,
-                                associatedStories: [:]
-                            )
-                        }
-                        return (10, fakeAdMessages, nil, nil)
-                    }
-                } else {
-                    adMessages = adMessagesContext.state
-                }
+                adMessages = adMessagesContext.state
             }
         } else {
             adMessages = .single((nil, [], nil, nil))
@@ -1032,14 +950,12 @@ public final class ChatHistoryListNodeImpl: ASDisplayNode, ChatHistoryNode, Chat
         // this initializer, so every other list built from it (the overlay audio player's playlist, the
         // shared-context message list, an embedded chat preview) keeps `ListViewImpl` without naming it.
         var useCoreListBackend = rotated
-        // The Debug Settings switch keeps its original meaning — force CoreList on — which after the
-        // default flip is only reachable for the non-rotated lists above.
-        if context.sharedContext.immediateExperimentalUISettings.coreListChatBackend {
-            useCoreListBackend = true
+        // Debug Settings ▸ "Chat: old list (ListViewImpl)": the device-local opt-out, for A/B measurements
+        // or when CoreList misbehaves on one device.
+        if context.sharedContext.immediateExperimentalUISettings.forceListViewImplChatBackend {
+            useCoreListBackend = false
         }
-        // Server rollback. It outranks the debug switch deliberately: the point of a killswitch is that
-        // setting it guarantees no CoreList in the field, and a device-local opt-out for the flag already
-        // exists (turn the switch off).
+        // Server rollback: setting it guarantees no CoreList in the field.
         if let _ = context.getAppConfigValue("ios_killswitch_disable_corelist_chat_backend") {
             useCoreListBackend = false
         }

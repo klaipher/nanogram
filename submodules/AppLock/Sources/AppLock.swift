@@ -385,20 +385,6 @@ public final class AppLockContextImpl: AppLockContext {
         }
     }
     
-    public func _internalCrashForPasscodeMigrationTest(isLocked: Bool) throws -> Never {
-        var writeError: Error?
-        self.syncQueue.sync {
-            do {
-                let data = try JSONEncoder().encode(LockState(isManuallyLocked: isLocked))
-                try data.write(to: URL(fileURLWithPath: appLockStatePath(rootPath: self.rootPath)), options: .atomic)
-                abort()
-            } catch {
-                writeError = error
-            }
-        }
-        throw writeError!
-    }
-
     public var invalidAttempts: Signal<AccessChallengeAttempts?, NoError> {
         return self.currentState.get()
         |> map { state in

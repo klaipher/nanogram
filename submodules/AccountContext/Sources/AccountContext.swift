@@ -940,7 +940,6 @@ public protocol AppLockContext: AnyObject {
     
     func beginBiometricAuthentication() -> Disposable
     func failedUnlockAttempt()
-    func _internalCrashForPasscodeMigrationTest(isLocked: Bool) throws -> Never
 }
 
 public protocol RecentSessionsController: AnyObject {

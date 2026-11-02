@@ -237,7 +237,6 @@ final class BrowserWebContent: UIView, BrowserContent, WKNavigationDelegate, WKU
     var cancelInteractiveTransitionGestures: () -> Void = {}
     
     private var tempFile: EngineTempBoxFile?
-    private var disposeTrustedDomain: (() -> Void)?
     private var pendingMainFrameUrl: URL?
     
     init(context: AccountContext, presentationData: PresentationData, url: String, preferredConfiguration: WKWebViewConfiguration? = nil) {
@@ -287,29 +286,6 @@ final class BrowserWebContent: UIView, BrowserContent, WKNavigationDelegate, WKU
             configuration.applicationNameForUserAgent = computedUserAgent()
         }
         
-        if context.sharedContext.immediateExperimentalUISettings.enablePWA {
-            if #available(iOS 17.0, *) {
-                if let parsedUrl = URL(string: url), let host = parsedUrl.host {
-                    let rootPath = context.sharedContext.applicationBindings.containerPath + "/telegram-data"
-                    let pwaPath = rootPath + "/pwa"
-                    let uuidPath = pwaPath + "/uuid_\(host)"
-                    let uuid: UUID
-                    if let value = try? String(contentsOf: URL(fileURLWithPath: uuidPath), encoding: .utf8) {
-                        uuid = UUID(uuidString: value)!
-                    } else {
-                        uuid = UUID()
-                        let _ = try? FileManager.default.createDirectory(at: URL(fileURLWithPath: pwaPath), withIntermediateDirectories: true)
-                        let _ = try? uuid.uuidString.write(to: URL(fileURLWithPath: uuidPath), atomically: true, encoding: .utf8)
-                    }
-                    
-                    configuration.websiteDataStore = WKWebsiteDataStore(forIdentifier: uuid)
-                    
-                    configuration.limitsNavigationsToAppBoundDomains = true
-                    disposeTrustedDomain = WebHelpers.addTrustedDomain(host)
-                    WebHelpers.forceRefreshTrustedDomains(configuration.websiteDataStore)
-                }
-            }
-        }
                 
         self.webView = WebView(frame: CGRect(), configuration: configuration)
         self.webView.allowsLinkPreview = true
@@ -410,7 +386,6 @@ final class BrowserWebContent: UIView, BrowserContent, WKNavigationDelegate, WKU
         self.faviconDisposable.dispose()
         self.instantPageDisposable.dispose()
         
-        self.disposeTrustedDomain?()
     }
     
     private func handleScriptMessage(_ message: WKScriptMessage) {

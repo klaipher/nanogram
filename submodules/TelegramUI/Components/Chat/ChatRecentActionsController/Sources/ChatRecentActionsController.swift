@@ -407,9 +407,6 @@ public final class ChatRecentActionsController: TelegramBaseController {
         if !self.presentationData.theme.overallDarkAppearance {
             preferredGlassType = .default
         }
-        if self.context.sharedContext.immediateExperimentalUISettings.forceClearGlass {
-            preferredGlassType = .clear
-        }
 
         if self.preferredGlassType != preferredGlassType {
             self.preferredGlassType = preferredGlassType

@@ -217,7 +217,6 @@ public func chatTranslationState(context: AccountContext, peerId: EnginePeer.Id,
         return .single(nil)
     }
     
-    let loggingEnabled = context.sharedContext.immediateExperimentalUISettings.logLanguageRecognition
     
     if #available(iOS 12.0, *) {
         var baseLang = context.sharedContext.currentPresentationData.with { $0 }.strings.baseLanguageCode
@@ -268,9 +267,6 @@ public func chatTranslationState(context: AccountContext, peerId: EnginePeer.Id,
                         |> map { messageHistoryView, _, _ -> ChatTranslationState? in
                             let messages = messageHistoryView.entries.map(\.message)
                             
-                            if loggingEnabled {
-                                Logger.shared.log("ChatTranslation", "Start language recognizing for \(peerId)")
-                            }
                             var fromLangs: [String: Int] = [:]
                             var count = 0
                             for message in messages {
@@ -317,10 +313,6 @@ public func chatTranslationState(context: AccountContext, peerId: EnginePeer.Id,
                                         let filteredLanguages = hypotheses.filter { supportedTranslationLanguages.contains(normalizeTranslationLanguage($0.key.rawValue)) }.sorted(by: { $0.value > $1.value })
                                         if let language = filteredLanguages.first {
                                             let fromLang = normalizeTranslationLanguage(language.key.rawValue)
-                                            if loggingEnabled && !["en", "ru"].contains(fromLang) && !dontTranslateLanguages.contains(fromLang) {
-                                                Logger.shared.log("ChatTranslation", "\(text)")
-                                                Logger.shared.log("ChatTranslation", "Recognized as: \(fromLang), other hypotheses: \(hypotheses.map { $0.key.rawValue }.joined(separator: ",")) ")
-                                            }
                                             fromLangs[fromLang] = (fromLangs[fromLang] ?? 0) + message.text.count
                                             count += 1
                                         }
@@ -342,9 +334,6 @@ public func chatTranslationState(context: AccountContext, peerId: EnginePeer.Id,
                                 }
                             }
                             let fromLang = mostFrequent?.0 ?? ""
-                            if loggingEnabled {
-                                Logger.shared.log("ChatTranslation", "Ended with: \(fromLang)")
-                            }
                             
                             let isEnabled: Bool
                             if let currentIsEnabled = cached?.isEnabled {

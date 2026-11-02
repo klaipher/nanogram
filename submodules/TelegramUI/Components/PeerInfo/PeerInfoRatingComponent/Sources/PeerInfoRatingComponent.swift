@@ -139,22 +139,19 @@ public final class PeerInfoRatingComponent: Component {
     let foregroundColor: UIColor
     let level: Int
     let action: () -> Void
-    let debugLevel: Bool
     
     public init(
         backgroundColor: UIColor,
         borderColor: UIColor,
         foregroundColor: UIColor,
         level: Int,
-        action: @escaping () -> Void,
-        debugLevel: Bool = false
+        action: @escaping () -> Void
     ) {
         self.backgroundColor = backgroundColor
         self.borderColor = borderColor
         self.foregroundColor = foregroundColor
         self.level = level
         self.action = action
-        self.debugLevel = debugLevel
     }
     
     public static func ==(lhs: PeerInfoRatingComponent, rhs: PeerInfoRatingComponent) -> Bool {
@@ -168,9 +165,6 @@ public final class PeerInfoRatingComponent: Component {
             return false
         }
         if lhs.level != rhs.level {
-            return false
-        }
-        if lhs.debugLevel != rhs.debugLevel {
             return false
         }
         return true
@@ -190,8 +184,6 @@ public final class PeerInfoRatingComponent: Component {
         public private(set) var visibleLeftInset: CGFloat = 0.0
         private let borderLayer: SimpleLayer
         private let backgroundLayer: SimpleLayer
-        
-        private var debugLevel: Int = 1
         
         private var component: PeerInfoRatingComponent?
         private weak var state: EmptyComponentState?
@@ -217,19 +209,7 @@ public final class PeerInfoRatingComponent: Component {
                 return
             }
             if case .ended = recognizer.state {
-                if component.debugLevel {
-                    if self.debugLevel < 10 {
-                        self.debugLevel += 1
-                    } else {
-                        self.debugLevel += 10
-                    }
-                    if self.debugLevel >= 110 {
-                        self.debugLevel = 1
-                    }
-                    self.state?.updated(transition: .immediate)
-                } else {
-                    self.component?.action()
-                }
+                component.action()
             }
         }
         
@@ -242,18 +222,11 @@ public final class PeerInfoRatingComponent: Component {
             self.component = component
             self.state = state
             
-            let level: Int
-            if component.debugLevel {
-                level = self.debugLevel
-            } else {
-                level = component.level
-            }
+            let level = component.level
             
             let iconSize = CGSize(width: 26.0, height: 26.0)
             
-            let alwaysRedraw: Bool = component.debugLevel
-            
-            if previousComponent?.level != level || previousComponent?.borderColor != component.borderColor || previousComponent?.foregroundColor != component.foregroundColor || previousComponent?.backgroundColor != component.backgroundColor || alwaysRedraw {
+            if previousComponent?.level != level || previousComponent?.borderColor != component.borderColor || previousComponent?.foregroundColor != component.foregroundColor || previousComponent?.backgroundColor != component.backgroundColor {
                 let weight: CGFloat = UIFont.Weight.semibold.rawValue
                 let width: CGFloat = -0.1
                 

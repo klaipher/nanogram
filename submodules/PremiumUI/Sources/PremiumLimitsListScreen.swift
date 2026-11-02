@@ -90,16 +90,6 @@ public class PremiumLimitsListScreen: ViewController {
             
             let context = controller.context
             
-            let accountSpecificStickerOverrides: [ExperimentalUISettings.AccountReactionOverrides.Item]
-            if context.sharedContext.immediateExperimentalUISettings.enableReactionOverrides, let value = context.sharedContext.immediateExperimentalUISettings.accountStickerEffectOverrides.first(where: { $0.accountId == context.account.id.int64 }) {
-                accountSpecificStickerOverrides = value.items
-            } else {
-                accountSpecificStickerOverrides = []
-            }
-            let stickerOverrideMessages = context.engine.data.get(
-                EngineDataMap(accountSpecificStickerOverrides.map(\.messageId).map(TelegramEngine.EngineData.Item.Messages.Message.init))
-            )
-            
             self.appIcons = controller.context.sharedContext.applicationBindings.getAvailableAlternateIcons()
             
             self.disposable = (combineLatest(
@@ -109,48 +99,16 @@ public class PremiumLimitsListScreen: ViewController {
                 context.engine.data.get(
                     TelegramEngine.EngineData.Item.Peer.Peer(id: context.account.peerId),
                     TelegramEngine.EngineData.Item.Configuration.PremiumPromo()
-                ),
-                stickerOverrideMessages
+                )
             )
-            |> map { items, data, stickerOverrideMessages -> ([TelegramMediaFile], Bool?, PremiumPromoConfiguration?) in
-                var stickerOverrides: [MessageReaction.Reaction: TelegramMediaFile] = [:]
-                for item in accountSpecificStickerOverrides {
-                    if let maybeMessage = stickerOverrideMessages[item.messageId], let message = maybeMessage {
-                        for media in message.media {
-                            if let file = media as? TelegramMediaFile, file.fileId == item.mediaId {
-                                stickerOverrides[item.key] = file
-                            }
-                        }
-                    }
-                }
-                
+            |> map { items, data -> ([TelegramMediaFile], Bool?, PremiumPromoConfiguration?) in
                 var result: [TelegramMediaFile.Accessor] = []
                 for item in items {
                     if let mediaItem = item.contents.get(RecentMediaItem.self) {
                         result.append(mediaItem.media)
                     }
                 }
-                return (result.map { file -> TelegramMediaFile in
-                    let file = file._parse()
-                    if let displayText = TelegramMediaFile.Accessor(file).stickerDisplayText {
-                        if let replacementFile = stickerOverrides[.builtin(displayText)], let dimensions = replacementFile.dimensions {
-                            let _ = dimensions
-                            return TelegramMediaFile(
-                                fileId: file.fileId,
-                                partialReference: file.partialReference,
-                                resource: file.resource,
-                                previewRepresentations: file.previewRepresentations,
-                                videoThumbnails: [TelegramMediaFile.VideoThumbnail(dimensions: dimensions, resource: replacementFile.resource)],
-                                immediateThumbnailData: file.immediateThumbnailData,
-                                mimeType: file.mimeType,
-                                size: file.size,
-                                attributes: file.attributes,
-                                alternativeRepresentations: file.alternativeRepresentations
-                            )
-                        }
-                    }
-                    return file
-                }, data.0?.isPremium ?? false, data.1)
+                return (result.map { $0._parse() }, data.0?.isPremium ?? false, data.1)
             }).start(next: { [weak self] stickers, isPremium, promoConfiguration in
                 guard let strongSelf = self else {
                     return

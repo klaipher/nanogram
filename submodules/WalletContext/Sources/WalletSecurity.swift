@@ -415,11 +415,3 @@ func resetWalletLocalSecrets(environment: PasscodeEnvironment, credentials: Pass
     try credentials.resetCredential(removingProtectedData: removingWalletData)
 }
 
-@available(macOS 10.15, *)
-public func _internalResetLocalSecretsForPasscodeMigrationTest(then: () throws -> Never) throws -> Never {
-    let environment = PasscodeEnvironment.shared
-    guard environment.isMainApp else { throw PasscodeError.unavailable }
-    try PasscodeCredentialStore.shared._internalResetForPasscodeMigrationTest(removingProtectedData: {
-        try WalletVault.removeAll(environment: environment)
-    }, then: then)
-}

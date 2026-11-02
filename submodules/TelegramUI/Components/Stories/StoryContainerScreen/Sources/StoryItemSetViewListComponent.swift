@@ -792,9 +792,6 @@ public final class StoryItemSetViewListComponent: Component {
                             if let baseContentView, baseContentView.configuration == self.configuration, baseContentView.query == nil {
                                 parentSource = baseContentView.viewList
                             }
-                            if component.context.sharedContext.immediateExperimentalUISettings.storiesExperiment {
-                                parentSource = nil
-                            }
                             
                             self.viewList = component.context.engine.messages.storyViewList(peerId: component.peerId, id: component.storyItem.id, views: views, listMode: mappedListMode, sortMode: self.configuration.sortMode.sortMode, searchQuery: query, parentSource: parentSource)
                         }
@@ -1700,19 +1697,19 @@ public final class StoryItemSetViewListComponent: Component {
             } else {
                 if let views = component.storyItem.views, views.hasList || component.peerId.isGroupOrChannel {
                     if let totalCount = currentTotalCount {
-                        if !component.peerId.isGroupOrChannel, totalCount >= 20 || component.context.sharedContext.immediateExperimentalUISettings.storiesExperiment {
+                        if !component.peerId.isGroupOrChannel, totalCount >= 20 {
                             displayModeSelector = true
                             displaySearchBar = true
                         }
-                        if (((component.peerId.isGroupOrChannel && views.forwardCount >= 10 ) || (!component.peerId.isGroupOrChannel && views.reactedCount >= 10)) && totalCount >= 20) || component.context.sharedContext.immediateExperimentalUISettings.storiesExperiment {
+                        if ((component.peerId.isGroupOrChannel && views.forwardCount >= 10 ) || (!component.peerId.isGroupOrChannel && views.reactedCount >= 10)) && totalCount >= 20 {
                             displaySortSelector = true
                         }
                     } else {
-                        /*if views.seenCount >= 20 || component.context.sharedContext.immediateExperimentalUISettings.storiesExperiment {
+                        /*if views.seenCount >= 20 {
                             displayModeSelector = true
                             displaySearchBar = true
                         }
-                        if (views.reactedCount >= 10 && views.seenCount >= 20) || component.context.sharedContext.immediateExperimentalUISettings.storiesExperiment {
+                        if views.reactedCount >= 10 && views.seenCount >= 20 {
                             displaySortSelector = true
                         }*/
                     }
