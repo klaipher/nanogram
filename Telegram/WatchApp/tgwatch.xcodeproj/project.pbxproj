@@ -67,6 +67,7 @@
 		87EF3EB5EB8BD10F1F65EDAB /* WebPKit in Frameworks */ = {isa = PBXBuildFile; productRef = F573B77B0568E47F98C5A063 /* WebPKit */; };
 		881BA28087741D8F6B406FE9 /* AccountSwitcherSheet.swift in Sources */ = {isa = PBXBuildFile; fileRef = 6B89EE0100295ED590F73723 /* AccountSwitcherSheet.swift */; };
 		8AFE89397E88D6FD3BDB39E6 /* StickerSetDetailView.swift in Sources */ = {isa = PBXBuildFile; fileRef = D9CD96277A18D97BD335BBC0 /* StickerSetDetailView.swift */; };
+		8B50945A3A3CB8A537378541 /* CachedFormatters.swift in Sources */ = {isa = PBXBuildFile; fileRef = E6379F5339BA5B1AC98032D6 /* CachedFormatters.swift */; };
 		8F863F799330257D25F04D64 /* LocationSendView.swift in Sources */ = {isa = PBXBuildFile; fileRef = 53B9831274FA56126E3F5A42 /* LocationSendView.swift */; };
 		939315A8C737DB06ED040E4F /* VideoBubbleView.swift in Sources */ = {isa = PBXBuildFile; fileRef = 0386BF4C7B1D4BDAE0B73509 /* VideoBubbleView.swift */; };
 		93A8BCCF8EE61D81215359A9 /* VoiceRecorder.swift in Sources */ = {isa = PBXBuildFile; fileRef = 97ADF582CAB9B2D6C9E091EC /* VoiceRecorder.swift */; };
@@ -222,6 +223,7 @@
 		E09479749C40E78AD852AF8B /* MessageFormatters.swift */ = {isa = PBXFileReference; lastKnownFileType = sourcecode.swift; path = MessageFormatters.swift; sourceTree = "<group>"; };
 		E3496CF0F6E1D25422AF9DB0 /* StickerCellView.swift */ = {isa = PBXFileReference; lastKnownFileType = sourcecode.swift; path = StickerCellView.swift; sourceTree = "<group>"; };
 		E58B862E5D64B739DD085735 /* AttachmentSheet.swift */ = {isa = PBXFileReference; lastKnownFileType = sourcecode.swift; path = AttachmentSheet.swift; sourceTree = "<group>"; };
+		E6379F5339BA5B1AC98032D6 /* CachedFormatters.swift */ = {isa = PBXFileReference; lastKnownFileType = sourcecode.swift; path = CachedFormatters.swift; sourceTree = "<group>"; };
 		E855E4C62401AD1CF41D1835 /* DaySeparatorView.swift */ = {isa = PBXFileReference; lastKnownFileType = sourcecode.swift; path = DaySeparatorView.swift; sourceTree = "<group>"; };
 		EB5C5FEFC91B0D5FDF164032 /* TDClient.swift */ = {isa = PBXFileReference; lastKnownFileType = sourcecode.swift; path = TDClient.swift; sourceTree = "<group>"; };
 		ECA5A0C122ECD5BBB6EBBBBD /* AvatarVisual.swift */ = {isa = PBXFileReference; lastKnownFileType = sourcecode.swift; path = AvatarVisual.swift; sourceTree = "<group>"; };
@@ -351,6 +353,7 @@
 				674916153E803CA73D43BE6C /* BubbleMetrics.swift */,
 				DD18F48DC98A3857B32BBC6F /* BubbleShape.swift */,
 				3EEAE6237003C5CDA788E928 /* BubbleStyle.swift */,
+				E6379F5339BA5B1AC98032D6 /* CachedFormatters.swift */,
 				C2C84B842AD08D079BFF08A0 /* ChatHistoryLoader.swift */,
 				182DA99AD90B93DE2FB37A41 /* ChatHistoryStore.swift */,
 				E855E4C62401AD1CF41D1835 /* DaySeparatorView.swift */,
@@ -540,6 +543,7 @@
 				CBA3FEDEEA413559F700B6E3 /* BubbleShape.swift in Sources */,
 				868426A2768FE7349CD4AAAD /* BubbleStyle.swift in Sources */,
 				4505C5628AF9258938D623D7 /* CachedChat.swift in Sources */,
+				8B50945A3A3CB8A537378541 /* CachedFormatters.swift in Sources */,
 				C6A64A26FC7DC74BDEC91308 /* ChatHistoryLoader.swift in Sources */,
 				F44AC47D6D4816D1709F0460 /* ChatHistoryStore.swift in Sources */,
 				FB05A240DD234EA077E9B692 /* ChatListKey.swift in Sources */,

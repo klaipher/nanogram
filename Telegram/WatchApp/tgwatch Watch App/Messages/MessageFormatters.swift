@@ -57,17 +57,15 @@ func daySeparatorLabel(
     calendar: Calendar,
     locale: Locale = .current
 ) -> String {
-    var labels = DaySeparatorLabels(today: today, calendar: calendar, locale: locale)
-    return labels.label(for: date)
+    DaySeparatorLabels(today: today, calendar: calendar, locale: locale).label(for: date)
 }
 
-/// `daySeparatorLabel` for many dates against one `today`: the formatters are made once.
+/// `daySeparatorLabel` for many dates against one `today`. The formatters are shared
+/// (`CachedFormatters`).
 struct DaySeparatorLabels {
     private let todayStart: Foundation.Date
     private let calendar: Calendar
     private let locale: Locale
-    private var weekday: DateFormatter?
-    private var monthDay: DateFormatter?
 
     init(today: Foundation.Date, calendar: Calendar, locale: Locale) {
         self.todayStart = calendar.startOfDay(for: today)
@@ -75,28 +73,14 @@ struct DaySeparatorLabels {
         self.locale = locale
     }
 
-    mutating func label(for date: Foundation.Date) -> String {
+    func label(for date: Foundation.Date) -> String {
         let dayStart = calendar.startOfDay(for: date)
         let dayDiff = calendar.dateComponents([.day], from: dayStart, to: todayStart).day ?? 0
 
         if dayDiff == 0 { return "Today" }
         if dayDiff == 1 { return "Yesterday" }
-        if dayDiff >= 2 && dayDiff <= 6 {
-            let formatter = weekday ?? makeFormatter("EEEE")   // "Sunday", "Monday", …
-            weekday = formatter
-            return formatter.string(from: date)
-        }
-        let formatter = monthDay ?? makeFormatter("MMM d")     // "May 5", "Dec 31"
-        monthDay = formatter
-        return formatter.string(from: date)
-    }
-
-    private func makeFormatter(_ format: String) -> DateFormatter {
-        let formatter = DateFormatter()
-        formatter.calendar = calendar
-        formatter.locale = locale
-        formatter.timeZone = calendar.timeZone
-        formatter.dateFormat = format
-        return formatter
+        // "Sunday", "Monday", … for the last week; "May 5", "Dec 31" otherwise.
+        let format = dayDiff >= 2 && dayDiff <= 6 ? "EEEE" : "MMM d"
+        return CachedFormatters.date(.format(format), calendar: calendar, locale: locale).string(from: date)
     }
 }
