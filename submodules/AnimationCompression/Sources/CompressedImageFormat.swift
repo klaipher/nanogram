@@ -76,3 +76,54 @@ public struct CompressedImageLayout {
         self.planes = planes
     }
 }
+
+/// Where the planes of a YUVA frame are: the format of the CPU sticker caches (`.cached` sources,
+/// the direct frame cache and video stickers' frame cache), written by `encodeRGBAToYUVA` with
+/// compact alpha and read by `decodeYUVAToRGBA`.
+///
+/// Luma at full size, then the interleaved CbCr plane at half size, then 4-bit alpha, two pixels
+/// per byte, at `2 * width * height`.
+public struct YuvaFrameLayout: Equatable {
+    public let width: Int
+    public let height: Int
+
+    public var lumaOffset: Int {
+        return 0
+    }
+    public var lumaBytesPerRow: Int {
+        return self.width
+    }
+    public var chromaOffset: Int {
+        return self.width * self.height
+    }
+    /// Cb and Cr of `width / 2` pixels.
+    public var chromaBytesPerRow: Int {
+        return self.width
+    }
+    /// After a gap: the chroma plane ends at `1.5 * width * height`. The gap is never written (the
+    /// caches zero it), so alpha read from there is 0 and the whole frame is transparent.
+    public var alphaOffset: Int {
+        return self.width * self.height * 2
+    }
+    public var alphaBytesPerRow: Int {
+        return self.width / 2
+    }
+
+    /// The length of a frame, as the caches allocate it.
+    public static func length(width: Int, height: Int) -> Int {
+        return width * height * 2 + ((width + 1) & ~1) * height / 2
+    }
+
+    /// Nil when the frame cannot be drawn from these planes: odd sizes (whose chroma and alpha rows
+    /// round up) or data too short for its size.
+    public init?(width: Int, height: Int, dataCount: Int) {
+        guard width > 0, height > 0, width % 2 == 0, height % 2 == 0, width <= 4096, height <= 4096 else {
+            return nil
+        }
+        guard dataCount >= YuvaFrameLayout.length(width: width, height: height) else {
+            return nil
+        }
+        self.width = width
+        self.height = height
+    }
+}

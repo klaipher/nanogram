@@ -36,8 +36,8 @@ Experiments, still switch them back to the CPU, and that choice is kept.
   encode plus a CPU Huffman pass on the first play.
 - **Feature gaps in the Metal sticker renderer**: no template tinting (`dynamicColor`, used by
   template custom emoji), no `averageColor` callback, `currentFrameImage` is nil, no frame cloning
-  between nodes, and `mulAlpha` is ignored (video frames with straight alpha). These matter in
-  "GPU for all"; "GPU for large" mostly avoids them.
+  between nodes. These matter in "GPU for all"; "GPU for large" mostly avoids them. (`mulAlpha` is
+  honoured since the first device run: `renderRgb` takes it from the frame.)
 
 ## What was measured on the device (CPU path)
 
@@ -136,6 +136,43 @@ cache and `CompressedAnimationRenderer` and compares it with the CPU frame (ARGB
 YUVA within a mean of 3/255). The Bazel runner runs the bundle as a logic test, where the simulator
 gives the process no Metal device, so those two tests skip; a hosted variant stalled in xcodebuild
 before the first test. They run wherever a Metal device exists. The first real check is the phone.
+
+## Video stickers vanished under "GPU for large" (fixed 2026-11-02)
+
+On the phone a video sticker in a chat showed and then disappeared; with the CPU renderer it played.
+A video sticker's first loop is decoded (BGRA frames, drawn by `renderRgb`) and stored in its frame
+cache; every later loop, and every loop after the chat is reopened, is read back from that cache as
+YUVA. YUVA frames (also everything a `.cached` source plays) were drawn fully transparent.
+
+The cause was the YUVA upload, rewritten in e6203b5d: it read the alpha plane from
+`2wh - w/2·h` (= 1.5·w·h, the end of the chroma plane) instead of `2wh`, where `encodeRGBAToYUVA`
+writes it. The caches allocate `2wh + w/2·h` bytes and zero them, and nothing writes the gap between
+the chroma plane and alpha, so every alpha read was 0. `YuvaFrameLayout` (AnimationCompression) is now
+the one description of the format; `YuvaFrameLayoutTests` checks it against the encoder, against
+`decodeYUVAToRGBA` and against a real VP9 sticker's cached frames (red before, green after). The cached
+data was right, so no cache version changed.
+
+Also changed: the YUVA shader converted with BT.601 coefficients while the CPU caches encode and decode
+full-range BT.709; it now uses BT.709. Odd sizes (a non-square sticker fitted to 384 can be 384x255),
+which the shader's half-size textures cannot describe, are decoded on the CPU as
+`SoftwareAnimationRenderer` does and drawn as BGRA (`compressedAnimationYuvaDrawing`); before, they
+were dropped, so such a sticker vanished too.
+
+Measured with a scratch macOS harness (DCT.metal from the repo compiled for the Mac's GPU, the
+textures uploaded as `CompressedImageRenderer` uploads them) on all 24 frames of `sticker_vp9.webm`,
+decoded and cached by `VideoStickerDirectFrameSource` in the simulator, against what the CPU renderer
+draws:
+
+| size | before: covered pixels (CPU) | after: mean / max difference |
+|---|---|---|
+| 384x384 | 0 (39,500) | 0.12 / 8 of 255 |
+| 400x400 | 0 (42,860) | 0.12 / 9 |
+| 384x256 | 0 (26,359) | 0.13 / 8 |
+| 384x255 | dropped | 0 / 0 (CPU decode) |
+
+The first loop (BGRA, `multiplyAlpha`) was already within 1/255. BT.601 instead of BT.709 alone was
+0.21 mean on this low-saturation sticker. The remaining differences are chroma upsampling (linear in
+the shader).
 
 ## Measurement protocol
 

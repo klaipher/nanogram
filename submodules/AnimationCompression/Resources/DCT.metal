@@ -107,8 +107,9 @@ half4 samplePoint(texture2d<half, access::sample> textureY, texture2d<half, acce
     y = textureY.sample(s, texcoord).r;
     uv = textureCbCr.sample(s, texcoord).rg - half2(0.5, 0.5);
 
-    // Conversion for YUV to rgb from http://www.fourcc.org/fccyvrgb.php
-    half4 out = half4(y + 1.403 * uv.y, y - 0.344 * uv.x - 0.714 * uv.y, y + 1.770 * uv.x, 1.0);
+    // Full-range BT.709, the conversion encodeRGBAToYUVA encodes with and decodeYUVAToRGBA (the
+    // CPU renderer) decodes with.
+    half4 out = half4(y + 1.5748h * uv.y, y - 0.1873h * uv.x - 0.4681h * uv.y, y + 1.8556h * uv.x, 1.0h);
     return out;
 }
 
