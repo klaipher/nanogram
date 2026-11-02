@@ -95,15 +95,16 @@ public final class ListViewBackingView: UIView {
 /// One tick of `ListViewImpl.transferVelocity`'s coast. `velocity` is the step per 60 fps frame (what
 /// the coast used to add every tick at 60 fps), `offset` that step scaled to the tick's real duration.
 /// A tick longer than two 60 fps frames counts as two, so a stalled frame does not jump.
-struct ListViewTransferVelocityStep {
-    let velocity: CGFloat
-    let offset: CGFloat
-    var isFinished: Bool {
+/// Also drives `SparseItemGrid`'s coast (the profile's Media, Files, Music and Voice tabs).
+public struct ListViewTransferVelocityStep {
+    public let velocity: CGFloat
+    public let offset: CGFloat
+    public var isFinished: Bool {
         return abs(self.velocity) < 0.1
     }
 }
 
-func listViewTransferVelocityStep(velocity: CGFloat, elapsed: Double, sincePreviousTick: Double) -> ListViewTransferVelocityStep {
+public func listViewTransferVelocityStep(velocity: CGFloat, elapsed: Double, sincePreviousTick: Double) -> ListViewTransferVelocityStep {
     let frameVelocity = velocity * 15.0 * CGFloat(pow(0.998, 1000.0 * max(0.0, elapsed)))
     let frames = min(2.0, max(0.0, sincePreviousTick) * 60.0)
     return ListViewTransferVelocityStep(velocity: frameVelocity, offset: frameVelocity * CGFloat(frames))

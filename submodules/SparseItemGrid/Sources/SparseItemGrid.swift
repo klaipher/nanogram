@@ -157,6 +157,28 @@ private final class Shimmer {
     }
 }
 
+/// One tick of the coast a grid runs after a flick handed over from outside it (`transferVelocity`):
+/// the new content offset, and whether the coast is over.
+struct SparseItemGridCoastTick {
+    let offset: CGFloat
+    let isFinished: Bool
+}
+
+func sparseItemGridCoastTick(offset: CGFloat, maxOffset: CGFloat, velocity: CGFloat, elapsed: Double, sincePreviousTick: Double) -> SparseItemGridCoastTick {
+    let step = listViewTransferVelocityStep(velocity: velocity, elapsed: elapsed, sincePreviousTick: sincePreviousTick)
+    var offset = offset + step.offset
+    var isFinished = step.isFinished
+    if offset >= maxOffset {
+        offset = maxOffset
+        isFinished = true
+    }
+    if offset < 0.0 {
+        offset = 0.0
+        isFinished = true
+    }
+    return SparseItemGridCoastTick(offset: offset, isFinished: isFinished)
+}
+
 public final class SparseItemGrid: ASDisplayNode {
     public struct ShimmerColors: Equatable {
         public var background: UInt32
@@ -984,29 +1006,23 @@ public final class SparseItemGrid: ASDisplayNode {
             }
             self.decelerationAnimator?.isPaused = true
             let startTime = CACurrentMediaTime()
+            var previousTickTime = startTime
             var currentOffset = self.scrollView.contentOffset
-            let decelerationRate: CGFloat = 0.998
             self.scrollView.forceDecelerating = true
             self.scrollViewDidEndDragging(self.scrollView, willDecelerate: true)
-            self.decelerationAnimator = ConstantDisplayLinkAnimator(update: { [weak self] in
+            // Display rate, with the step scaled to the tick: on 120 Hz screens a 60 fps coast moved the
+            // list on every other frame only.
+            self.decelerationAnimator = ConstantDisplayLinkAnimator(framesPerSecond: .max, update: { [weak self] in
                 guard let strongSelf = self else {
                     return
                 }
-                let t = CACurrentMediaTime() - startTime
-                var currentVelocity = velocity * 15.0 * CGFloat(pow(Double(decelerationRate), 1000.0 * t))
-                currentOffset.y += currentVelocity
-                let maxOffset = strongSelf.scrollView.contentSize.height - strongSelf.scrollView.bounds.height
-                if currentOffset.y >= maxOffset {
-                    currentOffset.y = maxOffset
-                    currentVelocity = 0.0
-                }
-                if currentOffset.y < 0.0 {
-                    currentOffset.y = 0.0
-                    currentVelocity = 0.0
-                }
+                let now = CACurrentMediaTime()
+                let tick = sparseItemGridCoastTick(offset: currentOffset.y, maxOffset: strongSelf.scrollView.contentSize.height - strongSelf.scrollView.bounds.height, velocity: velocity, elapsed: now - startTime, sincePreviousTick: now - previousTickTime)
+                previousTickTime = now
+                currentOffset.y = tick.offset
 
                 var didEnd = false
-                if abs(currentVelocity) < 0.1 {
+                if tick.isFinished {
                     strongSelf.decelerationAnimator?.isPaused = true
                     strongSelf.decelerationAnimator = nil
                     didEnd = true
