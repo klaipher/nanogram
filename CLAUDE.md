@@ -840,6 +840,12 @@ GPU (Metal) rendering of stickers and emoji, its debug switches and how to measu
 - **Edited video exports carry BT.709 colour tags** (`mediaEditorExportColorProperties`): the encoder
   already converts the composer's BGRA with BT.709, and untagged video up to 720x576 is decoded as
   BT.601. `MediaEditorTests` decodes an exported pure red back to (255, 0, 0).
+- **CameraNeo circles are tagged BT.709 too** (`RoundVideoFrameProcessor.videoColorProperties`), and
+  the BGRA output pool carries the 709 matrix (the matrix only, so the thumbnail made from the same
+  buffer stays sRGB) as a propagated attachment, so the encoder's conversion and the tag agree. Until 2026-11 (and in upstream Neo) they copied the camera's BT.601 matrix into
+  the tag while the encoder converted with 709, so skin decoded pinker (7d600b48's message wrongly
+  says circles already tagged 709). Never tag with the camera's matrix: the shader has already
+  decoded it. `//submodules/Camera/CameraNeo:CameraNeoTests` decodes red and a skin tone back.
 - **Gallery photo upload decodes at the upload size** (`downsampledPhotoLibraryImage`: PhotoKit
   image data, ImageIO thumbnail with the EXIF transform, then the same `resizedImage` step for the
   exact size and sRGB). Photos deeper than 8 bits, camera RAW and unreadable data fall back to the

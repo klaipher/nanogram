@@ -238,6 +238,23 @@ final class RoundVideoFrameProcessor {
     private var primaryLanczosScaler: RoundVideoLanczosScaler?
     private var secondaryLanczosScaler: RoundVideoLanczosScaler?
 
+    // The encoder converts these BGRA frames to YCbCr with the matrix attached to them (BT.709 when
+    // none is), and the file must be tagged with that same matrix (videoColorProperties).
+    static var outputPixelBufferAttributes: [String: Any] {
+        return [
+            kCVPixelBufferPixelFormatTypeKey as String: kCVPixelFormatType_32BGRA,
+            kCVPixelBufferWidthKey as String: Self.outputWidth,
+            kCVPixelBufferHeightKey as String: Self.outputHeight,
+            kCVPixelBufferMetalCompatibilityKey as String: true,
+            kCVPixelBufferIOSurfacePropertiesKey as String: [:] as NSDictionary,
+            // The matrix only: primaries and transfer here would make VTCreateCGImageFromCVPixelBuffer tag
+            // the circle's thumbnail and transition image HDTV instead of sRGB, drawing them lighter.
+            kCVBufferPropagatedAttachmentsKey as String: [
+                kCVImageBufferYCbCrMatrixKey as String: kCVImageBufferYCbCrMatrix_ITU_R_709_2
+            ] as NSDictionary
+        ]
+    }
+
     init?(mediaQueue: DispatchQueue, decorationResources: RoundVideoDecorationResources?, mode: NeoCameraImpl.RoundVideoMode) {
         guard let device = MTLCreateSystemDefaultDevice(), let commandQueue = device.makeCommandQueue() else {
             return nil
@@ -274,18 +291,11 @@ final class RoundVideoFrameProcessor {
         let poolAttributes: [String: Any] = [
             kCVPixelBufferPoolMinimumBufferCountKey as String: 4
         ]
-        let pixelBufferAttributes: [String: Any] = [
-            kCVPixelBufferPixelFormatTypeKey as String: kCVPixelFormatType_32BGRA,
-            kCVPixelBufferWidthKey as String: Self.outputWidth,
-            kCVPixelBufferHeightKey as String: Self.outputHeight,
-            kCVPixelBufferMetalCompatibilityKey as String: true,
-            kCVPixelBufferIOSurfacePropertiesKey as String: [:] as NSDictionary
-        ]
         var outputPool: CVPixelBufferPool?
         guard CVPixelBufferPoolCreate(
             kCFAllocatorDefault,
             poolAttributes as CFDictionary,
-            pixelBufferAttributes as CFDictionary,
+            Self.outputPixelBufferAttributes as CFDictionary,
             &outputPool
         ) == kCVReturnSuccess, let outputPool else {
             return nil
@@ -547,10 +557,12 @@ final class RoundVideoFrameProcessor {
     }
 
     static func videoColorProperties(from source: VideoFrameSource) -> [String: Any] {
+        // The matrix is the one the encoder converts the BGRA output with (outputPixelBufferAttributes),
+        // not the camera's: the shader has already decoded the camera's YCbCr with its own matrix.
         return [
             AVVideoColorPrimariesKey: source.colorAttachments[kCVImageBufferColorPrimariesKey as String] ?? AVVideoColorPrimaries_ITU_R_709_2,
             AVVideoTransferFunctionKey: source.colorAttachments[kCVImageBufferTransferFunctionKey as String] ?? AVVideoTransferFunction_ITU_R_709_2,
-            AVVideoYCbCrMatrixKey: source.colorAttachments[kCVImageBufferYCbCrMatrixKey as String] ?? AVVideoYCbCrMatrix_ITU_R_709_2
+            AVVideoYCbCrMatrixKey: AVVideoYCbCrMatrix_ITU_R_709_2
         ]
     }
 
