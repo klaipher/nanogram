@@ -40,5 +40,12 @@ let package = Package(
                            .product(name: "CryptoUtils", package: "CryptoUtils", condition: nil),
                            .product(name: "Crc32", package: "Crc32", condition: nil)],
             path: "Sources"),
+        .testTarget(
+            name: "PostboxTests",
+            dependencies: [.target(name: "Postbox"),
+                           .product(name: "SwiftSignalKit", package: "SSignalKit", condition: nil),
+                           .product(name: "RangeSet", package: "RangeSet", condition: nil),
+                           .product(name: "sqlcipher", package: "sqlcipher", condition: nil)],
+            path: "Tests"),
     ]
 )

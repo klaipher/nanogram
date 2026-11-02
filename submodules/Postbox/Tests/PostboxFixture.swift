@@ -22,7 +22,9 @@ final class PostboxFixture {
     private var storage: Storage?
     private var disposables: [Disposable] = []
 
-    init(name: String) {
+    /// `inMemory: false` keeps the database in a file (`<basePath>/db/db_sqlite`), for tests
+    /// that measure what reaches the WAL.
+    init(name: String, inMemory: Bool = true) {
         let _ = FixtureMedia.register
         let _ = FixturePeer.register
         self.queue = Queue(name: name)
@@ -31,7 +33,7 @@ final class PostboxFixture {
         let basePath = self.basePath
         var valueBox: SqliteValueBox?
         queue.sync {
-            valueBox = SqliteValueBox(basePath: basePath + "/db", queue: queue, isTemporary: true, isReadOnly: false, useCaches: true, removeDatabaseOnError: true, encryptionParameters: nil, upgradeProgress: { _ in }, inMemory: true)
+            valueBox = SqliteValueBox(basePath: basePath + "/db", queue: queue, isTemporary: true, isReadOnly: false, useCaches: true, removeDatabaseOnError: true, encryptionParameters: nil, upgradeProgress: { _ in }, inMemory: inMemory)
         }
         self.storage = Storage(valueBox: valueBox!)
         self.postbox = Postbox(
@@ -86,6 +88,18 @@ final class PostboxFixture {
             XCTFail("transaction did not complete", file: file, line: line)
         }
         disposable.dispose()
+        return result
+    }
+
+    /// How many write transactions have committed so far: Postbox bumps its transaction state version once for
+    /// every transaction that changed something (`PostboxImpl.beforeCommit`), and not for read-only ones.
+    func writeTransactionCount() -> Int64 {
+        var result: Int64 = 0
+        self.queue.sync {
+            if let valueBox = self.storage?.valueBox {
+                result = MetadataTable(valueBox: valueBox, table: MetadataTable.tableSpec(0), useCaches: false).transactionStateVersion()
+            }
+        }
         return result
     }
 
