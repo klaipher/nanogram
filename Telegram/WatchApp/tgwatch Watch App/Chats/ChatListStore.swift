@@ -29,6 +29,9 @@ final class ChatListStore {
     }
 
     private var chatCache: [Int64: CachedChat] = [:]
+    /// Each list's chats in display order and unread total; every write to `chatCache` goes
+    /// through `store(_:)` so the two never disagree.
+    private var index = ChatListIndex()
     /// Avatar (and future) file downloads. Mirrors `ChatHistoryStore` — the chat
     /// list was previously file-free.
     private var files: [Int: File] = [:]
@@ -190,7 +193,7 @@ final class ChatListStore {
         diagnosticLog(update)
         switch update {
         case .updateNewChat(let upd):
-            chatCache[upd.chat.id] = CachedChat(upd.chat)
+            store(CachedChat(upd.chat))
             if let photo = upd.chat.photo {
                 seedAvatarFile(photo.small)
             }
@@ -199,45 +202,45 @@ final class ChatListStore {
             guard var cached = chatCache[upd.chatId] else { return }
             cached.lastMessage = upd.lastMessage.map(CachedMessage.init)
             applyPositions(upd.positions, to: &cached)
-            chatCache[upd.chatId] = cached
+            store(cached)
             scheduleReproject()
         case .updateChatPosition(let upd):
             guard var cached = chatCache[upd.chatId] else { return }
             applyPositions([upd.position], to: &cached)
-            chatCache[upd.chatId] = cached
+            store(cached)
             scheduleReproject()
         case .updateChatReadInbox(let upd):
             guard var cached = chatCache[upd.chatId] else { return }
             cached.unreadCount = upd.unreadCount
             cached.lastReadInboxMessageId = upd.lastReadInboxMessageId
-            chatCache[upd.chatId] = cached
+            store(cached)
             scheduleReproject()
         case .updateChatReadOutbox(let upd):
             guard var cached = chatCache[upd.chatId] else { return }
             cached.lastReadOutboxMessageId = upd.lastReadOutboxMessageId
-            chatCache[upd.chatId] = cached
+            store(cached)
             scheduleReproject()
         case .updateChatTitle(let upd):
             guard var cached = chatCache[upd.chatId] else { return }
             cached.title = upd.title
-            chatCache[upd.chatId] = cached
+            store(cached)
             scheduleReproject()
         case .updateChatNotificationSettings(let upd):
             guard var cached = chatCache[upd.chatId] else { return }
             cached.muteFor = upd.notificationSettings.muteFor
-            chatCache[upd.chatId] = cached
+            store(cached)
             scheduleReproject()
         case .updateChatPermissions(let upd):
             if var c = chatCache[upd.chatId] {
                 c.permissions = upd.permissions
-                chatCache[upd.chatId] = c
+                store(c)
                 scheduleReproject()
             }
         case .updateChatDraftMessage(let upd):
             guard var cached = chatCache[upd.chatId] else { return }
             cached.draftText = CachedChat.extractDraftText(upd.draftMessage)
             applyPositions(upd.positions, to: &cached)
-            chatCache[upd.chatId] = cached
+            store(cached)
             scheduleReproject()
         case .updateUser:
             // UserNamesStore (owned by TDClient) absorbed the update before
@@ -261,19 +264,19 @@ final class ChatListStore {
                 // and triggers the projection. Publishing the order-0 state here would briefly
                 // sort the chat last before it jumps to its real position.
                 cached.positions.append(ChatPosition(isPinned: false, list: upd.chatList, order: TdInt64(0), source: nil))
-                chatCache[upd.chatId] = cached
+                store(cached)
             }
         case .updateChatRemovedFromList(let upd):
             guard var cached = chatCache[upd.chatId] else { return }
             let key = ChatListKey(upd.chatList)
             cached.positions.removeAll(where: { ChatListKey($0.list) == key })
-            chatCache[upd.chatId] = cached
+            store(cached)
             scheduleReproject()
         case .updateChatPhoto(let upd):
             guard var cached = chatCache[upd.chatId] else { return }
             cached.avatarSmallFileId = upd.photo?.small.id
             cached.avatarMini = upd.photo?.minithumbnail?.data
-            chatCache[upd.chatId] = cached
+            store(cached)
             if let photo = upd.photo {
                 seedAvatarFile(photo.small)
             }
@@ -325,6 +328,17 @@ final class ChatListStore {
     }
     #endif
 
+    private func store(_ chat: CachedChat) {
+        index.update(from: chatCache[chat.id], to: chat)
+        chatCache[chat.id] = chat
+    }
+
+    #if DEBUG
+    /// Test hook: the cache the projection reads.
+    var debugChatCache: [Int64: CachedChat] { chatCache }
+    var debugFiles: [Int: File] { files }
+    #endif
+
     private func reproject() {
         reprojectPending = false
         reprojectDeferred = false
@@ -333,28 +347,23 @@ final class ChatListStore {
         #endif
         let limit = displayLimits[ChatListKey(currentFolder)] ?? initialDisplayLimit
         chats = ChatRow.project(
+            ordered: index.top(ChatListKey(currentFolder), limit: limit),
             chats: chatCache,
             userNames: userNames.names,
             selfUserId: selfUserId,
-            currentFolder: currentFolder,
-            limit: limit,
             fileLocals: files
         )
         pills = FolderPill.project(
-            chats: chatCache,
             folders: folders,
             mainChatListPosition: mainChatListPosition,
             currentFolder: currentFolder
-        )
+        ) { [index] list in index.unreadCount(ChatListKey(list)) }
     }
 
     /// Count of cached chats with a position in `folder`. Used to decide whether the
     /// display limit can grow against existing cache vs. needs more from TDLib.
     private func countOfChatsInList(_ folder: ChatList) -> Int {
-        let key = ChatListKey(folder)
-        return chatCache.values.reduce(0) { acc, cached in
-            cached.positions.contains(where: { ChatListKey($0.list) == key }) ? acc + 1 : acc
-        }
+        index.count(ChatListKey(folder))
     }
 
     private func applyPositions(_ updates: [ChatPosition], to cached: inout CachedChat) {
@@ -387,18 +396,11 @@ final class ChatListStore {
         }
     }
 
-    /// True when nothing in `chatCache` has a non-zero position in `chatList`.
-    /// Used by `loadOnePage` to pick `.loadingFirstPage` vs `.loadingMore` —
-    /// the projection (`chats`) only reflects the active folder, but we want
-    /// the flag to be per-list.
+    /// True when no cached chat has a position in `chatList`. Used by `loadOnePage` to pick
+    /// `.loadingFirstPage` vs `.loadingMore` — the projection (`chats`) only reflects the
+    /// active folder, but we want the flag to be per-list.
     private func hasNoChatsInList(_ chatList: ChatList) -> Bool {
-        let key = ChatListKey(chatList)
-        for cached in chatCache.values {
-            if cached.positions.contains(where: { ChatListKey($0.list) == key }) {
-                return false
-            }
-        }
-        return true
+        index.count(ChatListKey(chatList)) == 0
     }
 
     private func diagnosticLog(_ update: Update) {

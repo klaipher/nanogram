@@ -63,7 +63,7 @@ final class TDModelCodingKeysTests: XCTestCase {
 
 /// Builds a value of any generated model with every field present: optionals set, arrays with one
 /// element, enums as their first `@type`, down to a fixed depth (so recursive types end).
-private struct SampleDecoder: Decoder {
+struct SampleDecoder: Decoder {
     let typeName: String
     let depth: Int
     var codingPath: [CodingKey] = []

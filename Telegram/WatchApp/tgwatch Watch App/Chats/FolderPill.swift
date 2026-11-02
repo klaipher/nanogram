@@ -26,12 +26,25 @@ struct FolderPill: Identifiable, Equatable, Hashable {
         mainChatListPosition: Int,
         currentFolder: ChatList
     ) -> [FolderPill] {
+        project(folders: folders, mainChatListPosition: mainChatListPosition, currentFolder: currentFolder) { list in
+            unreadSum(chats: chats, list: list)
+        }
+    }
+
+    /// The same pills with each list's unread total from `unreadCount` (`ChatListIndex`)
+    /// instead of a scan of every cached chat per pill.
+    static func project(
+        folders: [ChatFolderInfo],
+        mainChatListPosition: Int,
+        currentFolder: ChatList,
+        unreadCount: (ChatList) -> Int
+    ) -> [FolderPill] {
         let currentKey = ChatListKey(currentFolder)
 
         // Start with the user folders in their natural order.
         var result: [FolderPill] = folders.map { info in
             let list: ChatList = .chatListFolder(ChatListFolder(chatFolderId: info.id))
-            let unread = unreadSum(chats: chats, list: list)
+            let unread = unreadCount(list)
             return FolderPill(
                 id: info.id,
                 chatList: list,
@@ -46,7 +59,7 @@ struct FolderPill: Identifiable, Equatable, Hashable {
             id: allChatsId,
             chatList: .chatListMain,
             name: allChatsName,
-            unreadCount: unreadSum(chats: chats, list: .chatListMain),
+            unreadCount: unreadCount(.chatListMain),
             isActive: currentKey == .main
         )
         let clampedPos = max(0, min(mainChatListPosition, result.count))
