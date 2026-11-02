@@ -1382,6 +1382,41 @@ The non-obvious parts:
   pings an inactive WEB row: it would read "checking…" forever, so the row shows
   "not tested" and only the active one follows the real account connection state.
 
+## JPEG library (`MozjpegBinding`)
+
+`MozjpegBinding` keeps its name but links **libjpeg-turbo 3.2.1** (`//third-party/libjpeg-turbo`, built from the
+official release archive pinned by checksum in `MODULE.bazel`), not mozjpeg 4.1.5 (unmaintained, libjpeg-turbo 2.1.x
+decoder). The app only ever ran mozjpeg in its `JCP_FASTEST` profile, which is plain libjpeg-turbo: the encoders are
+byte-identical and the decoder pixel-identical (`MozjpegBindingTests` pins goldens recorded from mozjpeg). Non-obvious:
+
+- **`compressMiniThumbnail`'s output is protocol.** The stripped thumbnail is matched against a fixed JPEG header that
+  every Telegram client re-attaches, so the encoder's tables must not change: no encoder settings, no other library.
+- **ImageIO is not a substitute** (measured on the Mac, 2026-11-02): at equal luma SSIM its files are +16% for photos
+  at upload sizes (+7% to +60%) and +21% for 40 px thumbnails, and it cannot produce the fixed header. As a decoder
+  it was 2-9x slower on cache-sized JPEGs and differs by up to 122 levels from what is shown today.
+- **`decompressImage` decodes untrusted data** (tiny thumbnails from chats, the media cache) for DirectMediaImageCache:
+  any failure returns nil so the caller falls back to `UIImage(data:)`; sides over 8192 are refused.
+- The JPEG XL functions compile to stubs returning nil: `USE_JPEGXL` is undefined and libjxl is not linked.
+
+## Background diagnostic and the "lock" task
+
+With Settings ▸ Debug "Log to File" on, the app logs a `Background diagnostic:` line 5 s and 60 s after entering
+the background (`BackgroundDiagnostics` module, `AppDelegate.logBackgroundDiagnostics`): footprint by kind
+(`task_vm_info`: internal, compressed, graphics, media, purgeable, malloc), background time remaining, the background
+tasks the app holds, whether the audio session is active, display links, and cache sizes. `after` far above the
+scheduled time means the process was suspended in between. Nothing leaves the device. The "lock" task begun on
+entering the background is a `OneShotBackgroundTask`: ended once, by its 5 s deadline or the expiration handler.
+
+## Postbox history views and read state
+
+A `MessageHistoryView`'s output depends on peer read state only through its transient read states (the entries'
+outgoing read flags and the chat's unread range for one-time effects). `.UpdateReadState` therefore re-emits only
+views that carry them; a view without them (a comment thread, `MessageHistoryViewInput.external`) is not re-emitted
+for its group's read marks or unread count. A view that starts showing anything a peer read state decides must carry
+it as transient read states, or it will go stale. In an open chat each incoming message still costs two history
+updates and three write transactions (store, read mark, push confirm): the second update is the read mark itself,
+which the unread range needs (`ReadStateEchoTests`).
+
 ## Postbox shared-media removal (deferred design: tombstones)
 
 `Transaction.updateMedia(id, update: nil)` is meant to remove a media from every message that

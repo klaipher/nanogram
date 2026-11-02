@@ -705,7 +705,11 @@ final class MutableMessageHistoryView: MutablePostboxView {
                         }
                     case let .UpdateReadState(peerId, combinedReadState):
                         if case let .single(_, threadId) = self.peerIds, threadId != nil {
-                        } else {
+                        } else if self.transientReadStates != nil {
+                            // Only the transient read states reach the output (the entries' read flags and the
+                            // list's unread range). A view without them (a comment thread: `.external`) shows
+                            // nothing a peer read state decides, and re-emitting it for every read and every
+                            // incoming message of its group (ReadStateEchoTests) was pure cost.
                             hasChanges = true
                             if let transientReadStates = self.transientReadStates {
                                 switch transientReadStates {

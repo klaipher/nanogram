@@ -54,6 +54,7 @@ import WalletSendScreen
 import PasscodeCore
 import LiquidGlassShapes
 import MTProtoRustEngine
+import BackgroundDiagnostics
 
 #if DEBUG
 import AlertComponent
@@ -260,6 +261,18 @@ private func extractAccountManagerState(records: AccountRecordsView<TelegramAcco
     let hasActiveAudioSession = Promise<Bool>(false)
     
     private let sharedContextPromise = Promise<SharedApplicationContext>()
+    /// The "lock" background task begun on the latest entry into the background.
+    private var lockBackgroundTask: OneShotBackgroundTask<UIBackgroundTaskIdentifier>?
+    private lazy var backgroundDiagnostics = BackgroundDiagnosticsScheduler(now: {
+        // Wall clock, so a suspension in between shows as a late report.
+        return CFAbsoluteTimeGetCurrent()
+    }, schedule: { delay, block in
+        DispatchQueue.main.asyncAfter(deadline: DispatchTime.now() + delay, execute: {
+            MainActor.assumeIsolated {
+                block()
+            }
+        })
+    })
 
     private var accountManager: AccountManager<TelegramAccountManagerTypes>?
     private var accountManagerState: AccountManagerState?
@@ -2133,25 +2146,59 @@ private func extractAccountManagerState(records: AccountRecordsView<TelegramAcco
         self.isActiveValue = false
         self.isActivePromise.set(false)
         
-        final class TaskIdHolder {
-            var taskId: UIBackgroundTaskIdentifier?
-        }
-        
-        let taskIdHolder = TaskIdHolder()
-        
-        taskIdHolder.taskId = UIApplication.shared.beginBackgroundTask(withName: "lock", expirationHandler: {
-            if let taskId = taskIdHolder.taskId {
-                UIApplication.shared.endBackgroundTask(taskId)
-            }
+        // Ended once, by its 5 s deadline or the system's expiration, whichever comes first.
+        let lockTask = OneShotBackgroundTask<UIBackgroundTaskIdentifier>(end: { taskId in
+            UIApplication.shared.endBackgroundTask(taskId)
         })
+        lockTask.begin { expiration in
+            let taskId = UIApplication.shared.beginBackgroundTask(withName: "lock", expirationHandler: {
+                MainActor.assumeIsolated {
+                    expiration()
+                }
+            })
+            return taskId == .invalid ? nil : taskId
+        }
+        self.lockBackgroundTask = lockTask
         DispatchQueue.main.asyncAfter(deadline: DispatchTime.now() + 5.0, execute: {
-            if let taskId = taskIdHolder.taskId {
-                UIApplication.shared.endBackgroundTask(taskId)
+            lockTask.end()
+        })
+        
+        self.backgroundDiagnostics.didEnterBackground(isEnabled: Logger.shared.logToFile, report: { [weak self] secondsInBackground in
+            self?.logBackgroundDiagnostics(secondsInBackground: secondsInBackground)
+        })
+    }
+    
+    /// One log line about what the app still holds after entering the background (see BackgroundDiagnostics). Only
+    /// with "Log to File" on; nothing leaves the device.
+    private func logBackgroundDiagnostics(secondsInBackground: Double) {
+        let memory = ProcessMemory.current()
+        let backgroundTimeRemaining = UIApplication.shared.backgroundTimeRemaining
+        let lockTaskActive = self.lockBackgroundTask?.isActive == true
+        let displayLinks = SharedDisplayLinkDriver.shared.diagnosticCounts
+        let _ = (combineLatest(queue: .mainQueue(), self.sharedContextPromise.get() |> take(1), self.hasActiveAudioSession.get() |> take(1))
+        |> deliverOnMainQueue).start(next: { sharedApplicationContext, hasActiveAudioSession in
+            var backgroundTasks = sharedApplicationContext.wakeupManager.diagnosticHeldTasks
+            if lockTaskActive {
+                backgroundTasks.insert("lock", at: 0)
             }
+            let themeImages = sharedApplicationContext.sharedContext.currentPresentationData.with({ $0 }).theme.resourceCache.diagnosticImageBytes
+            let report = BackgroundDiagnosticsReport(
+                secondsInBackground: secondsInBackground,
+                memory: memory,
+                backgroundTimeRemaining: backgroundTimeRemaining,
+                backgroundTasks: backgroundTasks,
+                audioSessionActive: hasActiveAudioSession,
+                displayLinks: BackgroundDiagnosticsReport.DisplayLinkCounts(registered: displayLinks.registered, running: displayLinks.running, driverRunning: displayLinks.driverRunning),
+                caches: [
+                    BackgroundDiagnosticsReport.CacheSize(name: "theme images", bytes: themeImages)
+                ]
+            )
+            Logger.shared.log("App \(self.episodeId)", report.logLine)
         })
     }
 
     func handleWillEnterForeground() {
+        self.backgroundDiagnostics.willEnterForeground()
         if self.isActiveValue {
             self.isInForegroundValue = true
             self.isInForegroundPromise.set(true)

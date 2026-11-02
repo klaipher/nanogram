@@ -91,6 +91,18 @@ final class PostboxFixture {
         return result
     }
 
+    /// How many write transactions have committed so far: Postbox bumps its transaction state version once for
+    /// every transaction that changed something (`PostboxImpl.beforeCommit`), and not for read-only ones.
+    func writeTransactionCount() -> Int64 {
+        var result: Int64 = 0
+        self.queue.sync {
+            if let valueBox = self.storage?.valueBox {
+                result = MetadataTable(valueBox: valueBox, table: MetadataTable.tableSpec(0), useCaches: false).transactionStateVersion()
+            }
+        }
+        return result
+    }
+
     // MARK: - Views
 
     /// Every value a signal has produced so far, oldest first.

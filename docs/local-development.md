@@ -97,7 +97,7 @@ a few rough edges for a fork.
 | Shared, persistent disk cache by default (`~/.cache/telegram-ios/bazel-disk-cache`) | `tools/dev/tg` | Switching branches or running `bazel clean` reuses earlier outputs instead of rebuilding them. Shared between the CLI and the generated Xcode project. |
 | Build-time tools unoptimized (`--host_compilation_mode=fastbuild`) | `.bazelrc` | ~860 tool actions (Rust proc-macros and build scripts, uniffi-bindgen, the SwiftTL generator) built at `-O0`, as Cargo does for build dependencies. The wallet-bindings tool chain was at the start of the critical path. Their output is unchanged. |
 | apple_support layering check off (`APPLE_SUPPORT_LAYERING_CHECK_BETA=0`) | `.bazelrc` | A beta lint that changes no output; its module map generation took ~30 s at the start of every cold build. |
-| Parallel `make` in the libvpx, libwebp, mozjpeg and libjxl build scripts | `third-party/*/build-*-bazel.sh` | They compiled on one core (libvpx alone took 104 s). |
+| Parallel `make` in the libvpx, libwebp, mozjpeg (now libjpeg-turbo) and libjxl build scripts | `third-party/*/build-*-bazel.sh` | They compiled on one core (libvpx alone took 104 s). |
 | No `.ipa` for simulator builds (`apple.experimental.tree_artifact_outputs`) | `tools/dev/tg build` | Skips zipping the whole bundle on every build (~12 s of packaging, even for a one-line change). |
 | Line tables only for third-party C/C++ in debug builds (`--per_file_copt=^third-party/.*@-gline-tables-only`) | `tools/dev/tg build` | WebRTC and the other libraries keep file:line backtraces but no variable info: smaller objects and faster compiles. Telegram's own code keeps full debug info. |
 | Fixed `Make.py --bazelArguments` | `build-system/Make/Make.py` | The flag was parsed but silently dropped. It now reaches `build`, `test`, `query` and `generateProject` (last, so it can override defaults). |
@@ -145,7 +145,7 @@ device builds plus the library's own checks:
 | dav1d | 1.5.0+ (fork, no patches) | 1.5.4 | Submodule now points at code.videolan.org |
 | openh264 | 2.4.1 | 2.7.0 | Telegram's patches kept; subcodec keeps POC type 0 (its 11 tests pass) |
 | libjxl | 0.9.0 | 0.12.0 | Its upstream Bazel files removed: they made the package fail to load under Bazel 9 |
-| mozjpeg | 4.1.4 | 4.1.5 | |
+| mozjpeg → libjpeg-turbo | mozjpeg 4.1.5 | libjpeg-turbo 3.2.1 | Release archive pinned by checksum; decode pixel-identical, encode byte-identical (`MozjpegBindingTests`) |
 | libyuv | 1887 | 1977 | Neon kernels built with `+dotprod+i8mm`, used only after a runtime CPU check |
 | opus | 1.5.1 | 1.6.1 | |
 | ogg | 1.3.4 | 1.3.6 | |

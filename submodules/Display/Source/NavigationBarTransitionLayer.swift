@@ -283,14 +283,18 @@ final class NavigationBarTransitionLayer: ASDisplayNode {
     private func putBackContents() {
         self.timeline = nil
         for lifted in [self.bottom, self.top] {
-            lifted.clipView.removeFromSuperview()
             guard let source = lifted.source else {
+                lifted.clipView.removeFromSuperview()
                 lifted.info.contentView.removeFromSuperview()
                 continue
             }
             source.transitionContentFrameUpdated = nil
             source.updateTransition(role: nil, fraction: 0.0, transition: .immediate)
+            // Back into the bar first, then drop the (now empty) clip: the content moves within the window once.
+            // Removing the clip first took the content out of the window with it and the bar put it back, two
+            // window changes UIKit walks over every view of the bar (NavigationBarTransitionPutBackTests).
             source.putBack()
+            lifted.clipView.removeFromSuperview()
         }
     }
 }

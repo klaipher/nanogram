@@ -892,6 +892,24 @@ public final class SharedWakeupManager {
         }
     }
     
+    /// For the background diagnostic: the background tasks this manager holds, and what keeps it extending.
+    var diagnosticHeldTasks: [String] {
+        var result: [String] = []
+        if self.currentTask != nil {
+            result.append("background-wakeup")
+        }
+        if self.activeExplicitExtensionTask != nil {
+            result.append("explicit-extension")
+        }
+        if self.currentExternalCompletion != nil {
+            result.append("external-completion")
+        }
+        if self.keepIdleDisposable != nil {
+            result.append("idle-timer-extension (pending messages)")
+        }
+        return result
+    }
+
     func allowBackgroundTimeExtension(timeout: Double, extendNow: Bool = false) {
         let shouldCheckTasks = self.allowBackgroundTimeExtensionDeadline == nil
         self.allowBackgroundTimeExtensionDeadline = CFAbsoluteTimeGetCurrent() + timeout
