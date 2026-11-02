@@ -500,6 +500,7 @@ private final class ItemView: UIView, SparseItemGridView {
     var messageItemNode: ListViewItemNode?
     var interaction: ListMessageItemInteraction?
     let buttonNode: HighlightTrackingButtonNode
+    private var appliedLayout = PeerInfoListRowLayout()
 
     override init(frame: CGRect) {
         self.buttonNode = HighlightTrackingButtonNode()
@@ -588,6 +589,7 @@ private final class ItemView: UIView, SparseItemGridView {
         
         messageItemNode.frame = CGRect(origin: CGPoint(), size: size)
         self.buttonNode.frame = CGRect(origin: CGPoint(), size: size)
+        self.appliedLayout.didLayout(size: size, insets: insets)
     }
     
     func unbind() {
@@ -599,7 +601,12 @@ private final class ItemView: UIView, SparseItemGridView {
     }
 
     func update(size: CGSize, insets: UIEdgeInsets) {
+        // Called for every visible row on every scroll tick; the message item only changes in bind.
+        guard self.appliedLayout.needsLayout(size: size, insets: insets) else {
+            return
+        }
         if let messageItem = self.messageItem, let messageItemNode = self.messageItemNode {
+            self.appliedLayout.didLayout(size: size, insets: insets)
             messageItem.updateNode(async: { f in f() }, node: { return messageItemNode }, params: ListViewItemLayoutParams(width: size.width, leftInset: insets.left, rightInset: insets.right, availableHeight: 0.0), neighbors: .none, animation: .System(duration: 0.2, transition: ControlledTransition(duration: 0.2, curve: .spring, interactive: false)), completion: { layout, apply in
                 messageItemNode.contentSize = layout.contentSize
                 messageItemNode.insets = layout.insets
