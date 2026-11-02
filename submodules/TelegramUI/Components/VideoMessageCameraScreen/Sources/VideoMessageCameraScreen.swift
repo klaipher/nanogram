@@ -972,7 +972,7 @@ public class VideoMessageCameraScreen: ViewController {
                 mode = .hdLanczos
             }
             if let mode {
-                self.cameraImpl = NeoCameraImpl(roundVideoMode: mode, log: { message in
+                self.cameraImpl = NeoCameraImpl(roundVideoMode: mode, closeFocus: experimentalSettings.videoMessageCloseFocus, log: { message in
                     Logger.shared.log("CameraNeo", message)
                 })
             } else {

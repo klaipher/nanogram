@@ -689,6 +689,7 @@ enum DebugControllerEntry: ItemListNodeEntry {
     case forceRLottieBackend(Bool)
     case respectSystemMicrophone(Bool)
     case videoMessageCameraMode(ExperimentalUISettings.VideoMessageCameraMode)
+    case videoMessageCloseFocus(Bool)
     case compressedEmojiCache(Bool)
     case checkSerializedData(Bool)
     case enableQuickReactionSwitch(Bool)
@@ -717,7 +718,7 @@ enum DebugControllerEntry: ItemListNodeEntry {
             return DebugControllerSection.web.rawValue
         case .experimentsHeader, .keepChatNavigationStack, .skipReadHistory, .alwaysDisplayTyping, .crashOnSlowQueries, .crashOnMemoryPressure:
             return DebugControllerSection.experiments.rawValue
-        case .compressedEmojiCache, .checkSerializedData, .enableQuickReactionSwitch, .fakeGlass, .inputDecEngineEditor, .forceListViewImplChatBackend, .forceRLottieBackend, .respectSystemMicrophone, .videoMessageCameraMode, .liveStreamV2, .groupCallReferenceEngine:
+        case .compressedEmojiCache, .checkSerializedData, .enableQuickReactionSwitch, .fakeGlass, .inputDecEngineEditor, .forceListViewImplChatBackend, .forceRLottieBackend, .respectSystemMicrophone, .videoMessageCameraMode, .videoMessageCloseFocus, .liveStreamV2, .groupCallReferenceEngine:
             return DebugControllerSection.experiments.rawValue
         case .springSendAnimation, .fakeWalletTransfers, .stickerRendererMode, .disableImageContentAnalysis, .disableLanguageRecognition, .localTranscription, .enableVoipTcp:
             return DebugControllerSection.experiments.rawValue
@@ -765,6 +766,10 @@ enum DebugControllerEntry: ItemListNodeEntry {
         case .respectSystemMicrophone:
             return 24
         case .videoMessageCameraMode:
+            return 25
+        case .videoMessageCloseFocus:
+            // Appended right after `videoMessageCameraMode` (moved from 26 to 25 to make room); see the
+            // ordering note at `springSendAnimation`.
             return 26
         case .crashOnSlowQueries:
             return 27
@@ -1142,6 +1147,14 @@ enum DebugControllerEntry: ItemListNodeEntry {
                     })
                 }).start()
             })
+        case let .videoMessageCloseFocus(value):
+            return ItemListSwitchItem(presentationData: presentationData, systemStyle: .glass, title: "Circle Close Focus (Macro)", text: "Back camera switches to the ultra-wide for close subjects (Modern pipeline). Reopen the camera to apply.", value: value, sectionId: self.section, style: .blocks, updated: { value in
+                let _ = updateExperimentalUISettingsInteractively(accountManager: arguments.sharedContext.accountManager, { settings in
+                    var settings = settings
+                    settings.videoMessageCloseFocus = value
+                    return settings
+                }).start()
+            })
         case let .videoMessageCameraMode(value):
             return ItemListDisclosureItem(presentationData: presentationData, systemStyle: .glass, title: "Video Message Camera", label: value.debugTitle, sectionId: self.section, style: .blocks, action: {
                 let presentationData = arguments.sharedContext.currentPresentationData.with { $0 }
@@ -1423,6 +1436,7 @@ func debugControllerEntries(environment: DebugControllerEntriesEnvironment, them
     entries.append(.respectSystemMicrophone(experimentalSettings.respectSystemMicrophone))
     let useModernVideoMessagePipeline = (experimentalSettings.useModernVideoMessagePipeline ?? !environment.modernVideoMessagePipelineKilled) && experimentalSettings.videoMessageCameraMode != .legacy
     entries.append(.videoMessageCameraMode(useModernVideoMessagePipeline ? experimentalSettings.videoMessageCameraMode : .legacy))
+    entries.append(.videoMessageCloseFocus(experimentalSettings.videoMessageCloseFocus))
     entries.append(.crashOnSlowQueries(theme, experimentalSettings.crashOnLongQueries))
     entries.append(.crashOnMemoryPressure(theme, experimentalSettings.crashOnMemoryPressure))
     if isMainApp {
