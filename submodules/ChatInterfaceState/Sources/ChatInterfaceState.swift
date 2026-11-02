@@ -923,6 +923,17 @@ public final class ChatInterfaceState: Codable, Equatable {
         return ChatInterfaceState(timestamp: self.timestamp, composeInputState: self.composeInputState, composeDisableUrlPreviews: self.composeDisableUrlPreviews, replyMessageSubject: self.replyMessageSubject, forwardMessageIds: self.forwardMessageIds, forwardOptionsState: self.forwardOptionsState, editMessage: self.editMessage, selectionState: self.selectionState, messageActionsState: self.messageActionsState, historyScrollState: self.historyScrollState, mediaRecordingMode: self.mediaRecordingMode, mediaDraftState: self.mediaDraftState, silentPosting: silentPosting, inputLanguage: self.inputLanguage, sendMessageEffect: self.sendMessageEffect, postSuggestionState: self.postSuggestionState)
     }
     
+    /// The state with `update` applied to its input language, or nil when that leaves the language as it is.
+    /// The composer reports the keyboard language after every keystroke; applying an unchanged one ran the whole
+    /// chat presentation pipeline a second time per keystroke.
+    public func withChangedInputLanguage(_ update: (String?) -> String?) -> ChatInterfaceState? {
+        let inputLanguage = update(self.inputLanguage)
+        if inputLanguage == self.inputLanguage {
+            return nil
+        }
+        return self.withUpdatedInputLanguage(inputLanguage)
+    }
+    
     public func withUpdatedInputLanguage(_ inputLanguage: String?) -> ChatInterfaceState {
         return ChatInterfaceState(timestamp: self.timestamp, composeInputState: self.composeInputState, composeDisableUrlPreviews: self.composeDisableUrlPreviews, replyMessageSubject: self.replyMessageSubject, forwardMessageIds: self.forwardMessageIds, forwardOptionsState: self.forwardOptionsState, editMessage: self.editMessage, selectionState: self.selectionState, messageActionsState: self.messageActionsState, historyScrollState: self.historyScrollState, mediaRecordingMode: self.mediaRecordingMode, mediaDraftState: self.mediaDraftState, silentPosting: self.silentPosting, inputLanguage: inputLanguage, sendMessageEffect: self.sendMessageEffect, postSuggestionState: self.postSuggestionState)
     }
