@@ -10,6 +10,27 @@ import Metal
 import MetalKit
 import MetalImageView
 
+enum CompressedAnimationYuvaDrawing: Equatable {
+    /// Uploaded as planes and converted by the YUVA shader.
+    case planes
+    /// Decoded on the CPU, as `SoftwareAnimationRenderer` does, and drawn as BGRA: odd sizes,
+    /// whose chroma and alpha rows the shader's textures do not describe.
+    case decodedBgra
+    /// Too short for its size: not drawn.
+    case none
+}
+
+/// How `CompressedAnimationRenderer` draws a YUVA frame from the CPU caches.
+func compressedAnimationYuvaDrawing(width: Int, height: Int, dataCount: Int) -> CompressedAnimationYuvaDrawing {
+    if YuvaFrameLayout(width: width, height: height, dataCount: dataCount) != nil {
+        return .planes
+    }
+    if width > 0, height > 0, width <= 4096, height <= 4096, dataCount >= YuvaFrameLayout.length(width: width, height: height) {
+        return .decodedBgra
+    }
+    return .none
+}
+
 @available(iOS 10.0, *)
 final class CompressedAnimationRenderer: ASDisplayNode, AnimationRenderer {
     private final class View: UIView {
@@ -75,10 +96,39 @@ final class CompressedAnimationRenderer: ASDisplayNode, AnimationRenderer {
                 completion()
             })
         case .yuva:
-            self.renderer.renderYuva(layer: layer, width: width, height: height, data: data, completion: { [weak self] in
-                self?.updateHighlightedContentNode()
+            switch compressedAnimationYuvaDrawing(width: width, height: height, dataCount: data.count) {
+            case .planes:
+                self.renderer.renderYuva(layer: layer, width: width, height: height, data: data, completion: { [weak self] in
+                    self?.updateHighlightedContentNode()
+                    completion()
+                })
+            case .decodedBgra:
+                // Decoded as SoftwareAnimationRenderer does: premultiplied BGRA.
+                queue.async { [weak self] in
+                    let bytesPerRow = width * 4
+                    var bgra = Data(count: bytesPerRow * height)
+                    bgra.withUnsafeMutableBytes { dest in
+                        data.withUnsafeBytes { source in
+                            guard let destAddress = dest.baseAddress, let sourceAddress = source.baseAddress else {
+                                return
+                            }
+                            decodeYUVAToRGBA(sourceAddress.assumingMemoryBound(to: UInt8.self), destAddress.assumingMemoryBound(to: UInt8.self), Int32(clamping: width), Int32(clamping: height), Int32(clamping: bytesPerRow))
+                        }
+                    }
+                    Queue.mainQueue().async {
+                        guard let self, let layer = self.layer as? MetalImageLayer else {
+                            completion()
+                            return
+                        }
+                        self.renderer.renderRgb(layer: layer, width: width, height: height, bytesPerRow: bytesPerRow, data: bgra, multiplyAlpha: false, completion: { [weak self] in
+                            self?.updateHighlightedContentNode()
+                            completion()
+                        })
+                    }
+                }
+            case .none:
                 completion()
-            })
+            }
         }
     }
     

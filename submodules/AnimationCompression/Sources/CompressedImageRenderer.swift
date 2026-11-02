@@ -455,8 +455,7 @@ public final class CompressedImageRenderer {
     }
     
     private func uploadYuvaTextures(width: Int, height: Int, data: Data) -> TextureSet? {
-        // Y at full size, interleaved CbCr at half size, alpha packed two pixels per byte.
-        guard width > 0, height > 0, width % 2 == 0, height % 2 == 0, data.count >= width * height * 2 else {
+        guard let layout = YuvaFrameLayout(width: width, height: height, dataCount: data.count) else {
             return nil
         }
         
@@ -491,9 +490,9 @@ public final class CompressedImageRenderer {
             guard let yuva = yuvaBuffer.baseAddress else {
                 return
             }
-            CompressedImageRenderer.upload(yuva, rowLength: width, height: height, bytesPerRow: width, to: yuvaTextures.textures[0])
-            CompressedImageRenderer.upload(yuva.advanced(by: width * height), rowLength: width, height: height / 2, bytesPerRow: width, to: yuvaTextures.textures[1])
-            CompressedImageRenderer.upload(yuva.advanced(by: width * height * 2 - width / 2 * height), rowLength: width / 2, height: height, bytesPerRow: width / 2, to: yuvaTextures.textures[2])
+            CompressedImageRenderer.upload(yuva.advanced(by: layout.lumaOffset), rowLength: width, height: height, bytesPerRow: layout.lumaBytesPerRow, to: yuvaTextures.textures[0])
+            CompressedImageRenderer.upload(yuva.advanced(by: layout.chromaOffset), rowLength: width, height: height / 2, bytesPerRow: layout.chromaBytesPerRow, to: yuvaTextures.textures[1])
+            CompressedImageRenderer.upload(yuva.advanced(by: layout.alphaOffset), rowLength: width / 2, height: height, bytesPerRow: layout.alphaBytesPerRow, to: yuvaTextures.textures[2])
         }
         return yuvaTextures
     }
