@@ -799,6 +799,9 @@ GPU (Metal) rendering of stickers and emoji, its debug switches and how to measu
   once per 7 days (marker file `storage-optimization-timestamp` in the Postbox directory), only with
   room for the copy, and never while the app is active. VACUUM blocks the Postbox queue: never call
   it from UI paths.
+- **Edited video exports carry BT.709 colour tags** (`mediaEditorExportColorProperties`): the encoder
+  already converts the composer's BGRA with BT.709, and untagged video up to 720x576 is decoded as
+  BT.601. `MediaEditorTests` decodes an exported pure red back to (255, 0, 0).
 
 ## Framework export lists (computed by the build)
 

@@ -1938,6 +1938,30 @@ private struct VideoMessageExportSettings {
     }
 }
 
+/// BT.709 primaries, transfer function and matrix: what the encoder already uses for the
+/// composer's untagged BGRA frames (VideoToolbox converts with BT.709). Without the tags, Apple's
+/// decoders treat video up to 720x576 (most video messages, small landscape sends) as BT.601, so
+/// red came out orange-ish and greens shifted. Unedited circles (CameraNeo's VideoRecorder) and the
+/// legacy converter already tag BT.709.
+public let mediaEditorExportColorProperties: [String: Any] = [
+    AVVideoColorPrimariesKey: AVVideoColorPrimaries_ITU_R_709_2,
+    AVVideoTransferFunctionKey: AVVideoTransferFunction_ITU_R_709_2,
+    AVVideoYCbCrMatrixKey: AVVideoYCbCrMatrix_ITU_R_709_2
+]
+
+func mediaEditorExportVideoSettings(codecType: Any, compressionProperties: [String: Any], width: Int, height: Int, tagBT709: Bool) -> [String: Any] {
+    var videoSettings: [String: Any] = [
+        AVVideoCodecKey: codecType,
+        AVVideoCompressionPropertiesKey: compressionProperties,
+        AVVideoWidthKey: width,
+        AVVideoHeightKey: height
+    ]
+    if tagBT709 {
+        videoSettings[AVVideoColorPropertiesKey] = mediaEditorExportColorProperties
+    }
+    return videoSettings
+}
+
 public func recommendedVideoExportConfiguration(values: MediaEditorValues, duration: Double, image: Bool = false, forceFullHd: Bool = false, frameRate: Float, isSticker: Bool = false, isAvatar: Bool = false) -> MediaEditorVideoExport.Configuration {
     let compressionProperties: [String: Any]
     let codecType: Any
@@ -2045,12 +2069,7 @@ public func recommendedVideoExportConfiguration(values: MediaEditorValues, durat
         ]
     }
     
-    let videoSettings: [String: Any] = [
-        AVVideoCodecKey: codecType,
-        AVVideoCompressionPropertiesKey: compressionProperties,
-        AVVideoWidthKey: width,
-        AVVideoHeightKey: height
-    ]
+    let videoSettings = mediaEditorExportVideoSettings(codecType: codecType, compressionProperties: compressionProperties, width: width, height: height, tagBT709: !useVP9)
     
     let audioSettings: [String: Any]
     if isSticker || isAvatar {
