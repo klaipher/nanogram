@@ -189,15 +189,17 @@ struct MessageListView: View {
                     }
                     ScrollView {
                         VStack(alignment: .leading, spacing: 4) {
+                            let rowCount = store.rows.count
                             ForEach(Array(store.rows.enumerated()), id: \.element.id) { idx, messageRow in
+                                let edges = MessageRowView.edges(index: idx, count: rowCount)
                                 MessageRowView(
                                     row: messageRow,
                                     onPhotoTap: { presentedPhoto = $0 },
                                     onVideoTap: { presentedVideo = $0 },
                                     onVideoNoteTap: { presentedVideoNote = $0 },
                                     onPollTap: { id, poll in presentedPoll = PollVoteTarget(id: id, poll: poll) },
-                                    index: idx,
-                                    count: store.rows.count,
+                                    isNearTop: edges.nearTop,
+                                    isNearBottom: edges.nearBottom,
                                     onEnterTopEdge: {
                                         guard userHasScrolled, canPaginate else { return }
                                         canPaginate = false
@@ -221,6 +223,7 @@ struct MessageListView: View {
                                         store.markVisible(messageId: id)
                                     }
                                 )
+                                .equatable()
                                 .id(messageRow.id)
                             }
                             if row.canSend {

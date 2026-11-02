@@ -1,13 +1,20 @@
 import SwiftUI
 
-struct MessageRowView: View {
+/// One history row. It compares equal on its data (`row` and the two edge flags), not on its
+/// callbacks, and the list applies `.equatable()`: a closure is a new value on every list body
+/// pass, so without this every row's body ran again for every new message. The callbacks read
+/// the list's `@State` and store through references, so a row keeping an older closure behaves
+/// the same.
+struct MessageRowView: View, Equatable {
     let row: MessageRow
     let onPhotoTap: (PhotoVisual) -> Void
     let onVideoTap: (VideoVisual) -> Void
     let onVideoNoteTap: (VideoNoteVisual) -> Void
     let onPollTap: (Int64, PollVisual) -> Void
-    var index: Int = 0
-    var count: Int = 1
+    /// Among the first three rows: becoming visible asks for older history.
+    var isNearTop: Bool = false
+    /// Among the last three rows: becoming visible asks for newer history.
+    var isNearBottom: Bool = false
     var onEnterTopEdge: (() -> Void)? = nil
     var onEnterBottomEdge: (() -> Void)? = nil
     var onIncomingBubbleVisible: ((Int64) -> Void)? = nil
@@ -16,9 +23,22 @@ struct MessageRowView: View {
         rowBody
             .onScrollVisibilityChange(threshold: 0.01) { visible in
                 guard visible else { return }
-                if index <= 2 { onEnterTopEdge?() }
-                if index >= count - 3 { onEnterBottomEdge?() }
+                if isNearTop { onEnterTopEdge?() }
+                if isNearBottom { onEnterBottomEdge?() }
             }
+    }
+
+    struct Edges: Equatable {
+        let nearTop: Bool
+        let nearBottom: Bool
+    }
+
+    static func edges(index: Int, count: Int) -> Edges {
+        Edges(nearTop: index <= 2, nearBottom: index >= count - 3)
+    }
+
+    nonisolated static func == (lhs: MessageRowView, rhs: MessageRowView) -> Bool {
+        lhs.row == rhs.row && lhs.isNearTop == rhs.isNearTop && lhs.isNearBottom == rhs.isNearBottom
     }
 
     @ViewBuilder
