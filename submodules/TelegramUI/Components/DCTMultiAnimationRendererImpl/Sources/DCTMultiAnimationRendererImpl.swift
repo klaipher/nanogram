@@ -60,6 +60,14 @@ private var yuvToRgbConversion: vImage_YpCbCrToARGB = {
     return info
 }()
 
+// The cache's own conversion (combineYUVAPlanesIntoARGB in ImageDCT).
+private var fullRangeYuvToRgbConversion: vImage_YpCbCrToARGB = {
+    var info = vImage_YpCbCrToARGB()
+    var pixelRange = vImage_YpCbCrPixelRange(Yp_bias: 0, CbCr_bias: 128, YpRangeMax: 255, CbCrRangeMax: 255, YpMax: 255, YpMin: 1, CbCrMax: 255, CbCrMin: 0)
+    vImageConvert_YpCbCrToARGB_GenerateConversion(kvImage_YpCbCrToARGBMatrix_ITU_R_709_2, &pixelRange, &info, kvImage420Yp8_Cb8_Cr8, kvImageARGB8888, 0)
+    return info
+}()
+
 // The cache stores full-range BT.709 YUV with premultiplied alpha. 'v0a8' (the only 4:2:0 format
 // with alpha) is video range, so the values are remapped, and the matrix is attached; without it
 // Core Animation assumes BT.601.
@@ -236,6 +244,64 @@ final class ItemAnimationContext {
                 self.contentsAsCVPixelBuffer = pixelBuffer
                 self.size = CGSize(width: CGFloat(y.width), height: CGFloat(y.height))
             }
+        }
+
+        // What to put in a target's contents. A target that draws only alpha (MultiAnimationRenderTarget.
+        // contentsAlphaIsMask) never gets the YUVA surface: Core Animation reads its alpha as 1 under the
+        // "AAAA" swizzle. Frames for such targets are normally loaded as images; this covers a YUVA frame
+        // that was already loaded when the target was added or its tint was set.
+        func contents(alphaIsMask: Bool) -> AnyObject? {
+            if let image = self.contentsAsImage {
+                return image.cgImage
+            }
+            if alphaIsMask {
+                return self.imageFromYuva()
+            }
+            return self.contentsAsCVPixelBuffer
+        }
+
+        private var imageFromYuvaValue: CGImage?
+
+        // The cache planes as the image path shows them (combineYUVAPlanesIntoARGB: full range, BT.709,
+        // premultiplied), made once per frame.
+        private func imageFromYuva() -> CGImage? {
+            if let imageFromYuvaValue = self.imageFromYuvaValue {
+                return imageFromYuvaValue
+            }
+            guard case let .yuva(y, u, v, a) = self.frame.format else {
+                return nil
+            }
+            guard let context = DrawingContext(size: CGSize(width: CGFloat(y.width), height: CGFloat(y.height)), scale: 1.0, opaque: false) else {
+                return nil
+            }
+            var destination = vImage_Buffer(data: context.bytes, height: vImagePixelCount(y.height), width: vImagePixelCount(y.width), rowBytes: context.bytesPerRow)
+            var ok = true
+            y.data.withUnsafeBytes { yBytes in
+                u.data.withUnsafeBytes { uBytes in
+                    v.data.withUnsafeBytes { vBytes in
+                        a.data.withUnsafeBytes { aBytes in
+                            guard let yBase = yBytes.baseAddress, let uBase = uBytes.baseAddress, let vBase = vBytes.baseAddress, let aBase = aBytes.baseAddress else {
+                                ok = false
+                                return
+                            }
+                            var sourceY = vImage_Buffer(data: UnsafeMutableRawPointer(mutating: yBase), height: vImagePixelCount(y.height), width: vImagePixelCount(y.width), rowBytes: y.bytesPerRow)
+                            // The cache's v plane is Cb and its u plane is Cr.
+                            var sourceCb = vImage_Buffer(data: UnsafeMutableRawPointer(mutating: vBase), height: vImagePixelCount(y.height / 2), width: vImagePixelCount(y.width / 2), rowBytes: v.bytesPerRow)
+                            var sourceCr = vImage_Buffer(data: UnsafeMutableRawPointer(mutating: uBase), height: vImagePixelCount(y.height / 2), width: vImagePixelCount(y.width / 2), rowBytes: u.bytesPerRow)
+                            var sourceA = vImage_Buffer(data: UnsafeMutableRawPointer(mutating: aBase), height: vImagePixelCount(a.height), width: vImagePixelCount(a.width), rowBytes: a.bytesPerRow)
+                            let permuteMap: [UInt8] = [3, 2, 1, 0]
+                            ok = ok && vImageConvert_420Yp8_Cb8_Cr8ToARGB8888(&sourceY, &sourceCb, &sourceCr, &destination, &fullRangeYuvToRgbConversion, permuteMap, 255, vImage_Flags(kvImageDoNotTile)) == kvImageNoError
+                            // BGRA in memory: alpha is the fourth channel.
+                            ok = ok && vImageOverwriteChannels_ARGB8888(&sourceA, &destination, &destination, 0x1, vImage_Flags(kvImageDoNotTile)) == kvImageNoError
+                        }
+                    }
+                }
+            }
+            guard ok else {
+                return nil
+            }
+            self.imageFromYuvaValue = context.generateImage()?.cgImage
+            return self.imageFromYuvaValue
         }
 
         func blurredRepresentation(color: UIColor?) -> UIImage? {
@@ -581,11 +647,7 @@ final class ItemAnimationContext {
 
                 for target in self.targets.copyItems() {
                     if let target = target.value {
-                        if let image = currentFrame.contentsAsImage {
-                            target.transitionToContents(image.cgImage!, didLoop: false)
-                        } else if let pixelBuffer = currentFrame.contentsAsCVPixelBuffer {
-                            target.transitionToContents(pixelBuffer, didLoop: false)
-                        }
+                        ItemAnimationContext.show(currentFrame, on: target, didLoop: false)
 
                         if let blurredRepresentationTarget = target.blurredRepresentationTarget {
                             blurredRepresentationTarget.contents = currentFrame.blurredRepresentation(color: target.blurredRepresentationBackgroundColor)?.cgImage
@@ -604,24 +666,37 @@ final class ItemAnimationContext {
         }
     }
 
+    static func show(_ frame: Frame, on target: MultiAnimationRenderTarget, didLoop: Bool) {
+        if let contents = frame.contents(alphaIsMask: target.contentsAlphaIsMask) {
+            target.transitionToContents(contents, didLoop: didLoop)
+        }
+    }
+
     func updateAddedTarget(target: MultiAnimationRenderTarget) {
         if let currentFrame = self.currentFrame {
-            if let cgImage = currentFrame.contentsAsImage?.cgImage {
-                target.transitionToContents(cgImage, didLoop: false)
+            ItemAnimationContext.show(currentFrame, on: target, didLoop: false)
 
-                if let blurredRepresentationTarget = target.blurredRepresentationTarget {
-                    blurredRepresentationTarget.contents = currentFrame.blurredRepresentation(color: target.blurredRepresentationBackgroundColor)?.cgImage
-                }
-            } else if let pixelBuffer = currentFrame.contentsAsCVPixelBuffer {
-                target.transitionToContents(pixelBuffer, didLoop: false)
-
-                if let blurredRepresentationTarget = target.blurredRepresentationTarget {
-                    blurredRepresentationTarget.contents = currentFrame.blurredRepresentation(color: target.blurredRepresentationBackgroundColor)?.cgImage
-                }
+            if let blurredRepresentationTarget = target.blurredRepresentationTarget {
+                blurredRepresentationTarget.contents = currentFrame.blurredRepresentation(color: target.blurredRepresentationBackgroundColor)?.cgImage
             }
         }
 
         self.updateIsPlaying()
+    }
+
+    // A target's tint was set or cleared (contentsAlphaIsMask). A YUVA frame it already shows is replaced
+    // with an image; a stopped animation brings no next frame to do it.
+    func updateContentsMode(target: MultiAnimationRenderTarget) {
+        guard target.contentsAlphaIsMask, let currentFrame = self.currentFrame, currentFrame.contentsAsCVPixelBuffer != nil else {
+            return
+        }
+        guard let contents = currentFrame.contents(alphaIsMask: true) else {
+            return
+        }
+        if let current = target.contents as AnyObject?, current === contents {
+            return
+        }
+        target.transitionToContents(contents, didLoop: false)
     }
 
     func updateIsPlaying() {
@@ -679,7 +754,17 @@ final class ItemAnimationContext {
             self.nextLoadingFrameTaskId += 1
 
             self.loadingFrameTaskId = taskId
-            let useYuvA = self.useYuvA
+            // A target that draws only alpha (a tinted template emoji) cannot show a YUVA surface, so while
+            // one is attached the item loads images for all of its targets.
+            var useYuvA = self.useYuvA
+            if useYuvA {
+                for target in self.targets.copyItems() {
+                    if let target = target.value, target.contentsAlphaIsMask {
+                        useYuvA = false
+                        break
+                    }
+                }
+            }
             // Locked premium emoji show a blurred badge made from every frame (a 12x12 draw, box blur and
             // saturation matrix). It is made here with the frame, on the loading queue, so main only assigns it;
             // made on main it took about 5% of the main thread while the emoji panel was open. Same colour choice
@@ -736,11 +821,7 @@ final class ItemAnimationContext {
                         strongSelf.currentFrame = currentFrame.frame
                         for target in strongSelf.targets.copyItems() {
                             if let target = target.value {
-                                if let image = currentFrame.frame.contentsAsImage {
-                                    target.transitionToContents(image.cgImage!, didLoop: currentFrame.didLoop)
-                                } else if let pixelBuffer = currentFrame.frame.contentsAsCVPixelBuffer {
-                                    target.transitionToContents(pixelBuffer, didLoop: currentFrame.didLoop)
-                                }
+                                ItemAnimationContext.show(currentFrame.frame, on: target, didLoop: currentFrame.didLoop)
 
                                 if let blurredRepresentationTarget = target.blurredRepresentationTarget {
                                     blurredRepresentationTarget.contents = currentFrame.frame.blurredRepresentation(color: target.blurredRepresentationBackgroundColor)?.cgImage
@@ -840,11 +921,21 @@ public final class DCTMultiAnimationRendererImpl: MultiAnimationRenderer {
                 }
             }
 
-            let updateStateIndex = target.updateStateCallbacks.add { [weak itemContext] in
+            let updateStateIndex = target.updateStateCallbacks.add { [weak itemContext, weak target] in
                 guard let itemContext = itemContext else {
                     return
                 }
                 itemContext.updateIsPlaying()
+                if let target, target.contentsAlphaIsMask {
+                    // Next turn: the tint may be set from inside the target's own transitionToContents,
+                    // which then assigns the frame it was given.
+                    Queue.mainQueue().justDispatch { [weak itemContext, weak target] in
+                        guard let itemContext, let target else {
+                            return
+                        }
+                        itemContext.updateContentsMode(target: target)
+                    }
+                }
             }
 
             return ActionDisposable { [weak self, weak itemContext, weak target] in
@@ -872,10 +963,8 @@ public final class DCTMultiAnimationRendererImpl: MultiAnimationRenderer {
                     return false
                 }
 
-                if let image = loadedFrame.contentsAsImage {
-                    target.contents = image.cgImage
-                } else if let pixelBuffer = loadedFrame.contentsAsCVPixelBuffer {
-                    target.contents = pixelBuffer
+                if let contents = loadedFrame.contents(alphaIsMask: target.contentsAlphaIsMask) {
+                    target.contents = contents
                 }
                 target.numFrames = item.numFrames
 
@@ -915,17 +1004,11 @@ public final class DCTMultiAnimationRendererImpl: MultiAnimationRenderer {
                     }
                     target.numFrames = item.numFrames
                     if let loadedFrame = loadedFrame {
-                        if let cgImage = loadedFrame.contentsAsImage?.cgImage {
+                        if let contents = loadedFrame.contents(alphaIsMask: target.contentsAlphaIsMask) {
                             if hadIntermediateUpdate {
-                                target.transitionToContents(cgImage, didLoop: false)
+                                target.transitionToContents(contents, didLoop: false)
                             } else {
-                                target.contents = cgImage
-                            }
-                        } else if let pixelBuffer = loadedFrame.contentsAsCVPixelBuffer {
-                            if hadIntermediateUpdate {
-                                target.transitionToContents(pixelBuffer, didLoop: false)
-                            } else {
-                                target.contents = pixelBuffer
+                                target.contents = contents
                             }
                         }
 

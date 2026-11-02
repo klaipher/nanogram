@@ -174,6 +174,31 @@ The first loop (BGRA, `multiplyAlpha`) was already within 1/255. BT.601 instead 
 0.21 mean on this low-saturation sticker. The remaining differences are chroma upsampling (linear in
 the shader).
 
+## Tinted emoji statuses drew as solid squares under the emoji YUVA path (fixed 2026-11-02)
+
+On the phone a template emoji status (a custom pack drawn in the theme colour) was a white square in
+the profile header and an accent-coloured square in the "current status" sheet; the chat title bar
+drew the same status correctly. The YUVA path is used only for items of at least 128 px
+(`yuvaMinimumPixelSize`): the header and the sheet ask for 80 pt at 2x (160 px), the title bar for
+much less. The first frame is always loaded as an image, so the square appeared once it animated.
+
+A template emoji is tinted by drawing only the alpha of its contents: `setLayerContentsMaskMode`
+sets `contentsSwizzle = "AAAA"` and `contentsMultiplyColor` is the tint. Under that swizzle Core
+Animation reads alpha as 1 from a `v0a8` (YUVA) surface: the alpha plane is not where the swizzle
+reads it. A CARenderer harness on the Mac (scratch, not checked in) drawing a 128x128 surface with
+an alpha disc showed it directly: plain YUVA 5,721 covered pixels, the BGRA image under "AAAA" plus
+tint 5,824 (the disc), the YUVA surface under "AAAA" plus tint 16,384 of 16,384 (every pixel the
+tint colour), under "AAAA" alone 16,384 white. `contentsMultiplyColor` without the swizzle is fine.
+The cached frames and `makeVideoRangeYuvaPixelBuffer` were right, so no cache version changed.
+
+The fix: `MultiAnimationRenderTarget.contentsAlphaIsMask`, which `InlineStickerItemLayer` sets from
+its tint (before any frame is shown, whether or not the placeholder is up). While a target with it is
+attached, the item loads images instead of YUVA frames; a YUVA frame already loaded when such a target
+is added, or when its tint is set, is converted to an image on the CPU (`Frame.contents(alphaIsMask:)`,
+the cache's own full-range BT.709 conversion, once per frame), and a stopped animation's current
+frame is replaced. Untinted items keep the YUVA surface. `DCTMultiAnimationRendererAlphaMaskTests`
+pins this (red before the fix).
+
 ## Measurement protocol
 
 1. Same build, same account, same chat (one with many stickers, scrolled the same way), same

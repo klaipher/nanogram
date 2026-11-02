@@ -565,14 +565,17 @@ public final class InlineStickerItemLayer: MultiAnimationRenderTarget {
         self._contentTintColor = contentTintColor
         self._dynamicColor = dynamicColor
         
-        if !self.isDisplayingPlaceholder {
-            var customColor = self.contentTintColor
-            if let file = self.file {
-                if file.isCustomTemplateEmoji {
-                    customColor = self.dynamicColor
-                }
+        var customColor = self.contentTintColor
+        if let file = self.file {
+            if file.isCustomTemplateEmoji {
+                customColor = self.dynamicColor
             }
-            
+        }
+        // Declared before any frame is shown, so the renderer gives a tinted layer images (see
+        // MultiAnimationRenderTarget.contentsAlphaIsMask).
+        self.contentsAlphaIsMask = customColor != nil
+        
+        if !self.isDisplayingPlaceholder {
             if customColor != nil {
                 if self.layerTintColor == nil {
                     setLayerContentsMaskMode(self, true)
@@ -596,21 +599,24 @@ public final class InlineStickerItemLayer: MultiAnimationRenderTarget {
     }
     
     private func updateTintColor() {
-        if !self.isDisplayingPlaceholder {
-            var customColor = self.contentTintColor
-            if let file = self.file {
-                if file.isCustomTemplateEmoji {
-                    customColor = self.dynamicColor
-                }
-            } else if let emoji = self.arguments?.emoji, let custom = emoji.custom {
-                switch custom {
-                case .stars(true), .ton(true), .verification:
-                    customColor = self.dynamicColor
-                default:
-                    break
-                }
+        var customColor = self.contentTintColor
+        if let file = self.file {
+            if file.isCustomTemplateEmoji {
+                customColor = self.dynamicColor
             }
-            
+        } else if let emoji = self.arguments?.emoji, let custom = emoji.custom {
+            switch custom {
+            case .stars(true), .ton(true), .verification:
+                customColor = self.dynamicColor
+            default:
+                break
+            }
+        }
+        // Declared before any frame is shown, so the renderer gives a tinted layer images (see
+        // MultiAnimationRenderTarget.contentsAlphaIsMask).
+        self.contentsAlphaIsMask = customColor != nil
+        
+        if !self.isDisplayingPlaceholder {
             if customColor != nil {
                 if self.layerTintColor == nil {
                     setLayerContentsMaskMode(self, true)

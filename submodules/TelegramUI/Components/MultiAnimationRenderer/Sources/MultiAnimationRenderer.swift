@@ -31,6 +31,20 @@ open class MultiAnimationRenderTarget: SimpleLayer {
         }
     }
 
+    // Set while the layer draws only the alpha of its contents, in a tint colour (a template emoji:
+    // contentsSwizzle "AAAA" with contentsMultiplyColor). Under that swizzle Core Animation reads alpha
+    // as 1 from a YUVA surface, so the whole frame became a square of the tint colour; renderers give
+    // such a target images instead. Changes are reported through updateStateCallbacks.
+    public final var contentsAlphaIsMask: Bool = false {
+        didSet {
+            if self.contentsAlphaIsMask != oldValue {
+                for f in self.updateStateCallbacks.copyItems() {
+                    f()
+                }
+            }
+        }
+    }
+
     public var blurredRepresentationBackgroundColor: UIColor?
     public var blurredRepresentationTarget: CALayer? {
         didSet {
