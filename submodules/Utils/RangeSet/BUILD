@@ -1,6 +1,7 @@
-load("@build_bazel_rules_swift//swift:swift.bzl", "swift_library", "swift_test")
+load("//build-system/bazel-utils:swift_strict.bzl", "swift6_library")
+load("@build_bazel_rules_swift//swift:swift.bzl", "swift_test")
 
-swift_library(
+swift6_library(
     name = "RangeSet",
     module_name = "RangeSet",
     srcs = glob([
