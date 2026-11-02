@@ -1648,7 +1648,7 @@ private func extractAccountManagerState(records: AccountRecordsView<TelegramAcco
             BGTaskScheduler.shared.register(forTaskWithIdentifier: cleanupTaskId, using: DispatchQueue.main) { task in
                 Logger.shared.log("App \(self.episodeId)", "Executing cleanup task")
                 
-                let disposable = self.runCacheReindexTasks(lowImpact: true, completion: {
+                let disposable = self.runCacheReindexTasks(lowImpact: true, optimizeDatabase: true, completion: {
                     Logger.shared.log("App \(self.episodeId)", "Completed cleanup task")
                     
                     task.setTaskCompleted(success: true)
@@ -2004,7 +2004,10 @@ private func extractAccountManagerState(records: AccountRecordsView<TelegramAcco
         }
     }
     
-    private func runCacheReindexTasks(lowImpact: Bool, completion: @escaping () -> Void) -> Disposable {
+    /// `optimizeDatabase`: also VACUUM each account's database when it is fragmented (see
+    /// `Postbox.optimizeStorageIfNeeded`). Only the background processing task passes true: VACUUM
+    /// blocks the account's database queue while it rewrites the file.
+    private func runCacheReindexTasks(lowImpact: Bool, optimizeDatabase: Bool = false, completion: @escaping () -> Void) -> Disposable {
         let disposable = MetaDisposable()
         
         let _ = (self.sharedContextPromise.get()
@@ -2017,6 +2020,21 @@ private func extractAccountManagerState(records: AccountRecordsView<TelegramAcco
                 
                 for (_, context, _) in activeAccounts.accounts {
                     signals = signals |> then(context.account.cleanupTasks(lowImpact: lowImpact))
+                    if optimizeDatabase {
+                        let postbox = context.account.postbox
+                        signals = signals |> then(Signal<Never, NoError>.complete() |> deliverOnMainQueue |> then(Signal<Never, NoError> { subscriber in
+                            // Never while the app is on screen.
+                            if UIApplication.shared.applicationState == .active {
+                                Logger.shared.log("App", "Skipping database optimization: app is active")
+                                subscriber.putCompletion()
+                                return EmptyDisposable
+                            }
+                            return (postbox.optimizeStorageIfNeeded()
+                            |> ignoreValues).start(completed: {
+                                subscriber.putCompletion()
+                            })
+                        }))
+                    }
                 }
                 
                 disposable.set(signals.start(completed: {

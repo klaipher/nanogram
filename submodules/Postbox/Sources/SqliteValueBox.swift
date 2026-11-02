@@ -2668,11 +2668,103 @@ public final class SqliteValueBox: ValueBox {
         return updatedDatabase
     }
     
-    public func vacuum() {
-        var resultCode = self.database.execute("VACUUM")
-        precondition(resultCode)
-        resultCode = self.database.execute("PRAGMA wal_checkpoint(TRUNCATE)")
-        precondition(resultCode)
+    /// Rebuilds the database file without its free pages. Never crashes: a busy database
+    /// (another process, such as the notification extension, holding it), a full disk or an I/O
+    /// error is logged and returned as `false`, and the database stays as it was.
+    @discardableResult
+    public func vacuum() -> Bool {
+        precondition(self.queue.isCurrent())
+        let vacuumCode = self.database.executeReturningCode("VACUUM")
+        if vacuumCode != SQLITE_OK {
+            postboxLog("SqliteValueBox: VACUUM failed: \(SqliteValueBox.describeVacuumFailure(vacuumCode)) (\(self.database.currentError() ?? "no message"))")
+            return false
+        }
+        let checkpointCode = self.database.executeReturningCode("PRAGMA wal_checkpoint(TRUNCATE)")
+        if checkpointCode != SQLITE_OK {
+            // The VACUUM itself is committed; the WAL is truncated at a later checkpoint.
+            postboxLog("SqliteValueBox: wal_checkpoint after VACUUM failed: \(SqliteValueBox.describeVacuumFailure(checkpointCode))")
+        }
+        return true
+    }
+    
+    static func describeVacuumFailure(_ code: Int32) -> String {
+        switch code & 0xff {
+        case SQLITE_BUSY, SQLITE_LOCKED:
+            return "database busy (\(code))"
+        case SQLITE_FULL:
+            return "disk full (\(code))"
+        case SQLITE_IOERR:
+            return "I/O error (\(code))"
+        case SQLITE_READONLY:
+            return "read-only database (\(code))"
+        case SQLITE_NOMEM:
+            return "out of memory (\(code))"
+        default:
+            return "error \(code)"
+        }
+    }
+    
+    public struct PageStats: Equatable {
+        public let pageCount: Int64
+        public let freePageCount: Int64
+        public let pageSize: Int64
+        
+        public var freeFraction: Double {
+            return self.pageCount > 0 ? Double(self.freePageCount) / Double(self.pageCount) : 0.0
+        }
+    }
+    
+    private func pragmaInt64(_ name: String) -> Int64? {
+        var statement: OpaquePointer? = nil
+        defer {
+            sqlite3_finalize(statement)
+        }
+        guard sqlite3_prepare_v2(self.database.handle, "PRAGMA \(name)", -1, &statement, nil) == SQLITE_OK else {
+            return nil
+        }
+        guard sqlite3_step(statement) == SQLITE_ROW else {
+            return nil
+        }
+        return sqlite3_column_int64(statement, 0)
+    }
+    
+    public func pageStats() -> PageStats? {
+        precondition(self.queue.isCurrent())
+        guard let pageCount = self.pragmaInt64("page_count"), let freePageCount = self.pragmaInt64("freelist_count"), let pageSize = self.pragmaInt64("page_size") else {
+            return nil
+        }
+        return PageStats(pageCount: pageCount, freePageCount: freePageCount, pageSize: pageSize)
+    }
+    
+    public enum ConditionalVacuumResult: Equatable {
+        case vacuumed(before: PageStats, after: PageStats?)
+        case notFragmented(PageStats)
+        case insufficientDiskSpace(needed: Int64, available: Int64)
+        case failed
+    }
+    
+    /// VACUUMs only when at least `minFreeFraction` of the file is free pages, and only when the
+    /// disk has room for the copy VACUUM writes (about the size of the live data, plus the WAL).
+    public func vacuumIfFragmented(minFreeFraction: Double, availableDiskSpace: Int64?) -> ConditionalVacuumResult {
+        precondition(self.queue.isCurrent())
+        guard let before = self.pageStats() else {
+            postboxLog("SqliteValueBox: cannot read page counts")
+            return .failed
+        }
+        if before.pageCount == 0 || before.freeFraction < minFreeFraction {
+            return .notFragmented(before)
+        }
+        let needed = (before.pageCount - before.freePageCount) * before.pageSize * 2
+        if let availableDiskSpace = availableDiskSpace, availableDiskSpace < needed {
+            postboxLog("SqliteValueBox: skipping VACUUM, \(availableDiskSpace) bytes free, \(needed) needed")
+            return .insufficientDiskSpace(needed: needed, available: availableDiskSpace)
+        }
+        if !self.vacuum() {
+            return .failed
+        }
+        let after = self.pageStats()
+        postboxLog("SqliteValueBox: VACUUM \(before.pageCount) -> \(after?.pageCount ?? -1) pages (\(before.freePageCount) free before)")
+        return .vacuumed(before: before, after: after)
     }
 }
 

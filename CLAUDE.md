@@ -793,6 +793,12 @@ GPU (Metal) rendering of stickers and emoji, its debug switches and how to measu
   benchmark under the deep-audit fix-bench). Its invariant check runs only with `DEBUG`. Its
   `intersects` also returns true for a range that only touches the set (pinned by
   `//submodules/Utils/RangeSet:RangeSetTests`); keep that unless every caller is checked.
+- **`SqliteValueBox.vacuum()` never crashes** (busy, disk full, I/O errors are logged and return
+  false). Background maintenance (the `BGProcessingTask` cleanup, external power) calls
+  `Postbox.optimizeStorageIfNeeded()`: VACUUM only when free pages are >= 25% of the file, at most
+  once per 7 days (marker file `storage-optimization-timestamp` in the Postbox directory), only with
+  room for the copy, and never while the app is active. VACUUM blocks the Postbox queue: never call
+  it from UI paths.
 
 ## Framework export lists (computed by the build)
 
