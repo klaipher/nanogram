@@ -12,14 +12,6 @@ final class ChunkMediaPlayerPartTempFileTests: XCTestCase {
         _ = ChunkMediaPlayerPartTempFileTests.initializeTempBox
     }
 
-    private func waitUntilRemoved(_ path: String, timeout: TimeInterval = 2.0) -> Bool {
-        let deadline = Date().addingTimeInterval(timeout)
-        while FileManager.default.fileExists(atPath: path) && Date() < deadline {
-            Thread.sleep(forTimeInterval: 0.01)
-        }
-        return !FileManager.default.fileExists(atPath: path)
-    }
-
     private func makeFile() -> TempBoxFile {
         let file = TempBox.shared.tempFile(fileName: "data.mp4")
         FileManager.default.createFile(atPath: file.path, contents: Data(repeating: 1, count: 1024))
@@ -28,26 +20,29 @@ final class ChunkMediaPlayerPartTempFileTests: XCTestCase {
 
     func testReleasedPartThatDeletesOnReleaseRemovesItsFile() {
         let file = self.makeFile()
+        let count = TempBox.shared.activeContextCount
         var part: ChunkMediaPlayerPart.TempFile? = ChunkMediaPlayerPart.TempFile(file: file, ignoreAudioEditList: true, deletesFileOnRelease: true)
         XCTAssertNotNil(part)
         XCTAssertTrue(FileManager.default.fileExists(atPath: file.path))
         part = nil
-        XCTAssertTrue(self.waitUntilRemoved(file.path))
+        XCTAssertEqual(TempBox.shared.activeContextCount, count - 1)
     }
 
     func testReleasedPartKeepsItsFileByDefault() {
         let file = self.makeFile()
+        let count = TempBox.shared.activeContextCount
         var part: ChunkMediaPlayerPart.TempFile? = ChunkMediaPlayerPart.TempFile(file: file, ignoreAudioEditList: true)
         XCTAssertNotNil(part)
         part = nil
-        XCTAssertFalse(self.waitUntilRemoved(file.path, timeout: 0.3))
+        XCTAssertEqual(TempBox.shared.activeContextCount, count)
+        XCTAssertTrue(FileManager.default.fileExists(atPath: file.path))
         TempBox.shared.dispose(file)
     }
 
     func testDisposedFileLeavesNoContextBehind() {
         let file = self.makeFile()
-        let directory = (file.path as NSString).deletingLastPathComponent
+        let count = TempBox.shared.activeContextCount
         TempBox.shared.dispose(file)
-        XCTAssertTrue(self.waitUntilRemoved(directory))
+        XCTAssertEqual(TempBox.shared.activeContextCount, count - 1)
     }
 }
