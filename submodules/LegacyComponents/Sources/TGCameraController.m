@@ -1113,23 +1113,42 @@ static CGPoint TGCameraControllerClampPointToScreenSize(__unused id self, __unus
             if (strongSelf == nil)
                 return;
         
-            TGDispatchOnMainThread(^
+            bool isAvatarIntent = strongSelf->_intent == TGCameraControllerAvatarIntent || strongSelf->_intent == TGCameraControllerSignupAvatarIntent;
+            void (^finish)(TGCameraCapturedPhoto *) = ^(TGCameraCapturedPhoto *capturedPhoto)
             {
-                strongSelf->_shutterIsBusy = false;
-                
-                if (strongSelf->_intent == TGCameraControllerAvatarIntent || strongSelf->_intent == TGCameraControllerSignupAvatarIntent)
+                TGDispatchOnMainThread(^
                 {
-                    [strongSelf presentPhotoResultControllerWithImage:result metadata:metadata completion:^{}];
-                }
-                else
-                {
-                    TGCameraCapturedPhoto *capturedPhoto = [[TGCameraCapturedPhoto alloc] initWithImage:result metadata:metadata];
-                    [strongSelf addResultItem:capturedPhoto];
+                    // Held strongly until the result is handed over, as before.
+                    TGCameraController *mainSelf = strongSelf;
+                    mainSelf->_shutterIsBusy = false;
                     
-                    if (![strongSelf maybePresentResultControllerForItem:capturedPhoto completion:nil])
-                        strongSelf->_camera.disabled = false;
-                }
-            });
+                    if (isAvatarIntent)
+                    {
+                        [mainSelf presentPhotoResultControllerWithImage:result metadata:metadata completion:^{}];
+                    }
+                    else
+                    {
+                        [mainSelf addResultItem:capturedPhoto];
+                        
+                        if (![mainSelf maybePresentResultControllerForItem:capturedPhoto completion:nil])
+                            mainSelf->_camera.disabled = false;
+                    }
+                });
+            };
+            
+            if (isAvatarIntent)
+            {
+                finish(nil);
+            }
+            else
+            {
+                // Encoding the full-resolution JPEG took ~200 ms on the main thread at the shutter
+                // (12-24 dropped frames). The photo object is built here and only handed to main.
+                [[SQueue concurrentDefaultQueue] dispatch:^
+                {
+                    finish([[TGCameraCapturedPhoto alloc] initWithImage:result metadata:metadata]);
+                }];
+            }
             
             [[SQueue concurrentDefaultQueue] dispatch:^{
                 [TGCameraController generateStartImageWithImage:result];
