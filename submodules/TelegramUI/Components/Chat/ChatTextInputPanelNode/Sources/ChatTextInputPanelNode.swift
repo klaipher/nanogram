@@ -4026,6 +4026,10 @@ public class ChatTextInputPanelNode: ChatInputPanelNode, ASEditableTextNodeDeleg
         if self.ignoreChatInputTextNodeDidUpdateText {
             return
         }
+        let signpostState = PerformanceSignposts.signposter.beginInterval("composerKeystroke")
+        defer {
+            PerformanceSignposts.signposter.endInterval("composerKeystroke", signpostState)
+        }
         if let richTextInputNode = self.richTextInputNode, let presentationInterfaceState = self.presentationInterfaceState, let context = self.context {
             let baseFontSize = chatTextInputBaseFontSize(for: presentationInterfaceState.fontSize)
             let fullTranslucency = self.context?.sharedContext.energyUsageSettings.fullTranslucency ?? true

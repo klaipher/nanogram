@@ -701,6 +701,7 @@ enum DebugControllerEntry: ItemListNodeEntry {
     case versionInfo(PresentationTheme)
     case collectCpuProfile
     case sendProfileLogs
+    case sendMetricKitReports
 
     var section: ItemListSectionId {
         switch self {
@@ -724,7 +725,7 @@ enum DebugControllerEntry: ItemListNodeEntry {
             return DebugControllerSection.videoExperiments2.rawValue
         case .versionInfo:
             return DebugControllerSection.appInfo.rawValue
-        case .collectCpuProfile, .sendProfileLogs:
+        case .collectCpuProfile, .sendProfileLogs, .sendMetricKitReports:
             return DebugControllerSection.profiling.rawValue
         }
     }
@@ -832,6 +833,8 @@ enum DebugControllerEntry: ItemListNodeEntry {
             return 111
         case .sendProfileLogs:
             return 112
+        case .sendMetricKitReports:
+            return 113
         }
     }
 
@@ -1353,6 +1356,18 @@ enum DebugControllerEntry: ItemListNodeEntry {
                     presentSendFiles(arguments: arguments, logs: logs, subject: "Telegram CPU Profiles", archiveName: "Profiles")
                 })
             })
+        case .sendMetricKitReports:
+            return ItemListDisclosureItem(presentationData: presentationData, systemStyle: .glass, title: "Send MetricKit Reports", label: "", sectionId: self.section, style: .blocks, action: {
+                // Metric and diagnostic reports MetricKit delivered to this device (MetricReportStore). They
+                // leave the device only from here, to a chat or an email you pick.
+                let reports = MetricReportStore.shared.reports().map { ($0.name, $0.path) }
+                if reports.isEmpty {
+                    let presentationData = arguments.sharedContext.currentPresentationData.with { $0 }
+                    arguments.presentController(OverlayStatusController(theme: presentationData.theme, type: .genericSuccess("No MetricKit reports yet. iOS delivers them about once a day.", false)), nil)
+                    return
+                }
+                presentSendFiles(arguments: arguments, logs: reports, subject: "Telegram MetricKit Reports", archiveName: "MetricKit")
+            })
         }
     }
 }
@@ -1445,6 +1460,9 @@ func debugControllerEntries(environment: DebugControllerEntriesEnvironment, them
     
     entries.append(.collectCpuProfile)
     entries.append(.sendProfileLogs)
+    if isMainApp {
+        entries.append(.sendMetricKitReports)
+    }
     
     return entries
 }
