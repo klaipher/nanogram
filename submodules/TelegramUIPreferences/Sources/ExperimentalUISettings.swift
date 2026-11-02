@@ -10,6 +10,18 @@ public struct ExperimentalUISettings: Codable, Equatable {
         case hdLanczos
     }
 
+    /// Debug Settings ▸ "Circle Colour Decode". The YCbCr matrix the modern round-video pipeline (CameraNeo)
+    /// decodes the camera's 8-bit 4:2:0 frames with. The camera tags them BT.601, but their colours match the
+    /// camera's own BGRA conversion (what Legacy records, and what the official app shows) only when decoded as
+    /// BT.709; decoding by the tag turned skin and lips ~7-9° towards magenta. `.cameraTag` is the old
+    /// behaviour. A BT.2020 tag (10-bit/HDR formats) is followed whatever the choice. Read when the camera
+    /// screen opens.
+    public enum RoundVideoCameraMatrix: String, CaseIterable {
+        case bt709
+        case cameraTag
+        case bt601
+    }
+
     /// Debug Settings ▸ "Stickers: renderer". Which renderer an animated sticker node uses, together
     /// with the matching frame cache: today's CPU path, the Metal renderer for large stickers only, or
     /// the Metal renderer for every sticker node. Read when a node is created.
@@ -55,6 +67,7 @@ public struct ExperimentalUISettings: Codable, Equatable {
     /// the back camera as a virtual device with the ultra-wide, so iOS can switch to it for close subjects,
     /// with the 1x framing kept (`Camera.RoundVideoCloseFocus`). Read when the camera screen opens.
     public var videoMessageCloseFocus: Bool
+    public var videoMessageCameraMatrix: RoundVideoCameraMatrix
     public var stickerRendererMode: StickerRendererMode
 
     public static var defaultSettings: ExperimentalUISettings {
@@ -113,7 +126,8 @@ public struct ExperimentalUISettings: Codable, Equatable {
         videoMessageCameraMode: VideoMessageCameraMode = .hdBilinear,
         stickerRendererMode: StickerRendererMode = .gpuLarge,
         showCrashReportAlerts: Bool? = nil,
-        videoMessageCloseFocus: Bool = false
+        videoMessageCloseFocus: Bool = false,
+        videoMessageCameraMatrix: RoundVideoCameraMatrix = .bt709
     ) {
         self.keepChatNavigationStack = keepChatNavigationStack
         self.skipReadHistory = skipReadHistory
@@ -141,6 +155,7 @@ public struct ExperimentalUISettings: Codable, Equatable {
         self.useModernVideoMessagePipeline = useModernVideoMessagePipeline
         self.videoMessageCameraMode = videoMessageCameraMode
         self.videoMessageCloseFocus = videoMessageCloseFocus
+        self.videoMessageCameraMatrix = videoMessageCameraMatrix
         self.stickerRendererMode = stickerRendererMode
     }
     
@@ -182,6 +197,8 @@ public struct ExperimentalUISettings: Codable, Equatable {
         self.videoMessageCameraMode = (try container.decodeIfPresent(String.self, forKey: "videoMessageCameraMode")).flatMap(VideoMessageCameraMode.init(rawValue:)) ?? .hdBilinear
         self.stickerRendererMode = (try container.decodeIfPresent(String.self, forKey: "stickerRendererMode")).flatMap(StickerRendererMode.init(rawValue:)) ?? .gpuLarge
         self.videoMessageCloseFocus = try container.decodeIfPresent(Bool.self, forKey: "videoMessageCloseFocus") ?? false
+        // A new key: blobs saved before it existed (and unknown values) get the BT.709 default.
+        self.videoMessageCameraMatrix = (try container.decodeIfPresent(String.self, forKey: "videoMessageCameraMatrix")).flatMap(RoundVideoCameraMatrix.init(rawValue:)) ?? .bt709
 
         if savedDefaultsRevision < 1 {
             // Saved before the GPU renderers became the default: both were the old CPU defaults.
@@ -222,6 +239,7 @@ public struct ExperimentalUISettings: Codable, Equatable {
         try container.encode(self.videoMessageCameraMode.rawValue, forKey: "videoMessageCameraMode")
         try container.encode(self.stickerRendererMode.rawValue, forKey: "stickerRendererMode")
         try container.encode(self.videoMessageCloseFocus, forKey: "videoMessageCloseFocus")
+        try container.encode(self.videoMessageCameraMatrix.rawValue, forKey: "videoMessageCameraMatrix")
         try container.encode(ExperimentalUISettings.nanogramDefaultsRevision, forKey: "nanogramDefaultsRevision")
     }
 }

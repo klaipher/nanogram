@@ -24,6 +24,8 @@ final class CameraNeo: NSObject, CameraProtocol {
     /// and zoom is mapped relative to its neutral (1x) factor (`Camera.RoundVideoCloseFocus`). Every new
     /// device setting is gated on it, so with it off the camera does exactly what it did before.
     private let closeFocus: Bool
+    /// Debug Settings ▸ "Circle Colour Decode" (`NeoCameraImpl.RoundVideoCameraMatrix`).
+    private let cameraMatrix: NeoCameraImpl.RoundVideoCameraMatrix
     private let log: ((String) -> Void)?
     private let previewView: CameraPreviewView?
     private let secondaryPreviewView: CameraPreviewView?
@@ -59,6 +61,8 @@ final class CameraNeo: NSObject, CameraProtocol {
 
     private var frameProcessor: RoundVideoFrameProcessor?
     private var recorder: VideoRecorder?
+    /// Camera positions whose colour diagnostics this recording has logged (media queue only).
+    private var colorDiagnosticsLoggedPositions = Set<Camera.Position>()
     private let recordingActive = Atomic<Bool>(value: false)
     private let recordingStopRequested = Atomic<Bool>(value: false)
     private let recordingDuration = Atomic<Double>(value: 0.0)
@@ -86,6 +90,7 @@ final class CameraNeo: NSObject, CameraProtocol {
         useMultiCam: Bool,
         roundVideoMode: NeoCameraImpl.RoundVideoMode,
         closeFocus: Bool,
+        cameraMatrix: NeoCameraImpl.RoundVideoCameraMatrix,
         log: ((String) -> Void)?
     ) {
         self.configuration = configuration
@@ -94,6 +99,7 @@ final class CameraNeo: NSObject, CameraProtocol {
         self.useMultiCam = useMultiCam
         self.roundVideoMode = roundVideoMode
         self.closeFocus = closeFocus
+        self.cameraMatrix = cameraMatrix
         self.log = log
         self.singleMediaPosition = configuration.position
         self.positionValue = Atomic<Camera.Position>(value: configuration.position)
@@ -343,11 +349,11 @@ final class CameraNeo: NSObject, CameraProtocol {
                     let processor: RoundVideoFrameProcessor
                     if let current = self.frameProcessor {
                         processor = current
-                    } else if let decorationResources, let current = RoundVideoFrameProcessor(mediaQueue: self.mediaQueue, decorationResources: decorationResources, mode: self.roundVideoMode) {
+                    } else if let decorationResources, let current = RoundVideoFrameProcessor(mediaQueue: self.mediaQueue, decorationResources: decorationResources, mode: self.roundVideoMode, cameraMatrix: self.cameraMatrix) {
                         self.frameProcessor = current
                         processor = current
                     } else {
-                        guard let current = RoundVideoFrameProcessor(mediaQueue: self.mediaQueue, decorationResources: nil, mode: self.roundVideoMode) else {
+                        guard let current = RoundVideoFrameProcessor(mediaQueue: self.mediaQueue, decorationResources: nil, mode: self.roundVideoMode, cameraMatrix: self.cameraMatrix) else {
                             let _ = self.recordingActive.modify { _ in false }
                             let _ = self.recordingStopRequested.modify { _ in false }
                             if subscriberActive.swap(false) {
@@ -360,6 +366,7 @@ final class CameraNeo: NSObject, CameraProtocol {
                     }
 
                     self.recordingOrientation = orientation
+                    self.colorDiagnosticsLoggedPositions.removeAll()
                     let recorder = VideoRecorder(
                         mediaQueue: self.mediaQueue,
                         processor: processor,
@@ -1014,6 +1021,36 @@ final class CameraNeo: NSObject, CameraProtocol {
         }
     }
 
+    /// What the camera really delivers and how the processor decodes it, once per camera position per recording,
+    /// for Debug Settings ▸ "Circle Colour Decode" A/B checks (the buffers' matrix tag cannot be seen otherwise).
+    private func logColorDiagnosticsIfNeeded(_ sampleBuffer: CMSampleBuffer, position: Camera.Position) {
+        dispatchPrecondition(condition: .onQueue(self.mediaQueue))
+        guard self.log != nil, !self.colorDiagnosticsLoggedPositions.contains(position),
+              let pixelBuffer = CMSampleBufferGetImageBuffer(sampleBuffer) else {
+            return
+        }
+        self.colorDiagnosticsLoggedPositions.insert(position)
+        let bufferDescription = roundVideoCameraBufferColorDescription(
+            pixelBuffer: pixelBuffer,
+            formatDescription: CMSampleBufferGetFormatDescription(sampleBuffer),
+            setting: self.cameraMatrix
+        )
+        self.sessionQueue.async { [weak self] in
+            guard let self else {
+                return
+            }
+            let device = position == .front ? self.frontDevice : self.backDevice
+            let activeFormat = device.flatMap { device -> String in
+                let subtype = CMFormatDescriptionGetMediaSubType(device.activeFormat.formatDescription)
+                let dimensions = CMVideoFormatDescriptionGetDimensions(device.activeFormat.formatDescription)
+                return "\(roundVideoFourCharCode(subtype)) \(dimensions.width)x\(dimensions.height)"
+            } ?? "unknown"
+            let message = "colour: mode=\(self.roundVideoMode.rawValue), position=\(position.rawValue), activeFormat=\(activeFormat), \(bufferDescription)"
+            os_log("%{public}@", log: cameraCaptureLog, type: .info, message)
+            self.log?(message)
+        }
+    }
+
     private func switchSingleCamera(to position: Camera.Position, generation: Int) {
         dispatchPrecondition(condition: .onQueue(self.sessionQueue))
         self.session.beginConfiguration()
@@ -1265,11 +1302,14 @@ extension CameraNeo: AVCaptureVideoDataOutputSampleBufferDelegate, AVCaptureAudi
             return
         }
 
-        self.recorder?.appendVideoSampleBuffer(
-            sampleBuffer,
-            position: position,
-            orientation: self.recordingOrientation
-        )
+        if let recorder = self.recorder {
+            self.logColorDiagnosticsIfNeeded(sampleBuffer, position: position)
+            recorder.appendVideoSampleBuffer(
+                sampleBuffer,
+                position: position,
+                orientation: self.recordingOrientation
+            )
+        }
 
         if self.useMultiCam {
             if position == .front {

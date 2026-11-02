@@ -27,11 +27,79 @@ private struct FrameUniforms {
     var decoration: SIMD4<Float>
 }
 
-private struct ColorConversion {
+/// The camera YCbCr → gamma-domain RGB step the shaders apply (`readRgb` in CameraNeo.metal):
+/// `yuv = (y, cb, cr) + offset`, then `rgb = (row0 · yuv, row1 · yuv, row2 · yuv)`.
+struct ColorConversion: Equatable {
     let row0: SIMD4<Float>
     let row1: SIMD4<Float>
     let row2: SIMD4<Float>
     let offset: SIMD4<Float>
+}
+
+/// A YCbCr → RGB matrix the processor can decode camera frames with.
+enum RoundVideoDecodeMatrix: String, Equatable {
+    case bt601
+    case bt709
+    case bt2020
+
+    var kr: Float {
+        switch self {
+        case .bt601:
+            return 0.299
+        case .bt709:
+            return 0.2126
+        case .bt2020:
+            return 0.2627
+        }
+    }
+
+    var kb: Float {
+        switch self {
+        case .bt601:
+            return 0.114
+        case .bt709:
+            return 0.0722
+        case .bt2020:
+            return 0.0593
+        }
+    }
+}
+
+/// `CVPixelBuffer` pixel format as its four characters ("420f", "420v", "BGRA").
+func roundVideoFourCharCode(_ value: OSType) -> String {
+    let bytes = [UInt8(truncatingIfNeeded: value >> 24), UInt8(truncatingIfNeeded: value >> 16), UInt8(truncatingIfNeeded: value >> 8), UInt8(truncatingIfNeeded: value)]
+    if bytes.allSatisfy({ $0 >= 0x20 && $0 < 0x7f }) {
+        return String(decoding: bytes, as: UTF8.self)
+    }
+    return String(value)
+}
+
+/// One log line's worth of what a camera buffer really carries (its colour attachments, falling back to the
+/// format description's extensions, as `VideoFrameSource` reads them), and the matrix the processor decodes it
+/// with under `setting`.
+func roundVideoCameraBufferColorDescription(
+    pixelBuffer: CVPixelBuffer,
+    formatDescription: CMFormatDescription?,
+    setting: NeoCameraImpl.RoundVideoCameraMatrix
+) -> String {
+    let bufferAttachments = CMCopyDictionaryOfAttachments(
+        allocator: kCFAllocatorDefault,
+        target: pixelBuffer,
+        attachmentMode: kCMAttachmentMode_ShouldPropagate
+    ) as? [String: Any] ?? [:]
+    let extensions = formatDescription.flatMap { CMFormatDescriptionGetExtensions($0) as? [String: Any] } ?? [:]
+    func value(_ key: CFString) -> String {
+        let buffer = bufferAttachments[key as String].map { "\($0)" } ?? "none"
+        let format = extensions[key as String].map { "\($0)" } ?? "none"
+        return buffer == format ? buffer : "\(buffer) (format: \(format))"
+    }
+    let pixelFormat = CVPixelBufferGetPixelFormatType(pixelBuffer)
+    let cameraTag = bufferAttachments.isEmpty
+        ? extensions[kCVImageBufferYCbCrMatrixKey as String] as? String
+        : bufferAttachments[kCVImageBufferYCbCrMatrixKey as String] as? String
+    let decode = RoundVideoFrameProcessor.decodeMatrix(setting: setting, cameraTag: cameraTag)
+    let range = pixelFormat == kCVPixelFormatType_420YpCbCr8BiPlanarFullRange ? "full" : "video"
+    return "pixelFormat=\(roundVideoFourCharCode(pixelFormat)), buffer=\(CVPixelBufferGetWidth(pixelBuffer))x\(CVPixelBufferGetHeight(pixelBuffer)), matrix=\(value(kCVImageBufferYCbCrMatrixKey)), primaries=\(value(kCVImageBufferColorPrimariesKey)), transfer=\(value(kCVImageBufferTransferFunctionKey)), setting=\(setting.rawValue), decode=\(decode.rawValue) \(range) range"
 }
 
 struct VideoFrameSource {
@@ -229,6 +297,7 @@ final class RoundVideoFrameProcessor {
     private let mediaQueue: DispatchQueue
     private let commandQueue: MTLCommandQueue
     private let mode: NeoCameraImpl.RoundVideoMode
+    private let cameraMatrix: NeoCameraImpl.RoundVideoCameraMatrix
     private let plainPipelineState: MTLComputePipelineState
     private let decoration: RoundVideoMetalDecoration?
     private var textureCache: CVMetalTextureCache
@@ -255,7 +324,7 @@ final class RoundVideoFrameProcessor {
         ]
     }
 
-    init?(mediaQueue: DispatchQueue, decorationResources: RoundVideoDecorationResources?, mode: NeoCameraImpl.RoundVideoMode) {
+    init?(mediaQueue: DispatchQueue, decorationResources: RoundVideoDecorationResources?, mode: NeoCameraImpl.RoundVideoMode, cameraMatrix: NeoCameraImpl.RoundVideoCameraMatrix) {
         guard let device = MTLCreateSystemDefaultDevice(), let commandQueue = device.makeCommandQueue() else {
             return nil
         }
@@ -305,6 +374,7 @@ final class RoundVideoFrameProcessor {
         self.mediaQueue = mediaQueue
         self.commandQueue = commandQueue
         self.mode = mode
+        self.cameraMatrix = cameraMatrix
         self.plainPipelineState = plainPipelineState
         self.decoration = decoration
         self.textureCache = textureCache
@@ -406,8 +476,8 @@ final class RoundVideoFrameProcessor {
         let secondaryY = secondaryInput.y
         let secondaryCbCr = secondaryInput.cbcr
 
-        let primaryConversion = Self.colorConversion(for: primary)
-        let secondaryConversion = Self.colorConversion(for: effectiveSecondary)
+        let primaryConversion = Self.colorConversion(for: primary, setting: self.cameraMatrix)
+        let secondaryConversion = Self.colorConversion(for: effectiveSecondary, setting: self.cameraMatrix)
         var uniforms = FrameUniforms(
             primaryRow0: primaryConversion.row0,
             primaryRow1: primaryConversion.row1,
@@ -677,24 +747,43 @@ final class RoundVideoFrameProcessor {
         return SIMD4<Float>(width, height, rotation, source.position == .front ? 1.0 : 0.0)
     }
 
-    private static func colorConversion(for source: VideoFrameSource) -> ColorConversion {
-        let matrixName = source.colorAttachments[kCVImageBufferYCbCrMatrixKey as String] as? String
+    private static func colorConversion(for source: VideoFrameSource, setting: NeoCameraImpl.RoundVideoCameraMatrix) -> ColorConversion {
+        return self.colorConversion(
+            setting: setting,
+            cameraTag: source.colorAttachments[kCVImageBufferYCbCrMatrixKey as String] as? String,
+            pixelFormat: CVPixelBufferGetPixelFormatType(source.pixelBuffer)
+        )
+    }
 
-        let kr: Float
-        let kb: Float
-        if matrixName == kCVImageBufferYCbCrMatrix_ITU_R_601_4 as String {
-            kr = 0.299
-            kb = 0.114
-        } else if matrixName == kCVImageBufferYCbCrMatrix_ITU_R_2020 as String {
-            kr = 0.2627
-            kb = 0.0593
-        } else {
-            kr = 0.2126
-            kb = 0.0722
+    /// The matrix a camera frame tagged `cameraTag` (`kCVImageBufferYCbCrMatrixKey`) is decoded with.
+    ///
+    /// The camera's 8-bit 4:2:0 buffers are tagged BT.601, but their colours match the camera's own BGRA
+    /// conversion (what Legacy records and the official app shows) only when decoded as BT.709: decoding by the
+    /// tag turned skin and lips ~7-9° towards magenta with neutrals unchanged. So `.bt709` (the default) ignores
+    /// a 601 tag. `.cameraTag` is the behaviour before the setting existed (601 and 2020 tags followed, anything
+    /// else 709). A BT.2020 tag (10-bit/HDR formats) is followed under every setting.
+    static func decodeMatrix(setting: NeoCameraImpl.RoundVideoCameraMatrix, cameraTag: String?) -> RoundVideoDecodeMatrix {
+        if cameraTag == kCVImageBufferYCbCrMatrix_ITU_R_2020 as String {
+            return .bt2020
         }
+        switch setting {
+        case .bt709:
+            return .bt709
+        case .bt601:
+            return .bt601
+        case .cameraTag:
+            return cameraTag == kCVImageBufferYCbCrMatrix_ITU_R_601_4 as String ? .bt601 : .bt709
+        }
+    }
 
+    /// The shader's YCbCr → RGB conversion for a camera frame: the matrix from `decodeMatrix`, the range from the
+    /// pixel format (420f full, anything else video range).
+    static func colorConversion(setting: NeoCameraImpl.RoundVideoCameraMatrix, cameraTag: String?, pixelFormat: OSType) -> ColorConversion {
+        let matrix = self.decodeMatrix(setting: setting, cameraTag: cameraTag)
+        let kr = matrix.kr
+        let kb = matrix.kb
         let kg = 1.0 - kr - kb
-        let isFullRange = CVPixelBufferGetPixelFormatType(source.pixelBuffer) == kCVPixelFormatType_420YpCbCr8BiPlanarFullRange
+        let isFullRange = pixelFormat == kCVPixelFormatType_420YpCbCr8BiPlanarFullRange
         let yScale: Float = isFullRange ? 1.0 : 255.0 / 219.0
         let chromaScale: Float = isFullRange ? 1.0 : 255.0 / 224.0
         let yOffset: Float = isFullRange ? 0.0 : -16.0 / 255.0

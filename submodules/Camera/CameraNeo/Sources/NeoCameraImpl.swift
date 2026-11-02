@@ -202,17 +202,29 @@ public final class NeoCameraImpl: CameraImpl {
         case hdLanczos
     }
 
+    /// Debug Settings ▸ "Circle Colour Decode": the YCbCr matrix the processor decodes the camera's 8-bit 4:2:0
+    /// frames with (`RoundVideoFrameProcessor.decodeMatrix`). The camera tags them BT.601, but they match the
+    /// camera's own BGRA conversion (Legacy, the official app) only when decoded as BT.709. `.cameraTag` is the
+    /// behaviour before the setting existed. A BT.2020 tag is always followed.
+    public enum RoundVideoCameraMatrix: String {
+        case bt709
+        case cameraTag
+        case bt601
+    }
+
     public static let shared = NeoCameraImpl()
 
     private let roundVideoMode: RoundVideoMode
     private let closeFocus: Bool
+    private let cameraMatrix: RoundVideoCameraMatrix
     private let log: ((String) -> Void)?
 
     /// `closeFocus`: Debug Settings ▸ "Circle Close Focus (Macro)" (`Camera.RoundVideoCloseFocus`). Off, the
     /// camera behaves exactly as before the switch existed.
-    public init(roundVideoMode: RoundVideoMode = .hdBilinear, closeFocus: Bool = false, log: ((String) -> Void)? = nil) {
+    public init(roundVideoMode: RoundVideoMode = .hdBilinear, closeFocus: Bool = false, cameraMatrix: RoundVideoCameraMatrix = .bt709, log: ((String) -> Void)? = nil) {
         self.roundVideoMode = roundVideoMode
         self.closeFocus = closeFocus
+        self.cameraMatrix = cameraMatrix
         self.log = log
         RoundVideoDecorationProvider.shared.warmUp()
     }
@@ -257,6 +269,7 @@ public final class NeoCameraImpl: CameraImpl {
             useMultiCam: configuration.isDualEnabled && self.isDualCameraSupported(forRoundVideo: configuration.isRoundVideo),
             roundVideoMode: self.roundVideoMode,
             closeFocus: self.closeFocus && configuration.isRoundVideo,
+            cameraMatrix: self.cameraMatrix,
             log: self.log
         )
     }

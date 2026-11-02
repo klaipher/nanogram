@@ -846,6 +846,15 @@ GPU (Metal) rendering of stickers and emoji, its debug switches and how to measu
   the tag while the encoder converted with 709, so skin decoded pinker (7d600b48's message wrongly
   says circles already tagged 709). Never tag with the camera's matrix: the shader has already
   decoded it. `//submodules/Camera/CameraNeo:CameraNeoTests` decodes red and a skin tone back.
+- **CameraNeo decodes the camera's 601-tagged buffers as BT.709** (`RoundVideoFrameProcessor.decodeMatrix`,
+  Debug Settings ▸ "Circle Colour Decode", `ExperimentalUISettings.videoMessageCameraMatrix`, default
+  `.bt709`). The front camera's 420f buffers are tagged BT.601, but decoding them by that tag turned skin
+  and lips ~7-9° towards magenta (neutrals unchanged) against Legacy, which asks the camera for BGRA, and
+  the official app; re-decoding the same frames as 709 matched them to ~1 ΔE a*b*. That was measured on
+  recordings, not yet A/B'd on the device: "Camera tag (old)" restores the tag-following decode and
+  "BT.601" forces 601. A BT.2020 tag is followed under every option, and the range comes from the pixel
+  format. Each recording logs one `colour:` line per camera (buffer matrix/primaries/transfer tags, 420f
+  or 420v, size, active format, the decode used) to the CameraNeo log. `RoundVideoDecodeMatrixTests`.
 - **Circle pause/resume** (`VideoMessageCameraScreen.resumeCameraCapture`): the paused frame stays sharp until
   the preview runs again, then cross-fades out on main (`isPreviewing` is KVO and may arrive off main). No blur,
   no loading shimmer on resume: the shimmer used to be faded in there and never out, and `LoadingEffectView`
