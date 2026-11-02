@@ -1,4 +1,5 @@
 #import "TGVideoCameraPipeline.h"
+#import <LegacyComponents/TGVideoCameraStabilization.h>
 
 #import "LegacyComponentsInternal.h"
 
@@ -989,14 +990,11 @@ static CGFloat angleOffsetFromPortraitOrientationToOrientation(AVCaptureVideoOri
 
 - (void)_enableVideoStabilization
 {
+    // CameraNeo's choice for round videos (TGVideoCameraStabilization.h): cinematic extended added preview latency
+    // and memory to a 384 px circle.
     AVCaptureConnection *videoConnection = [_videoOutput connectionWithMediaType:AVMediaTypeVideo];
-    if (videoConnection.supportsVideoStabilization) {
-        if (iosMajorVersion() >= 13) {
-            videoConnection.preferredVideoStabilizationMode = AVCaptureVideoStabilizationModeCinematicExtended;
-        } else {
-            videoConnection.preferredVideoStabilizationMode = AVCaptureVideoStabilizationModeCinematic;
-        }
-    }
+    bool formatSupportsStandard = [_videoDevice.activeFormat isVideoStabilizationModeSupported:AVCaptureVideoStabilizationModeStandard];
+    videoConnection.preferredVideoStabilizationMode = TGVideoMessageStabilizationMode(videoConnection.supportsVideoStabilization, formatSupportsStandard);
 }
 
 - (void)_reconfigureDevice:(AVCaptureDevice *)device withBlock:(void (^)(AVCaptureDevice *device))block
