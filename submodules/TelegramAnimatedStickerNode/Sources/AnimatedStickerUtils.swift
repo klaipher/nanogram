@@ -274,9 +274,7 @@ public func cacheVideoStickerFrames(path: String, size: CGSize, cacheKey: String
             guard let file = ManagedFile(queue: nil, path: tempFile.path, mode: .readwrite) else {
                 return
             }
-            let _ = data.withUnsafeBytes { buffer in
-                file.write(buffer.baseAddress!, count: buffer.count)
-            }
+            let _ = file.write(data)
             
             subscriber.putNext(.tempFile(tempFile))
             subscriber.putCompletion()

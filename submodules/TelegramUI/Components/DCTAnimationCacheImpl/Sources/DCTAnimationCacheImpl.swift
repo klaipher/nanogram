@@ -74,9 +74,11 @@ private protocol FrameStreamWriter: AnyObject {
 private extension FrameStreamWriter {
     func writeUInt32(_ value: UInt32) throws {
         var value: UInt32 = value
-        try withUnsafeBytes(of: &value, { bytes -> Void in
-            try self.write(bytes: bytes.baseAddress!.assumingMemoryBound(to: UInt8.self), count: 4)
-        })
+        try withUnsafePointer(to: &value) { pointer in
+            try pointer.withMemoryRebound(to: UInt8.self, capacity: 4) { bytes in
+                try self.write(bytes: bytes, count: 4)
+            }
+        }
     }
 }
 
@@ -87,9 +89,11 @@ private protocol FrameStreamReader: AnyObject {
 private extension FrameStreamReader {
     func readUInt32() throws -> UInt32 {
         var value: UInt32 = 0
-        try withUnsafeMutableBytes(of: &value, { bytes -> Void in
-            try self.read(bytes: bytes.baseAddress!.assumingMemoryBound(to: UInt8.self), count: 4)
-        })
+        try withUnsafeMutablePointer(to: &value) { pointer in
+            try pointer.withMemoryRebound(to: UInt8.self, capacity: 4) { bytes in
+                try self.read(bytes: bytes, count: 4)
+            }
+        }
         return value
     }
 }
@@ -1037,13 +1041,13 @@ private final class BlockCompressedFileWriter: FrameStreamWriter {
     init(file: ManagedFile, codec: DCTAnimationCacheCodec) {
         self.file = file
         self.algorithm = codec.algorithm
-        self.scratch = malloc(max(1, compression_encode_scratch_buffer_size(codec.algorithm)))!
+        self.scratch = UnsafeMutableRawPointer.allocate(byteCount: max(1, compression_encode_scratch_buffer_size(codec.algorithm)), alignment: 16)
         self.pendingCapacity = BlockCompressedFileWriter.blockSize * 2
         self.pending = UnsafeMutablePointer<UInt8>.allocate(capacity: self.pendingCapacity)
     }
     
     deinit {
-        free(self.scratch)
+        self.scratch.deallocate()
         self.pending.deallocate()
         self.output?.deallocate()
     }
@@ -1085,12 +1089,15 @@ private final class BlockCompressedFileWriter: FrameStreamWriter {
     private func flushBlock() throws {
         // Room for incompressible input, which these codecs expand only slightly.
         let capacity = 8 + self.pendingCount + self.pendingCount / 8 + 4096
-        if self.outputCapacity < capacity {
+        let output: UnsafeMutablePointer<UInt8>
+        if let current = self.output, self.outputCapacity >= capacity {
+            output = current
+        } else {
             self.output?.deallocate()
-            self.output = UnsafeMutablePointer<UInt8>.allocate(capacity: capacity)
+            output = UnsafeMutablePointer<UInt8>.allocate(capacity: capacity)
+            self.output = output
             self.outputCapacity = capacity
         }
-        let output = self.output!
         let compressedCount = compression_encode_buffer(output.advanced(by: 8), capacity - 8, self.pending, self.pendingCount, self.scratch, self.algorithm)
         if compressedCount <= 0 {
             self.didFail = true
@@ -1131,11 +1138,11 @@ private final class BlockDecompressedData: FrameStreamReader {
         self.position = dataRange.lowerBound
         self.end = dataRange.upperBound
         self.algorithm = codec.algorithm
-        self.scratch = malloc(max(1, compression_decode_scratch_buffer_size(codec.algorithm)))!
+        self.scratch = UnsafeMutableRawPointer.allocate(byteCount: max(1, compression_decode_scratch_buffer_size(codec.algorithm)), alignment: 16)
     }
     
     deinit {
-        free(self.scratch)
+        self.scratch.deallocate()
         self.block?.deallocate()
     }
     
@@ -1151,17 +1158,23 @@ private final class BlockDecompressedData: FrameStreamReader {
             self.position = self.end
             throw ReadError.didReadToEnd
         }
-        if self.blockCapacity < rawLength {
+        let block: UnsafeMutablePointer<UInt8>
+        if let current = self.block, self.blockCapacity >= rawLength {
+            block = current
+        } else {
             self.block?.deallocate()
-            self.block = UnsafeMutablePointer<UInt8>.allocate(capacity: rawLength)
+            block = UnsafeMutablePointer<UInt8>.allocate(capacity: rawLength)
+            self.block = block
             self.blockCapacity = rawLength
         }
-        let block = self.block!
         let position = self.position
         let algorithm = self.algorithm
         let scratch = self.scratch
         let decodedLength = self.compressedData.withUnsafeBytes { bytes -> Int in
-            return compression_decode_buffer(block, rawLength, bytes.baseAddress!.assumingMemoryBound(to: UInt8.self).advanced(by: position), compressedLength, scratch, algorithm)
+            guard let base = bytes.baseAddress else {
+                return 0
+            }
+            return compression_decode_buffer(block, rawLength, base.assumingMemoryBound(to: UInt8.self).advanced(by: position), compressedLength, scratch, algorithm)
         }
         if decodedLength != rawLength {
             self.position = self.end
@@ -1178,8 +1191,11 @@ private final class BlockDecompressedData: FrameStreamReader {
             if self.blockPosition == self.blockLength {
                 try self.loadNextBlock()
             }
+            guard let block = self.block else {
+                throw ReadError.didReadToEnd
+            }
             let available = min(count - copied, self.blockLength - self.blockPosition)
-            bytes.advanced(by: copied).update(from: self.block!.advanced(by: self.blockPosition), count: available)
+            bytes.advanced(by: copied).update(from: block.advanced(by: self.blockPosition), count: available)
             self.blockPosition += available
             copied += available
         }

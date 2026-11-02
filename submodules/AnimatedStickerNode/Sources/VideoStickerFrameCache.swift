@@ -35,12 +35,12 @@ private final class VideoStickerFrameCacheEncoder {
         assert(frameLength % 16 == 0)
         let yuvaPixelsPerAlphaRow = (Int(size.width) + 1) & (~1)
         self.yuvaLength = Int(size.width) * Int(size.height) * 2 + yuvaPixelsPerAlphaRow * Int(size.height) / 2
-        self.yuvaFrameData = malloc(self.yuvaLength)!
+        self.yuvaFrameData = UnsafeMutableRawPointer.allocate(byteCount: self.yuvaLength, alignment: 16)
         memset(self.yuvaFrameData, 0, self.yuvaLength)
-        self.previousYuvaFrameData = malloc(self.yuvaLength)!
+        self.previousYuvaFrameData = UnsafeMutableRawPointer.allocate(byteCount: self.yuvaLength, alignment: 16)
         memset(self.previousYuvaFrameData, 0, self.yuvaLength)
         self.compressedFrameData = Data(count: frameLength)
-        self.scratchData = malloc(compression_encode_scratch_buffer_size(COMPRESSION_LZFSE))!
+        self.scratchData = UnsafeMutableRawPointer.allocate(byteCount: max(1, compression_encode_scratch_buffer_size(COMPRESSION_LZFSE)), alignment: 16)
 
         self.append(fps)
         self.append(0 as Int32)
@@ -50,9 +50,9 @@ private final class VideoStickerFrameCacheEncoder {
     }
 
     deinit {
-        free(self.yuvaFrameData)
-        free(self.previousYuvaFrameData)
-        free(self.scratchData)
+        self.yuvaFrameData.deallocate()
+        self.previousYuvaFrameData.deallocate()
+        self.scratchData.deallocate()
     }
 
     private func append(_ value: Int32) {
@@ -86,7 +86,10 @@ private final class VideoStickerFrameCacheEncoder {
         let previous = self.previousYuvaFrameData
         let scratch = self.scratchData
         let length = self.compressedFrameData.withUnsafeMutableBytes { buffer -> Int in
-            return compression_encode_buffer(buffer.baseAddress!.assumingMemoryBound(to: UInt8.self), compressedFrameDataLength, previous.assumingMemoryBound(to: UInt8.self), yuvaLength, scratch, COMPRESSION_LZFSE)
+            guard let base = buffer.baseAddress else {
+                return 0
+            }
+            return compression_encode_buffer(base.assumingMemoryBound(to: UInt8.self), compressedFrameDataLength, previous.assumingMemoryBound(to: UInt8.self), yuvaLength, scratch, COMPRESSION_LZFSE)
         }
         self.append(Int32(length))
         self.output.append(self.compressedFrameData.prefix(length))
@@ -102,8 +105,8 @@ private final class VideoStickerFrameCacheEncoder {
         if complete && self.frameCount > 0 {
             var frameCount = self.frameCount
             let offset = self.frameCountOffset
-            let _ = self.output.withUnsafeMutableBytes { buffer in
-                memcpy(buffer.baseAddress!.advanced(by: offset), &frameCount, 4)
+            withUnsafeBytes(of: &frameCount) { bytes in
+                self.output.replaceSubrange(offset ..< offset + 4, with: bytes)
             }
         }
         return self.output
