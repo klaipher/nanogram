@@ -26,15 +26,15 @@
 ///     numbers.moveSubranges(negativeSubranges, to: 0)
 ///     // numbers == [-5, -3, -9, 10, 12, 14, 15]
 public struct RangeSet<Bound: Comparable> {
-  internal var _ranges = _RangeSetStorage<Bound>()
+  @usableFromInline internal var _ranges = _RangeSetStorage<Bound>()
   
   /// Creates an empty range set.
-  public init() {}
+  @inlinable public init() {}
   
   /// Creates a range set containing the given range.
   ///
   /// - Parameter range: The range to use for the new range set.
-  public init(_ range: Range<Bound>) {
+  @inlinable public init(_ range: Range<Bound>) {
     if !range.isEmpty {
       self._ranges = _RangeSetStorage(range)
     }
@@ -48,7 +48,7 @@ public struct RangeSet<Bound: Comparable> {
   /// passed to this initializer.
   ///
   /// - Parameter ranges: The ranges to use for the new range set.
-  public init<S: Sequence>(_ ranges: S) where S.Element == Range<Bound> {
+  @inlinable public init<S: Sequence>(_ ranges: S) where S.Element == Range<Bound> {
     for range in ranges {
       insert(contentsOf: range)
     }
@@ -61,24 +61,28 @@ public struct RangeSet<Bound: Comparable> {
   /// or upper bounds. In addition to not overlapping, no two consecutive
   /// ranges share an upper and lower bound — `[0..<5, 5..<10]` is ill-formed,
   /// and would instead be represented as `[0..<10]`.
-  internal func _checkInvariants() {
+  // Debug builds only, like the stdlib's RangeSet (`INTERNAL_CHECKS_ENABLED`): every caller
+  // builds already ordered ranges, and the check cost ~15% of RangeSet time in release.
+  @inlinable internal func _checkInvariants() {
+    #if DEBUG
     for (a, b) in zip(ranges, ranges.dropFirst()) {
       precondition(!a.isEmpty && !b.isEmpty, "Empty range in range set")
       precondition(
         a.upperBound < b.lowerBound,
         "Out of order/overlapping ranges in range set")
     }
+    #endif
   }
   
   /// Creates a new range set from `ranges`, which satisfies the range set
   /// invariants.
-  internal init(_orderedRanges ranges: [Range<Bound>]) {
+  @inlinable internal init(_orderedRanges ranges: [Range<Bound>]) {
     self._ranges = _RangeSetStorage(ranges)
     _checkInvariants()
   }
   
   /// A Boolean value indicating whether the range set is empty.
-  public var isEmpty: Bool {
+  @inlinable public var isEmpty: Bool {
     _ranges.isEmpty
   }
   
@@ -91,14 +95,14 @@ public struct RangeSet<Bound: Comparable> {
   ///
   /// - Complexity: O(log *n*), where *n* is the number of ranges in the
   ///   range set.
-  public func contains(_ value: Bound) -> Bool {
+  @inlinable public func contains(_ value: Bound) -> Bool {
     let i = _ranges._partitioningIndex { $0.upperBound > value }
     return i == _ranges.endIndex
       ? false
       : _ranges[i].lowerBound <= value
   }
     
-  public func intersects(_ range: Range<Bound>) -> Bool {
+  @inlinable public func intersects(_ range: Range<Bound>) -> Bool {
     if _ranges.isEmpty {
       return false
     }
@@ -123,7 +127,7 @@ public struct RangeSet<Bound: Comparable> {
   /// - `_indicesOfRange(12..<19) == 1..<2`
   /// - `_indicesOfRange(17..<19) == 2..<2`
   /// - `_indicesOfRange(12..<22) == 1..<3`
-  func _indicesOfRange(_ range: Range<Bound>) -> Range<Int> {
+  @inlinable func _indicesOfRange(_ range: Range<Bound>) -> Range<Int> {
     precondition(!range.isEmpty)
     precondition(!_ranges.isEmpty)
     precondition(range.lowerBound <= _ranges.last!.upperBound)
@@ -153,7 +157,7 @@ public struct RangeSet<Bound: Comparable> {
   /// - Precondition: The range set must be empty, or else
   ///   `ranges.last!.upperBound <= range.lowerBound`.
   /// - Precondition: `range` must not be empty.
-  internal mutating func _append(_ range: Range<Bound>) {
+  @inlinable internal mutating func _append(_ range: Range<Bound>) {
     precondition(_ranges.isEmpty
       || _ranges.last!.upperBound <= range.lowerBound)
     precondition(!range.isEmpty)
@@ -173,7 +177,7 @@ public struct RangeSet<Bound: Comparable> {
   ///
   /// - Complexity: O(*n*), where *n* is the number of ranges in the range
   ///   set.
-  public mutating func insert(contentsOf range: Range<Bound>) {
+  @inlinable public mutating func insert(contentsOf range: Range<Bound>) {
     // Shortcuts for the (literal) edge cases
     if range.isEmpty { return }
     guard !_ranges.isEmpty else {
@@ -215,7 +219,7 @@ public struct RangeSet<Bound: Comparable> {
   ///
   /// - Complexity: O(*n*), where *n* is the number of ranges in the range
   ///   set.
-  public mutating func remove(contentsOf range: Range<Bound>) {
+  @inlinable public mutating func remove(contentsOf range: Range<Bound>) {
     // Shortcuts for the (literal) edge cases
     if range.isEmpty
       || _ranges.isEmpty
@@ -261,12 +265,17 @@ extension RangeSet: Hashable where Bound: Hashable {}
 extension RangeSet {
   /// A collection of the ranges that make up a range set.
   public struct Ranges: RandomAccessCollection {
-    var _ranges: _RangeSetStorage<Bound>
+    @usableFromInline var _ranges: _RangeSetStorage<Bound>
     
-    public var startIndex: Int { _ranges.startIndex }
-    public var endIndex: Int { _ranges.endIndex }
+    @inlinable
+    init(_ranges: _RangeSetStorage<Bound>) {
+      self._ranges = _ranges
+    }
     
-    public subscript(i: Int) -> Range<Bound> {
+    @inlinable public var startIndex: Int { _ranges.startIndex }
+    @inlinable public var endIndex: Int { _ranges.endIndex }
+    
+    @inlinable public subscript(i: Int) -> Range<Bound> {
       _ranges[i]
     }
   }
@@ -275,7 +284,7 @@ extension RangeSet {
   ///
   /// The ranges that you access by using `ranges` never overlap, are never
   /// empty, and are always in increasing order.
-  public var ranges: Ranges {
+  @inlinable public var ranges: Ranges {
     Ranges(_ranges: _ranges)
   }
 }
@@ -290,7 +299,7 @@ extension RangeSet {
   ///   - index: The index to include in the range set. `index` must be a
   ///     valid index of `collection` that isn't the collection's `endIndex`.
   ///   - collection: The collection that contains `index`.
-  public init<S, C>(_ indices: S, within collection: C)
+  @inlinable public init<S, C>(_ indices: S, within collection: C)
     where S: Sequence, C: Collection, S.Element == C.Index, C.Index == Bound
   {
     for i in indices {
@@ -308,7 +317,7 @@ extension RangeSet {
   ///
   /// - Complexity: O(*n*), where *n* is the number of ranges in the range
   ///   set.
-  public mutating func insert<C>(_ index: Bound, within collection: C)
+  @inlinable public mutating func insert<C>(_ index: Bound, within collection: C)
     where C: Collection, C.Index == Bound
   {
     insert(contentsOf: index ..< collection.index(after: index))
@@ -324,7 +333,7 @@ extension RangeSet {
   ///
   /// - Complexity: O(*n*), where *n* is the number of ranges in the range
   ///   set.
-  public mutating func remove<C>(_ index: Bound, within collection: C)
+  @inlinable public mutating func remove<C>(_ index: Bound, within collection: C)
     where C: Collection, C.Index == Bound
   {
     remove(contentsOf: index ..< collection.index(after: index))
@@ -340,7 +349,7 @@ extension RangeSet {
   ///
   /// - Complexity: O(*n*), where *n* is the number of ranges in the range
   ///   set.
-  internal func _inverted<C>(within collection: C) -> RangeSet
+  @inlinable internal func _inverted<C>(within collection: C) -> RangeSet
     where C: Collection, C.Index == Bound
   {
     return _gaps(
@@ -349,7 +358,7 @@ extension RangeSet {
   
   /// Returns a range set that represents the ranges of values within the
   /// given bounds that aren't represented by this range set.
-  internal func _gaps(boundedBy bounds: Range<Bound>) -> RangeSet {
+  @inlinable internal func _gaps(boundedBy bounds: Range<Bound>) -> RangeSet {
     guard !_ranges.isEmpty else { return RangeSet(bounds) }
     guard let start = _ranges.firstIndex(where: { $0.lowerBound >= bounds.lowerBound })
       else { return RangeSet() }
@@ -375,7 +384,7 @@ extension RangeSet {
   /// Adds the contents of the given range set to this range set.
   ///
   /// - Parameter other: A range set to merge with this one.
-  public mutating func formUnion(_ other: __owned RangeSet<Bound>) {
+  @inlinable public mutating func formUnion(_ other: __owned RangeSet<Bound>) {
     for range in other._ranges {
       insert(contentsOf: range)
     }
@@ -385,7 +394,7 @@ extension RangeSet {
   /// range set.
   ///
   /// - Parameter other: A range set to intersect with.
-  public mutating func formIntersection(_ other: RangeSet<Bound>) {
+  @inlinable public mutating func formIntersection(_ other: RangeSet<Bound>) {
     self = self.intersection(other)
   }
   
@@ -394,7 +403,7 @@ extension RangeSet {
   /// range set.
   ///
   /// - Parameter other: A range set to perform a symmetric difference against.
-  public mutating func formSymmetricDifference(
+  @inlinable public mutating func formSymmetricDifference(
     _ other: __owned RangeSet<Bound>
   ) {
     self = self.symmetricDifference(other)
@@ -403,7 +412,7 @@ extension RangeSet {
   /// Removes the contents of the given range set from this range set.
   ///
   /// - Parameter other: A range set to subtract from this one.
-  public mutating func subtract(_ other: RangeSet<Bound>) {
+  @inlinable public mutating func subtract(_ other: RangeSet<Bound>) {
     for range in other._ranges {
       remove(contentsOf: range)
     }
@@ -414,7 +423,7 @@ extension RangeSet {
   ///
   /// - Parameter other: The range set to merge with this one.
   /// - Returns: A new range set.
-  public __consuming func union(
+  @inlinable public __consuming func union(
     _ other: __owned RangeSet<Bound>
   ) -> RangeSet<Bound> {
     var result = self
@@ -427,7 +436,7 @@ extension RangeSet {
   ///
   /// - Parameter other: The range set to merge with this one.
   /// - Returns: A new range set.
-  public __consuming func intersection(
+  @inlinable public __consuming func intersection(
     _ other: RangeSet<Bound>
   ) -> RangeSet<Bound> {
     var otherRangeIndex = 0
@@ -496,7 +505,7 @@ extension RangeSet {
   ///
   /// - Parameter other: The range set to find a symmetric difference with.
   /// - Returns: A new range set.
-  public __consuming func symmetricDifference(
+  @inlinable public __consuming func symmetricDifference(
     _ other: __owned RangeSet<Bound>
   ) -> RangeSet<Bound> {
     return union(other).subtracting(intersection(other))
@@ -507,7 +516,7 @@ extension RangeSet {
   ///
   /// - Parameter other: The range set to subtract.
   /// - Returns: A new range set.
-  public func subtracting(_ other: RangeSet<Bound>) -> RangeSet<Bound> {
+  @inlinable public func subtracting(_ other: RangeSet<Bound>) -> RangeSet<Bound> {
     var result = self
     result.subtract(other)
     return result
@@ -519,7 +528,7 @@ extension RangeSet {
   /// - Parameter other: A range set to compare against.
   /// - Returns: `true` if this range set is a subset of `other`;
   ///   otherwise, `false`.
-  public func isSubset(of other: RangeSet<Bound>) -> Bool {
+  @inlinable public func isSubset(of other: RangeSet<Bound>) -> Bool {
     self.intersection(other) == self
   }
   
@@ -529,7 +538,7 @@ extension RangeSet {
   /// - Parameter other: A range set to compare against.
   /// - Returns: `true` if this range set is a superset of `other`;
   ///   otherwise, `false`.
-  public func isSuperset(of other: RangeSet<Bound>) -> Bool {
+  @inlinable public func isSuperset(of other: RangeSet<Bound>) -> Bool {
     other.isSubset(of: self)
   }
   
@@ -539,7 +548,7 @@ extension RangeSet {
   /// - Parameter other: A range set to compare against.
   /// - Returns: `true` if this range set is a strict subset of `other`;
   ///   otherwise, `false`.
-  public func isStrictSubset(of other: RangeSet<Bound>) -> Bool {
+  @inlinable public func isStrictSubset(of other: RangeSet<Bound>) -> Bool {
     self != other && isSubset(of: other)
   }
   
@@ -549,13 +558,13 @@ extension RangeSet {
   /// - Parameter other: A range set to compare against.
   /// - Returns: `true` if this range set is a strict superset of `other`;
   ///   otherwise, `false`.
-  public func isStrictSuperset(of other: RangeSet<Bound>) -> Bool {
+  @inlinable public func isStrictSuperset(of other: RangeSet<Bound>) -> Bool {
     other.isStrictSubset(of: self)
   }
 }
 
 extension RangeSet: CustomStringConvertible {
-  public var description: String {
+  @inlinable public var description: String {
     let rangesDescription = _ranges
       .map { r in "\(r.lowerBound)..<\(r.upperBound)" }
       .joined(separator: ", ")
