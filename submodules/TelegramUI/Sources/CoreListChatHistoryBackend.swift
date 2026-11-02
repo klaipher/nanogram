@@ -91,8 +91,9 @@ private final class CoreListChatScrollMotion {
 }
 
 // PoC alternative ChatHistoryListViewBackend backed by CoreVirtualListView (from the vendored
-// CoreList module). Selected via the `coreListChatBackend` experimental flag; the default
-// ListViewImpl path is unaffected.
+// CoreList module). The default for the rotated chat history (`ChatHistoryListNodeImpl.makeListView`);
+// Debug Settings ▸ "Chat: old list (ListViewImpl)" (`forceListViewImplChatBackend`) and the
+// `ios_killswitch_disable_corelist_chat_backend` server flag opt out.
 //
 // This is a proof of concept: it targets display / scroll / load-more only. Members outside that
 // scope are safe stubs (no-ops / plain storage) and must never crash. Architecture, invariants, and
