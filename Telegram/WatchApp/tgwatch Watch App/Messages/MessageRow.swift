@@ -126,7 +126,7 @@ func messageRows(
     // update. Only a new day pays for a key string and a label. Days start at midnight in
     // every calendar, so the key uses Gregorian dates, which are unique per day (a Chinese
     // leap month repeats its month number).
-    var labels = DaySeparatorLabels(today: today, calendar: calendar, locale: locale)
+    let labels = DaySeparatorLabels(today: today, calendar: calendar, locale: locale)
     var keyCalendar = Calendar(identifier: .gregorian)
     keyCalendar.timeZone = calendar.timeZone
     var rows: [MessageRow] = []

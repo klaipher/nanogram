@@ -108,6 +108,17 @@ struct OptimizeStorage: Codable, Equatable {
     let excludeChatIds: [Int64]
     let returnDeletedFileStatistics: Bool
     let chatLimit: Int
+
+    /// TDLib's keys: the coders use default key strategies (see TDShim's Generated/README.md).
+    enum CodingKeys: String, CodingKey {
+        case size, ttl, count
+        case immunityDelay = "immunity_delay"
+        case fileTypes = "file_types"
+        case chatIds = "chat_ids"
+        case excludeChatIds = "exclude_chat_ids"
+        case returnDeletedFileStatistics = "return_deleted_file_statistics"
+        case chatLimit = "chat_limit"
+    }
 }
 
 /// An explicit trim on top of TDLib's daily optimizer (`use_storage_optimizer`), which keeps

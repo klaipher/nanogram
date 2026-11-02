@@ -9,6 +9,8 @@ import OpusKit
 /// fail, so a test notices an unexpected call.
 actor CoreFakeHistoryLoader: ChatHistoryLoader {
     private(set) var viewed: [[Int64]] = []
+    private(set) var downloads: [(fileId: Int, priority: Int)] = []
+    private(set) var cancelledDownloads: [Int] = []
     private(set) var historyRequests: [(from: Int64, offset: Int, limit: Int)] = []
     var historyResult: Result<[Message], Error> = .success([])
 
@@ -20,8 +22,11 @@ actor CoreFakeHistoryLoader: ChatHistoryLoader {
         historyRequests.append((fromMessageId, offset, limit))
         return try historyResult.get()
     }
-    func downloadFile(fileId: Int, priority: Int) async throws -> File { throw CancellationError() }
-    func cancelDownloadFile(fileId: Int) async throws {}
+    func downloadFile(fileId: Int, priority: Int) async throws -> File {
+        downloads.append((fileId, priority))
+        throw CancellationError()
+    }
+    func cancelDownloadFile(fileId: Int) async throws { cancelledDownloads.append(fileId) }
     func sendText(chatId: Int64, text: String) async throws -> Message { throw CancellationError() }
     func sendVoiceNote(chatId: Int64, fileURL: URL, duration: Int, waveform: Data) async throws -> Message {
         throw CancellationError()
@@ -82,9 +87,7 @@ enum CoreFixtures {
 
     /// The decoder TDLibApi uses for every response.
     static func tdlibDecoder() -> JSONDecoder {
-        let decoder = JSONDecoder()
-        decoder.keyDecodingStrategy = .convertFromSnakeCase
-        return decoder
+        JSONDecoder()
     }
 
     /// A plain incoming text message as TDLib 1.8.64 sends it.

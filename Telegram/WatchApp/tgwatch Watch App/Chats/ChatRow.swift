@@ -46,29 +46,54 @@ struct ChatRow: Identifiable, Equatable, Hashable {
         candidates.sort { $0.order > $1.order }
         let top = limit == .max ? candidates : Array(candidates.prefix(limit))
         return top.map { entry in
-            let lm = entry.chat.lastMessage
-            let isUnreadOutgoing = !isSavedMessages(chat: entry.chat, selfUserId: selfUserId)
-                && lm?.isOutgoing == true
-                && lm?.sendingState == .sent
-                && (lm?.id ?? 0) > entry.chat.lastReadOutboxMessageId
-            return ChatRow(
-                id: entry.chat.id,
-                title: displayTitle(for: entry.chat, selfUserId: selfUserId),
-                preview: chatPreview(entry.chat, userNames: userNames, selfUserId: selfUserId),
-                unreadCount: entry.chat.unreadCount,
-                isMuted: entry.chat.muteFor > 0,
-                order: entry.order,
-                chatType: entry.chat.type,
-                canSend: deriveCanSend(entry.chat),
-                draftText: entry.chat.draftText ?? "",
-                lastReadInboxMessageId: entry.chat.lastReadInboxMessageId,
-                lastReadOutboxMessageId: entry.chat.lastReadOutboxMessageId,
-                lastMessageId: entry.chat.lastMessage?.id,
-                lastMessageDate: entry.chat.lastMessage?.date,
-                avatar: avatarVisual(for: entry.chat, fileLocals: fileLocals, selfUserId: selfUserId),
-                isUnreadOutgoing: isUnreadOutgoing
-            )
+            row(for: entry.chat, order: entry.order, userNames: userNames, selfUserId: selfUserId, fileLocals: fileLocals)
         }
+    }
+
+    /// The rows for chats already in display order (`ChatListIndex.top`): the same rows as
+    /// `project(chats:…)` without scanning and sorting the whole cache.
+    static func project(
+        ordered entries: ArraySlice<ChatListIndex.Entry>,
+        chats: [Int64: CachedChat],
+        userNames: [Int64: String],
+        selfUserId: Int64?,
+        fileLocals: [Int: File] = [:]
+    ) -> [ChatRow] {
+        entries.compactMap { entry in
+            guard let chat = chats[entry.chatId] else { return nil }
+            return row(for: chat, order: TdInt64(entry.order), userNames: userNames, selfUserId: selfUserId, fileLocals: fileLocals)
+        }
+    }
+
+    private static func row(
+        for chat: CachedChat,
+        order: TdInt64,
+        userNames: [Int64: String],
+        selfUserId: Int64?,
+        fileLocals: [Int: File]
+    ) -> ChatRow {
+        let lm = chat.lastMessage
+        let isUnreadOutgoing = !isSavedMessages(chat: chat, selfUserId: selfUserId)
+            && lm?.isOutgoing == true
+            && lm?.sendingState == .sent
+            && (lm?.id ?? 0) > chat.lastReadOutboxMessageId
+        return ChatRow(
+            id: chat.id,
+            title: displayTitle(for: chat, selfUserId: selfUserId),
+            preview: chatPreview(chat, userNames: userNames, selfUserId: selfUserId),
+            unreadCount: chat.unreadCount,
+            isMuted: chat.muteFor > 0,
+            order: order,
+            chatType: chat.type,
+            canSend: deriveCanSend(chat),
+            draftText: chat.draftText ?? "",
+            lastReadInboxMessageId: chat.lastReadInboxMessageId,
+            lastReadOutboxMessageId: chat.lastReadOutboxMessageId,
+            lastMessageId: chat.lastMessage?.id,
+            lastMessageDate: chat.lastMessage?.date,
+            avatar: avatarVisual(for: chat, fileLocals: fileLocals, selfUserId: selfUserId),
+            isUnreadOutgoing: isUnreadOutgoing
+        )
     }
 }
 

@@ -43,6 +43,7 @@ final class TDClient {
     func setActiveHistory(_ store: ChatHistoryStore?) {
         activeHistory = store
         store?.setViewingActive(isSceneActive)
+        store?.setProjectionPaused(!isSceneActive)
     }
 
     /// False while the app is not frontmost (wrist down, or in the background). The open chat
@@ -53,6 +54,8 @@ final class TDClient {
         guard active != isSceneActive else { return }
         isSceneActive = active
         activeHistory?.setViewingActive(active)
+        activeHistory?.setProjectionPaused(!active)
+        chatList?.setProjectionPaused(!active)
         if active {
             optimizeStorageIfDue()
         }
@@ -82,7 +85,7 @@ final class TDClient {
     /// a server-initiated kick.
     private let logger = Logger(watchCategory: "tdlib")
     /// Creates the TDLib client; production wraps the process's one `TDLibClientManager`.
-    typealias ClientMaker = @MainActor (@escaping (Data, TDLibClient) -> Void) -> TDLibClient
+    typealias ClientMaker = @MainActor (TDUpdateDelivery) -> TDLibClient
     private let makeClient: ClientMaker
     private weak var delegate: TDClientLifecycleDelegate?
     private let qrLinkPublisher: QrLinkPublisher = .defaultProduction()
@@ -110,7 +113,10 @@ final class TDClient {
     private var storageOptimizationTask: Task<Void, Never>?
 
     convenience init(account: Account, manager: TDLibClientManager, delegate: TDClientLifecycleDelegate) {
-        self.init(account: account, makeClient: { manager.createClient(updateHandler: $0) }, delegate: delegate)
+        self.init(account: account, makeClient: { delivery in
+            let handlers = delivery.makeHandlers()
+            return manager.createClient(updateHandler: handlers.update, responseHandler: handlers.response)
+        }, delegate: delegate)
     }
 
     init(
@@ -216,10 +222,11 @@ final class TDClient {
         }
 
         qrLinkPublisher.clear()
-        let handler = Self.makeUpdateHandler(logger: logger) { [weak self] update in
-            self?.handle(update)
+        let delivery = TDUpdateDelivery(logger: logger) { [weak self] updates in
+            guard let self else { return }
+            for update in updates { self.handle(update) }
         }
-        let client = makeClient(handler)
+        let client = makeClient(delivery)
         self.client = client
 
         // Synchronous, so the level applies before setTdlibParameters and any chat request.
@@ -227,38 +234,6 @@ final class TDClient {
             try Self.setLogVerbosity(TDLibLogPolicy.current, client: client)
         } catch {
             logger.warning("setLogVerbosityLevel failed: \(error.localizedDescription, privacy: .public)")
-        }
-    }
-
-    /// TDLib calls the handler on the client's own update queue. It must be built here, outside
-    /// the main actor: Swift 6 makes a closure written inside a `@MainActor` method main-actor
-    /// isolated and checks that on entry, so the first update would crash the app.
-    nonisolated static func makeUpdateHandler(
-        logger: os.Logger,
-        deliver: @escaping @MainActor (Update) -> Void
-    ) -> (Data, TDLibClient) -> Void {
-        let decodeAndDeliver = makeUpdateDecoder(logger: logger, deliver: deliver)
-        return { data, callbackClient in
-            decodeAndDeliver(data, callbackClient.decoder)
-        }
-    }
-
-    /// Decodes on the calling (TDLib) queue and hands the update to the main actor.
-    nonisolated static func makeUpdateDecoder(
-        logger: os.Logger,
-        deliver: @escaping @MainActor (Update) -> Void
-    ) -> @Sendable (Data, JSONDecoder) -> Void {
-        return { data, decoder in
-            let update: Update
-            do {
-                update = try decoder.decode(Update.self, from: data)
-            } catch {
-                logger.warning("update decode failed: \(error.localizedDescription, privacy: .public)")
-                return
-            }
-            DispatchQueue.main.async {
-                deliver(update)
-            }
         }
     }
 
@@ -306,6 +281,7 @@ final class TDClient {
                         userNames: userNames,
                         coalesceUpdates: true
                     )
+                    chatList?.setProjectionPaused(!isSceneActive)
                 }
             }
             switch mapped {

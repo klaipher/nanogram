@@ -4,9 +4,7 @@ import XCTest
 final class DecodeParityTests: XCTestCase {
 
     private func decoder() -> JSONDecoder {
-        let d = JSONDecoder()
-        d.keyDecodingStrategy = .convertFromSnakeCase
-        return d
+        JSONDecoder()
     }
 
     func test_message_textContent_decodes() throws {

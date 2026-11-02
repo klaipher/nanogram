@@ -222,8 +222,7 @@ final class ChatHistoryStore {
     }
 
     func stop() async {
-        voicePlayback.tearDown()
-        audioPlayback.tearDown()
+        stopPlayback()
         // Drain task was scheduled by markVisible during scroll; cancel so it
         // doesn't fire viewMessages against a soon-to-be-closed chat.
         viewDrainTask?.cancel()
@@ -510,19 +509,45 @@ final class ChatHistoryStore {
     }
 
     func togglePlayback(_ note: VoiceNoteVisual) {
-        audioPlayback.tearDown()
+        stopMusic()
         if note.localPath == nil {
             requestFileDownload(fileId: note.voiceFileId, priority: 2)
         }
         voicePlayback.toggle(note: note)
     }
 
+    /// Music downloads only from here. A tap that is taken back while the file is still coming
+    /// (a second tap, another track, closing the chat) cancels its download.
     func toggleAudioPlayback(_ audio: AudioVisual) {
         voicePlayback.tearDown()
-        if audio.localPath == nil {
-            requestFileDownload(fileId: audio.audioFileId, priority: 2)
-        }
+        let waiting = pendingAudioFileId
         audioPlayback.toggle(audio: audio)
+        if let waiting, pendingAudioFileId != waiting {
+            cancelFileDownload(fileId: waiting)
+        }
+        if case .preparing(let id) = audioPlayback.state, id == audio.audioFileId, id != waiting {
+            requestFileDownload(fileId: id, priority: 2)
+        }
+    }
+
+    /// Stops voice and music (recording starts, the chat closes).
+    func stopPlayback() {
+        voicePlayback.tearDown()
+        stopMusic()
+    }
+
+    /// Every way music stops goes through here: a track still waiting for its file stops
+    /// downloading too, since only a tap asks for it.
+    private func stopMusic() {
+        if let waiting = pendingAudioFileId {
+            cancelFileDownload(fileId: waiting)
+        }
+        audioPlayback.tearDown()
+    }
+
+    private var pendingAudioFileId: Int? {
+        if case .preparing(let id) = audioPlayback.state { return id }
+        return nil
     }
 
     func cancelFileDownload(fileId: Int) {
@@ -538,6 +563,29 @@ final class ChatHistoryStore {
     }
 
     // MARK: - Update dispatch
+
+    /// True while the app is not frontmost (wrist down, or in the background). The system does
+    /// not redraw an inactive app, so updates still land in the caches but the projection waits
+    /// for `setProjectionPaused(false)`, which runs it once if anything changed.
+    private var projectionPaused = false
+    private var reprojectDeferred = false
+
+    func setProjectionPaused(_ paused: Bool) {
+        guard paused != projectionPaused else { return }
+        projectionPaused = paused
+        if !paused, reprojectDeferred {
+            reproject()
+        }
+    }
+
+    /// A voice note or track tapped just before the wrist went down starts from `reproject()`
+    /// when its file arrives, so projection keeps running while one is waiting.
+    private var defersProjection: Bool {
+        guard projectionPaused else { return false }
+        if case .preparing = voicePlayback.state { return false }
+        if case .preparing = audioPlayback.state { return false }
+        return true
+    }
 
     func handle(_ update: Update) {
         switch update {
@@ -628,6 +676,10 @@ final class ChatHistoryStore {
     /// See `ChatListStore.scheduleReproject`. Tail-of-runloop deferral for
     /// production; passthrough for tests (default).
     private func scheduleReproject() {
+        if defersProjection {
+            reprojectDeferred = true
+            return
+        }
         guard coalesceUpdates else {
             reproject()
             return
@@ -637,6 +689,11 @@ final class ChatHistoryStore {
         DispatchQueue.main.async { [weak self] in
             guard let self else { return }
             guard self.reprojectPending else { return }
+            if self.defersProjection {
+                self.reprojectPending = false
+                self.reprojectDeferred = true
+                return
+            }
             self.reproject()
         }
     }
@@ -651,6 +708,7 @@ final class ChatHistoryStore {
 
     private func reproject() {
         reprojectPending = false
+        reprojectDeferred = false
         #if DEBUG
         debugReprojectCount += 1
         #endif

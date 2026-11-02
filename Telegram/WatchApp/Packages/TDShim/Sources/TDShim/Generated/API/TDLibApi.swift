@@ -16,10 +16,10 @@ public class TDLibApi {
     public let encoder = JSONEncoder()
     public let decoder = JSONDecoder()
 
-    public init() {
-        self.encoder.keyEncodingStrategy = .convertToSnakeCase
-        self.decoder.keyDecodingStrategy = .convertFromSnakeCase
-    }
+    /// The models carry TDLib's snake_case keys as explicit CodingKeys
+    /// (tools/watch/add_coding_keys.py), so the coders use their default key strategy: a
+    /// snake-case strategy here would convert every key of every object again (50-74% of a decode).
+    public init() {}
 
 
     /// Sends request to the TDLib client.

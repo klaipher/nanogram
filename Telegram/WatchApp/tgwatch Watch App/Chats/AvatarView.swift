@@ -16,6 +16,8 @@ struct AvatarView: View {
 
     var size: CGFloat = 36
 
+    @Environment(\.displayScale) private var displayScale
+
     var body: some View {
         content
             .frame(width: size, height: size)
@@ -41,9 +43,9 @@ struct AvatarView: View {
                     .foregroundStyle(.white)
             }
         case .normal:
-            if let path = avatar.photoLocalPath, let img = UIImage(contentsOfFile: path) {
+            if let path = avatar.photoLocalPath, let img = AvatarImages.photo(path: path, pointSize: size, scale: displayScale) {
                 Image(uiImage: img).resizable().scaledToFill()
-            } else if let data = avatar.mini, let img = UIImage(data: data) {
+            } else if let data = avatar.mini, let img = AvatarImages.minithumbnail(data, photoFileId: avatar.photoFileId) {
                 Image(uiImage: img).resizable().scaledToFill().blur(radius: 1.5)
             } else {
                 ZStack {
@@ -54,6 +56,23 @@ struct AvatarView: View {
                 }
             }
         }
+    }
+}
+
+/// Avatar images through `MediaImageCache`: a chat-list change re-evaluates every visible row,
+/// and each used to read and decode its avatar file again.
+enum AvatarImages {
+    /// The downloaded photo (TDLib's 160 px small size), decoded at the size it is drawn.
+    static func photo(path: String, pointSize: CGFloat, scale: CGFloat) -> UIImage? {
+        let pixels = Int((pointSize * max(scale, 1)).rounded(.up))
+        return MediaImageCache.image(path: path, format: .native, maxPixelSize: pixels)
+    }
+
+    /// The minithumbnail placeholder. A photo's minithumbnail never changes, so its file id
+    /// keys it; without one it is decoded uncached.
+    static func minithumbnail(_ data: Data, photoFileId: Int?) -> UIImage? {
+        guard let photoFileId else { return UIImage(data: data) }
+        return MediaImageCache.image(key: "avatar-mini|\(photoFileId)") { UIImage(data: data) }
     }
 }
 
