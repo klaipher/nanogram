@@ -30,6 +30,7 @@ swift_library(
     ]),
     deps = [
         ":ChatMessageItemCommon",
+        "//submodules/Emoji",
         "//submodules/Display",
         "//submodules/TelegramCore",
         "//submodules/Postbox",

@@ -3746,6 +3746,11 @@ extension ChatControllerImpl {
             strongSelf.present(actionSheet, in: .window(.root))
         }, updateInputLanguage: { [weak self] f in
             if let strongSelf = self {
+                // The composer reports the keyboard language after every keystroke, right after the text update
+                // ran the whole presentation pipeline; an unchanged language would run it all a second time.
+                guard strongSelf.presentationInterfaceState.interfaceState.withChangedInputLanguage(f) != nil else {
+                    return
+                }
                 strongSelf.updateChatPresentationInterfaceState(animated: true, interactive: true, {
                     return $0.updatedInterfaceState({ $0.withUpdatedInputLanguage(f($0.inputLanguage)) })
                 })

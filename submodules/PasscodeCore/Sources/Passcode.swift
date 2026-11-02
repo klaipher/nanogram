@@ -338,21 +338,6 @@ public final class PasscodeCredentialStore: @unchecked Sendable {
         }
     }
 
-    /// Removes credential authority so the next launch can migrate legacy metadata.
-    /// Both closures run under the credential lock and must not reenter this store.
-    /// The continuation must commit the legacy state and terminate the process.
-    public func _internalResetForPasscodeMigrationTest(removingProtectedData: () throws -> Void, then: () throws -> Never) throws -> Never {
-        try self.serialized { () throws -> Never in
-            PasscodeSession.invalidateAll()
-            try removingProtectedData()
-            try self.storage.remove("attempts")
-            try self.storage.remove("device")
-            try self.storage.remove("credential")
-            self.expectsCredential = false
-            try then()
-        }
-    }
-
     private func serialized<T>(_ body: () throws -> T) throws -> T {
         self.mutex.lock()
         defer {

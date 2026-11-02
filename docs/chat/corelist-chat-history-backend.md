@@ -14,11 +14,13 @@ in this order:
    only surface it has been built and verified against. `rotated` defaults to `false` on that
    initializer, so every list that does not name it (the overlay audio player's playlist, the
    shared-context message list, an embedded chat preview) stays on `ListViewImpl` without saying so.
-2. **`coreListChatBackend`** (Debug Settings) keeps its original meaning — force CoreList on — which
-   after the default flip is only reachable for those non-rotated lists.
-3. **`ios_killswitch_disable_corelist_chat_backend`** (server app config) forces `ListViewImpl`. It
-   outranks the debug switch deliberately: setting it must guarantee no CoreList in the field, and a
-   device-local opt-out for the switch already exists (turn it off).
+2. **`forceListViewImplChatBackend`** (Debug Settings ▸ "Chat: old list (ListViewImpl)") forces
+   `ListViewImpl` for the chat history on this device: the device-local opt-out, for A/B measurements
+   or a device where CoreList misbehaves. (It replaced the `coreListChatBackend` "force CoreList on"
+   switch in 2026-11; that one was only reachable for the non-rotated lists after the default flip.
+   The old key is not migrated.)
+3. **`ios_killswitch_disable_corelist_chat_backend`** (server app config) forces `ListViewImpl`:
+   setting it guarantees no CoreList in the field.
 
 The chosen backend is published as `ChatHistoryListNodeImpl.usesCoreListBackend`. **Chat-layer code
 that is deliberately CoreList-only must read that**, not re-derive the policy — one site already

@@ -1899,7 +1899,7 @@ public final class PresentationGroupCallImpl: PresentationGroupCall {
                                 self.requestCall(movingFromBroadcastToRtc: false)
                             }
                         }
-                    }, outgoingAudioBitrateKbit: outgoingAudioBitrateKbit,videoContentType: self.isVideoEnabled ? .generic : .none, enableNoiseSuppression: false, disableAudioInput: self.isStream, enableSystemMute: self.accountContext.sharedContext.immediateExperimentalUISettings.experimentalCallMute, useReferenceImpl: useReferenceImpl, prioritizeVP8: prioritizeVP8, logPath: allocateCallLogPath(account: self.account), onMutedSpeechActivityDetected: { [weak self] value in
+                    }, outgoingAudioBitrateKbit: outgoingAudioBitrateKbit,videoContentType: self.isVideoEnabled ? .generic : .none, enableNoiseSuppression: false, disableAudioInput: self.isStream, enableSystemMute: false, useReferenceImpl: useReferenceImpl, prioritizeVP8: prioritizeVP8, logPath: allocateCallLogPath(account: self.account), onMutedSpeechActivityDetected: { [weak self] value in
                         Queue.mainQueue().async {
                             guard let self else {
                                 return

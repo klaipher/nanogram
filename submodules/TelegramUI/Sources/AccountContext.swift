@@ -204,7 +204,12 @@ public final class AccountContextImpl: AccountContext {
     public let animationRenderer: MultiAnimationRenderer
     
     private var animatedEmojiStickersDisposable: Disposable?
-    public private(set) var animatedEmojiStickersValue: [String: [StickerPackItem]] = [:]
+    public private(set) var animatedEmojiStickersValue: [String: [StickerPackItem]] = [:] {
+        didSet {
+            self.animatedEmojiStickerKeys = Set(self.animatedEmojiStickersValue.keys)
+        }
+    }
+    public private(set) var animatedEmojiStickerKeys: Set<String> = Set()
     private let animatedEmojiStickersPromise = Promise<[String: [StickerPackItem]]>()
     public var animatedEmojiStickers: Signal<[String: [StickerPackItem]], NoError> {
         return self.animatedEmojiStickersPromise.get()
@@ -450,14 +455,6 @@ public final class AccountContextImpl: AccountContext {
             
             if data["ios_killswitch_contact_diffing"] != nil {
                 sharedDisableDeviceContactDataDiffing = true
-            }
-            
-            if let url = data["ios_update_url"] as? String, !url.isEmpty {
-                let _ = (sharedContext.accountManager.transaction { transaction -> Void in
-                    transaction.updateSharedData(ApplicationSpecificSharedDataKeys.updateSettings, { _ in
-                        return EnginePreferencesEntry(UpdateSettings(url: url))
-                    })
-                }).start()
             }
         })
                 

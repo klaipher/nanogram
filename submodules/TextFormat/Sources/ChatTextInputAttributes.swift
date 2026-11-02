@@ -805,6 +805,41 @@ public func refreshChatTextInputAttributes(context: AnyObject, textView: UITextV
     refreshChatTextInputAttributes(context: context, textView: textView, primaryTextColor: theme.chat.inputPanel.primaryTextColor, accentTextColor: theme.chat.inputPanel.panelControlAccentColor, baseFontSize: baseFontSize, spoilersRevealed: spoilersRevealed, availableEmojis: availableEmojis, emojiViewProvider: emojiViewProvider, makeCollapsedQuoteAttachment: makeCollapsedQuoteAttachment)
 }
 
+private let originalFontAttribute = NSAttributedString.Key("NSOriginalFont")
+
+func attributedStringContainsOriginalFont(_ string: NSAttributedString) -> Bool {
+    var found = false
+    string.enumerateAttribute(originalFontAttribute, in: NSRange(location: 0, length: string.length), options: [.longestEffectiveRangeNotRequired]) { value, _, stop in
+        if value != nil {
+            found = true
+            stop.pointee = true
+        }
+    }
+    return found
+}
+
+/// `string` with the text storage's font substitution undone, or nil when it has none. Where the requested font
+/// cannot draw a character (emoji get Apple Color Emoji), the storage keeps the requested font under
+/// `NSOriginalFont`; a freshly decorated string has only the requested font, so it never compares equal to the
+/// storage without this.
+func attributedStringRevertingFontSubstitution(_ string: NSAttributedString) -> NSAttributedString? {
+    var substitutions: [(NSRange, Any)] = []
+    string.enumerateAttribute(originalFontAttribute, in: NSRange(location: 0, length: string.length), options: []) { value, range, _ in
+        if let value {
+            substitutions.append((range, value))
+        }
+    }
+    if substitutions.isEmpty {
+        return nil
+    }
+    let result = NSMutableAttributedString(attributedString: string)
+    for (range, font) in substitutions {
+        result.removeAttribute(originalFontAttribute, range: range)
+        result.addAttribute(.font, value: font, range: range)
+    }
+    return result
+}
+
 public func refreshChatTextInputAttributes(context: AnyObject, textView: UITextView, primaryTextColor: UIColor, accentTextColor: UIColor, baseFontSize: CGFloat, spoilersRevealed: Bool, availableEmojis: Set<String>, emojiViewProvider: ((ChatTextInputTextCustomEmojiAttribute) -> UIView)?, makeCollapsedQuoteAttachment: ((NSAttributedString, ChatInputTextCollapsedQuoteAttributes) -> ChatInputTextCollapsedQuoteAttachment)?) {
     guard let initialAttributedText = textView.attributedText, initialAttributedText.length != 0 else {
         return
@@ -838,7 +873,10 @@ public func refreshChatTextInputAttributes(context: AnyObject, textView: UITextV
     
     resultAttributedText = textAttributedStringForStateText(context: context, stateText: attributedText, fontSize: baseFontSize, textColor: primaryTextColor, accentTextColor: accentTextColor, writingDirection: writingDirection, spoilersRevealed: spoilersRevealed, availableEmojis: availableEmojis, emojiViewProvider: emojiViewProvider, makeCollapsedQuoteAttachment: makeCollapsedQuoteAttachment)
     
-    if !resultAttributedText.isEqual(to: initialAttributedText) {
+    // With emoji in the draft the storage never equals the rebuilt string (font substitution, see
+    // attributedStringRevertingFontSubstitution); compare without it so an unchanged draft is not stripped and
+    // decorated again over its whole length on every keystroke (5-7 ms at 4k characters).
+    if !resultAttributedText.isEqual(to: initialAttributedText) && !(attributedStringRevertingFontSubstitution(initialAttributedText)?.isEqual(to: resultAttributedText) ?? false) {
         fullRange = NSRange(location: 0, length: textView.textStorage.length)
         
         textView.textStorage.removeAttribute(NSAttributedString.Key.font, range: fullRange)

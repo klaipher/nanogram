@@ -226,6 +226,20 @@ public func getFirstResponderAndAccessoryHeight(_ view: UIView, _ accessoryHeigh
     }
 }
 
+/// Where a keyboard drag may start for a touch at `location`: the first responder and the input accessory height
+/// above the keyboard, or nil when no drag can start there. `findFirstResponder` walks the whole window view tree,
+/// so it is called only while the keyboard is up (non-zero `inputHeight`); its result is unused otherwise.
+func keyboardGestureStart(location: CGPoint, windowSize: CGSize, inputHeight: CGFloat?, findFirstResponder: () -> (UIView?, CGFloat?)) -> (firstResponder: UIView?, accessoryHeight: CGFloat?)? {
+    guard let inputHeight, !inputHeight.isZero else {
+        return nil
+    }
+    let (firstResponder, accessoryHeight) = findFirstResponder()
+    guard location.y < windowSize.height - inputHeight - (accessoryHeight ?? 0.0) else {
+        return nil
+    }
+    return (firstResponder, accessoryHeight)
+}
+
 public final class WindowHostView {
     public let containerView: UIView
     public let eventView: UIView
@@ -1538,17 +1552,16 @@ public class Window1 {
         
         let keyboardGestureBeginLocation = location
         let view = self.hostView.containerView
-        let (firstResponder, accessoryHeight) = getFirstResponderAndAccessoryHeight(view)
-        if let inputHeight = self.windowLayout.inputHeight, !inputHeight.isZero, keyboardGestureBeginLocation.y < self.windowLayout.size.height - inputHeight - (accessoryHeight ?? 0.0) {
+        if let start = keyboardGestureStart(location: keyboardGestureBeginLocation, windowSize: self.windowLayout.size, inputHeight: self.windowLayout.inputHeight, findFirstResponder: { getFirstResponderAndAccessoryHeight(view) }) {
             var enableGesture = true
             if let view = self.hostView.containerView.hitTest(location, with: nil) {
                 if doesViewTreeDisableInteractiveTransitionGestureRecognizer(view, keyboardOnly: true) {
                     enableGesture = false
                 }
             }
-            if enableGesture, let _ = firstResponder {
+            if enableGesture, let _ = start.firstResponder {
                 self.keyboardGestureBeginLocation = keyboardGestureBeginLocation
-                self.keyboardGestureAccessoryHeight = accessoryHeight
+                self.keyboardGestureAccessoryHeight = start.accessoryHeight
             }
         }
     }

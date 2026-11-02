@@ -454,7 +454,7 @@ public extension ChatRichTextInputNode {
         return (self.attributedText?.length ?? 0) == 0
     }
     var inputContentIsEmptyWhitespaceTrimmed: Bool {
-        return (self.attributedText?.string.trimmingCharacters(in: .whitespacesAndNewlines).isEmpty) ?? true
+        return self.attributedText.flatMap { stringIsEmptyOrWhitespace($0.string) } ?? true
     }
     func currentInputContent() -> (content: ChatInputContent, selection: ChatInputSelection) {
         let attr = self.attributedText ?? NSAttributedString()
@@ -553,7 +553,7 @@ public func makeChatRichTextInputNode(disableTiling: Bool = false) -> ChatRichTe
 }
 
 final class ChatRichTextInputNodeImpl: ASDisplayNode, ChatRichTextInputNode {
-    private let textInputNodeImpl: ChatInputTextNode
+    let textInputNodeImpl: ChatInputTextNode
 
     private var dustNode: InvisibleInkDustNode?
     private var customEmojiContainerView: CustomEmojiContainerView?
@@ -566,6 +566,9 @@ final class ChatRichTextInputNodeImpl: ASDisplayNode, ChatRichTextInputNode {
     // theme/energy state the host last drove. nil textColor means "not configured yet".
     private var lastTextColor: UIColor?
     private var lastFullTranslucency: Bool = true
+    // A rendering asked for while the text view handles a change; it runs once when the change is handled.
+    private var hasPendingRichRendering: Bool = false
+    var richRenderingPassesForTesting: Int = 0
 
     // Host rendering inputs for decorating a `ChatInputContent` inside `setInputContent`. Refreshed by the
     // host (`applyRenderingConfig`) immediately before each `setInputContent` drive, so it is never stale.
@@ -616,6 +619,13 @@ final class ChatRichTextInputNodeImpl: ASDisplayNode, ChatRichTextInputNode {
             }
             self.updateRichRendering(textColor: textColor, fullTranslucency: self.lastFullTranslucency)
         }
+        self.textInputNodeImpl.textView.didHandleTextChange = { [weak self] in
+            guard let self, self.hasPendingRichRendering, let textColor = self.lastTextColor else {
+                return
+            }
+            self.hasPendingRichRendering = false
+            self.updateRichRendering(textColor: textColor, fullTranslucency: self.lastFullTranslucency)
+        }
     }
 
     required init?(coder: NSCoder) {
@@ -625,6 +635,15 @@ final class ChatRichTextInputNodeImpl: ASDisplayNode, ChatRichTextInputNode {
     func updateRichRendering(textColor: UIColor, fullTranslucency: Bool) {
         self.lastTextColor = textColor
         self.lastFullTranslucency = fullTranslucency
+        
+        // Each keystroke asked for this 3 times inside textViewDidChange (two inset updates and the host's
+        // decoration); only the state at the end of the change is visible, so render once then.
+        if self.textInputNodeImpl.textView.isHandlingTextChange {
+            self.hasPendingRichRendering = true
+            return
+        }
+        self.hasPendingRichRendering = false
+        self.richRenderingPassesForTesting += 1
 
         let textInputNode = self.textInputNodeImpl
 

@@ -50,11 +50,11 @@ public final class HarnessSharedAccountContext: SharedAccountContext {
         case .engine:
             // The engine flag also forces the composer native, which it must be for the engine
             // editor to be built at all.
+            // (`inputDecTextBackend` went with its Debug Settings row in 2026-11; the engine editor
+            // never read it.)
             value.useInputDecEngine = true
-            value.inputDecTextBackend = true
         case .legacy:
             value.useInputDecEngine = false
-            value.inputDecTextBackend = false
         }
         return value
     }

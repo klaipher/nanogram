@@ -200,7 +200,7 @@ public final class AuthorizationSequenceController: NavigationController, ASAuth
                 }
                 controller?.inProgress = true
                 
-                let disableAuthTokens = self.sharedContext.immediateExperimentalUISettings.disableReloginTokens
+                let disableAuthTokens = false
                 let authorizationPushConfiguration = self.sharedContext.authorizationPushConfiguration
                 |> take(1)
                 |> timeout(2.0, queue: .mainQueue(), alternate: .single(nil))

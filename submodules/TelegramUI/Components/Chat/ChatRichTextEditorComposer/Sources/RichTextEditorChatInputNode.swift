@@ -42,9 +42,9 @@ private final class HostChecklistCheckboxView: UIView, RichTextChecklistMarkerVi
 public final class RichTextEditorChatInputNode: ASDisplayNode, ChatRichTextInputNode {
     private let strings: PresentationStrings
     
-    /// Built for the backend the host selected. The panel supplies it from the
-    /// `inputDecTextBackend` experimental setting; everything else keeps the production
-    /// `.legacy` default.
+    /// Built for the backend the host selected. The chat panel passes the production `.legacy`
+    /// (the `inputDecTextBackend` Debug Settings row that selected `.inputDecIfSupported` was removed
+    /// in 2026-11).
     /// `any RichTextEditor`, not a concrete view: the Debug Settings flag chooses between the
     /// legacy canvas and the InputDec-engine editor at construction, and both answer this protocol.
     /// The protocol is class-constrained to `UIView`, so positioning and hit-testing still work
@@ -116,8 +116,7 @@ public final class RichTextEditorChatInputNode: ASDisplayNode, ChatRichTextInput
     public var asNode: ASDisplayNode { self }
 
     /// `inputBackend` names which input backend the composed `RichTextEditorView` is built for.
-    /// Defaults to `.legacy`, so every existing caller keeps today's behaviour; the chat panel
-    /// passes `.inputDecIfSupported` when the `inputDecTextBackend` experimental setting is on.
+    /// Defaults to `.legacy`, so every existing caller keeps today's behaviour.
     /// `inputBackend` names which backend the composed legacy `RichTextEditorView` is built for.
     /// `useInputDecEngine` selects the ENGINE editor instead — a different type entirely, not
     /// another backend of the same view.

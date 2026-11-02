@@ -1462,8 +1462,7 @@ final class PeerInfoHeaderNode: ASDisplayNode {
                             pendingStarRating: self.currentPendingStarRating,
                             customTheme: self.presentationData?.theme
                         ))
-                    },
-                    debugLevel: self.context.sharedContext.immediateExperimentalUISettings.debugRatingLayout
+                    }
                 )),
                 environment: {},
                 containerSize: CGSize(width: width - 12.0 * 2.0 - stripLeft - stripRight, height: 100.0)

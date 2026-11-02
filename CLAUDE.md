@@ -566,8 +566,8 @@ compiles it for the test target only, and
 halves of that arrangement plus the derived implemented/unimplemented partition. Every requirement
 the adapter does not implement reports a NAMED contract violation rather than returning a plausible
 value, and a test drives every one of them. There is still **no debug screen and no production call
-site**; `RichTextEditorView` stays `.legacy` and `ExperimentalUISettings.inputDecTextBackend` stays
-`false`. The older `IDTextEditorBackendModuleProbe.swift` remains what it was: a compile-and-link
+site**; `RichTextEditorView` stays `.legacy` (the `ExperimentalUISettings.inputDecTextBackend` flag
+was removed with its Debug Settings row in 2026-11). The older `IDTextEditorBackendModuleProbe.swift` remains what it was: a compile-and-link
 probe that imports `RichTextInputDecObjC` and calls one contract-manifest function.
 
 **Phase 3b is the first change in the port that touches production**, and it is a small one:
@@ -631,6 +631,41 @@ NOT part of the vendored snapshot) are the only sanctioned crossing point. Today
 only as a doc comment next to the probe (`IDTextEditorBackendKernelCallPolicy` in
 `IDTextEditorBackendModuleProbe.swift`); the plan assigns an automated grep-based guard
 (`IDBackendCallGuardTests`) to a later stage (Task C0) to enforce it mechanically.
+
+## Main-thread and composer hot paths (2026-11)
+
+Invariants the compiler does not check; each has a test.
+- **Composer height measure** (`ChatInputTextView.textHeightForWidth`): with unchanged width/right inset the
+  measure stack replaces only the edited range (`replaceChangedRange`) instead of a full relayout. Anything whose
+  layout depends on a *neighbouring* paragraph must take the full path: block quotes do (paragraph spacing reads
+  the previous/next character), so `replaceChangedRange` returns false when either string has one. A new
+  attribute with that kind of dependency must be added there. `//submodules/TelegramUI/Components/Chat/ChatInputTextNode:ChatInputTextNodeTests`
+  compares heights against a full relayout.
+- **Rich rendering** (spoiler dust, custom-emoji overlays) runs once per text change: while
+  `ChatInputTextView.isHandlingTextChange` (inside `textViewDidChange`) `updateRichRendering` only marks itself
+  pending and runs from `didHandleTextChange`. It must stay a pure function of the current text and layout.
+- **`refreshChatTextInputAttributes`** compares the rebuilt string with the storage after undoing the storage's
+  font substitution (`NSOriginalFont`); only a real difference strips and re-adds the attributes.
+- **Draft link detection** is `ChatInputUrlDetector.shared` (TextFormat): per-line cache (a link never spans a
+  newline), last-text memo. `ChatInterfaceState.withChangedInputLanguage` returns nil for an unchanged language,
+  and the controller then skips the presentation pipeline.
+- **`AccountContext.animatedEmojiStickerKeys`** is the cached `Set` of `animatedEmojiStickersValue.keys`; never
+  build that set per keystroke.
+- **Premium-lock blurred badge** (`DCTMultiAnimationRendererImpl`): made on the frame-loading queue for the first
+  target with a `blurredRepresentationTarget`; main only assigns it.
+- **Profile list tabs**: `PeerInfoListRowLayout` skips relayout of a row for unchanged size/insets; a row's
+  message item only changes in `bind`.
+- **Touch-down** (`keyboardGestureStart`, WindowContent): the first-responder tree walk runs only while the
+  keyboard is up.
+- **Debug Settings** entries are built by `debugControllerEntries(environment:...)`; ids must increase in append
+  order or ItemList traps. `//submodules/DebugSettingsUI:DebugSettingsUITests` checks every combination and that
+  settings stored by older builds (keys of removed switches) still decode.
+- **MetricKit**: `CrashReportCollector` keeps metric/diagnostic reports in `MetricReportStore`
+  (`Library/Application Support/CrashReports/MetricKit`, deduplicated by content, bounded), via `MetricManager` on
+  iOS 27+ and the MX payloads on iOS 15-26; crash diagnostics still feed `CrashReportStore` from MX on all
+  versions. Nothing is uploaded; Debug Settings ▸ Send MetricKit Reports is the only way out. Host test:
+  `//submodules/CrashReporting:CrashReportingTests`.
+- **Signposts**: `PerformanceSignposts` (Display) intervals `chatHistoryEntriesForView` and `composerKeystroke`.
 
 ## iOS 26/27 windows and touch delivery
 
@@ -1054,7 +1089,7 @@ Rare exceptions: top-level view-controller views integrating with the system's f
 
 `ChatHistoryListNodeImpl` (`submodules/TelegramUI/Sources/ChatHistoryListNode.swift`) **composes** rather than inherits `ListViewImpl` (`submodules/Display/Source/ListView.swift`): it is an `ASDisplayNode` wrapper holding `private let listView: ChatHistoryListViewBackend` and exposes a deliberately narrowed surface (the `ChatHistoryListNode` protocol in `AccountContext` + curated concrete forwarders) instead of the full `ListView` API. `ListViewImpl` gained a `getCustomItemDeleteAnimationDuration` closure hook so the one former `override` works via composition.
 
-`ChatHistoryListViewBackend` (`submodules/TelegramUI/Sources/ChatHistoryListViewBackend.swift`) is a **chat-specific protocol** abstracting the list backend: it declares exactly the members `ChatHistoryListNodeImpl` touches on its list view (nothing more), toward an alternative backend. That alternative is `CoreListChatHistoryBackend` (`submodules/TelegramUI/Sources/CoreListChatHistoryBackend.swift`), built on the from-scratch UIKit virtualized list `CoreVirtualListView` in `submodules/TelegramUI/Components/CoreList/` — its own [`CLAUDE.md`](submodules/TelegramUI/Components/CoreList/CLAUDE.md) documents the engine, animation model, and (vendored, K2-testable) demo/test project. It is keyed on message `stableId` and is the **default for the rotated history** (`makeListView(rotated:useCoreListBackend:)`); the `rotated: false` lists that share the initializer keep `ListViewImpl`, the `coreListChatBackend` Debug Settings switch still forces CoreList on, and `ios_killswitch_disable_corelist_chat_backend` rolls the whole thing back from the server. Read the chosen backend off `ChatHistoryListNodeImpl.usesCoreListBackend` rather than re-deriving that policy. The backend's own architecture, the load-bearing identity-rotation invariant, and its deferred items (still open: per-item animation selectivity, `stationaryItemRange` bounds; topic-header stacking is implemented but not yet runtime-verified) live in [`docs/chat/corelist-chat-history-backend.md`](docs/chat/corelist-chat-history-backend.md). `ChatHistoryListViewBackend` is standalone by design — it does **not** refine the shared `Display` `ListView` protocol even though most members overlap (deliberate; the chat surface owns its own contract). `ListViewImpl` satisfies it via a retroactive `extension ListViewImpl: ChatHistoryListViewBackend {}` in the same file, keeping the generic `Display` module free of chat concepts. When adding a `self.listView.<member>` access, add the matching member to this protocol (its build is the check). Construction-only config (`rotated`) is set on the concrete `ListViewImpl` inside the private `makeListView(rotated:)` factory before upcast, so it need not appear on the protocol — the pattern for anything set once at construction.
+`ChatHistoryListViewBackend` (`submodules/TelegramUI/Sources/ChatHistoryListViewBackend.swift`) is a **chat-specific protocol** abstracting the list backend: it declares exactly the members `ChatHistoryListNodeImpl` touches on its list view (nothing more), toward an alternative backend. That alternative is `CoreListChatHistoryBackend` (`submodules/TelegramUI/Sources/CoreListChatHistoryBackend.swift`), built on the from-scratch UIKit virtualized list `CoreVirtualListView` in `submodules/TelegramUI/Components/CoreList/` — its own [`CLAUDE.md`](submodules/TelegramUI/Components/CoreList/CLAUDE.md) documents the engine, animation model, and (vendored, K2-testable) demo/test project. It is keyed on message `stableId` and is the **default for the rotated history** (`makeListView(rotated:useCoreListBackend:)`); the `rotated: false` lists that share the initializer keep `ListViewImpl`, the `forceListViewImplChatBackend` Debug Settings switch ("Chat: old list (ListViewImpl)", which replaced the force-on `coreListChatBackend` in 2026-11) opts this device out, and `ios_killswitch_disable_corelist_chat_backend` rolls the whole thing back from the server. Read the chosen backend off `ChatHistoryListNodeImpl.usesCoreListBackend` rather than re-deriving that policy. The backend's own architecture, the load-bearing identity-rotation invariant, and its deferred items (still open: per-item animation selectivity, `stationaryItemRange` bounds; topic-header stacking is implemented but not yet runtime-verified) live in [`docs/chat/corelist-chat-history-backend.md`](docs/chat/corelist-chat-history-backend.md). `ChatHistoryListViewBackend` is standalone by design — it does **not** refine the shared `Display` `ListView` protocol even though most members overlap (deliberate; the chat surface owns its own contract). `ListViewImpl` satisfies it via a retroactive `extension ListViewImpl: ChatHistoryListViewBackend {}` in the same file, keeping the generic `Display` module free of chat concepts. When adding a `self.listView.<member>` access, add the matching member to this protocol (its build is the check). Construction-only config (`rotated`) is set on the concrete `ListViewImpl` inside the private `makeListView(rotated:)` factory before upcast, so it need not appear on the protocol — the pattern for anything set once at construction.
 
 These invariants are **compiler-invisible** — getting them wrong silently breaks the app's primary scroll surface:
 

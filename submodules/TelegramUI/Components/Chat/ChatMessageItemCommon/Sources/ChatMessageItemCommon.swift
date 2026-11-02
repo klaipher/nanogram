@@ -250,11 +250,15 @@ public func messageIsEligibleForLargeEmoji(_ message: EngineMessage) -> Bool {
     }
 }
 
+/// `text.count == 1` without counting every grapheme of a long text.
+public func stringIsSingleCharacter(_ text: String) -> Bool {
+    return !text.isEmpty && text.index(after: text.startIndex) == text.endIndex
+}
+
+/// Runs for every media-less message on every history update, on main. The entities rule out almost every
+/// message, so they are checked first; the text (without spaces and newlines) only after that, and copied only
+/// when it has spaces or newlines to strip. Same answer as checking the text first (tested).
 public func messageIsEligibleForLargeCustomEmoji(_ message: EngineMessage) -> Bool {
-    let text = message.text.replacingOccurrences(of: "\n", with: "").replacingOccurrences(of: " ", with: "")
-    guard !text.isEmpty && text.containsOnlyEmoji else {
-        return false
-    }
     let entities = message.textEntitiesAttribute?.entities ?? []
     guard entities.count > 0 else {
         return false
@@ -270,7 +274,11 @@ public func messageIsEligibleForLargeCustomEmoji(_ message: EngineMessage) -> Bo
             return false
         }
     }
-    return true
+    var text = message.text
+    if text.utf8.contains(where: { $0 == 0x20 || $0 == 0x0A }) {
+        text = text.replacingOccurrences(of: "\n", with: "").replacingOccurrences(of: " ", with: "")
+    }
+    return !text.isEmpty && text.containsOnlyEmoji
 }
 
 public func canAddMessageReactions(message: EngineMessage) -> Bool {
