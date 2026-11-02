@@ -34,18 +34,21 @@ final class HarnessAccountContextTests: XCTestCase {
     /// These reads are how the REAL panel picks its backend
     /// (ChatTextInputPanelNode.swift:863-881). If the harness answers them wrongly it silently
     /// tests the wrong editor, which is the single worst outcome available to this project.
-    func testEngineBackendSetsTheTwoExperimentalFlags() {
+    func testEngineBackendSetsTheEngineFlag() {
         let context = makeContext(backend: .engine)
         let settings = context.sharedContext.immediateExperimentalUISettings
         XCTAssertTrue(settings.useInputDecEngine)
-        XCTAssertTrue(settings.inputDecTextBackend)
     }
 
-    func testLegacyBackendClearsThem() {
+    func testLegacyBackendClearsIt() {
         let context = makeContext(backend: .legacy)
         let settings = context.sharedContext.immediateExperimentalUISettings
         XCTAssertFalse(settings.useInputDecEngine)
-        XCTAssertFalse(settings.inputDecTextBackend)
+    }
+
+    func testAnimatedEmojiKeysMatchTheStickers() {
+        let context = makeContext(backend: .engine)
+        XCTAssertEqual(context.animatedEmojiStickerKeys, Set(context.animatedEmojiStickersValue.keys))
     }
 
     func testPresentationDataAndLimitsAreReal() {

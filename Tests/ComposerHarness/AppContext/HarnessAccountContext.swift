@@ -75,6 +75,11 @@ public final class HarnessAccountContext: AccountContext {
         return [:]
     }
 
+    /// `Set(animatedEmojiStickersValue.keys)`, which the composer reads per keystroke: empty offline too.
+    public var animatedEmojiStickerKeys: Set<String> {
+        return Set()
+    }
+
     public var currentContentSettings: Atomic<ContentSettings> {
         return self.contentSettingsValue
     }
