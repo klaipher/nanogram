@@ -174,13 +174,7 @@ private func chatForwardOptions(selfController: ChatControllerImpl, sourceView: 
     let messageIds = selfController.presentationInterfaceState.interfaceState.forwardMessageIds ?? []
     let messagesCount: Signal<Int, NoError>
     if let chatController = chatController as? ChatControllerImpl, messageIds.count > 1 {
-        messagesCount = .single(messageIds.count)
-        |> then(
-            chatController.presentationInterfaceStatePromise.get()
-            |> map { state -> Int in
-                return state.interfaceState.selectionState?.selectedIds.count ?? 1
-            }
-        )
+        messagesCount = chatForwardOptionsSelectedCount(initialCount: messageIds.count, previewInterfaceStates: chatController.presentationInterfaceStatePromise.get() |> map { $0.interfaceState })
     } else {
         messagesCount = .single(1)
     }

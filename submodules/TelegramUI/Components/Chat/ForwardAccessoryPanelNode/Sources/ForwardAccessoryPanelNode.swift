@@ -93,9 +93,48 @@ func textStringForForwardedMessage(_ message: EngineRawMessage, strings: Present
 }
 
 public final class ForwardAccessoryPanelNode: AccessoryPanelNode {
+    /// What the panel shows for one set of inputs. The chat picker lays itself out on every
+    /// keystroke in its comment field and every selection change, and each layout calls
+    /// `updateState` with the same inputs, so the strings and their layout are kept between calls.
+    private struct Content {
+        struct Key: Equatable {
+            let messagesVersion: Int
+            let theme: PresentationTheme
+            let strings: PresentationStrings
+            let dateTimeFormat: PresentationDateTimeFormat
+            let hideNames: Bool
+
+            static func ==(lhs: Key, rhs: Key) -> Bool {
+                return lhs.messagesVersion == rhs.messagesVersion && lhs.theme === rhs.theme && lhs.strings === rhs.strings && lhs.dateTimeFormat == rhs.dateTimeFormat && lhs.hideNames == rhs.hideNames
+            }
+        }
+
+        let key: Key
+        let title: NSAttributedString
+        let text: NSAttributedString
+        let accessibilityLabel: String
+    }
+
+    /// The text layout last applied: valid while both nodes still hold these strings and the width
+    /// is the same.
+    private struct TextLayout {
+        let title: NSAttributedString
+        let text: NSAttributedString
+        let constrainedSize: CGSize
+        let titleSize: CGSize
+        let textSize: CGSize
+    }
+
     private let messageDisposable = MetaDisposable()
     public let messageIds: [EngineMessage.Id]
-    private var messages: [EngineRawMessage] = []
+    private var messages: [EngineRawMessage] = [] {
+        didSet {
+            self.messagesVersion += 1
+        }
+    }
+    private var messagesVersion = 0
+    private var content: Content?
+    private var textLayout: TextLayout?
     
     let closeButton: HighlightableButtonNode
     let lineNode: ASImageNode
@@ -104,7 +143,7 @@ public final class ForwardAccessoryPanelNode: AccessoryPanelNode {
     let textNode: ImmediateTextNodeWithEntities
     private var originalText: NSAttributedString?
     
-    private let actionArea: AccessibilityAreaNode
+    let actionArea: AccessibilityAreaNode
     
     let context: AccountContext
     var theme: PresentationTheme
@@ -302,19 +341,60 @@ public final class ForwardAccessoryPanelNode: AccessoryPanelNode {
             self.iconView.frame = CGRect(origin: CGPoint(x: 7.0 + inset, y: 10.0), size: icon.size)
         }
         
+        let key = Content.Key(messagesVersion: self.messagesVersion, theme: self.theme, strings: self.strings, dateTimeFormat: interfaceState.dateTimeFormat, hideNames: interfaceState.interfaceState.forwardOptionsState?.hideNames == true)
+        let content: Content
+        if let current = self.content, current.key == key {
+            content = current
+        } else {
+            content = self.makeContent(key: key, dateTimeFormat: interfaceState.dateTimeFormat)
+            self.content = content
+        }
+        
+        // Text written into the nodes from elsewhere (the theme refresh, the options tip) is
+        // replaced, as every layout always did.
+        if self.titleNode.attributedText !== content.title {
+            self.titleNode.attributedText = content.title
+        }
+        if self.textNode.attributedText !== content.text {
+            self.textNode.attributedText = content.text
+        }
+        self.originalText = content.text
+        self.textNode.visibility = true
+        
+        self.actionArea.accessibilityLabel = content.accessibilityLabel
+        
+        let constrainedSize = CGSize(width: bounds.size.width - leftInset - textLineInset - rightInset - textRightInset, height: bounds.size.height)
+        let titleSize: CGSize
+        let textSize: CGSize
+        if let textLayout = self.textLayout, textLayout.title === content.title, textLayout.text === content.text, textLayout.constrainedSize == constrainedSize {
+            titleSize = textLayout.titleSize
+            textSize = textLayout.textSize
+        } else {
+            titleSize = self.titleNode.updateLayout(constrainedSize)
+            textSize = self.textNode.updateLayout(constrainedSize)
+            self.textLayout = TextLayout(title: content.title, text: content.text, constrainedSize: constrainedSize, titleSize: titleSize, textSize: textSize)
+        }
+        self.titleNode.frame = CGRect(origin: CGPoint(x: leftInset + textLineInset, y: 7.0), size: titleSize)
+        self.textNode.frame = CGRect(origin: CGPoint(x: leftInset + textLineInset, y: 25.0), size: textSize)
+    }
+    
+    private func makeContent(key: Content.Key, dateTimeFormat: PresentationDateTimeFormat) -> Content {
+        let messages = self.messages
+        let strings = self.strings
+        
         var authors = ""
         var uniquePeerIds = Set<EnginePeer.Id>()
         var title = ""
         var text = NSMutableAttributedString(string: "")
         
-        for message in self.messages {
+        for message in messages {
             if let author = message.forwardInfo?.author ?? message.effectiveAuthor, !uniquePeerIds.contains(author.id) {
                 uniquePeerIds.insert(author.id)
                 if !authors.isEmpty {
                     authors.append(", ")
                 }
-                if author.id == context.account.peerId {
-                    authors.append(self.strings.DialogList_You)
+                if author.id == self.context.account.peerId {
+                    authors.append(strings.DialogList_You)
                 } else {
                     authors.append(EnginePeer(author).compactDisplayTitle)
                 }
@@ -322,9 +402,9 @@ public final class ForwardAccessoryPanelNode: AccessoryPanelNode {
         }
         
         var richAccessibilityText: String?
-        if self.messages.count == 1 {
-            title = self.strings.Conversation_ForwardOptions_ForwardTitleSingle
-            let (string, entities, _) = textStringForForwardedMessage(messages[0], strings: strings, dateTimeFormat: interfaceState.dateTimeFormat)
+        if messages.count == 1 {
+            title = strings.Conversation_ForwardOptions_ForwardTitleSingle
+            let (string, entities, _) = textStringForForwardedMessage(messages[0], strings: strings, dateTimeFormat: dateTimeFormat)
             if messages[0].attributes.contains(where: { $0 is RichTextMessageAttribute }) {
                 richAccessibilityText = "\(authors): \(instantPagePreviewPlainText(string))"
             }
@@ -346,22 +426,17 @@ public final class ForwardAccessoryPanelNode: AccessoryPanelNode {
             
             text.append(renderInstantPagePreviewIcons(additionalText, font: Font.regular(15.0), textColor: self.theme.chat.inputPanel.secondaryTextColor))
         } else {
-            title = self.strings.Conversation_ForwardOptions_ForwardTitle(Int32(messages.count))
-            text = NSMutableAttributedString(attributedString: NSAttributedString(string: self.strings.Conversation_ForwardFrom(authors).string, font: Font.regular(15.0), textColor: self.theme.chat.inputPanel.secondaryTextColor))
+            title = strings.Conversation_ForwardOptions_ForwardTitle(Int32(clamping: messages.count))
+            text = NSMutableAttributedString(attributedString: NSAttributedString(string: strings.Conversation_ForwardFrom(authors).string, font: Font.regular(15.0), textColor: self.theme.chat.inputPanel.secondaryTextColor))
         }
         
-        if interfaceState.interfaceState.forwardOptionsState?.hideNames == true {
+        if key.hideNames {
             richAccessibilityText = nil
-            text = NSMutableAttributedString(attributedString: NSAttributedString(string: self.strings.Conversation_ForwardOptions_SenderNamesRemoved, font: Font.regular(15.0), textColor: self.theme.chat.inputPanel.secondaryTextColor))
+            text = NSMutableAttributedString(attributedString: NSAttributedString(string: strings.Conversation_ForwardOptions_SenderNamesRemoved, font: Font.regular(15.0), textColor: self.theme.chat.inputPanel.secondaryTextColor))
         }
 
         let accessibilityText = richAccessibilityText ?? text.string
-        text = NSMutableAttributedString(attributedString: renderInstantPagePreviewIcons(text, font: Font.regular(15.0), textColor: self.theme.chat.inputPanel.secondaryTextColor))
-        
-        self.titleNode.attributedText = NSAttributedString(string: title, font: Font.medium(15.0), textColor: self.theme.chat.inputPanel.panelControlAccentColor)
-        self.textNode.attributedText = text
-        self.originalText = text
-        self.textNode.visibility = true
+        let renderedText = renderInstantPagePreviewIcons(text, font: Font.regular(15.0), textColor: self.theme.chat.inputPanel.secondaryTextColor)
         
         let headerString: String
         if messages.count == 1 {
@@ -369,13 +444,13 @@ public final class ForwardAccessoryPanelNode: AccessoryPanelNode {
         } else {
             headerString = "Forward messages"
         }
-        self.actionArea.accessibilityLabel = "\(headerString). From: \(authors).\n\(accessibilityText)"
         
-        let titleSize = self.titleNode.updateLayout(CGSize(width: bounds.size.width - leftInset - textLineInset - rightInset - textRightInset, height: bounds.size.height))
-        self.titleNode.frame = CGRect(origin: CGPoint(x: leftInset + textLineInset, y: 7.0), size: titleSize)
-
-        let textSize = self.textNode.updateLayout(CGSize(width: bounds.size.width - leftInset - textLineInset - rightInset - textRightInset, height: bounds.size.height))
-        self.textNode.frame = CGRect(origin: CGPoint(x: leftInset + textLineInset, y: 25.0), size: textSize)
+        return Content(
+            key: key,
+            title: NSAttributedString(string: title, font: Font.medium(15.0), textColor: self.theme.chat.inputPanel.panelControlAccentColor),
+            text: renderedText,
+            accessibilityLabel: "\(headerString). From: \(authors).\n\(accessibilityText)"
+        )
     }
     
     @objc private func closePressed() {

@@ -2125,5 +2125,8 @@ filegroup(
         ":GeneratedPresentationStrings/Resources/PresentationStrings.data",
         "Telegram-iOS/en.lproj/Localizable.strings",
     ],
-    visibility = ["//submodules/ChatListUI:__pkg__"],
+    visibility = [
+        "//Tests/ComposerHarness:__pkg__",
+        "//submodules/ChatListUI:__pkg__",
+    ],
 )
