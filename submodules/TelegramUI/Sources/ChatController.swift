@@ -9620,7 +9620,7 @@ public final class ChatControllerImpl: TelegramBaseController, ChatController, G
             let timeout = (self.voicePlaylistDidEndTimestamp + 1.0) - CACurrentMediaTime()
             self.raiseToListenActivateRecordingTimer = SwiftSignalKit.Timer(timeout: max(0.0, timeout), repeat: false, completion: { [weak self] in
                 self?.requestAudioRecorder(beginWithTone: true)
-            }, queue: .mainQueue())
+            }, queue: .mainQueue(), leeway: .precise)
             self.raiseToListenActivateRecordingTimer?.start()
         }
     }

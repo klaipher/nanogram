@@ -3009,7 +3009,7 @@ public final class EmojiPagerContentComponent: Component {
                         return
                     }
                     strongSelf.longTapRecognizer?.state = .ended
-                }, queue: .mainQueue())
+                }, queue: .mainQueue(), leeway: .precise)
                 self.longPressTimer?.start()
             case .changed:
                 let point = recognizer.location(in: self)

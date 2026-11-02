@@ -3,6 +3,33 @@
 #import <LegacyComponents/TGImageUtils.h>
 #import <LegacyComponents/TGPhotoEditorUtils.h>
 #import <LegacyComponents/PGCameraShotMetadata.h>
+#import <os/lock.h>
+
+// The JPEG bytes of the most recent capture, kept so the result screen that opens right after the
+// shutter decodes its screen image from memory instead of reading the file back. One slot only:
+// memory stays bounded however many photos are taken.
+static os_unfair_lock recentCaptureLock = OS_UNFAIR_LOCK_INIT;
+static NSString *recentCaptureIdentifier = nil;
+static NSData *recentCaptureData = nil;
+
+static void TGCameraCapturedPhotoSetRecentData(NSString *identifier, NSData *data) {
+    os_unfair_lock_lock(&recentCaptureLock);
+    recentCaptureIdentifier = identifier;
+    recentCaptureData = data;
+    os_unfair_lock_unlock(&recentCaptureLock);
+}
+
+static NSData *TGCameraCapturedPhotoTakeRecentData(NSString *identifier) {
+    NSData *result = nil;
+    os_unfair_lock_lock(&recentCaptureLock);
+    if (identifier != nil && [recentCaptureIdentifier isEqualToString:identifier]) {
+        result = recentCaptureData;
+        recentCaptureIdentifier = nil;
+        recentCaptureData = nil;
+    }
+    os_unfair_lock_unlock(&recentCaptureLock);
+    return result;
+}
 
 @interface TGCameraCapturedPhoto ()
 {
@@ -104,6 +131,7 @@
 
 - (void)_cleanUp
 {
+    TGCameraCapturedPhotoTakeRecentData(_identifier);
     [[NSFileManager defaultManager] removeItemAtPath:[self filePath] error:nil];
 }
 
@@ -112,7 +140,11 @@
     if (image == nil)
         return;
     
-    TGWriteJPEGRepresentationToFile(image, 0.93f, [self filePath]);
+    // The same bytes TGWriteJPEGRepresentationToFile wrote, also kept for the first screen image.
+    NSData *data = TGJPEGRepresentation(image, 0.93f);
+    if (data != nil && [data writeToFile:[self filePath] atomically:false]) {
+        TGCameraCapturedPhotoSetRecentData(_identifier, data);
+    }
     
     CGFloat thumbnailImageSide = TGPhotoThumbnailSizeForCurrentScreen().width;
     CGSize size = TGScaleToSize(image.size, CGSizeMake(thumbnailImageSide, thumbnailImageSide));
@@ -190,7 +222,12 @@
     {
         return [[SSignal alloc] initWithGenerator:^id<SDisposable>(SSubscriber *subscriber)
         {
-            CGImageSourceRef imageSource = CGImageSourceCreateWithURL((CFURLRef)[NSURL fileURLWithPath:[self filePath]], NULL);
+            NSData *recentData = TGCameraCapturedPhotoTakeRecentData(_identifier);
+            CGImageSourceRef imageSource = NULL;
+            if (recentData != nil)
+                imageSource = CGImageSourceCreateWithData((__bridge CFDataRef)recentData, NULL);
+            if (imageSource == NULL)
+                imageSource = CGImageSourceCreateWithURL((CFURLRef)[NSURL fileURLWithPath:[self filePath]], NULL);
             if (imageSource == NULL)
             {
                 [subscriber putError:nil];

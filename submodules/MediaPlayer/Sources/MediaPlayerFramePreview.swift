@@ -618,6 +618,12 @@ public final class MediaPlayerFramePreviewHLS: FramePreview {
                     
                     return allDataIsCached
                 },
+                // Offsets here are positions in the mapped (HLS) stream, not in one resource file:
+                // keep MediaBox's own checks rather than a resource's live ranges.
+                availableRanges: Atomic(value: nil),
+                completedResourcePath: {
+                    return nil
+                },
                 size: mappedSize
             )
             

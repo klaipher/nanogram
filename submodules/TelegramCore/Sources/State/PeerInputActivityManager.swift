@@ -61,7 +61,7 @@ private final class PeerInputActivityContext {
                             }
                         }
                     }
-                }, queue: self.queue)
+                }, queue: self.queue, leeway: .precise)
                 self.activities[i] = ActivityRecord(peerId: peerId, activity: activity, id: currentId, timer: timer, episodeId: episodeId, timestamp: recordTimestamp, updateId: updateId)
                 timer.start()
                 break
@@ -80,7 +80,7 @@ private final class PeerInputActivityContext {
                         }
                     }
                 }
-            }, queue: self.queue)
+            }, queue: self.queue, leeway: .precise)
             let updateId = nextUpdateId
             nextUpdateId += 1
             self.activities.append(ActivityRecord(peerId: peerId, activity: activity, id: activityId, timer: timer, episodeId: episodeId, timestamp: timestamp, updateId: updateId))
@@ -371,7 +371,7 @@ final class PeerInputActivityManager {
             
             let timer = SignalKitTimer(timeout: timeout, repeat: true, completion: {
                 update()
-            }, queue: queue)
+            }, queue: queue, leeway: .precise)
             timer.start()
             update()
             

@@ -161,7 +161,7 @@ private func timeoutSignal(codeData: ChangeAccountPhoneNumberData) -> Signal<Int
                 subscriber.putNext(value.modify { value in
                     return max(0, value - 1)
                 })
-            }, queue: Queue.mainQueue())
+            }, queue: Queue.mainQueue(), leeway: .precise)
             timer.start()
             
             return ActionDisposable {

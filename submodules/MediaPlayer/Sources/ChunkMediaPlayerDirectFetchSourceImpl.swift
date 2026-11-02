@@ -5,11 +5,28 @@ import TelegramCore
 import FFMpegBinding
 import RangeSet
 import CoreMedia
+import ManagedFile
 
 private func FFMpegLookaheadReader_readPacketCallback(userData: UnsafeMutableRawPointer?, buffer: UnsafeMutablePointer<UInt8>?, bufferSize: Int32) -> Int32 {
     let context = Unmanaged<FFMpegLookaheadReader>.fromOpaque(userData!).takeUnretainedValue()
     
     let readCount = min(256 * 1024, Int64(bufferSize))
+    
+    // Once the whole file is on disk, read it from one open handle: going through MediaBox
+    // opened and stat'ed the file for every read.
+    if let completeFile = context.completeFileIfAvailable() {
+        guard let buffer, context.readingOffset < completeFile.size else {
+            return FFMPEG_CONSTANT_AVERROR_EOF
+        }
+        let count = min(readCount, completeFile.size - context.readingOffset)
+        let readBytes = completeFile.file.read(buffer, Int(count), at: context.readingOffset)
+        if readBytes <= 0 {
+            return FFMPEG_CONSTANT_AVERROR_EOF
+        }
+        context.setReadingOffset(offset: context.readingOffset + Int64(readBytes))
+        return Int32(readBytes)
+    }
+    
     let requestRange: Range<Int64> = context.readingOffset ..< (context.readingOffset + readCount)
     
     var fetchedData: Data?
@@ -90,6 +107,9 @@ private final class FFMpegLookaheadReader {
     var readingOffset: Int64 = 0
     var isCancelled: Bool = false
     var isEnded: Bool = false
+    
+    private var completeFile: (file: ManagedFile, size: Int64)?
+    private var didTryOpeningCompleteFile: Bool = false
     
     private var currentFetchRange: Range<Int64>?
     private var currentFetchDisposable: Disposable?
@@ -184,11 +204,45 @@ private final class FFMpegLookaheadReader {
         self.currentFetchDisposable?.dispose()
     }
     
+    /// The complete resource file, opened once when MediaBox reports every byte present.
+    func completeFileIfAvailable() -> (file: ManagedFile, size: Int64)? {
+        if let completeFile = self.completeFile {
+            return completeFile
+        }
+        if self.didTryOpeningCompleteFile || self.params.size <= 0 {
+            return nil
+        }
+        guard let availableRanges = self.params.availableRanges.with({ $0 }), availableRanges.isSuperset(of: RangeSet<Int64>(0 ..< self.params.size)) else {
+            return nil
+        }
+        self.didTryOpeningCompleteFile = true
+        if let path = self.params.completedResourcePath(), let file = ManagedFile(queue: nil, path: path, mode: .read), let size = file.getSize() {
+            self.completeFile = (file, size)
+        }
+        return self.completeFile
+    }
+    
+    private func isDataCached(_ range: Range<Int64>) -> Bool {
+        if self.completeFileIfAvailable() != nil {
+            return true
+        }
+        // MediaBox's live range status, kept in memory: asking MediaBox stat'ed the file and read
+        // its map from disk for every read and every seek.
+        if let availableRanges = self.params.availableRanges.with({ $0 }), self.params.size > 0 {
+            let upperBound = min(range.upperBound, self.params.size)
+            if range.lowerBound >= upperBound {
+                return true
+            }
+            return availableRanges.isSuperset(of: RangeSet<Int64>(range.lowerBound ..< upperBound))
+        }
+        return self.params.isDataCachedInRange(range)
+    }
+    
     func setReadingOffset(offset: Int64) {
         self.readingOffset = offset
         
         let readRange: Range<Int64> = offset ..< (offset + 512 * 1024)
-        if !self.params.isDataCachedInRange(readRange) {
+        if !self.isDataCached(readRange) {
             if let currentFetchRange = self.currentFetchRange {
                 if currentFetchRange.overlaps(readRange) {
                     if !range(currentFetchRange, fullyContains: readRange) {
@@ -325,6 +379,8 @@ private final class FFMpegLookaheadThread: NSObject {
         let fetchInRange: (Range<Int64>) -> Disposable
         let getDataInRange: (Range<Int64>, @escaping (Data?) -> Void) -> Disposable
         let isDataCachedInRange: (Range<Int64>) -> Bool
+        let availableRanges: Atomic<RangeSet<Int64>?>
+        let completedResourcePath: () -> String?
         let size: Int64
         let cancel: Signal<Void, NoError>
         let currentTimestamp: Atomic<Double?>
@@ -336,6 +392,8 @@ private final class FFMpegLookaheadThread: NSObject {
             fetchInRange: @escaping (Range<Int64>) -> Disposable,
             getDataInRange: @escaping (Range<Int64>, @escaping (Data?) -> Void) -> Disposable,
             isDataCachedInRange: @escaping (Range<Int64>) -> Bool,
+            availableRanges: Atomic<RangeSet<Int64>?>,
+            completedResourcePath: @escaping () -> String?,
             size: Int64,
             cancel: Signal<Void, NoError>,
             currentTimestamp: Atomic<Double?>
@@ -346,6 +404,8 @@ private final class FFMpegLookaheadThread: NSObject {
             self.fetchInRange = fetchInRange
             self.getDataInRange = getDataInRange
             self.isDataCachedInRange = isDataCachedInRange
+            self.availableRanges = availableRanges
+            self.completedResourcePath = completedResourcePath
             self.size = size
             self.cancel = cancel
             self.currentTimestamp = currentTimestamp
@@ -432,6 +492,8 @@ final class FFMpegLookahead {
         fetchInRange: @escaping (Range<Int64>) -> Disposable,
         getDataInRange: @escaping (Range<Int64>, @escaping (Data?) -> Void) -> Disposable,
         isDataCachedInRange: @escaping (Range<Int64>) -> Bool,
+        availableRanges: Atomic<RangeSet<Int64>?>,
+        completedResourcePath: @escaping () -> String?,
         size: Int64
     ) {
         self.thread = Thread(
@@ -444,6 +506,8 @@ final class FFMpegLookahead {
                 fetchInRange: fetchInRange,
                 getDataInRange: getDataInRange,
                 isDataCachedInRange: isDataCachedInRange,
+                availableRanges: availableRanges,
+                completedResourcePath: completedResourcePath,
                 size: size,
                 cancel: self.cancel.get(),
                 currentTimestamp: self.currentTimestamp
@@ -474,6 +538,9 @@ final class ChunkMediaPlayerDirectFetchSourceImpl: ChunkMediaPlayerSourceImpl {
     
     private var resourceSizeDisposable: Disposable?
     private var completeFetchDisposable: Disposable?
+    /// MediaBox's live range status of the resource, read by the lookahead threads.
+    private let availableRanges = Atomic<RangeSet<Int64>?>(value: nil)
+    private var availableRangesDisposable: Disposable?
     
     private var seekTimestamp: Double?
     private var currentLookaheadId: Int = 0
@@ -495,11 +562,17 @@ final class ChunkMediaPlayerDirectFetchSourceImpl: ChunkMediaPlayerSourceImpl {
                 preferBackgroundReferenceRevalidation: true
             ).startStrict()
         }
+        
+        let availableRanges = self.availableRanges
+        self.availableRangesDisposable = resource.postbox.mediaBox.resourceRangesStatus(resource.reference.resource).start(next: { ranges in
+            let _ = availableRanges.swap(ranges)
+        })
     }
     
     deinit {
         self.resourceSizeDisposable?.dispose()
         self.completeFetchDisposable?.dispose()
+        self.availableRangesDisposable?.dispose()
     }
     
     func seek(id: Int, position: Double) {
@@ -643,6 +716,10 @@ final class ChunkMediaPlayerDirectFetchSourceImpl: ChunkMediaPlayerSourceImpl {
                     size: resourceSize,
                     in: range
                 )
+            },
+            availableRanges: self.availableRanges,
+            completedResourcePath: {
+                return resource.postbox.mediaBox.completedResourcePath(id: resource.reference.resource.id)
             },
             size: resourceSize
         )

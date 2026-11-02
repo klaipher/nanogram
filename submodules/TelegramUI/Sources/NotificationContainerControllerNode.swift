@@ -240,7 +240,7 @@ final class NotificationContainerControllerNode: ASDisplayNode {
                     })
                 }
             }
-        }, queue: Queue.mainQueue())
+        }, queue: Queue.mainQueue(), leeway: .precise)
         self.timeoutTimer = timeoutTimer
         timeoutTimer.start()
     }

@@ -357,7 +357,7 @@ final class PasscodeEntryControllerNode: ASDisplayNode {
             let timer = SwiftSignalKit.Timer(timeout: 1.0, repeat: true, completion: { [weak self] in
                 guard let self, !self.shouldWaitBeforeNextAttempt() else { return }
                 self.updateInvalidAttempts(self.invalidAttempts, animated: true)
-            }, queue: Queue.mainQueue())
+            }, queue: Queue.mainQueue(), leeway: .precise)
             self.timer = timer
             timer.start()
         }

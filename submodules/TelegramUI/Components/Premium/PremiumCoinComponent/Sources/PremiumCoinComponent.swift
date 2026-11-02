@@ -309,7 +309,7 @@ public final class PremiumCoinComponent: Component {
                         strongSelf.playAppearanceAnimation()
                     }
                 }
-            }, queue: Queue.mainQueue())
+            }, queue: Queue.mainQueue(), leeway: .precise)
             self.timer?.start()
         }
         

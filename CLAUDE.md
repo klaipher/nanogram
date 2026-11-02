@@ -753,6 +753,63 @@ image is tinted white while `customPatternColor` may be black, so "the pattern i
 GPU (Metal) rendering of stickers and emoji, its debug switches and how to measure it on a phone:
 [`docs/research/gpu-sticker-rendering.md`](docs/research/gpu-sticker-rendering.md).
 
+## Timers and wake-ups (SwiftSignalKit, Network.framework keepalive)
+
+- **`SwiftSignalKit.Timer` has leeway by default.** Timeouts of 1 s or longer get
+  `min(10% of the timeout, 1 s)` (`TimerLeeway.automatic`), so the kernel can fire them together
+  with other wake-ups (Mac benchmark, 40 staggered 1-5 s repeating timers: 15.1 -> 4.3 wake-ups/s).
+  `delay()`/`timeout()` inherit it. Pass `leeway: .precise` for any timer the user can see:
+  count-downs, recording and playback timers, animation loops, gestures (long press), typing
+  indicators, and timers that show or hide UI. A new visible timer without it can tick up to 1 s late.
+  Legacy (`SwiftSignalKit/Source`, iOS) and v2 (`SwiftSignalKit2/Source`, macOS SwiftPM) must keep
+  the same API; the shared `SwiftSignalKitTesting/Behavior` tests compile against both.
+- **`suspendAwareDelay` is one wall-clock deadline** (`DispatchWallTime`, `granularity` as leeway)
+  in both libraries. Do not reintroduce a repeating check: ~45 per-account pollers sit in hour-long
+  delays and the old 4 s loop caused most background wake-ups (`Stress/IdleWakeupTests`, 2362 -> 10
+  wake-ups/s with 200 pending delays).
+- **Network.framework TCP keepalive is 30 s idle / 10 s interval / 3 probes**
+  (`configureNetworkFrameworkTcpOptions`, was 5/5/2). Dead connections are also caught by the
+  viability handler and MTProto pings (the better-path handler is still commented out). Before
+  tuning it further, or if reconnects look slower, run the device check from the 2026-11 deep audit:
+  Power Profiler on cellular, 5 min idle with the old and new values, and time a reconnect after a
+  Wi-Fi to cellular switch for each.
+
+## Media I/O invariants (MediaBox maps, lookahead reader, RangeSet, VACUUM)
+
+- **`<id>_partial.meta` lags the partial file.** `MediaBoxFileContextV2Impl` writes the map every
+  `defaultWritesPerMapSerialization` (16) writes and on completion, reset, truncation and close; the
+  live map is in `MediaBox.liveFileMaps`. Any in-process reader that reads a partial file without
+  the file context must consult `liveFileMaps` first (as `internal_resourceData` and
+  `internal_resourceDataIsCached` do); reading the `.meta` from disk alone can miss up to 15 chunks
+  and stall a streaming reader. The on-disk map only ever claims less than was written, so a crash
+  costs a re-download; a torn map still fails its CRC/length check and is discarded
+  (`MediaBoxMapSerializationBatchingTests`). Before `link()` publishes a completed file the data is
+  ordered with `F_BARRIERFSYNC` (`ManagedFile.barrierSync`), not `fsync`.
+- **The direct-fetch lookahead (`FFMpegLookahead`) reads from memory, not MediaBox, per read.** It
+  answers "is it cached" from MediaBox's live range status and, once that covers the whole file,
+  reads the complete file through one `pread` handle. Do not route its per-read path back through
+  `MediaBox.resourceData`/`internal_*` calls (each one stat'ed and opened files: 38% of the thread).
+- **RangeSet is `@inlinable`** (clients specialize it; 57-100x faster than the unspecialized calls,
+  benchmark under the deep-audit fix-bench). Its invariant check runs only with `DEBUG`. Its
+  `intersects` also returns true for a range that only touches the set (pinned by
+  `//submodules/Utils/RangeSet:RangeSetTests`); keep that unless every caller is checked.
+- **`SqliteValueBox.vacuum()` never crashes** (busy, disk full, I/O errors are logged and return
+  false). Background maintenance (the `BGProcessingTask` cleanup, external power) calls
+  `Postbox.optimizeStorageIfNeeded()`: VACUUM only when free pages are >= 25% of the file, at most
+  once per 7 days (marker file `storage-optimization-timestamp` in the Postbox directory), only with
+  room for the copy, and never while the app is active. VACUUM blocks the Postbox queue: never call
+  it from UI paths.
+- **Edited video exports carry BT.709 colour tags** (`mediaEditorExportColorProperties`): the encoder
+  already converts the composer's BGRA with BT.709, and untagged video up to 720x576 is decoded as
+  BT.601. `MediaEditorTests` decodes an exported pure red back to (255, 0, 0).
+- **Gallery photo upload decodes at the upload size** (`downsampledPhotoLibraryImage`: PhotoKit
+  image data, ImageIO thumbnail with the EXIF transform, then the same `resizedImage` step for the
+  exact size and sRGB). Photos deeper than 8 bits, camera RAW and unreadable data fall back to the
+  full-size PhotoKit path. The decode runs off `fetchPhotoWorkers`: its threads block until their
+  photo is done, so work queued back onto them deadlocks an album send.
+- **Legacy camera shutter:** `TGCameraCapturedPhoto` is built off the main thread; the first screen
+  image of the most recent capture is decoded from its JPEG bytes kept in a single static slot.
+
 ## Framework export lists (computed by the build)
 
 `TelegramUIFramework` and `TelegramCoreFramework` export only the symbols their clients use.

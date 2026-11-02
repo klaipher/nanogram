@@ -116,7 +116,7 @@ public final class ReflectorBenchmark {
                 }
                 self.sendIncomingPingPackets()
                 self.sendOutgoingPingPackets()
-            }, queue: self.queue)
+            }, queue: self.queue, leeway: .precise)
             self.pingTimer?.start()
             
             self.sendPacketTimer = SwiftSignalKit.Timer(timeout: self.sendPacketInterval, repeat: true, completion: { [weak self] in
@@ -124,7 +124,7 @@ public final class ReflectorBenchmark {
                     return
                 }
                 self.sendOutgoingPacket()
-            }, queue: self.queue)
+            }, queue: self.queue, leeway: .precise)
             self.sendPacketTimer?.start()
             
             self.bandwidthTimer = SwiftSignalKit.Timer(timeout: 1.0, repeat: true, completion: { [weak self] in
@@ -132,7 +132,7 @@ public final class ReflectorBenchmark {
                     return
                 }
                 self.calculateStats()
-            }, queue: self.queue)
+            }, queue: self.queue, leeway: .precise)
             self.bandwidthTimer?.start()
         }
         

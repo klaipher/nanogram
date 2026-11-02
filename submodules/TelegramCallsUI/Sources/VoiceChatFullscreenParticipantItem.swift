@@ -738,7 +738,7 @@ class VoiceChatFullscreenParticipantItemNode: ItemListRevealOptionsItemNode {
                                             let silenceTimer = SwiftSignalKit.Timer(timeout: 1.0, repeat: false, completion: { [weak self] in
                                                 self?.audioLevelView?.stopAnimating(duration: 0.75)
                                                 self?.silenceTimer = nil
-                                            }, queue: Queue.mainQueue())
+                                            }, queue: Queue.mainQueue(), leeway: .precise)
                                             strongSelf.silenceTimer = silenceTimer
                                             silenceTimer.start()
                                         }
@@ -814,7 +814,7 @@ class VoiceChatFullscreenParticipantItemNode: ItemListRevealOptionsItemNode {
                             
                             strongSelf.raiseHandTimer = SwiftSignalKit.Timer(timeout: Double.random(in: 8.0 ... 10.5), repeat: true, completion: {
                                 self?.raiseHandNode?.playRandomAnimation()
-                            }, queue: Queue.mainQueue())
+                            }, queue: Queue.mainQueue(), leeway: .precise)
                             strongSelf.raiseHandTimer?.start()
                         }
                         strongSelf.actionButtonNode.isUserInteractionEnabled = false

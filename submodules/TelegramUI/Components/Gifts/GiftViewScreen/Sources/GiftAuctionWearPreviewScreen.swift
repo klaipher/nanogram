@@ -126,7 +126,7 @@ private final class GiftAuctionWearPreviewSheetContent: CombinedComponent {
                     return
                 }
                 self.previewTimerTick()
-            }, queue: Queue.mainQueue())
+            }, queue: Queue.mainQueue(), leeway: .precise)
             self.previewTimer?.start()
             
             self.disposable = (auctionContext.state

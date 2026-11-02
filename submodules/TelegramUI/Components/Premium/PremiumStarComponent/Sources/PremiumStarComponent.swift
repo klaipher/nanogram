@@ -492,7 +492,7 @@ public final class PremiumStarComponent: Component {
                         strongSelf.playAppearanceAnimation()
                     }
                 }
-            }, queue: Queue.mainQueue())
+            }, queue: Queue.mainQueue(), leeway: .precise)
             self.timer?.start()
         }
         

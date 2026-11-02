@@ -128,7 +128,7 @@ public final class ContextControllerActionsListActionItemNode: HighlightTracking
             }
             self.invalidateTimer()
             self.longPressed()
-        }, queue: Queue.mainQueue())
+        }, queue: Queue.mainQueue(), leeway: .precise)
         self.timer?.start()
     }
     

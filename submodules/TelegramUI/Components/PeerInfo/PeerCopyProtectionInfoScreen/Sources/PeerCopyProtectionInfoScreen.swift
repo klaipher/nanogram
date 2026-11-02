@@ -65,7 +65,7 @@ private final class PeerCopyProtectionInfoSheetContent: CombinedComponent {
             
             self.buttonAnimationTimer = SwiftSignalKit.Timer(timeout: 1.25, repeat: true, completion: { [weak self] in
                 self?.playButtonAnimation.invoke(Void())
-            }, queue: Queue.mainQueue())
+            }, queue: Queue.mainQueue(), leeway: .precise)
             self.buttonAnimationTimer?.start()
         }
         

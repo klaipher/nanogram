@@ -103,7 +103,7 @@ final class AuthorizationSequenceAwaitingAccountResetControllerNode: ASDisplayNo
         if self.timer == nil {
             let timer = SwiftSignalKit.Timer(timeout: 1.0, repeat: true, completion: { [weak self] in
                 self?.updateTimerValue()
-            }, queue: Queue.mainQueue())
+            }, queue: Queue.mainQueue(), leeway: .precise)
             self.timer = timer
             timer.start()
         }

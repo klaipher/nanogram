@@ -50,7 +50,7 @@ final class ManagedMonkeyAnimationNode: ManagedAnimationNode {
             default:
                 break
             }
-        }, queue: .mainQueue())
+        }, queue: .mainQueue(), leeway: .precise)
         self.timer = timer
         timer.start()
     }

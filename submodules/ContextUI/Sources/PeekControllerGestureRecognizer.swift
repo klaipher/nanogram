@@ -77,7 +77,7 @@ public final class PeekControllerGestureRecognizer: UIPanGestureRecognizer {
         self.pressTimer?.invalidate()
         let pressTimer = SwiftSignalKit.Timer(timeout: 1.0, repeat: false, completion: { [weak self] in
             self?.pressTimerFired()
-        }, queue: Queue.mainQueue())
+        }, queue: Queue.mainQueue(), leeway: .precise)
         self.pressTimer = pressTimer
         pressTimer.start()
     }

@@ -3041,7 +3041,7 @@ public final class ReactionContextNode: ASDisplayNode, ASScrollViewDelegate {
                         return
                     }
                     strongSelf.longPressRecognizer?.state = .ended
-                }, queue: .mainQueue())
+                }, queue: .mainQueue(), leeway: .precise)
                 self.longPressTimer?.start()
             }
         case .changed:

@@ -2072,7 +2072,7 @@ public class ChatMessageAnimatedStickerItemNode: ChatMessageItemView {
             self?.commitEnqueuedAnimations()
             self?.additionalAnimationsCommitTimer?.invalidate()
             self?.additionalAnimationsCommitTimer = nil
-        }, queue: Queue.mainQueue())
+        }, queue: Queue.mainQueue(), leeway: .precise)
         self.additionalAnimationsCommitTimer = timer
         timer.start()
     }

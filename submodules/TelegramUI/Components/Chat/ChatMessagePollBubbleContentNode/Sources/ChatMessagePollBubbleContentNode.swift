@@ -3984,7 +3984,7 @@ private class DeadlineTimerNode: ASDisplayNode {
                         return
                     }
                     self.update(size: params.size, color: params.color, deadlineTimeout: params.deadlineTimeout, resultsHidden: params.resultsHidden, strings: params.strings)
-                }, queue: Queue.mainQueue())
+                }, queue: Queue.mainQueue(), leeway: .precise)
                 self.timer?.start()
             }
         } else {

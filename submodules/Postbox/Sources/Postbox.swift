@@ -2583,7 +2583,7 @@ final class PostboxImpl {
                     let _ = self.transaction { _ in
                         self.processTypingDraftExpirations(expirationTimeout: expirationTimeout)
                     }.startStandalone()
-                }, queue: self.queue)
+                }, queue: self.queue, leeway: .precise)
                 self.nextTypingDraftExpirationTimer?.start()
                 self.nextTypingDraftExpirationTimestamp = nextTypingDraftExpirationTimestamp
             }
@@ -4599,6 +4599,24 @@ final class PostboxImpl {
         }
     }
     
+    func optimizeStorageIfNeeded(minFreeFraction: Double, minInterval: Double, now: Double) -> PostboxStorageOptimizationResult {
+        assert(self.queue.isCurrent())
+        let markerPath = self.basePath + "/" + PostboxStorageOptimizationSchedule.markerFileName
+        if !PostboxStorageOptimizationSchedule.isDue(lastRun: PostboxStorageOptimizationSchedule.lastRun(markerPath: markerPath), now: now, minInterval: minInterval) {
+            return .skippedRecentlyChecked
+        }
+        let availableDiskSpace = (try? URL(fileURLWithPath: self.basePath).resourceValues(forKeys: [.volumeAvailableCapacityForImportantUsageKey]))?.volumeAvailableCapacityForImportantUsage
+        let result = self.valueBox.vacuumIfFragmented(minFreeFraction: minFreeFraction, availableDiskSpace: availableDiskSpace)
+        switch result {
+        case .failed, .insufficientDiskSpace:
+            // Try again at the next maintenance run.
+            break
+        case .vacuumed, .notFragmented:
+            PostboxStorageOptimizationSchedule.setLastRun(markerPath: markerPath, timestamp: now)
+        }
+        return .checked(result)
+    }
+    
     fileprivate func addHolesEverywhere(peerNamespaces: [PeerId.Namespace], holeNamespace: MessageId.Namespace) {
         for peerId in self.chatListIndexTable.getAllPeerIds() {
             if peerNamespaces.contains(peerId.namespace) && self.messageHistoryMetadataTable.isInitialized(peerId) {
@@ -5336,6 +5354,20 @@ public class Postbox {
         }
     }
 
+    /// Shrinks the database file when free pages are at least `minFreeFraction` of it, at most
+    /// once per `minInterval` seconds. Nothing else ever shrinks it: Postbox does not use
+    /// auto_vacuum. VACUUM rewrites the whole file and blocks the Postbox queue while it runs, so
+    /// call it only from background maintenance (the BGProcessingTask), never from the UI.
+    public func optimizeStorageIfNeeded(minFreeFraction: Double = PostboxStorageOptimizationSchedule.defaultMinFreeFraction, minInterval: Double = PostboxStorageOptimizationSchedule.defaultMinInterval) -> Signal<PostboxStorageOptimizationResult, NoError> {
+        return Signal { subscriber in
+            self.impl.with { impl in
+                subscriber.putNext(impl.optimizeStorageIfNeeded(minFreeFraction: minFreeFraction, minInterval: minInterval, now: Date().timeIntervalSince1970))
+                subscriber.putCompletion()
+            }
+            return EmptyDisposable
+        }
+    }
+
     public func failedMessageIdsView(peerId: PeerId) -> Signal<FailedMessageIdsView, NoError> {
         return Signal { subscriber in
             let disposable = MetaDisposable()
@@ -5346,5 +5378,36 @@ public class Postbox {
 
             return disposable
         }
+    }
+}
+
+
+public enum PostboxStorageOptimizationResult: Equatable {
+    case skippedRecentlyChecked
+    case checked(SqliteValueBox.ConditionalVacuumResult)
+}
+
+public enum PostboxStorageOptimizationSchedule {
+    public static let defaultMinFreeFraction: Double = 0.25
+    public static let defaultMinInterval: Double = 7.0 * 24.0 * 60.0 * 60.0
+    static let markerFileName = "storage-optimization-timestamp"
+    
+    static func isDue(lastRun: Double?, now: Double, minInterval: Double) -> Bool {
+        guard let lastRun = lastRun else {
+            return true
+        }
+        // A clock that went backwards (or a marker from the future) does not block forever.
+        return now - lastRun >= minInterval || now < lastRun
+    }
+    
+    static func lastRun(markerPath: String) -> Double? {
+        guard let data = FileManager.default.contents(atPath: markerPath), let string = String(data: data, encoding: .utf8) else {
+            return nil
+        }
+        return Double(string)
+    }
+    
+    static func setLastRun(markerPath: String, timestamp: Double) {
+        let _ = try? "\(timestamp)".data(using: .utf8)?.write(to: URL(fileURLWithPath: markerPath), options: .atomic)
     }
 }

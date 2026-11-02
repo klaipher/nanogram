@@ -145,7 +145,7 @@ final class AuthorizationSequencePasswordEntryControllerNode: ASDisplayNode, UIT
         
         self.timer = SwiftSignalKit.Timer(timeout: 7.5, repeat: true, completion: { [weak self] in
             self?.animationNode.playOnce()
-        }, queue: Queue.mainQueue())
+        }, queue: Queue.mainQueue(), leeway: .precise)
         self.timer?.start()
     }
     

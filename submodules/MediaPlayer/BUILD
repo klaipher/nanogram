@@ -41,6 +41,7 @@ swift_library(
         ":UniversalMediaPlayer",
         "//submodules/FFMpegBinding:FFMpegBinding",
         "//submodules/Postbox:Postbox",
+        "//submodules/Utils/RangeSet:RangeSet",
         "//submodules/TelegramAudio:TelegramAudio",
         "//submodules/SSignalKit/SwiftSignalKit:SwiftSignalKit",
     ],

@@ -166,7 +166,7 @@ final class BrowserPdfContent: UIView, BrowserContent, UIScrollViewDelegate, PDF
             }
             let transition = ComponentTransition.easeInOut(duration: 0.25)
             transition.setAlpha(view: self.pageIndicatorBackground, alpha: 0.0)
-        }, queue: Queue.mainQueue())
+        }, queue: Queue.mainQueue(), leeway: .precise)
         self.pageTimer?.start()
     }
     

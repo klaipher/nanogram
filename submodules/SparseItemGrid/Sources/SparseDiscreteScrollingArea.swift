@@ -497,7 +497,7 @@ public final class SparseDiscreteScrollingArea: ASDisplayNode {
                     let transition: ContainedViewLayoutTransition = .animated(duration: 0.3, curve: .easeInOut)
                     transition.updateAlpha(layer: strongSelf.dateIndicator.layer, alpha: 0.0)
                     transition.updateAlpha(layer: strongSelf.lineIndicator.layer, alpha: 0.0)
-                }, queue: .mainQueue())
+                }, queue: .mainQueue(), leeway: .precise)
                 self.activityTimer?.start()
             }
         }

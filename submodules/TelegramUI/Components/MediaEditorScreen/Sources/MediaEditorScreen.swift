@@ -797,7 +797,7 @@ final class MediaEditorScreenComponent: Component {
             
             self.coverApplyTimer = SwiftSignalKit.Timer(timeout: 1.0, repeat: false, completion: { [weak mediaEditor] in
                 mediaEditor?.play()
-            }, queue: Queue.mainQueue())
+            }, queue: Queue.mainQueue(), leeway: .precise)
             self.coverApplyTimer?.start()
         }
         

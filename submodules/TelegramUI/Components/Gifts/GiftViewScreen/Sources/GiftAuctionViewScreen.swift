@@ -183,7 +183,7 @@ private final class GiftAuctionViewSheetContent: CombinedComponent {
                         return
                     }
                     self.previewTimerTick()
-                }, queue: Queue.mainQueue())
+                }, queue: Queue.mainQueue(), leeway: .precise)
                 self.previewTimer?.start()
             }
         }

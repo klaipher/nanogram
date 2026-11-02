@@ -231,7 +231,7 @@ open class TooltipController: ViewController, StandalonePresentableController {
                         self?.presentingViewController?.dismiss(animated: false)
                     }
                 }
-            }, queue: Queue.mainQueue())
+            }, queue: Queue.mainQueue(), leeway: .precise)
             self.timeoutTimer = timeoutTimer
             timeoutTimer.start()
         }

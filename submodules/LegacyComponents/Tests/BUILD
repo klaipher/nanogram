@@ -12,6 +12,7 @@ swift_library(
     ]),
     deps = [
         "//submodules/LegacyComponents:LegacyComponents",
+        "//submodules/SSignalKit/SSignalKit:SSignalKit",
     ],
     # LegacyComponents leaves these to the app; a test bundle linking it alone needs them.
     linkopts = [

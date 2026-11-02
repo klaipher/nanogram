@@ -285,7 +285,7 @@ public final class SolidRoundedButtonNode: ASDisplayNode {
                             
                             let timer = SwiftSignalKit.Timer(timeout: self.animationLoopTime, repeat: true, completion: { [weak self] in
                                 self?.animationNode?.play()
-                            }, queue: Queue.mainQueue())
+                            }, queue: Queue.mainQueue(), leeway: .precise)
                             self.animationTimer = timer
                             timer.start()
                         }
@@ -293,7 +293,7 @@ public final class SolidRoundedButtonNode: ASDisplayNode {
                         self.animationNode?.play()
                         let timer = SwiftSignalKit.Timer(timeout: self.animationLoopTime, repeat: true, completion: { [weak self] in
                             self?.animationNode?.play()
-                        }, queue: Queue.mainQueue())
+                        }, queue: Queue.mainQueue(), leeway: .precise)
                         self.animationTimer = timer
                         timer.start()
                     }
@@ -1058,7 +1058,7 @@ public final class SolidRoundedButtonView: UIView {
                             
                             let timer = SwiftSignalKit.Timer(timeout: self.animationLoopTime, repeat: true, completion: { [weak self] in
                                 self?.animationNode?.play()
-                            }, queue: Queue.mainQueue())
+                            }, queue: Queue.mainQueue(), leeway: .precise)
                             self.animationTimer = timer
                             timer.start()
                         }
@@ -1066,7 +1066,7 @@ public final class SolidRoundedButtonView: UIView {
                         self.animationNode?.play()
                         let timer = SwiftSignalKit.Timer(timeout: self.animationLoopTime, repeat: true, completion: { [weak self] in
                             self?.animationNode?.play()
-                        }, queue: Queue.mainQueue())
+                        }, queue: Queue.mainQueue(), leeway: .precise)
                         self.animationTimer = timer
                         timer.start()
                     }

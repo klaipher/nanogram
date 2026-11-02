@@ -1,9 +1,10 @@
+load("//build-system/bazel-utils:swift_strict.bzl", "swift6_library")
 load("@build_bazel_rules_swift//swift:swift.bzl", "swift_library")
 load("@build_bazel_rules_apple//apple:ios.bzl", "ios_unit_test")
 load("@build_bazel_rules_apple//apple/testing/default_runner:ios_test_runner.bzl", "ios_test_runner")
 load("//build-system/bazel-utils:test_simulator.bzl", "TEST_SIMULATOR_DEVICE", "TEST_SIMULATOR_OS")
 
-swift_library(
+swift6_library(
     name = "MediaPreuploadRegistry",
     module_name = "MediaPreuploadRegistry",
     srcs = glob([

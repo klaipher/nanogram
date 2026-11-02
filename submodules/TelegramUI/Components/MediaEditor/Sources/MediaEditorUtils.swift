@@ -36,7 +36,7 @@ extension AVPlayer {
                 invalidateImpl?()
                 completion?()
             }
-        }, queue: Queue.mainQueue())
+        }, queue: Queue.mainQueue(), leeway: .precise)
         invalidateImpl = { [weak timer] in
             timer?.invalidate()
         }
