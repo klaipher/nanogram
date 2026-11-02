@@ -26,6 +26,7 @@ typedef NS_ENUM(NSUInteger, FFMpegAVCodecContextReceiveResult)
 - (bool)open;
 - (bool)sendEnd;
 - (void)setupHardwareAccelerationIfPossible;
+- (void)setupHardwareAccelerationForcingSetupFailureForTesting;
 // Sets `skip_loop_filter = AVDISCARD_ALL`, disabling H.264/HEVC in-loop deblocking.
 // Deblocked frames are also prediction references, so this drifts from the encoder's
 // reconstruction until the next IDR, on top of the visible blocking. Only appropriate

@@ -243,7 +243,7 @@ public final class FFMpegFileReader {
         self.init(source: source, passthroughDecoder: passthroughDecoder, useHardwareAcceleration: useHardwareAcceleration, skipLoopFilter: skipLoopFilter, selectedStream: selectedStream, seek: seek, maxReadablePts: maxReadablePts, ignoreEditList: false)
     }
 
-    init?(source: SourceDescription, passthroughDecoder: Bool = false, useHardwareAcceleration: Bool, skipLoopFilter: Bool = false, selectedStream: SelectedStream, seek: Seek?, maxReadablePts: (streamIndex: Int, pts: Int64, isEnded: Bool)?, ignoreEditList: Bool) {
+    init?(source: SourceDescription, passthroughDecoder: Bool = false, useHardwareAcceleration: Bool, skipLoopFilter: Bool = false, selectedStream: SelectedStream, seek: Seek?, maxReadablePts: (streamIndex: Int, pts: Int64, isEnded: Bool)?, ignoreEditList: Bool, reusesPixelBuffers: Bool = true, forceHardwareSetupFailure: Bool = false) {
         let _ = FFMpegMediaFrameSourceContextHelpers.registerFFMpegGlobals
         
         switch source {
@@ -355,16 +355,22 @@ public final class FFMpegFileReader {
                             let codecContext = FFMpegAVCodecContext(codec: codec)
                             if avFormatContext.codecParams(atStreamIndex: Int32(streamIndex), to: codecContext) {
                                 if useHardwareAcceleration {
-                                    codecContext.setupHardwareAccelerationIfPossible()
+                                    if forceHardwareSetupFailure {
+                                        codecContext.setupHardwareAccelerationForcingSetupFailureForTesting()
+                                    } else {
+                                        codecContext.setupHardwareAccelerationIfPossible()
+                                    }
                                 }
                                 if skipLoopFilter {
                                     codecContext.setSkipLoopFilterToAll()
                                 }
                                 
                                 if codecContext.open() {
+                                    let decoder = FFMpegMediaVideoFrameDecoder(codecContext: codecContext)
+                                    decoder.reusesPixelBuffers = reusesPixelBuffers
                                     stream = Stream(
                                         info: info,
-                                        decoder: .video(FFMpegMediaVideoFrameDecoder(codecContext: codecContext))
+                                        decoder: .video(decoder)
                                     )
                                     break outer
                                 }
