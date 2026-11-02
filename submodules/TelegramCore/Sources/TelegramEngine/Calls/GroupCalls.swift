@@ -4105,7 +4105,7 @@ public final class GroupCallMessagesContext {
             
             let timer = SwiftSignalKit.Timer(timeout: 1.0, repeat: true, completion: { [weak self] in
                 self?.messageLifetimeTick()
-            }, queue: self.queue)
+            }, queue: self.queue, leeway: .precise)
             self.messageLifeTimer = timer
             timer.start()
             
@@ -4634,7 +4634,7 @@ public final class GroupCallMessagesContext {
                             return
                         }
                         self.commitSendStars()
-                    }, queue: self.queue)
+                    }, queue: self.queue, leeway: .precise)
                     self.pendingSendStarsTimer?.start()
                 } else {
                     self.state = state

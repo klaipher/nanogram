@@ -408,4 +408,38 @@ final class CoreTimerTests: XCTestCase {
         XCTAssertEqual(fired.value, 1)
         withExtendedLifetime(timer) {}
     }
+
+    // Timers of 1 s or longer get min(10% of the timeout, 1 s) of leeway so the kernel can coalesce
+    // their wake-ups; shorter timers and `.precise` ones (count-downs, recording, animations, typing)
+    // keep zero leeway.
+    func testAutomaticLeewayIsTenPercentCappedAtOneSecondFromOneSecondUp() {
+        XCTAssertEqual(CoreSignalKitTimer.leewaySeconds(timeout: 0.0, leeway: .automatic), 0.0)
+        XCTAssertEqual(CoreSignalKitTimer.leewaySeconds(timeout: 0.5, leeway: .automatic), 0.0)
+        XCTAssertEqual(CoreSignalKitTimer.leewaySeconds(timeout: 0.999, leeway: .automatic), 0.0)
+        XCTAssertEqual(CoreSignalKitTimer.leewaySeconds(timeout: 1.0, leeway: .automatic), 0.1, accuracy: 1e-9)
+        XCTAssertEqual(CoreSignalKitTimer.leewaySeconds(timeout: 4.0, leeway: .automatic), 0.4, accuracy: 1e-9)
+        XCTAssertEqual(CoreSignalKitTimer.leewaySeconds(timeout: 10.0, leeway: .automatic), 1.0, accuracy: 1e-9)
+        XCTAssertEqual(CoreSignalKitTimer.leewaySeconds(timeout: 3600.0, leeway: .automatic), 1.0, accuracy: 1e-9)
+    }
+
+    func testPreciseTimersHaveNoLeeway() {
+        XCTAssertEqual(CoreSignalKitTimer.leewaySeconds(timeout: 1.0, leeway: .precise), 0.0)
+        XCTAssertEqual(CoreSignalKitTimer.leewaySeconds(timeout: 3600.0, leeway: .precise), 0.0)
+        let queue = Queue(name: "CoreTimerTests.precise")
+        let timer = CoreSignalKitTimer(timeout: 5.0, repeat: true, completion: {}, queue: queue, leeway: .precise)
+        XCTAssertEqual(timer.leewaySeconds, 0.0)
+        let automatic = CoreSignalKitTimer(timeout: 5.0, repeat: true, completion: { _ in }, queue: queue)
+        XCTAssertEqual(automatic.leewaySeconds, 0.5, accuracy: 1e-9)
+    }
+
+    func testPreciseTimerFires() {
+        let queue = Queue(name: "CoreTimerTests.preciseFires")
+        let fired = self.expectation(description: "fired")
+        let timer = CoreSignalKitTimer(timeout: 0.02, repeat: false, completion: { _ in
+            fired.fulfill()
+        }, queue: queue, leeway: .precise)
+        timer.start()
+        self.wait(for: [fired], timeout: 5.0)
+        withExtendedLifetime(timer) {}
+    }
 }
