@@ -25,6 +25,23 @@ private func describeState(_ state: NWConnection.State) -> String {
 }
 
 @available(iOS 12.0, macOS 14.0, *)
+/// TCP options of every Network.framework MTProto connection.
+///
+/// Keepalive: first probe after 30 s idle, then every 10 s, 3 probes (a dead peer is noticed
+/// after at most 60 s idle). It was 5 s / 5 s / 2, which sent a probe every 5 s on every idle
+/// connection and kept the cellular radio out of its idle state. Dead paths are still reported
+/// sooner by the connection's viability handler and by MTProto's own pings. The 30 s figure
+/// needs the device Power Profiler check (cellular, 5 min idle, and a reconnect timed after a
+/// Wi-Fi to cellular switch) before it is tuned further; see CLAUDE.md.
+func configureNetworkFrameworkTcpOptions(_ tcpOptions: NWProtocolTCP.Options) {
+    tcpOptions.noDelay = true
+    tcpOptions.enableKeepalive = true
+    tcpOptions.keepaliveIdle = 30
+    tcpOptions.keepaliveCount = 3
+    tcpOptions.keepaliveInterval = 10
+    tcpOptions.enableFastOpen = true
+}
+
 final class NetworkFrameworkTcpConnectionInterface: NSObject, MTTcpConnectionInterface {
     private struct ReadRequest {
         let length: Int
@@ -130,12 +147,7 @@ final class NetworkFrameworkTcpConnectionInterface: NSObject, MTTcpConnectionInt
             let port = NWEndpoint.Port(rawValue: port)!
             
             let tcpOptions = NWProtocolTCP.Options()
-            tcpOptions.noDelay = true
-            tcpOptions.enableKeepalive = true
-            tcpOptions.keepaliveIdle = 5
-            tcpOptions.keepaliveCount = 2
-            tcpOptions.keepaliveInterval = 5
-            tcpOptions.enableFastOpen = true
+            configureNetworkFrameworkTcpOptions(tcpOptions)
             
             let parameters = NWParameters(tls: nil, tcp: tcpOptions)
             // nw_parameters_set_prefer_no_proxy defaults to false, so Network.framework routes

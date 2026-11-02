@@ -767,6 +767,12 @@ GPU (Metal) rendering of stickers and emoji, its debug switches and how to measu
   in both libraries. Do not reintroduce a repeating check: ~45 per-account pollers sit in hour-long
   delays and the old 4 s loop caused most background wake-ups (`Stress/IdleWakeupTests`, 2362 -> 10
   wake-ups/s with 200 pending delays).
+- **Network.framework TCP keepalive is 30 s idle / 10 s interval / 3 probes**
+  (`configureNetworkFrameworkTcpOptions`, was 5/5/2). Dead connections are also caught by the
+  viability handler and MTProto pings (the better-path handler is still commented out). Before
+  tuning it further, or if reconnects look slower, run the device check from the 2026-11 deep audit:
+  Power Profiler on cellular, 5 min idle with the old and new values, and time a reconnect after a
+  Wi-Fi to cellular switch for each.
 
 ## Framework export lists (computed by the build)
 
