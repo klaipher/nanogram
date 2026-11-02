@@ -68,6 +68,32 @@ static inline int writeOggPage(ogg_page *page, TGDataItem *fileItem)
     return MAX(0, written);
 }
 
+static long lastOggPageNumber(NSData *data)
+{
+    ogg_sync_state syncState;
+    ogg_page page;
+    long pageNumber = -1;
+    
+    ogg_sync_init(&syncState);
+    char *buffer = ogg_sync_buffer(&syncState, (long)data.length);
+    if (buffer != NULL) {
+        memcpy(buffer, data.bytes, data.length);
+        ogg_sync_wrote(&syncState, (long)data.length);
+        while (ogg_sync_pageout(&syncState, &page) == 1) {
+            pageNumber = ogg_page_pageno(&page);
+        }
+    }
+    ogg_sync_clear(&syncState);
+    
+    return pageNumber;
+}
+
+static void continueOggStream(ogg_stream_state *stream, long nextPageNumber)
+{
+    stream->b_o_s = 1;
+    stream->pageno = MAX(0, nextPageNumber);
+}
+
 @interface TGOggOpusWriter ()
 {
     TGDataItem *_dataItem;
@@ -490,6 +516,7 @@ static inline int writeOggPage(ogg_page *page, TGDataItem *fileItem)
         NSLog(@"Error: stream init failed");
         return false;
     }
+    continueOggStream(&os, lastOggPageNumber(_dataItem.data) + 1);
     
     max_frame_bytes = (1275 * 3 + 7) * header.nb_streams;
     _packet = malloc(max_frame_bytes);
@@ -688,6 +715,7 @@ static inline int writeOggPage(ogg_page *page, TGDataItem *fileItem)
     [state setObject:@(total_bytes) forKey:@"total_bytes"];
     [state setObject:@(total_samples) forKey:@"total_samples"];
     [state setObject:@(serialno) forKey:@"serialno"];
+    [state setObject:@(os.pageno) forKey:@"pageno"];
     
     [state setObject:@(rate) forKey:@"rate"];
     [state setObject:@(coding_rate) forKey:@"coding_rate"];
@@ -763,6 +791,8 @@ static inline int writeOggPage(ogg_page *page, TGDataItem *fileItem)
         NSLog(@"Error: stream init failed");
         return false;
     }
+    NSNumber *pageNumber = state[@"pageno"];
+    continueOggStream(&os, pageNumber != nil ? pageNumber.longValue : lastOggPageNumber(dataItem.data) + 1);
     
     min_bytes = max_frame_bytes = (1275 * 3 + 7) * header.nb_streams;
     _packet = malloc(max_frame_bytes);
