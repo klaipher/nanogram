@@ -13,31 +13,7 @@ private let bufferCount = 32
 
 
 
-#if os(macOS)
-private let deviceColorSpace: CGColorSpace = {
-    if #available(OSX 10.11.2, *) {
-        if let colorSpace = CGColorSpace(name: CGColorSpace.displayP3) {
-            return colorSpace
-        } else {
-            return CGColorSpaceCreateDeviceRGB()
-        }
-    } else {
-        return CGColorSpaceCreateDeviceRGB()
-    }
-}()
-#else
-private let deviceColorSpace: CGColorSpace = {
-    if #available(iOSApplicationExtension 9.3, iOS 9.3, *) {
-        if let colorSpace = CGColorSpace(name: CGColorSpace.displayP3) {
-            return colorSpace
-        } else {
-            return CGColorSpaceCreateDeviceRGB()
-        }
-    } else {
-        return CGColorSpaceCreateDeviceRGB()
-    }
-}()
-#endif
+private let previewImageColorSpace: CGColorSpace = CGColorSpace(name: CGColorSpace.sRGB) ?? CGColorSpaceCreateDeviceRGB()
 public final class FFMpegMediaVideoFrameDecoder: MediaTrackFrameDecoder {
     public enum ReceiveResult {
         case error
@@ -440,7 +416,7 @@ public final class FFMpegMediaVideoFrameDecoder: MediaTrackFrameDecoder {
         
         let bitmapInfo = CGBitmapInfo(rawValue: CGBitmapInfo.byteOrder32Little.rawValue | CGImageAlphaInfo.noneSkipFirst.rawValue)
         
-        guard let image = CGImage(width: Int(frame.width), height: Int(frame.height), bitsPerComponent: 8, bitsPerPixel: 32, bytesPerRow: argbBytesPerRow, space: deviceColorSpace, bitmapInfo: bitmapInfo, provider: provider, decode: nil, shouldInterpolate: false, intent: .defaultIntent) else {
+        guard let image = CGImage(width: Int(frame.width), height: Int(frame.height), bitsPerComponent: 8, bitsPerPixel: 32, bytesPerRow: argbBytesPerRow, space: previewImageColorSpace, bitmapInfo: bitmapInfo, provider: provider, decode: nil, shouldInterpolate: false, intent: .defaultIntent) else {
             return nil
         }
         
