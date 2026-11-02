@@ -340,7 +340,7 @@ public class ItemListSwitchItemNode: ListViewItemNode, ItemListItemNode {
                 insets.bottom = 0.0
             }
             
-            let (titleLayout, titleApply) = makeTitleLayout(TextNodeLayoutArguments(attributedString: NSAttributedString(string: item.title, font: titleFont, textColor: item.presentationData.theme.list.itemPrimaryTextColor), backgroundColor: nil, maximumNumberOfLines: item.maximumNumberOfLines, truncationType: .end, constrainedSize: CGSize(width: params.width - leftInset - params.rightInset - 64.0, height: CGFloat.greatestFiniteMagnitude), alignment: .natural, cutout: nil, insets: UIEdgeInsets()))
+            let (titleLayout, titleApply) = makeTitleLayout(TextNodeLayoutArguments(attributedString: NSAttributedString(string: item.title, font: titleFont, textColor: item.presentationData.theme.list.itemPrimaryTextColor), backgroundColor: nil, maximumNumberOfLines: item.maximumNumberOfLines, truncationType: .end, constrainedSize: CGSize(width: ItemListSwitchItemMetrics.titleMaxWidth(rowWidth: params.width, leftInset: leftInset, rightInset: params.rightInset, switchStyle: .current), height: CGFloat.greatestFiniteMagnitude), alignment: .natural, cutout: nil, insets: UIEdgeInsets()))
             
             contentSize.height = max(contentSize.height, titleLayout.size.height + topInset * 2.0)
             
@@ -546,7 +546,7 @@ public class ItemListSwitchItemNode: ListViewItemNode, ItemListItemNode {
                         }
                         let switchSize = switchView.bounds.size
                         
-                        transition.updateFrame(node: strongSelf.switchNode, frame: CGRect(origin: CGPoint(x: params.width - params.rightInset - switchSize.width - 15.0, y: floor((contentSize.height - switchSize.height) / 2.0)), size: switchSize))
+                        transition.updateFrame(node: strongSelf.switchNode, frame: CGRect(origin: CGPoint(x: ItemListSwitchItemMetrics.switchMinX(rowWidth: params.width, rightInset: params.rightInset, switchWidth: switchSize.width), y: floor((contentSize.height - switchSize.height) / 2.0)), size: switchSize))
                         strongSelf.switchGestureNode.frame = strongSelf.switchNode.frame
                         if switchView.isOn != item.value {
                             switchView.setOn(item.value, animated: animated)
