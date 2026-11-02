@@ -753,7 +753,6 @@ public final class AccountViewTracker {
                                                 transaction.updateMessage(messageIds[i], update: { currentMessage in
                                                     let storeForwardInfo = currentMessage.forwardInfo.flatMap(StoreMessageForwardInfo.init)
                                                     var attributes = currentMessage.attributes
-                                                    var foundReplies = false
                                                     var commentsChannelId: PeerId?
                                                     var recentRepliersPeerIds: [PeerId]?
                                                     var repliesCount: Int32?
@@ -782,32 +781,7 @@ public final class AccountViewTracker {
                                                             maxMessageId = MessageId(peerId: commentsChannelId, namespace: Namespaces.Message.Cloud, id: repliesMaxId)
                                                         }
                                                     }
-                                                    loop: for j in 0 ..< attributes.count {
-                                                        if let attribute = attributes[j] as? ViewCountMessageAttribute {
-                                                            if let views = views {
-                                                                attributes[j] = ViewCountMessageAttribute(count: max(attribute.count, Int(views)))
-                                                            }
-                                                        } else if let _ = attributes[j] as? ForwardCountMessageAttribute {
-                                                            if let forwards = forwards {
-                                                                attributes[j] = ForwardCountMessageAttribute(count: Int(forwards))
-                                                            }
-                                                        } else if let attribute = attributes[j] as? ReplyThreadMessageAttribute {
-                                                            foundReplies = true
-                                                            if let repliesCount = repliesCount {
-                                                                var resolvedMaxReadMessageId: MessageId.Id?
-                                                                if let previousMaxReadMessageId = attribute.maxReadMessageId, let repliesReadMaxIdValue = repliesReadMaxId {
-                                                                    resolvedMaxReadMessageId = max(previousMaxReadMessageId, repliesReadMaxIdValue)
-                                                                    repliesReadMaxId = resolvedMaxReadMessageId
-                                                                } else if let repliesReadMaxIdValue = repliesReadMaxId {
-                                                                    resolvedMaxReadMessageId = repliesReadMaxIdValue
-                                                                    repliesReadMaxId = resolvedMaxReadMessageId
-                                                                } else {
-                                                                    resolvedMaxReadMessageId = attribute.maxReadMessageId
-                                                                }
-                                                                attributes[j] = ReplyThreadMessageAttribute(count: repliesCount, latestUsers: recentRepliersPeerIds ?? [], commentsPeerId: commentsChannelId, maxMessageId: repliesMaxId, maxReadMessageId: resolvedMaxReadMessageId)
-                                                            }
-                                                        }
-                                                    }
+                                                    let (changed, _) = applyMessageViewsPollResult(MessageViewsPollResult(views: views, forwards: forwards, repliesCount: repliesCount, recentRepliersPeerIds: recentRepliersPeerIds, commentsChannelId: commentsChannelId, repliesMaxId: repliesMaxId), to: &attributes, repliesReadMaxId: &repliesReadMaxId)
                                                     var maxReadIncomingMessageId: MessageId?
                                                     if let commentsChannelId = commentsChannelId {
                                                         if let repliesReadMaxId = repliesReadMaxId {
@@ -815,8 +789,8 @@ public final class AccountViewTracker {
                                                         }
                                                     }
                                                     resultStates[messageIds[i]] = ViewCountContextState(timestamp: Int32(CFAbsoluteTimeGetCurrent()), clientId: clientId, result: ViewCountContextState.ReplyInfo(commentsPeerId: commentsChannelId, maxReadIncomingMessageId: maxReadIncomingMessageId, maxMessageId: maxMessageId))
-                                                    if !foundReplies, let repliesCount = repliesCount {
-                                                        attributes.append(ReplyThreadMessageAttribute(count: repliesCount, latestUsers: recentRepliersPeerIds ?? [], commentsPeerId: commentsChannelId, maxMessageId: repliesMaxId, maxReadMessageId: repliesReadMaxId))
+                                                    if !changed {
+                                                        return .skip
                                                     }
                                                     return .update(StoreMessage(id: currentMessage.id, customStableId: nil, globallyUniqueId: currentMessage.globallyUniqueId, groupingKey: currentMessage.groupingKey, threadId: currentMessage.threadId, timestamp: currentMessage.timestamp, flags: StoreMessageFlags(currentMessage.flags), tags: currentMessage.tags, globalTags: currentMessage.globalTags, localTags: currentMessage.localTags, forwardInfo: storeForwardInfo, authorId: currentMessage.author?.id, text: currentMessage.text, attributes: attributes, media: currentMessage.media))
                                                 })
