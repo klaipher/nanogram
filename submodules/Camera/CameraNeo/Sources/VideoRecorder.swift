@@ -62,6 +62,12 @@ final class VideoRecordingStatistics {
     var lanczosFrames = 0
     var decoratedFrames = 0
     var firstFrameMs: Double?
+    // Frames replaced by a newer one while the writer waited for its first audio buffer.
+    var armingReplacedFrames = 0
+    // Held first frames not written because the next frame came more than 1.5 intervals later.
+    var staleStartFramesDropped = 0
+    // Time from the held first frame to the next frame when the session started.
+    var sessionStartGapMs: Double?
     var timelineMissingFrames = 0
     var maximumFrameGap: Double = 0.0
     var cpuEncodeWall = Timing()
@@ -127,6 +133,9 @@ final class VideoRecordingStatistics {
         fields["lanczosFrames"] = self.lanczosFrames
         fields["decoratedFrames"] = self.decoratedFrames
         fields["firstFrameMs"] = self.firstFrameMs.map { $0 as Any } ?? NSNull()
+        fields["armingReplacedFrames"] = self.armingReplacedFrames
+        fields["staleStartFramesDropped"] = self.staleStartFramesDropped
+        fields["sessionStartGapMs"] = self.sessionStartGapMs.map { $0 as Any } ?? NSNull()
         // Gaps are inferred from written timestamps at 30 FPS, not another drop counter.
         fields["timelineMissingFramesAt30Fps"] = self.timelineMissingFrames
         fields["maxWrittenFrameGapMs"] = self.maximumFrameGap * 1000.0
@@ -196,6 +205,34 @@ final class VideoRecorder {
         case failed
     }
 
+    enum SessionStartChoice: Equatable {
+        case startAtHeld
+        case startAtNext
+        case ignoreNext
+    }
+
+    // Frames that arrive while the first frame is held (writer set-up, waiting for audio) are lost,
+    // so a session started on a frame held across such a delay shows it frozen for the whole delay.
+    // The held frame is kept only when the next frame follows it within 1.5 frame intervals.
+    static func sessionStartChoice(heldTime: CMTime, nextTime: CMTime, frameInterval: CMTime) -> SessionStartChoice {
+        guard nextTime.isValid && nextTime.isNumeric else {
+            return .ignoreNext
+        }
+        guard heldTime.isValid && heldTime.isNumeric else {
+            return .startAtNext
+        }
+        guard nextTime > heldTime else {
+            return .ignoreNext
+        }
+        // gap <= 1.5 * interval, compared exactly as 2 * gap <= 3 * interval.
+        let gap = nextTime - heldTime
+        if CMTimeMultiply(gap, multiplier: 2) <= CMTimeMultiply(frameInterval, multiplier: 3) {
+            return .startAtHeld
+        } else {
+            return .startAtNext
+        }
+    }
+
     private enum State: Equatable {
         case arming
         case writing
@@ -227,7 +264,10 @@ final class VideoRecorder {
     private var audioInput: AVAssetWriterInput?
     private var audioFormatDescription: CMFormatDescription?
 
+    // The first frame, held until the writer can start and then until the next frame shows
+    // whether it was followed by a hole (awaitingSessionStart).
     private var pendingFirstVideoFrame: PendingVideoFrame?
+    private var awaitingSessionStart = false
     private var pendingAudioBuffers: [PendingAudioSample] = []
 
     private var recordingStartTime: CMTime?
@@ -470,10 +510,66 @@ final class VideoRecorder {
             return
         }
 
+        if self.state == .arming {
+            // Waiting for the first audio buffer: keep the newest frame, not one held across the wait.
+            if let pendingFirstVideoFrame = self.pendingFirstVideoFrame {
+                guard frame.presentationTime > pendingFirstVideoFrame.presentationTime else {
+                    return
+                }
+                self.statistics.armingReplacedFrames += 1
+            }
+            self.pendingFirstVideoFrame = frame
+            self.tryStartWriting()
+            return
+        }
+
         guard self.state == .writing || self.state == .stopping else {
             return
         }
+        if self.awaitingSessionStart {
+            self.startSession(nextFrame: frame)
+            return
+        }
         self.appendPreparedVideoFrame(frame)
+    }
+
+    private func startSession(nextFrame frame: PendingVideoFrame) {
+        guard let assetWriter = self.assetWriter else {
+            return
+        }
+        guard let heldFrame = self.pendingFirstVideoFrame else {
+            self.awaitingSessionStart = false
+            assetWriter.startSession(atSourceTime: frame.presentationTime)
+            self.appendPreparedVideoFrame(frame)
+            return
+        }
+
+        let frameInterval = CMTime(value: 1, timescale: CMTimeScale(roundVideoCaptureFrameRate))
+        let choice = Self.sessionStartChoice(
+            heldTime: heldFrame.presentationTime,
+            nextTime: frame.presentationTime,
+            frameInterval: frameInterval
+        )
+        if choice == .ignoreNext {
+            return
+        }
+
+        self.awaitingSessionStart = false
+        self.pendingFirstVideoFrame = nil
+        self.statistics.sessionStartGapMs = (frame.presentationTime - heldFrame.presentationTime).seconds * 1000.0
+        switch choice {
+        case .startAtHeld:
+            assetWriter.startSession(atSourceTime: heldFrame.presentationTime)
+            if !self.appendPreparedVideoFrame(heldFrame, followedBy: frame) {
+                self.appendPreparedVideoFrame(frame)
+            }
+        case .startAtNext:
+            self.statistics.staleStartFramesDropped += 1
+            assetWriter.startSession(atSourceTime: frame.presentationTime)
+            self.appendPreparedVideoFrame(frame)
+        case .ignoreNext:
+            break
+        }
     }
 
     func appendAudioSampleBuffer(_ sampleBuffer: CMSampleBuffer) {
@@ -706,7 +802,7 @@ final class VideoRecorder {
     private func tryStartWriting() {
         guard self.state == .arming,
               let assetWriter = self.assetWriter,
-              let pendingFirstVideoFrame = self.pendingFirstVideoFrame,
+              self.pendingFirstVideoFrame != nil,
               !self.hasAudio || self.audioInput != nil else {
             return
         }
@@ -715,22 +811,23 @@ final class VideoRecorder {
             self.fail()
             return
         }
-        assetWriter.startSession(atSourceTime: pendingFirstVideoFrame.presentationTime)
+        // The session starts with the next frame (startSession(nextFrame:)), which shows whether
+        // the held frame is followed by a hole. Until then nothing is written, so a stop() with no
+        // further frame still ends in finishAtDeadline's no-frames failure.
         self.state = self.stopRequested ? .stopping : .writing
-        self.pendingFirstVideoFrame = nil
-
-        self.appendPreparedVideoFrame(pendingFirstVideoFrame)
-        self.drainPendingAudioBuffers()
+        self.awaitingSessionStart = true
     }
 
-    private func appendPreparedVideoFrame(_ frame: PendingVideoFrame) {
+    // Returns whether a render was submitted, i.e. whether its completion (and `next`) will run.
+    @discardableResult
+    private func appendPreparedVideoFrame(_ frame: PendingVideoFrame, followedBy next: PendingVideoFrame? = nil) -> Bool {
         guard self.state == .writing || self.state == .stopping,
               let videoInput = self.videoInput else {
-            return
+            return false
         }
         guard videoInput.isReadyForMoreMediaData else {
             self.statistics.writerBackpressureDrops += 1
-            return
+            return false
         }
 
         let renderInputs = self.renderInputs(for: frame)
@@ -740,6 +837,7 @@ final class VideoRecorder {
         } else {
             animationTime = 0.0
         }
+        let renderSubmittedBefore = self.statistics.renderSubmitted
         self.processor.render(
             primary: renderInputs.primary,
             secondary: renderInputs.secondary,
@@ -753,16 +851,21 @@ final class VideoRecorder {
                 guard self.state == .writing || self.state == .stopping else {
                     return
                 }
-                guard let processedFrame else {
-                    return
+                if let processedFrame {
+                    self.appendProcessedVideoFrame(
+                        processedFrame,
+                        sourceFrame: frame,
+                        transitionCompleted: renderInputs.transitionCompleted
+                    )
                 }
-                self.appendProcessedVideoFrame(
-                    processedFrame,
-                    sourceFrame: frame,
-                    transitionCompleted: renderInputs.transitionCompleted
-                )
+                // The processor renders one frame at a time, so the frame after the held first
+                // frame is rendered once that one is done.
+                if let next {
+                    self.appendPreparedVideoFrame(next)
+                }
             }
         )
+        return self.statistics.renderSubmitted != renderSubmittedBefore
     }
 
     private func appendProcessedVideoFrame(
