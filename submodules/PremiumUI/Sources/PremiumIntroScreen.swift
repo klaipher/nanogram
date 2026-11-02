@@ -948,7 +948,8 @@ struct PremiumIntroConfiguration {
     let businessPerks: [PremiumPerk]
     
     fileprivate init(perks: [PremiumPerk], businessPerks: [PremiumPerk]) {
-        self.perks = perks
+        // Nanogram ships no Premium app icons (every icon is free), so the "App icons" perk would show an empty page.
+        self.perks = perks.filter { $0 != .appIcons }
         self.businessPerks = businessPerks
     }
     

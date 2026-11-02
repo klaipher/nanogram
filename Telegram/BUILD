@@ -327,23 +327,13 @@ filegroup(
     ]),
 )
 
+# Only Nanogram's icons are bundled. Telegram's .alticon folders stay in the tree for upstream
+# merges but are not shipped.
 alternate_icon_folders = [
     "NanogramComet",
     "NanogramDash",
     "NanogramForward",
     "NanogramStreak",
-    "BlackIcon",
-    "BlackClassicIcon",
-    "BlackFilledIcon",
-    "BlueIcon",
-    "BlueClassicIcon",
-    "BlueFilledIcon",
-    "WhiteFilledIcon",
-    "New1",
-    "New2",
-    "Premium",
-    "PremiumBlack",
-    "PremiumTurbo",
 ]
 
 # Nanogram's own icon (Comet), an Icon Composer file so iOS draws the glass, dark,
@@ -1903,7 +1893,7 @@ plist_fragment(
             <string>Telegram iOS Color Theme File</string>
             <key>UTTypeIconFiles</key>
             <array>
-                <string>BlueIcon@3x.png</string>
+                <string>NanogramComet@3x.png</string>
             </array>
             <key>UTTypeIdentifier</key>
             <string>org.telegram.Telegram-iOS.theme</string>
