@@ -1229,6 +1229,10 @@ public final class ChatInputTextView: ChatInputTextViewImpl, UITextViewDelegate,
     
     public var toggleQuoteCollapse: ((NSRange) -> Void)?
     public var onUpdateLayout: (() -> Void)?
+    /// True while `textViewDidChange` runs. Work that only depends on the final state of a change (the rich
+    /// rendering overlays, rebuilt 3 times per keystroke before) can wait for `didHandleTextChange`.
+    public private(set) var isHandlingTextChange: Bool = false
+    public var didHandleTextChange: (() -> Void)?
         
     private let displayInternal: ChatInputTextInternal
     private let measureInternal: ChatInputTextInternal
@@ -1401,12 +1405,20 @@ public final class ChatInputTextView: ChatInputTextViewImpl, UITextViewDelegate,
 
     @objc public func textViewDidChange(_ textView: UITextView) {
         self.selectionChangedForEditedText = true
-                
+        
+        let wasHandlingTextChange = self.isHandlingTextChange
+        self.isHandlingTextChange = true
+        
         self.updateTextContainerInset()
         
         self.customDelegate?.chatInputTextNodeDidUpdateText()
         
         self.updateTextContainerInset()
+        
+        self.isHandlingTextChange = wasHandlingTextChange
+        if !wasHandlingTextChange {
+            self.didHandleTextChange?()
+        }
     }
 
     @objc public func textViewDidChangeSelection(_ textView: UITextView) {
