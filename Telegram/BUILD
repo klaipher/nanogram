@@ -570,7 +570,11 @@ official_communication_notifications_fragment = """
 <key>com.apple.developer.usernotifications.communication</key>
 <true/>
 """
-communication_notifications_fragment = official_communication_notifications_fragment if telegram_bundle_id in official_bundle_ids else ""
+# Sender avatars in notifications (INSendMessageIntent donated by the NotificationService extension)
+# need this entitlement; iOS ignores the intent without it. Nanogram's App ID has the "Communication
+# Notifications" capability. Development bundles (org.klaipher.TelegramDev) don't, so their profiles stay valid.
+communication_notifications_bundle_ids = official_bundle_ids + ["org.klaipher.Nanogram"]
+communication_notifications_fragment = official_communication_notifications_fragment if telegram_bundle_id in communication_notifications_bundle_ids else ""
 
 official_notification_filtering_fragment = """
 <key>com.apple.developer.usernotifications.filtering</key>
