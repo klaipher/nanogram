@@ -7,17 +7,17 @@ import XCTest
 final class CoreTDClientUpdateHandlerTests: XCTestCase {
     func testUpdateDecoderRunsOnTDLibQueueAndDeliversOnMain() {
         let delivered = expectation(description: "update delivered")
-        let decode = TDClient.makeUpdateDecoder(logger: os.Logger(watchCategory: "test")) { update in
+        let delivery = TDUpdateDelivery(logger: os.Logger(watchCategory: "test")) { updates in
             XCTAssertTrue(Thread.isMainThread)
-            guard case .updateAuthorizationState(let upd) = update,
+            guard updates.count == 1, case .updateAuthorizationState(let upd) = updates[0],
                   case .authorizationStateWaitTdlibParameters = upd.authorizationState else {
-                return XCTFail("unexpected update \(update)")
+                return XCTFail("unexpected updates \(updates)")
             }
             delivered.fulfill()
         }
         let json = #"{"@type":"updateAuthorizationState","authorization_state":{"@type":"authorizationStateWaitTdlibParameters"},"@client_id":1}"#
         DispatchQueue(label: "test.tdlib.update-handler").async {
-            decode(Data(json.utf8), CoreFixtures.tdlibDecoder())
+            delivery.receive(Data(json.utf8), decoder: CoreFixtures.tdlibDecoder())
         }
         wait(for: [delivered], timeout: 2)
     }
@@ -25,9 +25,9 @@ final class CoreTDClientUpdateHandlerTests: XCTestCase {
     func testUndecodableUpdateIsDropped() {
         let delivered = expectation(description: "nothing delivered")
         delivered.isInverted = true
-        let decode = TDClient.makeUpdateDecoder(logger: os.Logger(watchCategory: "test")) { _ in delivered.fulfill() }
+        let delivery = TDUpdateDelivery(logger: os.Logger(watchCategory: "test")) { _ in delivered.fulfill() }
         DispatchQueue.global().async {
-            decode(Data("not json".utf8), CoreFixtures.tdlibDecoder())
+            delivery.receive(Data("not json".utf8), decoder: CoreFixtures.tdlibDecoder())
         }
         wait(for: [delivered], timeout: 0.3)
     }

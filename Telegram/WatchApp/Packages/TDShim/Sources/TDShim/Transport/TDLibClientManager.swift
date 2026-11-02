@@ -13,6 +13,9 @@ public class TDLibClient: TDLibApi, Equatable {
     public let id: Int32
     public private(set) var awaitingCompletions = ConcurrentDictionary<String, (Data) -> Void>()
     public let updateHandler: (Data, TDLibClient) -> Void
+    /// Called on `updateHandlerQueue` just before a request's completion runs, so the update
+    /// handler can keep the updates TDLib sent after the response behind it.
+    public let responseHandler: (() -> Void)?
     /// 'updateHandlerQueue' is a client-specific queue for incoming updates and responses. Serial queue ensures an order of updates https://core.telegram.org/tdlib/getting-started#handling-updates
     public let updateHandlerQueue: DispatchQueue
     /// 'queryQueue' is a client-specific queue for outgoing requests. It's a concurrent queue, so some requests may be dispatched earlier even if they were called later.
@@ -20,9 +23,10 @@ public class TDLibClient: TDLibApi, Equatable {
     private let logger: TDLibLogger?
     
     /// Since ``td_receive`` can be called only from a single thread, ``TDLibClient`` initializer is private to ensure each client will receive responses for their requests.
-    fileprivate init(updateHandler: @escaping (Data, TDLibClient) -> Void, logger: TDLibLogger? = nil) {
+    fileprivate init(updateHandler: @escaping (Data, TDLibClient) -> Void, responseHandler: (() -> Void)?, logger: TDLibLogger? = nil) {
         self.id = td_create_client_id()
         self.updateHandler = updateHandler
+        self.responseHandler = responseHandler
         self.updateHandlerQueue = DispatchQueue(label: "app.swiftgram.TDLibKit.client-\(self.id).update-handler")
         self.queryQueue = DispatchQueue(label: "app.swiftgram.TDLibKit.client-\(self.id).query", attributes: .concurrent)
         self.logger = logger
@@ -33,6 +37,7 @@ public class TDLibClient: TDLibApi, Equatable {
     func completionHandler(extra: String, result: Data) {
         self.updateHandlerQueue.async {
             if let completion = self.awaitingCompletions.removeValue(forKey: extra) {
+                self.responseHandler?()
                 completion(result)
             }
         }
@@ -94,8 +99,6 @@ public class TDLibClient: TDLibApi, Equatable {
 open class TDLibClientManager {
     /// 'receiveQueue' is a separate queue that calls ``td_receive`` in a loop
     private let receiveQueue = DispatchQueue(label: "app.swiftgram.TDLibKit.receive")
-    /// 'queryQueue' is a separate queue that will decode update string and lookup for possible completions in existing ``self.clients``. 'queryQueue' exists to quickly switch back to 'receiveQueue' and call next ``td_receive``
-    private let queryQueue = DispatchQueue(label: "app.swiftgram.TDLibKit.query")
     public private(set) var clients = ConcurrentDictionary<Int32,TDLibClient>()
     private let logger: TDLibLogger?
     
@@ -109,15 +112,13 @@ open class TDLibClientManager {
         self.receiveQueue.async { [weak self] in
             while (true) {
                 guard let self else { break }
-                guard
-                    let res = td_receive(10),
-                    case let dataString = String(cString: res),
-                    let data = dataString.data(using: .utf8)
-                else {
-                    continue
+                guard let res = td_receive(10) else { continue }
+                // One copy of TDLib's buffer, which the next td_receive reuses.
+                let data = Data(bytes: res, count: strlen(res))
+                if let logger = self.logger {
+                    logger.log(String(decoding: data, as: UTF8.self), type: .receive)
                 }
-                self.logger?.log(dataString, type: .receive)
-                self.queryResultAsync(data)
+                self.route(data)
             }
         }
     }
@@ -143,48 +144,32 @@ open class TDLibClientManager {
     ///
     ///
     /// - Parameter updateHandler: Handler closure that will get access to ``Data`` with update and corresponding ``TDLibClient``. Will run in a serial client-specific ``DispatchQueue`` without blocking any other clients or ``td_receive``. https://core.telegram.org/tdlib/getting-started#handling-updates
-    public func createClient(updateHandler: @escaping (Data, TDLibClient) -> Void) -> TDLibClient {
-        let newClient = TDLibClient(updateHandler: updateHandler, logger: self.logger)
+    public func createClient(
+        updateHandler: @escaping (Data, TDLibClient) -> Void,
+        responseHandler: (() -> Void)? = nil
+    ) -> TDLibClient {
+        let newClient = TDLibClient(updateHandler: updateHandler, responseHandler: responseHandler, logger: self.logger)
         self.clients[newClient.id] = newClient
         try? newClient.send(query: DTO(GetOption(name: "version")), completion: { _ in })
         return newClient
     }
     
-    private func queryResultAsync(_ result: Data) {
-        self.queryQueue.async { [weak self] in
-            guard
-                let `self` = self,
-                let json = try? JSONSerialization.jsonObject(with: result, options:[]),
-                let dictionary = json as? [String:Any]
-            else {
-                return
-            }
-            
-            let clientId = dictionary["@client_id"] as? Int32 ?? 1
-            if let extraStr = dictionary["@extra"] as? String {
-                if let client = self.clients[clientId] {
-                    client.completionHandler(extra: extraStr, result: result)
-                }
+    /// Runs on the receive queue. Reading the route from the bytes (`TDLibResponseRoute.scan`)
+    /// costs well under a microsecond, so it no longer hops to a queue of its own; the payload is
+    /// decoded once, by whoever receives it.
+    private func route(_ result: Data) {
+        guard let route = TDLibResponseRoute.route(result) else { return }
+        if let client = self.clients[route.clientId] {
+            if let extra = route.extra {
+                client.completionHandler(extra: extra, result: result)
             } else {
-                if let client = self.clients[clientId] {
-                    client.updateHandlerQueue.async {
-                        client.updateHandler(result, client)
-                    }
+                client.updateHandlerQueue.async {
+                    client.updateHandler(result, client)
                 }
             }
-            
-            if self.checkClosedUpdate(dictionary) {
-                self.clients.removeValue(forKey: clientId)
-            }
+        }
+        if route.closesClient {
+            self.clients.removeValue(forKey: route.clientId)
         }
     }
-    
-    private func checkClosedUpdate(_ dict: [String: Any]) -> Bool {
-        if let state = dict["authorization_state"] as? [String: Any],
-           (state["@type"] as? String) == "authorizationStateClosed" {
-            return true
-        }
-        return false
-    }
-    
 }

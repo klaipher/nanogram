@@ -93,38 +93,64 @@ struct TDLibChatHistoryLoader: ChatHistoryLoader {
 
     /// An error response throws: returning no messages would read as "no more history",
     /// ending pagination for good and showing an empty chat instead of Retry.
+    ///
+    /// One decoding pass over the response. A message the models cannot decode (TDLib evolves
+    /// faster than the pinned schema) is skipped on its own instead of failing the page.
     static func decodeMessagesLeniently(_ data: Data, chatId: Int64, decoder: JSONDecoder) throws -> [Message] {
         let logger = Logger(watchCategory: "chathistory")
-        guard let json = try? JSONSerialization.jsonObject(with: data) as? [String: Any] else {
+        let response: HistoryResponse
+        do {
+            response = try decoder.decode(HistoryResponse.self, from: data)
+        } catch {
             logger.warning("getChatHistory chatId=\(chatId, privacy: .public) — response was not JSON object")
             throw TDError(code: 500, message: "Malformed getChatHistory response")
         }
-        if let type = json["@type"] as? String, type == "error" {
-            let code = json["code"] as? Int ?? 500
-            let message = json["message"] as? String ?? ""
+        if response.type == "error" {
+            let code = response.code ?? 500
+            let message = response.message ?? ""
             logger.warning("getChatHistory chatId=\(chatId, privacy: .public) failed: \(code, privacy: .public) \(message, privacy: .public)")
             throw TDError(code: code, message: message)
         }
-        guard let rawMessages = json["messages"] as? [[String: Any]] else {
-            return []
-        }
         var decoded: [Message] = []
-        decoded.reserveCapacity(rawMessages.count)
-        for (idx, raw) in rawMessages.enumerated() {
-            // Re-serialize each message dict to Data so TDLibKit's decoder can
-            // consume it the same way it would the full Messages response.
-            guard let perMessageData = try? JSONSerialization.data(withJSONObject: raw) else {
-                logger.warning("getChatHistory chatId=\(chatId, privacy: .public) — re-serialize failed at index=\(idx, privacy: .public)")
-                continue
-            }
-            do {
-                let m = try decoder.decode(Message.self, from: perMessageData)
-                decoded.append(m)
-            } catch {
+        decoded.reserveCapacity(response.messages.count)
+        for (idx, entry) in response.messages.enumerated() {
+            switch entry.result {
+            case .success(let message):
+                decoded.append(message)
+            case .failure(let error):
                 logger.warning("getChatHistory chatId=\(chatId, privacy: .public) — skipping message index=\(idx, privacy: .public) due to decode error: \(String(describing: error), privacy: .private)")
             }
         }
         return decoded
+    }
+
+    /// `messages`, or an `error`. Every field is optional so that either shape decodes.
+    private struct HistoryResponse: Decodable {
+        let type: String?
+        let code: Int?
+        let message: String?
+        let messages: [LenientMessage]
+
+        enum CodingKeys: String, CodingKey {
+            case type = "@type"
+            case code, message, messages
+        }
+
+        init(from decoder: Decoder) throws {
+            let container = try decoder.container(keyedBy: CodingKeys.self)
+            type = try? container.decodeIfPresent(String.self, forKey: .type)
+            code = try? container.decodeIfPresent(Int.self, forKey: .code)
+            message = try? container.decodeIfPresent(String.self, forKey: .message)
+            messages = (try? container.decodeIfPresent([LenientMessage].self, forKey: .messages)) ?? []
+        }
+    }
+
+    private struct LenientMessage: Decodable {
+        let result: Result<Message, Error>
+
+        init(from decoder: Decoder) throws {
+            result = Result { try Message(from: decoder) }
+        }
     }
 
     func downloadFile(fileId: Int, priority: Int) async throws -> File {

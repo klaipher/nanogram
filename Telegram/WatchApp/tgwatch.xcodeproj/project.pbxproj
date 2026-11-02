@@ -30,6 +30,7 @@
 		3679D6EA591522207E69F8A5 /* ChatListTimestamp.swift in Sources */ = {isa = PBXBuildFile; fileRef = 0CCDFBD19F9CAA87E938BADC /* ChatListTimestamp.swift */; };
 		39A386FFBD00EEE14B2B33D5 /* MessageFormatters.swift in Sources */ = {isa = PBXBuildFile; fileRef = E09479749C40E78AD852AF8B /* MessageFormatters.swift */; };
 		3BA42E87FCC662196BB80B64 /* MessageRow.swift in Sources */ = {isa = PBXBuildFile; fileRef = 8F01C7C9A4B9948C0BB710E2 /* MessageRow.swift */; };
+		3CD1D8F334924372DD07A9E5 /* TDUpdateDelivery.swift in Sources */ = {isa = PBXBuildFile; fileRef = 097D3ACE0CFC2E78FAC12DA1 /* TDUpdateDelivery.swift */; };
 		4236CA9B5AA90ACEB17814DC /* BubbleMetrics.swift in Sources */ = {isa = PBXBuildFile; fileRef = 674916153E803CA73D43BE6C /* BubbleMetrics.swift */; };
 		44630BDE4B93AF13B9903093 /* StickerPicker.swift in Sources */ = {isa = PBXBuildFile; fileRef = C2C5B5ED9309BE4DA670469D /* StickerPicker.swift */; };
 		4505C5628AF9258938D623D7 /* CachedChat.swift in Sources */ = {isa = PBXBuildFile; fileRef = 9C5E645A6F575F72C3B7839D /* CachedChat.swift */; };
@@ -126,6 +127,7 @@
 		00101E229543EB30B46F9787 /* VoiceNoteVisual.swift */ = {isa = PBXFileReference; lastKnownFileType = sourcecode.swift; path = VoiceNoteVisual.swift; sourceTree = "<group>"; };
 		0240D336BD11E2613A457C43 /* PhotoVisual.swift */ = {isa = PBXFileReference; lastKnownFileType = sourcecode.swift; path = PhotoVisual.swift; sourceTree = "<group>"; };
 		0386BF4C7B1D4BDAE0B73509 /* VideoBubbleView.swift */ = {isa = PBXFileReference; lastKnownFileType = sourcecode.swift; path = VideoBubbleView.swift; sourceTree = "<group>"; };
+		097D3ACE0CFC2E78FAC12DA1 /* TDUpdateDelivery.swift */ = {isa = PBXFileReference; lastKnownFileType = sourcecode.swift; path = TDUpdateDelivery.swift; sourceTree = "<group>"; };
 		0CCDFBD19F9CAA87E938BADC /* ChatListTimestamp.swift */ = {isa = PBXFileReference; lastKnownFileType = sourcecode.swift; path = ChatListTimestamp.swift; sourceTree = "<group>"; };
 		0F9127473C7DAD18736234B3 /* AVRecordingBackend.swift */ = {isa = PBXFileReference; lastKnownFileType = sourcecode.swift; path = AVRecordingBackend.swift; sourceTree = "<group>"; };
 		1329216EB35DF3FC7636843D /* ReplyHeaderView.swift */ = {isa = PBXFileReference; lastKnownFileType = sourcecode.swift; path = ReplyHeaderView.swift; sourceTree = "<group>"; };
@@ -287,6 +289,7 @@
 				4E049ECC956A583A92C5C7CB /* SecretsValidator.swift */,
 				EB5C5FEFC91B0D5FDF164032 /* TDClient.swift */,
 				7994AE7EE63412CA072968E2 /* TDLibStorage.swift */,
+				097D3ACE0CFC2E78FAC12DA1 /* TDUpdateDelivery.swift */,
 				A4BDBD692A424C5C24D61B4F /* tgwatchApp.swift */,
 				A63843FEEB957FF475FF41D6 /* UserNamesStore.swift */,
 				29C965D314FEDA10CE9863BE /* Accounts */,
@@ -610,6 +613,7 @@
 				DDB206E2134B52F472D5E9FE /* TDClient.swift in Sources */,
 				787D692CF045D92B0DEFC1F2 /* TDClientFactory.swift in Sources */,
 				CE7580CEB197603734C0CA2F /* TDLibStorage.swift in Sources */,
+				3CD1D8F334924372DD07A9E5 /* TDUpdateDelivery.swift in Sources */,
 				B14FB831F58FBE797B2E5E22 /* UnreadDividerView.swift in Sources */,
 				B79AB6E8675A1A32B8DD9E4A /* UnsupportedBubbleView.swift in Sources */,
 				DD9FB33F951CC225F8D5B3EE /* UserNamesStore.swift in Sources */,
