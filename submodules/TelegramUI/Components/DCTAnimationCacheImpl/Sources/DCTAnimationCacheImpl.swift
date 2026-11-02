@@ -13,12 +13,86 @@ import ImageDCT
 // Measured on real emoji and stickers: writing 1.9-2.3x faster, files 12% smaller,
 // playback no slower. LZ4 instead of LZFSE wrote 3x faster but files were 33% larger
 // than format 6. Older builds reject format 7 files and regenerate them.
-private let currentFormatVersion: UInt32 = 7
+// Format 8: the same coefficients, compressed in blocks of whole frames (at least 64 KB except the
+// last), named by a codec byte after the version. These codecs have only a buffer API, hence the
+// blocks; the reader keeps one decoded block. Formats 6 and 7 stay readable.
+// The writer uses LZBITMAP. Measured on the repo fixtures against the format-7 LZFSE stream
+// (fix-bench/media/dct/blocks.txt): LZBITMAP encodes 62-73% and decodes 58-74% faster for files
+// 25-29% larger; LZMESH (iOS 27+) keeps the size but encodes only ~52% faster and decodes no
+// faster, and decoding runs for every displayed frame. LZMESH files are still read on iOS 27+.
+private let currentFormatVersion: UInt32 = 8
 
 // Tests write format 6 through this to compare the two.
 var dctAnimationCacheWriterFormatVersion: UInt32 = currentFormatVersion
 
 private let algorithm: compression_algorithm = COMPRESSION_LZFSE
+
+// The block codec of a format 8 file, stored in the byte after the version.
+enum DCTAnimationCacheCodec: UInt8 {
+    case lzbitmap = 1
+    case lzmesh = 2
+
+    var algorithm: compression_algorithm {
+        switch self {
+        case .lzbitmap:
+            return COMPRESSION_LZBITMAP
+        case .lzmesh:
+            return COMPRESSION_LZMESH
+        }
+    }
+}
+
+// Tests write a given codec through this.
+var dctAnimationCacheWriterCodecOverride: DCTAnimationCacheCodec?
+
+private func dctAnimationCacheWriterCodec() -> DCTAnimationCacheCodec {
+    return dctAnimationCacheWriterCodecOverride ?? .lzbitmap
+}
+
+// Whether this OS can decode files written with `codec`.
+private func isDecodable(_ codec: DCTAnimationCacheCodec) -> Bool {
+    switch codec {
+    case .lzbitmap:
+        return true
+    case .lzmesh:
+        if #available(iOS 27.0, *) {
+            return true
+        } else {
+            return false
+        }
+    }
+}
+
+// The frame payload stream of a cache file, written frame by frame.
+private protocol FrameStreamWriter: AnyObject {
+    func write(bytes: UnsafePointer<UInt8>, count: Int) throws
+    // Called after each frame's bytes; a block ends only here.
+    func endFrame() throws
+    func flush() throws
+}
+
+private extension FrameStreamWriter {
+    func writeUInt32(_ value: UInt32) throws {
+        var value: UInt32 = value
+        try withUnsafeBytes(of: &value, { bytes -> Void in
+            try self.write(bytes: bytes.baseAddress!.assumingMemoryBound(to: UInt8.self), count: 4)
+        })
+    }
+}
+
+private protocol FrameStreamReader: AnyObject {
+    func read(bytes: UnsafeMutablePointer<UInt8>, count: Int) throws
+}
+
+private extension FrameStreamReader {
+    func readUInt32() throws -> UInt32 {
+        var value: UInt32 = 0
+        try withUnsafeMutableBytes(of: &value, { bytes -> Void in
+            try self.read(bytes: bytes.baseAddress!.assumingMemoryBound(to: UInt8.self), count: 4)
+        })
+        return value
+    }
+}
 
 private func alignUp(size: Int, align: Int) -> Int {
     precondition(((align - 1) & align) == 0, "Align must be a power of two")
@@ -186,7 +260,8 @@ private final class AnimationCacheItemWriterImpl: AnimationCacheItemWriter {
     
     private let compressedPath: String
     private var file: ManagedFile?
-    private var compressedWriter: CompressedFileWriter?
+    private var compressedWriter: FrameStreamWriter?
+    private let codec: DCTAnimationCacheCodec
     private let completion: (CompressedResult?) -> Void
     
     
@@ -221,13 +296,18 @@ private final class AnimationCacheItemWriterImpl: AnimationCacheItemWriter {
         
         self.innerQueue = queue
         self.formatVersion = dctAnimationCacheWriterFormatVersion
+        self.codec = dctAnimationCacheWriterCodec()
         self.compressedPath = allocateTempFile()
         
         guard let file = ManagedFile(queue: nil, path: self.compressedPath, mode: .readwrite) else {
             return nil
         }
         self.file = file
-        self.compressedWriter = CompressedFileWriter(file: file)
+        if self.formatVersion >= 8 {
+            self.compressedWriter = BlockCompressedFileWriter(file: file, codec: self.codec)
+        } else {
+            self.compressedWriter = CompressedFileWriter(file: file)
+        }
         self.completion = completion
     }
     
@@ -440,25 +520,24 @@ private final class AnimationCacheItemWriterImpl: AnimationCacheItemWriter {
         }
         
         if isFirstFrame {
-            file.write(self.formatVersion)
+            // One write for the whole header.
+            var header = Data()
+            writeUInt32(data: &header, value: self.formatVersion)
+            if self.formatVersion >= 8 {
+                header.append(self.codec.rawValue)
+            }
             
-            file.write(UInt32(dctCoefficients.yPlane.width))
-            file.write(UInt32(dctCoefficients.yPlane.height))
+            writeUInt32(data: &header, value: UInt32(dctCoefficients.yPlane.width))
+            writeUInt32(data: &header, value: UInt32(dctCoefficients.yPlane.height))
             
-            let lumaDctTable = dctData.lumaTable.serializedData()
-            file.write(UInt32(lumaDctTable.count))
-            let _ = file.write(lumaDctTable)
-            
-            let chromaDctTable = dctData.chromaTable.serializedData()
-            file.write(UInt32(chromaDctTable.count))
-            let _ = file.write(chromaDctTable)
-            
-            let deltaDctTable = dctData.deltaTable.serializedData()
-            file.write(UInt32(deltaDctTable.count))
-            let _ = file.write(deltaDctTable)
+            for table in [dctData.lumaTable.serializedData(), dctData.chromaTable.serializedData(), dctData.deltaTable.serializedData()] {
+                writeUInt32(data: &header, value: UInt32(table.count))
+                header.append(table)
+            }
         
-            self.contentLengthOffset = Int(file.position())
-            file.write(0 as UInt32)
+            self.contentLengthOffset = Int(file.position()) + header.count
+            writeUInt32(data: &header, value: 0)
+            let _ = file.write(header)
         }
         
         do {
@@ -505,6 +584,7 @@ private final class AnimationCacheItemWriterImpl: AnimationCacheItemWriter {
                 try compressedWriter.writeUInt32(UInt32(encodedLength))
                 try compressedWriter.write(bytes: sparseBuffer, count: encodedLength)
             }
+            try compressedWriter.endFrame()
             
             self.frames.append(FrameMetadata(duration: duration))
         } catch {
@@ -543,10 +623,13 @@ private final class AnimationCacheItemWriterImpl: AnimationCacheItemWriter {
                     file.write(UInt32(contentLength))
                     
                     let _ = file.seek(position: metadataPosition)
-                    file.write(UInt32(self.frames.count))
+                    // One write for the duration table.
+                    var table = Data(capacity: 4 + self.frames.count * 4)
+                    writeUInt32(data: &table, value: UInt32(self.frames.count))
                     for frame in self.frames {
-                        file.write(Float32(frame.duration))
+                        writeFloat32(data: &table, value: Float32(frame.duration))
                     }
+                    let _ = file.write(table)
                     
                     if !self.isFailed {
                         self.compressedWriter = nil
@@ -598,7 +681,8 @@ private final class AnimationCacheItemAccessor {
     
     private let data: Data
     private let formatVersion: UInt32
-    private var compressedDataReader: DecompressedData?
+    private let codec: DCTAnimationCacheCodec?
+    private var compressedDataReader: FrameStreamReader?
     private var sparseBuffer: UnsafeMutablePointer<UInt8>?
     private var sparseBufferCapacity: Int = 0
     private let range: Range<Int>
@@ -615,9 +699,10 @@ private final class AnimationCacheItemAccessor {
     private var sharedDctCoefficients: DctCoefficientsYUVA420?
     private var deltaCoefficients: DctCoefficientsYUVA420?
     
-    init(data: Data, formatVersion: UInt32, range: Range<Int>, frameMapping: [FrameInfo], width: Int, height: Int, dctData: DctData) {
+    init(data: Data, formatVersion: UInt32, codec: DCTAnimationCacheCodec?, range: Range<Int>, frameMapping: [FrameInfo], width: Int, height: Int, dctData: DctData) {
         self.data = data
         self.formatVersion = formatVersion
+        self.codec = codec
         self.range = range
         self.width = width
         self.height = height
@@ -658,7 +743,11 @@ private final class AnimationCacheItemAccessor {
         }
         
         if self.compressedDataReader == nil {
-            self.compressedDataReader = DecompressedData(compressedData: self.data, dataRange: self.range)
+            if let codec = self.codec {
+                self.compressedDataReader = BlockDecompressedData(compressedData: self.data, dataRange: self.range, codec: codec)
+            } else {
+                self.compressedDataReader = DecompressedData(compressedData: self.data, dataRange: self.range)
+            }
         }
         
         guard let compressedDataReader = self.compressedDataReader else {
@@ -891,6 +980,10 @@ private func readUInt32(data: Data, offset: Int) -> UInt32 {
     return value
 }
 
+private func loadUInt32(_ data: Data, _ offset: Int) -> UInt32 {
+    return readUInt32(data: data, offset: offset)
+}
+
 private func readFloat32(data: Data, offset: Int) -> Float32 {
     var value: Float32 = 0
     withUnsafeMutableBytes(of: &value, { bytes -> Void in
@@ -922,7 +1015,178 @@ private func writeFloat32(data: inout Data, value: Float32) {
     })
 }
 
-private final class CompressedFileWriter {
+// Format 8: [UInt32 raw length][UInt32 compressed length][compressed bytes] per block. A block
+// ends at a frame boundary once it holds at least `blockSize` bytes, so no frame spans two blocks.
+private final class BlockCompressedFileWriter: FrameStreamWriter {
+    enum WriteError: Error {
+        case generic
+    }
+    
+    static let blockSize: Int = 64 * 1024
+    
+    private let file: ManagedFile
+    private let algorithm: compression_algorithm
+    private let scratch: UnsafeMutableRawPointer
+    private var pending: UnsafeMutablePointer<UInt8>
+    private var pendingCapacity: Int
+    private var pendingCount: Int = 0
+    private var output: UnsafeMutablePointer<UInt8>?
+    private var outputCapacity: Int = 0
+    private var didFail: Bool = false
+    
+    init(file: ManagedFile, codec: DCTAnimationCacheCodec) {
+        self.file = file
+        self.algorithm = codec.algorithm
+        self.scratch = malloc(max(1, compression_encode_scratch_buffer_size(codec.algorithm)))!
+        self.pendingCapacity = BlockCompressedFileWriter.blockSize * 2
+        self.pending = UnsafeMutablePointer<UInt8>.allocate(capacity: self.pendingCapacity)
+    }
+    
+    deinit {
+        free(self.scratch)
+        self.pending.deallocate()
+        self.output?.deallocate()
+    }
+    
+    func write(bytes: UnsafePointer<UInt8>, count: Int) throws {
+        if self.didFail {
+            throw WriteError.generic
+        }
+        if self.pendingCount + count > self.pendingCapacity {
+            var capacity = self.pendingCapacity
+            while self.pendingCount + count > capacity {
+                capacity *= 2
+            }
+            let pending = UnsafeMutablePointer<UInt8>.allocate(capacity: capacity)
+            pending.update(from: self.pending, count: self.pendingCount)
+            self.pending.deallocate()
+            self.pending = pending
+            self.pendingCapacity = capacity
+        }
+        self.pending.advanced(by: self.pendingCount).update(from: bytes, count: count)
+        self.pendingCount += count
+    }
+    
+    func endFrame() throws {
+        if self.pendingCount >= BlockCompressedFileWriter.blockSize {
+            try self.flushBlock()
+        }
+    }
+    
+    func flush() throws {
+        if self.didFail {
+            throw WriteError.generic
+        }
+        if self.pendingCount != 0 {
+            try self.flushBlock()
+        }
+    }
+    
+    private func flushBlock() throws {
+        // Room for incompressible input, which these codecs expand only slightly.
+        let capacity = 8 + self.pendingCount + self.pendingCount / 8 + 4096
+        if self.outputCapacity < capacity {
+            self.output?.deallocate()
+            self.output = UnsafeMutablePointer<UInt8>.allocate(capacity: capacity)
+            self.outputCapacity = capacity
+        }
+        let output = self.output!
+        let compressedCount = compression_encode_buffer(output.advanced(by: 8), capacity - 8, self.pending, self.pendingCount, self.scratch, self.algorithm)
+        if compressedCount <= 0 {
+            self.didFail = true
+            throw WriteError.generic
+        }
+        var rawLength = UInt32(self.pendingCount)
+        var compressedLength = UInt32(compressedCount)
+        memcpy(output, &rawLength, 4)
+        memcpy(output.advanced(by: 4), &compressedLength, 4)
+        if self.file.write(output, count: 8 + compressedCount) != 8 + compressedCount {
+            self.didFail = true
+            throw WriteError.generic
+        }
+        self.pendingCount = 0
+    }
+}
+
+// Reads a format 8 block stream, one decoded block at a time.
+private final class BlockDecompressedData: FrameStreamReader {
+    enum ReadError: Error {
+        case didReadToEnd
+    }
+    
+    private static let maxBlockLength: Int = 64 * 1024 * 1024
+    
+    private let compressedData: Data
+    private var position: Int
+    private let end: Int
+    private let algorithm: compression_algorithm
+    private let scratch: UnsafeMutableRawPointer
+    private var block: UnsafeMutablePointer<UInt8>?
+    private var blockCapacity: Int = 0
+    private var blockLength: Int = 0
+    private var blockPosition: Int = 0
+    
+    init(compressedData: Data, dataRange: Range<Int>, codec: DCTAnimationCacheCodec) {
+        self.compressedData = compressedData
+        self.position = dataRange.lowerBound
+        self.end = dataRange.upperBound
+        self.algorithm = codec.algorithm
+        self.scratch = malloc(max(1, compression_decode_scratch_buffer_size(codec.algorithm)))!
+    }
+    
+    deinit {
+        free(self.scratch)
+        self.block?.deallocate()
+    }
+    
+    private func loadNextBlock() throws {
+        if self.position + 8 > self.end {
+            throw ReadError.didReadToEnd
+        }
+        // The global readUInt32(data:offset:) is shadowed by this class's readUInt32().
+        let rawLength = Int(loadUInt32(self.compressedData, self.position))
+        let compressedLength = Int(loadUInt32(self.compressedData, self.position + 4))
+        self.position += 8
+        if rawLength <= 0 || rawLength > BlockDecompressedData.maxBlockLength || compressedLength <= 0 || self.position + compressedLength > self.end {
+            self.position = self.end
+            throw ReadError.didReadToEnd
+        }
+        if self.blockCapacity < rawLength {
+            self.block?.deallocate()
+            self.block = UnsafeMutablePointer<UInt8>.allocate(capacity: rawLength)
+            self.blockCapacity = rawLength
+        }
+        let block = self.block!
+        let position = self.position
+        let algorithm = self.algorithm
+        let scratch = self.scratch
+        let decodedLength = self.compressedData.withUnsafeBytes { bytes -> Int in
+            return compression_decode_buffer(block, rawLength, bytes.baseAddress!.assumingMemoryBound(to: UInt8.self).advanced(by: position), compressedLength, scratch, algorithm)
+        }
+        if decodedLength != rawLength {
+            self.position = self.end
+            throw ReadError.didReadToEnd
+        }
+        self.position += compressedLength
+        self.blockLength = rawLength
+        self.blockPosition = 0
+    }
+    
+    func read(bytes: UnsafeMutablePointer<UInt8>, count: Int) throws {
+        var copied = 0
+        while copied < count {
+            if self.blockPosition == self.blockLength {
+                try self.loadNextBlock()
+            }
+            let available = min(count - copied, self.blockLength - self.blockPosition)
+            bytes.advanced(by: copied).update(from: self.block!.advanced(by: self.blockPosition), count: available)
+            self.blockPosition += available
+            copied += available
+        }
+    }
+}
+
+private final class CompressedFileWriter: FrameStreamWriter {
     enum WriteError: Error {
         case generic
     }
@@ -1013,6 +1277,9 @@ private final class CompressedFileWriter {
         }
     }
     
+    func endFrame() throws {
+    }
+    
     func flush() throws {
         if self.didFail {
             throw WriteError.generic
@@ -1056,7 +1323,7 @@ private final class CompressedFileWriter {
     }
 }
 
-private final class DecompressedData {
+private final class DecompressedData: FrameStreamReader {
     enum ReadError: Error {
         case didReadToEnd
     }
@@ -1149,8 +1416,21 @@ func loadItem(path: String) throws -> AnimationCacheItem {
     }
     let formatVersion = readUInt32(data: compressedData, offset: offset)
     offset += 4
-    if formatVersion != 6 && formatVersion != 7 {
+    if formatVersion != 6 && formatVersion != 7 && formatVersion != 8 {
         throw LoadItemError.dataError
+    }
+    
+    var codec: DCTAnimationCacheCodec?
+    if formatVersion >= 8 {
+        if offset + 1 > dataLength {
+            throw LoadItemError.dataError
+        }
+        // A codec this OS cannot decode (or an unknown one) is converted again.
+        guard let value = DCTAnimationCacheCodec(rawValue: compressedData[compressedData.startIndex + offset]), isDecodable(value) else {
+            throw LoadItemError.dataError
+        }
+        codec = value
+        offset += 1
     }
     
     if offset + 4 > dataLength {
@@ -1249,7 +1529,7 @@ func loadItem(path: String) throws -> AnimationCacheItem {
         throw LoadItemError.dataError
     }
     
-    let itemAccessor = AnimationCacheItemAccessor(data: compressedData, formatVersion: formatVersion, range: compressedFrameDataRange, frameMapping: frameMapping, width: Int(width), height: Int(height), dctData: dctData)
+    let itemAccessor = AnimationCacheItemAccessor(data: compressedData, formatVersion: formatVersion, codec: codec, range: compressedFrameDataRange, frameMapping: frameMapping, width: Int(width), height: Int(height), dctData: dctData)
     
     return AnimationCacheItem(numFrames: frameMapping.count, advanceImpl: { advance, requestedFormat in
         return itemAccessor.advance(advance: advance, requestedFormat: requestedFormat)
@@ -1301,6 +1581,7 @@ private func adaptItemFromHigherResolution(currentQueue: Queue, itemPath: String
         if let size = fileSize(itemPath) {
             updateStorageStats(itemPath, size)
         }
+        adaptationSizeIndex.noteSize(width: width, height: height)
         
         guard let item = try? loadItem(path: itemPath) else {
             return nil
@@ -1362,47 +1643,157 @@ private func generateFirstFrameFromItem(currentQueue: Queue, itemPath: String, a
     }
 }
 
-private func findHigherResolutionFileForAdaptation(itemDirectoryPath: String, baseName: String, baseSuffix: String, width: Int, height: Int) -> String? {
-    var candidates: [(path: String, width: Int, height: Int)] = []
-    if let enumerator = FileManager.default.enumerator(at: URL(fileURLWithPath: itemDirectoryPath), includingPropertiesForKeys: nil, options: .skipsSubdirectoryDescendants, errorHandler: nil) {
-        for url in enumerator {
-            guard let url = url as? URL else {
-                continue
-            }
-            let fileName = url.lastPathComponent
-            if fileName.hasPrefix(baseName) {
-                let scanner = Scanner(string: fileName)
-                guard scanner.scanString(baseName) != nil else {
-                    continue
-                }
-                guard let itemWidth = scanner.scanInt() else {
-                    continue
-                }
-                guard scanner.scanString("x") != nil else {
-                    continue
-                }
-                guard let itemHeight = scanner.scanInt() else {
-                    continue
-                }
-                if !baseSuffix.isEmpty {
-                    guard scanner.scanString(baseSuffix) != nil else {
+// Item sizes are few (a handful of emoji and sticker sizes), but each of the 256 shard directories
+// holds 1/256 of all items. A first-frame miss listed its whole directory to find a larger size to
+// scale down; now each directory is listed once per process (that call answers exactly as before),
+// and later misses stat the sizes seen so far. Files this process writes record their size here;
+// one written by another process (an extension) at a size this process has not seen since the
+// listing is missed, and the item is converted instead.
+private final class AdaptationSizeIndex {
+    private struct Size: Hashable {
+        let width: Int
+        let height: Int
+    }
+    
+    private let lock = NSLock()
+    private var sizes = Set<Size>()
+    private var listedDirectories = Set<String>()
+    
+    func noteSize(width: Int, height: Int) {
+        self.lock.lock()
+        self.sizes.insert(Size(width: width, height: height))
+        self.lock.unlock()
+    }
+    
+    func findHigherResolutionFile(itemDirectoryPath: String, baseName: String, baseSuffix: String, width: Int, height: Int) -> String? {
+        self.lock.lock()
+        defer {
+            self.lock.unlock()
+        }
+        if !self.listedDirectories.contains(itemDirectoryPath) {
+            self.listedDirectories.insert(itemDirectoryPath)
+            var candidates: [(path: String, width: Int, height: Int)] = []
+            if let enumerator = FileManager.default.enumerator(at: URL(fileURLWithPath: itemDirectoryPath), includingPropertiesForKeys: nil, options: .skipsSubdirectoryDescendants, errorHandler: nil) {
+                for url in enumerator {
+                    guard let url = url as? URL else {
                         continue
                     }
-                }
-                guard scanner.isAtEnd else {
-                    continue
-                }
-                if itemWidth > width && itemHeight > height {
-                    candidates.append((url.path, itemWidth, itemHeight))
+                    let fileName = url.lastPathComponent
+                    // Every item name is "<md5>_<width>x<height>", optionally with "-f".
+                    if let size = parseItemSize(fileName: fileName) {
+                        self.sizes.insert(Size(width: size.width, height: size.height))
+                    }
+                    if fileName.hasPrefix(baseName) {
+                        let scanner = Scanner(string: fileName)
+                        guard scanner.scanString(baseName) != nil else {
+                            continue
+                        }
+                        guard let itemWidth = scanner.scanInt() else {
+                            continue
+                        }
+                        guard scanner.scanString("x") != nil else {
+                            continue
+                        }
+                        guard let itemHeight = scanner.scanInt() else {
+                            continue
+                        }
+                        if !baseSuffix.isEmpty {
+                            guard scanner.scanString(baseSuffix) != nil else {
+                                continue
+                            }
+                        }
+                        guard scanner.isAtEnd else {
+                            continue
+                        }
+                        if itemWidth > width && itemHeight > height {
+                            candidates.append((url.path, itemWidth, itemHeight))
+                        }
+                    }
                 }
             }
+            if !candidates.isEmpty {
+                candidates.sort(by: { $0.width < $1.width })
+                return candidates[0].path
+            }
+            return nil
         }
+        
+        let larger = self.sizes.filter { $0.width > width && $0.height > height }.sorted(by: { lhs, rhs in
+            if lhs.width != rhs.width {
+                return lhs.width < rhs.width
+            }
+            return lhs.height < rhs.height
+        })
+        for size in larger {
+            let path = "\(itemDirectoryPath)/\(baseName)\(size.width)x\(size.height)\(baseSuffix)"
+            var value = stat()
+            if stat(path, &value) == 0 {
+                return path
+            }
+        }
+        return nil
     }
-    if !candidates.isEmpty {
-        candidates.sort(by: { $0.width < $1.width })
-        return candidates[0].path
+}
+
+// "<32 hex>_<width>x<height>" with an optional "-f".
+private func parseItemSize(fileName: String) -> (width: Int, height: Int)? {
+    let utf8 = Array(fileName.utf8)
+    guard utf8.count > 33, utf8[32] == UInt8(ascii: "_") else {
+        return nil
     }
-    return nil
+    var index = 33
+    func number() -> Int? {
+        var value = 0
+        let start = index
+        while index < utf8.count, utf8[index] >= UInt8(ascii: "0"), utf8[index] <= UInt8(ascii: "9"), index - start < 6 {
+            value = value * 10 + Int(utf8[index] - UInt8(ascii: "0"))
+            index += 1
+        }
+        return index > start ? value : nil
+    }
+    guard let width = number(), index < utf8.count, utf8[index] == UInt8(ascii: "x") else {
+        return nil
+    }
+    index += 1
+    guard let height = number() else {
+        return nil
+    }
+    if index != utf8.count && !(index + 2 == utf8.count && utf8[index] == UInt8(ascii: "-") && utf8[index + 1] == UInt8(ascii: "f")) {
+        return nil
+    }
+    return (width, height)
+}
+
+private let adaptationSizeIndex = AdaptationSizeIndex()
+
+private func findHigherResolutionFileForAdaptation(itemDirectoryPath: String, baseName: String, baseSuffix: String, width: Int, height: Int) -> String? {
+    return adaptationSizeIndex.findHigherResolutionFile(itemDirectoryPath: itemDirectoryPath, baseName: baseName, baseSuffix: baseSuffix, width: width, height: height)
+}
+
+private func fileExists(_ path: String) -> Bool {
+    var value = stat()
+    return stat(path, &value) == 0
+}
+
+// Moves a converted item into place. Its first-frame file is made from it only when there is none:
+// the first-frame conversion has usually written it already, from the same source frame.
+private func storeConvertedItem(resultPath: String, itemDirectoryPath: String, itemPath: String, itemFirstFramePath: String, width: Int, height: Int, currentQueue: Queue, allocateTempFile: @escaping () -> String, updateStorageStats: @escaping (String, Int64) -> Void) -> Bool {
+    guard let _ = try? FileManager.default.createDirectory(at: URL(fileURLWithPath: itemDirectoryPath), withIntermediateDirectories: true, attributes: nil) else {
+        return false
+    }
+    let _ = try? FileManager.default.removeItem(atPath: itemPath)
+    guard let _ = try? FileManager.default.moveItem(atPath: resultPath, toPath: itemPath) else {
+        return false
+    }
+    if let size = fileSize(itemPath) {
+        updateStorageStats(itemPath, size)
+    }
+    adaptationSizeIndex.noteSize(width: width, height: height)
+    
+    if !fileExists(itemFirstFramePath) {
+        let _ = generateFirstFrameFromItem(currentQueue: currentQueue, itemPath: itemFirstFramePath, animationItemPath: itemPath, allocateTempFile: allocateTempFile, updateStorageStats: updateStorageStats)
+    }
+    return true
 }
 
 public final class DCTAnimationCacheImpl: AnimationCache {
@@ -1484,35 +1875,37 @@ public final class DCTAnimationCacheImpl: AnimationCache {
                 self.nextFetchQueueIndex += 1
                 let allocateTempFile = self.allocateTempFile
                 let updateStorageStats = self.updateStorageStats
-                guard let writer = AnimationCacheItemWriterImpl(queue: self.fetchQueues[fetchQueueIndex % self.fetchQueues.count], allocateTempFile: self.allocateTempFile, completion: { [weak self, weak itemContext] result in
+                let fetchQueue = self.fetchQueues[fetchQueueIndex % self.fetchQueues.count]
+                guard let writer = AnimationCacheItemWriterImpl(queue: fetchQueue, allocateTempFile: self.allocateTempFile, completion: { [weak self, weak itemContext] result in
                     queue.async {
                         guard let strongSelf = self, let itemContext = itemContext, itemContext === strongSelf.itemContexts[key] else {
                             return
                         }
                         
-                        strongSelf.itemContexts.removeValue(forKey: key)
-                        
                         guard let result = result else {
+                            strongSelf.itemContexts.removeValue(forKey: key)
                             return
                         }
-                        guard let _ = try? FileManager.default.createDirectory(at: URL(fileURLWithPath: itemDirectoryPath), withIntermediateDirectories: true, attributes: nil) else {
-                            return
-                        }
-                        let _ = try? FileManager.default.removeItem(atPath: itemPath)
-                        guard let _ = try? FileManager.default.moveItem(atPath: result.animationPath, toPath: itemPath) else {
-                            return
-                        }
-                        if let size = fileSize(itemPath) {
-                            updateStorageStats(itemPath, size)
-                        }
-                        
-                        let _ = generateFirstFrameFromItem(currentQueue: queue, itemPath: itemFirstFramePath, animationItemPath: itemPath, allocateTempFile: allocateTempFile, updateStorageStats: updateStorageStats)
-                        
-                        for f in itemContext.subscribers.copyItems() {
-                            guard let item = try? loadItem(path: itemPath) else {
-                                continue
+                        // The file work runs on the fetch queue, so cache hits on this queue do not
+                        // wait for it. The context stays registered meanwhile: a `get` for the same
+                        // item joins it instead of converting again.
+                        fetchQueue.async {
+                            let stored = storeConvertedItem(resultPath: result.animationPath, itemDirectoryPath: itemDirectoryPath, itemPath: itemPath, itemFirstFramePath: itemFirstFramePath, width: Int(size.width), height: Int(size.height), currentQueue: fetchQueue, allocateTempFile: allocateTempFile, updateStorageStats: updateStorageStats)
+                            queue.async {
+                                guard let strongSelf = self, itemContext === strongSelf.itemContexts[key] else {
+                                    return
+                                }
+                                strongSelf.itemContexts.removeValue(forKey: key)
+                                if !stored {
+                                    return
+                                }
+                                for f in itemContext.subscribers.copyItems() {
+                                    guard let item = try? loadItem(path: itemPath) else {
+                                        continue
+                                    }
+                                    f(AnimationCacheItemResult(item: item, isFinal: true))
+                                }
                             }
-                            f(AnimationCacheItemResult(item: item, isFinal: true))
                         }
                     }
                 }) else {
@@ -1605,6 +1998,7 @@ public final class DCTAnimationCacheImpl: AnimationCache {
                         if let size = fileSize(itemFirstFramePath) {
                             updateStorageStats(itemFirstFramePath, size)
                         }
+                        adaptationSizeIndex.noteSize(width: Int(size.width), height: Int(size.height))
                         guard let item = try? loadItem(path: itemFirstFramePath) else {
                             completion(AnimationCacheItemResult(item: nil, isFinal: true))
                             return
