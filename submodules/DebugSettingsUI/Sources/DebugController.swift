@@ -51,6 +51,38 @@ private final class DebugControllerArguments {
     }
 }
 
+/// Opens Mail with the logs attached when a Mail account is set up, and the share sheet otherwise.
+/// Presenting MFMailComposeViewController without a Mail account raises an exception (TestFlight crash
+/// report: SIGABRT in -[UIViewController presentViewController:] from DebugLogAction.perform). It is
+/// presented from the topmost controller, so a sheet still on screen cannot reject the presentation.
+private func presentLogsByMailOrShare(arguments: DebugControllerArguments, subject: String, logs: [(String, String)]) {
+    guard var presenter = arguments.getRootController() else {
+        return
+    }
+    while let presented = presenter.presentedViewController, !presented.isBeingDismissed {
+        presenter = presented
+    }
+    if MFMailComposeViewController.canSendMail() {
+        let composeController = MFMailComposeViewController()
+        composeController.mailComposeDelegate = arguments.mailComposeDelegate
+        composeController.setSubject(subject)
+        for (name, path) in logs {
+            if let data = try? Data(contentsOf: URL(fileURLWithPath: path), options: .mappedIfSafe) {
+                composeController.addAttachmentData(data, mimeType: "application/text", fileName: name)
+            }
+        }
+        presenter.present(composeController, animated: true, completion: nil)
+    } else {
+        let activityController = UIActivityViewController(activityItems: logs.map { URL(fileURLWithPath: $0.1) }, applicationActivities: nil)
+        if let popover = activityController.popoverPresentationController {
+            popover.sourceView = presenter.view
+            popover.sourceRect = CGRect(x: presenter.view.bounds.midX, y: presenter.view.bounds.midY, width: 0.0, height: 0.0)
+            popover.permittedArrowDirections = []
+        }
+        presenter.present(activityController, animated: true, completion: nil)
+    }
+}
+
 private func presentSendFiles(arguments: DebugControllerArguments, logs: [(String, String)], subject: String, archiveName: String) {
     let presentationData = arguments.sharedContext.currentPresentationData.with { $0 }
     let actionSheet = ActionSheetController(presentationData: presentationData)
@@ -113,15 +145,7 @@ private func presentSendFiles(arguments: DebugControllerArguments, logs: [(Strin
     items.append(ActionSheetButtonItem(title: "Via Email", color: .accent, action: { [weak actionSheet] in
         actionSheet?.dismissAnimated()
 
-        let composeController = MFMailComposeViewController()
-        composeController.mailComposeDelegate = arguments.mailComposeDelegate
-        composeController.setSubject(subject)
-        for (name, path) in logs {
-            if let data = try? Data(contentsOf: URL(fileURLWithPath: path), options: .mappedIfSafe) {
-                composeController.addAttachmentData(data, mimeType: "application/text", fileName: name)
-            }
-        }
-        arguments.getRootController()?.present(composeController, animated: true, completion: nil)
+        presentLogsByMailOrShare(arguments: arguments, subject: subject, logs: logs)
     }))
 
     actionSheet.setItemGroups([ActionSheetItemGroup(items: items), ActionSheetItemGroup(items: [
@@ -271,15 +295,7 @@ private enum DebugLogAction {
                     arguments.pushController(controller)
                 }
                 if destination == .email {
-                    let composeController = MFMailComposeViewController()
-                    composeController.mailComposeDelegate = arguments.mailComposeDelegate
-                    composeController.setSubject("Telegram Logs")
-                    for (name, path) in logs {
-                        if let data = try? Data(contentsOf: URL(fileURLWithPath: path), options: .mappedIfSafe) {
-                            composeController.addAttachmentData(data, mimeType: "application/text", fileName: name)
-                        }
-                    }
-                    arguments.getRootController()?.present(composeController, animated: true, completion: nil)
+                    presentLogsByMailOrShare(arguments: arguments, subject: "Telegram Logs", logs: logs)
                 }
 
             })
@@ -337,15 +353,7 @@ private enum DebugLogAction {
                     arguments.pushController(controller)
                 }
                 if destination == .email {
-                    let composeController = MFMailComposeViewController()
-                    composeController.mailComposeDelegate = arguments.mailComposeDelegate
-                    composeController.setSubject("Telegram Logs")
-                    for (name, path) in logs {
-                        if let data = try? Data(contentsOf: URL(fileURLWithPath: path), options: .mappedIfSafe) {
-                            composeController.addAttachmentData(data, mimeType: "application/text", fileName: name)
-                        }
-                    }
-                    arguments.getRootController()?.present(composeController, animated: true, completion: nil)
+                    presentLogsByMailOrShare(arguments: arguments, subject: "Telegram Logs", logs: logs)
                 }
 
             })
@@ -403,15 +411,7 @@ private enum DebugLogAction {
                     arguments.pushController(controller)
                 }
                 if destination == .email {
-                    let composeController = MFMailComposeViewController()
-                    composeController.mailComposeDelegate = arguments.mailComposeDelegate
-                    composeController.setSubject("Telegram Logs")
-                    for (name, path) in logs {
-                        if let data = try? Data(contentsOf: URL(fileURLWithPath: path), options: .mappedIfSafe) {
-                            composeController.addAttachmentData(data, mimeType: "application/text", fileName: name)
-                        }
-                    }
-                    arguments.getRootController()?.present(composeController, animated: true, completion: nil)
+                    presentLogsByMailOrShare(arguments: arguments, subject: "Telegram Logs", logs: logs)
                 }
 
             })
@@ -470,15 +470,7 @@ private enum DebugLogAction {
                     arguments.pushController(controller)
                 }
                 if destination == .email {
-                    let composeController = MFMailComposeViewController()
-                    composeController.mailComposeDelegate = arguments.mailComposeDelegate
-                    composeController.setSubject("Telegram Logs")
-                    for (name, path) in logs {
-                        if let data = try? Data(contentsOf: URL(fileURLWithPath: path), options: .mappedIfSafe) {
-                            composeController.addAttachmentData(data, mimeType: "application/text", fileName: name)
-                        }
-                    }
-                    arguments.getRootController()?.present(composeController, animated: true, completion: nil)
+                    presentLogsByMailOrShare(arguments: arguments, subject: "Telegram Logs", logs: logs)
                 }
 
             })
@@ -506,15 +498,7 @@ private enum DebugLogAction {
                     }
 
                     if destination == .email {
-                        let composeController = MFMailComposeViewController()
-                        composeController.mailComposeDelegate = arguments.mailComposeDelegate
-                        composeController.setSubject("Telegram Logs")
-                        for (name, path) in logs {
-                            if let data = try? Data(contentsOf: URL(fileURLWithPath: path), options: .mappedIfSafe) {
-                                composeController.addAttachmentData(data, mimeType: "application/text", fileName: name)
-                            }
-                        }
-                        arguments.getRootController()?.present(composeController, animated: true, completion: nil)
+                        presentLogsByMailOrShare(arguments: arguments, subject: "Telegram Logs", logs: logs)
                     }
                 })
         case .sendAllLogs:
