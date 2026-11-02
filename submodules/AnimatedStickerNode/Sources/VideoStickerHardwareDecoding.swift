@@ -48,7 +48,7 @@ var makeVideoStickerHardwareStream: (String) -> VideoStickerHardwareStream? = { 
     return VideoStickerHardwareStream(frames: sticker.frames, decoder: decoder)
 }
 
-// Turns a decoded frame into premultiplied BGRA with the same conversion the libvpx path uses
+// Turns a decoded frame into premultiplied (or unpremultiplied) BGRA with the same conversion the libvpx path uses
 // (decodeYUVAPlanesToRGBA, BT.601 video range), so both give the same pixels.
 final class VideoStickerHardwareFrameConverter {
     private var cb: [UInt8] = []
@@ -56,7 +56,8 @@ final class VideoStickerHardwareFrameConverter {
     private var alpha: [UInt8] = []
     private var bgra: [UInt8] = []
 
-    func convert(_ frame: VP9DecodedFrame, _ f: (UnsafeRawPointer, Int, Int, Int) -> Void) -> Bool {
+    // `unpremultiply` matches a libvpx reader opened with unpremultiplyAlpha (the frame cache).
+    func convert(_ frame: VP9DecodedFrame, unpremultiply: Bool = false, _ f: (UnsafeRawPointer, Int, Int, Int) -> Void) -> Bool {
         let color = frame.color
         guard CVPixelBufferGetPlaneCount(color) == 2 else {
             return false
@@ -176,7 +177,7 @@ final class VideoStickerHardwareFrameConverter {
                             hasAlpha, alphaSource?.assumingMemoryBound(to: UInt8.self),
                             bgraBase.assumingMemoryBound(to: UInt8.self),
                             Int32(clamping: width), Int32(clamping: height), Int32(clamping: bytesPerRow),
-                            false
+                            unpremultiply
                         )
                         f(UnsafeRawPointer(bgraBase), width, height, bytesPerRow)
                         return true
