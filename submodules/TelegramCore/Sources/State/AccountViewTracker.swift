@@ -406,6 +406,22 @@ public final class AccountViewTracker {
         }
     }
     
+    public func pruneThrottleState() {
+        self.queue.async {
+            let now = Int32(CFAbsoluteTimeGetCurrent())
+            let cutoff = now - accountViewTrackerThrottleRetention
+            self.updatedViewCountMessageIdsAndTimestamps = self.updatedViewCountMessageIdsAndTimestamps.filter { $0.value.timestamp >= cutoff }
+            self.updatedReactionsMessageIdsAndTimestamps = prunedAccountViewTrackerThrottleRecords(self.updatedReactionsMessageIdsAndTimestamps, now: now)
+            self.updatedSeenLiveLocationMessageIdsAndTimestamps = prunedAccountViewTrackerThrottleRecords(self.updatedSeenLiveLocationMessageIdsAndTimestamps, now: now)
+            self.updatedExtendedMediaMessageIdsAndTimestamps = prunedAccountViewTrackerThrottleRecords(self.updatedExtendedMediaMessageIdsAndTimestamps, now: now)
+            self.updatedUnsupportedMediaMessageIdsAndTimestamps = prunedAccountViewTrackerThrottleRecords(self.updatedUnsupportedMediaMessageIdsAndTimestamps, now: now)
+            self.refreshSecretChatMediaMessageIdsAndTimestamps = prunedAccountViewTrackerThrottleRecords(self.refreshSecretChatMediaMessageIdsAndTimestamps, now: now)
+            self.refreshStoriesForMessageIdsAndTimestamps = prunedAccountViewTrackerThrottleRecords(self.refreshStoriesForMessageIdsAndTimestamps, now: now)
+            self.refreshStoriesForPeerIdsAndTimestamps = prunedAccountViewTrackerThrottleRecords(self.refreshStoriesForPeerIdsAndTimestamps, now: now)
+            self.refreshCanSendMessagesForPeerIdsAndTimestamps = prunedAccountViewTrackerThrottleRecords(self.refreshCanSendMessagesForPeerIdsAndTimestamps, now: now)
+        }
+    }
+    
     private func updatePendingWebpages(viewId: Int32, threadId: Int64?, messageIds: Set<MessageId>, localWebpages: [MessageId: (MediaId, String)]) {
         self.queue.async { [self] in
             var addedMessageIds: [MessageId] = []
