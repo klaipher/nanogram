@@ -1562,15 +1562,7 @@ public extension TelegramEngine {
         }
         
         public func pollChatFolderUpdates(folderId: Int32) -> Signal<Never, NoError> {
-            let signal = _internal_pollChatFolderUpdatesOnce(account: self.account, folderId: folderId)
-            return (
-                signal
-                |> then(
-                    Signal<Never, NoError>.complete()
-                    |> delay(10.0, queue: .concurrentDefaultQueue())
-                )
-            )
-            |> restart
+            return repeatedChatFolderUpdatesCheck(_internal_pollChatFolderUpdatesOnce(account: self.account, folderId: folderId), interval: chatFolderUpdatesCheckInterval)
         }
         
         public func subscribedChatFolderUpdates(folderId: Int32) -> Signal<ChatFolderUpdates?, NoError> {
