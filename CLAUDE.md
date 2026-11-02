@@ -1254,6 +1254,16 @@ The non-obvious parts:
   pings an inactive WEB row: it would read "checking…" forever, so the row shows
   "not tested" and only the active one follows the real account connection state.
 
+## Postbox history views and read state
+
+A `MessageHistoryView`'s output depends on peer read state only through its transient read states (the entries'
+outgoing read flags and the chat's unread range for one-time effects). `.UpdateReadState` therefore re-emits only
+views that carry them; a view without them (a comment thread, `MessageHistoryViewInput.external`) is not re-emitted
+for its group's read marks or unread count. A view that starts showing anything a peer read state decides must carry
+it as transient read states, or it will go stale. In an open chat each incoming message still costs two history
+updates and three write transactions (store, read mark, push confirm): the second update is the read mark itself,
+which the unread range needs (`ReadStateEchoTests`).
+
 ## Postbox shared-media removal (deferred design: tombstones)
 
 `Transaction.updateMedia(id, update: nil)` is meant to remove a media from every message that
