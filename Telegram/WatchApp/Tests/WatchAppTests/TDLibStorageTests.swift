@@ -164,7 +164,6 @@ final class TDLibStorageLayoutTests: XCTestCase {
 final class TDLibStorageOptimizationTests: XCTestCase {
     private func json(_ query: OptimizeStorage) throws -> [String: Any] {
         let encoder = JSONEncoder()
-        encoder.keyEncodingStrategy = .convertToSnakeCase
         let data = try encoder.encode(DTO(query, encoder: encoder))
         return try XCTUnwrap(JSONSerialization.jsonObject(with: data) as? [String: Any])
     }
@@ -203,7 +202,6 @@ final class TDLibStorageOptimizationTests: XCTestCase {
     func testStatisticsDecode() throws {
         let json = #"{"@type":"storageStatistics","size":1234,"count":5,"by_chat":[],"@extra":"x"}"#
         let decoder = JSONDecoder()
-        decoder.keyDecodingStrategy = .convertFromSnakeCase
         let stats = try TDLibStorageOptimization.decodeResult(Data(json.utf8), decoder: decoder)
         XCTAssertEqual(stats.size, 1234)
         XCTAssertEqual(stats.count, 5)
@@ -212,7 +210,6 @@ final class TDLibStorageOptimizationTests: XCTestCase {
     func testErrorDecodes() {
         let json = #"{"@type":"error","code":401,"message":"Unauthorized"}"#
         let decoder = JSONDecoder()
-        decoder.keyDecodingStrategy = .convertFromSnakeCase
         XCTAssertThrowsError(try TDLibStorageOptimization.decodeResult(Data(json.utf8), decoder: decoder)) { error in
             XCTAssertEqual((error as? TDError)?.code, 401)
         }
@@ -222,7 +219,6 @@ final class TDLibStorageOptimizationTests: XCTestCase {
     func testHugeStatisticsDoNotTrap() throws {
         let json = #"{"@type":"storageStatistics","size":9007199254740991,"count":2147483647,"by_chat":[]}"#
         let decoder = JSONDecoder()
-        decoder.keyDecodingStrategy = .convertFromSnakeCase
         let stats = try TDLibStorageOptimization.decodeResult(Data(json.utf8), decoder: decoder)
         XCTAssertEqual(stats.size, 9_007_199_254_740_991)
     }
@@ -309,7 +305,6 @@ final class TDLibStorageOptimizationScheduleTests: XCTestCase {
 final class TDLibDiskOptionsTests: XCTestCase {
     private func options() throws -> [String: [String: Any]] {
         let encoder = JSONEncoder()
-        encoder.keyEncodingStrategy = .convertToSnakeCase
         var result: [String: [String: Any]] = [:]
         for option in TDLibReadyOptions.all {
             let data = try encoder.encode(DTO(option, encoder: encoder))

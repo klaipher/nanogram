@@ -8,6 +8,14 @@ Regenerate after changing the seed or bumping TDLib:
     cd tools/td-codegen
     swift run tl2swift td_api.tl ../../Packages/TDShim/Sources/TDShim/Generated 1.8.64-49b3bcbb 49b3bcbb seed.txt
 
+Then add the snake_case CodingKeys (the coders use default key strategies; a model without its
+keys would encode and decode camelCase and silently miss every multi-word field):
+
+    python3 tools/watch/add_coding_keys.py   # from the repository root
+
+It also rewrites `Tests/WatchAppTests/TDModelList.swift`, which `TDModelCodingKeysTests` uses to
+check every model against the old snake-case strategies.
+
 When the app calls a NEW TDLib function or handles a NEW update, add it to `seed.txt`
 ([functions] / [updates]) and regenerate.
 

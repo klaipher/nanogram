@@ -37,7 +37,6 @@ final class CoreTDLibReadyOptionsTests: XCTestCase {
     /// Without the storage optimizer TDLib never deletes a downloaded file.
     func testStorageOptimizerIsTurnedOn() throws {
         let encoder = JSONEncoder()
-        encoder.keyEncodingStrategy = .convertToSnakeCase
         let queries = try TDLibReadyOptions.all.map { option -> [String: Any] in
             let data = try encoder.encode(DTO(option, encoder: encoder))
             return try XCTUnwrap(JSONSerialization.jsonObject(with: data) as? [String: Any])

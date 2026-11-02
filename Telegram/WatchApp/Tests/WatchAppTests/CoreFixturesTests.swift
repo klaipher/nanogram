@@ -82,9 +82,7 @@ enum CoreFixtures {
 
     /// The decoder TDLibApi uses for every response.
     static func tdlibDecoder() -> JSONDecoder {
-        let decoder = JSONDecoder()
-        decoder.keyDecodingStrategy = .convertFromSnakeCase
-        return decoder
+        JSONDecoder()
     }
 
     /// A plain incoming text message as TDLib 1.8.64 sends it.

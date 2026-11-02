@@ -5,7 +5,6 @@ final class EncodeParityTests: XCTestCase {
 
     func test_dto_injectsTypeExtra_andSnakeCases() throws {
         let encoder = JSONEncoder()
-        encoder.keyEncodingStrategy = .convertToSnakeCase
         let dto = DTO(GetChatHistory(chatId: 42, fromMessageId: 0, limit: 30, offset: 0, onlyLocal: false),
                       encoder: encoder)
         let data = try dto.make(with: "extra-123")
@@ -18,7 +17,6 @@ final class EncodeParityTests: XCTestCase {
 
     func test_errorEnvelope_decodes() throws {
         let decoder = JSONDecoder()
-        decoder.keyDecodingStrategy = .convertFromSnakeCase
         let data = Data(#"{"@type":"error","code":404,"message":"Not Found"}"#.utf8)
         let dto = try decoder.decode(DTO<TDError>.self, from: data)
         XCTAssertEqual(dto.payload.code, 404)
