@@ -457,7 +457,7 @@ public class ChatTextInputPanelNode: ChatInputPanelNode, ASEditableTextNodeDeleg
 
             let selection = ChatInputSelection(nsRange: NSMakeRange(updatedState.selectionRange.lowerBound, updatedState.selectionRange.count), in: content)
             if !richTextInputNode.usesNativeRichTextEngine {
-                richTextInputNode.applyRenderingConfig(context: context, baseFontSize: baseFontSize, textColor: textColor, primaryTextColor: primaryTextColor, accentTextColor: accentTextColor, spoilersRevealed: richTextInputNode.spoilersRevealed, availableEmojis: Set(context.animatedEmojiStickersValue.keys), emojiViewProvider: self.emojiViewProvider)
+                richTextInputNode.applyRenderingConfig(context: context, baseFontSize: baseFontSize, textColor: textColor, primaryTextColor: primaryTextColor, accentTextColor: accentTextColor, spoilersRevealed: richTextInputNode.spoilersRevealed, availableEmojis: context.animatedEmojiStickerKeys, emojiViewProvider: self.emojiViewProvider)
             }
             richTextInputNode.setInputContent(content, selection: selection)
             self.chatInputTextNodeDidUpdateText()
@@ -539,7 +539,7 @@ public class ChatTextInputPanelNode: ChatInputPanelNode, ASEditableTextNodeDeleg
                     selection: ChatInputSelection(nsRange: NSMakeRange(state.selectionRange.lowerBound, state.selectionRange.count), in: content)
                 )
             } else {
-                richTextInputNode.applyRenderingConfig(context: context, baseFontSize: baseFontSize, textColor: textColor, primaryTextColor: primaryTextColor, accentTextColor: accentTextColor, spoilersRevealed: richTextInputNode.spoilersRevealed, availableEmojis: (self.context?.animatedEmojiStickersValue.keys).flatMap(Set.init) ?? Set(), emojiViewProvider: self.emojiViewProvider)
+                richTextInputNode.applyRenderingConfig(context: context, baseFontSize: baseFontSize, textColor: textColor, primaryTextColor: primaryTextColor, accentTextColor: accentTextColor, spoilersRevealed: richTextInputNode.spoilersRevealed, availableEmojis: self.context?.animatedEmojiStickerKeys ?? Set(), emojiViewProvider: self.emojiViewProvider)
                 // The node runs the in-place fix-up (`refreshTextInputAttributes`) inside `setInputContent` now,
                 // using the config supplied by `applyRenderingConfig` above — so the panel no longer drives it.
                 // Pass the model content DIRECTLY (not via `state.inputText`, which flattens structural blocks through
@@ -589,7 +589,7 @@ public class ChatTextInputPanelNode: ChatInputPanelNode, ASEditableTextNodeDeleg
                     selection: ChatInputSelection(nsRange: NSMakeRange(state.selectionRange.lowerBound, state.selectionRange.count), in: content)
                 )
             } else {
-                richTextInputNode.applyRenderingConfig(context: context, baseFontSize: baseFontSize, textColor: textColor, primaryTextColor: primaryTextColor, accentTextColor: accentTextColor, spoilersRevealed: richTextInputNode.spoilersRevealed, availableEmojis: (self.context?.animatedEmojiStickersValue.keys).flatMap(Set.init) ?? Set(), emojiViewProvider: self.emojiViewProvider)
+                richTextInputNode.applyRenderingConfig(context: context, baseFontSize: baseFontSize, textColor: textColor, primaryTextColor: primaryTextColor, accentTextColor: accentTextColor, spoilersRevealed: richTextInputNode.spoilersRevealed, availableEmojis: self.context?.animatedEmojiStickerKeys ?? Set(), emojiViewProvider: self.emojiViewProvider)
                 // The node runs the in-place fix-up (`refreshTextInputAttributes`) inside `setInputContent` now,
                 // using the config supplied by `applyRenderingConfig` above — so the panel no longer drives it.
                 // Pass the model content DIRECTLY (not via `state.inputText`, which flattens structural blocks through
@@ -632,7 +632,7 @@ public class ChatTextInputPanelNode: ChatInputPanelNode, ASEditableTextNodeDeleg
                 }
                 // Route the plain-text set through the model so the node owns decoration (no baked font/color here).
                 if let context = self.context {
-                    richTextInputNode.applyRenderingConfig(context: context, baseFontSize: baseFontSize, textColor: textColor, primaryTextColor: primaryTextColor, accentTextColor: accentTextColor, spoilersRevealed: richTextInputNode.spoilersRevealed, availableEmojis: (self.context?.animatedEmojiStickersValue.keys).flatMap(Set.init) ?? Set(), emojiViewProvider: self.emojiViewProvider)
+                    richTextInputNode.applyRenderingConfig(context: context, baseFontSize: baseFontSize, textColor: textColor, primaryTextColor: primaryTextColor, accentTextColor: accentTextColor, spoilersRevealed: richTextInputNode.spoilersRevealed, availableEmojis: self.context?.animatedEmojiStickerKeys ?? Set(), emojiViewProvider: self.emojiViewProvider)
                 }
                 let content = chatInputContent(from: NSAttributedString(string: value))
                 richTextInputNode.setInputContent(content, selection: ChatInputSelection(nsRange: NSMakeRange((value as NSString).length, 0), in: content))
@@ -2009,7 +2009,7 @@ public class ChatTextInputPanelNode: ChatInputPanelNode, ASEditableTextNodeDeleg
                 // Text Size changed under live content: re-decorate now so the typed text and the typing
                 // attributes take the new size immediately rather than on the next keystroke.
                 let fullTranslucency = context.sharedContext.energyUsageSettings.fullTranslucency
-                richTextInputNode.decorateAfterTextChange(context: context, baseFontSize: chatTextInputBaseFontSize(for: interfaceState.fontSize), textColor: interfaceState.theme.chat.inputPanel.inputTextColor, primaryTextColor: interfaceState.theme.chat.inputPanel.primaryTextColor, accentTextColor: interfaceState.theme.chat.inputPanel.panelControlAccentColor, spoilersRevealed: richTextInputNode.spoilersRevealed, fullTranslucency: fullTranslucency, availableEmojis: (self.context?.animatedEmojiStickersValue.keys).flatMap(Set.init) ?? Set(), emojiViewProvider: self.emojiViewProvider)
+                richTextInputNode.decorateAfterTextChange(context: context, baseFontSize: chatTextInputBaseFontSize(for: interfaceState.fontSize), textColor: interfaceState.theme.chat.inputPanel.inputTextColor, primaryTextColor: interfaceState.theme.chat.inputPanel.primaryTextColor, accentTextColor: interfaceState.theme.chat.inputPanel.panelControlAccentColor, spoilersRevealed: richTextInputNode.spoilersRevealed, fullTranslucency: fullTranslucency, availableEmojis: self.context?.animatedEmojiStickerKeys ?? Set(), emojiViewProvider: self.emojiViewProvider)
             }
             if self.theme !== interfaceState.theme {
                 updateSendButtonIcon = true
@@ -2029,7 +2029,7 @@ public class ChatTextInputPanelNode: ChatInputPanelNode, ASEditableTextNodeDeleg
                         let primaryTextColor = interfaceState.theme.chat.inputPanel.primaryTextColor
                         let accentTextColor = interfaceState.theme.chat.inputPanel.panelControlAccentColor
                         let fullTranslucency = context.sharedContext.energyUsageSettings.fullTranslucency
-                        richTextInputNode.decorateAfterTextChange(context: context, baseFontSize: baseFontSize, textColor: textColor, primaryTextColor: primaryTextColor, accentTextColor: accentTextColor, spoilersRevealed: richTextInputNode.spoilersRevealed, fullTranslucency: fullTranslucency, availableEmojis: (self.context?.animatedEmojiStickersValue.keys).flatMap(Set.init) ?? Set(), emojiViewProvider: self.emojiViewProvider)
+                        richTextInputNode.decorateAfterTextChange(context: context, baseFontSize: baseFontSize, textColor: textColor, primaryTextColor: primaryTextColor, accentTextColor: accentTextColor, spoilersRevealed: richTextInputNode.spoilersRevealed, fullTranslucency: fullTranslucency, availableEmojis: self.context?.animatedEmojiStickerKeys ?? Set(), emojiViewProvider: self.emojiViewProvider)
                     }
                 }
                 
@@ -4035,7 +4035,7 @@ public class ChatTextInputPanelNode: ChatInputPanelNode, ASEditableTextNodeDeleg
             let fullTranslucency = self.context?.sharedContext.energyUsageSettings.fullTranslucency ?? true
             // The node owns the per-keystroke decoration (in-place fix-up + caret typing attrs + spoiler/emoji
             // overlays) now; the panel hands it the current theme/energy inputs and then reads interface state back.
-            richTextInputNode.decorateAfterTextChange(context: context, baseFontSize: baseFontSize, textColor: presentationInterfaceState.theme.chat.inputPanel.inputTextColor, primaryTextColor: presentationInterfaceState.theme.chat.inputPanel.primaryTextColor, accentTextColor: presentationInterfaceState.theme.chat.inputPanel.panelControlAccentColor, spoilersRevealed: richTextInputNode.spoilersRevealed, fullTranslucency: fullTranslucency, availableEmojis: (self.context?.animatedEmojiStickersValue.keys).flatMap(Set.init) ?? Set(), emojiViewProvider: self.emojiViewProvider)
+            richTextInputNode.decorateAfterTextChange(context: context, baseFontSize: baseFontSize, textColor: presentationInterfaceState.theme.chat.inputPanel.inputTextColor, primaryTextColor: presentationInterfaceState.theme.chat.inputPanel.primaryTextColor, accentTextColor: presentationInterfaceState.theme.chat.inputPanel.panelControlAccentColor, spoilersRevealed: richTextInputNode.spoilersRevealed, fullTranslucency: fullTranslucency, availableEmojis: self.context?.animatedEmojiStickerKeys ?? Set(), emojiViewProvider: self.emojiViewProvider)
 
             let inputTextState = self.inputTextState
             
@@ -4930,7 +4930,7 @@ public class ChatTextInputPanelNode: ChatInputPanelNode, ASEditableTextNodeDeleg
 
             // The node owns the spoiler-reveal flow now; the panel just hands it the live theme inputs.
             if let context = self.context {
-                richTextInputNode.updateSpoilersRevealed(context: context, baseFontSize: chatTextInputBaseFontSize(for: presentationInterfaceState.fontSize), textColor: presentationInterfaceState.theme.chat.inputPanel.inputTextColor, primaryTextColor: presentationInterfaceState.theme.chat.inputPanel.primaryTextColor, accentTextColor: presentationInterfaceState.theme.chat.inputPanel.panelControlAccentColor, availableEmojis: (self.context?.animatedEmojiStickersValue.keys).flatMap(Set.init) ?? Set(), emojiViewProvider: self.emojiViewProvider, animated: true)
+                richTextInputNode.updateSpoilersRevealed(context: context, baseFontSize: chatTextInputBaseFontSize(for: presentationInterfaceState.fontSize), textColor: presentationInterfaceState.theme.chat.inputPanel.inputTextColor, primaryTextColor: presentationInterfaceState.theme.chat.inputPanel.primaryTextColor, accentTextColor: presentationInterfaceState.theme.chat.inputPanel.panelControlAccentColor, availableEmojis: self.context?.animatedEmojiStickerKeys ?? Set(), emojiViewProvider: self.emojiViewProvider, animated: true)
             }
 
             self.updateInputField(textInputFrame: richTextInputNode.textFieldFrame, transition: .immediate)
@@ -5454,7 +5454,7 @@ public class ChatTextInputPanelNode: ChatInputPanelNode, ASEditableTextNodeDeleg
 
         // The node owns the spoiler-reveal flow now; the panel just hands it the live theme inputs.
         if let richTextInputNode = self.richTextInputNode, let presentationInterfaceState = self.presentationInterfaceState, let context = self.context {
-            richTextInputNode.updateSpoilersRevealed(context: context, baseFontSize: chatTextInputBaseFontSize(for: presentationInterfaceState.fontSize), textColor: presentationInterfaceState.theme.chat.inputPanel.inputTextColor, primaryTextColor: presentationInterfaceState.theme.chat.inputPanel.primaryTextColor, accentTextColor: presentationInterfaceState.theme.chat.inputPanel.panelControlAccentColor, availableEmojis: (self.context?.animatedEmojiStickersValue.keys).flatMap(Set.init) ?? Set(), emojiViewProvider: self.emojiViewProvider, animated: animated)
+            richTextInputNode.updateSpoilersRevealed(context: context, baseFontSize: chatTextInputBaseFontSize(for: presentationInterfaceState.fontSize), textColor: presentationInterfaceState.theme.chat.inputPanel.inputTextColor, primaryTextColor: presentationInterfaceState.theme.chat.inputPanel.primaryTextColor, accentTextColor: presentationInterfaceState.theme.chat.inputPanel.panelControlAccentColor, availableEmojis: self.context?.animatedEmojiStickerKeys ?? Set(), emojiViewProvider: self.emojiViewProvider, animated: animated)
         }
     }
     
@@ -5488,7 +5488,7 @@ public class ChatTextInputPanelNode: ChatInputPanelNode, ASEditableTextNodeDeleg
         }
         // The node owns fragment decoration now (it applies font/colors + the node's own spoilers-revealed
         // flag); the panel just splices the returned fragment in. No `textAttributedStringForStateText` here.
-        let cleanReplacementString = richTextInputNode.decorateReplacementFragment(plainText: cleanText, context: context, baseFontSize: baseFontSize, textColor: textColor, accentTextColor: accentTextColor, availableEmojis: (self.context?.animatedEmojiStickersValue.keys).flatMap(Set.init) ?? Set(), emojiViewProvider: self.emojiViewProvider)
+        let cleanReplacementString = richTextInputNode.decorateReplacementFragment(plainText: cleanText, context: context, baseFontSize: baseFontSize, textColor: textColor, accentTextColor: accentTextColor, availableEmojis: self.context?.animatedEmojiStickerKeys ?? Set(), emojiViewProvider: self.emojiViewProvider)
         string.replaceCharacters(in: range, with: cleanReplacementString)
         
         var resetText = false

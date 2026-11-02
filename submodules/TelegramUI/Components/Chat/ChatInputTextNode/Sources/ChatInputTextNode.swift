@@ -933,7 +933,7 @@ public final class ChatInputTextCollapsedQuoteAttachmentImpl: NSTextAttachment, 
                 accentTextColor: attachment.attributes.accentTextColor,
                 writingDirection: nil,
                 spoilersRevealed: false,
-                availableEmojis: Set(context.animatedEmojiStickersValue.keys),
+                availableEmojis: context.animatedEmojiStickerKeys,
                 emojiViewProvider: nil,
                 makeCollapsedQuoteAttachment: nil
             )
@@ -963,7 +963,7 @@ public final class ChatInputTextCollapsedQuoteAttachmentImpl: NSTextAttachment, 
                 accentTextColor: self.attachment.attributes.accentTextColor,
                 writingDirection: nil,
                 spoilersRevealed: false,
-                availableEmojis: Set(context.animatedEmojiStickersValue.keys),
+                availableEmojis: context.animatedEmojiStickerKeys,
                 emojiViewProvider: nil,
                 makeCollapsedQuoteAttachment: nil
             )

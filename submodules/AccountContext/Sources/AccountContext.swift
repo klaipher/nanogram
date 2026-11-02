@@ -1835,6 +1835,8 @@ public protocol AccountContext: AnyObject {
     
     var animatedEmojiStickers: Signal<[String: [StickerPackItem]], NoError> { get }
     var animatedEmojiStickersValue: [String: [StickerPackItem]] { get }
+    /// `Set(animatedEmojiStickersValue.keys)`, built once per update of the value (not on every keystroke).
+    var animatedEmojiStickerKeys: Set<String> { get }
     var additionalAnimatedEmojiStickers: Signal<[String: [Int: StickerPackItem]], NoError> { get }
     var premiumGiftStickers: Signal<[Int32: StickerPackItem], NoError> { get }
     var premiumGiftStickersValue: [Int32: StickerPackItem] { get }
