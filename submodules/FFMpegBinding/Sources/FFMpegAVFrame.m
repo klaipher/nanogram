@@ -33,6 +33,7 @@
             case FFMpegAVFramePixelFormatYUVA422:
             case FFMpegAVFramePixelFormatYUV444:
             case FFMpegAVFramePixelFormatYUVA444:
+            case FFMpegAVFramePixelFormatYUV10:
             case FFMpegAVFramePixelFormatUnsupported:
                 return nil;
         }
@@ -104,7 +105,23 @@
 }
 
 - (void)copyColorRangeFrom:(FFMpegAVFrame *)other {
-    _impl->color_range = ((AVFrame *)[other impl])->color_range;
+    AVFrame *source = (AVFrame *)[other impl];
+    _impl->color_range = source->color_range;
+    _impl->color_primaries = source->color_primaries;
+    _impl->color_trc = source->color_trc;
+    _impl->colorspace = source->colorspace;
+}
+
+- (int32_t)colorPrimaries {
+    return (int32_t)_impl->color_primaries;
+}
+
+- (int32_t)colorTransfer {
+    return (int32_t)_impl->color_trc;
+}
+
+- (int32_t)colorMatrix {
+    return (int32_t)_impl->colorspace;
 }
 
 - (FFMpegAVFramePixelFormat)pixelFormat {
@@ -124,6 +141,8 @@
             return FFMpegAVFramePixelFormatYUV444;
         case AV_PIX_FMT_YUVA444P:
             return FFMpegAVFramePixelFormatYUVA444;
+        case AV_PIX_FMT_YUV420P10LE:
+            return FFMpegAVFramePixelFormatYUV10;
         default:
             return FFMpegAVFramePixelFormatUnsupported;
     }

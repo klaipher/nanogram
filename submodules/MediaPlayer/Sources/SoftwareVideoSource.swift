@@ -175,7 +175,7 @@ public final class SoftwareVideoSource {
                             let decoder = FFMpegMediaVideoFrameDecoder(codecContext: codecContext)
                             decoder.reusesPixelBuffers = reusePixelBuffers
                             #if os(macOS)
-                            decoder.presentsUntaggedFrames = useHardwareAcceleration
+                            decoder.presentsUntaggedFrames = true
                             #endif
                             videoStream = SoftwareVideoStream(index: Int(streamIndex), fps: fps, timebase: timebase, startTime: startTime, duration: duration, decoder: decoder, rotationAngle: rotationAngle, aspect: aspect)
                             break
