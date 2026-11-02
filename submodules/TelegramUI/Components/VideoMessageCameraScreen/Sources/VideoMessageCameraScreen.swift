@@ -1274,6 +1274,10 @@ public class VideoMessageCameraScreen: ViewController {
                         return
                     }
                     UIView.animate(withDuration: 0.4, animations: {
+                        // The shimmer shown while the camera restarts goes with the blur. Upstream never hid it
+                        // again, so after a resume its sweep (a light band and a glint along the rim, restarting
+                        // at the left edge every second) ran over the live preview for the rest of the recording.
+                        self.loadingView.alpha = 0.0
                         self.previewBlurView.effect = nil
                         self.previewSnapshotView?.alpha = 0.0
                     }, completion: { [weak self] _ in
