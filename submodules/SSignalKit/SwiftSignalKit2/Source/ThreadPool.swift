@@ -64,6 +64,15 @@ public func ==(lhs: ThreadPoolQueue, rhs: ThreadPoolQueue) -> Bool {
     private var takenQueues: [ThreadPoolQueue] = []
     private var mutex: pthread_mutex_t
     private var condition: pthread_cond_t
+    private var wakeups: Int = 0
+
+    var conditionWakeups: Int {
+        pthread_mutex_lock(&self.mutex)
+        defer {
+            pthread_mutex_unlock(&self.mutex)
+        }
+        return self.wakeups
+    }
     
     @objc class func threadEntryPoint(_ threadPool: ThreadPool) {
         var queue: ThreadPoolQueue!
@@ -87,6 +96,7 @@ public func ==(lhs: ThreadPoolQueue, rhs: ThreadPoolQueue) -> Bool {
             {
                 while threadPool.queues.count == 0 {
                     pthread_cond_wait(&threadPool.condition, &threadPool.mutex);
+                    threadPool.wakeups += 1
                 }
                 
                 if threadPool.queues.count != 0 {
@@ -99,6 +109,9 @@ public func ==(lhs: ThreadPoolQueue, rhs: ThreadPoolQueue) -> Bool {
                     
                     if let index = threadPool.queues.firstIndex(of: queue) {
                         threadPool.queues.remove(at: index)
+                    }
+                    if threadPool.queues.count != 0 {
+                        pthread_cond_signal(&threadPool.condition)
                     }
                     
                     break
@@ -114,7 +127,21 @@ public func ==(lhs: ThreadPoolQueue, rhs: ThreadPoolQueue) -> Bool {
         }
     }
     
-    public init(threadCount: Int, threadPriority: Double) {
+    public static func qualityOfService(forThreadPriority threadPriority: Double) -> QualityOfService {
+        if threadPriority >= 0.9 {
+            return .userInitiated
+        } else if threadPriority >= 0.4 {
+            return .default
+        } else {
+            return .utility
+        }
+    }
+    
+    public convenience init(threadCount: Int, threadPriority: Double) {
+        self.init(threadCount: threadCount, qos: ThreadPool.qualityOfService(forThreadPriority: threadPriority))
+    }
+    
+    public init(threadCount: Int, qos: QualityOfService) {
         assert(threadCount > 0, "threadCount < 0")
         
         self.mutex = pthread_mutex_t()
@@ -126,7 +153,7 @@ public func ==(lhs: ThreadPoolQueue, rhs: ThreadPoolQueue) -> Bool {
         
         for _ in 0 ..< threadCount {
             let thread = Thread(target: ThreadPool.self, selector: #selector(ThreadPool.threadEntryPoint(_:)), object: self)
-            thread.threadPriority = threadPriority
+            thread.qualityOfService = qos
             self.threads.append(thread)
             thread.start()
         }
@@ -148,7 +175,7 @@ public func ==(lhs: ThreadPoolQueue, rhs: ThreadPoolQueue) -> Bool {
         if !self.queues.contains(queue) && !self.takenQueues.contains(queue) {
             self.queues.append(queue)
         }
-        pthread_cond_broadcast(&self.condition)
+        pthread_cond_signal(&self.condition)
         pthread_mutex_unlock(&self.mutex)
     }
     
