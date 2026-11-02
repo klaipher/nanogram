@@ -223,6 +223,9 @@ final class ChatHistoryStore {
 
     func stop() async {
         voicePlayback.tearDown()
+        if let waiting = pendingAudioFileId {
+            cancelFileDownload(fileId: waiting)
+        }
         audioPlayback.tearDown()
         // Drain task was scheduled by markVisible during scroll; cancel so it
         // doesn't fire viewMessages against a soon-to-be-closed chat.
@@ -517,12 +520,23 @@ final class ChatHistoryStore {
         voicePlayback.toggle(note: note)
     }
 
+    /// Music downloads only from here. A tap that is taken back while the file is still coming
+    /// (a second tap, another track, closing the chat) cancels its download.
     func toggleAudioPlayback(_ audio: AudioVisual) {
         voicePlayback.tearDown()
-        if audio.localPath == nil {
-            requestFileDownload(fileId: audio.audioFileId, priority: 2)
-        }
+        let waiting = pendingAudioFileId
         audioPlayback.toggle(audio: audio)
+        if let waiting, pendingAudioFileId != waiting {
+            cancelFileDownload(fileId: waiting)
+        }
+        if case .preparing(let id) = audioPlayback.state, id == audio.audioFileId, id != waiting {
+            requestFileDownload(fileId: id, priority: 2)
+        }
+    }
+
+    private var pendingAudioFileId: Int? {
+        if case .preparing(let id) = audioPlayback.state { return id }
+        return nil
     }
 
     func cancelFileDownload(fileId: Int) {

@@ -6,10 +6,10 @@ import SwiftUI
 /// label that becomes "elapsed / total" during playback. Optional reply header
 /// sits inside the chrome above the row; caption (when non-empty) below.
 ///
-/// Drives priority-1 viewport download via `.onScrollVisibilityChange`. Tap goes
-/// through `ChatHistoryStore.toggleAudioPlayback(_:)`, which tears down any voice
-/// playback, kicks a priority-2 download if needed, and routes to the
-/// `AudioPlaybackController`.
+/// The file downloads only when tapped: a track is megabytes, and the glyph does not depend on
+/// it. Tap goes through `ChatHistoryStore.toggleAudioPlayback(_:)`, which tears down any voice
+/// playback, starts a priority-2 download if needed (the spinner shows meanwhile), and routes to
+/// the `AudioPlaybackController`.
 struct AudioBubbleView: View {
     let audio: AudioVisual
     let caption: String
@@ -32,13 +32,6 @@ struct AudioBubbleView: View {
 
     var body: some View {
         chrome
-            .onScrollVisibilityChange(threshold: 0.01) { visible in
-                if visible {
-                    store.requestFileDownload(fileId: audio.audioFileId)
-                } else {
-                    store.cancelFileDownload(fileId: audio.audioFileId)
-                }
-            }
     }
 
     private var chrome: some View {
