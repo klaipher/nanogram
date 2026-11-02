@@ -1,5 +1,5 @@
 {
-    "app": "13.1.1",
+    "app": "13.1.2",
     "xcode": "27.1",
     "deploy_xcode": "27.1",
     "bazel": "9.3.1:19c4958626e0e3a564a61c2e85eeaab97b550a30632b82341191aa61ed0ccc1b",
