@@ -32,6 +32,19 @@ final class CachedPeerDataTable: Table {
         self.updatedPeers[id] = (previousValue, data)
     }
     
+    private let comparisonEncoder = PostboxEncoder()
+    
+    func encodesIdentically(_ current: CachedPeerData, _ updated: CachedPeerData) -> Bool {
+        if current === updated {
+            return true
+        }
+        self.sharedEncoder.reset()
+        self.sharedEncoder.encodeRootObject(current)
+        self.comparisonEncoder.reset()
+        self.comparisonEncoder.encodeRootObject(updated)
+        return self.sharedEncoder.makeData() == self.comparisonEncoder.makeData()
+    }
+    
     func get(_ id: PeerId) -> CachedPeerData? {
         if let status = self.cachedDatas[id] {
             return status
