@@ -66,7 +66,7 @@ public enum TDLibResponseRoute {
             if startsWith(b, authUpdatePrefix, at: 0) {
                 closes = contains(b, closedState, from: authUpdatePrefix.count, to: clientKeyStart)
             }
-            return Route(clientId: Int32(clientId), extra: extra, closesClient: closes)
+            return Route(clientId: Int32(truncatingIfNeeded: clientId), extra: extra, closesClient: closes)
         }
     }
 
