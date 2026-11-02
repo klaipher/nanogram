@@ -12,7 +12,10 @@ private final class RequestId {
     var invalidated: Bool = false
 }
 
-private func resizedImage(_ image: UIImage, for size: CGSize) -> UIImage? {
+// Core Image contexts are expensive and thread-safe: create one, as Apple recommends.
+private let sharedPhotoResizeCIContext = CIContext()
+
+func resizedImage(_ image: UIImage, for size: CGSize) -> UIImage? {
     guard let cgImage = image.cgImage else {
         return nil
     }
@@ -28,8 +31,7 @@ private func resizedImage(_ image: UIImage, for size: CGSize) -> UIImage? {
             
             guard let outputImage = filter.outputImage else { return nil }
             
-            let ciContext = CIContext()
-            guard let cgImage = ciContext.createCGImage(outputImage, from: outputImage.extent) else { return nil }
+            guard let cgImage = sharedPhotoResizeCIContext.createCGImage(outputImage, from: outputImage.extent) else { return nil }
             
             return UIImage(cgImage: cgImage)
         }
@@ -156,6 +158,31 @@ public func fetchPhotoLibraryResource(localIdentifier: String, width: Int32?, he
                 }
                 let startTime = CACurrentMediaTime()
                 
+                let encodeAndFinish: (UIImage?) -> Void = { scaledImage in
+                    switch format {
+                    case .none, .jpeg:
+                        let tempFile = EngineTempBox.shared.tempFile(fileName: "file")
+                        defer {
+                            EngineTempBox.shared.dispose(tempFile)
+                        }
+                        if let scaledImage = scaledImage, let data = compressImageToJPEG(scaledImage, quality: 0.6, tempFilePath: tempFile.path) {
+                            subscriber.putNext(.dataPart(resourceOffset: 0, data: data, range: 0 ..< Int64(data.count), complete: true))
+                            subscriber.putCompletion()
+                        } else {
+                            subscriber.putCompletion()
+                        }
+                    case .jxl:
+                        if let scaledImage = scaledImage, let data = compressImageToJPEGXL(scaledImage, quality: Int(quality ?? 75)) {
+                            subscriber.putNext(.dataPart(resourceOffset: 0, data: data, range: 0 ..< Int64(data.count), complete: true))
+                            subscriber.putCompletion()
+                        } else {
+                            subscriber.putCompletion()
+                        }
+                    }
+                    semaphore.signal()
+                }
+                
+                let requestFullSizeImage: () -> Void = {
                 let requestIdValue = PHImageManager.default().requestImage(for: asset, targetSize: targetSize, contentMode: .aspectFit, options: option, resultHandler: { (image, info) -> Void in
                     Queue.concurrentDefaultQueue().async {
                         requestId.with { current -> Void in
@@ -172,41 +199,13 @@ public func fetchPhotoLibraryResource(localIdentifier: String, width: Int32?, he
                                 print("load completion \((CACurrentMediaTime() - startTime) * 1000.0) ms")
 #endif
                                 
-                                let scale = min(1.0, min(size.width / max(1.0, image.size.width), size.height / max(1.0, image.size.height)))
-                                let scaledSize = CGSize(width: floor(image.size.width * scale), height: floor(image.size.height * scale))
+                                let scaledSize = photoLibraryUploadSize(orientedPixelSize: image.size, maxSize: size)
                                 let scaledImage = resizedImage(image, for: scaledSize)
                                 
 #if DEBUG
                                 print("scaled completion \((CACurrentMediaTime() - startTime) * 1000.0) ms")
 #endif
-                                
-                                switch format {
-                                case .none, .jpeg:
-                                    let tempFile = EngineTempBox.shared.tempFile(fileName: "file")
-                                    defer {
-                                        EngineTempBox.shared.dispose(tempFile)
-                                    }
-                                    if let scaledImage = scaledImage, let data = compressImageToJPEG(scaledImage, quality: 0.6, tempFilePath: tempFile.path) {
-    #if DEBUG
-                                        print("compression completion \((CACurrentMediaTime() - startTime) * 1000.0) ms")
-    #endif
-                                        subscriber.putNext(.dataPart(resourceOffset: 0, data: data, range: 0 ..< Int64(data.count), complete: true))
-                                        subscriber.putCompletion()
-                                    } else {
-                                        subscriber.putCompletion()
-                                    }
-                                case .jxl:
-                                    if let scaledImage = scaledImage, let data = compressImageToJPEGXL(scaledImage, quality: Int(quality ?? 75)) {
-    #if DEBUG
-                                        print("jpegxl compression completion \((CACurrentMediaTime() - startTime) * 1000.0) ms")
-    #endif
-                                        subscriber.putNext(.dataPart(resourceOffset: 0, data: data, range: 0 ..< Int64(data.count), complete: true))
-                                        subscriber.putCompletion()
-                                    } else {
-                                        subscriber.putCompletion()
-                                    }
-                                }
-                                semaphore.signal()
+                                encodeAndFinish(scaledImage)
                             }
                         } else {
                             subscriber.putError(.generic)
@@ -218,6 +217,45 @@ public func fetchPhotoLibraryResource(localIdentifier: String, width: Int32?, he
                     if !current.invalidated {
                         current.id = requestIdValue
                     }
+                }
+                }
+                
+                if targetSize == PHImageManagerMaximumSize {
+                    // Decode at the upload size from the photo's data instead of decoding the whole
+                    // photo (see downsampledPhotoLibraryImage); photos it does not handle take the
+                    // full-size path below.
+                    let dataOption = PHImageRequestOptions()
+                    dataOption.deliveryMode = .highQualityFormat
+                    dataOption.isNetworkAccessAllowed = true
+                    dataOption.isSynchronous = false
+                    dataOption.version = option.version
+                    let dataRequestIdValue = PHImageManager.default().requestImageDataAndOrientation(for: asset, options: dataOption, resultHandler: { data, _, _, _ in
+                        // Not on fetchPhotoWorkers: its threads are blocked waiting for this photo.
+                        Queue.concurrentDefaultQueue().async {
+                            if requestId.with({ $0.invalidated }) {
+                                return
+                            }
+                            if let data, let scaledImage = downsampledPhotoLibraryImage(data: data, maxSize: size, resize: resizedImage) {
+                                requestId.with { current -> Void in
+                                    current.id = nil
+                                    current.invalidated = true
+                                }
+#if DEBUG
+                                print("downsampled completion \((CACurrentMediaTime() - startTime) * 1000.0) ms")
+#endif
+                                encodeAndFinish(scaledImage)
+                            } else {
+                                requestFullSizeImage()
+                            }
+                        }
+                    })
+                    requestId.with { current -> Void in
+                        if !current.invalidated {
+                            current.id = dataRequestIdValue
+                        }
+                    }
+                } else {
+                    requestFullSizeImage()
                 }
                 semaphore.wait()
             }))

@@ -802,6 +802,11 @@ GPU (Metal) rendering of stickers and emoji, its debug switches and how to measu
 - **Edited video exports carry BT.709 colour tags** (`mediaEditorExportColorProperties`): the encoder
   already converts the composer's BGRA with BT.709, and untagged video up to 720x576 is decoded as
   BT.601. `MediaEditorTests` decodes an exported pure red back to (255, 0, 0).
+- **Gallery photo upload decodes at the upload size** (`downsampledPhotoLibraryImage`: PhotoKit
+  image data, ImageIO thumbnail with the EXIF transform, then the same `resizedImage` step for the
+  exact size and sRGB). Photos deeper than 8 bits, camera RAW and unreadable data fall back to the
+  full-size PhotoKit path. The decode runs off `fetchPhotoWorkers`: its threads block until their
+  photo is done, so work queued back onto them deadlocks an album send.
 - **Legacy camera shutter:** `TGCameraCapturedPhoto` is built off the main thread; the first screen
   image of the most recent capture is decoded from its JPEG bytes kept in a single static slot.
 
