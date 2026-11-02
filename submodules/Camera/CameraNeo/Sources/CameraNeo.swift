@@ -20,6 +20,10 @@ final class CameraNeo: NSObject, CameraProtocol {
     private let configuration: Camera.Configuration
     private let useMultiCam: Bool
     private let roundVideoMode: NeoCameraImpl.RoundVideoMode
+    /// Debug Settings ▸ "Circle Close Focus (Macro)": the back camera is a virtual device with the ultra-wide
+    /// and zoom is mapped relative to its neutral (1x) factor (`Camera.RoundVideoCloseFocus`). Every new
+    /// device setting is gated on it, so with it off the camera does exactly what it did before.
+    private let closeFocus: Bool
     private let log: ((String) -> Void)?
     private let previewView: CameraPreviewView?
     private let secondaryPreviewView: CameraPreviewView?
@@ -45,6 +49,7 @@ final class CameraNeo: NSObject, CameraProtocol {
     private var secondaryVideoOutput: AVCaptureVideoDataOutput?
     private var audioOutput: AVCaptureAudioDataOutput?
     private var stabilizationObservers: [NSKeyValueObservation] = []
+    private var primaryConstituentObserver: NSKeyValueObservation?
     private let secondaryVideoOutputIdentity = Atomic<ObjectIdentifier?>(value: nil)
     private let audioOutputIdentity = Atomic<ObjectIdentifier?>(value: nil)
 
@@ -80,6 +85,7 @@ final class CameraNeo: NSObject, CameraProtocol {
         secondaryPreviewView: CameraPreviewView?,
         useMultiCam: Bool,
         roundVideoMode: NeoCameraImpl.RoundVideoMode,
+        closeFocus: Bool,
         log: ((String) -> Void)?
     ) {
         self.configuration = configuration
@@ -87,6 +93,7 @@ final class CameraNeo: NSObject, CameraProtocol {
         self.secondaryPreviewView = secondaryPreviewView
         self.useMultiCam = useMultiCam
         self.roundVideoMode = roundVideoMode
+        self.closeFocus = closeFocus
         self.log = log
         self.singleMediaPosition = configuration.position
         self.positionValue = Atomic<Camera.Position>(value: configuration.position)
@@ -488,8 +495,8 @@ final class CameraNeo: NSObject, CameraProtocol {
     }
 
     func setZoomLevel(_ zoomLevel: CGFloat) {
-        self.updateZoom { device in
-            return 1.0 + zoomLevel
+        self.updateZoom { [weak self] device in
+            return Camera.RoundVideoCloseFocus.zoomFactor(forLevelOffset: zoomLevel, neutral: self?.neutralZoomFactor(device: device) ?? 1.0)
         }
     }
 
@@ -505,7 +512,8 @@ final class CameraNeo: NSObject, CameraProtocol {
                 return
             }
             self.withLockedDevice(device) { device in
-                device.ramp(toVideoZoomFactor: self.clampedZoom(zoomLevel, device: device), withRate: Float(rate))
+                let zoomFactor = Camera.RoundVideoCloseFocus.zoomFactor(forRampLevel: zoomLevel, neutral: self.neutralZoomFactor(device: device))
+                device.ramp(toVideoZoomFactor: self.clampedZoom(zoomFactor, device: device), withRate: Float(rate))
             }
         }
     }
@@ -644,6 +652,11 @@ final class CameraNeo: NSObject, CameraProtocol {
         }
         self.session.addInput(videoInput)
         self.configureFrameRate(roundVideoCaptureFrameRate, device: device, input: videoInput)
+        if self.closeFocus && position == .back {
+            self.withLockedDevice(device) { device in
+                self.applyCloseFocusSettings(device: device)
+            }
+        }
 
         if addOutput {
             guard let output = self.makeVideoOutput(), self.session.canAddOutput(output) else {
@@ -659,6 +672,9 @@ final class CameraNeo: NSObject, CameraProtocol {
             self.frontDevice = device
         } else {
             self.backDevice = device
+            if self.closeFocus {
+                self.observePrimaryConstituent(device: device)
+            }
         }
         return true
     }
@@ -689,6 +705,11 @@ final class CameraNeo: NSObject, CameraProtocol {
         multiCamSession.addInputWithNoConnections(frontInput)
         self.configureFrameRate(roundVideoCaptureFrameRate, device: backDevice, input: backInput)
         self.configureFrameRate(roundVideoCaptureFrameRate, device: frontDevice, input: frontInput)
+        if self.closeFocus {
+            self.withLockedDevice(backDevice) { device in
+                self.applyCloseFocusSettings(device: device)
+            }
+        }
         multiCamSession.addOutputWithNoConnections(backOutput)
         multiCamSession.addOutputWithNoConnections(frontOutput)
 
@@ -710,6 +731,9 @@ final class CameraNeo: NSObject, CameraProtocol {
         self.frontDevice = frontDevice
         self.backVideoInput = backInput
         self.frontVideoInput = frontInput
+        if self.closeFocus {
+            self.observePrimaryConstituent(device: backDevice)
+        }
         self.primaryVideoOutput = backOutput
         self.secondaryVideoOutput = frontOutput
         let _ = self.secondaryVideoOutputIdentity.modify { _ in ObjectIdentifier(frontOutput) }
@@ -809,14 +833,10 @@ final class CameraNeo: NSObject, CameraProtocol {
     }
 
     private func makeVideoDevice(position: Camera.Position) -> AVCaptureDevice? {
-        if let device = AVCaptureDevice.default(.builtInWideAngleCamera, for: .video, position: position) {
+        if let device = closeFocusRoundVideoCaptureDevice(position: position, closeFocus: self.closeFocus, multiCam: self.useMultiCam, mode: self.roundVideoMode) {
             return device
         }
-        return AVCaptureDevice.DiscoverySession(
-            deviceTypes: [.builtInWideAngleCamera, .builtInTrueDepthCamera],
-            mediaType: .video,
-            position: position
-        ).devices.first
+        return defaultRoundVideoCaptureDevice(position: position)
     }
 
     private func configureCaptureFormat(device: AVCaptureDevice) -> Bool {
@@ -837,6 +857,7 @@ final class CameraNeo: NSObject, CameraProtocol {
             if device.isExposureModeSupported(.continuousAutoExposure) {
                 device.exposureMode = .continuousAutoExposure
             }
+            self.applyCloseFocusSettings(device: device)
             return true
         } catch {
             return false
@@ -846,8 +867,8 @@ final class CameraNeo: NSObject, CameraProtocol {
     private func configureSupportedMultiCamCosts() -> Bool {
         dispatchPrecondition(condition: .onQueue(self.sessionQueue))
         guard #available(iOS 13.0, *), let session = self.session as? AVCaptureMultiCamSession,
-              let backDevice = self.backDevice, let frontDevice = self.frontDevice,
-              let backInput = self.backVideoInput, let frontInput = self.frontVideoInput else {
+              var backDevice = self.backDevice, let frontDevice = self.frontDevice,
+              var backInput = self.backVideoInput, let frontInput = self.frontVideoInput else {
             return false
         }
 
@@ -873,8 +894,57 @@ final class CameraNeo: NSObject, CameraProtocol {
             if roundVideoCaptureCostsAreSupported(hardwareCost: session.hardwareCost, systemPressureCost: session.systemPressureCost) {
                 return true
             }
+            if self.closeFocus && maximumProfile == initialProfile && backDevice.isVirtualDevice {
+                // The virtual back device streams two sensors. Losing macro is better than losing resolution:
+                // try the plain wide at the same profile before stepping down.
+                guard self.replaceMultiCamBackDeviceWithDefault(),
+                      let replacedDevice = self.backDevice, let replacedInput = self.backVideoInput else {
+                    return false
+                }
+                backDevice = replacedDevice
+                backInput = replacedInput
+                self.logCaptureState(reason: "MultiCam budget without close focus")
+                if roundVideoCaptureCostsAreSupported(hardwareCost: session.hardwareCost, systemPressureCost: session.systemPressureCost) {
+                    return true
+                }
+            }
         }
         return false
+    }
+
+    /// Close focus only: swaps the multi-cam session's virtual back device for the camera it opens without the
+    /// switch, rebuilding the back input's manual connections to the same output and preview layer.
+    @available(iOS 13.0, *)
+    private func replaceMultiCamBackDeviceWithDefault() -> Bool {
+        dispatchPrecondition(condition: .onQueue(self.sessionQueue))
+        guard let session = self.session as? AVCaptureMultiCamSession,
+              let oldInput = self.backVideoInput, let backOutput = self.primaryVideoOutput,
+              let device = defaultRoundVideoCaptureDevice(position: .back) else {
+            return false
+        }
+        self.observePrimaryConstituent(device: nil)
+        session.beginConfiguration()
+        // Removing the input also removes its output and preview connections.
+        session.removeInput(oldInput)
+        self.backVideoInput = nil
+        self.backDevice = nil
+        guard self.configureCaptureFormat(device: device),
+              let input = try? AVCaptureDeviceInput(device: device),
+              session.canAddInput(input) else {
+            session.commitConfiguration()
+            return false
+        }
+        session.addInputWithNoConnections(input)
+        self.configureFrameRate(roundVideoCaptureFrameRate, device: device, input: input)
+        let connected = self.connectVideo(input: input, output: backOutput, previewView: self.previewView, mirrored: false)
+        session.commitConfiguration()
+        guard connected else {
+            return false
+        }
+        self.backDevice = device
+        self.backVideoInput = input
+        self.configureVideoStabilization()
+        return true
     }
 
     private func configureFrameRate(_ fps: Double, device: AVCaptureDevice, input: AVCaptureDeviceInput) {
@@ -931,7 +1001,7 @@ final class CameraNeo: NSObject, CameraProtocol {
             }
             let format = device.activeFormat
             let previewMode = preview?.videoPreviewLayer.connection?.activeVideoStabilizationMode.rawValue ?? -1
-            let message = "\(reason): mode=\(self.roundVideoMode.rawValue), position=\(device.position.rawValue), format=\(format), frameDuration=\(device.activeVideoMinFrameDuration.seconds), standardSupported=\(format.isVideoStabilizationModeSupported(.standard)), requested=\(connection.preferredVideoStabilizationMode.rawValue), active=\(connection.activeVideoStabilizationMode.rawValue), previewActive=\(previewMode), zoom=\(device.videoZoomFactor), upscaleThreshold=\(format.videoZoomFactorUpscaleThreshold)"
+            let message = "\(reason): mode=\(self.roundVideoMode.rawValue), position=\(device.position.rawValue), format=\(format), frameDuration=\(device.activeVideoMinFrameDuration.seconds), standardSupported=\(format.isVideoStabilizationModeSupported(.standard)), requested=\(connection.preferredVideoStabilizationMode.rawValue), active=\(connection.activeVideoStabilizationMode.rawValue), previewActive=\(previewMode), zoom=\(device.videoZoomFactor), upscaleThreshold=\(format.videoZoomFactorUpscaleThreshold), \(self.closeFocusDiagnostics(device: device))"
             os_log("%{public}@", log: cameraCaptureLog, type: .info, message)
             self.log?(message)
         }
@@ -1000,9 +1070,81 @@ final class CameraNeo: NSObject, CameraProtocol {
     }
 
     private func clampedZoom(_ value: CGFloat, device: AVCaptureDevice) -> CGFloat {
-        let minimum = max(1.0, device.minAvailableVideoZoomFactor)
-        let maximum = max(minimum, device.maxAvailableVideoZoomFactor)
-        return min(maximum, max(minimum, value))
+        return Camera.RoundVideoCloseFocus.clampedZoomFactor(
+            value,
+            neutral: self.neutralZoomFactor(device: device),
+            minAvailable: device.minAvailableVideoZoomFactor,
+            maxAvailable: device.maxAvailableVideoZoomFactor
+        )
+    }
+
+    /// The zoom factor that frames like the plain wide-angle camera at 1x: the wide's switch-over factor on the
+    /// close-focus virtual back device, 1.0 everywhere else (and always with the switch off).
+    private func neutralZoomFactor(device: AVCaptureDevice) -> CGFloat {
+        guard self.closeFocus, device.position == .back else {
+            return 1.0
+        }
+        return Camera.RoundVideoCloseFocus.neutralZoomFactor(for: device)
+    }
+
+    /// Close focus only: framing and focus for the back camera. Changing `activeFormat` resets the focus point
+    /// of interest (and may reset zoom), so this runs after every format change and after the input is added.
+    /// The caller holds the device's configuration lock.
+    private func applyCloseFocusSettings(device: AVCaptureDevice) {
+        guard self.closeFocus, device.position == .back else {
+            return
+        }
+        // primaryConstituentDeviceSwitchingBehavior stays at its default (.auto): that is what lets the device
+        // fall back to the ultra-wide for close subjects.
+        device.videoZoomFactor = self.clampedZoom(self.neutralZoomFactor(device: device), device: device)
+        // Quality tweaks, not the macro fix: smooth continuous focus on the centre. The range restriction stays
+        // .none (.near only narrows the scan; it cannot focus closer than the lens can).
+        if device.isFocusModeSupported(.continuousAutoFocus) {
+            if device.isFocusPointOfInterestSupported {
+                device.focusPointOfInterest = CGPoint(x: 0.5, y: 0.5)
+            }
+            if device.isSmoothAutoFocusSupported {
+                device.isSmoothAutoFocusEnabled = true
+            }
+            // Last: setting the mode applies the point of interest.
+            device.focusMode = .continuousAutoFocus
+        }
+    }
+
+    /// Close focus only: logs each switch between the virtual device's constituent cameras (wide to ultra-wide
+    /// for a close subject and back), so a macro switch shows up in the device log. (`activePrimaryConstituent`
+    /// is the Swift name of the Objective-C `activePrimaryConstituentDevice`, which is the KVO key.)
+    private func observePrimaryConstituent(device: AVCaptureDevice?) {
+        dispatchPrecondition(condition: .onQueue(self.sessionQueue))
+        self.primaryConstituentObserver = nil
+        guard self.closeFocus, let device, device.isVirtualDevice else {
+            return
+        }
+        if #available(iOS 15.0, *) {
+            self.primaryConstituentObserver = device.observe(\.activePrimaryConstituent, options: [.new]) { [weak self] device, _ in
+                self?.sessionQueue.async { [weak self, weak device] in
+                    guard let self, let device, device === self.backDevice else {
+                        return
+                    }
+                    self.logCaptureState(reason: "primary constituent changed")
+                }
+            }
+        }
+    }
+
+    private func closeFocusDiagnostics(device: AVCaptureDevice) -> String {
+        var result = "deviceType=\(device.deviceType.rawValue)"
+        if #available(iOS 15.0, *) {
+            result += ", minimumFocusDistance=\(device.minimumFocusDistance)"
+        }
+        guard self.closeFocus, device.position == .back else {
+            return result
+        }
+        result += ", closeFocus=1, neutralZoom=\(self.neutralZoomFactor(device: device)), focusMode=\(device.focusMode.rawValue), smoothAutoFocus=\(device.isSmoothAutoFocusEnabled)"
+        if #available(iOS 15.0, *), device.isVirtualDevice {
+            result += ", switching=\(device.activePrimaryConstituentDeviceSwitchingBehavior.rawValue), activePrimaryConstituent=\(device.activePrimaryConstituent?.deviceType.rawValue ?? "none")"
+        }
+        return result
     }
 
     private func withLockedDevice(_ device: AVCaptureDevice, _ update: (AVCaptureDevice) -> Void) {
@@ -1017,6 +1159,7 @@ final class CameraNeo: NSObject, CameraProtocol {
     private func tearDownSession() {
         dispatchPrecondition(condition: .onQueue(self.sessionQueue))
         self.stabilizationObservers.removeAll()
+        self.primaryConstituentObserver = nil
         self.primaryVideoOutput?.setSampleBufferDelegate(nil, queue: nil)
         self.secondaryVideoOutput?.setSampleBufferDelegate(nil, queue: nil)
         self.audioOutput?.setSampleBufferDelegate(nil, queue: nil)

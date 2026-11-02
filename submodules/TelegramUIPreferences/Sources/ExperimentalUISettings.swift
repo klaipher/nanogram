@@ -51,6 +51,10 @@ public struct ExperimentalUISettings: Codable, Equatable {
     public var showCrashReportAlerts: Bool?
     public var useModernVideoMessagePipeline: Bool?
     public var videoMessageCameraMode: VideoMessageCameraMode
+    /// Debug Settings ▸ "Circle Close Focus (Macro)". Off by default. The round-video camera (CameraNeo) opens
+    /// the back camera as a virtual device with the ultra-wide, so iOS can switch to it for close subjects,
+    /// with the 1x framing kept (`Camera.RoundVideoCloseFocus`). Read when the camera screen opens.
+    public var videoMessageCloseFocus: Bool
     public var stickerRendererMode: StickerRendererMode
 
     public static var defaultSettings: ExperimentalUISettings {
@@ -108,7 +112,8 @@ public struct ExperimentalUISettings: Codable, Equatable {
         useModernVideoMessagePipeline: Bool? = nil,
         videoMessageCameraMode: VideoMessageCameraMode = .hdBilinear,
         stickerRendererMode: StickerRendererMode = .gpuLarge,
-        showCrashReportAlerts: Bool? = nil
+        showCrashReportAlerts: Bool? = nil,
+        videoMessageCloseFocus: Bool = false
     ) {
         self.keepChatNavigationStack = keepChatNavigationStack
         self.skipReadHistory = skipReadHistory
@@ -135,6 +140,7 @@ public struct ExperimentalUISettings: Codable, Equatable {
         self.showCrashReportAlerts = showCrashReportAlerts
         self.useModernVideoMessagePipeline = useModernVideoMessagePipeline
         self.videoMessageCameraMode = videoMessageCameraMode
+        self.videoMessageCloseFocus = videoMessageCloseFocus
         self.stickerRendererMode = stickerRendererMode
     }
     
@@ -175,6 +181,7 @@ public struct ExperimentalUISettings: Codable, Equatable {
         self.useModernVideoMessagePipeline = try container.decodeIfPresent(Bool.self, forKey: "useModernVideoMessagePipeline")
         self.videoMessageCameraMode = (try container.decodeIfPresent(String.self, forKey: "videoMessageCameraMode")).flatMap(VideoMessageCameraMode.init(rawValue:)) ?? .hdBilinear
         self.stickerRendererMode = (try container.decodeIfPresent(String.self, forKey: "stickerRendererMode")).flatMap(StickerRendererMode.init(rawValue:)) ?? .gpuLarge
+        self.videoMessageCloseFocus = try container.decodeIfPresent(Bool.self, forKey: "videoMessageCloseFocus") ?? false
 
         if savedDefaultsRevision < 1 {
             // Saved before the GPU renderers became the default: both were the old CPU defaults.
@@ -214,6 +221,7 @@ public struct ExperimentalUISettings: Codable, Equatable {
         try container.encodeIfPresent(self.useModernVideoMessagePipeline, forKey: "useModernVideoMessagePipeline")
         try container.encode(self.videoMessageCameraMode.rawValue, forKey: "videoMessageCameraMode")
         try container.encode(self.stickerRendererMode.rawValue, forKey: "stickerRendererMode")
+        try container.encode(self.videoMessageCloseFocus, forKey: "videoMessageCloseFocus")
         try container.encode(ExperimentalUISettings.nanogramDefaultsRevision, forKey: "nanogramDefaultsRevision")
     }
 }

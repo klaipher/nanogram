@@ -33,6 +33,7 @@ final class DebugControllerEntriesTests: XCTestCase {
         settings.fakeWalletTransfers = on
         settings.useModernVideoMessagePipeline = on ? nil : false
         settings.videoMessageCameraMode = on ? .hdLanczos : .legacy
+        settings.videoMessageCloseFocus = on
         settings.stickerRendererMode = on ? .gpuAll : .cpu
         return settings
     }
@@ -56,6 +57,18 @@ final class DebugControllerEntriesTests: XCTestCase {
                     }
                 }
             }
+        }
+    }
+
+    func testCircleCloseFocusSwitchFollowsTheVideoMessageCameraRow() {
+        for isMainApp in [true, false] {
+            let entries = self.entries(isMainApp: isMainApp, isDevAccount: false, engineKind: nil, settings: .defaultSettings)
+            guard let index = entries.firstIndex(where: { $0.stableId == DebugControllerEntry.videoMessageCameraMode(.hdBilinear).stableId }) else {
+                XCTFail("no Video Message Camera row")
+                continue
+            }
+            XCTAssertTrue(index + 1 < entries.count)
+            XCTAssertEqual(entries[index + 1].stableId, DebugControllerEntry.videoMessageCloseFocus(false).stableId)
         }
     }
 
@@ -114,10 +127,17 @@ final class ExperimentalUISettingsCompatibilityTests: XCTestCase {
         XCTAssertFalse(settings.forceListViewImplChatBackend)
     }
 
+    func testCircleCloseFocusIsOffByDefaultAndInOldBlobs() throws {
+        XCTAssertFalse(ExperimentalUISettings.defaultSettings.videoMessageCloseFocus)
+        let settings = try EngineDecoder.decode(ExperimentalUISettings.self, from: try EngineEncoder.encode(OldSettings()))
+        XCTAssertFalse(settings.videoMessageCloseFocus)
+    }
+
     func testRoundTrip() throws {
         var settings = ExperimentalUISettings.defaultSettings
         settings.forceListViewImplChatBackend = true
         settings.enableVoipTcp = true
+        settings.videoMessageCloseFocus = true
         let decoded = try EngineDecoder.decode(ExperimentalUISettings.self, from: try EngineEncoder.encode(settings))
         XCTAssertEqual(decoded, settings)
     }

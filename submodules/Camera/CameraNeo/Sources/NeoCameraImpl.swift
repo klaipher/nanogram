@@ -115,7 +115,66 @@ func roundVideoCaptureFormat(
     return formats[index]
 }
 
-private func supportsDualCameraCapture(forRoundVideo: Bool, mode: NeoCameraImpl.RoundVideoMode) -> Bool {
+/// The camera a round video opens at a position without the close-focus switch: the wide-angle camera, or
+/// whatever wide-angle/TrueDepth camera exists there.
+func defaultRoundVideoCaptureDevice(position: AVCaptureDevice.Position) -> AVCaptureDevice? {
+    if let device = AVCaptureDevice.default(.builtInWideAngleCamera, for: .video, position: position) {
+        return device
+    }
+    return AVCaptureDevice.DiscoverySession(
+        deviceTypes: [.builtInWideAngleCamera, .builtInTrueDepthCamera],
+        mediaType: .video,
+        position: position
+    ).devices.first
+}
+
+/// The virtual back camera (with the ultra-wide) that Debug Settings ▸ "Circle Close Focus (Macro)" opens, or nil
+/// when the switch is off, the position is not the back, or no virtual device qualifies; the caller then opens
+/// `defaultRoundVideoCaptureDevice` exactly as without the switch. The dual-camera probe and the session both
+/// call this, so dual support is never reported for a pair the session then cannot build.
+func closeFocusRoundVideoCaptureDevice(
+    position: AVCaptureDevice.Position,
+    closeFocus: Bool,
+    multiCam: Bool,
+    mode: NeoCameraImpl.RoundVideoMode
+) -> AVCaptureDevice? {
+    let deviceTypes = Camera.RoundVideoCloseFocus.preferredDeviceTypes(position: position, closeFocus: closeFocus)
+        .filter { $0 != .builtInWideAngleCamera }
+    guard !deviceTypes.isEmpty else {
+        return nil
+    }
+    var multiCamDeviceSets: [Set<String>] = []
+    var frontDeviceId: String?
+    if multiCam {
+        guard #available(iOS 13.0, *), let frontDevice = defaultRoundVideoCaptureDevice(position: .front) else {
+            return nil
+        }
+        frontDeviceId = frontDevice.uniqueID
+        multiCamDeviceSets = AVCaptureDevice.DiscoverySession(
+            deviceTypes: deviceTypes + [.builtInWideAngleCamera, .builtInTrueDepthCamera],
+            mediaType: .video,
+            position: .unspecified
+        ).supportedMultiCamDeviceSets.map { Set($0.map(\.uniqueID)) }
+    }
+    for deviceType in deviceTypes {
+        guard let device = AVCaptureDevice.default(deviceType, for: .video, position: position) else {
+            continue
+        }
+        let pairsWithFront = frontDeviceId.flatMap { frontDeviceId in
+            Camera.RoundVideoCloseFocus.multiCamDeviceSetsContainPair(multiCamDeviceSets, device.uniqueID, frontDeviceId)
+        } ?? false
+        if Camera.RoundVideoCloseFocus.acceptsVirtualDevice(
+            hasRoundVideoFormat: roundVideoCaptureFormat(for: device, requiresMultiCam: multiCam, mode: mode) != nil,
+            isMultiCam: multiCam,
+            pairsWithFrontInMultiCam: pairsWithFront
+        ) {
+            return device
+        }
+    }
+    return nil
+}
+
+private func supportsDualCameraCapture(forRoundVideo: Bool, mode: NeoCameraImpl.RoundVideoMode, closeFocus: Bool) -> Bool {
     guard #available(iOS 13.0, *), AVCaptureMultiCamSession.isMultiCamSupported, !DeviceModel.current.isIpad else {
         return false
     }
@@ -124,6 +183,11 @@ private func supportsDualCameraCapture(forRoundVideo: Bool, mode: NeoCameraImpl.
     }
     let positions: [AVCaptureDevice.Position] = [.back, .front]
     return positions.allSatisfy { position in
+        // The same back camera the session will open. A virtual one qualifies only with a multi-cam format,
+        // so without one this is exactly the wide-angle check below.
+        if forRoundVideo, closeFocusRoundVideoCaptureDevice(position: position, closeFocus: closeFocus, multiCam: true, mode: mode) != nil {
+            return true
+        }
         guard let device = AVCaptureDevice.default(.builtInWideAngleCamera, for: .video, position: position) else {
             return false
         }
@@ -141,10 +205,14 @@ public final class NeoCameraImpl: CameraImpl {
     public static let shared = NeoCameraImpl()
 
     private let roundVideoMode: RoundVideoMode
+    private let closeFocus: Bool
     private let log: ((String) -> Void)?
 
-    public init(roundVideoMode: RoundVideoMode = .hdBilinear, log: ((String) -> Void)? = nil) {
+    /// `closeFocus`: Debug Settings ▸ "Circle Close Focus (Macro)" (`Camera.RoundVideoCloseFocus`). Off, the
+    /// camera behaves exactly as before the switch existed.
+    public init(roundVideoMode: RoundVideoMode = .hdBilinear, closeFocus: Bool = false, log: ((String) -> Void)? = nil) {
         self.roundVideoMode = roundVideoMode
+        self.closeFocus = closeFocus
         self.log = log
         RoundVideoDecorationProvider.shared.warmUp()
     }
@@ -154,7 +222,7 @@ public final class NeoCameraImpl: CameraImpl {
     }
 
     public func isDualCameraSupported(forRoundVideo: Bool) -> Bool {
-        return supportsDualCameraCapture(forRoundVideo: forRoundVideo, mode: self.roundVideoMode)
+        return supportsDualCameraCapture(forRoundVideo: forRoundVideo, mode: self.roundVideoMode, closeFocus: self.closeFocus)
     }
 
     public func makeCamera(
@@ -188,6 +256,7 @@ public final class NeoCameraImpl: CameraImpl {
             secondaryPreviewView: cameraSecondaryPreviewView,
             useMultiCam: configuration.isDualEnabled && self.isDualCameraSupported(forRoundVideo: configuration.isRoundVideo),
             roundVideoMode: self.roundVideoMode,
+            closeFocus: self.closeFocus && configuration.isRoundVideo,
             log: self.log
         )
     }
