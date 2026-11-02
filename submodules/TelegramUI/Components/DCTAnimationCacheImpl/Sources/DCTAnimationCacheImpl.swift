@@ -1659,6 +1659,9 @@ private func generateFirstFrameFromItem(currentQueue: Queue, itemPath: String, a
     }
 }
 
+// Tests: called with the directory while it is being listed.
+var adaptationSizeIndexListingHook: ((String) -> Void)?
+
 // Item sizes are few (a handful of emoji and sticker sizes), but each of the 256 shard directories
 // holds 1/256 of all items. A first-frame miss listed its whole directory to find a larger size to
 // scale down; now each directory is listed once per process (that call answers exactly as before),
@@ -1681,14 +1684,18 @@ private final class AdaptationSizeIndex {
         self.lock.unlock()
     }
     
+    // The lock guards only the two sets. Listing and stat are file I/O and run without it: the
+    // main thread (getFirstFrameSynchronously) must not wait for a fetch queue's listing of
+    // another directory. Two threads may list the same directory once each; that is harmless.
     func findHigherResolutionFile(itemDirectoryPath: String, baseName: String, baseSuffix: String, width: Int, height: Int) -> String? {
         self.lock.lock()
-        defer {
-            self.lock.unlock()
-        }
-        if !self.listedDirectories.contains(itemDirectoryPath) {
-            self.listedDirectories.insert(itemDirectoryPath)
+        let isListed = self.listedDirectories.contains(itemDirectoryPath)
+        self.lock.unlock()
+        
+        if !isListed {
+            var listedSizes: [Size] = []
             var candidates: [(path: String, width: Int, height: Int)] = []
+            adaptationSizeIndexListingHook?(itemDirectoryPath)
             if let enumerator = FileManager.default.enumerator(at: URL(fileURLWithPath: itemDirectoryPath), includingPropertiesForKeys: nil, options: .skipsSubdirectoryDescendants, errorHandler: nil) {
                 for url in enumerator {
                     guard let url = url as? URL else {
@@ -1697,7 +1704,7 @@ private final class AdaptationSizeIndex {
                     let fileName = url.lastPathComponent
                     // Every item name is "<md5>_<width>x<height>", optionally with "-f".
                     if let size = parseItemSize(fileName: fileName) {
-                        self.sizes.insert(Size(width: size.width, height: size.height))
+                        listedSizes.append(Size(width: size.width, height: size.height))
                     }
                     if fileName.hasPrefix(baseName) {
                         let scanner = Scanner(string: fileName)
@@ -1727,6 +1734,12 @@ private final class AdaptationSizeIndex {
                     }
                 }
             }
+            // Marked as listed only once its sizes are in, so a concurrent lookup never stats
+            // an incomplete set.
+            self.lock.lock()
+            self.sizes.formUnion(listedSizes)
+            self.listedDirectories.insert(itemDirectoryPath)
+            self.lock.unlock()
             if !candidates.isEmpty {
                 candidates.sort(by: { $0.width < $1.width })
                 return candidates[0].path
@@ -1734,12 +1747,14 @@ private final class AdaptationSizeIndex {
             return nil
         }
         
+        self.lock.lock()
         let larger = self.sizes.filter { $0.width > width && $0.height > height }.sorted(by: { lhs, rhs in
             if lhs.width != rhs.width {
                 return lhs.width < rhs.width
             }
             return lhs.height < rhs.height
         })
+        self.lock.unlock()
         for size in larger {
             let path = "\(itemDirectoryPath)/\(baseName)\(size.width)x\(size.height)\(baseSuffix)"
             var value = stat()

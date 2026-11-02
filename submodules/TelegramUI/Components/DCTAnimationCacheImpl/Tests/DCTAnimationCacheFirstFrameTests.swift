@@ -116,4 +116,45 @@ final class DCTAnimationCacheFirstFrameTests: XCTestCase {
         // Nothing larger exists for another item.
         XCTAssertNil(cache.getFirstFrameSynchronously(sourceId: "other", size: CGSize(width: 32, height: 32)))
     }
+
+    // The size index is shared by the main thread (getFirstFrameSynchronously) and the fetch
+    // queues. Listing a shard directory is file I/O and must not hold its lock, or a main-thread
+    // lookup in an already listed directory waits for another thread's listing.
+    func testListingADirectoryDoesNotBlockLookupsElsewhere() throws {
+        let cache = Support.makeCache(basePath: self.basePath)
+        let directory: (String) -> String = { sourceId in
+            return (Support.itemPath(basePath: self.basePath, sourceId: sourceId, width: 32, height: 32) as NSString).deletingLastPathComponent
+        }
+        let listedId = "listed"
+        let listingId = try XCTUnwrap((0 ..< 64).map { "listing\($0)" }.first(where: { directory($0) != directory(listedId) }))
+        for sourceId in [listedId, listingId] {
+            try FileManager.default.createDirectory(atPath: directory(sourceId), withIntermediateDirectories: true)
+        }
+        // Lists the first directory; nothing larger exists there.
+        XCTAssertNil(cache.getFirstFrameSynchronously(sourceId: listedId, size: CGSize(width: 32, height: 32)))
+
+        var lookupFinishedDuringListing: Bool?
+        adaptationSizeIndexListingHook = { path in
+            guard path == directory(listingId), lookupFinishedDuringListing == nil else {
+                return
+            }
+            let done = DispatchSemaphore(value: 0)
+            DispatchQueue.global().async {
+                _ = cache.getFirstFrameSynchronously(sourceId: listedId, size: CGSize(width: 16, height: 16))
+                done.signal()
+            }
+            lookupFinishedDuringListing = done.wait(timeout: .now() + 2.0) == .success
+            if lookupFinishedDuringListing != true {
+                // Let the blocked lookup finish before the test ends.
+                DispatchQueue.global().async {
+                    _ = done.wait(timeout: .now() + 10.0)
+                }
+            }
+        }
+        defer {
+            adaptationSizeIndexListingHook = nil
+        }
+        XCTAssertNil(cache.getFirstFrameSynchronously(sourceId: listingId, size: CGSize(width: 32, height: 32)))
+        XCTAssertEqual(lookupFinishedDuringListing, true, "a lookup in a listed directory waited for another directory's listing")
+    }
 }

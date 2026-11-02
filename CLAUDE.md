@@ -772,14 +772,17 @@ GPU (Metal) rendering of stickers and emoji, its debug switches and how to measu
   boundaries (`BlockCompressedFileWriter.endFrame`). The writer uses LZBITMAP (LZMESH is read on
   iOS 27+ but decodes no faster). First-frame adaptation lists each shard directory once per process
   (`AdaptationSizeIndex`) and then only stats sizes this process has seen; every place that stores
-  an item must call `adaptationSizeIndex.noteSize`. After a full conversion the `-f` file is made
+  an item must call `adaptationSizeIndex.noteSize`. Its lock guards only its two sets: listing and
+  stat run outside it, because `getFirstFrameSynchronously` runs on the main thread and must not wait
+  for a fetch queue's listing. After a full conversion the `-f` file is made
   only if missing, on the fetch queue, while the item context stays registered.
 - **Voice recorder input** (`submodules/VoiceRecorderInput`, C): RemoteIO's input callback is
   `VoiceRecorderInputRenderCallback` with the `VoiceRecorderInput` as refCon; nothing Swift runs on
   the IO thread. `ManagedAudioRecorderContext` sets the unit after `AudioUnitInitialize`, clears it
   right after `AudioOutputUnitStop` and before disposing, destroys the input only in deinit (after
   `stop()`), and drains whole 20 ms packets on a 1/40 s timer and once in `stop()`. The recording
-  state goes out at most every 1/30 s (`VoiceRecordingStateThrottle`, TelegramAudio). Tests:
+  state goes out at most every 1/30 s (`VoiceRecordingStateThrottle`, TelegramAudio); with the
+  1/40 s drain that is every other tick, so the time label updates at ~20 Hz (it was ~47 Hz). Tests:
   `//submodules/VoiceRecorderInput:VoiceRecorderInputTests` (Opus output identical to the old
   packetizer for a synthetic producer).
 
