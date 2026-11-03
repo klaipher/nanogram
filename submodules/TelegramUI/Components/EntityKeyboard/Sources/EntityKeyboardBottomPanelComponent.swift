@@ -536,7 +536,8 @@ final class EntityKeyboardBottomPanelComponent: Component {
             //self.backgroundView.update(size: CGSize(width: availableSize.width, height: height), transition: transition.containedViewLayoutTransition)
                         
             let edgeEffectHeight: CGFloat = 80.0
-            let edgeEffectFrame = CGRect(origin: CGPoint(x: 0.0, y: height - edgeEffectHeight), size: CGSize(width: availableSize.width, height: edgeEffectHeight))
+            // Nanogram: the fade always covers the switch, also when the bar is lifted on iPad (TabletLayoutRules.swift).
+            let edgeEffectFrame = mediaPanelBottomBarEdgeEffectFrame(barSize: CGSize(width: availableSize.width, height: height), defaultHeight: edgeEffectHeight)
             transition.setFrame(view: self.edgeEffectView, frame: edgeEffectFrame)
             self.edgeEffectView.update(content: component.theme.chat.inputMediaPanel.backgroundColor.withMultipliedAlpha(0.8), rect: edgeEffectFrame, edge: .bottom, edgeSize: min(edgeEffectHeight, 50.0), transition: transition)
             

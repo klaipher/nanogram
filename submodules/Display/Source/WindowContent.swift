@@ -396,6 +396,9 @@ public class Window1 {
     private var keyboardRotationChangeObserver: AnyObject?
     private var keyboardFrameChangeObserver: AnyObject?
     private var keyboardWillHideObserver: AnyObject?
+    /// Counts measured keyboard frame changes, so a deferred reset from a hide notification can tell that a newer
+    /// frame arrived meanwhile (an input view swap posts a hide for the old keyboard before the new frame).
+    private var keyboardFrameChangeSerial: Int = 0
     private var keyboardTypeChangeObserver: AnyObject?
     private var voiceOverStatusObserver: AnyObject?
     
@@ -680,9 +683,12 @@ public class Window1 {
                 }
                 
                 var keyboardFrame: CGRect = (notification.userInfo?[UIResponder.keyboardFrameEndUserInfoKey] as? NSValue)?.cgRectValue ?? CGRect()
-                if isTablet && keyboardFrame.isEmpty {
+                // Nanogram: on a tablet an empty end frame means nothing is docked any more (TabletLayoutRules.swift).
+                let notificationDecision = windowKeyboardNotificationDecision(kind: .willChangeFrame, isTablet: isTablet, endFrame: keyboardFrame, screenHeight: (notification.object as? UIScreen)?.bounds.height ?? UIScreen.main.bounds.height)
+                if case .keep = notificationDecision {
                     return
                 }
+                strongSelf.keyboardFrameChangeSerial += 1
                 
                 #if DEBUG && false
                 testView.frame = keyboardFrame.insetBy(dx: -2.0, dy: -2.0)
@@ -780,6 +786,12 @@ public class Window1 {
                 if #available(iOSApplicationExtension 16.1, iOS 16.1, *), let screen = notification.object as? UIScreen, let keyboardFrameEnd = notification.userInfo?[UIResponder.keyboardFrameEndUserInfoKey] as? CGRect, keyboardFrameEnd.minY >= screen.bounds.height - 1.0 {
                     keyboardHeight = 0.0
                 }
+                if case .hidden = notificationDecision {
+                    keyboardHeight = 0.0
+                }
+                #if DEBUG // TEMP iPad keyboard log (WindowKeyboardDebugLog.swift)
+                debugLogWindowKeyboard(event: "willChangeFrame", endFrame: (notification.userInfo?[UIResponder.keyboardFrameEndUserInfoKey] as? NSValue)?.cgRectValue ?? CGRect(), windowSize: strongSelf.windowLayout.size, isTablet: isTablet, isWindowed: isWindowed, decision: notificationDecision, inputHeight: keyboardHeight)
+                #endif
                 
                 var duration: Double = (notification.userInfo?[UIResponder.keyboardAnimationDurationUserInfoKey] as? NSNumber)?.doubleValue ?? 0.0
                 if duration > Double.ulpOfOne {
@@ -813,7 +825,29 @@ public class Window1 {
             guard let self else {
                 return
             }
-            let _ = self
+            // Nanogram: on a tablet a hide clears the height even if no frame change follows it
+            // (TabletLayoutRules.swift). Deferred one turn, and dropped if a newer frame was measured meanwhile.
+            var isTablet = false
+            if case .regular = self.windowLayout.metrics.widthClass {
+                isTablet = true
+            }
+            let endFrame: CGRect = (notification.userInfo?[UIResponder.keyboardFrameEndUserInfoKey] as? NSValue)?.cgRectValue ?? CGRect()
+            let decision = windowKeyboardNotificationDecision(kind: .willHide, isTablet: isTablet, endFrame: endFrame, screenHeight: (notification.object as? UIScreen)?.bounds.height ?? UIScreen.main.bounds.height)
+            guard case .hidden = decision else {
+                return
+            }
+            let serial = self.keyboardFrameChangeSerial
+            let duration: Double = (notification.userInfo?[UIResponder.keyboardAnimationDurationUserInfoKey] as? NSNumber)?.doubleValue ?? 0.0
+            DispatchQueue.main.async { [weak self] in
+                guard let self, self.keyboardFrameChangeSerial == serial, let inputHeight = self.windowLayout.inputHeight, inputHeight > 0.0 else {
+                    return
+                }
+                #if DEBUG // TEMP iPad keyboard log (WindowKeyboardDebugLog.swift)
+                debugLogWindowKeyboard(event: "willHide", endFrame: endFrame, windowSize: self.windowLayout.size, isTablet: isTablet, isWindowed: nil, decision: decision, inputHeight: 0.0)
+                #endif
+                let transition: ContainedViewLayoutTransition = duration > Double.ulpOfOne ? .animated(duration: duration, curve: .easeInOut) : .immediate
+                self.updateLayout { $0.update(inputHeight: nil, transition: transition, overrideTransition: false) }
+            }
         })
         
         if #available(iOSApplicationExtension 11.0, iOS 11.0, *) {

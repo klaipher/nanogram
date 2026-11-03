@@ -1902,15 +1902,8 @@ final class ChatListControllerNode: ASDisplayNode, ASGestureRecognizerDelegate {
         insets.right += layout.safeInsets.right
         
         if let toolbarData = self.toolbarData {
-            var panelsBottomInset: CGFloat = layout.insets(options: []).bottom
-            if layout.metrics.widthClass == .regular, let inputHeight = layout.inputHeight, inputHeight != 0.0 {
-                panelsBottomInset = inputHeight + 8.0
-            }
-            if panelsBottomInset == 0.0 {
-                panelsBottomInset = 8.0
-            } else {
-                panelsBottomInset = max(panelsBottomInset, 8.0)
-            }
+            // Nanogram: on iPad the toolbar rises only for a real keyboard (TabletLayoutRules.swift).
+            let panelsBottomInset: CGFloat = floatingBottomPanelsInset(layout: layout)
             
             let sideInset: CGFloat = 20.0
             // The bottom toolbar spans iPhone Duo's side strip; it keeps clear only of a corner block at the bottom, as the

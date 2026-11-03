@@ -1,0 +1,172 @@
+import XCTest
+import UIKit
+@testable import Display
+
+/// The iPad layout decisions in `TabletLayoutRules.swift` and the iPad rows of `DeviceMetrics`. Every case pairs
+/// the iPad behaviour with the phone (compact) one, which must stay what upstream does.
+final class TabletLayoutRulesTests: XCTestCase {
+    private func layout(size: CGSize, widthClass: ContainerViewLayoutSizeClass, deviceMetrics: DeviceMetrics = .iPadPro11Inch, bottomInset: CGFloat = 20.0, inputHeight: CGFloat?, orientation: UIInterfaceOrientation? = nil, windowSize: CGSize? = nil) -> ContainerViewLayout {
+        return ContainerViewLayout(size: size, metrics: LayoutMetrics(widthClass: widthClass, heightClass: widthClass, orientation: orientation, windowSize: windowSize), deviceMetrics: deviceMetrics, intrinsicInsets: UIEdgeInsets(top: 0.0, left: 0.0, bottom: bottomInset, right: 0.0), safeInsets: UIEdgeInsets(), reservedCorners: .none, division: nil, additionalInsets: UIEdgeInsets(), statusBarHeight: nil, inputHeight: inputHeight, inputHeightIsInteractivellyChanging: false, inVoiceOver: false, presentedInFormSheet: false)
+    }
+
+    // MARK: Keyboard notifications
+
+    /// The owner's iPad: the input assistant bar of sticker mode (about 80pt) went away with an empty end frame,
+    /// and the height stayed. An empty frame on a tablet now means nothing is docked.
+    func test_tablet_emptyFrameChange_isHidden() {
+        XCTAssertEqual(windowKeyboardNotificationDecision(kind: .willChangeFrame, isTablet: true, endFrame: .zero, screenHeight: 1032.0), .hidden)
+        XCTAssertEqual(windowKeyboardNotificationDecision(kind: .willChangeFrame, isTablet: true, endFrame: CGRect(x: 0.0, y: 952.0, width: 1376.0, height: 0.0), screenHeight: 1032.0), .hidden)
+    }
+
+    func test_tablet_hideWithEmptyOrOffscreenFrame_isHidden() {
+        XCTAssertEqual(windowKeyboardNotificationDecision(kind: .willHide, isTablet: true, endFrame: .zero, screenHeight: 1032.0), .hidden)
+        XCTAssertEqual(windowKeyboardNotificationDecision(kind: .willHide, isTablet: true, endFrame: CGRect(x: 0.0, y: 1032.0, width: 1376.0, height: 80.0), screenHeight: 1032.0), .hidden)
+    }
+
+    /// A real keyboard is always measured, so it never covers the input bar; a hide that still reports an
+    /// on-screen frame is left to the frame-change notification.
+    func test_tablet_realKeyboard_isMeasured() {
+        let keyboard = CGRect(x: 0.0, y: 1032.0 - 491.0, width: 1376.0, height: 491.0)
+        XCTAssertEqual(windowKeyboardNotificationDecision(kind: .willChangeFrame, isTablet: true, endFrame: keyboard, screenHeight: 1032.0), .measure)
+        XCTAssertEqual(windowKeyboardNotificationDecision(kind: .willChangeFrame, isTablet: true, endFrame: CGRect(x: 0.0, y: 952.0, width: 1376.0, height: 80.0), screenHeight: 1032.0), .measure)
+        XCTAssertEqual(windowKeyboardNotificationDecision(kind: .willHide, isTablet: true, endFrame: keyboard, screenHeight: 1032.0), .keep)
+    }
+
+    func test_phone_isUpstream() {
+        XCTAssertEqual(windowKeyboardNotificationDecision(kind: .willChangeFrame, isTablet: false, endFrame: .zero, screenHeight: 874.0), .measure)
+        XCTAssertEqual(windowKeyboardNotificationDecision(kind: .willChangeFrame, isTablet: false, endFrame: CGRect(x: 0.0, y: 538.0, width: 402.0, height: 336.0), screenHeight: 874.0), .measure)
+        XCTAssertEqual(windowKeyboardNotificationDecision(kind: .willHide, isTablet: false, endFrame: .zero, screenHeight: 874.0), .keep)
+        XCTAssertEqual(windowKeyboardNotificationDecision(kind: .willHide, isTablet: false, endFrame: CGRect(x: 0.0, y: 874.0, width: 402.0, height: 336.0), screenHeight: 874.0), .keep)
+    }
+
+    // MARK: Keyboard orientation
+
+    /// The chat pane of a landscape split view on the iPad Pro 13" (918 x 1032) is taller than wide; the keyboard
+    /// is still the landscape one.
+    func test_tablet_landscapeSplitPane_usesLandscapeKeyboard() {
+        XCTAssertTrue(layoutKeyboardIsLandscape(size: CGSize(width: 918.0, height: 1032.0), deviceType: .tablet, interfaceOrientation: .landscapeLeft, windowSize: CGSize(width: 1376.0, height: 1032.0)))
+        XCTAssertTrue(layoutKeyboardIsLandscape(size: CGSize(width: 918.0, height: 1032.0), deviceType: .tablet, interfaceOrientation: nil, windowSize: CGSize(width: 1376.0, height: 1032.0)))
+        XCTAssertFalse(layoutKeyboardIsLandscape(size: CGSize(width: 712.0, height: 1376.0), deviceType: .tablet, interfaceOrientation: .portrait, windowSize: CGSize(width: 1032.0, height: 1376.0)))
+        // A portrait-shaped Stage Manager window on a landscape screen: the keyboard follows the screen.
+        XCTAssertTrue(layoutKeyboardIsLandscape(size: CGSize(width: 700.0, height: 900.0), deviceType: .tablet, interfaceOrientation: .landscapeRight, windowSize: CGSize(width: 700.0, height: 900.0)))
+        // No window: the pane decides.
+        XCTAssertFalse(layoutKeyboardIsLandscape(size: CGSize(width: 918.0, height: 1032.0), deviceType: .tablet, interfaceOrientation: nil, windowSize: nil))
+    }
+
+    func test_phone_keyboardOrientation_isThePanes() {
+        XCTAssertFalse(layoutKeyboardIsLandscape(size: CGSize(width: 402.0, height: 874.0), deviceType: .phone, interfaceOrientation: .landscapeLeft, windowSize: CGSize(width: 874.0, height: 402.0)))
+        XCTAssertTrue(layoutKeyboardIsLandscape(size: CGSize(width: 874.0, height: 402.0), deviceType: .phone, interfaceOrientation: .portrait, windowSize: CGSize(width: 402.0, height: 874.0)))
+    }
+
+    func test_standardInputHeight_splitPane_matchesLandscapeKeyboard() {
+        let pane = self.layout(size: CGSize(width: 918.0, height: 1032.0), widthClass: .regular, deviceMetrics: .iPadPro3rdGen, inputHeight: nil, orientation: .landscapeLeft, windowSize: CGSize(width: 1366.0, height: 1024.0))
+        XCTAssertEqual(pane.standardInputHeight, DeviceMetrics.iPadPro3rdGen.standardInputHeight(inLandscape: true))
+        let phone = self.layout(size: CGSize(width: 402.0, height: 874.0), widthClass: .compact, deviceMetrics: .iPhone16Pro, inputHeight: nil, orientation: .portrait, windowSize: CGSize(width: 402.0, height: 874.0))
+        XCTAssertEqual(phone.standardInputHeight, DeviceMetrics.iPhone16Pro.standardInputHeight(inLandscape: false))
+    }
+
+    // MARK: Device profiles
+
+    private func metrics(_ width: CGFloat, _ height: CGFloat, statusBar: CGFloat = 24.0, navigation: CGFloat? = 20.0) -> DeviceMetrics {
+        return DeviceMetrics(screenSize: CGSize(width: width, height: height), scale: 2.0, statusBarHeight: statusBar, onScreenNavigationHeight: navigation, modelIdentifier: nil)
+    }
+
+    private func assertKnownTablet(_ metrics: DeviceMetrics, file: StaticString = #filePath, line: UInt = #line) {
+        if case .unknown = metrics {
+            XCTFail("unknown profile \(metrics)", file: file, line: line)
+        }
+        XCTAssertEqual(metrics.type, .tablet, file: file, line: line)
+    }
+
+    /// iPad Pro 13" (M4/M5): the owner's iPad. It was `.unknown`, with the 216pt phone keyboard.
+    func test_iPadPro13InchM4_isKnown() {
+        let m = self.metrics(1032.0, 1376.0)
+        self.assertKnownTablet(m)
+        XCTAssertEqual(m.standardInputHeight(inLandscape: true), DeviceMetrics.iPadPro3rdGen.standardInputHeight(inLandscape: true))
+        XCTAssertEqual(m.standardInputHeight(inLandscape: false), DeviceMetrics.iPadPro3rdGen.standardInputHeight(inLandscape: false))
+        // Landscape screen size reported: the same profile.
+        XCTAssertEqual(self.metrics(1376.0, 1032.0), m)
+    }
+
+    /// iPad Pro 11" (M4/M5).
+    func test_iPadPro11InchM4_isKnown() {
+        let m = self.metrics(834.0, 1210.0)
+        self.assertKnownTablet(m)
+        XCTAssertEqual(m.standardInputHeight(inLandscape: true), DeviceMetrics.iPadPro11Inch.standardInputHeight(inLandscape: true))
+    }
+
+    /// iPad Air 11" and iPad (10th gen, A16).
+    func test_iPadAir11Inch_isKnown() {
+        let m = self.metrics(820.0, 1180.0)
+        self.assertKnownTablet(m)
+        XCTAssertEqual(m.standardInputHeight(inLandscape: true), DeviceMetrics.iPadPro11Inch.standardInputHeight(inLandscape: true))
+    }
+
+    /// A tablet without a profile gets an iPad keyboard, not the 216pt phone one.
+    func test_unknownTablet_usesIPadKeyboard() {
+        let m = self.metrics(900.0, 1300.0)
+        XCTAssertEqual(m.type, .tablet)
+        XCTAssertEqual(m.standardInputHeight(inLandscape: true), DeviceMetrics.iPadPro11Inch.standardInputHeight(inLandscape: true))
+        XCTAssertEqual(m.standardInputHeight(inLandscape: false), DeviceMetrics.iPadPro11Inch.standardInputHeight(inLandscape: false))
+    }
+
+    /// A phone without a profile keeps the upstream fallback.
+    func test_unknownPhone_isUpstream() {
+        let m = self.metrics(500.0, 1000.0, statusBar: 54.0)
+        XCTAssertEqual(m.type, .phone)
+        XCTAssertEqual(m.keyboardHeight(inLandscape: true), 216.0)
+    }
+
+    func test_iPadMinis_areTablets() {
+        XCTAssertEqual(DeviceMetrics.iPadMini.type, .tablet)
+        XCTAssertEqual(DeviceMetrics.iPadMini6thGen.type, .tablet)
+    }
+
+    func test_phoneProfiles_unchanged() {
+        XCTAssertEqual(DeviceMetrics.iPhone16Pro.type, .phone)
+        XCTAssertEqual(DeviceMetrics.iPhoneDuo.type, .phone)
+        XCTAssertEqual(DeviceMetrics(screenSize: CGSize(width: 402.0, height: 874.0), scale: 3.0, statusBarHeight: 54.0, onScreenNavigationHeight: 34.0, modelIdentifier: "iPhone17,1"), .iPhone16Pro)
+    }
+
+    // MARK: Floating bottom panels
+
+    /// The owner's screenshot: the ~80pt assistant bar of sticker mode raised the tab bar to 88pt over the chat
+    /// list. Only a real keyboard raises it.
+    func test_regular_assistantBar_doesNotRaise() {
+        XCTAssertEqual(floatingBottomPanelsInset(layout: self.layout(size: CGSize(width: 458.0, height: 1032.0), widthClass: .regular, inputHeight: 80.0)), 20.0)
+        XCTAssertEqual(floatingBottomPanelsInset(layout: self.layout(size: CGSize(width: 458.0, height: 1032.0), widthClass: .regular, inputHeight: 100.0)), 20.0)
+    }
+
+    func test_regular_realKeyboard_raises() {
+        XCTAssertEqual(floatingBottomPanelsInset(layout: self.layout(size: CGSize(width: 458.0, height: 1032.0), widthClass: .regular, inputHeight: 420.0)), 428.0)
+    }
+
+    func test_regular_noKeyboard() {
+        XCTAssertEqual(floatingBottomPanelsInset(layout: self.layout(size: CGSize(width: 458.0, height: 1032.0), widthClass: .regular, inputHeight: nil)), 20.0)
+        XCTAssertEqual(floatingBottomPanelsInset(layout: self.layout(size: CGSize(width: 458.0, height: 1032.0), widthClass: .regular, bottomInset: 0.0, inputHeight: nil)), 8.0)
+    }
+
+    /// Compact width is upstream: the input height is already in the insets.
+    func test_compact_isUpstream() {
+        XCTAssertEqual(floatingBottomPanelsInset(layout: self.layout(size: CGSize(width: 402.0, height: 874.0), widthClass: .compact, deviceMetrics: .iPhone16Pro, inputHeight: 336.0)), 20.0)
+        XCTAssertEqual(floatingBottomPanelsInset(layout: self.layout(size: CGSize(width: 402.0, height: 874.0), widthClass: .compact, deviceMetrics: .iPhone16Pro, inputHeight: 80.0)), 20.0)
+        XCTAssertEqual(floatingBottomPanelsInset(layout: self.layout(size: CGSize(width: 402.0, height: 874.0), widthClass: .compact, deviceMetrics: .iPhone16Pro, bottomInset: 0.0, inputHeight: nil)), 8.0)
+    }
+
+    // MARK: Sticker panel's bottom bar
+
+    /// iPhone (bar 34 + 20 + 20 = 74pt, or 54pt without a home indicator): the upstream frame.
+    func test_mediaPanelBar_phone_isUpstream() {
+        XCTAssertEqual(mediaPanelBottomBarEdgeEffectFrame(barSize: CGSize(width: 402.0, height: 74.0), defaultHeight: 80.0), CGRect(x: 0.0, y: -6.0, width: 402.0, height: 80.0))
+        XCTAssertEqual(mediaPanelBottomBarEdgeEffectFrame(barSize: CGSize(width: 375.0, height: 54.0), defaultHeight: 80.0), CGRect(x: 0.0, y: -26.0, width: 375.0, height: 80.0))
+    }
+
+    /// iPad with the bar lifted (34 + 95 + 20 = 149pt): the fade still starts just above the switch, as on iPhone,
+    /// and reaches the bottom, so the switch has a background and the grid does not show behind it.
+    func test_mediaPanelBar_lifted_coversTheSwitch() {
+        let frame = mediaPanelBottomBarEdgeEffectFrame(barSize: CGSize(width: 918.0, height: 149.0), defaultHeight: 80.0)
+        XCTAssertEqual(frame.minY, -6.0)
+        XCTAssertEqual(frame.maxY, 149.0)
+        XCTAssertEqual(frame.width, 918.0)
+    }
+}

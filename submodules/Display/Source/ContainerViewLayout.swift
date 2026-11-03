@@ -155,11 +155,16 @@ public extension ContainerViewLayout {
     }
     
     var standardKeyboardHeight: CGFloat {
-        return self.deviceMetrics.keyboardHeight(inLandscape: self.orientation == .landscape)
+        return self.deviceMetrics.keyboardHeight(inLandscape: self.keyboardIsLandscape)
     }
     
     var standardInputHeight: CGFloat {
-        return self.deviceMetrics.standardInputHeight(inLandscape: self.orientation == .landscape)
+        return self.deviceMetrics.standardInputHeight(inLandscape: self.keyboardIsLandscape)
+    }
+    
+    /// Nanogram: the keyboard's shape follows the screen on iPad, not this pane (`layoutKeyboardIsLandscape`).
+    private var keyboardIsLandscape: Bool {
+        return layoutKeyboardIsLandscape(size: self.size, deviceType: self.deviceMetrics.type, interfaceOrientation: self.metrics.orientation, windowSize: self.metrics.windowSize)
     }
     
     static func concentricInsets(bottomInset: CGFloat, innerDiameter: CGFloat, sideInset: CGFloat) -> UIEdgeInsets {

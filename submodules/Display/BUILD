@@ -77,3 +77,24 @@ ios_unit_test(
         ":ListViewMotionTestsLib",
     ],
 )
+
+# iPad layout rules (TabletLayoutRules.swift) and the iPad device profiles alone.
+swift_library(
+    name = "TabletLayoutTestsLib",
+    testonly = True,
+    srcs = [
+        "Tests/TabletLayoutRulesTests.swift",
+    ],
+    deps = [
+        ":Display",
+    ],
+)
+
+ios_unit_test(
+    name = "TabletLayoutTests",
+    minimum_os_version = "15.0",
+    runner = ":DisplayTestRunner",
+    deps = [
+        ":TabletLayoutTestsLib",
+    ],
+)
