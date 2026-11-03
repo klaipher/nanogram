@@ -87,7 +87,8 @@ private func calculateTextFieldRealInsets(presentationInterfaceState: ChatPresen
 
 public enum ChatTextInputPanelPasteData {
     case images([UIImage])
-    case video(Data)
+    /// A temporary .mp4 file the receiver owns (copied off the main queue; a video is never read into memory).
+    case video(URL)
     case gif(Data)
     case sticker(UIImage, Bool)
     case animatedSticker(Data)
@@ -5797,8 +5798,12 @@ public class ChatTextInputPanelNode: ChatInputPanelNode, ASEditableTextNodeDeleg
         if let data = pasteboard.data(forPasteboardType: "com.compuserve.gif") {
             if perform { self.paste(.gif(data)) }
             return true
-        } else if let data = pasteboard.data(forPasteboardType: "public.mpeg-4") {
-            if perform { self.paste(.video(data)) }
+        } else if pasteboard.contains(pasteboardTypes: ["public.mpeg-4"]) {
+            if perform {
+                Self.copyPastedVideo(pasteboard: pasteboard, completion: { [weak self] url in
+                    self?.paste(.video(url))
+                })
+            }
             return true
         } else if let data = pasteboard.data(forPasteboardType: "public.heics") {
             if perform { self.paste(.animatedSticker(data)) }
@@ -5807,16 +5812,32 @@ public class ChatTextInputPanelNode: ChatInputPanelNode, ASEditableTextNodeDeleg
             var images: [UIImage] = []
             var isPNG = false
             var isMemoji = false
-            for item in pasteboard.items {
-                if let image = item["com.apple.png-sticker"] as? UIImage {
+            // Only the one representation each item is used as: `pasteboard.items` loads every type of every
+            // item across XPC (a copied web page carries its HTML, RTF and archive too).
+            let itemTypes = pasteboard.types(forItemSet: nil) ?? []
+            for (index, types) in itemTypes.enumerated() {
+                let itemSet = IndexSet(integer: index)
+                func image(_ type: String) -> UIImage? {
+                    guard types.contains(type), let value = pasteboard.values(forPasteboardType: type, inItemSet: itemSet)?.first else {
+                        return nil
+                    }
+                    if let image = value as? UIImage {
+                        return image
+                    } else if let data = value as? Data {
+                        return UIImage(data: data)
+                    } else {
+                        return nil
+                    }
+                }
+                if let image = image("com.apple.png-sticker") {
                     images.append(image); isPNG = true; isMemoji = true
-                } else if let image = item[UTType.png.identifier] as? UIImage {
+                } else if let image = image(UTType.png.identifier) {
                     images.append(image); isPNG = true
-                } else if let image = item["com.apple.uikit.image"] as? UIImage {
+                } else if let image = image("com.apple.uikit.image") {
                     images.append(image); isPNG = true
-                } else if let image = item[UTType.jpeg.identifier] as? UIImage {
+                } else if let image = image(UTType.jpeg.identifier) {
                     images.append(image)
-                } else if let image = item[UTType.gif.identifier] as? UIImage {
+                } else if let image = image(UTType.gif.identifier) {
                     images.append(image)
                 }
             }
@@ -5840,6 +5861,25 @@ public class ChatTextInputPanelNode: ChatInputPanelNode, ASEditableTextNodeDeleg
         return false
     }
 
+    /// Copies a pasted MP4 into a temporary file off the main queue: reading it with `data(forPasteboardType:)`
+    /// put the whole video in memory, on main.
+    private static func copyPastedVideo(pasteboard: UIPasteboard, completion: @escaping (URL) -> Void) {
+        let target = URL(fileURLWithPath: NSTemporaryDirectory() + "\(Int64.random(in: 0 ... Int64.max)).mp4")
+        if let provider = pasteboard.itemProviders.first(where: { $0.hasItemConformingToTypeIdentifier("public.mpeg-4") }) {
+            let _ = provider.loadFileRepresentation(forTypeIdentifier: "public.mpeg-4", completionHandler: { url, _ in
+                // The provider's file is gone once this returns.
+                guard let url, let _ = try? FileManager.default.copyItem(at: url, to: target) else {
+                    return
+                }
+                Queue.mainQueue().async {
+                    completion(target)
+                }
+            })
+        } else if let data = pasteboard.data(forPasteboardType: "public.mpeg-4"), let _ = try? data.write(to: target) {
+            completion(target)
+        }
+    }
+    
     @objc public func editableTextNodeShouldPaste(_ editableTextNode: ASEditableTextNode) -> Bool {
         return self.chatInputTextNodeShouldPaste()
     }

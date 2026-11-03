@@ -1273,10 +1273,7 @@ extension ChatControllerImpl {
             switch data {
             case let .images(images):
                 self?.displayPasteMenu(images.map { .image($0) })
-            case let .video(data):
-                let tempFilePath = NSTemporaryDirectory() + "\(Int64.random(in: 0...Int64.max)).mp4"
-                let url = NSURL(fileURLWithPath: tempFilePath) as URL
-                try? data.write(to: url)
+            case let .video(url):
                 self?.displayPasteMenu([.video(url)])
             case let .gif(data):
                 self?.enqueueGifData(data)
