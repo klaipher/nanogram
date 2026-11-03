@@ -160,26 +160,54 @@ void decodeYUVAToRGBA(uint8_t const *yuva, uint8_t *argb, int width, int height,
     dest.height = height;
     dest.rowBytes = bytesPerRow;
     
-    error = vImageConvert_420Yp8_CbCr8ToARGB8888(&srcYp, &srcCbCr, &dest, &info, NULL, 0xff, kvImageDoNotTile);
+    // Converting straight to BGRA and premultiplying in that order gives the same bytes as
+    // ARGB + premultiply + permute, without the extra pass.
+    uint8_t permuteMap[4] = {3, 2, 1, 0};
+    error = vImageConvert_420Yp8_CbCr8ToARGB8888(&srcYp, &srcCbCr, &dest, &info, permuteMap, 0xff, kvImageDoNotTile);
+    if (error != kvImageNoError) {
+        return;
+    }
     
+    // 4-bit alpha, two pixels per byte.
     uint8_t const *alpha = yuva + (width * height * 1 + width * height * 1);
-    int i = 0;
-    for (int y = 0; y < height; y += 1) {
-        uint8_t *argbRow = argb + y * bytesPerRow;
-        for (int x = 0; x < width; x += 2) {
-            uint8_t a = alpha[i / 2];
-            uint8_t a1 = (a & (0xf0U));
-            uint8_t a2 = ((a & (0x0fU)) << 4);
-            argbRow[x * 4 + 0] = a1 | (a1 >> 4);
-            argbRow[(x + 1) * 4 + 0] = a2 | (a2 >> 4);
-            i += 2;
+    uint8_t *alphaPlane = NULL;
+    if (width % 2 == 0) {
+        alphaPlane = malloc((size_t)width * (size_t)height);
+    }
+    if (alphaPlane != NULL) {
+        size_t packedCount = (size_t)(width / 2) * (size_t)height;
+        for (size_t i = 0; i < packedCount; i += 1) {
+            uint8_t a = alpha[i];
+            alphaPlane[i * 2 + 0] = (a & 0xf0U) | (a >> 4);
+            alphaPlane[i * 2 + 1] = (a & 0x0fU) | (uint8_t)(a << 4);
+        }
+        vImage_Buffer alphaBuffer;
+        alphaBuffer.data = alphaPlane;
+        alphaBuffer.width = width;
+        alphaBuffer.height = height;
+        alphaBuffer.rowBytes = width;
+        // Copy mask 0x1 is the last byte of each pixel, the alpha of BGRA.
+        error = vImageOverwriteChannels_ARGB8888(&alphaBuffer, &dest, &dest, 0x1, kvImageDoNotTile);
+        free(alphaPlane);
+    } else {
+        // Odd widths: each row starts on a new packed byte. Pixel `width` is not written.
+        int i = 0;
+        for (int y = 0; y < height; y += 1) {
+            uint8_t *argbRow = argb + y * bytesPerRow;
+            for (int x = 0; x < width; x += 2) {
+                uint8_t a = alpha[i / 2];
+                uint8_t a1 = (a & (0xf0U));
+                uint8_t a2 = ((a & (0x0fU)) << 4);
+                argbRow[x * 4 + 3] = a1 | (a1 >> 4);
+                if (x + 1 < width) {
+                    argbRow[(x + 1) * 4 + 3] = a2 | (a2 >> 4);
+                }
+                i += 2;
+            }
         }
     }
     
-    error = vImagePremultiplyData_ARGB8888(&dest, &dest, kvImageDoNotTile);
-    
-    uint8_t permuteMap[4] = {3, 2, 1, 0};
-    error = vImagePermuteChannels_ARGB8888(&dest, &dest, permuteMap, kvImageDoNotTile);
+    error = vImagePremultiplyData_BGRA8888(&dest, &dest, kvImageDoNotTile);
     
     if (error != kvImageNoError) {
         return;
@@ -219,26 +247,29 @@ void decodeYUVAPlanesToRGBA(uint8_t const *srcYpData, int srcYpBytesPerRow, uint
     dest.width = width;
     dest.height = height;
     dest.rowBytes = bytesPerRow;
-    error = vImageConvert_420Yp8_Cb8_Cr8ToARGB8888(&srcYp, &srcCb, &srcCr, &dest, &info, NULL, 0xff, kvImageDoNotTile);
+    // Same bytes as ARGB + alpha loop + (un)premultiply + permute, in fewer passes.
+    uint8_t permuteMap[4] = {3, 2, 1, 0};
+    error = vImageConvert_420Yp8_Cb8_Cr8ToARGB8888(&srcYp, &srcCb, &srcCr, &dest, &info, permuteMap, 0xff, kvImageDoNotTile);
+    if (error != kvImageNoError) {
+        return;
+    }
     
+    // Without alpha every pixel is opaque, and (un)premultiplying by 255 changes nothing.
     if (hasAlpha) {
-        for (int y = 0; y < height; y += 1) {
-            uint8_t *argbRow = argb + y * bytesPerRow;
-            int alphaRow = y * srcYpBytesPerRow;
-            
-            for (int x = 0; x < width; x += 1) {
-                argbRow[x * 4] = alphaData[alphaRow + x];
-            }
+        // The alpha plane has the stride of the Y plane.
+        vImage_Buffer alphaBuffer;
+        alphaBuffer.data = (void *)alphaData;
+        alphaBuffer.width = width;
+        alphaBuffer.height = height;
+        alphaBuffer.rowBytes = srcYpBytesPerRow;
+        // Copy mask 0x1 is the last byte of each pixel, the alpha of BGRA.
+        error = vImageOverwriteChannels_ARGB8888(&alphaBuffer, &dest, &dest, 0x1, kvImageDoNotTile);
+        if (unpremultiply) {
+            error = vImageUnpremultiplyData_BGRA8888(&dest, &dest, kvImageDoNotTile);
+        } else {
+            error = vImagePremultiplyData_BGRA8888(&dest, &dest, kvImageDoNotTile);
         }
     }
-
-    uint8_t permuteMap[4] = {3, 2, 1, 0};
-    if (unpremultiply) {
-        error = vImageUnpremultiplyData_ARGB8888(&dest, &dest, kvImageDoNotTile);
-    } else {
-        error = vImagePremultiplyData_ARGB8888(&dest, &dest, kvImageDoNotTile);
-    }
-    error = vImagePermuteChannels_ARGB8888(&dest, &dest, permuteMap, kvImageDoNotTile);
     
     if (error != kvImageNoError) {
         return;

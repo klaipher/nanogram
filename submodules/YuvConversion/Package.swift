@@ -23,10 +23,14 @@ let package = Package(
             name: "YuvConversion",
             dependencies: [],
             path: ".",
-            exclude: ["BUILD"],
+            exclude: ["BUILD", "Tests"],
             publicHeadersPath: "PublicHeaders",
             cSettings: [
                 .headerSearchPath("PublicHeaders")
             ]),
+        .testTarget(
+            name: "YuvConversionTests",
+            dependencies: ["YuvConversion"],
+            path: "Tests/YuvConversionTests"),
     ]
 )
