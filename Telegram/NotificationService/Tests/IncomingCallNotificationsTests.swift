@@ -57,6 +57,17 @@ final class IncomingCallNotificationsTests: XCTestCase {
         XCTAssertEqual(IncomingCallNotifications.callBack(identifier: other), IncomingCallNotifications.CallBack(accountId: 42, peerId: Int64.max))
     }
 
+    // The call back is placed from the account the call came to while that account is still
+    // signed in here; a handle donated before it signed out (or was removed) is dropped rather than
+    // making a missing account record the current one.
+    func testCallBackOnlyFromASignedInAccount() {
+        let callBack = IncomingCallNotifications.CallBack(accountId: 42, peerId: 1234)
+        XCTAssertEqual(IncomingCallNotifications.callBackAccountId(callBack, accounts: [(id: 7, isLoggedOut: false), (id: 42, isLoggedOut: false)]), 42)
+        XCTAssertNil(IncomingCallNotifications.callBackAccountId(callBack, accounts: [(id: 7, isLoggedOut: false), (id: 42, isLoggedOut: true)]))
+        XCTAssertNil(IncomingCallNotifications.callBackAccountId(callBack, accounts: [(id: 7, isLoggedOut: false)]))
+        XCTAssertNil(IncomingCallNotifications.callBackAccountId(callBack, accounts: []))
+    }
+
     // Handles that are not the extension's (Siri, the system's call history, the older "tg<peer>"
     // custom identifiers and bare peer ids) are left to the existing call-back paths.
     func testOtherHandlesAreNotCallBacks() {

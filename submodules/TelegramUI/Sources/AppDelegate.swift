@@ -3045,6 +3045,36 @@ private func extractAccountManagerState(records: AccountRecordsView<TelegramAcco
     private func startCallWhenReady(accountId: AccountRecordId?, peerId: PeerId, isVideo: Bool) {
         let signal = self.sharedContextPromise.get()
         |> take(1)
+        |> mapToSignal { sharedApplicationContext -> Signal<SharedApplicationContext, NoError> in
+            guard let accountId = accountId else {
+                return .single(sharedApplicationContext)
+            }
+            // A handle donated before its account signed out (or was removed): switching to it
+            // would make a missing record the current account.
+            return sharedApplicationContext.sharedContext.accountManager.accountRecords()
+            |> take(1)
+            |> mapToSignal { view -> Signal<SharedApplicationContext, NoError> in
+                let accounts = view.records.map { record -> (id: Int64, isLoggedOut: Bool) in
+                    let isLoggedOut = record.attributes.contains(where: { attribute in
+                        if case .loggedOut = attribute {
+                            return true
+                        } else {
+                            return false
+                        }
+                    })
+                    return (id: record.id.int64, isLoggedOut: isLoggedOut)
+                }
+                let callBack = IncomingCallNotifications.CallBack(accountId: accountId.int64, peerId: peerId.toInt64())
+                guard IncomingCallNotifications.callBackAccountId(callBack, accounts: accounts) != nil else {
+                    Logger.shared.log("App \(self.episodeId)", "call back dropped: account \(accountId.int64) is not signed in")
+                    return .complete()
+                }
+                return .single(sharedApplicationContext)
+            }
+        }
+        // switchToAccount must run on the main queue; the promise and the account records can
+        // deliver on the account manager's queue (a cold launch from Phone > Recents).
+        |> deliverOnMainQueue
         |> mapToSignal { sharedApplicationContext -> Signal<AuthorizedApplicationContext, NoError> in
             if let accountId = accountId {
                 sharedApplicationContext.sharedContext.switchToAccount(id: accountId)

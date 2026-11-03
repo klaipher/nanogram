@@ -74,4 +74,15 @@ public enum IncomingCallNotifications {
         }
         return CallBack(accountId: accountId, peerId: peerId)
     }
+
+    /// The account to call back from: the one the call came to, while it is still signed in on
+    /// this device (`accounts`: the account manager's records). Nil drops the call back: a handle
+    /// donated before that account signed out or was removed would otherwise make a missing
+    /// record the current account.
+    public static func callBackAccountId(_ callBack: CallBack, accounts: [(id: Int64, isLoggedOut: Bool)]) -> Int64? {
+        guard accounts.contains(where: { $0.id == callBack.accountId && !$0.isLoggedOut }) else {
+            return nil
+        }
+        return callBack.accountId
+    }
 }
