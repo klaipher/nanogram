@@ -7,6 +7,7 @@ import NotificationsPresentationData
 /// the notification filtering entitlement can drop a push that way. Without it iOS shows the
 /// server's placeholder alert ("You have a new message") instead, so a build without the
 /// entitlement delivers that placeholder quietly (no sound, no screen wake) and removes it again.
+/// Call pushes are left out (see `presentation`).
 enum ServicePushPresentation {
     /// Marks a quiet placeholder this extension delivered, so later requests and the app can
     /// remove leftovers.
@@ -31,9 +32,16 @@ enum ServicePushPresentation {
     /// What to hand back for content the extension generated. Content with nothing to show is
     /// replaced by a quiet copy of the server's placeholder when the app cannot filter.
     /// Returns the content and whether it is such a placeholder.
+    ///
+    /// A call push is never quieted: when the extension produced no alert for it (it did not get
+    /// as far as `IncomingCallPushPresentation`), the server's own alert goes out unchanged,
+    /// sound included, and stays.
     static func presentation(generated: UNNotificationContent, initialContent: UNNotificationContent?, canFilter: Bool) -> (content: UNNotificationContent, isQuietPlaceholder: Bool) {
         guard !canFilter, isEmpty(generated), let initialContent, !isEmpty(initialContent) else {
             return (generated, false)
+        }
+        if IncomingCallPushPresentation.isIncomingCall(userInfo: generated.userInfo) {
+            return (initialContent, false)
         }
         guard let content = initialContent.mutableCopy() as? UNMutableNotificationContent else {
             return (generated, false)

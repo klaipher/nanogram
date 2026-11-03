@@ -57,6 +57,27 @@ final class ServicePushPresentationTests: XCTestCase {
         XCTAssertFalse(ServicePushPresentation.isQuietPlaceholder(userInfo: result.content.userInfo))
     }
 
+    // A call push the extension could not turn into an alert keeps the server's alert, sound
+    // included: it is never quieted and never removed.
+    func testCallPushIsNeverAQuietPlaceholder() {
+        let generated = UNMutableNotificationContent()
+        generated.userInfo = IncomingCallPushPresentation.markerUserInfo
+        let result = ServicePushPresentation.presentation(generated: generated, initialContent: self.placeholder(), canFilter: false)
+        XCTAssertFalse(result.isQuietPlaceholder)
+        XCTAssertEqual(result.content.body, "You have a new message")
+        XCTAssertNotNil(result.content.sound)
+        XCTAssertFalse(ServicePushPresentation.isQuietPlaceholder(userInfo: result.content.userInfo))
+    }
+
+    // With the entitlement, the call went to CallKit and the empty answer drops the push.
+    func testCallPushWithFilteringIsDropped() {
+        let generated = UNMutableNotificationContent()
+        generated.userInfo = IncomingCallPushPresentation.markerUserInfo
+        let result = ServicePushPresentation.presentation(generated: generated, initialContent: self.placeholder(), canFilter: true)
+        XCTAssertFalse(result.isQuietPlaceholder)
+        XCTAssertTrue(ServicePushPresentation.isEmpty(result.content))
+    }
+
     // A silent push without an alert shows nothing either way; nothing to make quiet.
     func testEmptyContentForSilentPushIsKept() {
         let generated = UNMutableNotificationContent()
