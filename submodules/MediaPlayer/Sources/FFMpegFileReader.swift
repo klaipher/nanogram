@@ -243,7 +243,9 @@ public final class FFMpegFileReader {
         self.init(source: source, passthroughDecoder: passthroughDecoder, useHardwareAcceleration: useHardwareAcceleration, skipLoopFilter: skipLoopFilter, selectedStream: selectedStream, seek: seek, maxReadablePts: maxReadablePts, ignoreEditList: false)
     }
 
-    init?(source: SourceDescription, passthroughDecoder: Bool = false, useHardwareAcceleration: Bool, skipLoopFilter: Bool = false, selectedStream: SelectedStream, seek: Seek?, maxReadablePts: (streamIndex: Int, pts: Int64, isEnded: Bool)?, ignoreEditList: Bool, reusesPixelBuffers: Bool = true, forceHardwareSetupFailure: Bool = false) {
+    private(set) var streamInfoProbeSkippedStreamCount: Int = 0
+
+    init?(source: SourceDescription, passthroughDecoder: Bool = false, useHardwareAcceleration: Bool, skipLoopFilter: Bool = false, selectedStream: SelectedStream, seek: Seek?, maxReadablePts: (streamIndex: Int, pts: Int64, isEnded: Bool)?, ignoreEditList: Bool, reusesPixelBuffers: Bool = true, fullStreamInfoProbe: Bool = false, forceHardwareSetupFailure: Bool = false) {
         let _ = FFMpegMediaFrameSourceContextHelpers.registerFFMpegGlobals
         
         switch source {
@@ -274,10 +276,11 @@ public final class FFMpegFileReader {
             return nil
         }
         
-        if !avFormatContext.findStreamInfo() {
+        if !avFormatContext.findStreamInfo(withFullProbe: fullStreamInfoProbe) {
             self.readingError = true
             return nil
         }
+        self.streamInfoProbeSkippedStreamCount = Int(avFormatContext.streamInfoProbeSkippedStreamCount)
         
         self.avFormatContext = avFormatContext
         

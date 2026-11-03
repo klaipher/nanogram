@@ -74,6 +74,8 @@ public final class SoftwareVideoSource {
     
     public private(set) var reportedDuration: CMTime = .invalid
     
+    private(set) var streamInfoProbeSkippedStreamCount: Int = 0
+    
     public var hasStream: Bool {
         return self.videoStream != nil
     }
@@ -118,6 +120,7 @@ public final class SoftwareVideoSource {
             self.readingError = true
             return
         }
+        self.streamInfoProbeSkippedStreamCount = Int(avFormatContext.streamInfoProbeSkippedStreamCount)
         
         self.avFormatContext = avFormatContext
         
