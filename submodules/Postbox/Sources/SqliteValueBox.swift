@@ -2718,12 +2718,14 @@ public final class SqliteValueBox: ValueBox {
         case vacuumed(before: PageStats, after: PageStats?)
         case notFragmented(PageStats)
         case insufficientDiskSpace(needed: Int64, available: Int64)
+        case tooLarge(liveBytes: Int64, limit: Int64)
+        case deferred
         case failed
     }
     
     /// VACUUMs only when at least `minFreeFraction` of the file is free pages, and only when the
     /// disk has room for the copy VACUUM writes (about the size of the live data, plus the WAL).
-    public func vacuumIfFragmented(minFreeFraction: Double, availableDiskSpace: Int64?) -> ConditionalVacuumResult {
+    public func vacuumIfFragmented(minFreeFraction: Double, availableDiskSpace: Int64?, maxLiveBytes: Int64? = nil, shouldProceed: () -> Bool = { true }) -> ConditionalVacuumResult {
         precondition(self.queue.isCurrent())
         guard let before = self.pageStats() else {
             postboxLog("SqliteValueBox: cannot read page counts")
@@ -2736,6 +2738,14 @@ public final class SqliteValueBox: ValueBox {
         if let availableDiskSpace = availableDiskSpace, availableDiskSpace < needed {
             postboxLog("SqliteValueBox: skipping VACUUM, \(availableDiskSpace) bytes free, \(needed) needed")
             return .insufficientDiskSpace(needed: needed, available: availableDiskSpace)
+        }
+        let liveBytes = (before.pageCount - before.freePageCount) * before.pageSize
+        if let maxLiveBytes = maxLiveBytes, liveBytes > maxLiveBytes {
+            postboxLog("SqliteValueBox: skipping VACUUM, \(liveBytes) live bytes above the \(maxLiveBytes) cap")
+            return .tooLarge(liveBytes: liveBytes, limit: maxLiveBytes)
+        }
+        if !shouldProceed() {
+            return .deferred
         }
         if !self.vacuum() {
             return .failed

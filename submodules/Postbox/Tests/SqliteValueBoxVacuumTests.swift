@@ -158,6 +158,97 @@ final class SqliteValueBoxVacuumTests: XCTestCase {
         }
     }
 
+    func testVacuumWaitsWhenTheUserIsBack() throws {
+        try self.onQueue {
+            self.fill(count: 4000, removeEvery: 4)
+            let before = try XCTUnwrap(self.valueBox.pageStats())
+            var askedOnQueue: Bool?
+            let result = self.valueBox.vacuumIfFragmented(minFreeFraction: 0.25, availableDiskSpace: nil, maxLiveBytes: nil, shouldProceed: {
+                askedOnQueue = self.queue.isCurrent()
+                return false
+            })
+            XCTAssertEqual(result, .deferred)
+            XCTAssertEqual(askedOnQueue, true)
+            XCTAssertEqual(self.valueBox.pageStats(), before)
+        }
+    }
+
+    func testCompactDatabaseDoesNotAskWhetherToProceed() throws {
+        try self.onQueue {
+            self.fill(count: 2000, removeEvery: nil)
+            var asked = false
+            let result = self.valueBox.vacuumIfFragmented(minFreeFraction: 0.25, availableDiskSpace: nil, maxLiveBytes: nil, shouldProceed: {
+                asked = true
+                return true
+            })
+            guard case .notFragmented = result else {
+                XCTFail("expected no VACUUM, got \(result)")
+                return
+            }
+            XCTAssertFalse(asked)
+        }
+    }
+
+    func testDatabaseAboveTheSizeCapIsLeftAlone() throws {
+        try self.onQueue {
+            self.fill(count: 4000, removeEvery: 4)
+            let before = try XCTUnwrap(self.valueBox.pageStats())
+            let liveBytes = (before.pageCount - before.freePageCount) * before.pageSize
+            let result = self.valueBox.vacuumIfFragmented(minFreeFraction: 0.25, availableDiskSpace: nil, maxLiveBytes: liveBytes - 1, shouldProceed: { true })
+            XCTAssertEqual(result, .tooLarge(liveBytes: liveBytes, limit: liveBytes - 1))
+            XCTAssertEqual(self.valueBox.pageStats(), before)
+            guard case .vacuumed = self.valueBox.vacuumIfFragmented(minFreeFraction: 0.25, availableDiskSpace: nil, maxLiveBytes: liveBytes, shouldProceed: { true }) else {
+                XCTFail("a database at the cap is vacuumed")
+                return
+            }
+        }
+    }
+
+    func testEncryptedFragmentedDatabaseIsVacuumedAndReopensWithItsKey() throws {
+        let encryptedPath = NSTemporaryDirectory() + "SqliteValueBoxVacuumTests-encrypted-" + UUID().uuidString
+        defer {
+            let _ = try? FileManager.default.removeItem(atPath: encryptedPath)
+        }
+        let parameters = ValueBoxEncryptionParameters(forceEncryptionIfNoSet: true, key: try XCTUnwrap(ValueBoxEncryptionParameters.Key(data: Data((0 ..< 32).map { UInt8($0) }))), salt: try XCTUnwrap(ValueBoxEncryptionParameters.Salt(data: Data((0 ..< 16).map { UInt8(100 + $0) }))))
+        let open: () -> SqliteValueBox? = {
+            return SqliteValueBox(basePath: encryptedPath, queue: self.queue, isTemporary: false, isReadOnly: false, useCaches: true, removeDatabaseOnError: true, encryptionParameters: parameters, upgradeProgress: { _ in }, inMemory: false)
+        }
+        try self.onQueue {
+            self.valueBox.internalClose()
+            self.valueBox = try XCTUnwrap(open())
+            self.fill(count: 4000, removeEvery: 4)
+            let expected = self.remainingValues()
+            XCTAssertEqual(expected.count, 1000)
+            let result = self.valueBox.vacuumIfFragmented(minFreeFraction: 0.25, availableDiskSpace: nil, maxLiveBytes: nil, shouldProceed: { true })
+            guard case let .vacuumed(before, statsAfter) = result else {
+                XCTFail("expected a VACUUM, got \(result)")
+                return
+            }
+            let after = try XCTUnwrap(statsAfter)
+            XCTAssertEqual(after.freePageCount, 0)
+            XCTAssertLessThan(after.pageCount, before.pageCount / 2)
+            self.valueBox.internalClose()
+
+            var plain: OpaquePointer?
+            XCTAssertEqual(sqlite3_open(encryptedPath + "/db_sqlite", &plain), SQLITE_OK)
+            XCTAssertNotEqual(sqlite3_exec(plain, "SELECT count(*) FROM sqlite_master", nil, nil, nil), SQLITE_OK, "still encrypted after VACUUM")
+            sqlite3_close(plain)
+
+            self.valueBox = try XCTUnwrap(open())
+            XCTAssertEqual(self.remainingValues(), expected)
+        }
+    }
+
+    func testOnlyAFinishedCheckWaitsAWeek() {
+        let stats = SqliteValueBox.PageStats(pageCount: 10, freePageCount: 5, pageSize: 4096)
+        XCTAssertTrue(PostboxStorageOptimizationSchedule.recordsRun(.vacuumed(before: stats, after: nil)))
+        XCTAssertTrue(PostboxStorageOptimizationSchedule.recordsRun(.notFragmented(stats)))
+        XCTAssertFalse(PostboxStorageOptimizationSchedule.recordsRun(.deferred), "the user came back: try again at the next run")
+        XCTAssertFalse(PostboxStorageOptimizationSchedule.recordsRun(.tooLarge(liveBytes: 2, limit: 1)))
+        XCTAssertFalse(PostboxStorageOptimizationSchedule.recordsRun(.insufficientDiskSpace(needed: 2, available: 1)))
+        XCTAssertFalse(PostboxStorageOptimizationSchedule.recordsRun(.failed))
+    }
+
     func testFailureDescriptions() {
         XCTAssertTrue(SqliteValueBox.describeVacuumFailure(SQLITE_BUSY).hasPrefix("database busy"))
         XCTAssertTrue(SqliteValueBox.describeVacuumFailure(SQLITE_FULL).hasPrefix("disk full"))
