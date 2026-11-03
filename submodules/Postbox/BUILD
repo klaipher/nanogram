@@ -85,6 +85,7 @@ swift_library(
         "//submodules/Utils/RangeSet:RangeSet",
         "//submodules/CryptoUtils",
         "//submodules/Utils/DarwinDirStat",
+        "//submodules/DiskWriteAccounting",
     ],
     visibility = [
         ":clients",
@@ -102,6 +103,7 @@ swift_library(
         ":Postbox",
         "//submodules/SSignalKit/SwiftSignalKit:SwiftSignalKit",
         "//submodules/sqlcipher:sqlcipher",
+        "//submodules/DiskWriteAccounting",
     ],
 )
 

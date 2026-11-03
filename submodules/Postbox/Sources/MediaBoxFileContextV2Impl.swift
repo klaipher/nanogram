@@ -1,4 +1,5 @@
 import Foundation
+import DiskWriteAccounting
 import RangeSet
 import SwiftSignalKit
 
@@ -129,6 +130,10 @@ public final class MediaBoxFileContextV2Impl: MediaBoxFileContext {
         
         private var isComplete: Bool = false
         
+        /// DiskWriteAccounting category for this resource's data writes (`mediaBox.<type>`); set by MediaBox from
+        /// the fetch parameters' content type.
+        var writeAccountingCategory: String = DiskWriteCategory.mediaBox(contentType: nil)
+        
         init(
             queue: Queue,
             manager: MediaBoxFileManager,
@@ -151,9 +156,11 @@ public final class MediaBoxFileContextV2Impl: MediaBoxFileContext {
             self.writesPerMapSerialization = max(1, writesPerMapSerialization)
             
             if !FileManager.default.fileExists(atPath: self.partialPath) {
+                // No map is written yet: a resource whose status is only looked at must not create a file. The map
+                // reaches the disk with the data (every `writesPerMapSerialization` writes, on completion, truncation,
+                // reset and close), and a missing map reads as empty.
                 let _ = try? FileManager.default.removeItem(atPath: self.metaPath)
                 self.fileMap = MediaBoxFileMap()
-                self.fileMap.serialize(manager: self.manager, to: self.metaPath)
             } else {
                 do {
                     let storedMap = try MediaBoxFileMap.read(manager: self.manager, path: self.metaPath)
@@ -553,6 +560,9 @@ public final class MediaBoxFileContextV2Impl: MediaBoxFileContext {
                             
                             return fd.write(bytes.advanced(by: Int(dataRange.lowerBound)), count: dataRange.count)
                         }
+                        if written > 0 {
+                            DiskWriteAccounting.shared.add(self.writeAccountingCategory, bytes: written)
+                        }
                         // `write(2)` may return short (disk full, file-size limit) or -1.
                         // Only a full write may be recorded in the map: the map is the
                         // authority for what is on disk, and once `sum == truncationSize`
@@ -798,6 +808,15 @@ public final class MediaBoxFileContextV2Impl: MediaBoxFileContext {
     
     private var partialState: PartialState?
     
+    /// `MediaResourceUserContentType` of the fetches that write this resource, for DiskWriteAccounting.
+    var writeAccountingContentType: UInt8? {
+        didSet {
+            if self.writeAccountingContentType != oldValue {
+                self.partialState?.writeAccountingCategory = DiskWriteCategory.mediaBox(contentType: self.writeAccountingContentType)
+            }
+        }
+    }
+    
     var isEmpty: Bool {
         return self.references.isEmpty
     }
@@ -849,6 +868,7 @@ public final class MediaBoxFileContextV2Impl: MediaBoxFileContext {
                 liveFileMaps: self.liveFileMaps,
                 writesPerMapSerialization: self.writesPerMapSerialization
             )
+            partialState.writeAccountingCategory = DiskWriteCategory.mediaBox(contentType: self.writeAccountingContentType)
             self.partialState = partialState
             return f(partialState)
         }

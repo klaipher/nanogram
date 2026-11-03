@@ -1,4 +1,5 @@
 import Foundation
+import DiskWriteAccounting
 import SwiftSignalKit
 import ManagedFile
 import RangeSet
@@ -322,6 +323,7 @@ public final class MediaBox {
         let begin = {
             let paths = self.storePathsForId(id)
             let _ = try? data.write(to: URL(fileURLWithPath: paths.complete), options: [.atomic])
+            DiskWriteAccounting.shared.add(DiskWriteCategory.mediaBox(contentType: nil), bytes: data.count)
         }
         if synchronous {
             begin()
@@ -357,6 +359,7 @@ public final class MediaBox {
         self.dataQueue.async {
             let paths = self.storePathsForId(id)
             let _ = try? FileManager.default.copyItem(at: URL(fileURLWithPath: fromTempPath), to: URL(fileURLWithPath: paths.complete))
+            DiskWriteAccounting.shared.add(DiskWriteCategory.mediaBox(contentType: nil), bytes: Int(fileSize(paths.complete) ?? 0))
         }
     }
     
@@ -675,6 +678,9 @@ public final class MediaBox {
                     subscriber.putCompletion()
                     return
                 }
+                if let parameters {
+                    fileContext.writeAccountingContentType = parameters.contentType
+                }
                 
                 var range = range
                 if let parameters = parameters, !parameters.isRandomAccessAllowed {
@@ -894,6 +900,9 @@ public final class MediaBox {
                     subscriber.putCompletion()
                 } else {
                     if let (fileContext, releaseContext) = self.fileContext(for: resource.id) {
+                        if let parameters {
+                            fileContext.writeAccountingContentType = parameters.contentType
+                        }
                         let fetchResource = self.wrappedFetchResource.get()
                         let fetchedDisposable = fileContext.fetchedFullRange(fetch: { ranges in
                             return fetchResource
@@ -973,6 +982,7 @@ public final class MediaBox {
                 self.cacheStorageBox.update(id: pathData, size: Int64(data.count))
             }
             let _ = try? data.write(to: URL(fileURLWithPath: path))
+            DiskWriteAccounting.shared.add(DiskWriteCategory.mediaBoxCachedRepresentation, bytes: data.count)
         }
     }
 
@@ -983,6 +993,7 @@ public final class MediaBox {
                 self.cacheStorageBox.update(id: pathData, size: Int64(data.count))
             }
             let _ = try? data.write(to: URL(fileURLWithPath: path))
+            DiskWriteAccounting.shared.add(DiskWriteCategory.mediaBoxCachedRepresentation, bytes: data.count)
             completion(path)
         }
     }
@@ -991,6 +1002,7 @@ public final class MediaBox {
         self.dataQueue.async {
             let path = self.cachedRepresentationPathsForId(resourceId, representationId: representationId, keepDuration: keepDuration).complete
             let _ = try? data.write(to: URL(fileURLWithPath: path))
+            DiskWriteAccounting.shared.add(DiskWriteCategory.mediaBoxCachedRepresentation, bytes: data.count)
             if let pathData = path.data(using: .utf8) {
                 self.cacheStorageBox.update(id: pathData, size: Int64(data.count))
             }
@@ -1002,6 +1014,7 @@ public final class MediaBox {
         self.dataQueue.async {
             let path = self.cachedRepresentationPathsForId(resourceId, representationId: representationId, keepDuration: keepDuration).complete
             let _ = try? FileManager.default.moveItem(atPath: tempFile.path, toPath: path)
+            DiskWriteAccounting.shared.add(DiskWriteCategory.mediaBoxCachedRepresentation, bytes: Int(fileSize(path) ?? 0))
             if let fileSize = fileSize(path), fileSize != 0, let pathData = path.data(using: .utf8) {
                 self.cacheStorageBox.update(id: pathData, size: fileSize)
             }
@@ -1106,6 +1119,7 @@ public final class MediaBox {
                                     switch next {
                                     case let .temporaryPath(temporaryPath):
                                         rename(temporaryPath, paths.complete)
+                                        DiskWriteAccounting.shared.add(DiskWriteCategory.mediaBoxCachedRepresentation, bytes: Int(fileSize(paths.complete) ?? 0))
                                         if let size = fileSize(paths.complete), let pathData = paths.complete.data(using: .utf8) {
                                             cacheStorageBox.update(id: pathData, size: size)
                                         }
@@ -1113,6 +1127,7 @@ public final class MediaBox {
                                     case let .tempFile(tempFile):
                                         rename(tempFile.path, paths.complete)
                                         TempBox.shared.dispose(tempFile)
+                                        DiskWriteAccounting.shared.add(DiskWriteCategory.mediaBoxCachedRepresentation, bytes: Int(fileSize(paths.complete) ?? 0))
                                         if let size = fileSize(paths.complete), let pathData = paths.complete.data(using: .utf8) {
                                             cacheStorageBox.update(id: pathData, size: size)
                                         }
@@ -1131,6 +1146,7 @@ public final class MediaBox {
                                             let bytes = rawBytes.baseAddress!.assumingMemoryBound(to: UInt8.self)
                                             let _ = file?.write(bytes, count: dataCount)
                                         }
+                                        DiskWriteAccounting.shared.add(DiskWriteCategory.mediaBoxCachedRepresentation, bytes: dataCount)
                                         if let file = file, let size = file.getSize(), let pathData = paths.complete.data(using: .utf8) {
                                             cacheStorageBox.update(id: pathData, size: size)
                                         }
@@ -1291,6 +1307,7 @@ public final class MediaBox {
                                 switch next {
                                 case let .temporaryPath(temporaryPath):
                                     rename(temporaryPath, paths.complete)
+                                    DiskWriteAccounting.shared.add(DiskWriteCategory.mediaBoxCachedRepresentation, bytes: Int(fileSize(paths.complete) ?? 0))
                                     if let size = fileSize(paths.complete), let pathData = paths.complete.data(using: .utf8) {
                                         cacheStorageBox.update(id: pathData, size: size)
                                     }
@@ -1298,6 +1315,7 @@ public final class MediaBox {
                                 case let .tempFile(tempFile):
                                     rename(tempFile.path, paths.complete)
                                     TempBox.shared.dispose(tempFile)
+                                    DiskWriteAccounting.shared.add(DiskWriteCategory.mediaBoxCachedRepresentation, bytes: Int(fileSize(paths.complete) ?? 0))
                                     if let size = fileSize(paths.complete), let pathData = paths.complete.data(using: .utf8) {
                                         cacheStorageBox.update(id: pathData, size: size)
                                     }
@@ -1316,6 +1334,7 @@ public final class MediaBox {
                                         let bytes = rawBytes.baseAddress!.assumingMemoryBound(to: UInt8.self)
                                         let _ = file?.write(bytes, count: dataCount)
                                     }
+                                    DiskWriteAccounting.shared.add(DiskWriteCategory.mediaBoxCachedRepresentation, bytes: dataCount)
                                     if let file = file, let size = file.getSize(), let pathData = paths.complete.data(using: .utf8) {
                                         cacheStorageBox.update(id: pathData, size: size)
                                     }

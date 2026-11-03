@@ -1,0 +1,44 @@
+import Foundation
+import sqlcipher
+import DiskWriteAccounting
+
+/// Counts what one SQLite connection makes the database write (DiskWriteAccounting): WAL frames appended by commits
+/// (`sqlite.wal.<db>`) and frames copied into the database file by the checkpoints the WAL hook runs
+/// (`sqlite.checkpoint.<db>`). Driven from `sqlite3_wal_hook`, which SQLite calls after every commit with the WAL's
+/// current length in frames, so it costs nothing per statement. The WAL is shared with the app extensions, so frames
+/// they appended between two of this connection's commits are counted here too; a WAL that was restarted in between
+/// counts from its new start.
+final class SqliteWalWriteAccounting {
+    let walCategory: String
+    let checkpointCategory: String
+    let frameSize: Int
+    private var lastFrames: Int32 = 0
+
+    init(databasePath: String, handle: OpaquePointer?) {
+        let name = DiskWriteCategory.databaseName(path: (databasePath as NSString).deletingLastPathComponent)
+        self.walCategory = DiskWriteCategory.sqliteWal(database: name)
+        self.checkpointCategory = DiskWriteCategory.sqliteCheckpoint(database: name)
+        var pageSize = 4096
+        var statement: OpaquePointer?
+        if sqlite3_prepare_v2(handle, "PRAGMA page_size", -1, &statement, nil) == SQLITE_OK, sqlite3_step(statement) == SQLITE_ROW {
+            pageSize = Int(sqlite3_column_int64(statement, 0))
+        }
+        sqlite3_finalize(statement)
+        // Each WAL frame is a 24-byte header and one page.
+        self.frameSize = 24 + max(512, pageSize)
+    }
+
+    func committed(walFrames: Int32) {
+        let appended = walFrames >= self.lastFrames ? walFrames - self.lastFrames : walFrames
+        self.lastFrames = walFrames
+        if appended > 0 {
+            DiskWriteAccounting.shared.add(self.walCategory, bytes: Int(appended) * self.frameSize)
+        }
+    }
+
+    func checkpointed(frames: Int32) {
+        if frames > 0 {
+            DiskWriteAccounting.shared.add(self.checkpointCategory, bytes: Int(frames) * (self.frameSize - 24))
+        }
+    }
+}

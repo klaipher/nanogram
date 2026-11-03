@@ -1,4 +1,5 @@
 import Foundation
+import DiskWriteAccounting
 import RangeSet
 import Crc32
 
@@ -257,6 +258,7 @@ final class MediaBoxFileMap {
             memcpy(buffer.memory.advanced(by: 4), &crc, 4)
             let written = file.write(buffer.memory, count: buffer.length)
             assert(written == buffer.length)
+            DiskWriteAccounting.shared.add(DiskWriteCategory.mediaBoxMap, bytes: max(0, written))
         }
     }
     

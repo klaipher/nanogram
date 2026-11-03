@@ -94,7 +94,8 @@ final class MediaBoxMapSerializationBatchingTests: XCTestCase {
         let n = MediaBoxFileContextV2Impl.defaultWritesPerMapSerialization
         var context: MediaBoxFileContextV2Impl? = self.makeContext()
         self.store(context!, chunks: 0 ..< n - 1)
-        XCTAssertEqual(self.diskMap(), RangeSet<Int64>(), "not yet written to disk")
+        // A new resource has no map on disk until its first serialization (no empty map is written at open).
+        XCTAssertNil(self.diskMap(), "not yet written to disk")
         XCTAssertEqual(self.liveFileMaps.snapshot(metaPath: self.metaPath)?.ranges, self.written(n - 1), "but live")
         XCTAssertEqual(self.reportedRanges(of: context!), self.written(n - 1))
 

@@ -337,7 +337,10 @@ final class MediaBoxStalePartialFilesTests: XCTestCase {
         let disposable = self.mediaBox.fetchedResource(TestResource("again"), parameters: nil).start()
         self.drainDataQueue()
 
-        XCTAssertTrue(self.exists(self.path("again_partial.meta")), "a new file context starts a fresh map")
+        // A new file context starts from an empty map; it writes none until it has data, so nothing on disk can
+        // claim the removed download's ranges.
+        XCTAssertFalse(self.exists(self.path("again_partial.meta")), "a new file context starts a fresh map")
+        XCTAssertFalse(self.mediaBox.internal_resourceDataIsCached(id: MediaResourceId("again"), size: 100, in: 0 ..< 1))
         disposable.dispose()
         self.drainDataQueue()
     }

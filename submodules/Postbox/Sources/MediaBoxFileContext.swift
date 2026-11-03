@@ -4,6 +4,8 @@ import RangeSet
 
 protocol MediaBoxFileContext: AnyObject {
     var isEmpty: Bool { get }
+    /// `MediaResourceUserContentType` of the fetches writing this resource (DiskWriteAccounting).
+    var writeAccountingContentType: UInt8? { get set }
     
     func addReference() -> Int
     func removeReference(_ index: Int)

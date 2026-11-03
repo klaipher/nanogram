@@ -296,13 +296,15 @@ private let walCheckpointLog = OSLog(subsystem: "org.telegram.Postbox", category
 
 /// A PASSIVE checkpoint: copies what it can without waiting for readers or writers (no busy
 /// handler), so it is bounded by the WAL size. checkpoint_fullfsync still applies.
-private func passiveWalCheckpoint(_ handle: OpaquePointer?, schema: UnsafePointer<CChar>?, idle: Bool) {
+@discardableResult
+private func passiveWalCheckpoint(_ handle: OpaquePointer?, schema: UnsafePointer<CChar>?, idle: Bool) -> Int32 {
     let signpostId = OSSignpostID(log: walCheckpointLog)
     os_signpost(.begin, log: walCheckpointLog, name: "WAL checkpoint", signpostID: signpostId, "idle %d", idle ? Int32(1) : Int32(0))
     var walFrames: Int32 = 0
     var checkpointedFrames: Int32 = 0
     let result = sqlite3_wal_checkpoint_v2(handle, schema, SQLITE_CHECKPOINT_PASSIVE, &walFrames, &checkpointedFrames)
     os_signpost(.end, log: walCheckpointLog, name: "WAL checkpoint", signpostID: signpostId, "result %d, %d of %d frames", result, checkpointedFrames, walFrames)
+    return max(0, checkpointedFrames)
 }
 
 private struct TablePairKey: Hashable {
@@ -736,12 +738,19 @@ public final class SqliteValueBox: ValueBox {
         resultCode = database.execute("PRAGMA journal_size_limit=\(SqliteValueBox.walJournalSizeLimit)")
         assert(resultCode)
         // Same threshold as SQLite's own autocheckpoint, with a signpost around each checkpoint.
-        sqlite3_wal_hook(database.handle, { _, handle, schema, frames in
+        // The hook also counts the connection's writes (DiskWriteAccounting). Its context lives as long as the
+        // process: SQLite may call the hook until the connection closes, and a connection is opened a few times
+        // per process at most.
+        let writeAccounting = Unmanaged.passRetained(SqliteWalWriteAccounting(databasePath: self.databasePath, handle: database.handle)).toOpaque()
+        sqlite3_wal_hook(database.handle, { context, handle, schema, frames in
+            let writeAccounting = context.flatMap { Unmanaged<SqliteWalWriteAccounting>.fromOpaque($0).takeUnretainedValue() }
+            writeAccounting?.committed(walFrames: frames)
             if frames >= SqliteValueBox.walAutocheckpointFrames {
-                passiveWalCheckpoint(handle, schema: schema, idle: false)
+                let checkpointed = passiveWalCheckpoint(handle, schema: schema, idle: false)
+                writeAccounting?.checkpointed(frames: checkpointed)
             }
             return SQLITE_OK
-        }, nil)
+        }, writeAccounting)
         
         /*#if DEBUG
         var statement: OpaquePointer? = nil
