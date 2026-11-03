@@ -145,7 +145,10 @@ final class AccountManagerImpl<Types: AccountManagerTypes> {
         guard let guardValueBox = SqliteValueBox(basePath: basePath + "/guard_db", queue: queue, isTemporary: isTemporary, isReadOnly: false, useCaches: useCaches, removeDatabaseOnError: removeDatabaseOnError, encryptionParameters: nil, upgradeProgress: { _ in }) else {
             postboxLog("Could not open guard value box at \(basePath + "/guard_db")")
             postboxLogSync()
-            preconditionFailure()
+            // The app crashes and relaunches; an extension (`AccountManager.openForExtension`) answers without accounts.
+            if removeDatabaseOnError {
+                preconditionFailure()
+            }
             return nil
         }
         self.guardValueBox = guardValueBox
@@ -165,7 +168,10 @@ final class AccountManagerImpl<Types: AccountManagerTypes> {
         guard let valueBox = valueBox else {
             postboxLog("Giving up on opening value box at \(basePath + "/db")")
             postboxLogSync()
-            preconditionFailure()
+            if removeDatabaseOnError {
+                preconditionFailure()
+            }
+            return nil
         }
         self.valueBox = valueBox
         
@@ -814,6 +820,39 @@ public final class AccountManager<Types: AccountManagerTypes> {
             }
         })
         self.mediaBox = MediaBox(basePath: basePath + "/media", isMainProcess: removeDatabaseOnError)
+    }
+
+    private init(queue: Queue, basePath: String, temporarySessionId: Int64, impl: AccountManagerImpl<Types>) {
+        self.queue = queue
+        self.basePath = basePath
+        self.temporarySessionId = temporarySessionId
+        self.impl = QueueLocalObject(queue: queue, generate: {
+            return impl
+        })
+        self.mediaBox = MediaBox(basePath: basePath + "/media", isMainProcess: false)
+    }
+
+    /// The app extensions' open (`removeDatabaseOnError: false`): nil instead of a crash when the databases cannot be
+    /// opened (the app holds a lock, protected data is unavailable, an I/O error), so the extension can answer as
+    /// with no account ("open the app"). Opens synchronously on the account manager's queue.
+    public static func openForExtension(basePath: String, isTemporary: Bool, isReadOnly: Bool, useCaches: Bool, accessChallenge: AccountManagerAccessChallenge) -> AccountManager<Types>? {
+        let queue = sharedQueue
+        var temporarySessionId: Int64 = 0
+        arc4random_buf(&temporarySessionId, 8)
+        var impl: AccountManagerImpl<Types>?
+        let open: () -> Void = {
+            impl = AccountManagerImpl<Types>(queue: queue, basePath: basePath, isTemporary: isTemporary, isReadOnly: isReadOnly, useCaches: useCaches, removeDatabaseOnError: false, temporarySessionId: temporarySessionId, accessChallenge: accessChallenge)
+        }
+        if queue.isCurrent() {
+            open()
+        } else {
+            queue.sync(open)
+        }
+        guard let impl else {
+            postboxLog("AccountManager: extension could not open \(basePath)")
+            return nil
+        }
+        return AccountManager(queue: queue, basePath: basePath, temporarySessionId: temporarySessionId, impl: impl)
     }
     
     public func transaction<T>(ignoreDisabled: Bool = false, _ f: @escaping (AccountManagerModifier<Types>) -> T) -> Signal<T, NoError> {

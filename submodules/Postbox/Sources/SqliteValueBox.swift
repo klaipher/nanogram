@@ -504,6 +504,13 @@ public final class SqliteValueBox: ValueBox {
                 postboxLog("Readonly, exiting")
                 return nil
             }
+            // A non-owner (an extension) reports no database, as for every other failure it sees: the app may hold
+            // the file, or protected data is unavailable. Only the owner crashes and relaunches.
+            if !self.removeDatabaseOnError {
+                postboxLog("Not the owner, exiting")
+                postboxLogSync()
+                return nil
+            }
             
             let tempPath = basePath + "_test\(arc4random())"
             enum TempError: Error {
