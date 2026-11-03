@@ -118,7 +118,7 @@ final class CallControllerStatusNode: ASDisplayNode {
         self.receptionNode.alpha = 0.0
         
         self.logoNode = ASImageNode()
-        self.logoNode.image = generateTintedImage(image: UIImage(bundleImageName: "Call/CallTitleLogo"), color: .white)
+        self.logoNode.image = generateTintedImage(image: UIImage(bundleImageName: "Call/NanogramCallTitleLogo"), color: .white)
         self.logoNode.isHidden = true
         
         self.titleActivateAreaNode = AccessibilityAreaNode()

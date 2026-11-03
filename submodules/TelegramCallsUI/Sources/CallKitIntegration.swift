@@ -172,7 +172,7 @@ class CallKitProviderDelegate: NSObject, CXProviderDelegate {
         providerConfiguration.maximumCallsPerCallGroup = 1
         providerConfiguration.maximumCallGroups = 1
         providerConfiguration.supportedHandleTypes = [.phoneNumber, .generic]
-        if let image = UIImage(named: "Call/CallKitLogo", in: getAppBundle(), compatibleWith: nil) {
+        if let image = UIImage(named: "Call/NanogramCallKitLogo", in: getAppBundle(), compatibleWith: nil) {
             providerConfiguration.iconTemplateImageData = image.pngData()
         }
         
