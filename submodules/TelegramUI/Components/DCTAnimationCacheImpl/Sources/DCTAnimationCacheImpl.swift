@@ -1851,6 +1851,10 @@ public final class DCTAnimationCacheImpl: AnimationCache {
         
         private let fetchQueues: [Queue]
         private var nextFetchQueueIndex: Int = 0
+        // Puts converted items in place. Not a fetch queue: other items' conversions (a few hundred
+        // milliseconds each) queue there, and a finished item waited behind all of them. Not the
+        // cache queue either, so cache hits do not wait for file work.
+        private let storeQueue: Queue
         
         private var itemContexts: [ItemKey: ItemContext] = [:]
         
@@ -1865,6 +1869,7 @@ public final class DCTAnimationCacheImpl: AnimationCache {
             }
             
             self.fetchQueues = (0 ..< fetchQueueCount).map { i in Queue(name: "DCTAnimationCacheImpl-Fetch\(i)", qos: .default) }
+            self.storeQueue = Queue(name: "DCTAnimationCacheImpl-Store", qos: .userInitiated)
             self.basePath = basePath
             self.allocateTempFile = allocateTempFile
             self.updateStorageStats = updateStorageStats
@@ -1907,6 +1912,7 @@ public final class DCTAnimationCacheImpl: AnimationCache {
                 let allocateTempFile = self.allocateTempFile
                 let updateStorageStats = self.updateStorageStats
                 let fetchQueue = self.fetchQueues[fetchQueueIndex % self.fetchQueues.count]
+                let storeQueue = self.storeQueue
                 guard let writer = AnimationCacheItemWriterImpl(queue: fetchQueue, allocateTempFile: self.allocateTempFile, completion: { [weak self, weak itemContext] result in
                     queue.async {
                         guard let strongSelf = self, let itemContext = itemContext, itemContext === strongSelf.itemContexts[key] else {
@@ -1917,11 +1923,12 @@ public final class DCTAnimationCacheImpl: AnimationCache {
                             strongSelf.itemContexts.removeValue(forKey: key)
                             return
                         }
-                        // The file work runs on the fetch queue, so cache hits on this queue do not
-                        // wait for it. The context stays registered meanwhile: a `get` for the same
-                        // item joins it instead of converting again.
-                        fetchQueue.async {
-                            let stored = storeConvertedItem(resultPath: result.animationPath, itemDirectoryPath: itemDirectoryPath, itemPath: itemPath, itemFirstFramePath: itemFirstFramePath, width: Int(size.width), height: Int(size.height), currentQueue: fetchQueue, allocateTempFile: allocateTempFile, updateStorageStats: updateStorageStats)
+                        // The file work runs on the store queue, so cache hits on this queue do not
+                        // wait for it, and it does not wait for conversions queued on the fetch queue.
+                        // The context stays registered meanwhile: a `get` for the same item joins it
+                        // instead of converting again.
+                        storeQueue.async {
+                            let stored = storeConvertedItem(resultPath: result.animationPath, itemDirectoryPath: itemDirectoryPath, itemPath: itemPath, itemFirstFramePath: itemFirstFramePath, width: Int(size.width), height: Int(size.height), currentQueue: storeQueue, allocateTempFile: allocateTempFile, updateStorageStats: updateStorageStats)
                             queue.async {
                                 guard let strongSelf = self, itemContext === strongSelf.itemContexts[key] else {
                                     return
