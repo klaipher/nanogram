@@ -122,3 +122,18 @@ public final class FFMpegMediaFrameSourceContextHelpers {
         return formatDescription*/
     }
 }
+
+public enum MediaPlayerAudioFormat {
+    #if os(macOS)
+    public static let sampleRate: Int = 48000
+    #else
+    public static let sampleRate: Int = 44100
+    #endif
+    public static let channelCount: Int = 2
+}
+
+extension FFMpegMediaFrameSourceContextHelpers {
+    static func makeAudioDecoder(codecContext: FFMpegAVCodecContext) -> FFMpegAudioFrameDecoder {
+        return FFMpegAudioFrameDecoder(codecContext: codecContext, sampleRate: MediaPlayerAudioFormat.sampleRate, channelCount: MediaPlayerAudioFormat.channelCount)
+    }
+}
