@@ -1329,11 +1329,17 @@ plist_fragment(
             <key>IntentsRestrictedWhileLocked</key>
             <array/>
             <key>IntentsRestrictedWhileProtectedDataUnavailable</key>
-            <array/>
+            <array>
+                <string>INSendMessageIntent</string>
+                <string>INStartCallIntent</string>
+                <string>INSearchForMessagesIntent</string>
+                <string>INSetMessageAttributeIntent</string>
+                <string>INSearchCallHistoryIntent</string>
+            </array>
             <key>IntentsSupported</key>
             <array>
                 <string>INSendMessageIntent</string>
-                <string>INStartAudioCallIntent</string>
+                <string>INStartCallIntent</string>
                 <string>INSearchForMessagesIntent</string>
                 <string>INSetMessageAttributeIntent</string>
                 <string>INSearchCallHistoryIntent</string>
@@ -1640,7 +1646,6 @@ plist_fragment(
     """
     <key>BGTaskSchedulerPermittedIdentifiers</key>
     <array>
-        <string>{telegram_bundle_id}.refresh</string>
         <string>{telegram_bundle_id}.cleanup</string>
         <string>{telegram_bundle_id}.upload.*</string>
     </array>
@@ -1736,7 +1741,6 @@ plist_fragment(
     <array>
         <string>INSendMessageIntent</string>
         <string>INStartCallIntent</string>
-        <string>RemindAboutChatIntent</string>
     </array>
     <key>UIApplicationSceneManifest</key>
     <dict>
@@ -1758,7 +1762,6 @@ plist_fragment(
     <key>UIBackgroundModes</key>
     <array>
         <string>audio</string>
-        <string>fetch</string>
         <string>location</string>
         <string>remote-notification</string>
         <string>voip</string>
