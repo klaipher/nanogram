@@ -1054,6 +1054,7 @@ public final class PendingMessageManager {
     
     private func beginUploadingMessage(messageContext: PendingMessageContext, id: MessageId, threadId: Int64?, groupId: Int64?, uploadSignal: Signal<PendingMessageUploadedContentResult, PendingMessageUploadError>) {
         messageContext.state = .uploading(groupId: groupId)
+        pendingMessageLog("begin uploading message \(id.id) in peer \(id.peerId.id._internalGetInt64Value())")
         
         let status = PendingMessageStatus(isRunning: true, progress: PendingMessageStatus.Progress(progress: 0.0))
         messageContext.status = status
@@ -1070,10 +1071,14 @@ public final class PendingMessageManager {
         self.updatePendingMediaUploads()
         
         let queue = self.queue
+        var progressMilestones = PendingUploadProgressMilestones()
+        var contentReceived = false
         
         messageContext.uploadDisposable.set((uploadSignal
         |> deliverOn(queue)
         |> `catch` { [weak self] _ -> Signal<PendingMessageUploadedContentResult, NoError> in
+            contentReceived = true
+            pendingMessageFailureLog("message \(id.id) upload failed")
             if let strongSelf = self {
                 let modify = strongSelf.postbox.transaction { transaction -> Void in
                     transaction.updateMessage(id, update: { currentMessage in
@@ -1097,6 +1102,9 @@ public final class PendingMessageManager {
                 
                 switch next {
                     case let .progress(progress):
+                        for milestone in progressMilestones.reached(progress.progress) {
+                            pendingMessageLog("message \(id.id) upload \(milestone)%")
+                        }
                         if let current = strongSelf.messageContexts[id] {
                             let status = PendingMessageStatus(isRunning: true, progress: PendingMessageStatus.Progress(progress))
                             current.status = status
@@ -1106,6 +1114,8 @@ public final class PendingMessageManager {
                             strongSelf.updatePendingMediaUploads()
                         }
                     case let .content(content):
+                        contentReceived = true
+                        pendingMessageLog("message \(id.id) content ready")
                         if let current = strongSelf.messageContexts[id] {
                             strongSelf.beginSendingMessage(messageContext: current, messageId: id, groupId: groupId, content: content)
                             strongSelf.updateWaitingUploads(peerId: id.peerId)
@@ -1115,7 +1125,24 @@ public final class PendingMessageManager {
                         }
                 }
             }
+        }, completed: { [weak self] in
+            guard let strongSelf = self else {
+                return
+            }
+            strongSelf.uploadEndedWithoutContent(id: id, contentReceived: contentReceived)
         }))
+    }
+    
+    private func uploadEndedWithoutContent(id: MessageId, contentReceived: Bool) {
+        assert(self.queue.isCurrent())
+        if contentReceived {
+            return
+        }
+        guard let context = self.messageContexts[id], case .uploading = context.state else {
+            return
+        }
+        pendingMessageFailureLog("message \(id.id) upload ended without content, failing it")
+        let _ = failMessages(postbox: self.postbox, ids: [id]).start()
     }
     
     private func addContextActivityIfNeeded(_ context: PendingMessageContext, peerId: PeerActivitySpace) {
@@ -1148,6 +1175,9 @@ public final class PendingMessageManager {
                     
                     self.addContextActivityIfNeeded(context, peerId: PeerActivitySpace(peerId: peerId, category: activityCategory))
                     self.updatePendingMediaUploads()
+                    pendingMessageLog("begin uploading message \(contextId.id) in peer \(contextId.peerId.id._internalGetInt64Value()), was waiting")
+                    var progressMilestones = PendingUploadProgressMilestones()
+                    var contentReceived = false
                     context.uploadDisposable.set((uploadSignal
                     |> deliverOn(self.queue)).start(next: { [weak self] next in
                         if let strongSelf = self {
@@ -1155,6 +1185,9 @@ public final class PendingMessageManager {
                             
                             switch next {
                                 case let .progress(progress):
+                                    for milestone in progressMilestones.reached(progress.progress) {
+                                        pendingMessageLog("message \(contextId.id) upload \(milestone)%")
+                                    }
                                     if let current = strongSelf.messageContexts[contextId] {
                                         let status = PendingMessageStatus(isRunning: true, progress: PendingMessageStatus.Progress(progress))
                                         current.status = status
@@ -1164,6 +1197,8 @@ public final class PendingMessageManager {
                                         strongSelf.updatePendingMediaUploads()
                                     }
                                 case let .content(content):
+                                    contentReceived = true
+                                    pendingMessageLog("message \(contextId.id) content ready")
                                     if let current = strongSelf.messageContexts[contextId] {
                                         strongSelf.beginSendingMessage(messageContext: current, messageId: contextId, groupId: groupId, content: content)
                                         if let groupId = groupId {
@@ -1173,6 +1208,18 @@ public final class PendingMessageManager {
                                     }
                             }
                         }
+                    }, error: { [weak self] _ in
+                        contentReceived = true
+                        pendingMessageFailureLog("message \(contextId.id) upload failed")
+                        guard let strongSelf = self else {
+                            return
+                        }
+                        let _ = failMessages(postbox: strongSelf.postbox, ids: [contextId]).start()
+                    }, completed: { [weak self] in
+                        guard let strongSelf = self else {
+                            return
+                        }
+                        strongSelf.uploadEndedWithoutContent(id: contextId, contentReceived: contentReceived)
                     }))
                 }
                 break loop
@@ -1507,10 +1554,12 @@ public final class PendingMessageManager {
                     sendMessageRequest = network.request(Api.functions.messages.sendMultiMedia(flags: flags, peer: inputPeer, replyTo: replyTo, multiMedia: singleMedias, scheduleDate: scheduleTime, sendAs: sendAsInputPeer, quickReplyShortcut: quickReplyShortcut, effect: messageEffectId, allowPaidStars: allowPaidStars))
                 }
                 
+                pendingMessageLog("group of \(messages.count) messages starting at \(messages[0].0.id.id) request sent")
                 return sendMessageRequest
                 |> deliverOn(queue)
                 |> mapToSignal { result -> Signal<Void, MTRpcError> in
                     if let strongSelf = self {
+                        pendingMessageLog("group of \(messages.count) messages starting at \(messages[0].0.id.id) request answered")
                         return strongSelf.applySentGroupMessages(postbox: postbox, stateManager: stateManager, messages: messages.map { $0.0 }, result: result)
                         |> mapError { _ -> MTRpcError in
                         }
@@ -1519,6 +1568,7 @@ public final class PendingMessageManager {
                     }
                 }
                 |> `catch` { error -> Signal<Void, NoError> in
+                    pendingMessageFailureLog("group of \(messages.count) messages starting at \(messages[0].0.id.id) request failed \(error.errorCode) \(error.errorDescription ?? "")")
                     return deferred {
                         if let strongSelf = self {
                             let errorText: String = error.errorDescription
@@ -2118,6 +2168,7 @@ public final class PendingMessageManager {
                         sendMessageRequest = .fail(MTRpcError(errorCode: 400, errorDescription: "internal"))
                 }
                 
+                pendingMessageLog("message \(messageId.id) request sent")
                 return sendMessageRequest
                 |> deliverOn(queue)
                 |> mapToSignal { result -> Signal<Void, MTRpcError> in
@@ -2128,16 +2179,19 @@ public final class PendingMessageManager {
                         case .progress:
                             return .complete()
                         case .acknowledged:
+                            pendingMessageLog("message \(messageId.id) request acknowledged")
                             return strongSelf.applyAcknowledgedMessage(postbox: postbox, message: message)
                             |> mapError { _ -> MTRpcError in
                             }
                         case let .result(result):
+                            pendingMessageLog("message \(messageId.id) request answered")
                             return strongSelf.applySentMessage(postbox: postbox, stateManager: stateManager, message: message, content: content, result: result)
                             |> mapError { _ -> MTRpcError in
                             }
                     }
                 }
                 |> `catch` { error -> Signal<Void, NoError> in
+                    pendingMessageFailureLog("message \(messageId.id) request failed \(error.errorCode) \(error.errorDescription ?? "")")
                     queue.async {
                         guard let strongSelf = self, let context = strongSelf.messageContexts[messageId] else {
                             return

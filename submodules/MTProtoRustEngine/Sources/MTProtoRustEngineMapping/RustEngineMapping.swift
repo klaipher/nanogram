@@ -149,6 +149,7 @@ public struct RustEngineErrorState: Equatable {
     public private(set) var serverErrorsOfEarlierSubmissions: Int = 0
     public private(set) var serverErrorsOfCurrentSubmission: Int = 0
     public private(set) var parseFailures: Int = 0
+    public private(set) var lostAnswerResubmissions: Int = 0
 
     public init() {
     }
@@ -180,6 +181,11 @@ public struct RustEngineErrorState: Equatable {
         return self.context
     }
 
+    public mutating func didResubmitAfterLostAnswer() {
+        self.lostAnswerResubmissions += 1
+        self.didResubmit()
+    }
+
     public mutating func didResubmit() {
         self.serverErrorsOfEarlierSubmissions += self.serverErrorsOfCurrentSubmission
         self.serverErrorsOfCurrentSubmission = 0
@@ -196,10 +202,26 @@ public func rustEngineResubmitsAfterKeyRotation(code: Int32, text: String) -> Bo
 }
 
 /// `500 PROTOCOL_ERROR_ANSWER_LOST`: the server ran the call and announced its answer, then said it no
-/// longer has it. The caller is never told: a failure would mark a message that went out as failed (and
-/// a resend would post it twice), and the many callers that retry on any error would run the call
-/// again. The call stays waiting, as with MtProtoKit and tdlib, until its caller gives it up.
-public func rustEngineKeepsWaitingAfterLostAnswer(code: Int32, text: String) -> Bool {
+/// longer has it. MtProtoKit sends such a call again under a new message id once its re-send request
+/// fails (`messageResendRequestFailed`), so the bridge does too, under the request's own server-error
+/// policy. Waiting for ever instead left a sent message pending until the app restarted. Calls that
+/// matter here carry a random id (`messages.sendMedia`, `sendMessage`), so the server answers the repeat
+/// with the original result and posts nothing twice.
+public let rustEngineMaximumLostAnswerResubmissions = 3
+
+/// What to do with a call whose answer is gone: send it again while the request's own policy allows it
+/// and fewer than `rustEngineMaximumLostAnswerResubmissions` repeats were made, otherwise fail it with
+/// the error. It is never left without an outcome.
+public enum RustEngineLostAnswerAction: Equatable {
+    case resubmit
+    case fail
+}
+
+public func rustEngineLostAnswerAction(resubmissionsSoFar: Int, policyAllows: Bool) -> RustEngineLostAnswerAction {
+    return policyAllows && resubmissionsSoFar < rustEngineMaximumLostAnswerResubmissions ? .resubmit : .fail
+}
+
+public func rustEngineResubmitsAfterLostAnswer(code: Int32, text: String) -> Bool {
     return code == 500 && text == "PROTOCOL_ERROR_ANSWER_LOST"
 }
 
