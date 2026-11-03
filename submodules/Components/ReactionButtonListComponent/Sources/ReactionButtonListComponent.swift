@@ -270,7 +270,7 @@ public final class ReactionIconView: PortalSourceView {
                 })
                 self.animationLayer = nil
                 self.reloadFile()
-                if let animationLayer = self.animationLayer {
+                if let animationLayer = self.animationLayer, !self.isAnimationHidden {
                     animationLayer.animateAlpha(from: 0.0, to: 1.0, duration: 0.12)
                 }
             } else {
@@ -314,7 +314,7 @@ public final class ReactionIconView: PortalSourceView {
             pointSize: CGSize(width: iconSize.width * 2.0, height: iconSize.height * 2.0)
         )
         self.animationLayer = animationLayer
-        self.layer.addSublayer(animationLayer)
+        self.addAnimationLayer(animationLayer)
         
         self.contentGate.setHasContent(animationLayer.hasDisplayedContent)
         if !animationLayer.hasDisplayedContent {
@@ -342,6 +342,12 @@ public final class ReactionIconView: PortalSourceView {
         
         animationLayer.isVisibleForAnimations = !self.isPaused && animateIdle && context.sharedContext.energyUsageSettings.loopEmoji
         self.updateTintColor()
+    }
+    
+    /// Adds a new animation layer, hidden while the animation is (a stand-in is in its place).
+    func addAnimationLayer(_ animationLayer: CALayer) {
+        animationLayer.opacity = self.isAnimationHidden ? 0.0 : 1.0
+        self.layer.addSublayer(animationLayer)
     }
     
     private func updateTintColor() {

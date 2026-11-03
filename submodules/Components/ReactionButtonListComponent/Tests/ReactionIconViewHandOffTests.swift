@@ -100,4 +100,22 @@ final class ReactionIconViewHandOffTests: XCTestCase {
         XCTAssertNil(standIn.superview, "nothing to stand in for: the view goes")
         XCTAssertFalse(view.isAnimationHidden)
     }
+
+    // The button makes a new animation layer when its file resolves or when it pauses. A new layer
+    // made while a stand-in hides the animation must start hidden too, or it shows (empty) on top
+    // of the hand-off.
+    func testANewAnimationLayerFollowsTheHiddenState() {
+        let view = self.makeView()
+        view.updateIsAnimationHidden(isAnimationHidden: true, transition: .immediate)
+        let hiddenLayer = CALayer()
+        view.addAnimationLayer(hiddenLayer)
+        XCTAssertTrue(hiddenLayer.superlayer === view.layer)
+        XCTAssertEqual(hiddenLayer.opacity, 0.0)
+
+        view.updateIsAnimationHidden(isAnimationHidden: false, transition: .immediate)
+        let shownLayer = CALayer()
+        shownLayer.opacity = 0.0
+        view.addAnimationLayer(shownLayer)
+        XCTAssertEqual(shownLayer.opacity, 1.0)
+    }
 }
