@@ -20,6 +20,86 @@ private func md5Hash(_ data: Data) -> HashId {
 
 public var storageBoxDebugFunc: ((Int64) -> Void)?
 
+/// Registrations (`add` without a size) this connection has stored: item id → content type and
+/// the references seen with it. Two generations of `capacity` ids each: when the current one is
+/// full it becomes the previous one, and a hit in the previous one moves back.
+private struct StorageBoxRegistrationCache {
+    private struct Entry {
+        var contentType: UInt8
+        var references: [StorageBox.Reference]
+    }
+    
+    private static let maxReferencesPerId = 8
+    
+    private let capacity: Int
+    private var current: [Data: Entry] = [:]
+    private var previous: [Data: Entry] = [:]
+    
+    init(capacity: Int) {
+        self.capacity = max(0, capacity)
+    }
+    
+    var count: Int {
+        return self.current.count + self.previous.count
+    }
+    
+    private static func isSame(_ lhs: StorageBox.Reference, _ rhs: StorageBox.Reference) -> Bool {
+        return lhs.peerId == rhs.peerId && lhs.messageNamespace == rhs.messageNamespace && lhs.messageId == rhs.messageId
+    }
+    
+    mutating func contains(id: Data, reference: StorageBox.Reference, contentType: UInt8) -> Bool {
+        var entry: Entry
+        if let value = self.current[id] {
+            entry = value
+        } else if let value = self.previous.removeValue(forKey: id) {
+            entry = value
+            self.insert(id: id, entry: entry)
+        } else {
+            return false
+        }
+        if entry.contentType != contentType {
+            return false
+        }
+        return entry.references.contains(where: { StorageBoxRegistrationCache.isSame($0, reference) })
+    }
+    
+    mutating func record(id: Data, reference: StorageBox.Reference, contentType: UInt8) {
+        if self.capacity == 0 {
+            return
+        }
+        var entry = self.current.removeValue(forKey: id) ?? self.previous.removeValue(forKey: id) ?? Entry(contentType: contentType, references: [])
+        // A different type replaced the stored one for every reference.
+        if entry.contentType != contentType {
+            entry = Entry(contentType: contentType, references: [])
+        }
+        if !entry.references.contains(where: { StorageBoxRegistrationCache.isSame($0, reference) }) {
+            if entry.references.count >= StorageBoxRegistrationCache.maxReferencesPerId {
+                entry.references.removeFirst()
+            }
+            entry.references.append(reference)
+        }
+        self.insert(id: id, entry: entry)
+    }
+    
+    mutating func forget(id: Data) {
+        self.current.removeValue(forKey: id)
+        self.previous.removeValue(forKey: id)
+    }
+    
+    mutating func forgetAll() {
+        self.current.removeAll()
+        self.previous.removeAll()
+    }
+    
+    private mutating func insert(id: Data, entry: Entry) {
+        if self.current.count >= self.capacity {
+            self.previous = self.current
+            self.current = [:]
+        }
+        self.current[id] = entry
+    }
+}
+
 public final class StorageBox {
     public final class Stats {
         public final class ContentTypeStats {
@@ -165,6 +245,20 @@ public final class StorageBox {
         
         private var queuedInternalTransactions = Atomic<[() -> Void]>(value: [])
         
+        // For tests.
+        private(set) var transactionCount = 0
+        private(set) var appliedSizeUpdateCount = 0
+        
+        // MediaBox calls `add` on every request of a file that is not complete yet, and most calls
+        // repeat a stored registration, which writes nothing but still costs a write transaction.
+        // Those are answered from here. Every operation that can undo a registration forgets the
+        // ids it touches, both when called and when it runs (it may be queued while suspended).
+        private var registrations = StorageBoxRegistrationCache(capacity: StorageBox.registrationCacheCapacity)
+        
+        var registrationCacheCount: Int {
+            return self.registrations.count
+        }
+        
         init(queue: Queue, logger: StorageBox.Logger, basePath: String, isMainProcess: Bool) {
             self.queue = queue
             self.logger = logger
@@ -290,7 +384,9 @@ public final class StorageBox {
         }
         
         func reset() {
+            self.registrations.forgetAll()
             self.beginInternalTransaction {
+                self.registrations.forgetAll()
                 self.valueBox.begin()
                 
                 self.valueBox.removeAllFromTable(self.hashIdToInfoTable)
@@ -307,6 +403,11 @@ public final class StorageBox {
         }
         
         private func internalAddSize(contentType: UInt8, delta: Int64) {
+            // A zero delta (every downloaded chunk of a file whose size is already known) would
+            // rewrite the same row.
+            if delta == 0 {
+                return
+            }
             let key = ValueBoxKey(length: 1)
             key.setUInt8(0, value: contentType)
             
@@ -332,6 +433,9 @@ public final class StorageBox {
         }
         
         private func internalAddSize(peerId: Int64, contentType: UInt8, delta: Int64) {
+            if delta == 0 {
+                return
+            }
             let key = ValueBoxKey(length: 8 + 1)
             key.setInt64(0, value: peerId)
             key.setUInt8(8, value: contentType)
@@ -371,7 +475,10 @@ public final class StorageBox {
                 if let size = size {
                     info.size = size
                 }
-                self.valueBox.set(self.hashIdToInfoTable, key: mainKey, value: info.serialize())
+                // Media is registered on every request; skip the write when nothing changed.
+                if info.contentType != previousContentType || info.size != previousSize {
+                    self.valueBox.set(self.hashIdToInfoTable, key: mainKey, value: info.serialize())
+                }
             } else {
                 self.valueBox.set(self.hashIdToInfoTable, key: mainKey, value: ItemInfo(id: id, contentType: contentType, size: size ?? 0).serialize())
             }
@@ -455,20 +562,34 @@ public final class StorageBox {
         }
         
         func add(reference: Reference, to id: Data, contentType: UInt8, size: Int64?) {
+            // Without a size, repeating a stored registration changes nothing.
+            if size == nil && self.registrations.contains(id: id, reference: reference, contentType: contentType) {
+                return
+            }
             self.beginInternalTransaction {
                 self.valueBox.begin()
                 
                 self.internalAdd(reference: reference, to: id, contentType: contentType, size: size)
                 
                 self.valueBox.commit()
+                
+                if size == nil {
+                    self.registrations.record(id: id, reference: reference, contentType: contentType)
+                } else {
+                    self.registrations.forget(id: id)
+                }
             }
         }
         
         func batchAdd(items: [(reference: Reference, id: Data, contentType: UInt8, size: Int64)]) {
+            for item in items {
+                self.registrations.forget(id: item.id)
+            }
             self.beginInternalTransaction {
                 self.valueBox.begin()
                 
                 for (reference, id, contentType, size) in items {
+                    self.registrations.forget(id: id)
                     self.internalAdd(reference: reference, to: id, contentType: contentType, size: size)
                 }
                 
@@ -492,40 +613,89 @@ public final class StorageBox {
             return peerIds
         }
         
+        // Size updates arrive for every cached file and downloaded chunk. They are applied in one
+        // transaction per batch instead of one each: after `pendingSizeUpdatesDelay`, at
+        // `maxPendingSizeUpdates` distinct items, or before any other operation
+        // (beginInternalTransaction), so every reader and writer sees them in order. Within a
+        // batch only the last size of an item is applied: the result is the same, since an
+        // update only sets the size. A crash loses at most one batch of size bookkeeping; the
+        // MediaBox scan re-adds files it does not know.
+        private static let maxPendingSizeUpdates = 64
+        private static let pendingSizeUpdatesDelay = 1.0
+        private var pendingSizeUpdates: [(id: Data, size: Int64)] = []
+        private var pendingSizeUpdateIndices: [Data: Int] = [:]
+        private var isPendingSizeUpdatesFlushScheduled = false
+        
         func update(id: Data, size: Int64) {
+            assert(self.queue.isCurrent())
+            if let index = self.pendingSizeUpdateIndices[id] {
+                self.pendingSizeUpdates[index].size = size
+                return
+            }
+            self.pendingSizeUpdateIndices[id] = self.pendingSizeUpdates.count
+            self.pendingSizeUpdates.append((id, size))
+            if self.pendingSizeUpdates.count >= Impl.maxPendingSizeUpdates {
+                self.flushPendingSizeUpdates()
+            } else if !self.isPendingSizeUpdatesFlushScheduled {
+                self.isPendingSizeUpdatesFlushScheduled = true
+                self.queue.after(Impl.pendingSizeUpdatesDelay, { [weak self] in
+                    guard let self else {
+                        return
+                    }
+                    self.isPendingSizeUpdatesFlushScheduled = false
+                    self.flushPendingSizeUpdates()
+                })
+            }
+        }
+        
+        func flushPendingSizeUpdates() {
+            if self.pendingSizeUpdates.isEmpty {
+                return
+            }
+            let updates = self.pendingSizeUpdates
+            self.pendingSizeUpdates.removeAll()
+            self.pendingSizeUpdateIndices.removeAll()
+            
             self.beginInternalTransaction {
                 self.valueBox.begin()
                 
-                let hashId = md5Hash(id)
-                
-                let mainKey = ValueBoxKey(length: 16)
-                mainKey.setData(0, value: hashId.data)
-                
-                if let currentInfoValue = self.valueBox.get(self.hashIdToInfoTable, key: mainKey) {
-                    var info = ItemInfo(buffer: currentInfoValue)
-                    
-                    var sizeDelta: Int64 = 0
-                    if info.size != size {
-                        sizeDelta = size - info.size
-                        info.size = size
-                        
-                        self.valueBox.set(self.hashIdToInfoTable, key: mainKey, value: info.serialize())
-                    }
-                    
-                    if sizeDelta != 0 {
-                        self.internalAddSize(contentType: info.contentType, delta: sizeDelta)
-                    }
-                    
-                    for peerId in self.peerIdsReferencing(hashId: hashId) {
-                        self.internalAddSize(peerId: peerId, contentType: info.contentType, delta: sizeDelta)
-                    }
-                } else {
-                    self.internalAdd(reference: StorageBox.Reference(peerId: 0, messageNamespace: 0, messageId: 0), to: id, contentType: 0, size: size)
+                for update in updates {
+                    self.internalUpdate(id: update.id, size: update.size)
                 }
                 
                 self.valueBox.commit()
                 
                 self.incrementalUpdateTotalSize()
+            }
+        }
+        
+        private func internalUpdate(id: Data, size: Int64) {
+            self.appliedSizeUpdateCount += 1
+            let hashId = md5Hash(id)
+            
+            let mainKey = ValueBoxKey(length: 16)
+            mainKey.setData(0, value: hashId.data)
+            
+            if let currentInfoValue = self.valueBox.get(self.hashIdToInfoTable, key: mainKey) {
+                var info = ItemInfo(buffer: currentInfoValue)
+                
+                var sizeDelta: Int64 = 0
+                if info.size != size {
+                    sizeDelta = size - info.size
+                    info.size = size
+                    
+                    self.valueBox.set(self.hashIdToInfoTable, key: mainKey, value: info.serialize())
+                }
+                
+                if sizeDelta != 0 {
+                    self.internalAddSize(contentType: info.contentType, delta: sizeDelta)
+                }
+                
+                for peerId in self.peerIdsReferencing(hashId: hashId) {
+                    self.internalAddSize(peerId: peerId, contentType: info.contentType, delta: sizeDelta)
+                }
+            } else {
+                self.internalAdd(reference: StorageBox.Reference(peerId: 0, messageNamespace: 0, messageId: 0), to: id, contentType: 0, size: size)
             }
         }
         
@@ -543,6 +713,7 @@ public final class StorageBox {
                         continue
                     }
                     
+                    self.registrations.forget(id: id)
                     self.internalAdd(reference: StorageBox.Reference(peerId: 0, messageNamespace: 0, messageId: 0), to: id, contentType: contentType, size: size)
                     addedCount += 1
                 }
@@ -595,10 +766,14 @@ public final class StorageBox {
         }
         
         func remove(ids: [Data]) {
+            for id in ids {
+                self.registrations.forget(id: id)
+            }
             self.beginInternalTransaction {
                 self.valueBox.begin()
                 
                 for id in ids {
+                    self.registrations.forget(id: id)
                     self.internalRemove(hashId: md5Hash(id).data)
                 }
                 
@@ -758,6 +933,7 @@ public final class StorageBox {
         }
         
         func subscribeTotalSize(next: @escaping (Int64) -> Void) -> Disposable {
+            self.flushPendingSizeUpdates()
             let index = self.totalSizeSubscribers.add(next)
             
             next(self.totalSize)
@@ -931,7 +1107,10 @@ public final class StorageBox {
         }
         
         func remove(peerId: Int64?, contentTypes: [UInt8], includeIds: [Data], excludeIds: [Data], completion: @escaping ([Data]) -> Void) {
+            // The removed ids are known only once it runs.
+            self.registrations.forgetAll()
             self.beginInternalTransaction {
+                self.registrations.forgetAll()
                 var resultIds: [Data] = []
                 
                 self.valueBox.begin()
@@ -997,7 +1176,9 @@ public final class StorageBox {
         }
         
         func remove(peerIds: Set<PeerId>, includeIds: [Data], excludeIds: [Data], completion: @escaping ([Data]) -> Void) {
+            self.registrations.forgetAll()
             self.beginInternalTransaction {
+                self.registrations.forgetAll()
                 var resultIds: [Data] = []
                 
                 self.valueBox.begin()
@@ -1031,7 +1212,10 @@ public final class StorageBox {
         
         private func beginInternalTransaction(ignoreDisabled: Bool = false, _ f: @escaping () -> Void) {
             assert(self.queue.isCurrent())
+            // Pending size updates go first, so `f` sees them.
+            self.flushPendingSizeUpdates()
             if ignoreDisabled || self.canBeginTransactionsValue.with({ $0 }) {
+                self.transactionCount += 1
                 f()
             } else {
                 let _ = self.queuedInternalTransactions.modify { fs in
@@ -1044,10 +1228,15 @@ public final class StorageBox {
         
         let canBeginTransactionsValue = Atomic<Bool>(value: true)
         func setCanBeginTransactions(_ value: Bool, afterTransactionIfRunning: @escaping () -> Void) {
+            if !value {
+                // Write what is pending while writes are still allowed (the app is about to suspend).
+                self.flushPendingSizeUpdates()
+            }
             let previous = self.canBeginTransactionsValue.swap(value)
             if previous != value && value {
                 let fs = self.queuedInternalTransactions.swap([])
                 for f in fs {
+                    self.transactionCount += 1
                     f()
                 }
             }
@@ -1055,16 +1244,112 @@ public final class StorageBox {
         }
     }
     
+    static let defaultRegistrationCacheCapacity = 1024
+    static var registrationCacheCapacity = StorageBox.defaultRegistrationCacheCapacity
+    
+    /// What the box has done so far (for tests).
+    struct DebugState {
+        var isOpen = false
+        var transactions = 0
+        var appliedSizeUpdates = 0
+        var registrationCacheCount = 0
+    }
+    
+    /// Does not open the database.
+    func debugState() -> Signal<DebugState, NoError> {
+        return self.impl.holder.signalWith { holder, subscriber in
+            var state = DebugState()
+            if let impl = holder.openedImpl {
+                state = DebugState(isOpen: true, transactions: impl.transactionCount, appliedSizeUpdates: impl.appliedSizeUpdateCount, registrationCacheCount: impl.registrationCacheCount)
+            }
+            subscriber.putNext(state)
+            subscriber.putCompletion()
+            return EmptyDisposable
+        }
+    }
+    
+    /// Opens the database on first use. The app opens it right away; app extensions (the
+    /// notification service, widget, intents) often only build paths and never need it, and
+    /// opening costs a file open and three write transactions. While transactions are disabled
+    /// (suspension) it is not opened at all; work asked for meanwhile runs, in order, once they
+    /// are enabled again.
+    private final class ImplHolder {
+        private let open: () -> Impl
+        private(set) var openedImpl: Impl?
+        private var canBeginTransactions = true
+        private var waiting: [(Impl) -> Void] = []
+        
+        init(open: @escaping () -> Impl, openNow: Bool) {
+            self.open = open
+            if openNow {
+                self.openedImpl = open()
+            }
+        }
+        
+        func with(_ f: @escaping (Impl) -> Void) {
+            if let impl = self.openedImpl {
+                f(impl)
+            } else if !self.canBeginTransactions {
+                self.waiting.append(f)
+            } else {
+                let impl = self.open()
+                self.openedImpl = impl
+                f(impl)
+            }
+        }
+        
+        func setCanBeginTransactions(_ value: Bool, afterTransactionIfRunning: @escaping () -> Void) {
+            if let impl = self.openedImpl {
+                impl.setCanBeginTransactions(value, afterTransactionIfRunning: afterTransactionIfRunning)
+                return
+            }
+            self.canBeginTransactions = value
+            if value && !self.waiting.isEmpty {
+                let waiting = self.waiting
+                self.waiting = []
+                let impl = self.open()
+                self.openedImpl = impl
+                for f in waiting {
+                    f(impl)
+                }
+            }
+            afterTransactionIfRunning()
+        }
+    }
+    
+    /// `QueueLocalObject`-like access that goes through `ImplHolder`.
+    private struct LazyImpl {
+        let holder: QueueLocalObject<ImplHolder>
+        
+        func with(_ f: @escaping (Impl) -> Void) {
+            self.holder.with { holder in
+                holder.with(f)
+            }
+        }
+        
+        func signalWith<R, E>(_ f: @escaping (Impl, Subscriber<R, E>) -> Disposable) -> Signal<R, E> {
+            return self.holder.signalWith { holder, subscriber in
+                let disposable = MetaDisposable()
+                holder.with { impl in
+                    disposable.set(f(impl, subscriber))
+                }
+                return disposable
+            }
+        }
+    }
+    
     private static let sharedQueue = Queue(name: "StorageBox-Shared")
     private let queue: Queue
-    private let impl: QueueLocalObject<Impl>
+    private let impl: LazyImpl
     
     public init(logger: StorageBox.Logger, basePath: String, isMainProcess: Bool) {
         let queue = StorageBox.sharedQueue
         self.queue = queue
-        self.impl = QueueLocalObject(queue: queue, generate: {
-            return Impl(queue: queue, logger: logger, basePath: basePath, isMainProcess: isMainProcess)
-        })
+        self.impl = LazyImpl(holder: QueueLocalObject(queue: queue, generate: {
+            return ImplHolder(open: {
+                return Impl(queue: queue, logger: logger, basePath: basePath, isMainProcess: isMainProcess)
+            }, openNow: isMainProcess)
+        }))
     }
     
     public func add(reference: Reference, to id: Data, contentType: UInt8) {
@@ -1179,6 +1464,17 @@ public final class StorageBox {
         }
     }
     
+    /// Frees SQLite page-cache memory (background, memory warning).
+    public func releaseMemory() {
+        self.impl.holder.with { holder in
+            guard let impl = holder.openedImpl else {
+                return
+            }
+            impl.flushPendingSizeUpdates()
+            impl.valueBox.releaseMemory()
+        }
+    }
+    
     public func reset() {
         self.impl.with { impl in
             impl.reset()
@@ -1205,8 +1501,8 @@ public final class StorageBox {
     }
     
     public func setCanBeginTransactions(_ value: Bool, afterTransactionIfRunning: @escaping () -> Void) {
-        self.impl.with { impl in
-            impl.setCanBeginTransactions(value, afterTransactionIfRunning: afterTransactionIfRunning)
+        self.impl.holder.with { holder in
+            holder.setCanBeginTransactions(value, afterTransactionIfRunning: afterTransactionIfRunning)
         }
     }
 }
