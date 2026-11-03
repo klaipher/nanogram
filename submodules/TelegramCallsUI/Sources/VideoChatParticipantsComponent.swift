@@ -697,6 +697,7 @@ final class VideoChatParticipantsComponent: Component {
         private(set) var isPinchToZoomActive: Bool = false
         
         private var stopRequestingNonCentralVideo: Bool = false
+        private var lastRequestedVideo: [PresentationGroupCallRequestedVideo] = []
         private var stopRequestingNonCentralVideoTimer: Foundation.Timer?
         private var currentLoadMoreToken: String?
         
@@ -879,6 +880,98 @@ final class VideoChatParticipantsComponent: Component {
             }
         }
         
+        /// Tells the call which participants' video to request. `onlyIfChanged` is for scrolling, which
+        /// calls this often; a layout update always sends the list, as it always did.
+        private func updateRequestedVideo(onlyIfChanged: Bool) {
+            guard let component = self.component, let itemLayout = self.itemLayout else {
+                return
+            }
+        var requestedVideo: [PresentationGroupCallRequestedVideo] = []
+        let gridParticipants = self.gridParticipants
+        // Above a handful of tiles only the tiles on screen (and the expanded one) are asked for.
+        var allowedKeys: Set<VideoParticipantKey>?
+        if gridParticipants.count > VideoRequestPolicy.unlimitedTileCount {
+            let visibleRange: (minIndex: Int, maxIndex: Int)
+            if itemLayout.layout.videoColumn == nil {
+                visibleRange = itemLayout.visibleGridItemRange(for: self.scrollView.bounds)
+            } else {
+                visibleRange = itemLayout.visibleGridItemRange(for: self.separateVideoScrollView.bounds)
+            }
+            var forced = Set<Int>()
+            if let expandedVideoState = component.expandedVideoState, let index = gridParticipants.firstIndex(where: { $0.key == expandedVideoState.mainParticipant }) {
+                forced.insert(index)
+            }
+            let indices = VideoRequestPolicy.requestedTileIndices(tileCount: gridParticipants.count, visible: visibleRange, forced: forced)
+            allowedKeys = Set(indices.map { gridParticipants[$0].key })
+        }
+        if let participants = component.participants, component.maxVideoQuality != 0 {
+            for participant in participants.participants {
+                var maxVideoQuality: PresentationGroupCallRequestedVideo.Quality = .medium
+                if let expandedVideoState = component.expandedVideoState {
+                    if expandedVideoState.mainParticipant.id == participant.id, !expandedVideoState.mainParticipant.isPresentation {
+                        if component.maxVideoQuality == Int.max {
+                            maxVideoQuality = .full
+                        } else if component.maxVideoQuality == 360 {
+                            maxVideoQuality = .medium
+                        } else {
+                            maxVideoQuality = .thumbnail
+                        }
+                    } else {
+                        maxVideoQuality = .thumbnail
+                    }
+                }
+                
+                var maxPresentationQuality: PresentationGroupCallRequestedVideo.Quality = .medium
+                if let expandedVideoState = component.expandedVideoState {
+                    if expandedVideoState.mainParticipant.id == participant.id, expandedVideoState.mainParticipant.isPresentation {
+                        if component.maxVideoQuality == Int.max {
+                            maxVideoQuality = .full
+                        } else if component.maxVideoQuality == 360 {
+                            maxVideoQuality = .medium
+                        } else {
+                            maxVideoQuality = .thumbnail
+                        }
+                    } else {
+                        maxPresentationQuality = .thumbnail
+                    }
+                }
+                
+                if component.layout.videoColumn != nil && gridParticipants.count == 1 {
+                    if component.maxVideoQuality == Int.max {
+                        maxVideoQuality = .full
+                    } else if component.maxVideoQuality == 360 {
+                        maxVideoQuality = .medium
+                    } else {
+                        maxVideoQuality = .thumbnail
+                    }
+                    maxPresentationQuality = maxVideoQuality
+                }
+                
+                if allowedKeys?.contains(VideoParticipantKey(id: participant.id, isPresentation: false)) ?? true, let videoChannel = participant.requestedVideoChannel(minQuality: .thumbnail, maxQuality: maxVideoQuality) {
+                    if self.stopRequestingNonCentralVideo && component.expandedVideoState != nil && maxVideoQuality != .full {
+                    } else {
+                        if !requestedVideo.contains(videoChannel) {
+                            requestedVideo.append(videoChannel)
+                        }
+                    }
+                }
+                if allowedKeys?.contains(VideoParticipantKey(id: participant.id, isPresentation: true)) ?? true, let videoChannel = participant.requestedPresentationVideoChannel(minQuality: .thumbnail, maxQuality: maxPresentationQuality) {
+                    if self.stopRequestingNonCentralVideo && component.expandedVideoState != nil && maxPresentationQuality != .full {
+                    } else {
+                        if !requestedVideo.contains(videoChannel) {
+                            requestedVideo.append(videoChannel)
+                        }
+                    }
+                }
+            }
+        }
+        if onlyIfChanged && requestedVideo == self.lastRequestedVideo {
+                return
+            }
+            self.lastRequestedVideo = requestedVideo
+            component.call.setRequestedVideoList(items: requestedVideo)
+        }
+        
         private func updateScrolling(transition: ComponentTransition) {
             guard let component = self.component, let itemLayout = self.itemLayout else {
                 return
@@ -954,6 +1047,10 @@ final class VideoChatParticipantsComponent: Component {
             } else {
                 visibleGridItemRange = itemLayout.visibleGridItemRange(for: self.separateVideoScrollView.bounds)
                 clippedVisibleGridItemRange = visibleGridItemRange
+            }
+            if self.gridParticipants.count > VideoRequestPolicy.unlimitedTileCount {
+                // Scrolling moves tiles in and out of view, and with them which video is asked for.
+                self.updateRequestedVideo(onlyIfChanged: true)
             }
             if visibleGridItemRange.maxIndex >= visibleGridItemRange.minIndex {
                 for index in visibleGridItemRange.minIndex ... visibleGridItemRange.maxIndex {
@@ -1949,69 +2046,7 @@ final class VideoChatParticipantsComponent: Component {
                 transition.setFrame(view: listItemsBackgroundView, frame: listItemsBackgroundFrame)
             }
             
-            var requestedVideo: [PresentationGroupCallRequestedVideo] = []
-            if let participants = component.participants, component.maxVideoQuality != 0 {
-                for participant in participants.participants {
-                    var maxVideoQuality: PresentationGroupCallRequestedVideo.Quality = .medium
-                    if let expandedVideoState = component.expandedVideoState {
-                        if expandedVideoState.mainParticipant.id == participant.id, !expandedVideoState.mainParticipant.isPresentation {
-                            if component.maxVideoQuality == Int.max {
-                                maxVideoQuality = .full
-                            } else if component.maxVideoQuality == 360 {
-                                maxVideoQuality = .medium
-                            } else {
-                                maxVideoQuality = .thumbnail
-                            }
-                        } else {
-                            maxVideoQuality = .thumbnail
-                        }
-                    }
-                    
-                    var maxPresentationQuality: PresentationGroupCallRequestedVideo.Quality = .medium
-                    if let expandedVideoState = component.expandedVideoState {
-                        if expandedVideoState.mainParticipant.id == participant.id, expandedVideoState.mainParticipant.isPresentation {
-                            if component.maxVideoQuality == Int.max {
-                                maxVideoQuality = .full
-                            } else if component.maxVideoQuality == 360 {
-                                maxVideoQuality = .medium
-                            } else {
-                                maxVideoQuality = .thumbnail
-                            }
-                        } else {
-                            maxPresentationQuality = .thumbnail
-                        }
-                    }
-                    
-                    if component.layout.videoColumn != nil && gridParticipants.count == 1 {
-                        if component.maxVideoQuality == Int.max {
-                            maxVideoQuality = .full
-                        } else if component.maxVideoQuality == 360 {
-                            maxVideoQuality = .medium
-                        } else {
-                            maxVideoQuality = .thumbnail
-                        }
-                        maxPresentationQuality = maxVideoQuality
-                    }
-                    
-                    if let videoChannel = participant.requestedVideoChannel(minQuality: .thumbnail, maxQuality: maxVideoQuality) {
-                        if self.stopRequestingNonCentralVideo && component.expandedVideoState != nil && maxVideoQuality != .full {
-                        } else {
-                            if !requestedVideo.contains(videoChannel) {
-                                requestedVideo.append(videoChannel)
-                            }
-                        }
-                    }
-                    if let videoChannel = participant.requestedPresentationVideoChannel(minQuality: .thumbnail, maxQuality: maxPresentationQuality) {
-                        if self.stopRequestingNonCentralVideo && component.expandedVideoState != nil && maxPresentationQuality != .full {
-                        } else {
-                            if !requestedVideo.contains(videoChannel) {
-                                requestedVideo.append(videoChannel)
-                            }
-                        }
-                    }
-                }
-            }
-            component.call.setRequestedVideoList(items: requestedVideo)
+            self.updateRequestedVideo(onlyIfChanged: false)
             
             transition.setPosition(view: self.scrollViewClippingContainer, position: itemLayout.scrollClippingFrame.center)
             transition.setBounds(view: self.scrollViewClippingContainer, bounds: CGRect(origin: CGPoint(x: itemLayout.scrollClippingFrame.minX - itemLayout.listFrame.minX, y: itemLayout.scrollClippingFrame.minY - itemLayout.listFrame.minY), size: itemLayout.scrollClippingFrame.size))

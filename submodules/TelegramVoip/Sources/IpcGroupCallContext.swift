@@ -393,6 +393,7 @@ public final class IpcGroupCallBufferAppContext {
 
     private var framePollTimer: SwiftSignalKit.Timer?
     private var mappedFile: MappedFile?
+    private var frameChangeDetector = IpcFrameChangeDetector()
 
     private var callActiveInfoTimer: SwiftSignalKit.Timer?
 
@@ -422,9 +423,14 @@ public final class IpcGroupCallBufferAppContext {
                 return
             }
 
-            var orientationValue: Int32 = 0
-            mappedFile.read(at: 0 ..< 4, to: &orientationValue)
-            let orientation = CGImagePropertyOrientation(rawValue: UInt32(bitPattern: orientationValue)) ?? .up
+            var headerValue: Int32 = 0
+            mappedFile.read(at: 0 ..< 4, to: &headerValue)
+            let header = IpcFrameHeader.unpack(headerValue)
+            // The extension counts its frames; the same frame is not converted again.
+            if !strongSelf.frameChangeDetector.shouldDeserialize(counter: header.counter) {
+                return
+            }
+            let orientation = CGImagePropertyOrientation(rawValue: header.orientation) ?? .up
             let data = Data(bytesNoCopy: mappedFile.memory.advanced(by: 4), count: mappedFile.size - 4, deallocator: .none)
             if let frame = deserializePixelBuffer(data: data) {
                 strongSelf.framesPipe.putNext((frame, orientation))
@@ -531,6 +537,7 @@ public final class IpcGroupCallBufferBroadcastContext {
     private var mappedFile: MappedFile?
     private var currentId: UInt32?
     private var audioClient: NamedPipeWriter?
+    private var frameCounter: UInt32 = 0
 
     private var callActiveInfoTimer: SwiftSignalKit.Timer?
     private var keepaliveInfoTimer: SwiftSignalKit.Timer?
@@ -630,10 +637,13 @@ public final class IpcGroupCallBufferBroadcastContext {
 
     public func setCurrentFrame(data: Data, orientation: CGImagePropertyOrientation) {
         if let mappedFile = self.mappedFile, mappedFile.size >= data.count {
+            self.frameCounter = IpcFrameHeader.nextCounter(self.frameCounter)
+            let headerValue = IpcFrameHeader.pack(orientation: orientation.rawValue, counter: self.frameCounter)
             let _ = data.withUnsafeBytes { bytes in
-                var orientationValue = Int32(bitPattern: orientation.rawValue)
-                memmove(mappedFile.memory, &orientationValue, 4)
                 memcpy(mappedFile.memory.advanced(by: 4), bytes.baseAddress!, data.count)
+                // The header goes last: it is what tells the app there is a new frame to read.
+                var headerValue = headerValue
+                memmove(mappedFile.memory, &headerValue, 4)
             }
         }
     }

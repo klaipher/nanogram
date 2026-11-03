@@ -60,6 +60,8 @@ private protocol FrameBufferRenderingState {
     var frameSize: CGSize? { get }
     var mirrorHorizontally: Bool { get }
     var mirrorVertically: Bool { get }
+    /// The resources the encoded draw samples, to be held until the GPU has finished with them.
+    var gpuLease: GPUFrameResourceLease? { get }
 
     func encode(renderingContext: MetalVideoRenderingContext, vertexBuffer: MTLBuffer, renderEncoder: MTLRenderCommandEncoder) -> Bool
 }
@@ -83,9 +85,14 @@ private final class BlitRenderingState {
 private final class NV12FrameBufferRenderingState: FrameBufferRenderingState {
     private var yTexture: MTLTexture?
     private var uvTexture: MTLTexture?
+    private var gpuResources = GPUFrameResourceState()
 
     private(set) var mirrorHorizontally: Bool = false
     private(set) var mirrorVertically: Bool = false
+
+    var gpuLease: GPUFrameResourceLease? {
+        return self.gpuResources.currentLease
+    }
 
     var frameSize: CGSize? {
         if let yTexture = self.yTexture {
@@ -100,6 +107,8 @@ private final class NV12FrameBufferRenderingState: FrameBufferRenderingState {
 
         var lumaTexture: MTLTexture?
         var chromaTexture: MTLTexture?
+        var lumaCVTexture: CVMetalTexture?
+        var chromaCVTexture: CVMetalTexture?
         var outTexture: CVMetalTexture?
 
         let lumaWidth = CVPixelBufferGetWidthOfPlane(pixelBuffer, 0)
@@ -109,6 +118,7 @@ private final class NV12FrameBufferRenderingState: FrameBufferRenderingState {
         var result = CVMetalTextureCacheCreateTextureFromImage(kCFAllocatorDefault, renderingContext.textureCache, pixelBuffer, nil, .r8Unorm, lumaWidth, lumaHeight, indexPlane, &outTexture)
         if result == kCVReturnSuccess, let outTexture = outTexture {
             lumaTexture = CVMetalTextureGetTexture(outTexture)
+            lumaCVTexture = outTexture
         }
         outTexture = nil
 
@@ -116,15 +126,20 @@ private final class NV12FrameBufferRenderingState: FrameBufferRenderingState {
         result = CVMetalTextureCacheCreateTextureFromImage(kCFAllocatorDefault, renderingContext.textureCache, pixelBuffer, nil, .rg8Unorm, lumaWidth / 2, lumaHeight / 2, indexPlane, &outTexture)
         if result == kCVReturnSuccess, let outTexture = outTexture {
             chromaTexture = CVMetalTextureGetTexture(outTexture)
+            chromaCVTexture = outTexture
         }
         outTexture = nil
 
-        if let lumaTexture = lumaTexture, let chromaTexture = chromaTexture {
+        if let lumaTexture = lumaTexture, let chromaTexture = chromaTexture, let lumaCVTexture = lumaCVTexture, let chromaCVTexture = chromaCVTexture {
             self.yTexture = lumaTexture
             self.uvTexture = chromaTexture
+            // The MTLTextures are only valid while their CVMetalTextures (and the pixel buffer they
+            // retain) are alive; the encode holds them until its command buffer completes.
+            self.gpuResources.update(resources: [lumaCVTexture, chromaCVTexture, pixelBuffer])
         } else {
             self.yTexture = nil
             self.uvTexture = nil
+            self.gpuResources.clear()
         }
 
         self.mirrorHorizontally = mirrorHorizontally
@@ -161,6 +176,11 @@ private final class I420FrameBufferRenderingState: FrameBufferRenderingState {
 
     private(set) var mirrorHorizontally: Bool = false
     private(set) var mirrorVertically: Bool = false
+
+    // The planes are copied into the textures synchronously, so nothing outlives the update.
+    var gpuLease: GPUFrameResourceLease? {
+        return nil
+    }
 
     var frameSize: CGSize? {
         if let yTexture = self.yTexture {
@@ -480,6 +500,13 @@ final class MetalVideoRenderingView: UIView, VideoRenderingView {
 
             renderEncoder.endEncoding()
         }
+
+        // The textures sampled above stay valid until the GPU has run this command buffer.
+        frameBufferRenderingState.gpuLease?.hold(until: { handler in
+            commandBuffer.addCompletedHandler { _ in
+                handler()
+            }
+        })
 
         return drawable
     }
