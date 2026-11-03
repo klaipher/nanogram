@@ -156,6 +156,12 @@ const NSInteger TGVideoCameraRetainedBufferCount = 16;
     if (@available(iOS 26.0, *)) {
         _captureSession.configuresApplicationAudioSessionForBluetoothHighQualityRecording = true;
     }
+    // iPad: the camera keeps running in Split View, Slide Over and Stage Manager (CameraMultitaskingAccess).
+    if (@available(iOS 16.0, *)) {
+        if ([UIDevice currentDevice].userInterfaceIdiom == UIUserInterfaceIdiomPad && _captureSession.isMultitaskingCameraAccessSupported) {
+            _captureSession.multitaskingCameraAccessEnabled = true;
+        }
+    }
 
 	[[NSNotificationCenter defaultCenter] addObserver:self selector:@selector(captureSessionNotification:) name:nil object:_captureSession];
 	_applicationWillEnterForegroundObserver = [[NSNotificationCenter defaultCenter] addObserverForName:UIApplicationWillEnterForegroundNotification object:[[LegacyComponentsGlobals provider] applicationInstance] queue:nil usingBlock:^(__unused NSNotification *note)

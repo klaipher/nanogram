@@ -6,6 +6,7 @@ import CoreVideo
 import SwiftSignalKit
 import DeviceModel
 import Camera
+import CameraMultitaskingPolicy
 import os.log
 
 private let cameraCaptureLog = OSLog(subsystem: "org.telegram.CameraNeo", category: "Capture")
@@ -120,6 +121,8 @@ final class CameraNeo: NSObject, CameraProtocol {
         self.session.usesApplicationAudioSession = true
         self.session.automaticallyConfiguresApplicationAudioSession = false
         Camera.applyBluetoothHighQualityRecordingPolicy(to: self.session, configuration: configuration)
+        // iPad: the camera keeps running in Split View, Slide Over and Stage Manager.
+        CameraMultitaskingAccess.apply(to: self.session)
 
         self.sessionQueue.setSpecific(key: self.sessionQueueKey, value: ())
         self.mediaQueue.setSpecific(key: self.mediaQueueKey, value: ())

@@ -6,6 +6,7 @@ import CoreImage
 import TelegramCore
 import DeviceModel
 import Camera
+import CameraMultitaskingPolicy
 
 final class CameraSession {
     private let singleSession: AVCaptureSession?
@@ -741,6 +742,8 @@ final class LegacyCamera: CameraProtocol {
         session.session.automaticallyConfiguresCaptureDeviceForWideColor = false
         session.session.usesApplicationAudioSession = true
         Camera.applyBluetoothHighQualityRecordingPolicy(to: session.session, configuration: configuration)
+        // iPad: the camera keeps running in Split View, Slide Over and Stage Manager.
+        CameraMultitaskingAccess.apply(to: session.session)
         if let previewView {
             previewView.setSession(session.session, autoConnect: !session.hasMultiCam)
         }

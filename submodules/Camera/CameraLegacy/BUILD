@@ -14,6 +14,7 @@ swift_library(
     ],
     deps = [
         "//submodules/Camera",
+        "//submodules/Camera:CameraMultitaskingPolicy",
         "//submodules/SSignalKit/SwiftSignalKit:SwiftSignalKit",
         "//submodules/Display:Display",
         "//submodules/ImageBlur:ImageBlur",

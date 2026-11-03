@@ -49,6 +49,8 @@ swift_library(
     module_name = "Camera",
     srcs = glob([
         "Sources/**/*.swift",
+    ], exclude = [
+        "Sources/CameraMultitaskingPolicy.swift",
     ]),
     copts = [
         "-warnings-as-errors",
@@ -67,6 +69,8 @@ swift_library(
     testonly = True,
     srcs = glob([
         "Tests/**/*.swift",
+    ], exclude = [
+        "Tests/CameraMultitaskingPolicyTests.swift",
     ]),
     deps = [
         ":Camera",
@@ -88,5 +92,41 @@ ios_unit_test(
     ],
     visibility = [
         "//visibility:public",
+    ],
+)
+
+# iPad: the in-app cameras keep running in Split View and Stage Manager (A-4). Its own module, shared by CameraNeo and
+# CameraLegacy, so that its test builds without the rest of Camera.
+swift_library(
+    name = "CameraMultitaskingPolicy",
+    module_name = "CameraMultitaskingPolicy",
+    srcs = [
+        "Sources/CameraMultitaskingPolicy.swift",
+    ],
+    copts = [
+        "-warnings-as-errors",
+    ],
+    visibility = [
+        "//visibility:public",
+    ],
+)
+
+swift_library(
+    name = "CameraMultitaskingPolicyTestsLib",
+    testonly = True,
+    srcs = [
+        "Tests/CameraMultitaskingPolicyTests.swift",
+    ],
+    deps = [
+        ":CameraMultitaskingPolicy",
+    ],
+)
+
+ios_unit_test(
+    name = "CameraMultitaskingPolicyTests",
+    minimum_os_version = "15.0",
+    runner = ":CameraTestRunner",
+    deps = [
+        ":CameraMultitaskingPolicyTestsLib",
     ],
 )

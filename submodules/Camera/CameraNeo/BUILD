@@ -58,6 +58,7 @@ swift_library(
     deps = [
         "//submodules/AppBundle",
         "//submodules/Camera",
+        "//submodules/Camera:CameraMultitaskingPolicy",
         "//submodules/GZip",
         "//submodules/SSignalKit/SwiftSignalKit:SwiftSignalKit",
         "//submodules/Utils/DeviceModel",

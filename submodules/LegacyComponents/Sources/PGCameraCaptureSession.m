@@ -81,6 +81,12 @@ const NSInteger PGCameraFrameRate = 30;
         
         self.automaticallyConfiguresApplicationAudioSession = false;
         self.usesApplicationAudioSession = true;
+        // iPad: the camera keeps running in Split View, Slide Over and Stage Manager (CameraMultitaskingAccess).
+        if (@available(iOS 16.0, *)) {
+            if ([UIDevice currentDevice].userInterfaceIdiom == UIUserInterfaceIdiomPad && self.isMultitaskingCameraAccessSupported) {
+                self.multitaskingCameraAccessEnabled = true;
+            }
+        }
 
     }
     return self;
