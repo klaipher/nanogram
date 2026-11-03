@@ -1146,6 +1146,10 @@ public final class WallpaperBackgroundNodeImpl: ASDisplayNode, WallpaperBackgrou
         let starGift: StarGift?
         let modelRectIndex: Int32?
         
+        func withSize(_ size: CGSize) -> ValidPatternGeneratedImage {
+            return ValidPatternGeneratedImage(wallpaper: self.wallpaper, size: size, displayMode: self.displayMode, patternColor: self.patternColor, backgroundColor: self.backgroundColor, invertPattern: self.invertPattern, starGift: self.starGift, modelRectIndex: self.modelRectIndex)
+        }
+        
         public static func ==(lhs: ValidPatternGeneratedImage, rhs: ValidPatternGeneratedImage) -> Bool {
             if lhs.wallpaper != rhs.wallpaper {
                 return false
@@ -1175,6 +1179,8 @@ public final class WallpaperBackgroundNodeImpl: ASDisplayNode, WallpaperBackgrou
         }
     }
     private var validPatternGeneratedImage: ValidPatternGeneratedImage?
+    /// iPad divider drag (`LiveResizeState`): draws the pattern at the final size once the drag ends.
+    private var liveResizeEndObserver: NSObjectProtocol?
 
     private let patternImageDisposable = MetaDisposable()
     private let symbolImageDisposable = MetaDisposable()
@@ -1300,9 +1306,22 @@ public final class WallpaperBackgroundNodeImpl: ASDisplayNode, WallpaperBackgrou
         self.layer.addSublayer(self.patternImageLayer)
         
         self.layer.addSublayer(self.dimLayer)
+        
+        self.liveResizeEndObserver = NotificationCenter.default.addObserver(forName: LiveResizeState.didEndNotification, object: nil, queue: .main, using: { [weak self] _ in
+            // On the next turn: a relayout the drag's end requests (a cancelled drag springs back) draws it itself.
+            DispatchQueue.main.async {
+                guard let self, let (size, displayMode) = self.validLayout else {
+                    return
+                }
+                self.loadPatternForSizeIfNeeded(size: size, displayMode: displayMode, transition: .immediate)
+            }
+        })
     }
 
     deinit {
+        if let liveResizeEndObserver = self.liveResizeEndObserver {
+            NotificationCenter.default.removeObserver(liveResizeEndObserver)
+        }
         self.patternImageDisposable.dispose()
         self.wallpaperDisposable.dispose()
         self.imageDisposable.dispose()
@@ -1718,7 +1737,10 @@ public final class WallpaperBackgroundNodeImpl: ASDisplayNode, WallpaperBackgrou
 
             let updatedGeneratedImage = ValidPatternGeneratedImage(wallpaper: validPatternImage.wallpaper, size: size, displayMode: displayMode, patternColor: patternColor.rgb, backgroundColor: patternBackgroundColor.rgb, invertPattern: invertPattern, starGift: starGift, modelRectIndex: modelRectIndex)
             
-            if self.validPatternGeneratedImage != updatedGeneratedImage {
+            if let currentGeneratedImage = self.validPatternGeneratedImage, currentGeneratedImage != updatedGeneratedImage, wallpaperPatternKeepsStretchedImage(isLiveResizing: LiveResizeState.shared.isActive, hasImage: self.patternImageLayer.patternContentImage != nil, onlySizeChanged: currentGeneratedImage.withSize(size) == updatedGeneratedImage) {
+                // iPad divider drag: the layer stretches the image it has (its frame follows `size` below); the
+                // pattern is drawn at the final size when the drag ends (`liveResizeEndObserver`).
+            } else if self.validPatternGeneratedImage != updatedGeneratedImage {
                 // Cached and synchronous replacements must also reject pending renders for an older layout.
                 self.invalidatePatternImageGeneration()
                 self.validPatternGeneratedImage = updatedGeneratedImage

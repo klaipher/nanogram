@@ -108,6 +108,13 @@ final class SplitColumnDividerView: UIView, UIPointerInteractionDelegate {
         fatalError("init(coder:) has not been implemented")
     }
 
+    deinit {
+        if self.liveDrag != nil {
+            // Removed mid-drag: never leave the background stretched.
+            LiveResizeState.shared.end()
+        }
+    }
+
     private var shape: SplitColumnShape {
         return SplitColumnShape(containerSize: self.containerSize)
     }
@@ -214,6 +221,8 @@ final class SplitColumnDividerView: UIView, UIPointerInteractionDelegate {
             self.dragStartWidth = self.masterWidth
             self.lastSnapTarget = nil
             self.liveDrag = SplitColumnLiveDrag(startWidth: self.masterWidth)
+            // The chat background stretches while the drag lasts and is drawn again once it ends.
+            LiveResizeState.shared.begin()
             self.liveLayoutLink?.invalidate()
             self.liveLayoutLink = SharedDisplayLinkDriver.shared.add(framesPerSecond: .fps(60), { [weak self] _ in
                 self?.applyLiveWidth()
@@ -269,6 +278,7 @@ final class SplitColumnDividerView: UIView, UIPointerInteractionDelegate {
         self.liveLayoutLink?.invalidate()
         self.liveLayoutLink = nil
         self.liveDrag = nil
+        LiveResizeState.shared.end()
     }
 
     @objc private func doubleTapGesture(_ recognizer: UITapGestureRecognizer) {
