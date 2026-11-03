@@ -38,7 +38,9 @@ Status values: `todo`, `in progress`, `done (<commit>)`, `dropped (<reason>)`.
 
 ## Share (Share extension and share-sheet suggestions)
 
-### I-1. A failed send is reported as success — `todo`
+### I-1. A failed send is reported as success — `done (dc13db12)`
+
+- **Implementation (2026-11-03)**: `sentItems` maps the send error to `ShareControllerError.generic` instead of catching it, so the coordinator's `fail` alert shows and the sheet reopens; `.done` follows only a successful send. Unit/module tests only; not yet verified in a built app (combined build pending).
 
 - **Severity**: high. **Category**: bug.
 - **Evidence**: `submodules/TelegramUI/Components/ShareExtensionContext/Sources/ShareExtensionContext.swift:480-491`:
@@ -59,7 +61,9 @@ Status values: `todo`, `in progress`, `done (<commit>)`, `dropped (<reason>)`.
   error).
 - **Effort**: S. **Confidence**: high.
 
-### I-2. A failed or unsupported attachment leaves the share sheet spinning forever — `todo`
+### I-2. A failed or unsupported attachment leaves the share sheet spinning forever — `done (dc13db12)`
+
+- **Implementation (2026-11-03)**: `shareItemDictionaries` (ShareItems) fails with `.generic` when a provider errors, completes without an item or yields a non-dictionary; every `.never()` in `preparedShareItem` is `.fail(.generic)`. NSData image items and nil provider values no longer hang either. An audio-only movie is now sent as a file instead of failing. Tests: `ShareItemsTests` (`ShareItemDictionariesTests`). Unit/module tests only; not yet verified in a built app (combined build pending).
 
 - **Severity**: high. **Category**: bug.
 - **Evidence**: `ShareItems.swift:385-388`: the wrapper around each item-provider `MTSignal` is
@@ -80,7 +84,9 @@ Status values: `todo`, `in progress`, `done (<commit>)`, `dropped (<reason>)`.
   feed a failing `MTSignal` into `preparedShareItems` and expect `.generic`.
 - **Effort**: S. **Confidence**: high.
 
-### I-3. About 5 MB leaked per shared photo (CGImage never released), orphaned temp JPEGs, unguarded CFRelease — `todo`
+### I-3. About 5 MB leaked per shared photo (CGImage never released), orphaned temp JPEGs, unguarded CFRelease — `done (dc13db12)`
+
+- **Implementation (2026-11-03)**: One ImageIO helper (`scaledJpegImageFromSource:maxPixelSize:`) releases the thumbnail and destination on every path, checks the source and destination for NULL and encodes into `NSMutableData` (no temp files). Tested through `ScaledJpegImageTests`; the leak itself was not measured with Instruments. Unit/module tests only; not yet verified in a built app (combined build pending).
 
 - **Severity**: high. **Category**: memory.
 - **Evidence**: `TGItemProviderSignals.m:219-256`: `CGImageRef image = CGImageSourceCreateThumbnailAtIndex(src, 0, options);`
@@ -99,7 +105,9 @@ Status values: `todo`, `in progress`, `done (<commit>)`, `dropped (<reason>)`.
   today ~10 leaked ~4.9 MB CGImage blocks, after the fix none. Compare the extension footprint after 20 photos.
 - **Effort**: S. **Confidence**: high on the leak and temp files; the jetsam point is an estimate.
 
-### I-4. Use-after-free in round-video detection, plus a full-resolution frame copy and wrong row stride — `todo`
+### I-4. Use-after-free in round-video detection, plus a full-resolution frame copy and wrong row stride — `done (dc13db12)`
+
+- **Implementation (2026-11-03)**: The frame is generated at most 64×64 and drawn into an RGBA bitmap of known stride before the corners are read; the buffer is freed after the checks. A frame that cannot be read means "not round" instead of failing the share. Unit/module tests only; not yet verified in a built app (combined build pending).
 
 - **Severity**: medium. **Category**: bug. (Found during verification.)
 - **Evidence**: `TGItemProviderSignals.m:377-391`: `CFRelease(pixelData)` runs before `isWhitePixel(...)` reads `data`
@@ -115,7 +123,9 @@ Status values: `todo`, `in progress`, `done (<commit>)`, `dropped (<reason>)`.
   extension; today it reports a use-after-free.
 - **Effort**: S. **Confidence**: high on the free; medium on it crashing in practice.
 
-### I-5. Blank, undismissable extension when no account is ready (never signed in, logged out, migration pending, DB unavailable) — `todo`
+### I-5. Blank, undismissable extension when no account is ready (never signed in, logged out, migration pending, DB unavailable) — `done (dc13db12)`
+
+- **Implementation (2026-11-03)**: Before opening any account the extension reads the records: none signed in → `.unauthorized` (the `Share_AuthTitle` alert). No primary account within 10 s (upgrade pending, unreadable database) or completing without one → the same alert. `beginNewAuth` runs only when `applicationBindings.isMainApp`. Not verified on a device. Unit/module tests only; not yet verified in a built app (combined build pending).
 
 - **Severity**: high. **Category**: bug.
 - **Evidence**: `ShareExtensionContext.swift:402-407`:
@@ -139,7 +149,9 @@ Status values: `todo`, `in progress`, `done (<commit>)`, `dropped (<reason>)`.
   `transaction.getRecords()`).
 - **Effort**: M. **Confidence**: high on the code path.
 
-### I-6. A share-sheet suggestion opens the share UI in the wrong account — `todo`
+### I-6. A share-sheet suggestion opens the share UI in the wrong account — `done (dc13db12)`
+
+- **Implementation (2026-11-03)**: Identifiers stay `tg<peer id>` (Siri's `siriSendMessageTarget` and the system's ranking already use it; the account-qualified form is parsed but not written). Every donor now donates only from the suggestions account (I-12), so the extension and AppDelegate open a suggestion in `IntentsSettings.account` (`SendMessageSuggestions.accountPeerId`), falling back to the primary/current account when it is signed out. Tests: `NotificationServiceTests` (`SendMessageSuggestionsTests`). Release/TestFlight only (debug never preselects). Unit/module tests only; not yet verified in a built app (combined build pending).
 
 - **Severity**: high. **Category**: bug.
 - **Evidence**: donations come only from the suggestions account: `TelegramIntents.swift:69-71`
@@ -163,7 +175,9 @@ Status values: `todo`, `in progress`, `done (<commit>)`, `dropped (<reason>)`.
   nothing. After: A opens with Saved Messages selected.
 - **Effort**: S. **Confidence**: high.
 
-### I-7. "Send in HD" in the share extension sends silently at standard quality — `todo`
+### I-7. "Send in HD" in the share extension sends silently at standard quality — `done (dc13db12)`
+
+- **Implementation (2026-11-03)**: "Send in HD" sends normally (not silently); `ShareScreen.sendsInHighQuality` is read by the extension's send closure and `itemSignalsForInputItems:highQuality:` / `preparedShareItems(highQuality:)` scale photos to a 2560-px long side. Unit/module tests only; not yet verified in a built app (combined build pending).
 
 - **Severity**: medium. **Category**: bug.
 - **Evidence**: `submodules/TelegramUI/Components/ShareScreen/Sources/ShareScreen.swift:550-551`:
@@ -181,7 +195,9 @@ Status values: `todo`, `in progress`, `done (<commit>)`, `dropped (<reason>)`.
   a normal notification.
 - **Effort**: M. **Confidence**: high.
 
-### I-8. Share-to-Story leaves full-size copies in the app group forever — `todo`
+### I-8. Share-to-Story leaves full-size copies in the app group forever — `done (dc13db12)`
+
+- **Implementation (2026-11-03)**: The extension copies attachments with `copyItem` under their own extension, opens the app only if at least one copy succeeded (else an error alert), and sweeps sessions older than a day. The app decodes photos, moves videos into `EngineTempBox`, deletes the session directory and sweeps stale ones (`SharedStorySession`, tested in `SharedStorySessionTests`). Unit/module tests only; not yet verified in a built app (combined build pending).
 
 - **Severity**: medium. **Category**: bug.
 - **Evidence**: `ShareExtensionContext.swift:564-605` writes each attachment to
@@ -199,7 +215,9 @@ Status values: `todo`, `in progress`, `done (<commit>)`, `dropped (<reason>)`.
   editor opens.
 - **Effort**: S. **Confidence**: high.
 
-### I-9. The extension opens and syncs every logged-in account before showing any UI — `todo`
+### I-9. The extension opens and syncs every logged-in account before showing any UI — `dropped (L design change)`
+
+- **Implementation (2026-11-03)**: Opening only the target account changes how the account switcher gets its peers and needs before/after measurements on a device with several accounts; not done blind. I-5's 10 s cap bounds the worst case. Left for a measured follow-up.
 
 - **Severity**: medium. **Category**: perf.
 - **Evidence**: `SharedAccountContext.swift:659-699` opens a Postbox for every record and `combineLatest` waits for all
@@ -218,7 +236,9 @@ Status values: `todo`, `in progress`, `done (<commit>)`, `dropped (<reason>)`.
   Interest, Allocations) on device.
 - **Effort**: L. **Confidence**: high on the code path; the cost is not measured.
 
-### I-10. No cap on attachment count; all uploads start at once; the data path decodes full-resolution images — `todo`
+### I-10. No cap on attachment count; all uploads start at once; the data path decodes full-resolution images — `done (dc13db12)`
+
+- **Implementation (2026-11-03)**: Items are prepared and uploaded at most 3 at a time (`combineLatestLimitingConcurrency`, tested); the data path downsamples with ImageIO instead of drawing a full-size `UIImage`; the activation rule caps a share at 100 attachments. Unit/module tests only; not yet verified in a built app (combined build pending).
 
 - **Severity**: low. **Category**: memory.
 - **Evidence**: **Corrected**: items are loaded one after another (`then` chain, `ShareItems.swift:390-396`), but all
@@ -235,7 +255,9 @@ Status values: `todo`, `in progress`, `done (<commit>)`, `dropped (<reason>)`.
   48 MP HEIC via a data-only provider and watch the peak.
 - **Effort**: M. **Confidence**: medium.
 
-### I-11. Legacy NSItemProvider and synchronous AVAsset APIs, and dead availability checks in the share path — `todo`
+### I-11. Legacy NSItemProvider and synchronous AVAsset APIs, and dead availability checks in the share path — `partial (dc13db12)`
+
+- **Implementation (2026-11-03)**: Done: item-type checks on every `loadItemForTypeIdentifier` result, video `tracks`/`metadata`/`duration` loaded asynchronously before they are read (ObjC and `ShareItems.swift`), dead availability checks removed in the extension and `TelegramIntents`. Not done: moving to `loadFileRepresentation`/`UTType`-typed loading, and the synchronous AVAsset reads in `OpenResolvedUrl`'s share-to-story path. Unit/module tests only; not yet verified in a built app (combined build pending).
 
 - **Severity**: low. **Category**: modernization.
 - **Evidence**: `TGItemProviderSignals.m` uses `loadItemForTypeIdentifier:` with implicit coercion throughout (`:140`,
@@ -255,7 +277,9 @@ Status values: `todo`, `in progress`, `done (<commit>)`, `dropped (<reason>)`.
   text) before and after and compare results.
 - **Effort**: M. **Confidence**: high.
 
-### I-12. Donors disagree on conversation identity; the share extension and AppDelegate read only `recipients.first`; notification donations bypass the suggestion settings — `todo`
+### I-12. Donors disagree on conversation identity; the share extension and AppDelegate read only `recipients.first`; notification donations bypass the suggestion settings — `done (dc13db12, f6ad1951)`
+
+- **Implementation (2026-11-03)**: `SendMessageSuggestions` (NotificationsPresentationData) is the one identity (`tg<id>`, group `sendMessage_<id>`) and rule set. The notification extension reads `IntentsSettings` and passcode state with its other shared data and donates only what the app would (suggestions account, contacts/private chats/groups/Saved Messages, archive, bots, "only shared"), with the same conversation id and group identifier; the drawn intent keeps the bare id Siri replies use. Readers parse the conversation first, then each recipient. Whether iOS surfaces incoming-only donations was not checked on a device. Unit/module tests only; not yet verified in a built app (combined build pending).
 
 - **Severity**: medium. **Category**: bug. (Merges three reviewer findings across share, notifications and app.)
 - **Evidence**: outgoing (`TelegramIntents.swift:180-205`): customIdentifier and conversationIdentifier =
@@ -286,7 +310,9 @@ Status values: `todo`, `in progress`, `done (<commit>)`, `dropped (<reason>)`.
   in a TestFlight build to see which donor produced a tapped suggestion; tapping it opens that chat.
 - **Effort**: M. **Confidence**: high on the mismatch and the bypass; medium on the share-sheet effect.
 
-### I-13. Each send re-runs the whole donation pipeline, can donate twice with a blurry avatar, and keeps the fetch subscribed — `todo`
+### I-13. Each send re-runs the whole donation pipeline, can donate twice with a blurry avatar, and keeps the fetch subscribed — `done (dc13db12)`
+
+- **Implementation (2026-11-03)**: Each send still donates, but takes one complete avatar (`take(1)` after complete data, letters after 2 s), caches the encoded PNG `INImage` per peer and photo, and encodes and donates off the main queue. Unit/module tests only; not yet verified in a built app (combined build pending).
 
 - **Severity**: low. **Category**: perf.
 - **Evidence**: called on every send (`ChatController.swift:9240`, `ChatControllerLoadDisplayNode.swift:1142`,
@@ -308,7 +334,9 @@ Status values: `todo`, `in progress`, `done (<commit>)`, `dropped (<reason>)`.
 
 ## Notifications (NotificationService, NotificationContent, app-side delegate)
 
-### I-14. Story notifications download the whole story video into memory — `todo`
+### I-14. Story notifications download the whole story video into memory — `done (f6ad1951)`
+
+- **Implementation (2026-11-03)**: A video story is prefetched only up to its preload size (none without one), with the file size passed, and each part is written into MediaBox by range as it arrives (no `Data` accumulation, never a prefix stored as the whole file); the timeout is `min(10, remaining budget)`. Jetsam rate not measured. Unit/module tests only; not yet verified in a built app (combined build pending).
 
 - **Severity**: high. **Category**: memory.
 - **Evidence**: NS HEAD `:2398-2433`: `fetchSize = preloadSize.flatMap(Int64.init)` is discarded at `:2440`
@@ -330,7 +358,9 @@ Status values: `todo`, `in progress`, `done (<commit>)`, `dropped (<reason>)`.
   ~15 MB and notification-logs show "Updating content".
 - **Effort**: M. **Confidence**: high on the code; medium on how often the kill happens.
 
-### I-15. Every notification download passes `size: nil`, so it runs as one 128 KB part at a time — `todo`
+### I-15. Every notification download passes `size: nil`, so it runs as one 128 KB part at a time — `partial (f6ad1951)`
+
+- **Implementation (2026-11-03)**: Message media and custom-emoji downloads pass the resource size (parallel parts, offset-aware buffer sized to it); video stickers are no longer fetched. The notification-sound downloads keep `size: nil`: they append parts in order, which parallel parts would corrupt, and sounds are small. Unit/module tests only; not yet verified in a built app (combined build pending).
 
 - **Severity**: low (**Corrected** from medium). **Category**: perf.
 - **Evidence**: `standaloneMultipartFetch(… size: nil, …)` at NS HEAD `:1764` and the other fetch sites (custom emoji,
@@ -348,7 +378,9 @@ Status values: `todo`, `in progress`, `done (<commit>)`, `dropped (<reason>)`.
   in notification-logs, and count photo notifications that arrive with the image.
 - **Effort**: S. **Confidence**: high on the serial fallback; the latency gain is an estimate.
 
-### I-16. Custom-emoji rendering uses `try!` and a private KVC key — `todo`
+### I-16. Custom-emoji rendering uses `try!` and a private KVC key — `done (f6ad1951)`
+
+- **Implementation (2026-11-03)**: `notificationEmojiGlyph` crops to a square with a tile no larger than the image and returns nil instead of trapping; `attributedBody` is set only when the content responds to `setAttributedBody:`. Test: `NotificationEmojiGlyphTests`. Unit/module tests only; not yet verified in a built app (combined build pending).
 
 - **Severity**: low (**Corrected** from medium). **Category**: bug.
 - **Evidence**: NS HEAD `:740`: `let glyph = try! Customoji.makeGlyph(from: image, …, tileSizes: [40], cropToSquare: false)`;
@@ -364,7 +396,9 @@ Status values: `todo`, `in progress`, `done (<commit>)`, `dropped (<reason>)`.
   custom emoji still renders the glyph.
 - **Effort**: S. **Confidence**: high on the trap; low on frequency.
 
-### I-17. The Notification Content extension never runs — `todo`
+### I-17. The Notification Content extension never runs — `done (f6ad1951)`
+
+- **Implementation (2026-11-03)**: The extension target, its plist, link/lib targets, the framework-export client entries, `Telegram/NotificationContent` and `NotificationContentContext.swift` are removed. Signing helpers (`BuildConfiguration.py`, `device_signing.py`, `verify.sh`) still know the profile name; an unused profile is harmless, and the App ID can be deleted in the portal later. Unit/module tests only; not yet verified in a built app (combined build pending).
 
 - **Severity**: low. **Category**: perf.
 - **Evidence**: `Telegram/BUILD:1214-1218` declares `UNNotificationExtensionCategory` = `withReplyMedia`,
@@ -382,7 +416,9 @@ Status values: `todo`, `in progress`, `done (<commit>)`, `dropped (<reason>)`.
   after: identical.
 - **Effort**: S. **Confidence**: high.
 
-### I-18. Group notifications present the chat as the sender; the iOS 15 group conversation style is unused — `todo`
+### I-18. Group notifications present the chat as the sender; the iOS 15 group conversation style is unused — `dropped (needs device measurement)`
+
+- **Implementation (2026-11-03)**: Changes the look of every group notification and interacts with the measured recipient-account naming (`NotificationNames`, iOS 18.6/27); it should be done with a device in hand, not blind.
 
 - **Severity**: low. **Category**: modernization.
 - **Evidence**: NS HEAD `:1370` `interactionAuthorId = peerId` (the group for chat pushes); `addSenderInfo` uses that
@@ -399,7 +435,9 @@ Status values: `todo`, `in progress`, `done (<commit>)`, `dropped (<reason>)`.
   author lets it through; Siri Announce reply goes to the group.
 - **Effort**: M. **Confidence**: high on the code; the visual result needs a device.
 
-### I-19. Silent messages still wake the screen; `interruptionLevel` and `relevanceScore` unused for messages — `todo`
+### I-19. Silent messages still wake the screen; `interruptionLevel` and `relevanceScore` unused for messages — `done (f6ad1951)`
+
+- **Implementation (2026-11-03)**: A silent message gets `interruptionLevel = .passive`. `relevanceScore` not added (benefit speculative). Unit/module tests only; not yet verified in a built app (combined build pending).
 
 - **Severity**: low. **Category**: modernization.
 - **Evidence**: NS HEAD `:1417-1419`: payload `silent` only sets `content.silent`, which adds a " 🔕" suffix. No
@@ -412,7 +450,9 @@ Status values: `todo`, `in progress`, `done (<commit>)`, `dropped (<reason>)`.
   notification is in Notification Center.
 - **Effort**: S. **Confidence**: high on the code.
 
-### I-20. Avatar cache disabled, letters cache keyed without the peer, wrong temp path — `todo`
+### I-20. Avatar cache disabled, letters cache keyed without the peer, wrong temp path — `done (f6ad1951)`
+
+- **Implementation (2026-11-03)**: The rendered avatar cache is used again under a versioned key (`intents-v3`); the letters key carries the gradient index; temp copies go to `aps-data/<hash>.png`; the avatar helpers use `UIGraphicsImageRenderer` (sRGB). Unit/module tests only; not yet verified in a built app (combined build pending).
 
 - **Severity**: low. **Category**: perf.
 - **Evidence**: NS HEAD `:472` `if let _ = fileSize(cachedPath), !"".isEmpty {` (always false), so every notification
@@ -429,7 +469,9 @@ Status values: `todo`, `in progress`, `done (<commit>)`, `dropped (<reason>)`.
   with the same initials show different gradients.
 - **Effort**: S. **Confidence**: high on the code; low on measurable impact.
 
-### I-21. Decrypted message text is written to notification logs without redaction — `todo`
+### I-21. Decrypted message text is written to notification logs without redaction — `done (f6ad1951)`
+
+- **Implementation (2026-11-03)**: With redaction on (the default) the log keeps only the payload's keys and `loc_key`, text lengths instead of titles and bodies, and userInfo keys. Tests: `NotificationLogRedactionTests`. Unit/module tests only; not yet verified in a built app (combined build pending).
 
 - **Severity**: low. **Category**: bug.
 - **Evidence**: NS HEAD `:1151` `"Decrypted payload: \(payloadJson)"`; `"Updating content to \(content)"` (title, body,
@@ -443,7 +485,9 @@ Status values: `todo`, `in progress`, `done (<commit>)`, `dropped (<reason>)`.
 - **How to verify**: Log to File on, receive a message, grep notification-logs for its text.
 - **Effort**: S. **Confidence**: high.
 
-### I-22. `willPresent` sometimes never calls its completion handler; deprecated badge API — `todo`
+### I-22. `willPresent` sometimes never calls its completion handler; deprecated badge API — `done (dc13db12, f6ad1951)`
+
+- **Implementation (2026-11-03)**: `willPresent` takes one account id and always calls the handler (`[]` when the app shows it in-app; `ForegroundNotificationPresentation`, tested). The badge uses `setBadgeCount` on iOS 16+. Unit/module tests only; not yet verified in a built app (combined build pending).
 
 - **Severity**: low. **Category**: bug.
 - **Evidence**: AppDelegate HEAD `:3361-3370` calls `completionHandler([.banner, .list])` only when the notification's
