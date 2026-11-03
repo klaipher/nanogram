@@ -165,6 +165,23 @@ final class AccountManagerImpl<Types: AccountManagerTypes> {
             postboxLog("Access challenge installation initialization deferred")
         }
         
+        // The app (`removeDatabaseOnError`) owns the atomic state: it builds it from the legacy tables
+        // when the file is missing, and crashes after removing a file it cannot decode, so that the
+        // next launch rebuilds it. The extensions (Notification Service, Siri, Share, Notification
+        // Content) open with `removeDatabaseOnError: false` and used to `preconditionFailure()` in
+        // both cases, which in the Notification Service drops the push: an app installed but never
+        // opened, or a file unreadable at that moment. They now read what the app would build from the
+        // legacy tables (no accounts on a fresh install) and keep it in memory only, never writing or
+        // removing the app's file.
+        let legacyRecordTable = self.legacyRecordTable
+        let legacyMetadataTable = self.legacyMetadataTable
+        let legacyAtomicState: () -> AccountManagerAtomicState<Types> = {
+            var legacyRecordDict: [AccountRecordId: AccountRecord<Types.Attribute>] = [:]
+            for record in legacyRecordTable.getRecords() {
+                legacyRecordDict[record.id] = record
+            }
+            return AccountManagerAtomicState(records: legacyRecordDict, currentRecordId: legacyMetadataTable.getCurrentAccountId(), currentAuthRecord: legacyMetadataTable.getCurrentAuthAccount(), accessChallengeData: legacyMetadataTable.getAccessChallengeData())
+        }
         do {
             let data = try Data(contentsOf: URL(fileURLWithPath: self.atomicStatePath))
             do {
@@ -173,25 +190,25 @@ final class AccountManagerImpl<Types: AccountManagerTypes> {
             } catch let e {
                 postboxLog("decode atomic state error: \(e)")
                 postboxLogSync()
-                
+
                 if removeDatabaseOnError {
                     let _ = try? FileManager.default.removeItem(atPath: self.atomicStatePath)
+                    preconditionFailure()
+                } else {
+                    postboxLog("AccountManager: undecodable atomic state in an extension, using the legacy records in memory")
+                    self.currentAtomicState = legacyAtomicState()
                 }
-                preconditionFailure()
             }
         } catch let e {
             postboxLog("load atomic state error: \(e)")
             postboxLogSync()
-            
+
             if removeDatabaseOnError {
-                var legacyRecordDict: [AccountRecordId: AccountRecord<Types.Attribute>] = [:]
-                for record in self.legacyRecordTable.getRecords() {
-                    legacyRecordDict[record.id] = record
-                }
-                self.currentAtomicState = AccountManagerAtomicState(records: legacyRecordDict, currentRecordId: self.legacyMetadataTable.getCurrentAccountId(), currentAuthRecord: self.legacyMetadataTable.getCurrentAuthAccount(), accessChallengeData: self.legacyMetadataTable.getAccessChallengeData())
+                self.currentAtomicState = legacyAtomicState()
                 self.syncAtomicStateToFile()
             } else {
-                preconditionFailure()
+                postboxLog("AccountManager: no atomic state in an extension, using the legacy records in memory")
+                self.currentAtomicState = legacyAtomicState()
             }
         }
         
