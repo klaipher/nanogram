@@ -17,9 +17,21 @@ public final class MediaAssetsContext: NSObject, PHPhotoLibraryChangeObserver {
         
         super.init()
         
-        if PHPhotoLibrary.authorizationStatus() == .authorized {
+        self.registerChangeObserverIfAllowed(PHPhotoLibrary.authorizationStatus(for: .readWrite))
+    }
+    
+    /// Limited access also delivers changes (the user adds photos to the selection, takes a new one). Registered
+    /// again when access is first granted, so the grid updates in that same session. Main queue only.
+    private func registerChangeObserverIfAllowed(_ status: PHAuthorizationStatus) {
+        if self.registeredChangeObserver {
+            return
+        }
+        switch status {
+        case .authorized, .limited:
             PHPhotoLibrary.shared().register(self)
             self.registeredChangeObserver = true
+        default:
+            break
         }
     }
     
@@ -83,12 +95,7 @@ public final class MediaAssetsContext: NSObject, PHPhotoLibraryChangeObserver {
     }
         
     public func mediaAccess() -> Signal<PHAuthorizationStatus, NoError> {
-        let initialStatus: PHAuthorizationStatus
-        if #available(iOS 14.0, *) {
-            initialStatus = PHPhotoLibrary.authorizationStatus(for: .readWrite)
-        } else {
-            initialStatus = PHPhotoLibrary.authorizationStatus()
-        }
+        let initialStatus = PHPhotoLibrary.authorizationStatus(for: .readWrite)
         return .single(initialStatus)
         |> then(
             self.mediaAccessSink.signal()
@@ -96,12 +103,14 @@ public final class MediaAssetsContext: NSObject, PHPhotoLibraryChangeObserver {
     }
     
     public func requestMediaAccess(completion: @escaping () -> Void = {}) -> Void {
-        PHPhotoLibrary.requestAuthorization { [weak self] status in
+        // The legacy request reports a Limited grant as .authorized, which hid the Manage banner.
+        PHPhotoLibrary.requestAuthorization(for: .readWrite, handler: { [weak self] status in
             Queue.mainQueue().async {
+                self?.registerChangeObserverIfAllowed(status)
                 completion()
             }
             self?.mediaAccessSink.putNext(status)
-        }
+        })
     }
     
     public func cameraAccess() -> Signal<AVAuthorizationStatus?, NoError> {
