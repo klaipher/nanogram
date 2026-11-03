@@ -2895,13 +2895,18 @@ public final class ReactionContextNode: ASDisplayNode, ASScrollViewDelegate {
                 strongSelf.hapticFeedback?.tap()
                 
                 if let targetView = targetView as? ReactionIconView {
-                    if switchToInlineImmediately {
+                    if switchToInlineImmediately && targetView.animationHasContent {
                         targetView.updateIsAnimationHidden(isAnimationHidden: false, transition: .immediate)
                         itemNode.isHidden = true
                     } else {
                         targetView.updateIsAnimationHidden(isAnimationHidden: true, transition: .immediate)
                         targetView.addSubnode(itemNode)
                         itemNode.frame = selfTargetBounds
+                        if switchToInlineImmediately {
+                            // The button's layer has not drawn a frame yet: the picker's node stays
+                            // in its place until it has.
+                            ReactionContextNode.handOffWhenButtonHasContent(itemNode: itemNode, targetView: targetView)
+                        }
                     }
                 } else if let targetView = targetView as? UIImageView {
                     itemNode.isHidden = true
@@ -2977,12 +2982,7 @@ public final class ReactionContextNode: ASDisplayNode, ASScrollViewDelegate {
                         targetView.alpha = 1.0
                         targetView.isHidden = false
                         if let targetView = targetView as? ReactionIconView {
-                            targetView.updateIsAnimationHidden(isAnimationHidden: false, transition: .immediate)
-                            if let _ = itemNode.supernode {
-                                itemNode.removeFromSupernode()
-                            } else {
-                                itemNode.view.removeFromSuperview()
-                            }
+                            ReactionContextNode.handOffWhenButtonHasContent(itemNode: itemNode, targetView: targetView)
                         }
                     }
                     mainAnimationCompleted = true
@@ -2990,6 +2990,24 @@ public final class ReactionContextNode: ASDisplayNode, ASScrollViewDelegate {
                 }
             })
         }
+    }
+    
+    /// How long the picker's node stands in for a reaction button that has not drawn a frame yet.
+    static let buttonContentHandOffTimeout: Double = 3.0
+    
+    /// Shows the reaction button's own animation and removes the picker's node standing in for it,
+    /// once the button's layer has drawn a frame (at most `buttonContentHandOffTimeout` seconds).
+    ///
+    /// The layer loads its first frame asynchronously. With a cold animation cache (every reaction
+    /// after a cache format change) it had not drawn one when the picker handed over, and the button
+    /// was empty for a few seconds.
+    static func handOffWhenButtonHasContent(itemNode: ReactionNode, targetView: ReactionIconView) {
+        targetView.whenAnimationHasContent(timeout: ReactionContextNode.buttonContentHandOffTimeout, { [weak itemNode, weak targetView] in
+            targetView?.updateIsAnimationHidden(isAnimationHidden: false, transition: .immediate)
+            if let itemNode, itemNode.view.superview === targetView {
+                itemNode.removeFromSupernode()
+            }
+        })
     }
     
     override public func hitTest(_ point: CGPoint, with event: UIEvent?) -> UIView? {

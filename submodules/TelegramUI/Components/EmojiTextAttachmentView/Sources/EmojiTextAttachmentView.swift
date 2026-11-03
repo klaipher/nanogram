@@ -353,6 +353,13 @@ public final class InlineStickerItemLayer: MultiAnimationRenderTarget {
     private var isDisplayingPlaceholder: Bool = false
     private var didProcessTintColor: Bool = false
     
+    private var isSettingPlaceholderContents: Bool = false
+    /// Whether the layer has shown real contents (a frame, or a static image), not just the sticker
+    /// silhouette placeholder. Main thread only.
+    public private(set) var hasDisplayedContent: Bool = false
+    /// Called once, on the main thread, when `hasDisplayedContent` becomes true.
+    public var contentDisplayed: (() -> Void)?
+    
     public private(set) var file: TelegramMediaFile?
     private var localAnimationName: String?
     
@@ -451,7 +458,21 @@ public final class InlineStickerItemLayer: MultiAnimationRenderTarget {
             if let mirrorLayer = self.mirrorLayer {
                 mirrorLayer.contents = self.contents
             }
+            
+            if value != nil && !self.isSettingPlaceholderContents && !self.hasDisplayedContent {
+                self.hasDisplayedContent = true
+                if let contentDisplayed = self.contentDisplayed {
+                    self.contentDisplayed = nil
+                    contentDisplayed()
+                }
+            }
         }
+    }
+    
+    private func setPlaceholderContents(_ image: CGImage?) {
+        self.isSettingPlaceholderContents = true
+        self.contents = image
+        self.isSettingPlaceholderContents = false
     }
     
     public convenience init(context: AccountContext, userLocation: MediaResourceUserLocation, attemptSynchronousLoad: Bool, emoji: ChatTextInputTextCustomEmojiAttribute, file: TelegramMediaFile?, cache: AnimationCache, renderer: MultiAnimationRenderer, unique: Bool = false, placeholderColor: UIColor, pointSize: CGSize, dynamicColor: UIColor? = nil, loopCount: Int? = nil) {
@@ -820,7 +841,7 @@ public final class InlineStickerItemLayer: MultiAnimationRenderTarget {
         if attemptSynchronousLoad {
             if !arguments.renderer.loadFirstFrameSynchronously(target: self, cache: arguments.cache, itemId: file.resource.id.stringRepresentation, size: arguments.pixelSize) {
                 if let image = generateStickerPlaceholderImage(data: file.immediateThumbnailData, size: arguments.pointSize, imageSize: file.dimensions?.cgSize ?? CGSize(width: 512.0, height: 512.0), backgroundColor: nil, foregroundColor: arguments.placeholderColor) {
-                    self.contents = image.cgImage
+                    self.setPlaceholderContents(image.cgImage)
                     self.isDisplayingPlaceholder = true
                     self.updateTintColor()
                 }
@@ -846,7 +867,7 @@ public final class InlineStickerItemLayer: MultiAnimationRenderTarget {
                                 return
                             }
                             if let image = image {
-                                strongSelf.contents = image.cgImage
+                                strongSelf.setPlaceholderContents(image.cgImage)
                                 strongSelf.isDisplayingPlaceholder = true
                                 strongSelf.updateTintColor()
                             }

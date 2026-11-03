@@ -97,6 +97,8 @@ public final class ReactionIconView: PortalSourceView {
     private var isPaused: Bool = false
     private var isAnimationHidden: Bool = false
     
+    private let contentGate = ReactionIconContentGate()
+    
     private var disposable: Disposable?
     
     public var iconFrame: CGRect? {
@@ -146,6 +148,9 @@ public final class ReactionIconView: PortalSourceView {
             
             self.animationLayer?.removeFromSuperlayer()
             self.animationLayer = nil
+            // A stand-in for the previous reaction goes now, before the new layer is waited for.
+            self.contentGate.runPending()
+            self.contentGate.setHasContent(false)
             
             if let _ = file {
                 self.disposable?.dispose()
@@ -197,6 +202,19 @@ public final class ReactionIconView: PortalSourceView {
                 transition.updateAlpha(layer: animationLayer, alpha: isAnimationHidden ? 0.0 : 1.0)
             }
         }
+    }
+    
+    /// Runs `action` once the button's animation layer has drawn a frame, or after `timeout` seconds.
+    ///
+    /// The picker hands a sent reaction over to this view: its own node stands in, on top, until the
+    /// layer has something to show. The layer loads its first frame asynchronously, and with a cold
+    /// animation cache that can take seconds.
+    public func whenAnimationHasContent(timeout: Double, _ action: @escaping () -> Void) {
+        self.contentGate.whenContentReady(timeout: timeout, action)
+    }
+    
+    public var animationHasContent: Bool {
+        return self.animationLayer?.hasDisplayedContent ?? false
     }
     
     func updateIsPaused(isPaused: Bool) {
@@ -259,6 +277,16 @@ public final class ReactionIconView: PortalSourceView {
         self.animationLayer = animationLayer
         self.layer.addSublayer(animationLayer)
         
+        self.contentGate.setHasContent(animationLayer.hasDisplayedContent)
+        if !animationLayer.hasDisplayedContent {
+            animationLayer.contentDisplayed = { [weak self, weak animationLayer] in
+                guard let self, let animationLayer, self.animationLayer === animationLayer else {
+                    return
+                }
+                self.contentGate.setHasContent(true)
+            }
+        }
+        
         switch reaction {
         case .builtin:
             animationLayer.masksToBounds = false
@@ -307,6 +335,9 @@ public final class ReactionIconView: PortalSourceView {
     }
     
     func reset() {
+        self.contentGate.cancelAll()
+        self.contentGate.setHasContent(false)
+        
         if let animationLayer = self.animationLayer {
             self.animationLayer = nil
             
