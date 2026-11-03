@@ -22,6 +22,7 @@ import ChatPresentationInterfaceState
 import TelegramNotices
 import ChatControllerInteraction
 import TranslateUI
+import ChatTranslationDisplay
 import ChatHistoryEntry
 import ChatOverscrollControl
 import ChatBotInfoItem
@@ -1893,11 +1894,20 @@ public final class ChatHistoryListNodeImpl: ASDisplayNode, ChatHistoryNode, Chat
             self.justSentTextMessagePromise.get()
         )
         
-        let translationState: Signal<ChatTranslationState?, NoError>
+        // With the peer's "translation bar hidden" flag: the list translates only while the bar
+        // (ChatControllerContentData) offers "Show Original", see ChatTranslationDisplayPolicy.
+        let translationState: Signal<(ChatTranslationState?, Bool), NoError>
         if let peerId = chatLocation.peerId, peerId.namespace != Namespaces.Peer.SecretChat && peerId != context.account.peerId && subject != .scheduledMessages {
-            translationState = chatTranslationState(context: context, peerId: peerId, threadId: self.chatLocation.threadId)
+            translationState = combineLatest(
+                chatTranslationState(context: context, peerId: peerId, threadId: self.chatLocation.threadId),
+                context.engine.data.subscribe(TelegramEngine.EngineData.Item.Peer.TranslationHidden(id: peerId))
+                |> distinctUntilChanged
+            )
+            |> map { state, isHidden -> (ChatTranslationState?, Bool) in
+                return (state, isHidden)
+            }
         } else {
-            translationState = .single(nil)
+            translationState = .single((nil, false))
         }
         
         let promises = combineLatest(
@@ -2261,13 +2271,17 @@ public final class ChatHistoryListNodeImpl: ASDisplayNode, ChatHistoryNode, Chat
                 )
                 
                 var translateToLanguage: (fromLang: String, toLang: String)?
-                if let translationState, (isPremium || autoTranslate)  && translationState.isEnabled {
-                    var languageCode = translationState.toLang ?? chatPresentationData.strings.baseLanguageCode
-                    let rawSuffix = "-raw"
-                    if languageCode.hasSuffix(rawSuffix) {
-                        languageCode = String(languageCode.dropLast(rawSuffix.count))
-                    }
-                    translateToLanguage = (normalizeTranslationLanguage(translationState.fromLang), normalizeTranslationLanguage(languageCode))
+                let (translationStateValue, isTranslationHidden) = translationState
+                let canTranslateMessages = isPremium || autoTranslate
+                let translationResolution = ChatTranslationDisplayPolicy.resolve(
+                    state: translationStateValue.flatMap { ChatTranslationDetectedState(fromLang: $0.fromLang, toLang: $0.toLang, isEnabled: $0.isEnabled) },
+                    isHidden: isTranslationHidden,
+                    isOffered: canTranslateMessages,
+                    canTranslateMessages: canTranslateMessages,
+                    baseLanguageCode: normalizeTranslationLanguage(chatPresentationData.strings.baseLanguageCode)
+                )
+                if let messageLanguages = translationResolution.messageLanguages {
+                    translateToLanguage = (normalizeTranslationLanguage(messageLanguages.fromLang), normalizeTranslationLanguage(messageLanguages.toLang))
                 }
                 
                 let isSuspiciousPeer = (data.cachedData as? CachedUserData)?.isSuspiciousPeer ?? false

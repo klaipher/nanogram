@@ -14,6 +14,7 @@ import ChatListUI
 import EmojiStatusComponent
 import TelegramUIPreferences
 import TranslateUI
+import ChatTranslationDisplay
 import TelegramNotices
 
 extension ChatControllerImpl {
@@ -2237,11 +2238,15 @@ extension ChatControllerImpl {
                         if (isPremium || maybeSuggestPremium || hasAutoTranslate) && !isHidden {
                             return chatTranslationState(context: context, peerId: peerId, threadId: chatLocation.threadId)
                             |> map { translationState -> ChatPresentationTranslationState? in
-                                if let translationState, !translationState.fromLang.isEmpty && (translationState.fromLang != baseLanguageCode || translationState.isEnabled) {
-                                    return ChatPresentationTranslationState(isEnabled: translationState.isEnabled, fromLang: translationState.fromLang, toLang: translationState.toLang ?? baseLanguageCode)
-                                } else {
-                                    return nil
-                                }
+                                // The same decision ChatHistoryListNode translates the messages from.
+                                let resolution = ChatTranslationDisplayPolicy.resolve(
+                                    state: translationState.flatMap { ChatTranslationDetectedState(fromLang: $0.fromLang, toLang: $0.toLang, isEnabled: $0.isEnabled) },
+                                    isHidden: isHidden,
+                                    isOffered: true,
+                                    canTranslateMessages: isPremium || hasAutoTranslate,
+                                    baseLanguageCode: baseLanguageCode
+                                )
+                                return resolution.bar.flatMap { ChatPresentationTranslationState(isEnabled: $0.isEnabled, fromLang: $0.fromLang, toLang: $0.toLang) }
                             }
                             |> distinctUntilChanged
                         } else {
