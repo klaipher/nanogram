@@ -897,8 +897,9 @@ GPU (Metal) rendering of stickers and emoji, its debug switches and how to measu
   and not on the cache queue, whose hits must not wait for file work (`DCTAnimationCacheStoreQueueTests`).
 - **Reaction hand-off**: a reaction sent from the picker lands in the message's button as the
   picker's node, which stays until the button's `InlineStickerItemLayer` has drawn a frame
-  (`hasDisplayedContent`; the silhouette placeholder does not count), at most 3 s
-  (`ReactionIconContentGate`, `ReactionButtonListComponentTests`). When the reaction's effect file
+  (`hasDisplayedContent`; the silhouette placeholder does not count), with no timeout: a timeout
+  could only reveal an empty layer, and a button reset removes the stand-in while a switch to another
+  reaction hands off at once (`ReactionIconContentGate`, `ReactionButtonListComponentTests`). When the reaction's effect file
   is not downloaded the hand-off is immediate (`reactionSwitchesToInlineImmediately`,
   `ReactionSelectionNodeTests`) and one log line says so; upstream already prefetches every
   available reaction's effects, so do not add another prefetch.

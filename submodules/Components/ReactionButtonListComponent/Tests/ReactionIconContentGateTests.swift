@@ -3,32 +3,17 @@ import XCTest
 @testable import ReactionButtonListComponent
 
 // A reaction sent from the picker lands in the message's reaction button as the picker's own node,
-// which stands in for the button's animation layer until the picker's 2 s timer. The button's layer
+// which stands in for the button's animation layer until it is handed off. The button's layer
 // loads its first frame asynchronously, and with a cold animation cache (every icon after a cache
 // format bump) it had not drawn one by then: the stand-in was removed and the button showed nothing
-// for a few seconds. The hand-off now waits for the layer's first frame, at most a bounded time.
+// for a few seconds. The hand-off now waits for the layer's first frame. There is no timeout: a
+// timeout could only reveal an empty layer, and the stand-in's lifetime is bounded by the button
+// (a reset removes it, a reaction switch hands off at once).
 final class ReactionIconContentGateTests: XCTestCase {
-    private final class ManualScheduler {
-        var scheduled: [(delay: Double, action: () -> Void)] = []
-
-        func schedule(_ delay: Double, _ action: @escaping () -> Void) {
-            self.scheduled.append((delay, action))
-        }
-
-        func fireAll() {
-            let items = self.scheduled
-            self.scheduled.removeAll()
-            for item in items {
-                item.action()
-            }
-        }
-    }
-
     func testHandOffWaitsForFirstFrame() {
-        let scheduler = ManualScheduler()
-        let gate = ReactionIconContentGate(schedule: scheduler.schedule)
+        let gate = ReactionIconContentGate()
         var handedOff = 0
-        gate.whenContentReady(timeout: 3.0, {
+        gate.whenContentReady({
             handedOff += 1
         })
         XCTAssertEqual(handedOff, 0, "the stand-in must stay while the layer has no frame")
@@ -36,45 +21,48 @@ final class ReactionIconContentGateTests: XCTestCase {
         gate.setHasContent(true)
         XCTAssertEqual(handedOff, 1, "the first frame hands off at once")
 
-        scheduler.fireAll()
-        XCTAssertEqual(handedOff, 1, "the timeout does not hand off a second time")
+        gate.setHasContent(true)
+        XCTAssertEqual(handedOff, 1, "a hand-off runs once")
     }
 
     func testHandOffIsImmediateWhenTheLayerAlreadyHasAFrame() {
-        let scheduler = ManualScheduler()
-        let gate = ReactionIconContentGate(schedule: scheduler.schedule)
+        let gate = ReactionIconContentGate()
         gate.setHasContent(true)
         var handedOff = 0
-        gate.whenContentReady(timeout: 3.0, {
+        gate.whenContentReady({
             handedOff += 1
         })
         XCTAssertEqual(handedOff, 1)
-        XCTAssertTrue(scheduler.scheduled.isEmpty, "no timer when nothing waits")
     }
 
-    func testHandOffFallsBackAfterTheTimeout() {
-        let scheduler = ManualScheduler()
-        let gate = ReactionIconContentGate(schedule: scheduler.schedule)
+    // The old 3 s fallback revealed a layer that still had nothing to show. Waiting is now bounded
+    // only by the button: nothing hands off before the first frame, however long it takes.
+    func testNoTimeoutRevealsAnEmptyLayer() {
+        let gate = ReactionIconContentGate()
         var handedOff = 0
-        gate.whenContentReady(timeout: 3.0, {
+        gate.whenContentReady({
             handedOff += 1
         })
-        XCTAssertEqual(scheduler.scheduled.map(\.delay), [3.0])
-        scheduler.fireAll()
-        XCTAssertEqual(handedOff, 1, "a layer that never draws is revealed after the timeout")
+        let waited = expectation(description: "past the old timeout")
+        DispatchQueue.main.asyncAfter(deadline: .now() + 3.5, execute: {
+            waited.fulfill()
+        })
+        wait(for: [waited], timeout: 5.0)
+        XCTAssertEqual(handedOff, 0, "no hand-off without a frame")
+        XCTAssertTrue(gate.hasPendingWork)
 
         gate.setHasContent(true)
-        XCTAssertEqual(handedOff, 1, "a late frame does not hand off a second time")
+        XCTAssertEqual(handedOff, 1)
+        XCTAssertFalse(gate.hasPendingWork)
     }
 
     func testANewLayerWaitsAgain() {
-        let scheduler = ManualScheduler()
-        let gate = ReactionIconContentGate(schedule: scheduler.schedule)
+        let gate = ReactionIconContentGate()
         gate.setHasContent(true)
         // The button replaced its layer (a new file, a pause): the new one has drawn nothing yet.
         gate.setHasContent(false)
         var handedOff = 0
-        gate.whenContentReady(timeout: 3.0, {
+        gate.whenContentReady({
             handedOff += 1
         })
         XCTAssertEqual(handedOff, 0)
@@ -83,31 +71,28 @@ final class ReactionIconContentGateTests: XCTestCase {
     }
 
     func testAnotherReactionHandsOffAtOnce() {
-        let scheduler = ManualScheduler()
-        let gate = ReactionIconContentGate(schedule: scheduler.schedule)
+        let gate = ReactionIconContentGate()
         var handedOff = 0
-        gate.whenContentReady(timeout: 3.0, {
+        gate.whenContentReady({
             handedOff += 1
         })
         // The button now shows another reaction: the stand-in is for the old one and goes at once.
         gate.runPending()
         XCTAssertEqual(handedOff, 1)
-        scheduler.fireAll()
         gate.setHasContent(true)
         XCTAssertEqual(handedOff, 1)
     }
 
     func testCancelDropsPendingHandOffs() {
-        let scheduler = ManualScheduler()
-        let gate = ReactionIconContentGate(schedule: scheduler.schedule)
+        let gate = ReactionIconContentGate()
         var handedOff = 0
-        gate.whenContentReady(timeout: 3.0, {
+        gate.whenContentReady({
             handedOff += 1
         })
         // The button was reused for another reaction: its subviews, the stand-in included, are gone.
         gate.cancelAll()
         gate.setHasContent(true)
-        scheduler.fireAll()
         XCTAssertEqual(handedOff, 0)
+        XCTAssertFalse(gate.hasPendingWork)
     }
 }

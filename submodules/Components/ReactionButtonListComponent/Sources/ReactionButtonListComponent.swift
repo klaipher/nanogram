@@ -204,13 +204,15 @@ public final class ReactionIconView: PortalSourceView {
         }
     }
     
-    /// Runs `action` once the button's animation layer has drawn a frame, or after `timeout` seconds.
+    /// Runs `action` once the button's animation layer has drawn a frame.
     ///
     /// The picker hands a sent reaction over to this view: its own node stands in, on top, until the
     /// layer has something to show. The layer loads its first frame asynchronously, and with a cold
-    /// animation cache that can take seconds.
-    public func whenAnimationHasContent(timeout: Double, _ action: @escaping () -> Void) {
-        self.contentGate.whenContentReady(timeout: timeout, action)
+    /// animation cache that can take seconds. There is no timeout, which could only reveal an empty
+    /// layer: a reaction switch runs `action` at once, and a reset drops it together with the
+    /// stand-in (this view's subviews), so nothing waits longer than the button exists.
+    public func whenAnimationHasContent(_ action: @escaping () -> Void) {
+        self.contentGate.whenContentReady(action)
     }
     
     public var animationHasContent: Bool {

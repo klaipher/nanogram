@@ -3009,17 +3009,15 @@ public final class ReactionContextNode: ASDisplayNode, ASScrollViewDelegate {
         }
     }
     
-    /// How long the picker's node stands in for a reaction button that has not drawn a frame yet.
-    static let buttonContentHandOffTimeout: Double = 3.0
-    
     /// Shows the reaction button's own animation and removes the picker's node standing in for it,
-    /// once the button's layer has drawn a frame (at most `buttonContentHandOffTimeout` seconds).
+    /// once the button's layer has drawn a frame.
     ///
     /// The layer loads its first frame asynchronously. With a cold animation cache (every reaction
     /// after a cache format change) it had not drawn one when the picker handed over, and the button
-    /// was empty for a few seconds.
+    /// was empty for a few seconds. The node stays until then, however long it takes: the button
+    /// removes it on a reset and hands off at once when it moves to another reaction.
     static func handOffWhenButtonHasContent(itemNode: ReactionNode, targetView: ReactionIconView) {
-        targetView.whenAnimationHasContent(timeout: ReactionContextNode.buttonContentHandOffTimeout, { [weak itemNode, weak targetView] in
+        targetView.whenAnimationHasContent({ [weak itemNode, weak targetView] in
             targetView?.updateIsAnimationHidden(isAnimationHidden: false, transition: .immediate)
             if let itemNode, itemNode.view.superview === targetView {
                 itemNode.removeFromSupernode()
