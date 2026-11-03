@@ -534,34 +534,41 @@ public class ShareRootControllerImpl {
                         let shareController = ShareScreen(context: appContext.context, subject: .fromExternal(itemCount, { peerIds, threadIds, requireStars, additionalText, account, silently in
                             if let strongSelf = self, let inputItems = strongSelf.getExtensionContext()?.inputItems, !inputItems.isEmpty, !peerIds.isEmpty {
                                 let highQuality = shareScreenReference.controller?.sendsInHighQuality ?? false
-                                let rawSignals = TGItemProviderSignals.itemSignals(forInputItems: inputItems, highQuality: highQuality)
-                                return preparedShareItems(postbox: account.stateManager.postbox, network: account.stateManager.network, to: peerIds[0], dataItems: rawSignals, highQuality: highQuality)
-                                |> map(Optional.init)
-                                |> `catch` { error -> Signal<PreparedShareItems?, ShareControllerError> in
-                                    switch error {
-                                        case .generic:
-                                            return .fail(.generic)
-                                        case let .fileTooBig(size):
-                                            return .fail(.fileTooBig(size))
+                                // Large attachments are cloned into a directory of this attempt and
+                                // sent from there, never read into memory; it is removed when the
+                                // send finishes, fails or is cancelled (and a day later if the
+                                // extension was killed).
+                                let shareItemFilesPath = rootPath + "/share/items"
+                                removeStaleSharedStorySessions(path: shareItemFilesPath, olderThan: 24.0 * 60.0 * 60.0)
+                                return withShareItemFiles(parentPath: shareItemFilesPath) { temporaryDirectory -> Signal<ShareControllerExternalStatus, ShareControllerError> in
+                                    return preparedShareItems(postbox: account.stateManager.postbox, network: account.stateManager.network, to: peerIds[0], dataItems: TGItemProviderSignals.itemSignals(forInputItems: inputItems, highQuality: highQuality, temporaryDirectory: temporaryDirectory), highQuality: highQuality)
+                                    |> map(Optional.init)
+                                    |> `catch` { error -> Signal<PreparedShareItems?, ShareControllerError> in
+                                        switch error {
+                                            case .generic:
+                                                return .fail(.generic)
+                                            case let .fileTooBig(size):
+                                                return .fail(.fileTooBig(size))
+                                        }
                                     }
-                                }
-                                |> mapToSignal { state -> Signal<ShareControllerExternalStatus, ShareControllerError> in
-                                    guard let state = state else {
-                                        return .single(.done)
-                                    }
-                                    switch state {
-                                    case let .preparing(long):
-                                        return .single(.preparing(long))
-                                    case let .progress(value):
-                                        return .single(.progress(value))
-                                    case let .userInteractionRequired(value):
-                                        return requestUserInteraction(value)
-                                        |> castError(ShareControllerError.self)
-                                        |> mapToSignal { contents -> Signal<ShareControllerExternalStatus, ShareControllerError> in
+                                    |> mapToSignal { state -> Signal<ShareControllerExternalStatus, ShareControllerError> in
+                                        guard let state = state else {
+                                            return .single(.done)
+                                        }
+                                        switch state {
+                                        case let .preparing(long):
+                                            return .single(.preparing(long))
+                                        case let .progress(value):
+                                            return .single(.progress(value))
+                                        case let .userInteractionRequired(value):
+                                            return requestUserInteraction(value)
+                                            |> castError(ShareControllerError.self)
+                                            |> mapToSignal { contents -> Signal<ShareControllerExternalStatus, ShareControllerError> in
+                                                return sentItems(peerIds, threadIds, requireStars, contents, account, silently, additionalText)
+                                            }
+                                        case let .done(contents):
                                             return sentItems(peerIds, threadIds, requireStars, contents, account, silently, additionalText)
                                         }
-                                    case let .done(contents):
-                                        return sentItems(peerIds, threadIds, requireStars, contents, account, silently, additionalText)
                                     }
                                 }
                             } else {

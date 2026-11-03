@@ -1274,103 +1274,109 @@ func openResolvedUrlImpl(
             let rootPath = context.sharedContext.applicationBindings.containerPath + "/telegram-data"
             let sharedStoriesPath = rootPath + "/share/stories"
             let storiesPath = sharedStoriesPath + "/\(sessionId)"
-            let filePaths = SharedStorySession.filePaths(sessionPath: storiesPath)
         
-            // Photos are decoded here and videos moved into the temporary box, so the session's
-            // copies in the app group go as soon as the editor has its subjects.
-            func subject(for path: String) -> MediaEditorScreenImpl.Subject? {
+            // Prepared off the main thread: decoding photos, moving videos and reading a video's
+            // size and length used to run here on main while the screen waited, so a large video
+            // froze it. Photos are decoded and videos moved into the temporary box, so the
+            // session's copies in the app group go as soon as the editor has its subjects.
+            func subject(for path: String) -> Signal<MediaEditorScreenImpl.Subject?, NoError> {
                 if SharedStorySession.isImage(path: path) {
                     if let image = UIImage(contentsOfFile: path)?.fixedOrientation() {
-                        return .image(image: image, dimensions: PixelDimensions(image.size), additionalImage: nil, additionalImagePosition: .topLeft, fromCamera: false)
+                        return .single(.image(image: image, dimensions: PixelDimensions(image.size), additionalImage: nil, additionalImagePosition: .topLeft, fromCamera: false))
                     }
-                } else {
-                    let pathExtension = (path as NSString).pathExtension
-                    let tempFile = EngineTempBox.shared.tempFile(fileName: "story.\(pathExtension.isEmpty ? "mp4" : pathExtension)")
-                    let videoPath: String
-                    do {
-                        try FileManager.default.moveItem(atPath: path, toPath: tempFile.path)
-                        videoPath = tempFile.path
-                    } catch {
+                    return .single(nil)
+                }
+                let pathExtension = (path as NSString).pathExtension
+                let tempFile = EngineTempBox.shared.tempFile(fileName: "story.\(pathExtension.isEmpty ? "mp4" : pathExtension)")
+                let videoPath: String
+                do {
+                    try FileManager.default.moveItem(atPath: path, toPath: tempFile.path)
+                    videoPath = tempFile.path
+                } catch {
+                    return .single(nil)
+                }
+                return SharedStorySession.videoMetadata(path: videoPath)
+                |> map { metadata -> MediaEditorScreenImpl.Subject? in
+                    var dimensions = PixelDimensions(width: 1080, height: 1920)
+                    if let size = metadata.dimensions {
+                        dimensions = PixelDimensions(size)
+                    }
+                    return .video(videoPath: videoPath, thumbnail: nil, mirror: false, additionalVideoPath: nil, additionalThumbnail: nil, dimensions: dimensions, duration: metadata.duration, videoPositionChanges: [], additionalVideoPosition: .bottomLeft, fromCamera: false)
+                }
+            }
+        
+            let preparedSource: Signal<Any?, NoError> = deferred { () -> Signal<Any?, NoError> in
+                let filePaths = SharedStorySession.filePaths(sessionPath: storiesPath)
+                return combineLatest(filePaths.map(subject(for:)))
+                |> take(1)
+                |> map { subjects -> Any? in
+                    try? FileManager.default.removeItem(atPath: storiesPath)
+                    removeStaleSharedStorySessions(path: sharedStoriesPath, olderThan: 24.0 * 60.0 * 60.0)
+                    if filePaths.count > 1 {
+                        return subjects.compactMap { $0 }
+                    } else if let first = subjects.first, let subject = first {
+                        return subject
+                    } else {
                         return nil
                     }
-                    let asset = AVURLAsset(url: URL(fileURLWithPath: videoPath))
-                    var dimensions = PixelDimensions(width: 1080, height: 1920)
-                    if let videoTrack = asset.tracks(withMediaType: .video).first {
-                        dimensions = PixelDimensions(videoTrack.naturalSize)
-                    }
-                    return .video(videoPath: videoPath, thumbnail: nil, mirror: false, additionalVideoPath: nil, additionalThumbnail: nil, dimensions: dimensions, duration: asset.duration.seconds, videoPositionChanges: [], additionalVideoPosition: .bottomLeft, fromCamera: false)
                 }
-                return nil
             }
-    
-            var source: Any?
-            if filePaths.count > 1 {
-                var subjects: [MediaEditorScreenImpl.Subject] = []
-                for path in filePaths {
-                    if let subject = subject(for: path) {
-                        subjects.append(subject)
+            |> runOn(Queue.concurrentDefaultQueue())
+        
+            let _ = (preparedSource
+            |> deliverOnMainQueue).start(next: { source in
+                if let navigationController = context.sharedContext.mainWindow?.viewController as? NavigationController {
+                    for controller in navigationController.overlayControllers {
+                        controller.dismiss()
+                    }
+                    for controller in navigationController.globalOverlayControllers {
+                        controller.dismiss()
                     }
                 }
-                source = subjects
-            } else if let path = filePaths.first {
-                if let subject = subject(for: path) {
-                    source = subject
-                }
-            }
-            try? FileManager.default.removeItem(atPath: storiesPath)
-            removeStaleSharedStorySessions(path: sharedStoriesPath, olderThan: 24.0 * 60.0 * 60.0)
-        
-            if let navigationController = context.sharedContext.mainWindow?.viewController as? NavigationController {
-                for controller in navigationController.overlayControllers {
-                    controller.dismiss()
-                }
-                for controller in navigationController.globalOverlayControllers {
-                    controller.dismiss()
-                }
-            }
-        
-            let _ = (context.engine.messages.checkStoriesUploadAvailability(target: .myStories)
-            |> deliverOnMainQueue).start(next: { availability in
-                if case let .available(remainingCount) = availability {
-                    let controller = context.sharedContext.makeStoryMediaEditorScreen(context: context, source: source, text: nil, link: nil, remainingCount: remainingCount, completion: { results, externalState, commit in
-                        let target: Stories.PendingTarget = results.first!.target
-                        externalState.storyTarget = target
+            
+                let _ = (context.engine.messages.checkStoriesUploadAvailability(target: .myStories)
+                |> deliverOnMainQueue).start(next: { availability in
+                    if case let .available(remainingCount) = availability {
+                        let controller = context.sharedContext.makeStoryMediaEditorScreen(context: context, source: source, text: nil, link: nil, remainingCount: remainingCount, completion: { results, externalState, commit in
+                            let target: Stories.PendingTarget = results.first!.target
+                            externalState.storyTarget = target
                         
-                        if let rootController = context.sharedContext.mainWindow?.viewController as? TelegramRootControllerInterface {
-                            rootController.popToRoot(animated: false)
-                            rootController.proceedWithStoryUpload(target: target, results: results, existingMedia: nil, forwardInfo: nil, externalState: externalState, commit: commit)
-                        }
-                    })
-                    if let navigationController {
-                        navigationController.pushViewController(controller)
-                    }
-                } else {
-                    let subject: PremiumLimitSubject
-                    switch availability {
-                    case .expiringLimit:
-                        subject = .expiringStories
-                    case .weeklyLimit:
-                        subject = .storiesWeekly
-                    case .monthlyLimit:
-                        subject = .storiesMonthly
-                    default:
-                        subject = .expiringStories
-                    }
-                    var replaceImpl: ((ViewController) -> Void)?
-                    let controller = context.sharedContext.makePremiumLimitController(context: context, subject: subject, count: 10, forceDark: false, cancel: {
-                    }, action: {
-                        let controller = context.sharedContext.makePremiumIntroController(context: context, source: .stories, forceDark: true, dismissed: {
+                            if let rootController = context.sharedContext.mainWindow?.viewController as? TelegramRootControllerInterface {
+                                rootController.popToRoot(animated: false)
+                                rootController.proceedWithStoryUpload(target: target, results: results, existingMedia: nil, forwardInfo: nil, externalState: externalState, commit: commit)
+                            }
                         })
-                        replaceImpl?(controller)
-                        return true
-                    })
-                    replaceImpl = { [weak controller] c in
-                        controller?.replace(with: c)
+                        if let navigationController {
+                            navigationController.pushViewController(controller)
+                        }
+                    } else {
+                        let subject: PremiumLimitSubject
+                        switch availability {
+                        case .expiringLimit:
+                            subject = .expiringStories
+                        case .weeklyLimit:
+                            subject = .storiesWeekly
+                        case .monthlyLimit:
+                            subject = .storiesMonthly
+                        default:
+                            subject = .expiringStories
+                        }
+                        var replaceImpl: ((ViewController) -> Void)?
+                        let controller = context.sharedContext.makePremiumLimitController(context: context, subject: subject, count: 10, forceDark: false, cancel: {
+                        }, action: {
+                            let controller = context.sharedContext.makePremiumIntroController(context: context, source: .stories, forceDark: true, dismissed: {
+                            })
+                            replaceImpl?(controller)
+                            return true
+                        })
+                        replaceImpl = { [weak controller] c in
+                            controller?.replace(with: c)
+                        }
+                        if let navigationController {
+                            navigationController.pushViewController(controller)
+                        }
                     }
-                    if let navigationController {
-                        navigationController.pushViewController(controller)
-                    }
-                }
+                })
             })
         case let .startAttach(peerId, payload, choose):
             let presentError: (String) -> Void = { errorText in

@@ -1,5 +1,7 @@
 import Foundation
 import UniformTypeIdentifiers
+import AVFoundation
+import SwiftSignalKit
 
 /// Media the Share extension hands to the app for a new story: copies under
 /// `<root>/share/stories/<session id>/<index>.<extension>` in the app group, which the app reads
@@ -61,6 +63,53 @@ public func removeStaleSharedStorySessions(path: String, olderThan: TimeInterval
         }
         if now.timeIntervalSince(modified) > olderThan {
             try? FileManager.default.removeItem(atPath: fullPath)
+        }
+    }
+}
+
+/// What the story editor needs to know about a shared video before it opens.
+public struct SharedStoryVideoMetadata: Equatable {
+    /// The video track's natural size (before its transform); nil without a video track.
+    public let dimensions: CGSize?
+    /// In seconds.
+    public let duration: Double
+    
+    public init(dimensions: CGSize?, duration: Double) {
+        self.dimensions = dimensions
+        self.duration = duration
+    }
+}
+
+extension SharedStorySession {
+    /// The size and length of the video at `path`, loaded with AVFoundation's asynchronous API on a
+    /// background task, never on the calling thread. Read synchronously (`tracks`, `duration`,
+    /// `naturalSize`), they blocked the caller (the main thread) until the file was parsed, which
+    /// froze the screen for a large video. A file that cannot be read gives no dimensions and the
+    /// duration the synchronous read gave.
+    public static func videoMetadata(path: String) -> Signal<SharedStoryVideoMetadata, NoError> {
+        return Signal { subscriber in
+            let asset = AVURLAsset(url: URL(fileURLWithPath: path))
+            let task = Task.detached(priority: .userInitiated) {
+                let duration: Double
+                do {
+                    duration = try await asset.load(.duration).seconds
+                } catch {
+                    // What the synchronous read gave for a file AVFoundation cannot open.
+                    duration = CMTime.zero.seconds
+                }
+                var dimensions: CGSize?
+                if let track = try? await asset.loadTracks(withMediaType: .video).first {
+                    dimensions = try? await track.load(.naturalSize)
+                }
+                if Task.isCancelled {
+                    return
+                }
+                subscriber.putNext(SharedStoryVideoMetadata(dimensions: dimensions, duration: duration))
+                subscriber.putCompletion()
+            }
+            return ActionDisposable {
+                task.cancel()
+            }
         }
     }
 }

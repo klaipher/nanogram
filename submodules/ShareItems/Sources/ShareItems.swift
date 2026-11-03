@@ -12,6 +12,8 @@ import LegacyComponents
 import ShareItemsImpl
 import UIKit
 import SSignalKit
+import ImageIO
+import UniformTypeIdentifiers
 
 public enum UnpreparedShareItemContent {
     case contact(DeviceContactExtendedData)
@@ -53,6 +55,175 @@ public enum PreparedShareItemError {
 /// The long side of a shared photo: 1280, or 2560 for "Send in HD".
 public func shareItemImageMaxPixelSize(highQuality: Bool) -> CGFloat {
     return highQuality ? 2560.0 : 1280.0
+}
+
+/// What a shared file is sent as.
+public enum ShareItemFileContent: Equatable {
+    case image
+    case gif
+    case other
+}
+
+/// Whether the file at `path` is a photo or a GIF, from its header: ImageIO reads only what it
+/// needs to tell the type, never the whole file (a shared file can be gigabytes). Compared by
+/// identifier: the type database is not always available to a process.
+public func shareItemFileContent(path: String) -> ShareItemFileContent {
+    guard let source = CGImageSourceCreateWithURL(URL(fileURLWithPath: path) as CFURL, [kCGImageSourceShouldCache: false] as CFDictionary) else {
+        return .other
+    }
+    // Everything ImageIO reads is an image, except a PDF, which is sent as a file.
+    guard CGImageSourceGetCount(source) > 0, let typeIdentifier = CGImageSourceGetType(source) as String?, typeIdentifier != UTType.pdf.identifier else {
+        return .other
+    }
+    return typeIdentifier == UTType.gif.identifier ? .gif : .image
+}
+
+/// The pixel size of the first image in the file at `path`, read from its header.
+private func shareItemImagePixelSize(path: String) -> CGSize? {
+    guard let source = CGImageSourceCreateWithURL(URL(fileURLWithPath: path) as CFURL, [kCGImageSourceShouldCache: false] as CFDictionary), let properties = CGImageSourceCopyPropertiesAtIndex(source, 0, nil) as? [CFString: Any] else {
+        return nil
+    }
+    guard let width = (properties[kCGImagePropertyPixelWidth] as? NSNumber)?.doubleValue, let height = (properties[kCGImagePropertyPixelHeight] as? NSNumber)?.doubleValue else {
+        return nil
+    }
+    return CGSize(width: width, height: height)
+}
+
+/// Runs `action` once, when the signal completes, fails or is disposed, whichever comes first.
+/// (`afterDisposed` alone misses completion: a finished subscriber is released, not disposed.)
+private func onShareItemTermination<T, E>(_ action: @escaping () -> Void) -> (Signal<T, E>) -> Signal<T, E> {
+    return { signal in
+        return Signal { subscriber in
+            let finished = Atomic<Bool>(value: false)
+            let finish: () -> Void = {
+                if !finished.swap(true) {
+                    action()
+                }
+            }
+            let disposable = signal.start(next: { value in
+                subscriber.putNext(value)
+            }, error: { error in
+                finish()
+                subscriber.putError(error)
+            }, completed: {
+                finish()
+                subscriber.putCompletion()
+            })
+            return ActionDisposable {
+                disposable.dispose()
+                finish()
+            }
+        }
+    }
+}
+
+/// Runs `body` with a new directory under `parentPath` for the share's copies of its attachments
+/// (`TGItemProviderSignals`' `temporaryDirectory`). The directory and everything in it is removed
+/// when the signal completes, fails or is cancelled; each send attempt gets its own.
+public func withShareItemFiles<T, E>(parentPath: String, _ body: @escaping (String) -> Signal<T, E>) -> Signal<T, E> {
+    return Signal { subscriber in
+        let path = parentPath + "/" + UUID().uuidString
+        let _ = try? FileManager.default.createDirectory(atPath: path, withIntermediateDirectories: true, attributes: nil)
+        return (body(path)
+        |> onShareItemTermination {
+            DispatchQueue.global(qos: .utility).async {
+                let _ = try? FileManager.default.removeItem(atPath: path)
+            }
+        }).start(next: { value in
+            subscriber.putNext(value)
+        }, error: { error in
+            subscriber.putError(error)
+        }, completed: {
+            subscriber.putCompletion()
+        })
+    }
+}
+
+/// Uploads the file at `path` without copying it or reading it into memory: the upload reads it
+/// piece by piece through a temp-box link, released when the upload ends.
+private func uploadedShareFile(path: String, fileName: String, _ upload: @escaping (MultipartUploadSource) -> Signal<StandaloneUploadMediaEvent, StandaloneUploadMediaError>) -> Signal<StandaloneUploadMediaEvent, StandaloneUploadMediaError> {
+    return deferred {
+        let file = TempBox.shared.file(path: path, fileName: fileName)
+        if FileManager.default.fileExists(atPath: file.path) {
+            return upload(.tempFile(file))
+            |> onShareItemTermination {
+                TempBox.shared.dispose(file)
+            }
+        }
+        // The link failed (another volume): a mapped file is paged in, not held in memory.
+        TempBox.shared.dispose(file)
+        guard let data = try? Data(contentsOf: URL(fileURLWithPath: path), options: .alwaysMapped) else {
+            return .fail(.generic)
+        }
+        return upload(.data(data))
+    }
+}
+
+private func preparedShareItemUpload(_ upload: Signal<StandaloneUploadMediaEvent, StandaloneUploadMediaError>) -> Signal<PreparedShareItem, PreparedShareItemError> {
+    return upload
+    |> mapError { _ -> PreparedShareItemError in
+        return .generic
+    }
+    |> mapToSignal { event -> Signal<PreparedShareItem, PreparedShareItemError> in
+        switch event {
+            case let .progress(value):
+                return .single(.progress(value))
+            case let .result(media):
+                return .single(.done(.media(media)))
+        }
+    }
+}
+
+private func preparedSharePhoto(postbox: Postbox, network: Network, to peerId: PeerId, imageData: Data, dimensions: CGSize) -> Signal<PreparedShareItem, PreparedShareItemError> {
+    return .single(.preparing(false))
+    |> then(
+        preparedShareItemUpload(standaloneUploadedImage(postbox: postbox, network: network, peerId: peerId, text: "", source: .data(imageData), dimensions: PixelDimensions(width: Int32(dimensions.width), height: Int32(dimensions.height))))
+    )
+}
+
+/// A GIF, converted to an MP4 animation when it can be, else sent as it is.
+private func preparedShareGif(postbox: Postbox, network: Network, to peerId: PeerId, data: Data, dimensions imageSize: CGSize, fileName: String?) -> Signal<PreparedShareItem, PreparedShareItemError> {
+    #if DEBUG
+    let signal = SSignal(generator: { _ in
+        return SBlockDisposable(block: {})
+    })
+    let _ = signal.start(next: nil, error: nil, completed: nil)
+    #endif
+    
+    let convertedData = Signal<(Data, CGSize, Double, Bool), NoError> { subscriber in
+        let disposable = MetaDisposable()
+        let signalDisposable = TGGifConverter.convertGif(toMp4: data).start(next: { next in
+            if let result = next as? NSDictionary, let path = result["path"] as? String, let convertedData = try? Data(contentsOf: URL(fileURLWithPath: path)), let duration = result["duration"] as? Double {
+                subscriber.putNext((convertedData, imageSize, duration, true))
+                subscriber.putCompletion()
+            }
+        }, error: { _ in
+            subscriber.putNext((data, imageSize, 0, false))
+            subscriber.putCompletion()
+        }, completed: nil)
+        disposable.set(ActionDisposable {
+            signalDisposable?.dispose()
+        })
+        return disposable
+    }
+    
+    return .single(.preparing(true))
+    |> then(
+        convertedData
+        |> castError(PreparedShareItemError.self)
+        |> mapToSignal { data, dimensions, duration, converted in
+            var attributes: [TelegramMediaFileAttribute] = []
+            let mimeType: String
+            if converted {
+                mimeType = "video/mp4"
+                attributes = [.Video(duration: duration, size: PixelDimensions(width: Int32(dimensions.width), height: Int32(dimensions.height)), flags: [.supportsStreaming], preloadSize: nil, coverTime: nil, videoCodec: nil), .Animated, .FileName(fileName: "animation.mp4")]
+            } else {
+                mimeType = "animation/gif"
+                attributes = [.ImageSize(size: PixelDimensions(width: Int32(dimensions.width), height: Int32(dimensions.height))), .Animated, .FileName(fileName: fileName ?? "animation.gif")]
+            }
+            return preparedShareItemUpload(standaloneUploadedFile(postbox: postbox, network: network, peerId: peerId, text: "", source: .data(data), mimeType: mimeType, attributes: attributes, hintFileIsLarge: data.count > 10 * 1024 * 1024))
+        }
+    )
 }
 
 private func preparedShareItem(postbox: Postbox, network: Network, to peerId: PeerId, value: [String: Any], highQuality: Bool) -> Signal<PreparedShareItem, PreparedShareItemError> {
@@ -196,6 +367,44 @@ private func preparedShareItem(postbox: Postbox, network: Network, to peerId: Pe
                 }
             }
         )
+    } else if let path = value["path"] as? String {
+        // A file cloned into the share's directory: sent from there, never read into memory.
+        let url = URL(fileURLWithPath: path)
+        let fileName = value["fileName"] as? String
+        let mimeType = (value["mimeType"] as? String) ?? "application/octet-stream"
+        let treatAsFile = (value["treatAsFile"] as? Bool) ?? false
+        
+        if !treatAsFile {
+            switch shareItemFileContent(path: path) {
+            case .gif:
+                // Mapped: the converter reads the file through the page cache.
+                if let data = try? Data(contentsOf: url, options: .alwaysMapped), let dimensions = shareItemImagePixelSize(path: path) {
+                    return preparedShareGif(postbox: postbox, network: network, to: peerId, data: data, dimensions: dimensions, fileName: fileName)
+                }
+            case .image:
+                // Downsampled straight from the file; an image ImageIO cannot decode goes as a file.
+                if let scaled = TGItemProviderSignals.scaledJpegImage(with: url, maxPixelSize: maxImagePixelSize), let imageData = scaled["scaledImageData"] as? Data, let scaledDimensions = (scaled["scaledImageDimensions"] as? NSValue)?.cgSizeValue {
+                    return preparedSharePhoto(postbox: postbox, network: network, to: peerId, imageData: imageData, dimensions: scaledDimensions)
+                }
+            case .other:
+                break
+            }
+        }
+        
+        guard let size = fileSize(path) else {
+            return .fail(.generic)
+        }
+        var thumbnailData: Data?
+        if mimeType == "application/pdf", let image = generatePdfPreviewImage(url: url, size: CGSize(width: 256.0, height: 256.0)), let jpegData = image.jpegData(compressionQuality: 0.5) {
+            thumbnailData = jpegData
+        }
+        let long = size > Int64(1.5 * 1024 * 1024)
+        return .single(.preparing(long))
+        |> then(
+            preparedShareItemUpload(uploadedShareFile(path: path, fileName: fileName ?? "file") { source in
+                return standaloneUploadedFile(postbox: postbox, network: network, peerId: peerId, text: "", source: source, thumbnailData: thumbnailData, mimeType: mimeType, attributes: [.FileName(fileName: fileName ?? "file")], hintFileIsLarge: size > 10 * 1024 * 1024)
+            })
+        )
     } else if let data = value["data"] as? Data {
         let fileName = value["fileName"] as? String
         let mimeType = (value["mimeType"] as? String) ?? "application/octet-stream"
@@ -222,79 +431,14 @@ private func preparedShareItem(postbox: Postbox, network: Network, to peerId: Pe
                 }
             }
             if isGif {
-                #if DEBUG
-                let signal = SSignal(generator: { _ in
-                    return SBlockDisposable(block: {})
-                })
-                let _ = signal.start(next: nil, error: nil, completed: nil)
-                #endif
-                
-                let convertedData = Signal<(Data, CGSize, Double, Bool), NoError> { subscriber in
-                    let disposable = MetaDisposable()
-                    let signalDisposable = TGGifConverter.convertGif(toMp4: data).start(next: { next in
-                        if let result = next as? NSDictionary, let path = result["path"] as? String, let convertedData = try? Data(contentsOf: URL(fileURLWithPath: path)), let duration = result["duration"] as? Double {
-                            subscriber.putNext((convertedData, image.size, duration, true))
-                            subscriber.putCompletion()
-                        }
-                    }, error: { _ in
-                        subscriber.putNext((data, image.size, 0, false))
-                        subscriber.putCompletion()
-                    }, completed: nil)
-                    disposable.set(ActionDisposable {
-                        signalDisposable?.dispose()
-                    })
-                    return disposable
-                }
-                
-                return .single(.preparing(true))
-                |> then(
-                    convertedData
-                    |> castError(PreparedShareItemError.self)
-                    |> mapToSignal { data, dimensions, duration, converted in
-                        var attributes: [TelegramMediaFileAttribute] = []
-                        let mimeType: String
-                        if converted {
-                            mimeType = "video/mp4"
-                            attributes = [.Video(duration: duration, size: PixelDimensions(width: Int32(dimensions.width), height: Int32(dimensions.height)), flags: [.supportsStreaming], preloadSize: nil, coverTime: nil, videoCodec: nil), .Animated, .FileName(fileName: "animation.mp4")]
-                        } else {
-                            mimeType = "animation/gif"
-                            attributes = [.ImageSize(size: PixelDimensions(width: Int32(dimensions.width), height: Int32(dimensions.height))), .Animated, .FileName(fileName: fileName ?? "animation.gif")]
-                        }
-                        return standaloneUploadedFile(postbox: postbox, network: network, peerId: peerId, text: "", source: .data(data), mimeType: mimeType, attributes: attributes, hintFileIsLarge: data.count > 10 * 1024 * 1024)
-                        |> mapError { _ -> PreparedShareItemError in
-                            return .generic
-                        }
-                        |> mapToSignal { event -> Signal<PreparedShareItem, PreparedShareItemError> in
-                            switch event {
-                                case let .progress(value):
-                                    return .single(.progress(value))
-                                case let .result(media):
-                                    return .single(.done(.media(media)))
-                            }
-                        }
-                    }
-                )
+                return preparedShareGif(postbox: postbox, network: network, to: peerId, data: data, dimensions: image.size, fileName: fileName)
             } else {
                 // Downsampled by ImageIO: drawing the UIImage decoded the whole image first
                 // (~195 MB for a 48 MP photo), more than the extension may use.
                 guard let scaled = TGItemProviderSignals.scaledJpegImage(with: data, maxPixelSize: maxImagePixelSize), let imageData = scaled["scaledImageData"] as? Data, let scaledDimensions = (scaled["scaledImageDimensions"] as? NSValue)?.cgSizeValue else {
                     return .fail(.generic)
                 }
-                return .single(.preparing(false))
-                |> then(
-                    standaloneUploadedImage(postbox: postbox, network: network, peerId: peerId, text: "", source: .data(imageData), dimensions: PixelDimensions(width: Int32(scaledDimensions.width), height: Int32(scaledDimensions.height)))
-                    |> mapError { _ -> PreparedShareItemError in
-                        return .generic
-                    }
-                    |> mapToSignal { event -> Signal<PreparedShareItem, PreparedShareItemError> in
-                        switch event {
-                            case let .progress(value):
-                                return .single(.progress(value))
-                            case let .result(media):
-                                return .single(.done(.media(media)))
-                        }
-                    }
-                )
+                return preparedSharePhoto(postbox: postbox, network: network, to: peerId, imageData: imageData, dimensions: scaledDimensions)
             }
         } else {
             var thumbnailData: Data?
@@ -320,7 +464,8 @@ private func preparedShareItem(postbox: Postbox, network: Network, to peerId: Pe
             )
         }
     } else if let url = value["audio"] as? URL {
-        if let audioData = try? Data(contentsOf: url, options: [.mappedIfSafe]) {
+        // Sent from the share's copy, read piece by piece.
+        if let audioSize = fileSize(url.path) {
             let fileName = url.lastPathComponent
             let duration = (value["duration"] as? NSNumber)?.doubleValue ?? 0.0
             let isVoice = ((value["isVoice"] as? NSNumber)?.boolValue ?? false)
@@ -333,21 +478,12 @@ private func preparedShareItem(postbox: Postbox, network: Network, to peerId: Pe
                 waveform = MemoryBuffer(data: waveformData)
             }
             
-            let long = audioData.count > Int32(1.5 * 1024 * 1024)
+            let long = audioSize > Int64(1.5 * 1024 * 1024)
             return .single(.preparing(long))
             |> then(
-                standaloneUploadedFile(postbox: postbox, network: network, peerId: peerId, text: "", source: .data(audioData), mimeType: mimeType, attributes: [.Audio(isVoice: isVoice, duration: Int(duration), title: title, performer: artist, waveform: waveform?.makeData()), .FileName(fileName: fileName)], hintFileIsLarge: audioData.count > 10 * 1024 * 1024)
-                |> mapError { _ -> PreparedShareItemError in
-                    return .generic
-                }
-                |> mapToSignal { event -> Signal<PreparedShareItem, PreparedShareItemError> in
-                    switch event {
-                        case let .progress(value):
-                            return .single(.progress(value))
-                        case let .result(media):
-                            return .single(.done(.media(media)))
-                    }
-                }
+                preparedShareItemUpload(uploadedShareFile(path: url.path, fileName: fileName) { source in
+                    return standaloneUploadedFile(postbox: postbox, network: network, peerId: peerId, text: "", source: source, mimeType: mimeType, attributes: [.Audio(isVoice: isVoice, duration: Int(duration), title: title, performer: artist, waveform: waveform?.makeData()), .FileName(fileName: fileName)], hintFileIsLarge: audioSize > 10 * 1024 * 1024)
+                })
             )
         } else {
             return .fail(.generic)
@@ -677,3 +813,4 @@ public func sentShareItems(accountPeerId: PeerId, postbox: Postbox, network: Net
         return Void()
     }
 }
+

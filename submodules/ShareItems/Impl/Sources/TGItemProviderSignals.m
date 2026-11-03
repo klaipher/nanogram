@@ -15,12 +15,7 @@ static const CGFloat TGShareImageHighQualityMaxPixelSize = 2560.0;
 
 @implementation TGItemProviderSignals
 
-+ (NSArray<MTSignal *> *)itemSignalsForInputItems:(NSArray *)inputItems
-{
-    return [self itemSignalsForInputItems:inputItems highQuality:false];
-}
-
-+ (NSArray<MTSignal *> *)itemSignalsForInputItems:(NSArray *)inputItems highQuality:(bool)highQuality
++ (NSArray<MTSignal *> *)itemSignalsForInputItems:(NSArray *)inputItems highQuality:(bool)highQuality temporaryDirectory:(NSString *)temporaryDirectory
 {
     NSMutableArray *itemSignals = [[NSMutableArray alloc] init];
     NSMutableArray *providers = [[NSMutableArray alloc] init];
@@ -61,28 +56,27 @@ static const CGFloat TGShareImageHighQualityMaxPixelSize = 2560.0;
         
         MTSignal *dataSignal = nil;
         if ([provider hasItemConformingToTypeIdentifier:UTTypeAudio.identifier])
-            dataSignal = [self signalForAudioItemProvider:provider];
+            dataSignal = [self signalForAudioItemProvider:provider temporaryDirectory:temporaryDirectory];
         else if ([provider hasItemConformingToTypeIdentifier:UTTypeMovie.identifier])
-            dataSignal = [self signalForVideoItemProvider:provider];
+            dataSignal = [self signalForVideoItemProvider:provider temporaryDirectory:temporaryDirectory];
         else if ([provider hasItemConformingToTypeIdentifier:UTTypeGIF.identifier])
-            dataSignal = [self signalForDataItemProvider:provider];
+        {
+            MTSignal *fileSignal = [[self fileSignalForItemProvider:provider type:UTTypeGIF urlTypeIdentifier:nil temporaryDirectory:temporaryDirectory] map:^id(NSURL *url)
+            {
+                return [self fileItemWithURL:url];
+            }];
+            dataSignal = [fileSignal catch:^MTSignal *(__unused id error)
+            {
+                return [self signalForDataItemProvider:provider];
+            }];
+        }
         else if ([provider hasItemConformingToTypeIdentifier:UTTypeImage.identifier])
             dataSignal = [self signalForImageItemProvider:provider maxPixelSize:highQuality ? TGShareImageHighQualityMaxPixelSize : TGShareImageMaxPixelSize];
         else if ([provider hasItemConformingToTypeIdentifier:UTTypeFileURL.identifier])
         {
-            dataSignal = [[self signalForUrlItemProvider:provider] mapToSignal:^MTSignal *(NSURL *url)
+            dataSignal = [[self fileSignalForItemProvider:provider type:UTTypeData urlTypeIdentifier:UTTypeFileURL.identifier temporaryDirectory:temporaryDirectory] map:^id(NSURL *url)
             {
-                NSData *data = [[NSData alloc] initWithContentsOfURL:url options:NSDataReadingMappedIfSafe error:nil];
-                if (data == nil)
-                    return [MTSignal fail:nil];
-                NSString *fileName = [[url pathComponents] lastObject];
-                if (fileName.length == 0)
-                    fileName = @"file.bin";
-                NSString *extension = [fileName pathExtension];
-                NSString *mimeType = [TGMimeTypeMap mimeTypeForExtension:[extension lowercaseString]];
-                if (mimeType == nil)
-                    mimeType = @"application/octet-stream";
-                return [MTSignal single:@{@"data": data, @"fileName": fileName, @"mimeType": mimeType}];
+                return [self fileItemWithURL:url];
             }];
         }
         else if ([provider hasItemConformingToTypeIdentifier:UTTypeVCard.identifier])
@@ -93,7 +87,20 @@ static const CGFloat TGShareImageHighQualityMaxPixelSize = 2560.0;
             dataSignal = [self signalForTextUrlItemProvider:provider];
         else if ([provider hasItemConformingToTypeIdentifier:UTTypeData.identifier])
         {
-            dataSignal = [[self signalForDataItemProvider:provider] map:^id(NSDictionary *dict)
+            NSString *suggestedName = provider.suggestedName;
+            MTSignal *fileSignal = [[self fileSignalForItemProvider:provider type:UTTypeData urlTypeIdentifier:nil temporaryDirectory:temporaryDirectory] map:^id(NSURL *url)
+            {
+                // Named after the provider's suggested name when it has one; otherwise the name is
+                // made up from the type below, as before.
+                if (suggestedName.length != 0)
+                    return [self fileItemWithURL:url];
+                return @{@"path": url.path};
+            }];
+            fileSignal = [fileSignal catch:^MTSignal *(__unused id error)
+            {
+                return [self signalForDataItemProvider:provider];
+            }];
+            dataSignal = [fileSignal map:^id(NSDictionary *dict)
             {
                 if (dict[@"fileName"] == nil)
                 {
@@ -127,6 +134,123 @@ static const CGFloat TGShareImageHighQualityMaxPixelSize = 2560.0;
     }
     
     return itemSignals;
+}
+
+/// The first type the provider registered that conforms to `type` (the first is its highest-fidelity
+/// one), leaving out URLs, which are not file contents; `type` itself when none does by the type
+/// database (which a process does not always have), so the provider picks.
++ (NSString *)registeredTypeIdentifierForProvider:(NSItemProvider *)itemProvider conformingToType:(UTType *)type
+{
+    for (NSString *identifier in itemProvider.registeredTypeIdentifiers)
+    {
+        UTType *registeredType = [UTType typeWithIdentifier:identifier];
+        if (registeredType == nil || [registeredType conformsToType:UTTypeURL])
+            continue;
+        if ([registeredType conformsToType:type])
+            return identifier;
+    }
+    return type.identifier;
+}
+
+/// Copies the file into its own directory under `temporaryDirectory`, keeping its name. On APFS (the
+/// extension's container and the app group are on one volume) the copy is a clone: no file data is
+/// read, written or held in memory. Nil when it cannot be copied.
++ (NSURL *)copyFileAtURL:(NSURL *)url toTemporaryDirectory:(NSString *)temporaryDirectory
+{
+    if (![url isKindOfClass:[NSURL class]] || !url.isFileURL || temporaryDirectory.length == 0)
+        return nil;
+    NSString *fileName = url.lastPathComponent;
+    if (fileName.length == 0 || [fileName isEqualToString:@"."] || [fileName isEqualToString:@".."] || [fileName isEqualToString:@"/"])
+        fileName = @"file.bin";
+    NSString *directory = [temporaryDirectory stringByAppendingPathComponent:[[NSUUID UUID] UUIDString]];
+    NSFileManager *fileManager = [NSFileManager defaultManager];
+    if (![fileManager createDirectoryAtPath:directory withIntermediateDirectories:true attributes:nil error:nil])
+        return nil;
+    NSURL *destination = [NSURL fileURLWithPath:[directory stringByAppendingPathComponent:fileName]];
+    NSError *error = nil;
+    if (![fileManager copyItemAtURL:url toURL:destination error:&error])
+    {
+        [fileManager removeItemAtPath:directory error:nil];
+        return nil;
+    }
+    return destination;
+}
+
+/// A copy, under `temporaryDirectory`, of the provider's file for `typeIdentifier`, as an NSURL. The
+/// system writes the attachment to disk instead of handing it over in memory; its file exists only
+/// inside the completion handler, so the copy is made there.
++ (MTSignal *)fileCopySignalForItemProvider:(NSItemProvider *)itemProvider typeIdentifier:(NSString *)typeIdentifier temporaryDirectory:(NSString *)temporaryDirectory
+{
+    return [[MTSignal alloc] initWithGenerator:^id<MTDisposable>(MTSubscriber *subscriber)
+    {
+        NSProgress *progress = [itemProvider loadFileRepresentationForTypeIdentifier:typeIdentifier completionHandler:^(NSURL *url, NSError *error)
+        {
+            NSURL *copy = error == nil ? [self copyFileAtURL:url toTemporaryDirectory:temporaryDirectory] : nil;
+            if (copy == nil)
+                [subscriber putError:nil];
+            else
+            {
+                [subscriber putNext:copy];
+                [subscriber putCompletion];
+            }
+        }];
+        // A share cancelled while the system still fetches the file (from iCloud, say) stops it.
+        return [[MTBlockDisposable alloc] initWithBlock:^
+        {
+            if (!progress.isFinished)
+                [progress cancel];
+        }];
+    }];
+}
+
+/// A file attachment sent from its copy: `path`, `fileName` and `mimeType`.
++ (NSDictionary *)fileItemWithURL:(NSURL *)url
+{
+    NSString *fileName = url.lastPathComponent;
+    if (fileName.length == 0)
+        fileName = @"file.bin";
+    NSString *mimeType = [TGMimeTypeMap mimeTypeForExtension:[[fileName pathExtension] lowercaseString]];
+    if (mimeType == nil)
+        mimeType = @"application/octet-stream";
+    return @{@"path": url.path, @"fileName": fileName, @"mimeType": mimeType};
+}
+
+/// A copy, under `temporaryDirectory`, of the provider's file conforming to `type`. When the
+/// provider cannot give it as a file and `urlTypeIdentifier` is set, the file a URL item of that
+/// type points to (as older apps and file URLs share it) is copied while the URL is valid.
++ (MTSignal *)fileSignalForItemProvider:(NSItemProvider *)itemProvider type:(UTType *)type urlTypeIdentifier:(NSString *)urlTypeIdentifier temporaryDirectory:(NSString *)temporaryDirectory
+{
+    NSString *typeIdentifier = [self registeredTypeIdentifierForProvider:itemProvider conformingToType:type];
+    MTSignal *fileSignal = [self fileCopySignalForItemProvider:itemProvider typeIdentifier:typeIdentifier temporaryDirectory:temporaryDirectory];
+    if (urlTypeIdentifier == nil)
+        return fileSignal;
+    
+    MTSignal *urlSignal = [[MTSignal alloc] initWithGenerator:^id<MTDisposable>(MTSubscriber *subscriber)
+    {
+        [itemProvider loadItemForTypeIdentifier:urlTypeIdentifier options:nil completionHandler:^(NSURL *url, NSError *error)
+        {
+            NSURL *copy = nil;
+            if (error == nil && [url isKindOfClass:[NSURL class]] && url.isFileURL)
+            {
+                bool accessing = [url startAccessingSecurityScopedResource];
+                copy = [self copyFileAtURL:url toTemporaryDirectory:temporaryDirectory];
+                if (accessing)
+                    [url stopAccessingSecurityScopedResource];
+            }
+            if (copy == nil)
+                [subscriber putError:nil];
+            else
+            {
+                [subscriber putNext:copy];
+                [subscriber putCompletion];
+            }
+        }];
+        return nil;
+    }];
+    return [fileSignal catch:^MTSignal *(__unused id error)
+    {
+        return urlSignal;
+    }];
 }
 
 + (MTSignal *)signalForDataItemProvider:(NSItemProvider *)itemProvider
@@ -218,6 +342,39 @@ static const CGFloat TGShareImageHighQualityMaxPixelSize = 2560.0;
 
 + (MTSignal *)signalForImageItemProvider:(NSItemProvider *)itemProvider maxPixelSize:(CGFloat)maxPixelSize
 {
+    MTSignal *itemSignal = [self itemSignalForImageItemProvider:itemProvider maxPixelSize:maxPixelSize];
+    NSString *typeIdentifier = [self registeredTypeIdentifierForProvider:itemProvider conformingToType:UTTypeImage];
+    
+    MTSignal *fileSignal = [[MTSignal alloc] initWithGenerator:^id<MTDisposable>(MTSubscriber *subscriber)
+    {
+        NSProgress *progress = [itemProvider loadFileRepresentationForTypeIdentifier:typeIdentifier completionHandler:^(NSURL *url, NSError *error)
+        {
+            // Downsampled here, while the system's file exists: ImageIO reads what the thumbnail
+            // needs and never decodes the full bitmap, so nothing is copied or kept.
+            NSDictionary *result = (error == nil && url != nil) ? [self scaledJpegImageWithURL:url maxPixelSize:maxPixelSize] : nil;
+            if (result == nil)
+                [subscriber putError:nil];
+            else
+            {
+                [subscriber putNext:result];
+                [subscriber putCompletion];
+            }
+        }];
+        return [[MTBlockDisposable alloc] initWithBlock:^
+        {
+            if (!progress.isFinished)
+                [progress cancel];
+        }];
+    }];
+    // A provider that has the image only as an object (a UIImage) is loaded as before.
+    return [fileSignal catch:^MTSignal *(__unused id error)
+    {
+        return itemSignal;
+    }];
+}
+
++ (MTSignal *)itemSignalForImageItemProvider:(NSItemProvider *)itemProvider maxPixelSize:(CGFloat)maxPixelSize
+{
     return [[MTSignal alloc] initWithGenerator:^id<MTDisposable>(MTSubscriber *subscriber)
     {
         CGSize maxSize = CGSizeMake(maxPixelSize, maxPixelSize);
@@ -274,30 +431,26 @@ static const CGFloat TGShareImageHighQualityMaxPixelSize = 2560.0;
     }];
 }
 
-+ (MTSignal *)signalForAudioItemProvider:(NSItemProvider *)itemProvider
++ (MTSignal *)signalForAudioItemProvider:(NSItemProvider *)itemProvider temporaryDirectory:(NSString *)temporaryDirectory
 {
-    MTSignal *itemSignal = [[MTSignal alloc] initWithGenerator:^id<MTDisposable>(MTSubscriber *subscriber)
+    MTSignal *assetSignal = [[self fileSignalForItemProvider:itemProvider type:UTTypeAudio urlTypeIdentifier:UTTypeAudio.identifier temporaryDirectory:temporaryDirectory] mapToSignal:^MTSignal *(NSURL *url)
     {
-        [itemProvider loadItemForTypeIdentifier:UTTypeAudio.identifier options:nil completionHandler:^(NSURL *url, NSError *error)
+        return [[MTSignal alloc] initWithGenerator:^id<MTDisposable>(MTSubscriber *subscriber)
         {
-            if (error != nil || ![url isKindOfClass:[NSURL class]])
-               [subscriber putError:nil];
-            else
+            AVURLAsset *asset = [AVURLAsset URLAssetWithURL:url options:nil];
+            // Loaded before they are read below, so the reads do not block on parsing the file.
+            [asset loadValuesAsynchronouslyForKeys:@[@"commonMetadata", @"duration"] completionHandler:^
             {
-                [subscriber putNext:url];
+                [subscriber putNext:asset];
                 [subscriber putCompletion];
-            }
+            }];
+            return nil;
         }];
-        return nil;
     }];
     
-    return [itemSignal mapToSignal:^MTSignal *(NSURL *url)
+    return [assetSignal mapToSignal:^MTSignal *(AVURLAsset *asset)
     {
-        if (![url isKindOfClass:[NSURL class]])
-            return [MTSignal fail:nil];
-        AVAsset *asset = [AVURLAsset URLAssetWithURL:url options:nil];
-        if (asset == nil)
-            return [MTSignal fail:nil];
+        NSURL *url = asset.URL;
         
         NSString *extension = url.pathExtension;
         NSString *mimeType = [TGMimeTypeMap mimeTypeForExtension:[extension lowercaseString]];
@@ -408,28 +561,21 @@ static const CGFloat TGShareImageHighQualityMaxPixelSize = 2560.0;
     return result;
 }
 
-+ (MTSignal *)signalForVideoItemProvider:(NSItemProvider *)itemProvider
++ (MTSignal *)signalForVideoItemProvider:(NSItemProvider *)itemProvider temporaryDirectory:(NSString *)temporaryDirectory
 {
-    MTSignal *assetSignal = [[MTSignal alloc] initWithGenerator:^id<MTDisposable>(MTSubscriber *subscriber)
+    // The video is sent from its copy, which the upload reads piece by piece.
+    MTSignal *assetSignal = [[self fileSignalForItemProvider:itemProvider type:UTTypeMovie urlTypeIdentifier:UTTypeMovie.identifier temporaryDirectory:temporaryDirectory] mapToSignal:^MTSignal *(NSURL *url)
     {
-        [itemProvider loadItemForTypeIdentifier:UTTypeMovie.identifier options:nil completionHandler:^(NSURL *url, NSError *error)
+        return [[MTSignal alloc] initWithGenerator:^id<MTDisposable>(MTSubscriber *subscriber)
         {
-            if (error != nil || ![url isKindOfClass:[NSURL class]])
-            {
-                [subscriber putError:nil];
-            }
-            else
-            {
-                AVURLAsset *asset = [[AVURLAsset alloc] initWithURL:url options:nil];
-                // Loaded here, off the provider's callback, so the synchronous reads below do not block on I/O.
-                [asset loadValuesAsynchronouslyForKeys:@[@"tracks", @"metadata", @"duration"] completionHandler:^{
-                    [subscriber putNext:asset];
-                    [subscriber putCompletion];
-                }];
-            }
+            AVURLAsset *asset = [[AVURLAsset alloc] initWithURL:url options:nil];
+            // Loaded here, off the provider's callback, so the synchronous reads below do not block on I/O.
+            [asset loadValuesAsynchronouslyForKeys:@[@"tracks", @"metadata", @"duration"] completionHandler:^{
+                [subscriber putNext:asset];
+                [subscriber putCompletion];
+            }];
+            return nil;
         }];
-        
-        return nil;
     }];
     
     return [assetSignal mapToSignal:^MTSignal *(AVURLAsset *asset)
@@ -437,17 +583,10 @@ static const CGFloat TGShareImageHighQualityMaxPixelSize = 2560.0;
         AVAssetTrack *videoTrack = [[asset tracksWithMediaType:AVMediaTypeVideo] firstObject];
         if (videoTrack == nil)
         {
-            // A movie with no video track (an audio-only .mov or .m4v) is sent as a file.
-            NSData *data = [[NSData alloc] initWithContentsOfURL:asset.URL options:NSDataReadingMappedIfSafe error:nil];
-            if (data == nil)
-                return [MTSignal fail:nil];
-            NSString *fileName = asset.URL.lastPathComponent;
-            if (fileName.length == 0)
-                fileName = @"file.bin";
-            NSString *mimeType = [TGMimeTypeMap mimeTypeForExtension:[fileName.pathExtension lowercaseString]];
-            if (mimeType == nil)
-                mimeType = @"application/octet-stream";
-            return [MTSignal single:@{@"data": data, @"fileName": fileName, @"mimeType": mimeType, @"treatAsFile": @true}];
+            // A movie with no video track (an audio-only .mov or .m4v) is sent as a file, from its copy.
+            NSMutableDictionary *item = [[self fileItemWithURL:asset.URL] mutableCopy];
+            item[@"treatAsFile"] = @true;
+            return [MTSignal single:item];
         }
         else
         {
@@ -478,25 +617,6 @@ static const CGFloat TGShareImageHighQualityMaxPixelSize = 2560.0;
                 }];
             }
         }
-    }];
-}
-
-+ (MTSignal *)signalForUrlItemProvider:(NSItemProvider *)itemProvider
-{
-    return [[MTSignal alloc] initWithGenerator:^id<MTDisposable>(MTSubscriber *subscriber)
-    {
-        [itemProvider loadItemForTypeIdentifier:UTTypeFileURL.identifier options:nil completionHandler:^(NSURL *url, NSError *error)
-        {
-            if (error != nil || ![url isKindOfClass:[NSURL class]])
-                [subscriber putError:nil];
-            else
-            {
-                [subscriber putNext:url];
-                [subscriber putCompletion];
-            }
-        }];
-        
-        return nil;
     }];
 }
 
