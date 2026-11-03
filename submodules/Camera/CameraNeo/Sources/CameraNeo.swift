@@ -55,6 +55,9 @@ final class CameraNeo: NSObject, CameraProtocol {
     private var secondaryVideoOutput: AVCaptureVideoDataOutput?
     private var audioOutput: AVCaptureAudioDataOutput?
     private var stabilizationObservers: [NSKeyValueObservation] = []
+    /// iPad (audit A-4): system pressure observers of the capture devices, and the level last logged per device.
+    private var systemPressureObservers: [NSKeyValueObservation] = []
+    private let systemPressureLevels = Atomic<[ObjectIdentifier: String]>(value: [:])
     private var primaryConstituentObserver: NSKeyValueObservation?
     private let secondaryVideoOutputIdentity = Atomic<ObjectIdentifier?>(value: nil)
     private let audioOutputIdentity = Atomic<ObjectIdentifier?>(value: nil)
@@ -1016,6 +1019,55 @@ final class CameraNeo: NSObject, CameraProtocol {
                 }
             })
         }
+        self.configureTabletCaptureDiagnostics()
+    }
+
+    /// iPad only (audit A-4, A-1): watches each capture device's system pressure, which is what stops a camera that
+    /// shares the screen in Stage Manager, and logs once how the front camera's video-data connection rotates its
+    /// buffers (Spring 2024+ iPads default to 180°). Both only log (`CameraTabletPolicy`); nothing about the capture
+    /// changes.
+    private func configureTabletCaptureDiagnostics() {
+        dispatchPrecondition(condition: .onQueue(self.sessionQueue))
+        self.systemPressureObservers.removeAll()
+        guard UIDevice.current.userInterfaceIdiom == .pad, let log = self.log else {
+            return
+        }
+        let levels = self.systemPressureLevels
+        for (output, device) in [
+            (self.primaryVideoOutput, self.useMultiCam ? self.backDevice : self.activeDevice),
+            (self.secondaryVideoOutput, self.frontDevice)
+        ] {
+            guard let device else {
+                continue
+            }
+            let position = device.position == .front ? "front" : "back"
+            let deviceId = ObjectIdentifier(device)
+            self.systemPressureObservers.append(device.observe(\.systemPressureState, options: [.initial, .new]) { device, _ in
+                let state = device.systemPressureState
+                let level = CameraTabletPolicy.systemPressureLevelName(state.level)
+                let previous = levels.with { $0[deviceId] }
+                if let message = CameraTabletPolicy.systemPressureMessage(isTablet: true, position: position, level: level, previousLevel: previous, factors: CameraTabletPolicy.systemPressureFactorNames(state.factors)) {
+                    let _ = levels.modify { current in
+                        var current = current
+                        current[deviceId] = level
+                        return current
+                    }
+                    log(message)
+                }
+            })
+            if device.position == .front, let connection = output?.connection(with: .video) {
+                var connectionAngle = 0.0
+                var captureAngle: Double?
+                if #available(iOS 17.0, *) {
+                    connectionAngle = Double(connection.videoRotationAngle)
+                    let coordinator = AVCaptureDevice.RotationCoordinator(device: device, previewLayer: nil)
+                    captureAngle = Double(coordinator.videoRotationAngleForHorizonLevelCapture)
+                }
+                if let message = CameraTabletPolicy.rotationDiagnosticsMessage(isTablet: true, position: position, connectionAngle: connectionAngle, coordinatorCaptureAngle: captureAngle, coordinatorPreviewAngle: nil) {
+                    log(message)
+                }
+            }
+        }
     }
 
     private func logCaptureState(reason: String) {
@@ -1217,6 +1269,7 @@ final class CameraNeo: NSObject, CameraProtocol {
     private func tearDownSession() {
         dispatchPrecondition(condition: .onQueue(self.sessionQueue))
         self.stabilizationObservers.removeAll()
+        self.systemPressureObservers.removeAll()
         self.primaryConstituentObserver = nil
         self.primaryVideoOutput?.setSampleBufferDelegate(nil, queue: nil)
         self.secondaryVideoOutput?.setSampleBufferDelegate(nil, queue: nil)

@@ -51,6 +51,7 @@ swift_library(
         "Sources/**/*.swift",
     ], exclude = [
         "Sources/CameraMultitaskingPolicy.swift",
+        "Sources/CameraTabletPolicy.swift",
     ]),
     copts = [
         "-warnings-as-errors",
@@ -71,6 +72,7 @@ swift_library(
         "Tests/**/*.swift",
     ], exclude = [
         "Tests/CameraMultitaskingPolicyTests.swift",
+        "Tests/CameraTabletPolicyTests.swift",
     ]),
     deps = [
         ":Camera",
@@ -102,6 +104,7 @@ swift_library(
     module_name = "CameraMultitaskingPolicy",
     srcs = [
         "Sources/CameraMultitaskingPolicy.swift",
+        "Sources/CameraTabletPolicy.swift",
     ],
     copts = [
         "-warnings-as-errors",
@@ -116,6 +119,7 @@ swift_library(
     testonly = True,
     srcs = [
         "Tests/CameraMultitaskingPolicyTests.swift",
+        "Tests/CameraTabletPolicyTests.swift",
     ],
     deps = [
         ":CameraMultitaskingPolicy",

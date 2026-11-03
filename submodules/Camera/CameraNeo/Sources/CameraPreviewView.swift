@@ -3,6 +3,7 @@ import UIKit
 import AVFoundation
 import SwiftSignalKit
 import Camera
+import CameraMultitaskingPolicy
 
 private extension UIInterfaceOrientation {
     var videoOrientation: AVCaptureVideoOrientation {
@@ -61,7 +62,8 @@ final class CameraPreviewView: UIView, CameraSimplePreviewView {
         guard self.videoPreviewLayer.connection?.isVideoOrientationSupported == true else {
             return
         }
-        let interfaceOrientation = self.window?.windowScene?.interfaceOrientation ?? .portrait
+        // iPad (audit A-8): the scene's effective geometry, which follows a resizable window.
+        let interfaceOrientation = CameraTabletPolicy.interfaceOrientation(of: self.window?.windowScene)
         self.videoPreviewLayer.connection?.videoOrientation = interfaceOrientation.videoOrientation
         self.videoPreviewLayer.removeAllAnimations()
     }

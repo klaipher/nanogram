@@ -1602,7 +1602,7 @@ public class VideoMessageCameraScreen: ViewController {
             if layout.metrics.isTablet {
                 // Use the scene this view actually lives in; `connectedScenes` is unordered and a
                 // tablet can have several window scenes.
-                let statusBarOrientation = self.containerView.window?.windowScene?.interfaceOrientation ?? .portrait
+                let statusBarOrientation = self.containerView.window?.windowScene?.nanogramInterfaceOrientation() ?? .portrait // iPad: effective geometry (audit A-8)
                 
                 // The side the circle sits at keeps that side's strip inset too (iPhone Duo's unfolded screen in landscape).
                 if statusBarOrientation == .landscapeLeft {
