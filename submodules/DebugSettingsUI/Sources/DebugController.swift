@@ -1009,7 +1009,8 @@ enum DebugControllerEntry: ItemListNodeEntry {
                     arguments.presentController(OverlayStatusController(theme: presentationData.theme, type: .genericSuccess("No MetricKit reports yet. iOS delivers them about once a day.", false)), nil)
                     return
                 }
-                presentDebugLogExport(host: arguments.exportHost, kind: .metricKitReports, prepare: debugLogConcatenatedArchiveSignal(.single(reports)))
+                // The JSON reports go into the archive unchanged, so each one still opens as JSON.
+                presentDebugLogExport(host: arguments.exportHost, kind: .metricKitReports, prepare: debugLogFilesArchiveSignal(.single(reports)))
             })
         }
     }

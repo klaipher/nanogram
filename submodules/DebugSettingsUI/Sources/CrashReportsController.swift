@@ -274,7 +274,7 @@ private enum CrashReportEntry: ItemListNodeEntry {
                 }).start()
             })
         case .alertsInfo:
-            return ItemListTextItem(presentationData: presentationData, text: .plain("Show a prompt after the app crashes so you can send a log to help us fix the issue."), sectionId: self.section)
+            return ItemListTextItem(presentationData: presentationData, text: .plain("After Nanogram crashes, offer to send the crash log to someone who can look at it."), sectionId: self.section)
         case .reportsHeader:
             return ItemListSectionHeaderItem(presentationData: presentationData, text: "RECENT CRASHES", sectionId: self.section)
         case let .report(_, _, report):
@@ -383,7 +383,7 @@ public func setupCrashReportPrompt(context: AccountContext, isInternalBuild: Boo
         let pending = reports.filter { !$0.wasPresented }
         guard !pending.isEmpty else { return }
         didPresent = true
-        let controller = textAlertController(sharedContext: context.sharedContext, title: "New Crash Log Available", text: "The app closed unexpectedly.\n\n Would you like to send a crash log to help us fix the issue?", actions: [
+        let controller = textAlertController(sharedContext: context.sharedContext, title: "New Crash Log Available", text: "Nanogram closed unexpectedly. You can send the crash log to someone who can look at it.", actions: [
             TextAlertAction(type: .genericAction, title: "Not Now", action: {}),
             TextAlertAction(type: .defaultAction, title: "Send Log", action: {
                 actions.send(pending[0])

@@ -668,6 +668,9 @@ Invariants the compiler does not check; each has a test.
   Nanogram…" (a chat the user picks), "Via Email…" (share sheet without a Mail account), "Other Apps…". Each kind
   only supplies its files. Nothing is sent to a fixed chat or bot (the crash log used to go to
   `@iOSCrashReportsBot`); `DebugLogExportTests` scans the module's sources for that and pins the Nanogram names.
+  One export runs at a time (`DebugLogExportGate`, under the loading overlay). A chat send references the prepared
+  files by path (`LocalFileReferenceMediaResource`, never read on main) and keeps their directory until the messages
+  have left. MetricKit reports are zipped unchanged, as JSON.
 - **MetricKit**: `CrashReportCollector` keeps metric/diagnostic reports in `MetricReportStore`
   (`Library/Application Support/CrashReports/MetricKit`, deduplicated by content, bounded), via `MetricManager` on
   iOS 27+ and the MX payloads on iOS 15-26; crash diagnostics still feed `CrashReportStore` from MX on all

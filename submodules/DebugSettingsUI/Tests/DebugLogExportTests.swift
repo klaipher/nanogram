@@ -1,4 +1,6 @@
 import XCTest
+import SwiftSignalKit
+import ZipArchive
 @testable import DebugSettingsUI
 
 /// Every log, report and diagnostics export in Debug Settings goes through one flow that lets the user pick the
@@ -67,6 +69,149 @@ final class DebugLogExportTests: XCTestCase {
         XCTAssertEqual(copied.map(\.name), ["nanogram-logs-critical-a.log", "nanogram-logs-critical-b.log"])
     }
 
+    func testOnlyTheCrashLogAsksBeforeSendingToAChat() {
+        for kind in DebugLogExportKind.allCases {
+            let spec = debugLogExportSpec(kind, appVersion: self.version, buildNumber: self.build)
+            XCTAssertEqual(spec.confirmsChatSend, kind == .crashReport, "\(kind)")
+            XCTAssertEqual(spec.failureNote != nil, kind == .crashReport, "\(kind)")
+        }
+        let crash = debugLogExportSpec(.crashReport, appVersion: self.version, buildNumber: self.build)
+        XCTAssertEqual(crash.failureNote, "The log remains saved on this device.")
+    }
+
+    /// MetricKit reports are JSON; they go into the archive byte for byte, under their own names, not joined into text.
+    func testFilesArchiveKeepsEachJSONReport() throws {
+        let directory = FileManager.default.temporaryDirectory.appendingPathComponent(UUID().uuidString, isDirectory: true)
+        try FileManager.default.createDirectory(at: directory, withIntermediateDirectories: true)
+        defer { try? FileManager.default.removeItem(at: directory) }
+        let reports = directory.appendingPathComponent("reports", isDirectory: true)
+        try FileManager.default.createDirectory(at: reports, withIntermediateDirectories: true)
+        let first = reports.appendingPathComponent("metric-1.json")
+        let second = reports.appendingPathComponent("diagnostic-2.json")
+        let firstData = Data(#"{"cpuMetrics":{"cumulativeCPUTime":"12 sec"}}"#.utf8)
+        let secondData = Data(#"{"crashDiagnostics":[{"exceptionType":1}]}"#.utf8)
+        try firstData.write(to: first)
+        try secondData.write(to: second)
+
+        let output = directory.appendingPathComponent("out", isDirectory: true)
+        try FileManager.default.createDirectory(at: output, withIntermediateDirectories: true)
+        let archive = try XCTUnwrap(debugLogFilesArchive(logs: [("metric-1.json", first.path), ("diagnostic-2.json", second.path)], baseName: "nanogram-logs-metrickit", in: output))
+        XCTAssertEqual(archive.name, "nanogram-logs-metrickit.zip")
+        XCTAssertEqual(archive.mimeType, "application/zip")
+        // Only the archive is left in the export directory; the stored reports are untouched.
+        XCTAssertEqual(try FileManager.default.contentsOfDirectory(atPath: output.path), ["nanogram-logs-metrickit.zip"])
+        XCTAssertEqual(try Data(contentsOf: first), firstData)
+
+        let unzipped = directory.appendingPathComponent("unzipped", isDirectory: true)
+        XCTAssertTrue(SSZipArchive.unzipFile(atPath: archive.path, toDestination: unzipped.path))
+        XCTAssertEqual(Set(try FileManager.default.contentsOfDirectory(atPath: unzipped.path)), ["metric-1.json", "diagnostic-2.json"])
+        XCTAssertEqual(try Data(contentsOf: unzipped.appendingPathComponent("metric-1.json")), firstData)
+        XCTAssertEqual(try Data(contentsOf: unzipped.appendingPathComponent("diagnostic-2.json")), secondData)
+
+        XCTAssertNil(debugLogFilesArchive(logs: [], baseName: "nanogram-logs-metrickit", in: output))
+    }
+
+    func testGateLetsOneExportRunAtATime() {
+        let gate = DebugLogExportGate()
+        XCTAssertFalse(gate.isRunning)
+        let first = gate.begin()
+        XCTAssertNotNil(first)
+        XCTAssertNil(gate.begin())
+        XCTAssertTrue(gate.isRunning)
+        gate.end(first!)
+        XCTAssertFalse(gate.isRunning)
+        let second = gate.begin()
+        XCTAssertNotNil(second)
+        // A finished run's token cannot end a later one.
+        gate.end(first!)
+        XCTAssertTrue(gate.isRunning)
+        gate.end(second!)
+        XCTAssertFalse(gate.isRunning)
+    }
+
+    /// A repeat tap while the files are being prepared (or handed over) starts nothing: no second overlay, no
+    /// second preparation.
+    func testRepeatExportIsIgnoredUntilTheFirstIsDelivered() throws {
+        let gate = DebugLogExportGate()
+        let spec = debugLogExportSpec(.allLogs, appVersion: self.version, buildNumber: self.build)
+        var preparations = 0
+        var progressShown = 0
+        var progressHidden = 0
+        var subscribers: [Subscriber<[DebugLogExportFile], NoError>] = []
+        let prepare: (URL, DebugLogExportSpec) -> Signal<[DebugLogExportFile], NoError> = { _, _ in
+            preparations += 1
+            return Signal { subscriber in
+                subscribers.append(subscriber)
+                return EmptyDisposable
+            }
+        }
+        var delivered: [(files: [DebugLogExportFile], directory: URL, finish: () -> Void)] = []
+        let run: () -> Bool = {
+            return runDebugLogExport(gate: gate, spec: spec, prepare: prepare, showProgress: {
+                progressShown += 1
+                return { progressHidden += 1 }
+            }, nothingToSend: {
+                XCTFail("nothing to send")
+            }, deliver: { files, directory, finish in
+                delivered.append((files, directory, finish))
+            })
+        }
+
+        XCTAssertTrue(run())
+        XCTAssertFalse(run())
+        XCTAssertEqual(preparations, 1)
+        XCTAssertEqual(progressShown, 1)
+        XCTAssertEqual(progressHidden, 0)
+
+        let file = DebugLogExportFile(name: "nanogram-logs-all.zip", path: "/nonexistent/nanogram-logs-all.zip", mimeType: "application/zip")
+        subscribers[0].putNext([file])
+        subscribers[0].putCompletion()
+        XCTAssertEqual(delivered.count, 1)
+        XCTAssertEqual(delivered[0].files, [file])
+        XCTAssertEqual(progressHidden, 1)
+        // Still being handed over.
+        XCTAssertFalse(run())
+
+        delivered[0].finish()
+        try? FileManager.default.removeItem(at: delivered[0].directory)
+        XCTAssertFalse(gate.isRunning)
+        XCTAssertTrue(run())
+        XCTAssertEqual(preparations, 2)
+        XCTAssertEqual(progressShown, 2)
+    }
+
+    func testExportWithNoFilesEndsTheRunAndRemovesItsDirectory() {
+        let gate = DebugLogExportGate()
+        let spec = debugLogExportSpec(.storageStats, appVersion: self.version, buildNumber: self.build)
+        var directory: URL?
+        var nothingToSend = 0
+        var progressHidden = 0
+        XCTAssertTrue(runDebugLogExport(gate: gate, spec: spec, prepare: { url, _ in
+            directory = url
+            return .single([])
+        }, showProgress: {
+            return { progressHidden += 1 }
+        }, nothingToSend: {
+            nothingToSend += 1
+        }, deliver: { _, _, _ in
+            XCTFail("delivered nothing")
+        }))
+        XCTAssertEqual(nothingToSend, 1)
+        XCTAssertEqual(progressHidden, 1)
+        XCTAssertFalse(gate.isRunning)
+        XCTAssertNotNil(directory)
+        XCTAssertFalse(FileManager.default.fileExists(atPath: directory?.path ?? "/"))
+
+        // A preparation that completes without files counts as nothing to send too.
+        XCTAssertTrue(runDebugLogExport(gate: gate, spec: spec, prepare: { _, _ in .complete() }, showProgress: { {} }, nothingToSend: {
+            nothingToSend += 1
+        }, deliver: { _, _, _ in
+            XCTFail("delivered nothing")
+        }))
+        XCTAssertEqual(nothingToSend, 2)
+        XCTAssertFalse(gate.isRunning)
+    }
+
     /// The module's sources are bundled with the tests (`data` in BUILD). Only the shared export flow may pick a
     /// chat or send a message, and nothing may resolve a fixed username.
     func testNoExportUsesAFixedPeer() throws {
@@ -75,7 +220,7 @@ final class DebugLogExportTests: XCTestCase {
         XCTAssertTrue(sources.keys.contains("CrashReportsController.swift"))
         XCTAssertTrue(sources.keys.contains("DebugLogExport.swift"))
         for (name, text) in sources {
-            for forbidden in ["resolvePeerByName", "iOSCrashReportsBot", "PeerId(", "EnginePeer.Id(", "Via Telegram", "Telegram Logs", "Telegram Team"] {
+            for forbidden in ["resolvePeerByName", "iOSCrashReportsBot", "PeerId(", "EnginePeer.Id(", "Via Telegram", "Telegram Logs", "Telegram Team", "help us", "helping make"] {
                 XCTAssertFalse(text.contains(forbidden), "\(name) contains \(forbidden)")
             }
             if name != "DebugLogExport.swift" {

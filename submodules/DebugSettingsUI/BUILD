@@ -56,6 +56,8 @@ swift_library(
     ]),
     deps = [
         ":DebugSettingsUI",
+        "//submodules/SSignalKit/SwiftSignalKit:SwiftSignalKit",
+        "//third-party/ZipArchive:ZipArchive",
         "//submodules/TelegramCore:TelegramCore",
         "//submodules/TelegramPresentationData:TelegramPresentationData",
         "//submodules/TelegramUIPreferences:TelegramUIPreferences",

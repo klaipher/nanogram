@@ -7,6 +7,8 @@ import TelegramCore
 import TelegramPresentationData
 import PresentationDataUtils
 import AccountContext
+import OverlayStatusController
+import UndoUI
 import ZipArchive
 
 // Every way logs, reports and diagnostics leave the device from Debug Settings goes through
@@ -59,6 +61,10 @@ struct DebugLogExportSpec: Equatable {
     var subject: String
     /// The base of every attachment / archive name: "nanogram-logs-full".
     var fileBaseName: String
+    /// Sending to a chat asks first, naming the chat and the account it is sent from.
+    var confirmsChatSend: Bool = false
+    /// A line added to the alert shown when the files could not be prepared or sent.
+    var failureNote: String?
 }
 
 func debugLogExportSpec(_ kind: DebugLogExportKind, appVersion: String, buildNumber: String) -> DebugLogExportSpec {
@@ -66,6 +72,8 @@ func debugLogExportSpec(_ kind: DebugLogExportKind, appVersion: String, buildNum
     let lowercased: String
     let base: String
     var note: String?
+    var confirmsChatSend = false
+    var failureNote: String?
     switch kind {
     case .logs:
         what = "Logs"
@@ -108,6 +116,8 @@ func debugLogExportSpec(_ kind: DebugLogExportKind, appVersion: String, buildNum
         lowercased = "crash log"
         base = "crash"
         note = "The archive includes the crash diagnostic, app and device details, and stack addresses. You can review these in View Log."
+        confirmsChatSend = true
+        failureNote = "The log remains saved on this device."
     case .mediaDownloadLogs:
         what = "Logs"
         lowercased = "media download logs"
@@ -118,7 +128,9 @@ func debugLogExportSpec(_ kind: DebugLogExportKind, appVersion: String, buildNum
         sheetTitle: "Send \(what)",
         note: note,
         subject: "Nanogram iOS \(lowercased) (\(appVersion) (\(buildNumber)))",
-        fileBaseName: "nanogram-logs-\(base)"
+        fileBaseName: "nanogram-logs-\(base)",
+        confirmsChatSend: confirmsChatSend,
+        failureNote: failureNote
     )
 }
 
@@ -166,6 +178,74 @@ private func makeDebugLogExportDirectory() -> URL {
     return directory
 }
 
+/// Lets one export run at a time, from the moment its files start being prepared until they are handed to their
+/// destination (Mail or the share sheet presented, the chat messages queued). Main queue only.
+final class DebugLogExportGate {
+    static let shared = DebugLogExportGate()
+
+    private var current: Int?
+    private var nextToken = 0
+
+    var isRunning: Bool {
+        return self.current != nil
+    }
+
+    /// A token for `end`, or nil while another export runs.
+    func begin() -> Int? {
+        if self.current != nil {
+            return nil
+        }
+        self.nextToken += 1
+        self.current = self.nextToken
+        return self.nextToken
+    }
+
+    /// Ends the run `token` began; a stale token does nothing.
+    func end(_ token: Int) {
+        if self.current == token {
+            self.current = nil
+        }
+    }
+}
+
+/// Prepares an export's files under `gate` and returns false, doing nothing, while another export runs.
+/// `showProgress` is called when preparation starts and returns what hides it again. On the main queue, `deliver`
+/// gets the files, their directory and `finish`, which it calls once the files are handed over (it ends the run).
+/// Without files the directory is removed, the run ends and `nothingToSend` is called.
+@discardableResult
+func runDebugLogExport(gate: DebugLogExportGate, spec: DebugLogExportSpec, prepare: @escaping (URL, DebugLogExportSpec) -> Signal<[DebugLogExportFile], NoError>, showProgress: () -> (() -> Void), nothingToSend: @escaping () -> Void, deliver: @escaping ([DebugLogExportFile], URL, @escaping () -> Void) -> Void) -> Bool {
+    guard let token = gate.begin() else {
+        return false
+    }
+    let directory = makeDebugLogExportDirectory()
+    let hideProgress = showProgress()
+    var handled = false
+    let handle: ([DebugLogExportFile]) -> Void = { files in
+        if handled {
+            return
+        }
+        handled = true
+        hideProgress()
+        if files.isEmpty {
+            removeDebugLogExportDirectory(directory)
+            gate.end(token)
+            nothingToSend()
+        } else {
+            deliver(files, directory, {
+                gate.end(token)
+            })
+        }
+    }
+    let _ = (prepare(directory, spec)
+    |> take(1)
+    |> deliverOnMainQueue).start(next: { files in
+        handle(files)
+    }, completed: {
+        handle([])
+    })
+    return true
+}
+
 private func removeDebugLogExportDirectory(_ directory: URL) {
     let _ = try? FileManager.default.removeItem(at: directory)
 }
@@ -210,6 +290,28 @@ func debugLogZip(sources: [URL], baseName: String, in directory: URL) -> DebugLo
         let _ = try? FileManager.default.removeItem(at: source)
     }
     return DebugLogExportFile(name: archive.lastPathComponent, path: archive.path, mimeType: "application/zip")
+}
+
+/// Zips files unchanged, under their own names, into "<baseName>.zip" in the export directory.
+func debugLogFilesArchive(logs: [(String, String)], baseName: String, in directory: URL) -> DebugLogExportFile? {
+    let staging = directory.appendingPathComponent(baseName, isDirectory: true)
+    guard let _ = try? FileManager.default.createDirectory(at: staging, withIntermediateDirectories: true) else {
+        return nil
+    }
+    defer {
+        let _ = try? FileManager.default.removeItem(at: staging)
+    }
+    var sources: [URL] = []
+    for (name, path) in logs {
+        let target = staging.appendingPathComponent((name as NSString).lastPathComponent)
+        if let _ = try? FileManager.default.copyItem(at: URL(fileURLWithPath: path), to: target) {
+            sources.append(target)
+        }
+    }
+    if sources.isEmpty {
+        return nil
+    }
+    return debugLogZip(sources: sources, baseName: baseName, in: directory)
 }
 
 /// Copies files into the export directory under "<baseName>-<original name>", one attachment each.
@@ -291,43 +393,138 @@ private func presentMailOrShareSheet(host: DebugLogExportHost, subject: String, 
     presenter.present(composeController, animated: true, completion: nil)
 }
 
-private func sendToChat(context: AccountContext, peerId: EnginePeer.Id, files: [DebugLogExportFile], directory: URL) {
-    var messages: [EnqueueMessage] = []
-    for file in files {
-        guard let data = try? Data(contentsOf: URL(fileURLWithPath: file.path)) else {
-            continue
+/// Keeps a chat export's directory until its messages have left (sent, or failed): they reference the files by path
+/// until the media box takes them over when the upload starts. Main queue only.
+private final class DebugLogChatUploads {
+    static let shared = DebugLogChatUploads()
+
+    private var disposables: [URL: MetaDisposable] = [:]
+
+    func keep(_ directory: URL, until ids: [EngineMessage.Id], context: AccountContext) {
+        let disposable = MetaDisposable()
+        self.disposables[directory] = disposable
+        disposable.set((context.engine.data.subscribe(EngineDataList(ids.map(TelegramEngine.EngineData.Item.Messages.Message.init(id:))))
+        |> filter { messages -> Bool in
+            // A sent message is stored again under its server id, so the local id then reads nil.
+            return messages.allSatisfy { message in
+                guard let message else {
+                    return true
+                }
+                return !message.flags.contains(.Unsent) || message.flags.contains(.Failed)
+            }
         }
-        let id = Int64.random(in: Int64.min ... Int64.max)
-        let resource = LocalFileMediaResource(fileId: id, size: Int64(data.count), isSecretRelated: false)
-        context.engine.resources.storeResourceData(id: EngineMediaResource.Id(resource.id), data: data)
-        let media = TelegramMediaFile(fileId: EngineMedia.Id(namespace: Namespaces.Media.LocalFile, id: id), partialReference: nil, resource: resource, previewRepresentations: [], videoThumbnails: [], immediateThumbnailData: nil, mimeType: file.mimeType, size: Int64(data.count), attributes: [.FileName(fileName: file.name)], alternativeRepresentations: [])
-        messages.append(.message(text: "", attributes: [], inlineStickers: [:], mediaReference: .standalone(media: media), threadId: nil, replyToMessageId: nil, replyToStoryId: nil, localGroupingKey: nil, correlationId: nil, bubbleUpEmojiOrStickersets: []))
-    }
-    removeDebugLogExportDirectory(directory)
-    if !messages.isEmpty {
-        let _ = enqueueMessages(account: context.account, peerId: peerId, messages: messages).start()
+        |> take(1)
+        |> deliverOnMainQueue).start(next: { [weak self] _ in
+            removeDebugLogExportDirectory(directory)
+            self?.disposables.removeValue(forKey: directory)?.dispose()
+        }))
     }
 }
 
-private func presentNothingToSend(host: DebugLogExportHost, spec: DebugLogExportSpec) {
+private func debugLogFileSize(_ path: String) -> Int64? {
+    return ((try? FileManager.default.attributesOfItem(atPath: path))?[.size] as? NSNumber)?.int64Value
+}
+
+/// Sends the files as documents. They are read from disk by the upload (as Critical Logs always did), never on the
+/// main queue, and the directory stays until the messages have left.
+private func sendToChat(host: DebugLogExportHost, context: AccountContext, peer: EnginePeer, spec: DebugLogExportSpec, files: [DebugLogExportFile], directory: URL, finish: @escaping () -> Void) {
+    let messages: [EnqueueMessage] = files.map { file in
+        let id = Int64.random(in: Int64.min ... Int64.max)
+        let size = debugLogFileSize(file.path)
+        let resource = LocalFileReferenceMediaResource(localFilePath: file.path, randomId: id, isUniquelyReferencedTemporaryFile: true, size: size)
+        let media = TelegramMediaFile(fileId: EngineMedia.Id(namespace: Namespaces.Media.LocalFile, id: id), partialReference: nil, resource: resource, previewRepresentations: [], videoThumbnails: [], immediateThumbnailData: nil, mimeType: file.mimeType, size: size, attributes: [.FileName(fileName: file.name)], alternativeRepresentations: [])
+        return .message(text: "", attributes: [], inlineStickers: [:], mediaReference: .standalone(media: media), threadId: nil, replyToMessageId: nil, replyToStoryId: nil, localGroupingKey: nil, correlationId: nil, bubbleUpEmojiOrStickersets: [])
+    }
+    let _ = (enqueueMessages(account: context.account, peerId: peer.id, messages: messages)
+    |> deliverOnMainQueue).start(next: { ids in
+        finish()
+        let presentationData = host.sharedContext.currentPresentationData.with { $0 }
+        let queued = ids.compactMap { $0 }
+        if queued.isEmpty {
+            removeDebugLogExportDirectory(directory)
+            presentDebugLogExportFailure(host: host, title: "Could Not Send \(spec.what)", text: "Please try again.", spec: spec)
+            return
+        }
+        DebugLogChatUploads.shared.keep(directory, until: queued, context: context)
+        let savedMessages = peer.id == context.account.peerId
+        let text = savedMessages ? "Sent to **Saved Messages**." : "Sent to **\(peer.debugDisplayTitle.replacingOccurrences(of: "*", with: ""))**."
+        host.present(UndoOverlayController(presentationData: presentationData, content: .forward(savedMessages: savedMessages, text: text), elevatedLayout: false, animateInAsReplacement: false, action: { _ in
+            return false
+        }))
+    })
+}
+
+private func presentDebugLogExportFailure(host: DebugLogExportHost, title: String, text: String, spec: DebugLogExportSpec) {
     let presentationData = host.sharedContext.currentPresentationData.with { $0 }
-    host.present(textAlertController(sharedContext: host.sharedContext, title: "Could Not Prepare \(spec.what)", text: "There was nothing to send, or the files could not be written. Please try again.", actions: [
+    var text = text
+    if let failureNote = spec.failureNote {
+        text += " " + failureNote
+    }
+    host.present(textAlertController(sharedContext: host.sharedContext, title: title, text: text, actions: [
         TextAlertAction(type: .defaultAction, title: presentationData.strings.Common_OK, action: {})
     ]))
 }
 
-/// Prepares the files off the main queue, then hands them to `deliver` on the main queue.
-private func prepareDebugLogExport(host: DebugLogExportHost, spec: DebugLogExportSpec, prepare: @escaping (URL, DebugLogExportSpec) -> Signal<[DebugLogExportFile], NoError>, deliver: @escaping ([DebugLogExportFile], URL) -> Void) {
-    let directory = makeDebugLogExportDirectory()
-    let _ = (prepare(directory, spec)
-    |> take(1)
-    |> deliverOnMainQueue).start(next: { files in
-        if files.isEmpty {
-            removeDebugLogExportDirectory(directory)
-            presentNothingToSend(host: host, spec: spec)
-        } else {
-            deliver(files, directory)
+private func presentNothingToSend(host: DebugLogExportHost, spec: DebugLogExportSpec) {
+    presentDebugLogExportFailure(host: host, title: "Could Not Prepare \(spec.what)", text: "There was nothing to send, or the files could not be written. Please try again.", spec: spec)
+}
+
+/// The standard loading overlay, shown only if preparing takes longer than a moment.
+private func showDebugLogExportProgress(host: DebugLogExportHost) -> () -> Void {
+    var hidden = false
+    var controller: ViewController?
+    Queue.mainQueue().after(0.15, {
+        if hidden {
+            return
         }
+        let presentationData = host.sharedContext.currentPresentationData.with { $0 }
+        let progress = OverlayStatusController(theme: presentationData.theme, type: .loading(cancelled: nil))
+        controller = progress
+        host.present(progress)
+    })
+    return {
+        hidden = true
+        controller?.dismiss()
+        controller = nil
+    }
+}
+
+/// Prepares the files off the main queue under the loading overlay, then hands them to `deliver` on the main queue.
+/// Does nothing while another export is being prepared or delivered.
+private func prepareDebugLogExport(host: DebugLogExportHost, spec: DebugLogExportSpec, prepare: @escaping (URL, DebugLogExportSpec) -> Signal<[DebugLogExportFile], NoError>, deliver: @escaping ([DebugLogExportFile], URL, @escaping () -> Void) -> Void) {
+    runDebugLogExport(gate: DebugLogExportGate.shared, spec: spec, prepare: prepare, showProgress: {
+        return showDebugLogExportProgress(host: host)
+    }, nothingToSend: {
+        presentNothingToSend(host: host, spec: spec)
+    }, deliver: deliver)
+}
+
+/// For kinds that ask first: names the chat and the account the files are sent from.
+private func confirmChatSend(host: DebugLogExportHost, context: AccountContext, peer: EnginePeer, spec: DebugLogExportSpec, send: @escaping () -> Void) {
+    let _ = (context.engine.data.get(TelegramEngine.EngineData.Item.Peer.Peer(id: context.account.peerId))
+    |> deliverOnMainQueue).start(next: { account in
+        let presentationData = host.sharedContext.currentPresentationData.with { $0 }
+        var lines: [String] = []
+        if peer.id == context.account.peerId {
+            lines.append("To: Saved Messages")
+        } else {
+            lines.append("To: \(peer.debugDisplayTitle)")
+        }
+        if let account {
+            var sender = account.debugDisplayTitle
+            if let username = account.addressName, !username.isEmpty {
+                sender += " (@\(username))"
+            }
+            lines.append("From: \(sender)")
+        }
+        var text = lines.joined(separator: "\n")
+        if let note = spec.note {
+            text += "\n\n" + note
+        }
+        host.present(textAlertController(sharedContext: host.sharedContext, title: "\(spec.sheetTitle)?", text: text, actions: [
+            TextAlertAction(type: .genericAction, title: presentationData.strings.Common_Cancel, action: {}),
+            TextAlertAction(type: .defaultAction, title: "Send", action: send)
+        ]))
     })
 }
 
@@ -343,27 +540,38 @@ func performDebugLogExport(host: DebugLogExportHost, kind: DebugLogExportKind, d
         let controller = context.sharedContext.makePeerSelectionController(PeerSelectionControllerParams(context: context, filter: [.onlyWriteable, .excludeDisabled]))
         controller.peerSelected = { [weak controller] peer, _ in
             controller?.dismiss()
-            let peerId = peer.id
-            prepareDebugLogExport(host: host, spec: spec, prepare: prepare, deliver: { files, directory in
-                sendToChat(context: context, peerId: peerId, files: files, directory: directory)
-            })
+            let send = {
+                prepareDebugLogExport(host: host, spec: spec, prepare: prepare, deliver: { files, directory, finish in
+                    sendToChat(host: host, context: context, peer: peer, spec: spec, files: files, directory: directory, finish: finish)
+                })
+            }
+            if spec.confirmsChatSend {
+                confirmChatSend(host: host, context: context, peer: peer, spec: spec, send: send)
+            } else {
+                send()
+            }
         }
         host.push(controller)
     case .email:
-        prepareDebugLogExport(host: host, spec: spec, prepare: prepare, deliver: { files, directory in
+        prepareDebugLogExport(host: host, spec: spec, prepare: prepare, deliver: { files, directory, finish in
             presentMailOrShareSheet(host: host, subject: spec.subject, files: files, directory: directory)
+            finish()
         })
     case .otherApps:
-        prepareDebugLogExport(host: host, spec: spec, prepare: prepare, deliver: { files, directory in
+        prepareDebugLogExport(host: host, spec: spec, prepare: prepare, deliver: { files, directory, finish in
             presentShareSheet(host: host, files: files, directory: directory)
+            finish()
         })
     }
 }
 
 /// Asks where to send an export ("Via Nanogram…", "Via Email…", "Other Apps…") and sends it there.
 /// `prepare` writes the export's files into the directory it is given; it runs only after a destination
-/// (and, for a chat, the chat) has been picked.
+/// (and, for a chat, the chat) has been picked. Ignored while another export is being prepared or delivered.
 func presentDebugLogExport(host: DebugLogExportHost, kind: DebugLogExportKind, prepare: @escaping (URL, DebugLogExportSpec) -> Signal<[DebugLogExportFile], NoError>) {
+    if DebugLogExportGate.shared.isRunning {
+        return
+    }
     let (version, build) = debugAppVersion()
     let spec = debugLogExportSpec(kind, appVersion: version, buildNumber: build)
     let presentationData = host.sharedContext.currentPresentationData.with { $0 }
@@ -400,6 +608,18 @@ func debugLogConcatenatedArchiveSignal(_ logs: Signal<[(String, String)], NoErro
         |> deliverOn(Queue.concurrentDefaultQueue())
         |> map { logs -> [DebugLogExportFile] in
             return debugLogConcatenatedArchive(logs: logs, additionalInfo: additionalInfo, baseName: spec.fileBaseName, in: directory).flatMap { [$0] } ?? []
+        }
+    }
+}
+
+/// Files zipped unchanged under their own names (MetricKit's JSON reports, so each still opens as JSON).
+func debugLogFilesArchiveSignal(_ logs: Signal<[(String, String)], NoError>) -> (URL, DebugLogExportSpec) -> Signal<[DebugLogExportFile], NoError> {
+    return { directory, spec in
+        return logs
+        |> take(1)
+        |> deliverOn(Queue.concurrentDefaultQueue())
+        |> map { logs -> [DebugLogExportFile] in
+            return debugLogFilesArchive(logs: logs, baseName: spec.fileBaseName, in: directory).flatMap { [$0] } ?? []
         }
     }
 }
