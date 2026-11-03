@@ -890,8 +890,18 @@ GPU (Metal) rendering of stickers and emoji, its debug switches and how to measu
   (`AdaptationSizeIndex`) and then only stats sizes this process has seen; every place that stores
   an item must call `adaptationSizeIndex.noteSize`. Its lock guards only its two sets: listing and
   stat run outside it, because `getFirstFrameSynchronously` runs on the main thread and must not wait
-  for a fetch queue's listing. After a full conversion the `-f` file is made
-  only if missing, on the fetch queue, while the item context stays registered.
+  for a fetch queue's listing. A finished conversion is moved into place, and its missing `-f` file
+  made, on a dedicated serial store queue (`DCTAnimationCacheImpl.storeQueue`; then reported from the
+  cache queue), while the item context stays registered. Not on its fetch queue, where it waited
+  behind every conversion queued meanwhile (a new reaction icon or emoji stayed empty for seconds),
+  and not on the cache queue, whose hits must not wait for file work (`DCTAnimationCacheStoreQueueTests`).
+- **Reaction hand-off**: a reaction sent from the picker lands in the message's button as the
+  picker's node, which stays until the button's `InlineStickerItemLayer` has drawn a frame
+  (`hasDisplayedContent`; the silhouette placeholder does not count), at most 3 s
+  (`ReactionIconContentGate`, `ReactionButtonListComponentTests`). When the reaction's effect file
+  is not downloaded the hand-off is immediate (`reactionSwitchesToInlineImmediately`,
+  `ReactionSelectionNodeTests`) and one log line says so; upstream already prefetches every
+  available reaction's effects, so do not add another prefetch.
 - **Voice recorder input** (`submodules/VoiceRecorderInput`, C): RemoteIO's input callback is
   `VoiceRecorderInputRenderCallback` with the `VoiceRecorderInput` as refCon; nothing Swift runs on
   the IO thread. `ManagedAudioRecorderContext` sets the unit after `AudioUnitInitialize`, clears it

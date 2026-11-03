@@ -61,8 +61,15 @@ larger.
   - *CPU*: today's behaviour.
   - *GPU for large*: nodes of at least 200x200 pixels (`animatedStickerLargePixelArea`) use the Metal
     renderer and the `-mtl` cache. Chat stickers are set up at 384 px on the long side and the
-    full-screen preview at 400x400; panel and pack grids use 160x160 and emoji and reactions are
-    smaller, so those stay on the CPU.
+    full-screen preview at 400x400; panel and pack grids use 160x160 and emoji are smaller, so those
+    stay on the CPU. Reactions are not smaller: their effects are 240-320 px and the large reaction
+    240, all over the threshold. Every reaction node therefore asks for the CPU renderer itself
+    (`AnimatedStickerRendererMode.reactions`, as upstream, which never draws reactions with Metal);
+    before that a sent reaction was often the process's first Metal user and set Metal up on the
+    main thread in the tap (`ReactionRendererModeTests`).
+  - The Metal device, shader library and render pipelines are set up once per process on a utility
+    queue right after launch (`AnimatedStickerMetalPrewarm.start()`, from the app delegate), so the
+    first large sticker does not do it on the main thread (`MetalPrewarmTests`).
   - *GPU for all*: every `DefaultAnimatedStickerNodeImpl`.
   - The decision is `animatedStickerUsesMetalRenderer(mode:explicitlyRequested:width:height:)` and is
     made once per node: in `didLoad` when it does not depend on size, otherwise at the first `setup`
