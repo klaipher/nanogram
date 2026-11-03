@@ -183,18 +183,6 @@ private func legacyDocumentsPath() -> String {
     return NSSearchPathForDirectoriesInDomains(.documentDirectory, .userDomainMask, true)[0] + "/legacy"
 }
 
-protocol SupportedStartCallIntent {
-    @available(iOS 10.0, *)
-    var contacts: [INPerson]? { get }
-}
-
-extension INStartCallIntent: SupportedStartCallIntent {}
-
-protocol SupportedStartVideoCallIntent {
-    @available(iOS 10.0, *)
-    var contacts: [INPerson]? { get }
-}
-
 private enum QueuedWakeup: Int32 {
     case call
     case backgroundLocation
@@ -2505,7 +2493,7 @@ private func extractAccountManagerState(records: AccountRecordsView<TelegramAcco
             callKitIntegration.reportIncomingCall(
                 uuid: internalId,
                 stableId: groupCallId,
-                handle: "\(fromPeerId.id._internalGetInt64Value())",
+                handle: CallKitHandle.value(accountId: accountId, peerId: fromPeerId),
                 phoneNumber: phoneNumber.flatMap(formatPhoneNumber),
                 isVideo: isVideo,
                 displayTitle: displayTitle,
@@ -2628,7 +2616,7 @@ private func extractAccountManagerState(records: AccountRecordsView<TelegramAcco
             callKitIntegration.reportIncomingCall(
                 uuid: CallSessionManager.getStableIncomingUUID(stableId: callUpdate.callId),
                 stableId: callUpdate.callId,
-                handle: "\(callUpdate.peer.id.id._internalGetInt64Value())",
+                handle: CallKitHandle.value(accountId: accountId, peerId: callUpdate.peer.id),
                 phoneNumber: phoneNumber.flatMap(formatPhoneNumber),
                 isVideo: callUpdate.isVideo,
                 displayTitle: callUpdate.peer.debugDisplayTitle,
@@ -2820,12 +2808,10 @@ private func extractAccountManagerState(records: AccountRecordsView<TelegramAcco
         if #available(iOS 10.0, *) {
             var startCallContacts: [INPerson]?
             var isVideo = false
-            if let startCallIntent = userActivity.interaction?.intent as? SupportedStartCallIntent {
+            if let startCallIntent = userActivity.interaction?.intent as? INStartCallIntent {
                 startCallContacts = startCallIntent.contacts
-                isVideo = false
-            } else if let startCallIntent = userActivity.interaction?.intent as? SupportedStartVideoCallIntent {
-                startCallContacts = startCallIntent.contacts
-                isVideo = true
+                // Phone ▸ Recents and the app's donations say whether it was a video call.
+                isVideo = startCallIntent.callCapability == .videoCall
             }
             
             if let startCallContacts = startCallContacts {
@@ -2859,9 +2845,9 @@ private func extractAccountManagerState(records: AccountRecordsView<TelegramAcco
                 
                 // A call the notification service extension rang (its donated INStartCallIntent):
                 // call the caller back from the account the call came to, audio or video as it was.
-                if let contact = startCallContacts.first, let callBack = [contact.customIdentifier, contact.personHandle?.value].lazy.compactMap({ $0.flatMap(IncomingCallNotifications.callBack(identifier:)) }).first {
-                    let isVideoCall = (userActivity.interaction?.intent as? INStartCallIntent)?.callCapability == .videoCall
-                    self.startCallWhenReady(accountId: AccountRecordId(rawValue: callBack.accountId), peerId: PeerId(callBack.peerId), isVideo: isVideoCall)
+                // CallKit handles (Phone ▸ Recents) and the app's own donations name the account the same way.
+                if let contact = startCallContacts.first, let callBack = [contact.customIdentifier, contact.personHandle?.value].lazy.compactMap({ $0.flatMap(CallKitHandle.parse) }).first(where: { $0.accountId != nil }), let accountId = callBack.accountId {
+                    self.startCallWhenReady(accountId: accountId, peerId: callBack.peerId, isVideo: isVideo)
                     return true
                 }
 
@@ -2878,18 +2864,17 @@ private func extractAccountManagerState(records: AccountRecordsView<TelegramAcco
                         if let peerByContact = peerByContact {
                             startCall(peerByContact.id)
                             processed = true
-                        } else if let handle = contact.customIdentifier, handle.hasPrefix("tg") {
-                            let string = handle.suffix(from: handle.index(handle.startIndex, offsetBy: 2))
-                            if let value = Int64(string) {
-                                startCall(PeerId(value))
-                                processed = true
-                            }
+                        } else if let handle = contact.customIdentifier, handle.hasPrefix("tg"), let parsed = CallKitHandle.parse(handle) {
+                            // "tg<raw user id>" (older call donations) or "tg<packed peer id>" (Siri).
+                            startCall(parsed.peerId)
+                            processed = true
                         }
                         if !processed, let handle = contact.personHandle, let value = handle.value {
                             switch handle.type {
                                 case .unknown:
-                                    if let value = Int64(value) {
-                                        startCall(PeerId(value))
+                                    // An older CallKit handle: the raw user id, which reads as a group when packed.
+                                    if let parsed = CallKitHandle.parse(value) {
+                                        startCall(parsed.peerId)
                                         processed = true
                                     }
                                 case .phoneNumber:

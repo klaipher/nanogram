@@ -231,8 +231,8 @@ public final class PresentationCallManagerImpl: PresentationCallManager {
             var peerId: EnginePeer.Id?
             if let maybePeerId = maybePeerId {
                 peerId = maybePeerId
-            } else if let userId = Int64(handle) {
-                peerId = EnginePeer.Id(namespace: Namespaces.Peer.CloudUser, id: EnginePeer.Id.Id._internalFromInt64Value(userId))
+            } else if let parsed = CallKitHandle.parse(handle) {
+                peerId = parsed.peerId
             }
             guard let peerId = peerId else {
                 return .single(false)

@@ -64,7 +64,7 @@ public final class CallKitIntegration {
     func startCall(context: AccountContext, peerId: EnginePeer.Id, phoneNumber: String?, localContactId: String?, isVideo: Bool, displayTitle: String, completion: ((Error?) -> Void)? = nil) {
         sharedProviderDelegate?.startCall(context: context, peerId: peerId, phoneNumber: phoneNumber, isVideo: isVideo, displayTitle: displayTitle, completion: { [weak self] error in
             if error == nil {
-                self?.donateIntent(peerId: peerId, displayTitle: displayTitle, localContactId: localContactId)
+                self?.donateIntent(accountId: context.account.id, peerId: peerId, isVideo: isVideo, displayTitle: displayTitle, localContactId: localContactId)
             }
             completion?(error)
         })
@@ -95,11 +95,12 @@ public final class CallKitIntegration {
         sharedProviderDelegate?.reportOutgoingCallConnected(uuid: uuid, at: date)
     }
     
-    private func donateIntent(peerId: EnginePeer.Id, displayTitle: String, localContactId: String?) {
-        let handle = INPersonHandle(value: "tg\(peerId.id._internalGetInt64Value())", type: .unknown)
-        let contact = INPerson(personHandle: handle, nameComponents: nil, displayName: displayTitle, image: nil, contactIdentifier: localContactId, customIdentifier: "tg\(peerId.id._internalGetInt64Value())")
+    private func donateIntent(accountId: AccountRecordId, peerId: EnginePeer.Id, isVideo: Bool, displayTitle: String, localContactId: String?) {
+        let identifier = CallKitHandle.value(accountId: accountId, peerId: peerId)
+        let handle = INPersonHandle(value: identifier, type: .unknown)
+        let contact = INPerson(personHandle: handle, nameComponents: nil, displayName: displayTitle, image: nil, contactIdentifier: localContactId, customIdentifier: identifier)
     
-        let intent = INStartCallIntent(callRecordFilter: nil, callRecordToCallBack: nil, audioRoute: .unknown, destinationType: .normal, contacts: [contact], callCapability: .audioCall)
+        let intent = INStartCallIntent(callRecordFilter: nil, callRecordToCallBack: nil, audioRoute: .unknown, destinationType: .normal, contacts: [contact], callCapability: isVideo ? .videoCall : .audioCall)
         
         let interaction = INInteraction(intent: intent, response: nil)
         interaction.direction = .outgoing
@@ -224,7 +225,7 @@ class CallKitProviderDelegate: NSObject, CXProviderDelegate {
         if let phoneNumber = phoneNumber {
             handle = CXHandle(type: .phoneNumber, value: phoneNumber)
         } else {
-            handle = CXHandle(type: .generic, value: "\(peerId.id._internalGetInt64Value())")
+            handle = CXHandle(type: .generic, value: CallKitHandle.value(accountId: context.account.id, peerId: peerId))
         }
         
         self.uuidToPeerIdMapping[uuid] = peerId

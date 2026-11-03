@@ -65,6 +65,7 @@ swift_library(
         "//submodules/TelegramUIPreferences:TelegramUIPreferences",
         "//submodules/PhotoResources:PhotoResources",
         "//submodules/TelegramNotices:TelegramNotices",
+        "//submodules/NotificationsPresentationData:NotificationsPresentationData",
         "//submodules/MediaPlayer:UniversalMediaPlayer",
         "//submodules/DeviceAccess:DeviceAccess",
         "//submodules/TelegramAudio:TelegramAudio",
