@@ -506,7 +506,7 @@ ipa_binary_uuids() {
   for plist in "${plists[@]}"; do
     executable="${plist%/Info.plist}/$(plutil -extract CFBundleExecutable raw -o - "$work/$plist" 2>/dev/null)" || continue
     # A static framework embedded as a stub has an Info.plist and no executable.
-    if echo "$entries" | grep -Fxq "$executable"; then executables+=("$executable"); fi
+    if grep -Fxq "$executable" <<<"$entries"; then executables+=("$executable"); fi
   done
   [ ${#executables[@]} -gt 0 ] || die "no executables in $ipa"
   unzip -qo "$ipa" "${executables[@]}" -d "$work"
