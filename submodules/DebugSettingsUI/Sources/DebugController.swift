@@ -301,6 +301,10 @@ enum DebugControllerEntry: ItemListNodeEntry {
     case callsLivestreamHardwareDecoding(Bool)
     case callsNativeCapturePath(Bool)
     case callsEncoderLowLatency(Bool)
+    case callsSystemNoiseSuppression(Bool)
+    case callsAdvancedDucking(Bool)
+    case callsOpusFirstLossFloor(Bool)
+    case callsKeepSessionMode(Bool)
     case enableNetworkFramework(Bool)
     case enableNetworkExperiments(Bool)
     case rustMTProtoEngine(Bool)
@@ -324,7 +328,7 @@ enum DebugControllerEntry: ItemListNodeEntry {
             return DebugControllerSection.web.rawValue
         case .experimentsHeader, .keepChatNavigationStack, .skipReadHistory, .alwaysDisplayTyping, .crashOnSlowQueries, .crashOnMemoryPressure:
             return DebugControllerSection.experiments.rawValue
-        case .compressedEmojiCache, .checkSerializedData, .enableQuickReactionSwitch, .fakeGlass, .inputDecEngineEditor, .forceListViewImplChatBackend, .forceRLottieBackend, .respectSystemMicrophone, .videoMessageCameraMode, .videoMessageCloseFocus, .videoMessageCameraMatrix, .liveStreamV2, .groupCallReferenceEngine, .callsLivestreamHardwareDecoding, .callsNativeCapturePath, .callsEncoderLowLatency:
+        case .compressedEmojiCache, .checkSerializedData, .enableQuickReactionSwitch, .fakeGlass, .inputDecEngineEditor, .forceListViewImplChatBackend, .forceRLottieBackend, .respectSystemMicrophone, .videoMessageCameraMode, .videoMessageCloseFocus, .videoMessageCameraMatrix, .liveStreamV2, .groupCallReferenceEngine, .callsLivestreamHardwareDecoding, .callsNativeCapturePath, .callsEncoderLowLatency, .callsSystemNoiseSuppression, .callsAdvancedDucking, .callsOpusFirstLossFloor, .callsKeepSessionMode:
             return DebugControllerSection.experiments.rawValue
         case .springSendAnimation, .fakeWalletTransfers, .stickerRendererMode, .disableImageContentAnalysis, .disableLanguageRecognition, .localTranscription, .enableVoipTcp, .tabletDisplayLinkFrameRateCap:
             return DebugControllerSection.experiments.rawValue
@@ -432,6 +436,14 @@ enum DebugControllerEntry: ItemListNodeEntry {
             return 64
         case .callsEncoderLowLatency:
             return 65
+        case .callsSystemNoiseSuppression:
+            return 66
+        case .callsAdvancedDucking:
+            return 67
+        case .callsOpusFirstLossFloor:
+            return 68
+        case .callsKeepSessionMode:
+            return 69
         case .springSendAnimation:
             // ItemList asserts its entries are in strictly increasing order (`<`: section, then
             // `sortIndex`, which is the stableId here; ItemListControllerNode.swift), so an id must
@@ -983,6 +995,46 @@ enum DebugControllerEntry: ItemListNodeEntry {
                     })
                 }).start()
             })
+        case let .callsSystemNoiseSuppression(value):
+            return ItemListSwitchItem(presentationData: presentationData, systemStyle: .glass, title: "Calls: system noise suppression", value: value, sectionId: self.section, style: .blocks, updated: { value in
+                let _ = arguments.sharedContext.accountManager.transaction ({ transaction in
+                    transaction.updateSharedData(ApplicationSpecificSharedDataKeys.experimentalUISettings, { settings in
+                        var settings = settings?.get(ExperimentalUISettings.self) ?? ExperimentalUISettings.defaultSettings
+                        settings.callsSystemNoiseSuppression = value
+                        return EnginePreferencesEntry(settings)
+                    })
+                }).start()
+            })
+        case let .callsAdvancedDucking(value):
+            return ItemListSwitchItem(presentationData: presentationData, systemStyle: .glass, title: "Calls: advanced ducking (iOS 17)", value: value, sectionId: self.section, style: .blocks, updated: { value in
+                let _ = arguments.sharedContext.accountManager.transaction ({ transaction in
+                    transaction.updateSharedData(ApplicationSpecificSharedDataKeys.experimentalUISettings, { settings in
+                        var settings = settings?.get(ExperimentalUISettings.self) ?? ExperimentalUISettings.defaultSettings
+                        settings.callsAdvancedDucking = value
+                        return EnginePreferencesEntry(settings)
+                    })
+                }).start()
+            })
+        case let .callsOpusFirstLossFloor(value):
+            return ItemListSwitchItem(presentationData: presentationData, systemStyle: .glass, title: "Calls: Opus loss floor", value: value, sectionId: self.section, style: .blocks, updated: { value in
+                let _ = arguments.sharedContext.accountManager.transaction ({ transaction in
+                    transaction.updateSharedData(ApplicationSpecificSharedDataKeys.experimentalUISettings, { settings in
+                        var settings = settings?.get(ExperimentalUISettings.self) ?? ExperimentalUISettings.defaultSettings
+                        settings.callsOpusFirstLossFloor = value
+                        return EnginePreferencesEntry(settings)
+                    })
+                }).start()
+            })
+        case let .callsKeepSessionMode(value):
+            return ItemListSwitchItem(presentationData: presentationData, systemStyle: .glass, title: "Calls: keep video audio mode", value: value, sectionId: self.section, style: .blocks, updated: { value in
+                let _ = arguments.sharedContext.accountManager.transaction ({ transaction in
+                    transaction.updateSharedData(ApplicationSpecificSharedDataKeys.experimentalUISettings, { settings in
+                        var settings = settings?.get(ExperimentalUISettings.self) ?? ExperimentalUISettings.defaultSettings
+                        settings.callsKeepSessionMode = value
+                        return EnginePreferencesEntry(settings)
+                    })
+                }).start()
+            })
         case let .enableNetworkFramework(value):
             return ItemListSwitchItem(presentationData: presentationData, systemStyle: .glass, title: "Network X [Restart App]", value: value, sectionId: self.section, style: .blocks, updated: { value in
                 if let context = arguments.context {
@@ -1147,6 +1199,10 @@ func debugControllerEntries(environment: DebugControllerEntriesEnvironment, them
         entries.append(.callsLivestreamHardwareDecoding(experimentalSettings.callsLivestreamHardwareDecoding))
         entries.append(.callsNativeCapturePath(experimentalSettings.callsNativeCapturePath))
         entries.append(.callsEncoderLowLatency(experimentalSettings.callsEncoderLowLatency))
+        entries.append(.callsSystemNoiseSuppression(experimentalSettings.callsSystemNoiseSuppression))
+        entries.append(.callsAdvancedDucking(experimentalSettings.callsAdvancedDucking))
+        entries.append(.callsOpusFirstLossFloor(experimentalSettings.callsOpusFirstLossFloor))
+        entries.append(.callsKeepSessionMode(experimentalSettings.callsKeepSessionMode))
         entries.append(.springSendAnimation(experimentalSettings.springSendAnimation))
         if environment.isDevAccount {
             entries.append(.fakeWalletTransfers(experimentalSettings.fakeWalletTransfers))

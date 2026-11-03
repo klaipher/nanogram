@@ -1838,6 +1838,22 @@ static void (*InternalVoipLoggingFunction)(NSString *) = NULL;
     tgcalls::CallsRuntimeSwitches::setEncoderLowLatency(enabled);
 }
 
++ (void)setSystemNoiseSuppression:(bool)enabled {
+    tgcalls::CallsRuntimeSwitches::setSystemNoiseSuppression(enabled);
+}
+
++ (void)setAdvancedDucking:(bool)enabled {
+    tgcalls::CallsRuntimeSwitches::setAdvancedDucking(enabled);
+}
+
++ (void)setOpusFirstLossFloor:(bool)enabled {
+    tgcalls::CallsRuntimeSwitches::setOpusFirstLossFloor(enabled);
+}
+
++ (void)setKeepSessionMode:(bool)enabled {
+    tgcalls::CallsRuntimeSwitches::setKeepSessionMode(enabled);
+}
+
 + (void)setupSharedAudioSessionConfiguration {
     RTCAudioSessionConfiguration *sharedConfiguration = [RTCAudioSessionConfiguration webRTCConfiguration];
     sharedConfiguration.mode = AVAudioSessionModeVoiceChat;

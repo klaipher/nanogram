@@ -887,6 +887,15 @@ public final class OngoingCallContext {
         OngoingCallThreadLocalContextWebrtc.setEncoderLowLatency(encoderLowLatency)
     }
 
+    /// Local-only call audio switches from Debug Settings (same rules as the video ones): they change how this
+    /// device processes and routes its own audio, never what is negotiated or sent.
+    public static func applyAudioExperiments(systemNoiseSuppression: Bool, advancedDucking: Bool, opusFirstLossFloor: Bool, keepSessionMode: Bool) {
+        OngoingCallThreadLocalContextWebrtc.setSystemNoiseSuppression(systemNoiseSuppression)
+        OngoingCallThreadLocalContextWebrtc.setAdvancedDucking(advancedDucking)
+        OngoingCallThreadLocalContextWebrtc.setOpusFirstLossFloor(opusFirstLossFloor)
+        OngoingCallThreadLocalContextWebrtc.setKeepSessionMode(keepSessionMode)
+    }
+
     /// Aligns the shared WebRTC audio session configuration with the one ManagedAudioSession
     /// installs for a call, without touching the live AVAudioSession. Use this when the audio
     /// session has not been taken over yet.

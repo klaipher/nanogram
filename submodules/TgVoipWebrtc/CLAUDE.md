@@ -699,3 +699,27 @@ Host tests for the pure policies are header-only `cc_test`s declared with `polic
 seconds, no tgcalls_core): `livestream_decode_policy_test`, `capture_frame_policy_test`, `encoder_mode_policy_test`,
 `video_plane_layout_test`. Their `.cpp` files have a `main()`, so they are in `tgcalls/Package.swift`'s exclude list.
 **Shared tgcalls code: every commit here must be cherry-picked onto the Mac branch (`nanogram-mac`) too.**
+
+## Local call-audio switches (Batch B, 2026-11)
+
+Four more Debug Settings switches, same path (`CallsRuntimeSwitches`, `OngoingCallContext.applyAudioExperiments`), same
+rules: local only, nothing on the wire. Decisions are in `tgcalls/AudioCallPolicy.h` (host test `audio_call_policy_test`).
+
+- **`callsSystemNoiseSuppression`** (OFF): on iOS the call microphone runs on VoiceProcessingIO, which already does AEC,
+  noise suppression and AGC. With the switch on, `chooseCaptureProcessing` drops WebRTC's `noise_suppression` and
+  `highpass_filter` from the outgoing audio options in v2 (`InstanceV2Impl.cpp`), legacy (`MediaManager.cpp`) and group
+  (`GroupInstanceCustomImpl.cpp`, only when the participant has audio input). Software stays for RemoteIO (listeners,
+  streams), bypass, macOS, and after `SystemVoiceProcessingLatch::markFailed()` (set by the audio unit when VoiceProcessingIO
+  cannot be created, initialised, or bypass is requested). Echo cancellation is not touched. One log line per channel.
+  Options are read when the channel is created, so the switch applies from the next call.
+- **`callsAdvancedDucking`** (ON): iOS 17+ `kAUVoiceIOProperty_OtherAudioDuckingConfiguration`, advanced ducking at the
+  minimum level (`VoiceProcessingAudioUnit::ConfigureOtherAudioDucking`). A failure keeps the system default.
+- **`callsOpusFirstLossFloor`** (ON): `WebRTC-Audio-OpusMinPacketLossRate/Enabled-1/` in the v2 field trial string
+  (`withOpusFirstLossFloor`). The string is a pair of immutable statics because `InitFieldTrialsFromString` keeps the
+  pointer. Encoder-local; the negotiated `useinbandfec` is unchanged. Also applies on macOS (v2 there had no floor).
+- **`callsKeepSessionMode`** (OFF): `RTCAudioSession+Configuration.mm` no longer replaces the videoChat mode that
+  `ManagedAudioSession` set for a video call with the engine's default voiceChat (`chooseAudioSessionMode`). The
+  preferred-channel-count step also runs for videoChat in that case.
+
+Group-call RNNoise gating (Mac a598e27) is cherry-picked unchanged: with noise suppression off the speaking indicator
+comes from a peak detector and RNNoise does not run; `tests/group_audio/run.sh` needs `libtg_owt.a` from the Mac checkout.

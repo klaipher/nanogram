@@ -82,6 +82,21 @@ public struct ExperimentalUISettings: Codable, Equatable {
     /// real-time low-latency rate-control mode on iOS 14.5+, retrying without it if the session cannot be
     /// created. Local only.
     public var callsEncoderLowLatency: Bool
+    /// Debug Settings ▸ "Calls: system noise suppression". Off by default. On iOS the call's microphone
+    /// signal comes from the system voice-processing unit, which already suppresses noise; with this on,
+    /// WebRTC's own noise suppression and high-pass filter are dropped from the outgoing audio instead of
+    /// running a second time. Kept whenever the system unit is not in use. Local only.
+    public var callsSystemNoiseSuppression: Bool
+    /// Debug Settings ▸ "Calls: advanced ducking". On by default. iOS 17+: the voice-processing unit lowers
+    /// other audio only while someone speaks and by the smallest amount. Local audio-unit setting.
+    public var callsAdvancedDucking: Bool
+    /// Debug Settings ▸ "Calls: Opus loss floor". On by default. The 1:1 call encoder starts with a 1%
+    /// expected packet loss so the first seconds already carry forward error correction. Encoder-local; the
+    /// negotiated parameters are unchanged. Read when a call starts.
+    public var callsOpusFirstLossFloor: Bool
+    /// Debug Settings ▸ "Calls: keep audio mode". Off by default. Starting the call audio no longer replaces
+    /// the videoChat audio-session mode of a video call with voiceChat. Local only.
+    public var callsKeepSessionMode: Bool
     public var stickerRendererMode: StickerRendererMode
 
     public static var defaultSettings: ExperimentalUISettings {
@@ -145,7 +160,11 @@ public struct ExperimentalUISettings: Codable, Equatable {
         tabletDisplayLinkFrameRateCap: Bool = false,
         callsLivestreamHardwareDecoding: Bool = false,
         callsNativeCapturePath: Bool = false,
-        callsEncoderLowLatency: Bool = false
+        callsEncoderLowLatency: Bool = false,
+        callsSystemNoiseSuppression: Bool = false,
+        callsAdvancedDucking: Bool = true,
+        callsOpusFirstLossFloor: Bool = true,
+        callsKeepSessionMode: Bool = false
     ) {
         self.keepChatNavigationStack = keepChatNavigationStack
         self.skipReadHistory = skipReadHistory
@@ -179,6 +198,10 @@ public struct ExperimentalUISettings: Codable, Equatable {
         self.callsLivestreamHardwareDecoding = callsLivestreamHardwareDecoding
         self.callsNativeCapturePath = callsNativeCapturePath
         self.callsEncoderLowLatency = callsEncoderLowLatency
+        self.callsSystemNoiseSuppression = callsSystemNoiseSuppression
+        self.callsAdvancedDucking = callsAdvancedDucking
+        self.callsOpusFirstLossFloor = callsOpusFirstLossFloor
+        self.callsKeepSessionMode = callsKeepSessionMode
     }
     
     /// Revision of Nanogram's defaults that a saved blob was written with. Revision 1 turned on large
@@ -223,10 +246,15 @@ public struct ExperimentalUISettings: Codable, Equatable {
         self.videoMessageCameraMatrix = (try container.decodeIfPresent(String.self, forKey: "videoMessageCameraMatrix")).flatMap(RoundVideoCameraMatrix.init(rawValue:)) ?? .bt709
         self.tabletDisplayLinkFrameRateCap = try container.decodeIfPresent(Bool.self, forKey: "tabletDisplayLinkFrameRateCap") ?? false
 
-        if savedDefaultsRevision < 1 {
         self.callsLivestreamHardwareDecoding = try container.decodeIfPresent(Bool.self, forKey: "callsLivestreamHardwareDecoding") ?? false
         self.callsNativeCapturePath = try container.decodeIfPresent(Bool.self, forKey: "callsNativeCapturePath") ?? false
         self.callsEncoderLowLatency = try container.decodeIfPresent(Bool.self, forKey: "callsEncoderLowLatency") ?? false
+        self.callsSystemNoiseSuppression = try container.decodeIfPresent(Bool.self, forKey: "callsSystemNoiseSuppression") ?? false
+        self.callsAdvancedDucking = try container.decodeIfPresent(Bool.self, forKey: "callsAdvancedDucking") ?? true
+        self.callsOpusFirstLossFloor = try container.decodeIfPresent(Bool.self, forKey: "callsOpusFirstLossFloor") ?? true
+        self.callsKeepSessionMode = try container.decodeIfPresent(Bool.self, forKey: "callsKeepSessionMode") ?? false
+
+        if savedDefaultsRevision < 1 {
             // Saved before the GPU renderers became the default: both were the old CPU defaults.
             if self.stickerRendererMode == .cpu {
                 self.stickerRendererMode = .gpuLarge
@@ -267,11 +295,15 @@ public struct ExperimentalUISettings: Codable, Equatable {
         try container.encode(self.videoMessageCloseFocus, forKey: "videoMessageCloseFocus")
         try container.encode(self.videoMessageCameraMatrix.rawValue, forKey: "videoMessageCameraMatrix")
         try container.encode(self.tabletDisplayLinkFrameRateCap, forKey: "tabletDisplayLinkFrameRateCap")
-        try container.encode(ExperimentalUISettings.nanogramDefaultsRevision, forKey: "nanogramDefaultsRevision")
-    }
         try container.encode(self.callsLivestreamHardwareDecoding, forKey: "callsLivestreamHardwareDecoding")
         try container.encode(self.callsNativeCapturePath, forKey: "callsNativeCapturePath")
         try container.encode(self.callsEncoderLowLatency, forKey: "callsEncoderLowLatency")
+        try container.encode(self.callsSystemNoiseSuppression, forKey: "callsSystemNoiseSuppression")
+        try container.encode(self.callsAdvancedDucking, forKey: "callsAdvancedDucking")
+        try container.encode(self.callsOpusFirstLossFloor, forKey: "callsOpusFirstLossFloor")
+        try container.encode(self.callsKeepSessionMode, forKey: "callsKeepSessionMode")
+        try container.encode(ExperimentalUISettings.nanogramDefaultsRevision, forKey: "nanogramDefaultsRevision")
+    }
 }
 
 public func updateExperimentalUISettingsInteractively(accountManager: AccountManager<TelegramAccountManagerTypes>, _ f: @escaping (ExperimentalUISettings) -> ExperimentalUISettings) -> Signal<Void, NoError> {

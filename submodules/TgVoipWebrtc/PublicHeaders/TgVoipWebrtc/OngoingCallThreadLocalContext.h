@@ -286,6 +286,12 @@ typedef NS_ENUM(int32_t, OngoingCallDataSavingWebrtc) {
 + (void)setNativeCapturePath:(bool)enabled;
 + (void)setEncoderLowLatency:(bool)enabled;
 
+/// Local-only call audio switches (Debug Settings). Same rules: nothing negotiated or sent changes.
++ (void)setSystemNoiseSuppression:(bool)enabled;
++ (void)setAdvancedDucking:(bool)enabled;
++ (void)setOpusFirstLossFloor:(bool)enabled;
++ (void)setKeepSessionMode:(bool)enabled;
+
 + (int32_t)maxLayer;
 + (NSArray<NSString *> * _Nonnull)versionsWithIncludeReference:(bool)includeReference;
 

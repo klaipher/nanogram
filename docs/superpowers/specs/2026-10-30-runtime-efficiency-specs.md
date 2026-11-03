@@ -171,7 +171,7 @@ Status values: `todo`, `in progress`, `done (<commit>)`, `dropped (<reason>)`.
 - `PhotoResources/Sources/PhotoResources.swift:893-895`: decode with a maximum pixel size
   (`CGImageSourceCreateThumbnailAtIndex`) and add a small memory-pressure-aware cache.
 
-### R18. RNNoise runs even when noise suppression is off — `in progress`: buffer reuse in the tgcalls working tree, not committed
+### R18. RNNoise runs even when noise suppression is off — `done` (tgcalls 67e8982, from Mac a598e27), host-tested, not yet verified on a device
 
 - `tgcalls/group/GroupAudioCapturePostProcessor.cpp:78-99`: `rnnoise_process_frame` runs every 10 ms for
   voice-activity detection even when suppression is off, and a new `webrtc::AudioBuffer` is allocated per

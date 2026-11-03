@@ -171,6 +171,9 @@ sources = glob([
     "tgcalls/tgcalls/platform/darwin/**/*.cc",
     "tgcalls/tgcalls/platform/darwin/**/*.c",
     "tgcalls/tgcalls/third-party/**/*.cpp",
+    # Host-test mains (see the policy_cc_test targets below); they must not land in the app library.
+    "tgcalls/tgcalls/**/*PolicyTest.cpp",
+    "tgcalls/tgcalls/VideoPlaneLayoutTest.cpp",
     "tgcalls/tgcalls/utils/**/*.cpp",
 ], allow_empty=True, exclude = [
     "tgcalls/tgcalls/legacy/**",
@@ -416,6 +419,12 @@ policy_cc_test(
 )
 
 policy_cc_test(
+    name = "audio_call_policy_test",
+    src = "tgcalls/tgcalls/AudioCallPolicyTest.cpp",
+    headers = ["AudioCallPolicy.h", "CallsRuntimeSwitches.h"],
+)
+
+policy_cc_test(
     name = "video_plane_layout_test",
     src = "tgcalls/tgcalls/VideoPlaneLayoutTest.cpp",
     headers = ["VideoPlaneLayout.h"],
@@ -430,6 +439,9 @@ cc_library(
         "tgcalls/tgcalls/**/*.hpp",
         "tgcalls/tgcalls/platform/fake/**/*.cpp",
         "tgcalls/tgcalls/third-party/**/*.cpp",
+    # Host-test mains (see the policy_cc_test targets below); they must not land in the app library.
+    "tgcalls/tgcalls/**/*PolicyTest.cpp",
+    "tgcalls/tgcalls/VideoPlaneLayoutTest.cpp",
         "tgcalls/tgcalls/utils/**/*.cpp",
     ], allow_empty=True, exclude = [
         "tgcalls/tgcalls/legacy/**",

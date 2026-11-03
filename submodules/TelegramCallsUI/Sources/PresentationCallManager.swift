@@ -147,6 +147,12 @@ public final class PresentationCallManagerImpl: PresentationCallManager {
                 nativeCapturePath: settings.callsNativeCapturePath,
                 encoderLowLatency: settings.callsEncoderLowLatency
             )
+            OngoingCallContext.applyAudioExperiments(
+                systemNoiseSuppression: settings.callsSystemNoiseSuppression,
+                advancedDucking: settings.callsAdvancedDucking,
+                opusFirstLossFloor: settings.callsOpusFirstLossFloor,
+                keepSessionMode: settings.callsKeepSessionMode
+            )
         })
         
         var startCallImpl: ((AccountContext, UUID, EnginePeer.Id?, String, Bool) -> Signal<Bool, NoError>)?
