@@ -29,6 +29,23 @@ private func FFMpegFileReader_readPacketCallback(userData: UnsafeMutableRawPoint
         
         var bufferOffset = 0
         let doRead: (Range<Int64>) -> Void = { range in
+            // Opening the file for every 64 KB read cost a system call pair per read for the whole
+            // playback (several per second for each looping GIF); once complete, read from one handle.
+            if resource.completeFile == nil, let path = resource.mediaBox.completedResourcePath(id: resource.resource.id), let file = ManagedFile(queue: nil, path: path, mode: .read), let fileSize = file.getSize() {
+                resource.completeFile = file
+                resource.completeFileSize = fileSize
+            }
+            if let file = resource.completeFile {
+                let lowerBound = min(resource.completeFileSize, max(0, range.lowerBound))
+                let upperBound = min(resource.completeFileSize, max(0, range.upperBound))
+                if lowerBound < upperBound, file.seek(position: lowerBound) {
+                    let effectiveReadSize = max(0, min(Int(readCount) - bufferOffset, Int(upperBound - lowerBound)))
+                    let count = file.read(buffer.advanced(by: bufferOffset), effectiveReadSize)
+                    bufferOffset += count
+                    resource.readingPosition += Int64(count)
+                }
+                return
+            }
             //TODO:improve thread safe read if incomplete
             if let (file, readSize) = resource.mediaBox.internal_resourceData(id: resource.resource.id, size: resource.resourceSize, in: range) {
                 let effectiveReadSize = max(0, min(Int(readCount) - bufferOffset, readSize))
@@ -146,7 +163,10 @@ public final class FFMpegFileReader {
             let mappedRanges: [Range<Int64>]
             let size: Int64
             var readingPosition: Int64 = 0
-            
+            // A completed resource file never changes; it stays open for the reader's lifetime.
+            var completeFile: ManagedFile?
+            var completeFileSize: Int64 = 0
+
             init(mediaBox: MediaBox, resource: MediaResource, resourceSize: Int64, mappedRanges: [Range<Int64>]) {
                 self.mediaBox = mediaBox
                 self.resource = resource
