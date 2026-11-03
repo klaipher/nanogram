@@ -41,6 +41,17 @@ final class InlineStickerItemLayerContentTests: XCTestCase {
         XCTAssertEqual(displayed, 1, "reported once")
     }
 
+    // The renderer gives the first frame to a layer that has none when its item's frames arrive;
+    // the silhouette placeholder does not count as one.
+    func testALayerShowingOnlyThePlaceholderNeedsAFrame() {
+        let layer = self.makeLayer()
+        XCTAssertTrue(layer.needsFrame)
+        layer.setPlaceholderContents(self.makeImage())
+        XCTAssertTrue(layer.needsFrame, "the silhouette placeholder is not a frame")
+        layer.contents = self.makeImage()
+        XCTAssertFalse(layer.needsFrame)
+    }
+
     func testClearingContentsIsNotContent() {
         let layer = self.makeLayer()
         layer.contents = nil

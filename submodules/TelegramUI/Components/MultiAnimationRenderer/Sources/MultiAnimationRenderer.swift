@@ -85,6 +85,13 @@ open class MultiAnimationRenderTarget: SimpleLayer {
         }
     }
 
+    /// Whether the target has no frame to show yet. A renderer whose item becomes ready while it
+    /// does not play gives such a target the item's first frame, once: nothing else would draw one.
+    /// A target that shows a placeholder of its own overrides this, since a placeholder is not a frame.
+    open var needsFrame: Bool {
+        return self.contents == nil
+    }
+
     open func updateDisplayPlaceholder(displayPlaceholder: Bool) {
     }
 

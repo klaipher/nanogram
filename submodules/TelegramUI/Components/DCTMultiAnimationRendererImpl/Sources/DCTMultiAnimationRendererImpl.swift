@@ -618,8 +618,59 @@ final class ItemAnimationContext {
                     strongSelf.setFrameIndex(index: index, placeholder: placeholder)
                 }
                 strongSelf.updateIsPlaying()
+                strongSelf.showFirstFrameIfNothingDrawsOne()
             }
         })
+    }
+
+    // An item that does not play gets frames only from the tick, which never runs for it. Its
+    // targets normally have their first frame from `loadFirstFrame`; one whose load ended without a
+    // frame (the first-frame conversion failed, or found no item) stayed empty although the full
+    // conversion arrived here. Such a target gets frame 0, once, from the item.
+    private func showFirstFrameIfNothingDrawsOne() {
+        guard let item = self.item, self.currentFrame == nil, !self.isPlaying, self.loadingFrameTaskId == nil else {
+            return
+        }
+        var needsFrame = false
+        for target in self.targets.copyItems() {
+            if let target = target.value, target.needsFrame {
+                needsFrame = true
+                break
+            }
+        }
+        guard needsFrame else {
+            return
+        }
+
+        let taskId = self.nextLoadingFrameTaskId
+        self.nextLoadingFrameTaskId += 1
+        self.loadingFrameTaskId = taskId
+
+        let queue = self.queueAffinity % 2 == 0 ? ItemAnimationContext.queue0 : ItemAnimationContext.queue1
+        queue.async { [weak self] in
+            let frame = item.with { item -> Frame? in
+                item.reset()
+                return item.advance(advance: .frames(1), requestedFormat: .rgba).flatMap { Frame(frame: $0.frame) }
+            }
+            Queue.mainQueue().async {
+                guard let self, self.loadingFrameTaskId == taskId else {
+                    return
+                }
+                self.loadingFrameTaskId = nil
+                guard let frame, self.currentFrame == nil else {
+                    return
+                }
+                self.currentFrame = frame
+                for target in self.targets.copyItems() {
+                    if let target = target.value, target.needsFrame {
+                        ItemAnimationContext.show(frame, on: target, didLoop: false)
+                        if let blurredRepresentationTarget = target.blurredRepresentationTarget {
+                            blurredRepresentationTarget.contents = frame.blurredRepresentation(color: target.blurredRepresentationBackgroundColor)?.cgImage
+                        }
+                    }
+                }
+            }
+        }
     }
 
     deinit {
@@ -682,6 +733,7 @@ final class ItemAnimationContext {
         }
 
         self.updateIsPlaying()
+        self.showFirstFrameIfNothingDrawsOne()
     }
 
     // A target's tint was set or cleared (contentsAlphaIsMask). A YUVA frame it already shows is replaced

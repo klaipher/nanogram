@@ -360,6 +360,10 @@ public final class InlineStickerItemLayer: MultiAnimationRenderTarget {
     /// Called once, on the main thread, when `hasDisplayedContent` becomes true.
     public var contentDisplayed: (() -> Void)?
     
+    override public var needsFrame: Bool {
+        return !self.hasDisplayedContent
+    }
+    
     public private(set) var file: TelegramMediaFile?
     private var localAnimationName: String?
     
