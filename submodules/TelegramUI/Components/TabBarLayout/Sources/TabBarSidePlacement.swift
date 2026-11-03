@@ -85,8 +85,12 @@ public func tabBarSideToolbarFrame(layout: ContainerViewLayout, sideMargin: CGFl
 }
 
 /// Whether the bar shows icons without labels: always when it is vertical (`sidePlacement`), and in a
-/// regular-width layout, where the tab bar sits in the master pane of a master-detail layout (iPad, and
-/// iPhone Duo unfolded in landscape).
+/// regular-width layout on a phone, where the tab bar sits in the narrow master pane of a master-detail layout
+/// (iPhone Duo unfolded in landscape). Nanogram: on iPad the master column is at least as wide as an iPhone, so the
+/// bar spans it with labels, as on iPhone (upstream: an icon-only pill in the middle of the column).
 public func tabBarIsCompact(layout: ContainerViewLayout, sidePlacement: TabBarSidePlacement?) -> Bool {
-    return sidePlacement != nil || layout.metrics.widthClass == .regular
+    if sidePlacement != nil {
+        return true
+    }
+    return layout.metrics.widthClass == .regular && layout.deviceMetrics.type != .tablet
 }

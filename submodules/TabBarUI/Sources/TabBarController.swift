@@ -4,6 +4,7 @@ import AsyncDisplayKit
 import SwiftSignalKit
 import Display
 import TelegramPresentationData
+import TabBarLayout
 
 public final class TabBarItemInfo: NSObject {
     public let previewing: Bool
@@ -194,18 +195,9 @@ open class TabBarControllerImpl: ViewController, TabBarController {
                     var updatedLayout = validLayout
                     
                     if strongSelf.tabBarControllerNode.sidePlacement(for: validLayout) == nil {
-                        var tabBarHeight: CGFloat
-                        var options: ContainerViewLayoutInsetOptions = []
-                        if validLayout.metrics.widthClass == .regular {
-                            options.insert(.input)
-                        }
-                        let bottomInset: CGFloat = validLayout.insets(options: options).bottom
-                        if !validLayout.safeInsets.left.isZero {
-                            tabBarHeight = 34.0 + bottomInset
-                        } else {
-                            tabBarHeight = 49.0 + bottomInset
-                        }
-                        updatedLayout.intrinsicInsets.bottom = tabBarHeight
+                        // Nanogram: the bar's own inset when it has one for this layout (TabBarChildBottomInset.swift).
+                        let computed = strongSelf.tabBarControllerNode.lastComputedBottomInset
+                        updatedLayout.intrinsicInsets.bottom = tabBarChildBottomInset(layout: validLayout, computedLayout: computed?.layout, computedBottomInset: computed?.bottomInset)
                     }
                     
                     strongSelf.controllers[index].containerLayoutUpdated(updatedLayout, transition: .immediate)
@@ -403,19 +395,10 @@ open class TabBarControllerImpl: ViewController, TabBarController {
             
             var updatedLayout = layout
             
-            var tabBarHeight: CGFloat
-            var options: ContainerViewLayoutInsetOptions = []
-            if updatedLayout.metrics.widthClass == .regular {
-                options.insert(.input)
-            }
-            let bottomInset: CGFloat = updatedLayout.insets(options: options).bottom
-            if !updatedLayout.safeInsets.left.isZero {
-                tabBarHeight = 34.0 + bottomInset
-            } else {
-                tabBarHeight = 49.0 + bottomInset
-            }
             if !self.tabBarControllerNode.tabBarHidden && self.tabBarControllerNode.sidePlacement(for: layout) == nil {
-                updatedLayout.intrinsicInsets.bottom = tabBarHeight
+                // Nanogram: the bar's own inset when it has one for this layout (TabBarChildBottomInset.swift).
+                let computed = self.tabBarControllerNode.lastComputedBottomInset
+                updatedLayout.intrinsicInsets.bottom = tabBarChildBottomInset(layout: layout, computedLayout: computed?.layout, computedBottomInset: computed?.bottomInset)
             }
             
             currentController.containerLayoutUpdated(updatedLayout, transition: .immediate)

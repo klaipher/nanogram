@@ -189,6 +189,11 @@ final class TabBarControllerNode: ASDisplayNode {
         return tabBarSidePlacement(layout: layout, itemCount: self.tabBarItems.count)
     }
     
+    /// The layout the bar was last laid out for and the bottom inset it computed (`tabBarChildBottomInset`).
+    var lastComputedBottomInset: (layout: ContainerViewLayout, bottomInset: CGFloat?)? {
+        return self.layoutResult.flatMap { ($0.params.layout, $0.bottomInset) }
+    }
+    
     /// The bottom inset the current tab gets, or nil to leave the tab's own.
     func containerLayoutUpdated(_ layout: ContainerViewLayout, toolbar: Toolbar?, transition: ContainedViewLayoutTransition) -> CGFloat? {
         let params = Params(layout: layout, toolbar: toolbar, isTabBarHidden: self.tabBarHidden, currentControllerSearchState: self.currentController?.tabBarSearchState, itemCount: self.tabBarItems.count)
@@ -207,15 +212,8 @@ final class TabBarControllerNode: ASDisplayNode {
     }
     
     private func updateImpl(params: Params, transition: ContainedViewLayoutTransition) -> CGFloat? {
-        var panelsBottomInset: CGFloat = params.layout.insets(options: []).bottom
-        if params.layout.metrics.widthClass == .regular, let inputHeight = params.layout.inputHeight, inputHeight != 0.0 {
-            panelsBottomInset = inputHeight + 8.0
-        }
-        if panelsBottomInset == 0.0 {
-            panelsBottomInset = 8.0
-        } else {
-            panelsBottomInset = max(panelsBottomInset, 8.0)
-        }
+        // Nanogram: on iPad the bar rises only for a real keyboard (TabletLayoutRules.swift).
+        let panelsBottomInset: CGFloat = floatingBottomPanelsInset(layout: params.layout)
 
         var tabBarBottomInset: CGFloat = panelsBottomInset
         if let currentController = self.currentController {
