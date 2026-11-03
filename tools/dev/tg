@@ -482,12 +482,54 @@ cmd_device() {
   say "Installed on $udid"
 }
 
+# Every TestFlight build's dSYMs, one directory per CFBundleVersion. Outside the repository and
+# every cache, so `tg clean`/`tg prune`, Bazel's disk-cache GC and cache cleanups never delete them;
+# a crash report from a tester (MetricKit, Xcode Organizer) can only be symbolicated with them.
+DSYM_ARCHIVE="${TG_DSYM_DIR:-$HOME/Library/Application Support/Nanogram/dsyms}"
+
+# archive_dsyms <ipa> — zip the dSYMs built with <ipa> (Make.py's release_arm64 builds them next to
+# it: --apple_generate_dsym --output_groups=+dsyms) into $DSYM_ARCHIVE/<CFBundleVersion>/, one
+# <name>.dSYM.zip each plus uuids.txt, and set ARCHIVED_DSYM_DIR. Fails when the app's dSYM does not
+# match the app in <ipa>, so a build is never uploaded without symbols we can use.
+archive_dsyms() {
+  local ipa="$1" outdir work version app_uuids dsym_uuids dest dsym name
+  outdir="$(cd -P "$(dirname "$ipa")" && pwd)"
+  local dsyms=()
+  for dsym in "$outdir"/*.dSYM; do [ -d "$dsym" ] && dsyms+=("$dsym"); done
+  [ ${#dsyms[@]} -gt 0 ] || die "no dSYMs next to $ipa"
+  [ -d "$outdir/Telegram.app.dSYM" ] || die "no Telegram.app.dSYM next to $ipa"
+
+  work="$(mktemp -d)"
+  unzip -q "$ipa" Payload/Telegram.app/Info.plist Payload/Telegram.app/Telegram -d "$work"
+  version="$(plutil -extract CFBundleVersion raw -o - "$work/Payload/Telegram.app/Info.plist")"
+  app_uuids="$(dwarfdump --uuid "$work/Payload/Telegram.app/Telegram" | awk '{ print $2 }' | sort | xargs)"
+  rm -rf "$work"
+  dsym_uuids="$(dwarfdump --uuid "$outdir/Telegram.app.dSYM" | awk '{ print $2 }' | sort | xargs)"
+  [ -n "$version" ] || die "no CFBundleVersion in $ipa"
+  [ "$app_uuids" = "$dsym_uuids" ] \
+    || die "Telegram.app.dSYM ($dsym_uuids) does not belong to the app in $ipa ($app_uuids)"
+
+  dest="$DSYM_ARCHIVE/$version"
+  mkdir -p "$dest"
+  for dsym in "${dsyms[@]}"; do
+    name="$(basename "$dsym")"
+    # No resource forks or extended attributes: Xcode's com.apple.provenance would add a ._ entry per file.
+    ditto -c -k --norsrc --noextattr --noqtn --noacl --keepParent "$dsym" "$dest/$name.zip.partial"
+    mv -f "$dest/$name.zip.partial" "$dest/$name.zip"
+  done
+  dwarfdump --uuid "${dsyms[@]}" | sed "s|$outdir/||" > "$dest/uuids.txt"
+  ARCHIVED_DSYM_DIR="$dest"
+  say "dSYMs for build $version ($(size_of "$dest")): $dest"
+}
+
 # tg testflight — release build for the App Store with a new build number, uploaded to
 # TestFlight through the Apple ID signed in to Xcode (see device_signing.py testflight).
+# The build's dSYMs are kept in $DSYM_ARCHIVE/<build number>/ before the upload.
 cmd_testflight() {
   # Every upload needs a higher build number than the last one.
   export TG_BUILD_NUMBER="${TG_BUILD_NUMBER:-$(date +%Y%m%d%H%M)}"
   cmd_device --no-install --watch
+  archive_dsyms "$ROOT/bazel-bin/Telegram/Telegram.ipa"
   python3 "$ROOT/tools/dev/device_signing.py" testflight "$ROOT/bazel-bin/Telegram/Telegram.ipa" "$@"
 }
 
@@ -561,7 +603,8 @@ Usage: tools/dev/tg <command> [options]
   device [--no-install] [--watch]  Release build signed for your iPhone, then install it
                         (--watch embeds the Apple Watch app)
                         (signing: python3 tools/dev/device_signing.py --help)
-  testflight [--export-only]  Release build uploaded to TestFlight (new build number)
+  testflight [--export-only]  Release build uploaded to TestFlight (new build number);
+                        keeps its dSYMs zipped in $TG_DSYM_DIR/<build number>/
   project [--full]      Generate and open the Xcode project (simulator, no extensions)
   test [label]          Run tests (default: Tests/AllTests)
   new-module <dir>      Create a Swift module that uses the strict Swift 6 preset
@@ -580,7 +623,8 @@ Usage: tools/dev/tg <command> [options]
   watch clean           Remove the watch app's DerivedData, keep its SwiftPM checkouts
 
 Environment: TG_CACHE_DIR, TG_CONFIG, TG_CODESIGNING, TG_BUILD_NUMBER,
-             TG_WATCH_SIM, TG_WATCH_CACHE_DIR
+             TG_WATCH_SIM, TG_WATCH_CACHE_DIR,
+             TG_DSYM_DIR (default: ~/Library/Application Support/Nanogram/dsyms)
 EOF
 }
 
