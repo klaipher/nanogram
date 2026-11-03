@@ -218,6 +218,11 @@ public final class MediaBox {
         }
     }
     
+    public func releaseMemory() {
+        self.storageBox.releaseMemory()
+        self.cacheStorageBox.releaseMemory()
+    }
+    
     public func setMaxStoreTimes(general: Int32, shortLived: Int32, gigabytesLimit: Int32) {
         self.timeBasedCleanup.setMaxStoreTimes(general: general, shortLived: shortLived, gigabytesLimit: gigabytesLimit)
     }

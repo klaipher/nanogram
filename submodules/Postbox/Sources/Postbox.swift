@@ -5322,6 +5322,7 @@ public class Postbox {
     }
 
     public func clearCaches() {
+        self.mediaBox.releaseMemory()
         self.impl.with { impl in
             impl.clearCaches()
         }
