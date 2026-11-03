@@ -9,7 +9,9 @@ final class PasscodeKeychainScopeDecisionTests: XCTestCase {
         var items: [String: PasscodeKeychainScope.Read] = [:]
         var listStatus: OSStatus = errSecSuccess
         var addStatuses: [String: OSStatus] = [:]
+        var owned: Set<String>?
         var reads: [String] = []
+        var ownershipChecks: [String] = []
         var added: [String] = []
 
         static func key(_ service: String, _ account: String) -> String {
@@ -26,6 +28,9 @@ final class PasscodeKeychainScopeDecisionTests: XCTestCase {
             }, read: { service, account in
                 self.reads.append(Self.key(service, account))
                 return self.items[Self.key(service, account)] ?? .absent
+            }, isOwnedByThisApp: { service, account in
+                self.ownershipChecks.append(Self.key(service, account))
+                return self.owned?.contains(Self.key(service, account)) ?? true
             }, listGenericPasswords: {
                 return (self.listStatus, self.items.keys.sorted().map { key in
                     let parts = key.components(separatedBy: "|")
@@ -58,8 +63,18 @@ final class PasscodeKeychainScopeDecisionTests: XCTestCase {
         self.fake = FakeKeychain()
     }
 
-    private func scoped(_ service: String) -> String {
-        return "org.telegram.scoped.debug/" + service
+    private func scoped(_ service: String, scope: String = "debug") -> String {
+        return "org.telegram.scoped." + scope + "/" + service
+    }
+
+    private func releaseEnvironment(prefix: String = "stable") throws -> PasscodeEnvironment {
+        let environment = PasscodeEnvironment()
+        try environment.configure(PasscodeConfiguration(appGroupIdentifier: "YGTMYL879P.org.klaipher.Nanogram", processRole: .mainApp, keychainScope: PasscodeKeychainScope.channelScope(prefix: prefix)), privateAccessGroup: { "YGTMYL879P.org.klaipher.Nanogram" })
+        return environment
+    }
+
+    private func migrateOwned(environment: PasscodeEnvironment) -> PasscodeKeychainScope.Migration {
+        return PasscodeKeychainScope.migrateLegacyItems(passcodeService: self.passcode, walletServicePrefixes: self.prefixes, onlyItemsOwnedByThisApp: true, environment: environment, keychain: self.fake.keychain)
     }
 
     private func key(_ service: String, _ account: String) -> String {
@@ -272,6 +287,103 @@ final class PasscodeKeychainScopeDecisionTests: XCTestCase {
             self.key(self.scoped(self.passcode), "device"),
             self.key(self.scoped(self.passcode), "credential")
         ])
+    }
+
+    func testChannelScopeKeepsDebugAndGivesEachReleasePrefixItsOwnScope() {
+        XCTAssertEqual(PasscodeKeychainScope.channelScope(prefix: "debug"), "debug")
+        XCTAssertNil(PasscodeKeychainScope.channelScope(prefix: ""))
+        let release = ["stable", "appstore", "beta"].map { PasscodeKeychainScope.channelScope(prefix: $0) }
+        for scope in release {
+            XCTAssertTrue(scope?.hasPrefix("nanogram.") == true, "\(String(describing: scope))")
+            XCTAssertGreaterThan(scope?.count ?? 0, "nanogram.".count, "\(String(describing: scope))")
+        }
+        XCTAssertEqual(Set(release.compactMap { $0 }).count, 3)
+    }
+
+    func testAReleaseBuildNamesNothingAnUnscopedFilterMatches() throws {
+        let environment = try self.releaseEnvironment()
+        let passcode = PasscodeKeychainScope.service(PasscodeKeychainScope.legacyPasscodeService, environment: environment)
+        XCTAssertEqual(passcode, "org.telegram.scoped.nanogram.stable/org.telegram.passcode.v1")
+        let wallet = PasscodeKeychainScope.service("org.telegram.ton-wallet.vault.v1.envelope.ns", environment: environment)
+        for service in [passcode, wallet] {
+            XCTAssertFalse(service.hasPrefix("org.telegram.ton-wallet."), service)
+            XCTAssertFalse(service.hasPrefix(PasscodeKeychainScope.legacyPasscodeService), service)
+        }
+        XCTAssertTrue(PasscodeKeychainScope.itemGroups([(service: wallet, account: "secret")], servicePrefixes: ["org.telegram.ton-wallet.vault.v1.envelope.", "org.telegram.ton-wallet."]).isEmpty)
+    }
+
+    func testACredentialSetThisAppCanReadButDoesNotOwnIsNotCopied() throws {
+        let environment = try self.releaseEnvironment()
+        self.addCredentialSet()
+        self.fake.set(.found(Data("a".utf8)), "wallet.descriptor.a", "wallet")
+        self.fake.owned = []
+        XCTAssertEqual(self.migrateOwned(environment: environment), .nothingToMigrate)
+        XCTAssertEqual(self.fake.added, [])
+    }
+
+    func testAnOwnedCredentialWithADeviceSecretThisAppDoesNotOwnIsNotCopied() throws {
+        let environment = try self.releaseEnvironment()
+        self.addCredentialSet()
+        self.fake.set(.found(Data("a".utf8)), "wallet.descriptor.a", "wallet")
+        self.fake.owned = [self.key(self.passcode, "credential"), self.key("wallet.descriptor.a", "wallet")]
+        XCTAssertEqual(self.migrateOwned(environment: environment), .nothingToMigrate)
+        XCTAssertEqual(self.fake.added, [])
+    }
+
+    func testOwnedItemsAreCopiedIntoTheReleaseScopeAndTheOriginalsStay() throws {
+        let environment = try self.releaseEnvironment()
+        self.addCredentialSet()
+        self.fake.set(.found(Data("a".utf8)), "wallet.descriptor.a", "wallet")
+        self.fake.set(.found(Data("s".utf8)), "wallet.envelope.a", "secret")
+        let before = self.fake.items
+        self.fake.owned = Set(before.keys)
+        XCTAssertEqual(self.migrateOwned(environment: environment), .migrated(4))
+        XCTAssertEqual(self.fake.added, [
+            self.key(self.scoped("wallet.descriptor.a", scope: "nanogram.stable"), "wallet"),
+            self.key(self.scoped("wallet.envelope.a", scope: "nanogram.stable"), "secret"),
+            self.key(self.scoped(self.passcode, scope: "nanogram.stable"), "device"),
+            self.key(self.scoped(self.passcode, scope: "nanogram.stable"), "credential")
+        ])
+        for (key, value) in before {
+            XCTAssertEqual(self.fake.items[key], value, key)
+        }
+        XCTAssertEqual(self.fake.items.count, before.count + 4)
+    }
+
+    func testAWalletWithAnItemThisAppDoesNotOwnIsSkippedWhole() throws {
+        let environment = try self.releaseEnvironment()
+        self.addCredentialSet()
+        self.fake.set(.found(Data("a".utf8)), "wallet.descriptor.a", "wallet")
+        self.fake.set(.found(Data("a".utf8)), "wallet.envelope.a", "secret")
+        self.fake.set(.found(Data("b".utf8)), "wallet.descriptor.b", "wallet")
+        self.fake.owned = Set(self.fake.items.keys).subtracting([self.key("wallet.envelope.a", "secret")])
+        XCTAssertEqual(self.migrateOwned(environment: environment), .migrated(3))
+        XCTAssertEqual(self.fake.added, [
+            self.key(self.scoped("wallet.descriptor.b", scope: "nanogram.stable"), "wallet"),
+            self.key(self.scoped(self.passcode, scope: "nanogram.stable"), "device"),
+            self.key(self.scoped(self.passcode, scope: "nanogram.stable"), "credential")
+        ])
+    }
+
+    func testEveryReleaseWriteGoesToAScopedName() throws {
+        let environment = try self.releaseEnvironment()
+        self.addCredentialSet()
+        self.fake.set(.found(Data("a".utf8)), "wallet.descriptor.a", "wallet")
+        self.fake.set(.found(Data("j".utf8)), "wallet.journal.a", "journal")
+        self.fake.set(.found(Data("b".utf8)), "wallet.envelope.b", "secret")
+        XCTAssertEqual(self.migrateOwned(environment: environment), .migrated(5))
+        XCTAssertEqual(self.fake.added.count, 5)
+        for key in self.fake.added {
+            XCTAssertTrue(key.hasPrefix("org.telegram.scoped.nanogram.stable/"), key)
+        }
+    }
+
+    func testDebugMigrationDoesNotCheckOwnership() {
+        self.addCredentialSet()
+        self.fake.set(.found(Data("a".utf8)), "wallet.descriptor.a", "wallet")
+        self.fake.owned = []
+        XCTAssertEqual(self.migrate(), .migrated(3))
+        XCTAssertEqual(self.fake.ownershipChecks, [])
     }
 
     func testItemGroupsIgnoreScopedNames() {

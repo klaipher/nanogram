@@ -2,11 +2,13 @@
 import Foundation
 import Security
 
-/// Keeps a channel's keychain items apart from the other channels' on macOS. Release channels share the
-/// unscoped names; a scoped channel (Debug builds) stores its passcode, biometric and wallet items under
+/// Keeps a channel's keychain items apart from other apps' and other channels' on macOS. The unscoped names
+/// belong to the official Telegram app, which shares the login keychain with Nanogram; every Nanogram channel
+/// therefore takes a scope from `channelScope(prefix:)` and stores its passcode, biometric and wallet items under
 /// `org.telegram.scoped.<scope>/<name>`, which no unscoped name filter matches, so it neither prompts for nor
-/// resets the other channels' items. `migrateLegacyItems` copies the items the scoped build can read without a
-/// prompt from the unscoped names once, before anything reads the scope.
+/// resets anyone else's items. `migrateLegacyItems` copies the items the scoped build can read without a prompt
+/// from the unscoped names once, before anything reads the scope; release channels copy only the items whose
+/// access list trusts this app alone.
 @available(macOS 10.15, *)
 public enum PasscodeKeychainScope {
     public enum Migration: Equatable {
@@ -27,6 +29,7 @@ public enum PasscodeKeychainScope {
     struct Keychain {
         var isUnlocked: () -> Bool
         var read: (_ service: String, _ account: String) -> Read
+        var isOwnedByThisApp: (_ service: String, _ account: String) -> Bool
         var listGenericPasswords: () -> (status: OSStatus, items: [(service: String, account: String)])
         var add: (_ data: Data, _ service: String, _ account: String) -> OSStatus
     }
@@ -37,7 +40,19 @@ public enum PasscodeKeychainScope {
     private static let interactionLock = NSLock()
 
     static var system: Keychain {
-        return Keychain(isUnlocked: isDefaultKeychainUnlocked, read: readWithoutInteraction, listGenericPasswords: listGenericPasswords, add: addIfMissing)
+        return Keychain(isUnlocked: isDefaultKeychainUnlocked, read: readWithoutInteraction, isOwnedByThisApp: isOwnedByThisApp, listGenericPasswords: listGenericPasswords, add: addIfMissing)
+    }
+
+    /// The scope of the channel whose data folder is named `prefix`: Debug keeps its existing `debug` scope and
+    /// every other channel gets its own `nanogram.<prefix>` scope; an empty prefix has no scope.
+    public static func channelScope(prefix: String) -> String? {
+        if prefix.isEmpty {
+            return nil
+        }
+        if prefix == "debug" {
+            return prefix
+        }
+        return "nanogram." + prefix
     }
 
     public static func service(_ service: String, environment: PasscodeEnvironment = .shared) -> String {
@@ -55,13 +70,18 @@ public enum PasscodeKeychainScope {
     /// within a group, items are copied in the order of `walletServicePrefixes`. Wallet items are copied first and
     /// the credential last, and only together with the device secret that protects them, so an interrupted copy
     /// resumes on the next run; a scope whose credential differs from the unscoped one is left as it is. Existing
-    /// scoped items are never replaced, and the attempts counter is not copied. Keychain user interaction is
-    /// disabled for the whole process during each read.
-    public static func migrateLegacyItems(passcodeService: String = Self.legacyPasscodeService, walletServicePrefixes: [String], environment: PasscodeEnvironment = .shared) -> Migration {
-        return Self.migrateLegacyItems(passcodeService: passcodeService, walletServicePrefixes: walletServicePrefixes, environment: environment, keychain: Self.system)
+    /// scoped items are never replaced, and the attempts counter is not copied. With `onlyItemsOwnedByThisApp`, an
+    /// unscoped item whose decrypt access list names any app but this one counts as unreadable, so another app's
+    /// items, or ones another app was allowed to read, are never copied. Keychain user interaction is disabled for
+    /// the whole process during each read.
+    public static func migrateLegacyItems(passcodeService: String = Self.legacyPasscodeService, walletServicePrefixes: [String], onlyItemsOwnedByThisApp: Bool = false, environment: PasscodeEnvironment = .shared) -> Migration {
+        return Self.migrateLegacyItems(passcodeService: passcodeService, walletServicePrefixes: walletServicePrefixes, onlyItemsOwnedByThisApp: onlyItemsOwnedByThisApp, environment: environment, keychain: Self.system)
     }
 
-    static func migrateLegacyItems(passcodeService: String, walletServicePrefixes: [String], environment: PasscodeEnvironment, keychain: Keychain) -> Migration {
+    static func migrateLegacyItems(passcodeService: String, walletServicePrefixes: [String], onlyItemsOwnedByThisApp: Bool = false, environment: PasscodeEnvironment, keychain: Keychain) -> Migration {
+        func isCopyable(_ service: String, _ account: String) -> Bool {
+            return !onlyItemsOwnedByThisApp || keychain.isOwnedByThisApp(service, account)
+        }
         guard environment.keychainScope != nil else {
             return .nothingToMigrate
         }
@@ -79,6 +99,9 @@ public enum PasscodeKeychainScope {
         case let (.failed(status), _), let (_, .failed(status)):
             return .failed(status)
         default:
+            return .nothingToMigrate
+        }
+        guard isCopyable(passcodeService, "credential"), isCopyable(passcodeService, "device") else {
             return .nothingToMigrate
         }
         let scopedPasscodeService = Self.service(passcodeService, environment: environment)
@@ -119,6 +142,9 @@ public enum PasscodeKeychainScope {
             for (service, account) in group.items {
                 switch keychain.read(service, account) {
                 case let .found(data):
+                    guard isCopyable(service, account) else {
+                        continue groups
+                    }
                     groupItems.append((service, account, data))
                 case .absent:
                     break
@@ -249,6 +275,65 @@ public enum PasscodeKeychainScope {
         SecKeychainSetUserInteractionAllowed(readInteraction == errSecSuccess ? interactionAllowed.boolValue : true)
         Self.interactionLock.unlock()
         return Self.classify(status, result: result, isUnlocked: Self.isDefaultKeychainUnlocked)
+    }
+
+    private static func isOwnedByThisApp(service: String, account: String) -> Bool {
+        var search = Self.query(service: service, account: account)
+        search[kSecReturnRef as String] = true
+        search[kSecMatchLimit as String] = kSecMatchLimitOne
+        Self.interactionLock.lock()
+        var interactionAllowed: DarwinBoolean = true
+        let readInteraction = SecKeychainGetUserInteractionAllowed(&interactionAllowed)
+        SecKeychainSetUserInteractionAllowed(false)
+        defer {
+            SecKeychainSetUserInteractionAllowed(readInteraction == errSecSuccess ? interactionAllowed.boolValue : true)
+            Self.interactionLock.unlock()
+        }
+        var result: CFTypeRef?
+        guard SecItemCopyMatching(search as CFDictionary, &result) == errSecSuccess,
+              let result, CFGetTypeID(result) == SecKeychainItemGetTypeID() else {
+            return false
+        }
+        var access: SecAccess?
+        guard SecKeychainItemCopyAccess(result as! SecKeychainItem, &access) == errSecSuccess, let access,
+              let entries = SecAccessCopyMatchingACLList(access, kSecACLAuthorizationDecrypt) as? [SecACL], !entries.isEmpty,
+              let thisApp = Self.thisAppPath() else {
+            return false
+        }
+        for entry in entries {
+            var applications: CFArray?
+            var description: CFString?
+            var prompt = SecKeychainPromptSelector()
+            guard SecACLCopyContents(entry, &applications, &description, &prompt) == errSecSuccess,
+                  let applications = applications as? [SecTrustedApplication], !applications.isEmpty else {
+                return false
+            }
+            for application in applications {
+                guard Self.path(of: application) == thisApp else {
+                    return false
+                }
+            }
+        }
+        return true
+    }
+
+    private static func thisAppPath() -> String? {
+        var application: SecTrustedApplication?
+        guard SecTrustedApplicationCreateFromPath(nil, &application) == errSecSuccess, let application else {
+            return nil
+        }
+        return Self.path(of: application)
+    }
+
+    private static func path(of application: SecTrustedApplication) -> String? {
+        var data: CFData?
+        guard SecTrustedApplicationCopyData(application, &data) == errSecSuccess, let data = data as Data? else {
+            return nil
+        }
+        guard let path = String(data: data, encoding: .utf8)?.trimmingCharacters(in: CharacterSet(charactersIn: "\0")), !path.isEmpty else {
+            return nil
+        }
+        return path
     }
 
     static func isDefaultKeychainUnlocked() -> Bool {

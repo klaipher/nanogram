@@ -395,10 +395,10 @@ public func authenticateWalletBiometrics(namespace: String, lifetime: PasscodeSe
 
 #if os(macOS)
 /// Copies this build's wallets and wallet passcode items into its keychain scope, each wallet's descriptor last;
-/// see `PasscodeKeychainScope`.
+/// see `PasscodeKeychainScope`. With `onlyItemsOwnedByThisApp`, items another app created or may read are skipped.
 @available(macOS 10.15, *)
-public func migrateWalletKeychainScope(environment: PasscodeEnvironment = .shared) -> PasscodeKeychainScope.Migration {
-    return PasscodeKeychainScope.migrateLegacyItems(walletServicePrefixes: [WalletVault.envelopeServicePrefix, WalletEngineStorage.journalServicePrefix, WalletEngineStorage.descriptorServicePrefix], environment: environment)
+public func migrateWalletKeychainScope(onlyItemsOwnedByThisApp: Bool = false, environment: PasscodeEnvironment = .shared) -> PasscodeKeychainScope.Migration {
+    return PasscodeKeychainScope.migrateLegacyItems(walletServicePrefixes: [WalletVault.envelopeServicePrefix, WalletEngineStorage.journalServicePrefix, WalletEngineStorage.descriptorServicePrefix], onlyItemsOwnedByThisApp: onlyItemsOwnedByThisApp, environment: environment)
 }
 #endif
 
