@@ -10,6 +10,7 @@ public final class ChunkMediaPlayerPart {
     public enum Id: Hashable {
         case tempFile(path: String)
         case directStream
+        case mediaBoxRanges(Int)
     }
     
     public struct DirectStream: Hashable {
@@ -51,18 +52,74 @@ public final class ChunkMediaPlayerPart {
         }
     }
     
+    /// A part whose bytes are ranges of a MediaBox resource, read in place: an HLS segment that is already in the
+    /// media cache (its initialization segment, then the segment) needs no copy in a temporary file. Holds the
+    /// resource against cache clean-up while the part exists.
+    public final class MediaBoxRanges {
+        private static let nextId = Atomic<Int>(value: 0)
+
+        public let mediaBox: MediaBox
+        public let resource: MediaResource
+        public let resourceSize: Int64
+        public let ranges: [Range<Int64>]
+        public let ignoreAudioEditList: Bool
+        let uniqueId: Int
+        private let keepDisposable: Disposable
+
+        public init(mediaBox: MediaBox, resource: MediaResource, resourceSize: Int64, ranges: [Range<Int64>], ignoreAudioEditList: Bool) {
+            self.mediaBox = mediaBox
+            self.resource = resource
+            self.resourceSize = resourceSize
+            self.ranges = ranges
+            self.ignoreAudioEditList = ignoreAudioEditList
+            self.uniqueId = MediaBoxRanges.nextId.modify { $0 + 1 }
+            self.keepDisposable = mediaBox.keepResource(id: resource.id).start()
+        }
+
+        deinit {
+            self.keepDisposable.dispose()
+        }
+
+        public var byteCount: Int64 {
+            return self.ranges.reduce(0, { $0 + ($1.upperBound - $1.lowerBound) })
+        }
+    }
+
+    public enum Content {
+        case tempFile(TempFile)
+        case mediaBoxRanges(MediaBoxRanges)
+
+        public var ignoreAudioEditList: Bool {
+            switch self {
+            case let .tempFile(tempFile):
+                return tempFile.ignoreAudioEditList
+            case let .mediaBoxRanges(ranges):
+                return ranges.ignoreAudioEditList
+            }
+        }
+    }
+
     public let startTime: Double
     public let endTime: Double
-    public let content: TempFile
+    public let content: Content
     public let clippedStartTime: Double?
     public let codecName: String?
     public let offsetTime: Double
     
     public var id: Id {
-        return .tempFile(path: self.content.file.path)
+        switch self.content {
+        case let .tempFile(tempFile):
+            return .tempFile(path: tempFile.file.path)
+        case let .mediaBoxRanges(ranges):
+            return .mediaBoxRanges(ranges.uniqueId)
+        }
     }
     
-    public init(startTime: Double, clippedStartTime: Double? = nil, endTime: Double, content: TempFile, codecName: String?, offsetTime: Double) {
+    public convenience init(startTime: Double, clippedStartTime: Double? = nil, endTime: Double, content: TempFile, codecName: String?, offsetTime: Double) {
+        self.init(startTime: startTime, clippedStartTime: clippedStartTime, endTime: endTime, content: .tempFile(content), codecName: codecName, offsetTime: offsetTime)
+    }
+    
+    public init(startTime: Double, clippedStartTime: Double? = nil, endTime: Double, content: Content, codecName: String?, offsetTime: Double) {
         self.startTime = startTime
         self.clippedStartTime = clippedStartTime
         self.endTime = endTime

@@ -25,6 +25,7 @@ swift_library(
         "//submodules/Utils/RangeSet:RangeSet",
         "//submodules/TextFormat:TextFormat",
         "//submodules/ManagedFile",
+        "//submodules/DiskWriteAccounting",
     ],
     visibility = [
         "//visibility:public",
@@ -44,6 +45,7 @@ swift_library(
         "//submodules/Utils/RangeSet:RangeSet",
         "//submodules/TelegramAudio:TelegramAudio",
         "//submodules/SSignalKit/SwiftSignalKit:SwiftSignalKit",
+        "//submodules/DiskWriteAccounting",
     ],
 )
 

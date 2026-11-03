@@ -908,16 +908,39 @@ public final class FFMpegMediaInfo {
 
 private final class FFMpegMediaInfoExtractContext {
     let fd: Int32
+    let data: Data?
     let size: Int
+    var position: Int = 0
     
     init(fd: Int32, size: Int) {
         self.fd = fd
+        self.data = nil
         self.size = size
+    }
+    
+    init(data: Data) {
+        self.fd = -1
+        self.data = data
+        self.size = data.count
     }
 }
 
 private func FFMpegMediaInfoExtractContextReadPacketCallback(userData: UnsafeMutableRawPointer?, buffer: UnsafeMutablePointer<UInt8>?, bufferSize: Int32) -> Int32 {
     let context = Unmanaged<FFMpegMediaInfoExtractContext>.fromOpaque(userData!).takeUnretainedValue()
+    if let data = context.data {
+        guard let buffer else {
+            return FFMPEG_CONSTANT_AVERROR_EOF
+        }
+        let count = max(0, min(Int(bufferSize), data.count - context.position))
+        if count == 0 {
+            return FFMPEG_CONSTANT_AVERROR_EOF
+        }
+        data.withUnsafeBytes { bytes -> Void in
+            let _ = memcpy(buffer, bytes.baseAddress!.advanced(by: context.position), count)
+        }
+        context.position += count
+        return Int32(count)
+    }
     let result = read(context.fd, buffer, Int(bufferSize))
     if result == 0 {
         return FFMPEG_CONSTANT_AVERROR_EOF
@@ -929,6 +952,9 @@ private func FFMpegMediaInfoExtractContextSeekCallback(userData: UnsafeMutableRa
     let context = Unmanaged<FFMpegMediaInfoExtractContext>.fromOpaque(userData!).takeUnretainedValue()
     if (whence & FFMPEG_AVSEEK_SIZE) != 0 {
         return Int64(context.size)
+    } else if context.data != nil {
+        context.position = Int(max(0, min(offset, Int64(context.size))))
+        return offset
     } else {
         lseek(context.fd, off_t(offset), SEEK_SET)
         return offset
@@ -936,8 +962,6 @@ private func FFMpegMediaInfoExtractContextSeekCallback(userData: UnsafeMutableRa
 }
 
 public func extractFFMpegMediaInfo(path: String) -> FFMpegMediaInfo? {
-    let _ = FFMpegMediaFrameSourceContextHelpers.registerFFMpegGlobals
-    
     var s = stat()
     stat(path, &s)
     let size = Int32(s.st_size)
@@ -950,10 +974,22 @@ public func extractFFMpegMediaInfo(path: String) -> FFMpegMediaInfo? {
         close(fd)
     }
     
+    return extractFFMpegMediaInfo(context: FFMpegMediaInfoExtractContext(fd: fd, size: Int(size)))
+}
+
+/// The same probe over bytes in memory: an HLS segment is probed as it arrives, with no file written for it.
+public func extractFFMpegMediaInfo(data: Data) -> FFMpegMediaInfo? {
+    if data.isEmpty {
+        return nil
+    }
+    return extractFFMpegMediaInfo(context: FFMpegMediaInfoExtractContext(data: data))
+}
+
+private func extractFFMpegMediaInfo(context: FFMpegMediaInfoExtractContext) -> FFMpegMediaInfo? {
+    let _ = FFMpegMediaFrameSourceContextHelpers.registerFFMpegGlobals
+    
     let avFormatContext = FFMpegAVFormatContext()
     let ioBufferSize = 64 * 1024
-    
-    let context = FFMpegMediaInfoExtractContext(fd: fd, size: Int(size))
     
     guard let avIoContext = FFMpegAVIOContext(bufferSize: Int32(ioBufferSize), opaqueContext: Unmanaged.passUnretained(context).toOpaque(), readPacket: FFMpegMediaInfoExtractContextReadPacketCallback, writePacket: nil, seek: FFMpegMediaInfoExtractContextSeekCallback, isSeekable: true) else {
         return nil

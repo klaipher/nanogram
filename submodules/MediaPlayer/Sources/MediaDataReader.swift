@@ -29,6 +29,7 @@ public protocol MediaDataReader: AnyObject {
 public final class FFMpegMediaDataReaderV2: MediaDataReader {
     public enum Content {
         case tempFile(ChunkMediaPlayerPart.TempFile)
+        case mediaBoxRanges(ChunkMediaPlayerPart.MediaBoxRanges)
         case directStream(ChunkMediaPlayerPartsState.DirectReader.Stream)
     }
     
@@ -63,6 +64,8 @@ public final class FFMpegMediaDataReaderV2: MediaDataReader {
         switch content {
         case let .tempFile(tempFile):
             source = .file(tempFile.file.path)
+        case let .mediaBoxRanges(ranges):
+            source = .resource(mediaBox: ranges.mediaBox, resource: ranges.resource, resourceSize: ranges.resourceSize, mappedRanges: ranges.ranges)
         case let .directStream(directStream):
             let mappedRanges: [Range<Int64>]
             #if DEBUG && false

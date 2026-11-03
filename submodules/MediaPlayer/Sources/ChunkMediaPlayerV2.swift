@@ -92,7 +92,17 @@ public final class ChunkMediaPlayerV2: ChunkMediaPlayer {
     private final class LoadedPart {
         enum Content {
             case tempFile(ChunkMediaPlayerPart.TempFile)
+            case mediaBoxRanges(ChunkMediaPlayerPart.MediaBoxRanges)
             case directStream(ChunkMediaPlayerPartsState.DirectReader.Stream)
+            
+            init(_ content: ChunkMediaPlayerPart.Content) {
+                switch content {
+                case let .tempFile(tempFile):
+                    self = .tempFile(tempFile)
+                case let .mediaBoxRanges(ranges):
+                    self = .mediaBoxRanges(ranges)
+                }
+            }
         }
         
         final class Media {
@@ -136,6 +146,10 @@ public final class ChunkMediaPlayerV2: ChunkMediaPlayer {
                             reader = FFMpegMediaDataReaderV1(filePath: tempFile.file.path, isVideo: self.mediaType == .video, codecName: self.codecName, ignoreEditList: self.ignoreEditList)
                         }
                     }
+                case let .mediaBoxRanges(ranges):
+                    // Only FFmpeg reads straight from MediaBox; parts that need AVFoundation (hardware AV1) are given
+                    // as temporary files.
+                    reader = FFMpegMediaDataReaderV2(content: .mediaBoxRanges(ranges), isVideo: self.mediaType == .video, codecName: self.codecName, ignoreEditList: self.ignoreEditList)
                 case let .directStream(directStream):
                     reader = FFMpegMediaDataReaderV2(content: .directStream(directStream), isVideo: self.mediaType == .video, codecName: self.codecName)
                 }
@@ -678,7 +692,7 @@ public final class ChunkMediaPlayerV2: ChunkMediaPlayer {
                         if let audio = loadedPart.audio, audio.didBeginReading, !isSoundEnabled {
                             let cleanAudio = LoadedPart.Media(
                                 queue: dataQueue,
-                                content: .tempFile(part.part.content),
+                                content: LoadedPart.Content(part.part.content),
                                 mediaType: .audio,
                                 codecName: part.part.codecName,
                                 offset: part.part.offsetTime,
@@ -694,7 +708,7 @@ public final class ChunkMediaPlayerV2: ChunkMediaPlayer {
                     } else {
                         let video = LoadedPart.Media(
                             queue: dataQueue,
-                            content: .tempFile(part.part.content),
+                            content: LoadedPart.Content(part.part.content),
                             mediaType: .video,
                             codecName: part.part.codecName,
                             offset: part.part.offsetTime
@@ -703,7 +717,7 @@ public final class ChunkMediaPlayerV2: ChunkMediaPlayer {
                         
                         let audio = LoadedPart.Media(
                             queue: dataQueue,
-                            content: .tempFile(part.part.content),
+                            content: LoadedPart.Content(part.part.content),
                             mediaType: .audio,
                             codecName: part.part.codecName,
                             offset: part.part.offsetTime,
@@ -1495,3 +1509,4 @@ private func createSampleBuffer(fromSampleBuffer sampleBuffer: CMSampleBuffer, w
         return nil
     }
 }
+

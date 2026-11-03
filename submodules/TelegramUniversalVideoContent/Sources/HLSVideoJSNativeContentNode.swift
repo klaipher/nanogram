@@ -32,7 +32,7 @@ private func parseRange(from rangeString: String) -> Range<Int>? {
     return start ..< end
 }
 
-final class HLSJSServerSource: SharedHLSServer.Source {
+final class HLSJSServerSource {
     let id: String
     let postbox: Postbox
     let userLocation: MediaResourceUserLocation
@@ -142,7 +142,9 @@ final class HLSJSServerSource: SharedHLSServer.Source {
         return .never()
     }
     
-    func fileData(id: Int64, range: Range<Int>) -> Signal<(TempBoxFile, Range<Int>, Int)?, NoError> {
+    /// The bytes of `range` of a quality file, and the file's size. Served from the media cache, or fetched into it
+    /// first: each streamed byte is written once, and a cached segment is not written at all (HLSStreamingStorage).
+    func fileData(id: Int64, range: Range<Int>) -> Signal<(Data, Int)?, NoError> {
         guard let (quality, file) = self.qualityFiles.first(where: { $0.value.media.fileId.id == id }) else {
             return .single(nil)
         }
@@ -205,123 +207,37 @@ final class HLSJSServerSource: SharedHLSServer.Source {
         }
         
         let mappedRange: Range<Int64> = Int64(range.lowerBound) ..< Int64(range.upperBound)
+        let mediaBox = postbox.mediaBox
+        let resource = file.media.resource
         
-        let queue = postbox.mediaBox.dataQueue
-        let fetchFromRemote: Signal<(TempBoxFile, Range<Int>, Int)?, NoError> = playlistPreloadRange
-        |> mapToSignal { preloadRange -> Signal<(TempBoxFile, Range<Int>, Int)?, NoError> in
-            return Signal { subscriber in
-                let partialFile = TempBox.shared.tempFile(fileName: "data")
-                
-                if let cachedData = postbox.mediaBox.internal_resourceData(id: file.media.resource.id, size: size, in: Int64(range.lowerBound) ..< Int64(range.upperBound)) {
-                    #if DEBUG
-                    print("Fetched \(quality)p part from cache")
-                    #endif
-                    
-                    let outputFile = ManagedFile(queue: nil, path: partialFile.path, mode: .readwrite)
-                    if let outputFile {
-                        let blockSize = 128 * 1024
-                        var tempBuffer = Data(count: blockSize)
-                        var blockOffset = 0
-                        while blockOffset < cachedData.length {
-                            let currentBlockSize = min(cachedData.length - blockOffset, blockSize)
-                            
-                            tempBuffer.withUnsafeMutableBytes { bytes -> Void in
-                                let _ = cachedData.file.read(bytes.baseAddress!, currentBlockSize)
-                                let _ = outputFile.write(bytes.baseAddress!, count: currentBlockSize)
-                            }
-                            
-                            blockOffset += blockSize
-                        }
-                        outputFile._unsafeClose()
-                        subscriber.putNext((partialFile, 0 ..< cachedData.length, Int(size)))
-                        subscriber.putCompletion()
-                    } else {
-                        #if DEBUG
-                        print("Error writing cached file to disk")
-                        #endif
-                    }
-                    
-                    return EmptyDisposable
+        return playlistPreloadRange
+        |> mapToSignal { _ -> Signal<(Data, Int)?, NoError> in
+            let location = MediaResourceStorageLocation(userLocation: userLocation, reference: file.resourceReference(resource))
+            let params = MediaResourceFetchParameters(
+                tag: TelegramMediaResourceFetchTag(statsCategory: .video, userContentType: .video),
+                info: TelegramCloudMediaResourceFetchInfo(reference: file.resourceReference(resource), preferBackgroundReferenceRevalidation: true, continueInBackground: true),
+                location: location,
+                contentType: .video,
+                isRandomAccessAllowed: true
+            )
+            
+            #if DEBUG
+            let startTime = CFAbsoluteTimeGetCurrent()
+            #endif
+            
+            return HLSStreamingStorage.segmentData(mediaBox: mediaBox, resource: resource, resourceSize: size, range: mappedRange, parameters: params)
+            |> map { data -> (Data, Int)? in
+                guard let data else {
+                    return nil
                 }
-                
-                guard let fetchResource = postbox.mediaBox.fetchResource else {
-                    return EmptyDisposable
-                }
-                
-                let location = MediaResourceStorageLocation(userLocation: userLocation, reference: file.resourceReference(file.media.resource))
-                let params = MediaResourceFetchParameters(
-                    tag: TelegramMediaResourceFetchTag(statsCategory: .video, userContentType: .video),
-                    info: TelegramCloudMediaResourceFetchInfo(reference: file.resourceReference(file.media.resource), preferBackgroundReferenceRevalidation: true, continueInBackground: true),
-                    location: location,
-                    contentType: .video,
-                    isRandomAccessAllowed: true
-                )
-                
-                let completeFile = TempBox.shared.tempFile(fileName: "data")
-                let metaFile = TempBox.shared.tempFile(fileName: "data")
-                
-                guard let fileContext = MediaBoxFileContextV2Impl(
-                    queue: queue,
-                    manager: postbox.mediaBox.dataFileManager,
-                    storageBox: nil,
-                    resourceId: file.media.resource.id.stringRepresentation.data(using: .utf8)!,
-                    path: completeFile.path,
-                    partialPath: partialFile.path,
-                    metaPath: metaFile.path
-                ) else {
-                    return EmptyDisposable
-                }
-                
-                let fetchDisposable = fileContext.fetched(
-                    range: mappedRange,
-                    priority: .default,
-                    fetch: { intervals in
-                        return fetchResource(file.media.resource, intervals, params)
-                    },
-                    error: { _ in
-                    },
-                    completed: {
-                    }
-                )
-                
                 #if DEBUG
-                let startTime = CFAbsoluteTimeGetCurrent()
+                print("Loading \(quality)p part took \((CFAbsoluteTimeGetCurrent() - startTime) * 1000.0) ms")
                 #endif
-                
-                let dataDisposable = fileContext.data(
-                    range: mappedRange,
-                    waitUntilAfterInitialFetch: true,
-                    next: { result in
-                        if result.complete {
-                            #if DEBUG
-                            let fetchTime = CFAbsoluteTimeGetCurrent() - startTime
-                            print("Fetching \(quality)p part took \(fetchTime * 1000.0) ms")
-                            #endif
-                            if let data = try? Data(contentsOf: URL(fileURLWithPath: partialFile.path), options: .alwaysMapped) {
-                                let subData = data.subdata(in: Int(result.offset) ..< Int(result.offset + result.size))
-                                postbox.mediaBox.storeResourceData(file.media.resource.id, range: Int64(range.lowerBound) ..< Int64(range.upperBound), data: subData)
-                            }
-                            subscriber.putNext((partialFile, Int(result.offset) ..< Int(result.offset + result.size), Int(size)))
-                            subscriber.putCompletion()
-                        }
-                    }
-                )
-                
-                return ActionDisposable {
-                    queue.async {
-                        fetchDisposable.dispose()
-                        dataDisposable.dispose()
-                        fileContext.cancelFullRangeFetches()
-                        
-                        TempBox.shared.dispose(completeFile)
-                        TempBox.shared.dispose(metaFile)
-                    }
-                }
+                // Lets the chunk player play this segment from the cache once hls.js appends it.
+                HLSServedSegments.shared.noteServed(mediaBox: mediaBox, resource: resource, resourceSize: size, range: mappedRange, data: data)
+                return (data, Int(size))
             }
-            |> runOn(queue)
         }
-        
-        return fetchFromRemote
     }
 }
 
@@ -769,8 +685,8 @@ private final class SharedHLSVideoJSContext: NSObject {
                             |> deliverOn(.mainQueue())
                             //|> timeout(5.0, queue: self.queue, alternate: .single(nil))
                             |> take(1)).start(next: { result in
-                                if let (tempFile, tempFileRange, totalSize) = result {
-                                    SharedHLSVideoJSContext.sendResponseFileAndClose(id: id, file: tempFile, fileRange: tempFileRange, range: requestRange, totalSize: totalSize, completion: completion)
+                                if let (data, totalSize) = result {
+                                    SharedHLSVideoJSContext.sendResponsePartAndClose(id: id, data: data, range: requestRange, totalSize: totalSize, completion: completion)
                                 } else {
                                     SharedHLSVideoJSContext.sendErrorAndClose(id: id, error: .internalServerError, completion: completion)
                                 }
@@ -823,27 +739,17 @@ private final class SharedHLSVideoJSContext: NSObject {
         ])
     }
     
-    private static func sendResponseFileAndClose(id: Int, file: TempBoxFile, fileRange: Range<Int>, range: Range<Int>, totalSize: Int, completion: @escaping ([String: Any]) -> Void) {
-        Queue.concurrentDefaultQueue().async {
-            let data = try? Data(contentsOf: URL(fileURLWithPath: file.path), options: .mappedIfSafe).subdata(in: fileRange)
-            // Each part file is a one-off copy made for this request. Without this it stays on disk
-            // until the next launch: hundreds of MB after an hour of watching channel videos.
-            TempBox.shared.dispose(file)
-            if let data {
-                completion([
-                    "status": 200,
-                    "statusText": "OK",
-                    "responseData": data,
-                    "responseHeaders": [
-                        "Content-Type": "application/octet-stream",
-                        "Content-Range": "bytes \(range.lowerBound)-\(range.upperBound)/\(totalSize)",
-                        "Content-Length": "\(fileRange.upperBound - fileRange.lowerBound)"
-                    ] as [String: String]
-                ])
-            } else {
-                SharedHLSVideoJSContext.sendErrorAndClose(id: id, error: .internalServerError, completion: completion)
-            }
-        }
+    private static func sendResponsePartAndClose(id: Int, data: Data, range: Range<Int>, totalSize: Int, completion: @escaping ([String: Any]) -> Void) {
+        completion([
+            "status": 200,
+            "statusText": "OK",
+            "responseData": data,
+            "responseHeaders": [
+                "Content-Type": "application/octet-stream",
+                "Content-Range": "bytes \(range.lowerBound)-\(range.upperBound)/\(totalSize)",
+                "Content-Length": "\(data.count)"
+            ] as [String: String]
+        ])
     }
     
     func register(context: HLSVideoJSNativeContentNode) -> Disposable {
@@ -1814,15 +1720,16 @@ private final class SourceBuffer {
         let updateId = self.currentUpdateId
         
         SourceBuffer.sharedQueue.async { [weak self] in
-            let tempFile = TempBox.shared.tempFile(fileName: "data.mp4")
-            
             var combinedData = Data()
             if let initializationData {
                 combinedData.append(initializationData)
             }
             combinedData.append(data)
-            guard let _ = try? combinedData.write(to: URL(fileURLWithPath: tempFile.path), options: .atomic) else {
-                TempBox.shared.dispose(tempFile)
+            
+            // Probed in memory, and played from the media cache when the bytes are a segment the server source
+            // served from it (HLSStreamingStorage): no file is written for it.
+            guard let fragmentInfoSet = extractFFMpegMediaInfo(data: combinedData), let fragmentInfo = fragmentInfoSet.audio ?? fragmentInfoSet.video else {
+                assertionFailure()
                 Queue.mainQueue().async {
                     guard let self else {
                         completion(RangeSet())
@@ -1838,46 +1745,8 @@ private final class SourceBuffer {
                 return
             }
             
-            if let fragmentInfoSet = extractFFMpegMediaInfo(path: tempFile.path), let fragmentInfo = fragmentInfoSet.audio ?? fragmentInfoSet.video {
-                Queue.mainQueue().async {
-                    guard let self else {
-                        TempBox.shared.dispose(tempFile)
-                        completion(RangeSet())
-                        return
-                    }
-                    
-                    if self.currentUpdateId != updateId {
-                        TempBox.shared.dispose(tempFile)
-                        return
-                    }
-                    
-                    if fragmentInfo.duration.value == 0 {
-                        // The initialization segment is kept in memory; its file is not played.
-                        TempBox.shared.dispose(tempFile)
-                        self.initializationData = data
-                        
-                        completion(self.ranges)
-                    } else {
-                        let videoCodecName: String? = fragmentInfoSet.video?.codecName
-                        
-                        let item = ChunkMediaPlayerPart(
-                            startTime: fragmentInfo.startTime.seconds,
-                            endTime: fragmentInfo.startTime.seconds + fragmentInfo.duration.seconds,
-                            content: ChunkMediaPlayerPart.TempFile(file: tempFile, ignoreAudioEditList: true, deletesFileOnRelease: true),
-                            codecName: videoCodecName,
-                            offsetTime: 0.0
-                        )
-                        self.items.append(item)
-                        self.updateRanges()
-                        
-                        completion(self.ranges)
-                        
-                        self.updated.putNext(Void())
-                    }
-                }
-            } else {
-                assertionFailure()
-                TempBox.shared.dispose(tempFile)
+            if fragmentInfo.duration.value == 0 {
+                // The initialization segment is kept in memory and played with every segment after it.
                 Queue.mainQueue().async {
                     guard let self else {
                         completion(RangeSet())
@@ -1888,9 +1757,43 @@ private final class SourceBuffer {
                         return
                     }
                     
+                    self.initializationData = data
                     completion(self.ranges)
                 }
                 return
+            }
+            
+            let videoCodecName: String? = fragmentInfoSet.video?.codecName
+            let content = HLSStreamingStorage.partContent(initializationData: initializationData, segmentData: data, codecName: videoCodecName, servedSegments: HLSServedSegments.shared)
+            
+            Queue.mainQueue().async {
+                guard let self else {
+                    completion(RangeSet())
+                    return
+                }
+                
+                if self.currentUpdateId != updateId {
+                    return
+                }
+                
+                guard let content else {
+                    completion(self.ranges)
+                    return
+                }
+                
+                let item = ChunkMediaPlayerPart(
+                    startTime: fragmentInfo.startTime.seconds,
+                    endTime: fragmentInfo.startTime.seconds + fragmentInfo.duration.seconds,
+                    content: content,
+                    codecName: videoCodecName,
+                    offsetTime: 0.0
+                )
+                self.items.append(item)
+                self.updateRanges()
+                
+                completion(self.ranges)
+                
+                self.updated.putNext(Void())
             }
         }
     }
