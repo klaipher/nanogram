@@ -48,6 +48,13 @@ enum IncomingCallCommunication {
         )
     }
 
+    /// Whether the ringing notification is drawn as the caller's (their photo, the interaction
+    /// donated) rather than kept as the plain banner. Not while the passcode lock is on: a message
+    /// then names no sender either.
+    static func drawsCaller(isAppLocked: Bool) -> Bool {
+        return !isAppLocked
+    }
+
     enum AvatarSource: Equatable {
         /// No picture.
         case none

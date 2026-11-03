@@ -60,6 +60,16 @@ final class IncomingCallCommunicationTests: XCTestCase {
         XCTAssertFalse(person.isMe)
     }
 
+    // MARK: - Whether the caller is drawn
+
+    // With the passcode lock on, a message names no sender and shows no face; the call banner stays
+    // the plain "<caller> / is calling you" one: no photo, and nothing donated to the system.
+    @available(iOS 15.0, *)
+    func testLockedAppDrawsNoCaller() {
+        XCTAssertTrue(IncomingCallCommunication.drawsCaller(isAppLocked: false))
+        XCTAssertFalse(IncomingCallCommunication.drawsCaller(isAppLocked: true))
+    }
+
     // MARK: - Which picture
 
     @available(iOS 15.0, *)
