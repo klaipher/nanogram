@@ -24,6 +24,8 @@ private struct SpotlightIndexStorageItem: Codable, Equatable {
     var firstName: String
     var lastName: String
     var avatarSourcePath: String?
+    /// Searchable as @username. Optional: items stored by older builds have none.
+    var username: String?
 }
 
 private final class SpotlightIndexStorage {
@@ -121,12 +123,14 @@ private final class SpotlightIndexStorage {
                     continue
                 }
                 
-                print("Spotlight: updating \(item.firstName) \(item.lastName)")
                 let path = self.path(peerId: peerId)
                 let _ = try? FileManager.default.createDirectory(atPath: path, withIntermediateDirectories: true, attributes: nil)
                 
                 var resolvedAvatarPath: String?
-                if previousItem?.avatarSourcePath != updatedAvatarSourcePath {
+                if previousItem?.avatarSourcePath == updatedAvatarSourcePath, updatedAvatarSourcePath != nil, FileManager.default.fileExists(atPath: path + "/avatar.png") {
+                    // A name change keeps the photo it already has.
+                    resolvedAvatarPath = path + "/avatar.png"
+                } else if previousItem?.avatarSourcePath != updatedAvatarSourcePath {
                     let avatarPath = path + "/avatar.png"
                     let _ = try? FileManager.default.removeItem(atPath: avatarPath)
                     
@@ -149,16 +153,24 @@ private final class SpotlightIndexStorage {
                 
                 let itemDataPath = path + "/data.json"
                 
-                let attributeSet = CSSearchableItemAttributeSet(itemContentType: UTType.text.identifier)
-                attributeSet.version = "\(UInt64.random(in: 0 ..< UInt64.max))"
+                // A person, so Spotlight lays it out as a contact; the version changes only with what is shown.
+                let attributeSet = CSSearchableItemAttributeSet(itemContentType: UTType.contact.identifier)
+                let title: String
                 if !item.firstName.isEmpty && !item.lastName.isEmpty {
-                    attributeSet.title = "\(item.firstName) \(item.lastName)"
+                    title = "\(item.firstName) \(item.lastName)"
                 } else if !item.firstName.isEmpty {
-                    attributeSet.title = item.firstName
+                    title = item.firstName
                 } else {
-                    attributeSet.title = item.lastName
+                    title = item.lastName
                 }
-                attributeSet.thumbnailURL = resolvedAvatarPath.flatMap(URL.init(fileURLWithPath:))
+                attributeSet.title = title
+                attributeSet.displayName = title
+                if let username = item.username, !username.isEmpty {
+                    attributeSet.alternateNames = ["@\(username)", username]
+                }
+                attributeSet.version = [title, item.username ?? "", updatedAvatarSourcePath ?? ""].joined(separator: "|")
+                // The data itself: Spotlight runs in another process and cannot read a file in the app group.
+                attributeSet.thumbnailData = resolvedAvatarPath.flatMap { try? Data(contentsOf: URL(fileURLWithPath: $0)) }
                 let indexItem = CSSearchableItem(uniqueIdentifier: "contact-\(peerId.toInt64())", domainIdentifier: "telegram-contacts", attributeSet: attributeSet)
                 addToIndexItems.append(indexItem)
                 
@@ -167,7 +179,9 @@ private final class SpotlightIndexStorage {
                     let _ = try? data.write(to: URL(fileURLWithPath: itemDataPath), options: [.atomic])
                 }
                 
-                self.items[peerId] = item
+                // What was indexed, as stored: comparing with the item as given re-indexed a contact whose photo
+                // was not downloaded on every update.
+                self.items[peerId] = encodeItem
             }
         }
         
@@ -227,7 +241,7 @@ private func manageableSpotlightContacts(appBasePath: String, accounts: Signal<[
                                 return resourcePath
                             }
                         }
-                        result[user.id] = SpotlightIndexStorageItem(firstName: user.firstName ?? "", lastName: user.lastName ?? "", avatarSourcePath: avatarSourcePath)
+                        result[user.id] = SpotlightIndexStorageItem(firstName: user.firstName ?? "", lastName: user.lastName ?? "", avatarSourcePath: avatarSourcePath, username: user.addressName)
                     }
                 }
                 return result

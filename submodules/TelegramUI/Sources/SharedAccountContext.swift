@@ -1091,10 +1091,21 @@ public final class SharedAccountContextImpl: SharedAccountContext {
                 return accounts.map { $0.1.account }
             }, presentationData: self.presentationData, appLockContext: self.appLockContext as! AppLockContextImpl)
             
-            let enableSpotlight = accountManager.sharedData(keys: Set([ApplicationSpecificSharedDataKeys.intentsSettings]))
-            |> map { sharedData -> Bool in
-                let intentsSettings: IntentsSettings = sharedData.entries[ApplicationSpecificSharedDataKeys.intentsSettings]?.get(IntentsSettings.self) ?? .defaultSettings
-                return intentsSettings.contacts
+            // Contacts stay out of system search while an app passcode is set, as share suggestions do: anyone
+            // with the unlocked phone could find them there. With no accounts the index is emptied.
+            let enableSpotlight = combineLatest(
+                accountManager.sharedData(keys: Set([ApplicationSpecificSharedDataKeys.intentsSettings]))
+                |> map { sharedData -> Bool in
+                    let intentsSettings: IntentsSettings = sharedData.entries[ApplicationSpecificSharedDataKeys.intentsSettings]?.get(IntentsSettings.self) ?? .defaultSettings
+                    return intentsSettings.contacts
+                },
+                accountManager.accessChallengeData()
+                |> map { view -> Bool in
+                    return !view.data.isLockable
+                }
+            )
+            |> map { contacts, noPasscode -> Bool in
+                return contacts && noPasscode
             }
             |> distinctUntilChanged
             self.spotlightDataContext = SpotlightDataContext(appBasePath: applicationBindings.containerPath, accountManager: accountManager, accounts: combineLatest(enableSpotlight, self.activeAccountContexts
