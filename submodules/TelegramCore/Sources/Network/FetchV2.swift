@@ -72,6 +72,22 @@ private let maxCdnFailuresBeforeFallback = 4
 private let maxCdnReuploadsPerBlock = 3
 private let maxCdnTokenRefreshes = 3
 
+struct FetchDownloadMode: Equatable {
+    let fastDownloads: Bool
+    let requestsCdn: Bool
+    let masterPendingParts: Int
+    let cdnPendingParts: Int
+}
+
+func fetchDownloadMode(engineKind: NetworkEngineKind) -> FetchDownloadMode {
+    return FetchDownloadMode(
+        fastDownloads: true,
+        requestsCdn: engineKind == .rust,
+        masterPendingParts: fastDownloadMasterPendingParts,
+        cdnPendingParts: fastDownloadCdnPendingParts
+    )
+}
+
 func cdnRedirectKeyMaterialIsValid(encryptionKey: Data, encryptionIv: Data) -> Bool {
     return encryptionKey.count == 32 && encryptionIv.count == 16
 }
@@ -390,6 +406,7 @@ private final class FetchImpl {
         private let defaultPartSize: Int64
         private let cdnPartSize: Int64
         private let fastDownloads: Bool
+        private let requestsCdn: Bool
         private let masterPendingParts: Int
         private let cdnPendingParts: Int
         private var cdnDisabled: Bool = false
@@ -459,15 +476,17 @@ private final class FetchImpl {
                 }
             }
             
-            self.fastDownloads = network.engineKind == .rust
+            let downloadMode = fetchDownloadMode(engineKind: network.engineKind)
+            self.fastDownloads = downloadMode.fastDownloads
+            self.requestsCdn = downloadMode.requestsCdn
             if isStory {
                 self.defaultPartSize = 512 * 1024
             } else {
                 self.defaultPartSize = 128 * 1024
             }
             self.cdnPartSize = 128 * 1024
-            self.masterPendingParts = self.fastDownloads ? fastDownloadMasterPendingParts : 6
-            self.cdnPendingParts = self.fastDownloads ? fastDownloadCdnPendingParts : 6
+            self.masterPendingParts = downloadMode.masterPendingParts
+            self.cdnPendingParts = downloadMode.cdnPendingParts
             
             // The resource id tells concurrent downloads apart; an Api value prints only its constructor name.
             self.loggingIdentifier = resource.id.stringRepresentation
@@ -949,7 +968,7 @@ private final class FetchImpl {
                             consumerId: self.consumerId,
                             resourceId: self.resource.id.stringRepresentation,
                             data: Api.functions.upload.getFile(
-                                flags: self.fastDownloads && !self.cdnDisabled ? (1 << 1) : 0,
+                                flags: self.requestsCdn && !self.cdnDisabled ? (1 << 1) : 0,
                                 location: inputLocation,
                                 offset: part.fetchRange.lowerBound,
                                 limit: Int32(requestedLength)),
