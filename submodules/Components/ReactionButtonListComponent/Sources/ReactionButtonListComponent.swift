@@ -95,9 +95,9 @@ public final class ReactionIconView: PortalSourceView {
     private var reaction: MessageReaction.Reaction?
     
     private var isPaused: Bool = false
-    private var isAnimationHidden: Bool = false
+    private(set) var isAnimationHidden: Bool = false
     
-    private let contentGate = ReactionIconContentGate()
+    let contentGate = ReactionIconContentGate()
     
     private var disposable: Disposable?
     
@@ -213,6 +213,27 @@ public final class ReactionIconView: PortalSourceView {
     /// stand-in (this view's subviews), so nothing waits longer than the button exists.
     public func whenAnimationHasContent(_ action: @escaping () -> Void) {
         self.contentGate.whenContentReady(action)
+    }
+    
+    /// Shows the button's own animation in place of `standIn`, a view standing in for it on top of
+    /// this view, once the animation layer has drawn a frame; until then the layer stays hidden and
+    /// `standIn` stays.
+    ///
+    /// Every path that puts a reaction into the button (the picker, a double tap's quick reaction,
+    /// the long-press and stars reactions) shows its own view here while the layer loads, and a
+    /// reaction just added makes a new button whose layer has drawn nothing yet. Runs at once when
+    /// the layer has a frame; see `whenAnimationHasContent` for what bounds the wait.
+    public func handOffAnimation(from standIn: UIView) {
+        self.updateIsAnimationHidden(isAnimationHidden: true, transition: .immediate)
+        self.contentGate.whenContentReady({ [weak self, weak standIn] in
+            guard let self else {
+                return
+            }
+            self.updateIsAnimationHidden(isAnimationHidden: false, transition: .immediate)
+            if let standIn, standIn.superview === self {
+                standIn.removeFromSuperview()
+            }
+        })
     }
     
     public var animationHasContent: Bool {

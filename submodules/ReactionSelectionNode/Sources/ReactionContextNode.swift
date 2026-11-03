@@ -3010,19 +3010,13 @@ public final class ReactionContextNode: ASDisplayNode, ASScrollViewDelegate {
     }
     
     /// Shows the reaction button's own animation and removes the picker's node standing in for it,
-    /// once the button's layer has drawn a frame.
+    /// once the button's layer has drawn a frame (`ReactionIconView.handOffAnimation(from:)`).
     ///
     /// The layer loads its first frame asynchronously. With a cold animation cache (every reaction
     /// after a cache format change) it had not drawn one when the picker handed over, and the button
-    /// was empty for a few seconds. The node stays until then, however long it takes: the button
-    /// removes it on a reset and hands off at once when it moves to another reaction.
-    static func handOffWhenButtonHasContent(itemNode: ReactionNode, targetView: ReactionIconView) {
-        targetView.whenAnimationHasContent({ [weak itemNode, weak targetView] in
-            targetView?.updateIsAnimationHidden(isAnimationHidden: false, transition: .immediate)
-            if let itemNode, itemNode.view.superview === targetView {
-                itemNode.removeFromSupernode()
-            }
-        })
+    /// was empty for a few seconds.
+    static func handOffWhenButtonHasContent(itemNode: ASDisplayNode, targetView: ReactionIconView) {
+        targetView.handOffAnimation(from: itemNode.view)
     }
     
     override public func hitTest(_ point: CGPoint, with event: UIEvent?) -> UIView? {
@@ -3716,16 +3710,24 @@ public final class StandaloneReactionAnimation: ASDisplayNode {
                             intermediateCompletion()
                         })
                     } else {
+                        var handedOff = false
                         if let targetView = strongSelf.targetView {
                             if let targetView = targetView as? ReactionIconView, !isLarge {
-                                targetView.updateIsAnimationHidden(isAnimationHidden: false, transition: .immediate)
+                                if strongSelf.itemNodeIsEmbedded, let itemNode = strongSelf.itemNode, itemNode.view.superview === targetView {
+                                    // A reaction just added makes a new button, whose layer may not
+                                    // have drawn a frame yet: this node stays in its place until then.
+                                    ReactionContextNode.handOffWhenButtonHasContent(itemNode: itemNode, targetView: targetView)
+                                    handedOff = true
+                                } else {
+                                    targetView.updateIsAnimationHidden(isAnimationHidden: false, transition: .immediate)
+                                }
                             } else {
                                 targetView.alpha = 1.0
                                 targetView.isHidden = false
                             }
                         }
                         
-                        if strongSelf.itemNodeIsEmbedded {
+                        if strongSelf.itemNodeIsEmbedded && !handedOff {
                             strongSelf.itemNode?.removeFromSupernode()
                         }
                         
