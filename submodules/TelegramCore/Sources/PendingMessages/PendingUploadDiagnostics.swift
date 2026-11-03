@@ -35,7 +35,14 @@ struct PendingUploadProgressMilestones {
     }
 }
 
+/// A step of a pending message. Goes to the log only, which the user's logging setting controls.
 func pendingMessageLog(_ what: @autoclosure () -> String) {
+    Logger.shared.log("PendingMessage", what())
+}
+
+/// A pending message that failed. Also goes to the critical log, which the logging setting does not
+/// control, so the text must not name a peer.
+func pendingMessageFailureLog(_ what: @autoclosure () -> String) {
     let string = what()
     Logger.shared.log("PendingMessage", string)
     Logger.shared.shortLog("PendingMessage", string)

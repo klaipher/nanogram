@@ -935,15 +935,25 @@ final class RustNetworkSession: NetworkEngineSession, RustEngineEventHandler {
         rustEngineLog("\(self.logPrefix) failed #\(event.requestId) \(event.code) \(event.text)")
         if rustEngineResubmitsAfterLostAnswer(code: event.code, text: event.text) {
             let errorContext = pending.errorState.applyServerError()
-            if pending.request.shouldContinueAfterError(NetworkEngineErrorContext(floodWaitSeconds: errorContext.floodWaitSeconds, floodWaitErrorText: errorContext.floodWaitErrorText, internalServerErrorCount: errorContext.internalServerErrorCount)) && !pending.isCancelled && !pending.isFinished {
-                pending.errorState.didResubmit()
+            let policyAllows = pending.request.shouldContinueAfterError(NetworkEngineErrorContext(floodWaitSeconds: errorContext.floodWaitSeconds, floodWaitErrorText: errorContext.floodWaitErrorText, internalServerErrorCount: errorContext.internalServerErrorCount)) && !pending.isCancelled && !pending.isFinished
+            switch rustEngineLostAnswerAction(resubmissionsSoFar: pending.errorState.lostAnswerResubmissions, policyAllows: policyAllows) {
+            case .resubmit:
+                if self.verifyingRequests.removeValue(forKey: event.requestId) != nil {
+                    pending.releaseResources()
+                }
+                pending.errorState.didResubmitAfterLostAnswer()
                 rustEngineImportantLog("\(self.logPrefix) #\(event.requestId) ran on the server but its answer is gone; it goes again")
                 self.sendToEngine(pending)
                 return
+            case .fail:
+                if self.verifyingRequests.removeValue(forKey: event.requestId) != nil {
+                    pending.releaseResources()
+                }
+                rustEngineImportantLog("\(self.logPrefix) #\(event.requestId) ran on the server but its answer is gone; it fails")
+                self.finish(pending)
+                pending.request.completed(.failure(NetworkEngineRequestFailure(error: MTRpcError(errorCode: event.code, errorDescription: event.text), info: self.responseInfo(event))))
+                return
             }
-            rustEngineImportantLog("\(self.logPrefix) #\(event.requestId) ran on the server but its answer is gone; it stays waiting")
-            self.finish(pending)
-            return
         }
         if rustEngineResubmitsAfterKeyRotation(code: event.code, text: event.text) {
             let errorContext = pending.errorState.applyServerError()

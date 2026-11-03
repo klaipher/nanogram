@@ -1078,7 +1078,7 @@ public final class PendingMessageManager {
         |> deliverOn(queue)
         |> `catch` { [weak self] _ -> Signal<PendingMessageUploadedContentResult, NoError> in
             contentReceived = true
-            pendingMessageLog("message \(id.id) upload failed")
+            pendingMessageFailureLog("message \(id.id) upload failed")
             if let strongSelf = self {
                 let modify = strongSelf.postbox.transaction { transaction -> Void in
                     transaction.updateMessage(id, update: { currentMessage in
@@ -1141,7 +1141,7 @@ public final class PendingMessageManager {
         guard let context = self.messageContexts[id], case .uploading = context.state else {
             return
         }
-        pendingMessageLog("message \(id.id) upload ended without content, failing it")
+        pendingMessageFailureLog("message \(id.id) upload ended without content, failing it")
         let _ = failMessages(postbox: self.postbox, ids: [id]).start()
     }
     
@@ -1210,7 +1210,7 @@ public final class PendingMessageManager {
                         }
                     }, error: { [weak self] _ in
                         contentReceived = true
-                        pendingMessageLog("message \(contextId.id) upload failed")
+                        pendingMessageFailureLog("message \(contextId.id) upload failed")
                         guard let strongSelf = self else {
                             return
                         }
@@ -1568,7 +1568,7 @@ public final class PendingMessageManager {
                     }
                 }
                 |> `catch` { error -> Signal<Void, NoError> in
-                    pendingMessageLog("group of \(messages.count) messages starting at \(messages[0].0.id.id) request failed \(error.errorCode) \(error.errorDescription ?? "")")
+                    pendingMessageFailureLog("group of \(messages.count) messages starting at \(messages[0].0.id.id) request failed \(error.errorCode) \(error.errorDescription ?? "")")
                     return deferred {
                         if let strongSelf = self {
                             let errorText: String = error.errorDescription
@@ -2191,7 +2191,7 @@ public final class PendingMessageManager {
                     }
                 }
                 |> `catch` { error -> Signal<Void, NoError> in
-                    pendingMessageLog("message \(messageId.id) request failed \(error.errorCode) \(error.errorDescription ?? "")")
+                    pendingMessageFailureLog("message \(messageId.id) request failed \(error.errorCode) \(error.errorDescription ?? "")")
                     queue.async {
                         guard let strongSelf = self, let context = strongSelf.messageContexts[messageId] else {
                             return

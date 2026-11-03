@@ -1496,6 +1496,7 @@ private func uploadedMediaFileContent(network: Network, postbox: Postbox, auxili
         })
             
         let logId = messageId?.id ?? 0
+        let loggedWaitingForPreparedFile = Atomic<Bool>(value: false)
         return combineLatest(upload, transformedFileAndThumbnail, resourceStatus)
         |> mapToSignal { content, fileAndThumbnailResult, resourceStatus -> Signal<PendingMessageUploadedContentResult, PendingMessageUploadError> in
             guard let content = content else {
@@ -1632,7 +1633,9 @@ private func uploadedMediaFileContent(network: Network, postbox: Postbox, auxili
                             }
                         }
                     } else {
-                        pendingMessageLog("message \(logId) file uploaded, waiting for the prepared file")
+                        if !loggedWaitingForPreparedFile.swap(true) {
+                            pendingMessageLog("message \(logId) file uploaded, waiting for the prepared file")
+                        }
                         return .complete()
                     }
                 case let .inputSecretFile(file, size, key):

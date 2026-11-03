@@ -257,6 +257,18 @@ final class RustEngineMappingTests: XCTestCase {
         XCTAssertFalse(rustEngineOffersTemporaryKey(stored: permanent, permanentKeyId: 7, now: 9_000, minimumLifetime: 300))
     }
 
+    func testALostAnswerIsSentAgainOnlyWithinThePolicyAndTheCap() {
+        XCTAssertEqual(rustEngineLostAnswerAction(resubmissionsSoFar: 0, policyAllows: true), .resubmit)
+        XCTAssertEqual(rustEngineLostAnswerAction(resubmissionsSoFar: 2, policyAllows: true), .resubmit)
+        XCTAssertEqual(rustEngineLostAnswerAction(resubmissionsSoFar: 3, policyAllows: true), .fail)
+        XCTAssertEqual(rustEngineLostAnswerAction(resubmissionsSoFar: 0, policyAllows: false), .fail)
+        var state = RustEngineErrorState()
+        _ = state.applyServerError()
+        state.didResubmitAfterLostAnswer()
+        XCTAssertEqual(state.lostAnswerResubmissions, 1)
+        XCTAssertEqual(state.context.internalServerErrorCount, 1)
+    }
+
     func testALostAnswerIsSentAgain() {
         XCTAssertTrue(rustEngineResubmitsAfterLostAnswer(code: 500, text: "PROTOCOL_ERROR_ANSWER_LOST"))
         XCTAssertFalse(rustEngineResubmitsAfterLostAnswer(code: 500, text: "PROTOCOL_ERROR_REJECTED"))
