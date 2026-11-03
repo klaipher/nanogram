@@ -6,7 +6,9 @@
 
 <build number> is the build's CFBundleVersion. --wait polls (once a minute, for at most MINUTES)
 until App Store Connect has processed the upload, then sets the notes; without it the build must
-already be there. --dry-run prints the build and its current notes and changes nothing. --check
+already be there. With --wait, rate limiting (HTTP 429), server errors and network failures or
+timeouts are retried with backoff (5 s doubling to 60 s, or the server's Retry-After) until the
+window ends; setting the notes gets at least 2 more minutes of retries once the build is ready. --dry-run prints the build and its current notes and changes nothing. --check
 only validates the notes file (non-empty, at most 4000 characters) and makes no network call;
 `tg testflight` runs it before building.
 
@@ -16,6 +18,7 @@ secret is in this file. TG_ASC_APP_ID overrides the App Store Connect app id.
 """
 import argparse
 import base64
+import http.client
 import json
 import os
 import subprocess
@@ -32,12 +35,31 @@ APP_ID = os.environ.get("TG_ASC_APP_ID", "6829268176")
 # App Store Connect's limit for whatsNew.
 MAX_NOTES_LENGTH = 4000
 POLL_SECONDS = 60
+# Backoff for a failed request inside the wait window: doubles from here up to POLL_SECONDS.
+RETRY_FIRST_SECONDS = 5
+# Retries left for setting the notes when the build became ready at the very end of the window.
+SET_NOTES_MIN_RETRY_SECONDS = 120
 
 
 class ApiError(Exception):
-    def __init__(self, message, status=None):
+    def __init__(self, message, status=None, retry_after=None):
         super().__init__(message)
         self.status = status
+        self.retry_after = retry_after
+
+    @property
+    def transient(self):
+        """No answer (network failure, timeout), rate limited or a server error: worth retrying.
+        Any other client error will not go away."""
+        return self.status is None or self.status == 429 or self.status >= 500
+
+
+def retry_after_seconds(headers):
+    value = headers.get("Retry-After") if headers is not None else None
+    try:
+        return max(0.0, float(value)) if value is not None else None
+    except ValueError:
+        return None  # The HTTP-date form: use our own backoff.
 
 
 def jwt() -> str:
@@ -67,14 +89,37 @@ def call(method, path, body=None):
     data = json.dumps(body).encode() if body is not None else None
     req = urllib.request.Request(ASC + path, data=data, method=method,
                                  headers={"Authorization": "Bearer " + jwt(), "Content-Type": "application/json"})
+    what = f"{method} {path.split('?')[0]}"
     try:
         with urllib.request.urlopen(req, timeout=60) as resp:
             raw = resp.read()
             return json.loads(raw) if raw else {}
     except urllib.error.HTTPError as e:
-        raise ApiError(f"{method} {path.split('?')[0]}: HTTP {e.code}: {e.read().decode()[:400]}", e.code)
+        raise ApiError(f"{what}: HTTP {e.code}: {e.read().decode()[:400]}", e.code, retry_after_seconds(e.headers))
     except urllib.error.URLError as e:
-        raise ApiError(f"{method} {path.split('?')[0]}: {e.reason}")
+        raise ApiError(f"{what}: {e.reason}")
+    except (OSError, http.client.HTTPException) as e:
+        # A timeout while reading the answer, a reset connection, a truncated response.
+        raise ApiError(f"{what}: {e or type(e).__name__}")
+
+
+def with_retries(what, f, deadline):
+    """f(), retrying transient ApiErrors with backoff until `deadline` (time.monotonic()); no
+    retries without a deadline. f must be safe to repeat."""
+    delay = RETRY_FIRST_SECONDS
+    while True:
+        try:
+            return f()
+        except ApiError as e:
+            if deadline is None or not e.transient:
+                raise
+            wait = e.retry_after if e.retry_after is not None else delay
+            remaining = deadline - time.monotonic()
+            if wait > remaining:
+                raise ApiError(f"{e} (gave up {what}: the wait window ends in {max(0, int(remaining))} s)", e.status)
+            print(f"  {e}; retrying {what} in {wait:g} s", flush=True)
+            time.sleep(wait)
+            delay = min(delay * 2, POLL_SECONDS)
 
 
 def read_notes(path) -> str:
@@ -95,18 +140,11 @@ def find_build(platform, number):
     return builds[0] if builds else None
 
 
-def wait_for_processed_build(platform, number, minutes):
-    deadline = time.monotonic() + minutes * 60
+def wait_for_processed_build(platform, number, deadline, minutes):
     last_state = None
     while True:
-        try:
-            build = find_build(platform, number)
-        except ApiError as e:
-            # A 45-minute poll should outlive a passing outage; a client error will not go away.
-            if e.status is not None and e.status < 500:
-                raise
-            print(f"  {e}; retrying", flush=True)
-            build = None
+        # A 45-minute poll should outlive a passing outage or rate limiting.
+        build = with_retries("the build lookup", lambda: find_build(platform, number), deadline)
         state = build["attributes"].get("processingState") if build else "NOT_FOUND"
         if state != last_state:
             print(f"  build {number} ({platform}): {state}", flush=True)
@@ -142,29 +180,38 @@ def main():
     notes = read_notes(args.notes)
     try:
         if args.wait is not None:
-            build = wait_for_processed_build(args.platform, args.build, args.wait)
+            deadline = time.monotonic() + args.wait * 60
+            build = wait_for_processed_build(args.platform, args.build, deadline, args.wait)
+            notes_deadline = max(deadline, time.monotonic() + SET_NOTES_MIN_RETRY_SECONDS)
         else:
             build = find_build(args.platform, args.build)
             if build is None:
                 sys.exit(f"build {args.build} ({args.platform}) not found yet: still processing or not uploaded")
+            notes_deadline = None
         print(f"build {args.build}: id {build['id']}, processingState {build['attributes'].get('processingState')}")
-        locs = call("GET", f"/v1/builds/{build['id']}/betaBuildLocalizations")["data"]
-        existing = next((l for l in locs if l["attributes"].get("locale") == "en-US"), None)
-        if existing:
-            print("current notes:", repr(existing["attributes"].get("whatsNew")))
-        if args.dry_run:
-            return
-        if existing:
-            call("PATCH", f"/v1/betaBuildLocalizations/{existing['id']}",
-                 {"data": {"type": "betaBuildLocalizations", "id": existing["id"], "attributes": {"whatsNew": notes}}})
-        else:
-            call("POST", "/v1/betaBuildLocalizations",
-                 {"data": {"type": "betaBuildLocalizations", "attributes": {"locale": "en-US", "whatsNew": notes},
-                           "relationships": {"build": {"data": {"type": "builds", "id": build["id"]}}}}})
-        check = call("GET", f"/v1/builds/{build['id']}/betaBuildLocalizations")["data"]
-        print("notes now:", [l["attributes"].get("whatsNew") for l in check if l["attributes"].get("locale") == "en-US"])
+        with_retries("setting the notes", lambda: set_notes(build["id"], notes, args.dry_run), notes_deadline)
     except ApiError as e:
         sys.exit(str(e))
+
+
+def set_notes(build_id, notes, dry_run):
+    """Reads the build's en-US localization and creates or updates it. Safe to repeat: a POST
+    whose answer was lost created the localization, and the repeat updates it."""
+    locs = call("GET", f"/v1/builds/{build_id}/betaBuildLocalizations")["data"]
+    existing = next((l for l in locs if l["attributes"].get("locale") == "en-US"), None)
+    if existing:
+        print("current notes:", repr(existing["attributes"].get("whatsNew")))
+    if dry_run:
+        return
+    if existing:
+        call("PATCH", f"/v1/betaBuildLocalizations/{existing['id']}",
+             {"data": {"type": "betaBuildLocalizations", "id": existing["id"], "attributes": {"whatsNew": notes}}})
+    else:
+        call("POST", "/v1/betaBuildLocalizations",
+             {"data": {"type": "betaBuildLocalizations", "attributes": {"locale": "en-US", "whatsNew": notes},
+                       "relationships": {"build": {"data": {"type": "builds", "id": build_id}}}}})
+    check = call("GET", f"/v1/builds/{build_id}/betaBuildLocalizations")["data"]
+    print("notes now:", [l["attributes"].get("whatsNew") for l in check if l["attributes"].get("locale") == "en-US"])
 
 
 if __name__ == "__main__":
