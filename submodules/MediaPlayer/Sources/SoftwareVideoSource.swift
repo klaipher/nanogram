@@ -80,6 +80,10 @@ public final class SoftwareVideoSource {
         return self.videoStream != nil
     }
     
+    var reusesPixelBuffers: Bool {
+        return (self.videoStream?.decoder as? FFMpegMediaVideoFrameDecoder)?.reusesPixelBuffers ?? false
+    }
+    
     public init(path: String, hintVP9: Bool, unpremultiplyAlpha: Bool, passthroughDecoder: Bool = false, useHardwareAcceleration: Bool = false, skipLoopFilter: Bool = false, reusePixelBuffers: Bool = false) {
         let _ = FFMpegMediaFrameSourceContextHelpers.registerFFMpegGlobals
         
@@ -297,7 +301,7 @@ public final class SoftwareVideoSource {
                 if let decoder = videoStream.decoder as? FFMpegMediaVideoFrameDecoder {
                     result = (decoder.decode(ptsOffset: ptsOffset, forceARGB: self.hintVP9, unpremultiplyAlpha: self.unpremultiplyAlpha), CGFloat(videoStream.rotationAngle), CGFloat(videoStream.aspect), loop)
                 } else {
-                    result = (videoStream.decoder.decode(), CGFloat(videoStream.rotationAngle), CGFloat(videoStream.aspect), loop)
+                    result = (SoftwareVideoSource.presentablePassthroughFrame(videoStream.decoder.decode(), ptsOffset: ptsOffset), CGFloat(videoStream.rotationAngle), CGFloat(videoStream.aspect), loop)
                 }
             } else {
                 result = (nil, CGFloat(videoStream.rotationAngle), CGFloat(videoStream.aspect), loop)
@@ -325,6 +329,35 @@ public final class SoftwareVideoSource {
             }
         }
         return result
+    }
+    
+    private static func presentablePassthroughFrame(_ frame: MediaTrackFrame?, ptsOffset: CMTime?) -> MediaTrackFrame? {
+        guard let frame else {
+            return nil
+        }
+        var sampleBuffer = frame.sampleBuffer
+        if let ptsOffset {
+            var timing = CMSampleTimingInfo()
+            guard CMSampleBufferGetSampleTimingInfo(sampleBuffer, at: 0, timingInfoOut: &timing) == noErr else {
+                return nil
+            }
+            timing.presentationTimeStamp = CMTimeAdd(timing.presentationTimeStamp, ptsOffset)
+            if timing.decodeTimeStamp.isValid {
+                timing.decodeTimeStamp = CMTimeAdd(timing.decodeTimeStamp, ptsOffset)
+            }
+            var retimed: CMSampleBuffer?
+            guard CMSampleBufferCreateCopyWithNewTiming(allocator: kCFAllocatorDefault, sampleBuffer: sampleBuffer, sampleTimingEntryCount: 1, sampleTimingArray: &timing, sampleBufferOut: &retimed) == noErr, let retimed else {
+                return nil
+            }
+            sampleBuffer = retimed
+        }
+        if let attachments = CMSampleBufferGetSampleAttachmentsArray(sampleBuffer, createIfNecessary: true) as NSArray?, let dict = attachments.firstObject as? NSMutableDictionary {
+            dict[kCMSampleAttachmentKey_DisplayImmediately as NSString] = true as NSNumber
+            if frame.resetDecoder {
+                dict[kCMSampleBufferAttachmentKey_ResetDecoderBeforeDecoding as NSString] = true as NSNumber
+            }
+        }
+        return MediaTrackFrame(type: frame.type, sampleBuffer: sampleBuffer, resetDecoder: frame.resetDecoder, decoded: frame.decoded, rotationAngle: frame.rotationAngle)
     }
     
     public func readImage() -> (UIImage?, CGFloat, CGFloat, Bool) {
