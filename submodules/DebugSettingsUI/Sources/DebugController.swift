@@ -252,7 +252,6 @@ private enum DebugControllerSection: Int32 {
     case web
     case videoExperiments2
     case info
-    case profiling
 }
 
 enum DebugControllerEntry: ItemListNodeEntry {
@@ -329,7 +328,7 @@ enum DebugControllerEntry: ItemListNodeEntry {
         case .versionInfo:
             return DebugControllerSection.appInfo.rawValue
         case .collectCpuProfile, .sendProfileLogs, .sendMetricKitReports:
-            return DebugControllerSection.profiling.rawValue
+            return DebugControllerSection.logs.rawValue
         }
     }
 
@@ -451,6 +450,9 @@ enum DebugControllerEntry: ItemListNodeEntry {
 
     private var sortIndex: Int {
         switch self {
+        case .sendMetricKitReports: return 3
+        case .sendProfileLogs: return 4
+        case .collectCpuProfile: return 5
         case .resetAppHeader: return 0
         case .resetDatabase: return 2
         case .resetDatabaseAndCache: return 3
@@ -1037,7 +1039,10 @@ func debugControllerEntries(environment: DebugControllerEntriesEnvironment, them
     entries.append(.sendLogs(theme))
     if isMainApp {
         entries.append(.crashReports)
+        entries.append(.sendMetricKitReports)
     }
+    entries.append(.sendProfileLogs)
+    entries.append(.collectCpuProfile)
 
     entries.append(.logToFile(theme, loggingSettings.logToFile))
     entries.append(.logToConsole(theme, loggingSettings.logToConsole))
@@ -1102,12 +1107,6 @@ func debugControllerEntries(environment: DebugControllerEntriesEnvironment, them
             // forces MtProtoKit.
             entries.append(.networkEngineInfo("Engine: \(networkEngineKind)"))
         }
-    }
-    
-    entries.append(.collectCpuProfile)
-    entries.append(.sendProfileLogs)
-    if isMainApp {
-        entries.append(.sendMetricKitReports)
     }
     
     return entries
