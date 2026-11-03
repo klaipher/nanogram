@@ -196,10 +196,12 @@ public func rustEngineResubmitsAfterKeyRotation(code: Int32, text: String) -> Bo
 }
 
 /// `500 PROTOCOL_ERROR_ANSWER_LOST`: the server ran the call and announced its answer, then said it no
-/// longer has it. The caller is never told: a failure would mark a message that went out as failed (and
-/// a resend would post it twice), and the many callers that retry on any error would run the call
-/// again. The call stays waiting, as with MtProtoKit and tdlib, until its caller gives it up.
-public func rustEngineKeepsWaitingAfterLostAnswer(code: Int32, text: String) -> Bool {
+/// longer has it. MtProtoKit sends such a call again under a new message id once its re-send request
+/// fails (`messageResendRequestFailed`), so the bridge does too, under the request's own server-error
+/// policy. Waiting for ever instead left a sent message pending until the app restarted. Calls that
+/// matter here carry a random id (`messages.sendMedia`, `sendMessage`), so the server answers the repeat
+/// with the original result and posts nothing twice.
+public func rustEngineResubmitsAfterLostAnswer(code: Int32, text: String) -> Bool {
     return code == 500 && text == "PROTOCOL_ERROR_ANSWER_LOST"
 }
 

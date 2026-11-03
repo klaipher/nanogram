@@ -257,10 +257,10 @@ final class RustEngineMappingTests: XCTestCase {
         XCTAssertFalse(rustEngineOffersTemporaryKey(stored: permanent, permanentKeyId: 7, now: 9_000, minimumLifetime: 300))
     }
 
-    func testALostAnswerKeepsTheCallWaiting() {
-        XCTAssertTrue(rustEngineKeepsWaitingAfterLostAnswer(code: 500, text: "PROTOCOL_ERROR_ANSWER_LOST"))
-        XCTAssertFalse(rustEngineKeepsWaitingAfterLostAnswer(code: 500, text: "PROTOCOL_ERROR_REJECTED"))
-        XCTAssertFalse(rustEngineKeepsWaitingAfterLostAnswer(code: 400, text: "PROTOCOL_ERROR_ANSWER_LOST"))
+    func testALostAnswerIsSentAgain() {
+        XCTAssertTrue(rustEngineResubmitsAfterLostAnswer(code: 500, text: "PROTOCOL_ERROR_ANSWER_LOST"))
+        XCTAssertFalse(rustEngineResubmitsAfterLostAnswer(code: 500, text: "PROTOCOL_ERROR_REJECTED"))
+        XCTAssertFalse(rustEngineResubmitsAfterLostAnswer(code: 400, text: "PROTOCOL_ERROR_ANSWER_LOST"))
         XCTAssertFalse(rustEngineResubmitsAfterKeyRotation(code: 500, text: "PROTOCOL_ERROR_ANSWER_LOST"))
     }
 

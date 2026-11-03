@@ -1135,6 +1135,13 @@ private enum UploadedMediaThumbnailResult {
     case file(Api.InputFile)
     case photo(Api.InputPhoto)
     case none
+    
+    var isPresent: Bool {
+        if case .none = self {
+            return false
+        }
+        return true
+    }
 }
 
 private enum UploadedMediaPhotoVideoResult {
@@ -1362,8 +1369,10 @@ private func uploadedMediaFileContent(network: Network, postbox: Postbox, auxili
         if let transformOutgoingMessageMedia = transformOutgoingMessageMedia, let messageId = messageId, !alreadyTransformed {
             transform = .single(.pending)
             |> then(transformOutgoingMessageMedia(postbox, network, .standalone(media: file), false)
+            |> pendingUploadFallback(nil)
             |> mapToSignal { mediaReference -> Signal<UploadedMediaTransform, NoError> in
                 return postbox.transaction { transaction -> UploadedMediaTransform in
+                    pendingMessageLog("message \(messageId.id) transform done, transformed \(mediaReference != nil), size \(file.size ?? -1)")
                     if let media = mediaReference?.media {
                         if let id = media.id {
                             let _ = transaction.updateMedia(id, update: media)
@@ -1452,6 +1461,7 @@ private func uploadedMediaFileContent(network: Network, postbox: Postbox, auxili
                                         return .none
                                     }
                                 }
+                                |> pendingUploadFallback(UploadedMediaThumbnailResult.none)
                             }
                             if let cover = media.videoCover, let resource = cover.representations.first?.resource {
                                 let fileReference: AnyMediaReference
@@ -1469,6 +1479,7 @@ private func uploadedMediaFileContent(network: Network, postbox: Postbox, auxili
                                         return .none
                                     }
                                 }
+                                |> pendingUploadFallback(UploadedMediaThumbnailResult.none)
                             }
                             return combineLatest(
                                 thumbnailSignal,
@@ -1484,6 +1495,7 @@ private func uploadedMediaFileContent(network: Network, postbox: Postbox, auxili
             }
         })
             
+        let logId = messageId?.id ?? 0
         return combineLatest(upload, transformedFileAndThumbnail, resourceStatus)
         |> mapToSignal { content, fileAndThumbnailResult, resourceStatus -> Signal<PendingMessageUploadedContentResult, PendingMessageUploadError> in
             guard let content = content else {
@@ -1501,6 +1513,7 @@ private func uploadedMediaFileContent(network: Network, postbox: Postbox, auxili
                     return .single(.progress(PendingMessageUploadedContentProgress(progress: progress)))
                 case let .inputFile(inputFile):
                     if case let .done(file, thumbnail, videoCover) = fileAndThumbnailResult {
+                        pendingMessageLog("message \(logId) file uploaded and prepared, thumbnail \(thumbnail.isPresent), cover \(videoCover.isPresent)")
                         var flags: Int32 = 0
                         
                         var hasSpoiler = false
@@ -1619,6 +1632,7 @@ private func uploadedMediaFileContent(network: Network, postbox: Postbox, auxili
                             }
                         }
                     } else {
+                        pendingMessageLog("message \(logId) file uploaded, waiting for the prepared file")
                         return .complete()
                     }
                 case let .inputSecretFile(file, size, key):

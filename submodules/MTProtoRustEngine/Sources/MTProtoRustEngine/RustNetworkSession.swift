@@ -933,7 +933,14 @@ final class RustNetworkSession: NetworkEngineSession, RustEngineEventHandler {
             return
         }
         rustEngineLog("\(self.logPrefix) failed #\(event.requestId) \(event.code) \(event.text)")
-        if rustEngineKeepsWaitingAfterLostAnswer(code: event.code, text: event.text) {
+        if rustEngineResubmitsAfterLostAnswer(code: event.code, text: event.text) {
+            let errorContext = pending.errorState.applyServerError()
+            if pending.request.shouldContinueAfterError(NetworkEngineErrorContext(floodWaitSeconds: errorContext.floodWaitSeconds, floodWaitErrorText: errorContext.floodWaitErrorText, internalServerErrorCount: errorContext.internalServerErrorCount)) && !pending.isCancelled && !pending.isFinished {
+                pending.errorState.didResubmit()
+                rustEngineImportantLog("\(self.logPrefix) #\(event.requestId) ran on the server but its answer is gone; it goes again")
+                self.sendToEngine(pending)
+                return
+            }
             rustEngineImportantLog("\(self.logPrefix) #\(event.requestId) ran on the server but its answer is gone; it stays waiting")
             self.finish(pending)
             return
