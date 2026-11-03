@@ -29,7 +29,7 @@ run_testflight() {
   (
     # shellcheck source=../tg
     source "$TG"
-    cmd_device() { :; }
+    cmd_device() { echo "$*" > "$TMP/device_args"; }
     archive_dsyms() { ARCHIVED_DSYM_DIR="$TMP/dsyms/202611031200"; mkdir -p "$ARCHIVED_DSYM_DIR"; }
     python3() {
       case "$*" in
@@ -61,6 +61,39 @@ test_success() {
   run_testflight 0 0
   check "upload and notes succeeding exits 0" [ "$STATUS" -eq 0 ]
   check "upload then notes" [ "$(tr '\n' ' ' < "$TMP/calls")" = "upload notes " ]
+  check "the TestFlight build is marked for the App Store" grep -q -- "--app-store" "$TMP/device_args"
+}
+
+# run_device <aps-environment of the app's profile> [tg device options]: tg device --no-install with
+# a stub build and profile. Sets STATUS; output in $TMP/out, $TMP/err.
+run_device() {
+  local profile_aps="$1"; shift
+  mkdir -p "$TMP/signing/profiles"
+  : > "$TMP/signing/profiles/Telegram.mobileprovision"
+  echo '{}' > "$TMP/device-configuration.json"
+  (
+    export TG_DEVICE_CONFIG="$TMP/device-configuration.json" TG_DEVICE_CODESIGNING="$TMP/signing"
+    # shellcheck source=../tg
+    source "$TG"
+    make_py() { :; }
+    profile_aps_environment() { echo "$profile_aps"; }
+    cmd_device --no-install ${@+"$@"}
+  ) > "$TMP/out" 2> "$TMP/err"
+  STATUS=$?
+}
+
+# A development profile makes the push token a sandbox one, while release_arm64 registers it as
+# production: Telegram's pushes, calls included, never reach that install.
+test_device_push_environment() {
+  run_device development
+  check "a development-signed device build succeeds" [ "$STATUS" -eq 0 ]
+  check "it warns that pushes and calls will not arrive" grep -q "NO PUSH NOTIFICATIONS OR INCOMING CALLS" "$TMP/err"
+  run_device production
+  check "a production-signed build does not warn" not grep -q "NO PUSH" "$TMP/err"
+  run_device development --app-store
+  check "an App Store build (re-signed for distribution) does not warn" not grep -q "NO PUSH" "$TMP/err"
+  run_device ""
+  check "a profile without push warns too" grep -q "NO PUSH NOTIFICATIONS OR INCOMING CALLS" "$TMP/err"
 }
 
 # make_binary <path> <exit code>: a small Mach-O with its own UUID, and its dSYM at <path>.dSYM.
@@ -167,6 +200,7 @@ not() { ! "$@"; }
 test_notes_failure_after_upload
 test_upload_failure
 test_success
+test_device_push_environment
 test_archive_dsyms
 
 if [ "$failures" -ne 0 ]; then

@@ -425,14 +425,39 @@ Upstream-Commit: $commit")"
 # profiles that `python3 tools/dev/device_signing.py profiles` puts in
 # ~/.config/telegram-ios/codesigning (paid team: push and app extensions). Without those
 # profiles it falls back to Xcode's free signing, which has no push and no extensions.
+# profile_aps_environment <profile> — the aps-environment a provisioning profile grants, empty for none.
+profile_aps_environment() {
+  security cms -D -i "$1" 2>/dev/null | plutil -extract Entitlements.aps-environment raw -o - - 2>/dev/null || true
+}
+
+# warn_device_push_environment <app profile> — device builds are release_arm64, which registers its
+# push tokens with Telegram as production (app_sandbox=false, SharedAccountContext). Development
+# profiles (the only kind device_signing.py profiles makes) grant aps-environment=development, so
+# APNs hands the app a sandbox token that Telegram's production pushes never reach: no messages,
+# no calls. Apple issues development profiles with development push only, so the mismatch cannot
+# be signed away here; TestFlight builds are re-signed for distribution (production) and match.
+warn_device_push_environment() {
+  local aps
+  aps="$(profile_aps_environment "$1")"
+  [ "$aps" = "production" ] && return 0
+  warn "================================================================================"
+  warn "THIS INSTALL GETS NO PUSH NOTIFICATIONS OR INCOMING CALLS while the app is closed."
+  warn "Its profile grants aps-environment='${aps:-none}', but this release build registers"
+  warn "its push token with Telegram as production, so Telegram's pushes never reach it."
+  warn "Test notifications and calls with a TestFlight build: tools/dev/tg testflight"
+  warn "================================================================================"
+}
+
 cmd_device() {
   local config="${TG_DEVICE_CONFIG:-$HOME/.config/telegram-ios/device-configuration.json}"
   local signing="${TG_DEVICE_CODESIGNING:-$HOME/.config/telegram-ios/codesigning}"
-  local install=1 watch=0 udid="${TG_DEVICE_UDID:-}"
+  local install=1 watch=0 app_store=0 udid="${TG_DEVICE_UDID:-}"
   while [ $# -gt 0 ]; do
     case "$1" in
       --no-install) install=0 ;;
       --watch) watch=1 ;;
+      # Internal (tg testflight): the build is re-signed for distribution before it ships.
+      --app-store) app_store=1 ;;
       *) die "unknown device option: $1" ;;
     esac
     shift
@@ -468,6 +493,9 @@ cmd_device() {
     --buildNumber="${TG_BUILD_NUMBER:-1}" \
     --configuration=release_arm64
   say "Built: $ROOT/bazel-bin/Telegram/Telegram.ipa"
+  if [ $app_store -eq 0 ] && [ -f "$signing/profiles/Telegram.mobileprovision" ]; then
+    warn_device_push_environment "$signing/profiles/Telegram.mobileprovision"
+  fi
   [ $install -eq 1 ] || return 0
 
   if [ -z "$udid" ]; then
@@ -618,7 +646,7 @@ cmd_testflight() {
 
   # Every upload needs a higher build number than the last one.
   export TG_BUILD_NUMBER="${TG_BUILD_NUMBER:-$(date +%Y%m%d%H%M)}"
-  cmd_device --no-install --watch
+  cmd_device --no-install --watch --app-store
   archive_dsyms "$ROOT/bazel-bin/Telegram/Telegram.ipa"
   local build="${ARCHIVED_DSYM_DIR##*/}"
   if [ -n "$notes" ]; then

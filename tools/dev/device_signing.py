@@ -60,6 +60,9 @@ def read_profile(path):
 def entitlements_plist(groups, push):
     entries = ['<key>com.apple.security.application-groups</key><array><string>{}</string></array>'.format(g) for g in groups]
     if push:
+        # Development profiles only ever grant development push. The release_arm64 build `tg device`
+        # signs with them registers its token with Telegram as production, so such an install gets
+        # no pushes; `tg device` warns about it. TestFlight builds are re-signed with production push.
         entries.append('<key>aps-environment</key><string>development</string>')
     return ('<?xml version="1.0" encoding="UTF-8"?>\n'
             '<!DOCTYPE plist PUBLIC "-//Apple//DTD PLIST 1.0//EN" "http://www.apple.com/DTDs/PropertyList-1.0.dtd">\n'
