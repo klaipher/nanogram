@@ -840,8 +840,10 @@ private func getCurrentRenderedTotalUnreadCount(accountManager: AccountManager<T
 }
 
 /// A call shown as a ringing notification (see `IncomingCallPushPresentation`), drawn with the
-/// caller's photo (see `IncomingCallCommunication`) unless the app is locked.
-private func incomingCallNotificationContent(callerName: String?, incomingCallMessage: String, recipientAccountName: String?, accountId: Int64, fromId: PeerId, isAppLocked: Bool, caller: (mediaBox: MediaBox, accountPeerId: PeerId, peer: Peer?, contactIdentifier: String?, displayNameOnLockscreen: Bool), callId: Int64?, isVideo: Bool) -> NotificationContent {
+/// caller's photo (see `IncomingCallCommunication`) unless the app is locked or names are hidden on
+/// the lock screen. Made only to be shown (`IncomingCallPushPresentation.present`): the caller's
+/// device contact and photo are looked up then, never before CallKit is offered the call.
+private func makeIncomingCallNotificationContent(postbox: Postbox, accountPeerId: PeerId, callerName: String?, callerPeer: Peer?, incomingCallMessage: String, recipientAccountName: String?, accountId: Int64, fromId: PeerId, isAppLocked: Bool, displayNameOnLockscreen: Bool, callId: Int64?, isVideo: Bool, completion: @escaping (NotificationContent) -> Void) {
     let alert = IncomingCallPushPresentation.alert(callerName: callerName, incomingCallMessage: incomingCallMessage)
     var content = NotificationContent(isLockedMessage: nil)
     content.recipientAccountName = recipientAccountName
@@ -849,12 +851,21 @@ private func incomingCallNotificationContent(callerName: String?, incomingCallMe
     content.body = alert.body
     content.systemSound = IncomingCallPushPresentation.sound
     content.userInfo = IncomingCallPushPresentation.userInfo(accountId: accountId, peerId: fromId.toInt64(), fromUserId: fromId.id._internalGetInt64Value())
-    if #available(iOS 15.0, *), IncomingCallCommunication.drawsCaller(isAppLocked: isAppLocked, displayNameOnLockscreen: caller.displayNameOnLockscreen), let callerName = alert.title {
-        content.sender = NotificationContent.Sender(peerId: fromId, name: callerName, contactIdentifier: caller.contactIdentifier)
-        content.senderImage = callerAvatar(mediaBox: caller.mediaBox, accountPeerId: caller.accountPeerId, callerId: fromId, callerPeer: caller.peer, callerName: callerName, displayNameOnLockscreen: caller.displayNameOnLockscreen)
-        content.call = NotificationContent.Call(callId: callId, isVideo: isVideo)
+    if #available(iOS 15.0, *) {
+        if IncomingCallCommunication.drawsCaller(isAppLocked: isAppLocked, displayNameOnLockscreen: displayNameOnLockscreen), let callerName = alert.title {
+            let _ = (postbox.transaction { transaction -> String? in
+                return localContactIdentifier(transaction: transaction, peerId: fromId)
+            }).start(next: { contactIdentifier in
+                var content = content
+                content.sender = NotificationContent.Sender(peerId: fromId, name: callerName, contactIdentifier: contactIdentifier)
+                content.senderImage = callerAvatar(mediaBox: postbox.mediaBox, accountPeerId: accountPeerId, callerId: fromId, callerPeer: callerPeer, callerName: callerName, displayNameOnLockscreen: displayNameOnLockscreen)
+                content.call = NotificationContent.Call(callId: callId, isVideo: isVideo)
+                completion(content)
+            })
+            return
+        }
     }
-    return content
+    completion(content)
 }
 
 @available(iOSApplicationExtension 10.0, iOS 10.0, *)
@@ -1532,10 +1543,9 @@ private final class NotificationServiceHandler {
                                 content.userInfo = IncomingCallPushPresentation.markerUserInfo
                                 updateCurrentContent(content)
                                 
-                                let _ = (stateManager.postbox.transaction { transaction -> (phoneNumber: String?, peer: Peer?, contactIdentifier: String?) in
-                                    let storedPeer = transaction.getPeer(callData.fromId)
-                                    return ((storedPeer as? TelegramUser)?.phone, storedPeer ?? callData.peer?._asPeer(), localContactIdentifier(transaction: transaction, peerId: callData.fromId))
-                                }).start(next: { phoneNumber, callerPeer, contactIdentifier in
+                                let _ = (stateManager.postbox.transaction { transaction -> Peer? in
+                                    return transaction.getPeer(callData.fromId)
+                                }).start(next: { storedPeer in
                                     var voipPayload: [AnyHashable: Any] = [
                                         "call_id": "\(callData.id)",
                                         "call_ah": "\(callData.accessHash)",
@@ -1543,42 +1553,55 @@ private final class NotificationServiceHandler {
                                         "updates": callData.updates,
                                         "accountId": "\(callData.accountId)"
                                     ]
-                                    if let phoneNumber = phoneNumber {
+                                    if let phoneNumber = (storedPeer as? TelegramUser)?.phone {
                                         voipPayload["phoneNumber"] = phoneNumber
                                     }
 
-                                    // Shown when CallKit cannot take the call from here.
-                                    let ringingContent = incomingCallNotificationContent(
-                                        callerName: callData.peer?.debugDisplayTitle,
-                                        incomingCallMessage: incomingCallMessage,
-                                        recipientAccountName: recipientAccountName,
-                                        accountId: callData.accountId,
-                                        fromId: callData.fromId,
-                                        isAppLocked: isLockedMessage != nil,
-                                        caller: (stateManager.postbox.mediaBox, stateManager.accountPeerId, callerPeer, contactIdentifier, inAppNotificationSettings.displayNameOnLockscreen),
-                                        callId: callData.id,
-                                        isVideo: callData.isVideo
-                                    )
-
-                                    if #available(iOS 14.5, *), IncomingCallPushPresentation.reportsToCallKit(systemIntegrationEnabled: voiceCallSettings.enableSystemIntegration, canFilterNotifications: canFilterNotifications) {
-                                        Logger.shared.log("NotificationService \(episode)", "Will report voip notification")
-                                        var content = NotificationContent(isLockedMessage: nil)
-                                        content.userInfo = IncomingCallPushPresentation.markerUserInfo
-                                        updateCurrentContent(content)
-                                        
-                                        CXProvider.reportNewIncomingVoIPPushPayload(voipPayload, completion: { error in
-                                            Logger.shared.log("NotificationService \(episode)", "Did report voip notification, error: \(String(describing: error))")
-
-                                            if let error, IncomingCallPushPresentation.ringsAfterCallKitError(error) {
-                                                updateCurrentContent(ringingContent)
-                                            }
-                                            completed()
-                                        })
-                                    } else {
-                                        Logger.shared.log("NotificationService \(episode)", "Showing the call as a notification")
-                                        updateCurrentContent(ringingContent)
-                                        completed()
+                                    var reportsToCallKit = false
+                                    if #available(iOS 14.5, *) {
+                                        reportsToCallKit = IncomingCallPushPresentation.reportsToCallKit(systemIntegrationEnabled: voiceCallSettings.enableSystemIntegration, canFilterNotifications: canFilterNotifications)
                                     }
+                                    IncomingCallPushPresentation.present(
+                                        reportsToCallKit: reportsToCallKit,
+                                        reportToCallKit: { done in
+                                            guard #available(iOS 14.5, *) else {
+                                                done(nil)
+                                                return
+                                            }
+                                            Logger.shared.log("NotificationService \(episode)", "Will report voip notification")
+                                            var content = NotificationContent(isLockedMessage: nil)
+                                            content.userInfo = IncomingCallPushPresentation.markerUserInfo
+                                            updateCurrentContent(content)
+
+                                            CXProvider.reportNewIncomingVoIPPushPayload(voipPayload, completion: { error in
+                                                Logger.shared.log("NotificationService \(episode)", "Did report voip notification, error: \(String(describing: error))")
+                                                done(error)
+                                            })
+                                        },
+                                        // Shown when CallKit cannot take the call from here.
+                                        makeRingingContent: { done in
+                                            makeIncomingCallNotificationContent(
+                                                postbox: stateManager.postbox,
+                                                accountPeerId: stateManager.accountPeerId,
+                                                callerName: callData.peer?.debugDisplayTitle,
+                                                callerPeer: storedPeer ?? callData.peer?._asPeer(),
+                                                incomingCallMessage: incomingCallMessage,
+                                                recipientAccountName: recipientAccountName,
+                                                accountId: callData.accountId,
+                                                fromId: callData.fromId,
+                                                isAppLocked: isLockedMessage != nil,
+                                                displayNameOnLockscreen: inAppNotificationSettings.displayNameOnLockscreen,
+                                                callId: callData.id,
+                                                isVideo: callData.isVideo,
+                                                completion: done
+                                            )
+                                        },
+                                        showRingingContent: { content in
+                                            Logger.shared.log("NotificationService \(episode)", "Showing the call as a notification")
+                                            updateCurrentContent(content)
+                                        },
+                                        completed: completed
+                                    )
                                 })
                             }
                         case let .groupCall(groupCallData):
@@ -1587,9 +1610,9 @@ private final class NotificationServiceHandler {
                                 content.userInfo = IncomingCallPushPresentation.markerUserInfo
                                 updateCurrentContent(content)
                                 
-                                let _ = (stateManager.postbox.transaction { transaction -> (peer: Peer?, contactIdentifier: String?) in
-                                    return (transaction.getPeer(groupCallData.fromId), localContactIdentifier(transaction: transaction, peerId: groupCallData.fromId))
-                                }).start(next: { callerPeer, contactIdentifier in
+                                let _ = (stateManager.postbox.transaction { transaction -> Peer? in
+                                    return transaction.getPeer(groupCallData.fromId)
+                                }).start(next: { callerPeer in
                                     let fromPeer = callerPeer as? TelegramUser
                                     var voipPayload: [AnyHashable: Any] = [
                                         "group_call_id": "\(groupCallData.id)",
@@ -1604,38 +1627,51 @@ private final class NotificationServiceHandler {
                                         voipPayload["phoneNumber"] = phoneNumber
                                     }
 
-                                    // Shown when CallKit cannot take the call from here.
-                                    let ringingContent = incomingCallNotificationContent(
-                                        callerName: fromPeer?.debugDisplayTitle ?? groupCallData.fromTitle,
-                                        incomingCallMessage: incomingCallMessage,
-                                        recipientAccountName: recipientAccountName,
-                                        accountId: groupCallData.accountId,
-                                        fromId: groupCallData.fromId,
-                                        isAppLocked: isLockedMessage != nil,
-                                        caller: (stateManager.postbox.mediaBox, stateManager.accountPeerId, callerPeer, contactIdentifier, inAppNotificationSettings.displayNameOnLockscreen),
-                                        callId: groupCallData.id,
-                                        isVideo: groupCallData.isVideo
-                                    )
-
-                                    if #available(iOS 14.5, *), IncomingCallPushPresentation.reportsToCallKit(systemIntegrationEnabled: voiceCallSettings.enableSystemIntegration, canFilterNotifications: canFilterNotifications) {
-                                        Logger.shared.log("NotificationService \(episode)", "Will report voip notification")
-                                        var content = NotificationContent(isLockedMessage: nil)
-                                        content.userInfo = IncomingCallPushPresentation.markerUserInfo
-                                        updateCurrentContent(content)
-                                        
-                                        CXProvider.reportNewIncomingVoIPPushPayload(voipPayload, completion: { error in
-                                            Logger.shared.log("NotificationService \(episode)", "Did report voip notification, error: \(String(describing: error))")
-
-                                            if let error, IncomingCallPushPresentation.ringsAfterCallKitError(error) {
-                                                updateCurrentContent(ringingContent)
-                                            }
-                                            completed()
-                                        })
-                                    } else {
-                                        Logger.shared.log("NotificationService \(episode)", "Showing the group call as a notification")
-                                        updateCurrentContent(ringingContent)
-                                        completed()
+                                    var reportsToCallKit = false
+                                    if #available(iOS 14.5, *) {
+                                        reportsToCallKit = IncomingCallPushPresentation.reportsToCallKit(systemIntegrationEnabled: voiceCallSettings.enableSystemIntegration, canFilterNotifications: canFilterNotifications)
                                     }
+                                    IncomingCallPushPresentation.present(
+                                        reportsToCallKit: reportsToCallKit,
+                                        reportToCallKit: { done in
+                                            guard #available(iOS 14.5, *) else {
+                                                done(nil)
+                                                return
+                                            }
+                                            Logger.shared.log("NotificationService \(episode)", "Will report voip notification")
+                                            var content = NotificationContent(isLockedMessage: nil)
+                                            content.userInfo = IncomingCallPushPresentation.markerUserInfo
+                                            updateCurrentContent(content)
+
+                                            CXProvider.reportNewIncomingVoIPPushPayload(voipPayload, completion: { error in
+                                                Logger.shared.log("NotificationService \(episode)", "Did report voip notification, error: \(String(describing: error))")
+                                                done(error)
+                                            })
+                                        },
+                                        // Shown when CallKit cannot take the call from here.
+                                        makeRingingContent: { done in
+                                            makeIncomingCallNotificationContent(
+                                                postbox: stateManager.postbox,
+                                                accountPeerId: stateManager.accountPeerId,
+                                                callerName: fromPeer?.debugDisplayTitle ?? groupCallData.fromTitle,
+                                                callerPeer: callerPeer,
+                                                incomingCallMessage: incomingCallMessage,
+                                                recipientAccountName: recipientAccountName,
+                                                accountId: groupCallData.accountId,
+                                                fromId: groupCallData.fromId,
+                                                isAppLocked: isLockedMessage != nil,
+                                                displayNameOnLockscreen: inAppNotificationSettings.displayNameOnLockscreen,
+                                                callId: groupCallData.id,
+                                                isVideo: groupCallData.isVideo,
+                                                completion: done
+                                            )
+                                        },
+                                        showRingingContent: { content in
+                                            Logger.shared.log("NotificationService \(episode)", "Showing the group call as a notification")
+                                            updateCurrentContent(content)
+                                        },
+                                        completed: completed
+                                    )
                                 })
                             }
                         case .logout:

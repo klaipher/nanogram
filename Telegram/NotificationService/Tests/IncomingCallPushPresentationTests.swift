@@ -68,4 +68,63 @@ final class IncomingCallPushPresentationTests: XCTestCase {
         }
         XCTAssertTrue(IncomingCallPushPresentation.ringsAfterCallKitError(NSError(domain: "SomethingElse", code: 2)))
     }
+
+    // MARK: - The ringing notification is made only to be shown
+
+    private final class Flow {
+        var events: [String] = []
+        var reportCompletion: ((Error?) -> Void)?
+
+        func present(reportsToCallKit: Bool) {
+            IncomingCallPushPresentation.present(
+                reportsToCallKit: reportsToCallKit,
+                reportToCallKit: { completion in
+                    self.events.append("report")
+                    self.reportCompletion = completion
+                },
+                makeRingingContent: { (done: @escaping (String) -> Void) in
+                    self.events.append("make")
+                    done("ringing")
+                },
+                showRingingContent: { content in
+                    self.events.append("show \(content)")
+                },
+                completed: {
+                    self.events.append("completed")
+                }
+            )
+        }
+    }
+
+    // When CallKit takes the call the banner (contact lookup, avatar drawing) is never made: the
+    // call is handed over as fast as without it.
+    func testCallKitTakesTheCallWithoutMakingTheBanner() {
+        let flow = Flow()
+        flow.present(reportsToCallKit: true)
+        XCTAssertEqual(flow.events, ["report"])
+        flow.reportCompletion?(nil)
+        XCTAssertEqual(flow.events, ["report", "completed"])
+    }
+
+    func testCallKitRefusalMakesNoBanner() {
+        let flow = Flow()
+        flow.present(reportsToCallKit: true)
+        flow.reportCompletion?(NSError(domain: CXErrorDomainIncomingCall, code: CXErrorCodeIncomingCallError.Code.filteredByDoNotDisturb.rawValue))
+        XCTAssertEqual(flow.events, ["report", "completed"])
+    }
+
+    // CallKit could not take the call: the banner is made then, and rings.
+    func testCallKitFailureMakesAndShowsTheBanner() {
+        let flow = Flow()
+        flow.present(reportsToCallKit: true)
+        XCTAssertEqual(flow.events, ["report"])
+        flow.reportCompletion?(NSError(domain: CXErrorDomainIncomingCall, code: CXErrorCodeIncomingCallError.Code.unentitled.rawValue))
+        XCTAssertEqual(flow.events, ["report", "make", "show ringing", "completed"])
+    }
+
+    func testWithoutCallKitTheBannerRings() {
+        let flow = Flow()
+        flow.present(reportsToCallKit: false)
+        XCTAssertEqual(flow.events, ["make", "show ringing", "completed"])
+    }
 }

@@ -42,6 +42,35 @@ enum IncomingCallPushPresentation {
         }
     }
 
+    /// Hands the call to CallKit, or rings it as a notification. The ringing content is made only
+    /// to be shown (without CallKit, or after `ringsAfterCallKitError`): what it looks up and draws
+    /// for the caller never delays handing the call to CallKit.
+    static func present<Content>(
+        reportsToCallKit: Bool,
+        reportToCallKit: (@escaping (Error?) -> Void) -> Void,
+        makeRingingContent: @escaping (@escaping (Content) -> Void) -> Void,
+        showRingingContent: @escaping (Content) -> Void,
+        completed: @escaping () -> Void
+    ) {
+        let ring: () -> Void = {
+            makeRingingContent { content in
+                showRingingContent(content)
+                completed()
+            }
+        }
+        if reportsToCallKit {
+            reportToCallKit { error in
+                if let error, ringsAfterCallKitError(error) {
+                    ring()
+                } else {
+                    completed()
+                }
+            }
+        } else {
+            ring()
+        }
+    }
+
     struct Alert: Equatable {
         var title: String?
         var body: String
