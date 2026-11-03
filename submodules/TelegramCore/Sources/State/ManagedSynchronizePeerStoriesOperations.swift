@@ -4,36 +4,28 @@ import SwiftSignalKit
 internal import TelegramApi
 import MtProtoKit
 
-private final class ManagedSynchronizePeerStoriesOperationsHelper {
-    var operationDisposables: [PeerId: Disposable] = [:]
+final class PeerStoriesSynchronizationRunner<Entry> {
+    private var operationDisposables: [PeerId: MetaDisposable] = [:]
     
-    func update(_ entries: [PeerMergedOperationLogEntry]) -> (disposeOperations: [Disposable], beginOperations: [(PeerMergedOperationLogEntry, MetaDisposable)]) {
+    func update(_ entries: [(peerId: PeerId, entry: Entry)]) -> (disposeOperations: [Disposable], beginOperations: [(Entry, MetaDisposable)]) {
         var disposeOperations: [Disposable] = []
-        var beginOperations: [(PeerMergedOperationLogEntry, MetaDisposable)] = []
+        var beginOperations: [(Entry, MetaDisposable)] = []
         
         var validPeerIds: [PeerId] = []
-        for entry in entries {
-            guard let _ = entry.contents as? SynchronizePeerStoriesOperation else {
-                continue
-            }
-            validPeerIds.append(entry.peerId)
-            var replace = true
-            if let _ = self.operationDisposables[entry.peerId] {
-            } else {
-                replace = true
-            }
-            if replace {
+        for (peerId, entry) in entries {
+            validPeerIds.append(peerId)
+            if self.operationDisposables[peerId] == nil {
                 let disposable = MetaDisposable()
-                self.operationDisposables[entry.peerId] = disposable
+                self.operationDisposables[peerId] = disposable
                 beginOperations.append((entry, disposable))
             }
         }
         
         var removedPeerIds: [PeerId] = []
-        for (peerId, info) in self.operationDisposables {
+        for (peerId, disposable) in self.operationDisposables {
             if !validPeerIds.contains(peerId) {
                 removedPeerIds.append(peerId)
-                disposeOperations.append(info)
+                disposeOperations.append(disposable)
             }
         }
         for peerId in removedPeerIds {
@@ -47,6 +39,23 @@ private final class ManagedSynchronizePeerStoriesOperationsHelper {
         let disposables = Array(self.operationDisposables.values)
         self.operationDisposables.removeAll()
         return disposables
+    }
+}
+
+private final class ManagedSynchronizePeerStoriesOperationsHelper {
+    private let runner = PeerStoriesSynchronizationRunner<PeerMergedOperationLogEntry>()
+    
+    func update(_ entries: [PeerMergedOperationLogEntry]) -> (disposeOperations: [Disposable], beginOperations: [(PeerMergedOperationLogEntry, MetaDisposable)]) {
+        return self.runner.update(entries.compactMap { entry in
+            guard entry.contents is SynchronizePeerStoriesOperation else {
+                return nil
+            }
+            return (entry.peerId, entry)
+        })
+    }
+    
+    func reset() -> [Disposable] {
+        return self.runner.reset()
     }
 }
 
