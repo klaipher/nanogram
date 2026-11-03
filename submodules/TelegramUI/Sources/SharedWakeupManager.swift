@@ -172,6 +172,11 @@ public final class SharedWakeupManager {
                 }
                 strongSelf.allowBackgroundTimeExtensionDeadlineTimer?.invalidate()
                 strongSelf.allowBackgroundTimeExtensionDeadlineTimer = nil
+                // In the foreground nothing suspends the app: the window's task can end at once.
+                if let transactionWindowTask = strongSelf.transactionWindowTask {
+                    strongSelf.transactionWindowTask = nil
+                    strongSelf.endBackgroundTask(transactionWindowTask)
+                }
                 strongSelf.pendingBackgroundProcessingTaskTimer?.invalidate()
                 strongSelf.pendingBackgroundProcessingTaskTimer = nil
                 strongSelf.pendingBackgroundStoryProcessingTaskTimer?.invalidate()
