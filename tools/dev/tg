@@ -7,6 +7,8 @@
 set -euo pipefail
 
 ROOT="$(cd "$(dirname "${BASH_SOURCE[0]}")/../.." && pwd)"
+# Relative paths on the command line (tg testflight --notes) are the caller's, not the repository's.
+CALLER_PWD="$PWD"
 cd "$ROOT"
 
 CACHE_DIR="${TG_CACHE_DIR:-$HOME/.cache/telegram-ios/bazel-disk-cache}"
@@ -522,15 +524,52 @@ archive_dsyms() {
   say "dSYMs for build $version ($(size_of "$dest")): $dest"
 }
 
-# tg testflight — release build for the App Store with a new build number, uploaded to
-# TestFlight through the Apple ID signed in to Xcode (see device_signing.py testflight).
-# The build's dSYMs are kept in $DSYM_ARCHIVE/<build number>/ before the upload.
+# tg testflight --notes <file> [--export-only] — release build for the App Store with a new build
+# number, uploaded to TestFlight through the Apple ID signed in to Xcode (see device_signing.py
+# testflight). The build's dSYMs are kept in $DSYM_ARCHIVE/<build number>/ before the upload.
+# Every upload gets What to Test notes: <file> is checked before the build, copied next to the
+# dSYMs, and set with tools/dev/tf_notes.py once App Store Connect has processed the build
+# (waiting at most TG_TF_NOTES_WAIT minutes, default 45); if that fails, tg prints the command.
 cmd_testflight() {
+  local notes="" export_only=0 upload_args=()
+  while [ $# -gt 0 ]; do
+    case "$1" in
+      --notes) [ $# -ge 2 ] || die "usage: tools/dev/tg testflight --notes <file> [--export-only]"
+        notes="$2"; shift ;;
+      --notes=*) notes="${1#--notes=}" ;;
+      --export-only) export_only=1; upload_args+=("$1") ;;
+      *) upload_args+=("$1") ;;
+    esac
+    shift
+  done
+  if [ $export_only -eq 0 ]; then
+    [ -n "$notes" ] || die "every TestFlight upload needs What to Test notes: tools/dev/tg testflight --notes <file>"
+    case "$notes" in /*) ;; *) notes="$CALLER_PWD/$notes" ;; esac
+    python3 "$ROOT/tools/dev/tf_notes.py" --check "$notes"
+  fi
+
   # Every upload needs a higher build number than the last one.
   export TG_BUILD_NUMBER="${TG_BUILD_NUMBER:-$(date +%Y%m%d%H%M)}"
   cmd_device --no-install --watch
   archive_dsyms "$ROOT/bazel-bin/Telegram/Telegram.ipa"
-  python3 "$ROOT/tools/dev/device_signing.py" testflight "$ROOT/bazel-bin/Telegram/Telegram.ipa" "$@"
+  local build="${ARCHIVED_DSYM_DIR##*/}"
+  if [ -n "$notes" ]; then
+    # The copy outlives a notes file in /tmp, for the command printed below.
+    cp "$notes" "$ARCHIVED_DSYM_DIR/WhatToTest.txt"
+    notes="$ARCHIVED_DSYM_DIR/WhatToTest.txt"
+  fi
+  python3 "$ROOT/tools/dev/device_signing.py" testflight "$ROOT/bazel-bin/Telegram/Telegram.ipa" \
+    ${upload_args[@]+"${upload_args[@]}"}
+  [ $export_only -eq 0 ] || return 0
+
+  local notes_command=(python3 "$ROOT/tools/dev/tf_notes.py" IOS "$build" "$notes")
+  say "Setting What to Test notes for $build once App Store Connect has processed it"
+  if ! "${notes_command[@]}" --wait "${TG_TF_NOTES_WAIT:-45}"; then
+    warn "What to Test notes are not set. Once build $build has processed, run:"
+    printf ' ' >&2; printf ' %q' "${notes_command[@]}" >&2; printf '\n' >&2
+    return 1
+  fi
+  say "Build $build uploaded with What to Test notes"
 }
 
 # tg watch <build|test|project|clean> — the Apple Watch app (Telegram/WatchApp) in the
@@ -603,8 +642,11 @@ Usage: tools/dev/tg <command> [options]
   device [--no-install] [--watch]  Release build signed for your iPhone, then install it
                         (--watch embeds the Apple Watch app)
                         (signing: python3 tools/dev/device_signing.py --help)
-  testflight [--export-only]  Release build uploaded to TestFlight (new build number);
-                        keeps its dSYMs zipped in $TG_DSYM_DIR/<build number>/
+  testflight --notes <file> [--export-only]
+                        Release build uploaded to TestFlight (new build number) with <file>
+                        as its What to Test notes, set once Apple has processed it (no notes
+                        needed with --export-only); keeps its dSYMs zipped in
+                        $TG_DSYM_DIR/<build number>/
   project [--full]      Generate and open the Xcode project (simulator, no extensions)
   test [label]          Run tests (default: Tests/AllTests)
   new-module <dir>      Create a Swift module that uses the strict Swift 6 preset
@@ -624,7 +666,8 @@ Usage: tools/dev/tg <command> [options]
 
 Environment: TG_CACHE_DIR, TG_CONFIG, TG_CODESIGNING, TG_BUILD_NUMBER,
              TG_WATCH_SIM, TG_WATCH_CACHE_DIR,
-             TG_DSYM_DIR (default: ~/Library/Application Support/Nanogram/dsyms)
+             TG_DSYM_DIR (default: ~/Library/Application Support/Nanogram/dsyms),
+             TG_TF_NOTES_WAIT (minutes tg testflight waits for processing, default 45)
 EOF
 }
 
