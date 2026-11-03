@@ -15,6 +15,13 @@ public enum AnimatedStickerRendererMode: Equatable {
 
     private static let current = Atomic<AnimatedStickerRendererMode>(value: .cpu)
 
+    /// The renderer of reaction animations (picker items, the flying and large reactions, their
+    /// effects): the CPU, as upstream. With `.gpuLarge` their 240-320 pixel effects went to Metal, a
+    /// path upstream never ships, and were often the process's first Metal user, so the tap that
+    /// sent a reaction also set up the Metal device, shader library and pipelines on the main thread.
+    /// Builds with that default showed reactions without their animation, empty for a few seconds.
+    public static let reactions: AnimatedStickerRendererMode = .cpu
+
     /// The process-wide mode. Nodes read it once, when they are created, so a change applies to
     /// nodes created afterwards (reopen a chat to see it).
     public static var processWide: AnimatedStickerRendererMode {
@@ -31,9 +38,10 @@ public enum AnimatedStickerRendererMode: Equatable {
 ///
 /// Chat stickers are set up at 384 pixels on their long side (`ChatMessageAnimatedStickerItemNode`),
 /// so even a 2.4:1 one (384x160 = 61,440) counts, and the full-screen preview fits 400x400. Sticker
-/// panel and pack grids use 160x160 (25,600) and emoji and reactions are smaller still, so the many
+/// panel and pack grids use 160x160 (25,600) and emoji are smaller still, so the many
 /// small items on screen at once stay on the CPU, where a small image costs less than a Metal
-/// texture upload and a GPU wake per frame.
+/// texture upload and a GPU wake per frame. Reaction effects are larger (240-320) but ask for the
+/// CPU renderer themselves (`AnimatedStickerRendererMode.reactions`).
 let animatedStickerLargePixelArea = 200 * 200
 
 /// Whether a sticker node uses the Metal renderer and its DCT frame cache.

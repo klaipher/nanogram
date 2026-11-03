@@ -275,6 +275,11 @@ public final class DefaultAnimatedStickerNodeImpl: ASDisplayNode, AnimatedSticke
     private var useMetalCache: Bool?
     private var renderer: AnimationRendererPool.Holder?
     
+    /// The renderer decision, nil until it can be made (tests).
+    var usesMetalRenderer: Bool? {
+        return self.useMetalCache
+    }
+    
     public var isPlaying: Bool = false
     private var currentLoopCount: Int = 0
     private var canDisplayFirstFrame: Bool = false
@@ -329,12 +334,14 @@ public final class DefaultAnimatedStickerNodeImpl: ASDisplayNode, AnimatedSticke
     
     private let lottieSettings: LottieRenderingSettings
 
-    public init(useMetalCache: Bool = false, lottieSettings: LottieRenderingSettings) {
+    /// - Parameter rendererMode: nil follows the process-wide mode (Debug Settings ▸ "Stickers: renderer").
+    ///   Reactions pass `.cpu`: they are drawn as upstream draws them, see `AnimatedStickerRendererMode.reactions`.
+    public init(useMetalCache: Bool = false, rendererMode: AnimatedStickerRendererMode? = nil, lottieSettings: LottieRenderingSettings) {
         self.queue = sharedQueue
         self.eventsNode = AnimatedStickerNodeDisplayEvents()
         
         self.explicitlyUsesMetalCache = useMetalCache
-        self.rendererMode = AnimatedStickerRendererMode.processWide
+        self.rendererMode = rendererMode ?? AnimatedStickerRendererMode.processWide
         self.lottieSettings = lottieSettings
         
         super.init()

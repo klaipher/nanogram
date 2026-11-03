@@ -2763,7 +2763,7 @@ public final class ReactionContextNode: ASDisplayNode, ASScrollViewDelegate {
         }
         
         if let additionalAnimation = additionalAnimation {
-            let additionalAnimationNodeValue = DefaultAnimatedStickerNodeImpl(lottieSettings: self.context.lottieRenderingSettings)
+            let additionalAnimationNodeValue = DefaultAnimatedStickerNodeImpl(rendererMode: .reactions, lottieSettings: self.context.lottieRenderingSettings)
             additionalAnimationNode = additionalAnimationNodeValue
             if self.didTriggerExpandedReaction {
                 if incomingMessage {
@@ -3479,7 +3479,7 @@ public final class StandaloneReactionAnimation: ASDisplayNode {
             if self.useDirectRendering {
                 additionalAnimationNodeValue = DirectAnimatedStickerNode(lottieSettings: context.lottieRenderingSettings)
             } else {
-                additionalAnimationNodeValue = DefaultAnimatedStickerNodeImpl(lottieSettings: context.lottieRenderingSettings)
+                additionalAnimationNodeValue = DefaultAnimatedStickerNodeImpl(rendererMode: .reactions, lottieSettings: context.lottieRenderingSettings)
             }
             additionalAnimationNode = additionalAnimationNodeValue
             
@@ -3510,7 +3510,7 @@ public final class StandaloneReactionAnimation: ASDisplayNode {
                 if self.useDirectRendering {
                     additionalAnimationNodeValue = DirectAnimatedStickerNode(lottieSettings: context.lottieRenderingSettings)
                 } else {
-                    additionalAnimationNodeValue = DefaultAnimatedStickerNodeImpl(lottieSettings: context.lottieRenderingSettings)
+                    additionalAnimationNodeValue = DefaultAnimatedStickerNodeImpl(rendererMode: .reactions, lottieSettings: context.lottieRenderingSettings)
                 }
                 additionalAnimationNode = additionalAnimationNodeValue
                 
@@ -3916,7 +3916,7 @@ public final class StandaloneReactionAnimation: ASDisplayNode {
         }
         
         if let additionalAnimation = additionalAnimation {
-            let additionalAnimationNodeValue = DefaultAnimatedStickerNodeImpl(lottieSettings: context.lottieRenderingSettings)
+            let additionalAnimationNodeValue = DefaultAnimatedStickerNodeImpl(rendererMode: .reactions, lottieSettings: context.lottieRenderingSettings)
             additionalAnimationNode = additionalAnimationNodeValue
             if didTriggerExpandedReaction {
                 if incomingMessage {
