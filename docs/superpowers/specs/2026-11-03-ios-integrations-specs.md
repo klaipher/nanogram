@@ -506,7 +506,9 @@ Status values: `todo`, `in progress`, `done (<commit>)`, `dropped (<reason>)`.
 
 ## Intents / Widgets / Shortcuts / Spotlight
 
-### I-23. Home-screen widgets show message text and unread counts while the app is passcode-locked — `todo`
+### I-23. Home-screen widgets show message text and unread counts while the app is passcode-locked — `done (2ae677a3)`
+
+- **Status**: widgets read the lock state (`appLockSchedule`, AppLockStateTests); locked rows keep name and photo and show "Locked" with no badge; a timeline drawn while unlocked carries a second, hidden entry at the auto-lock deadline; WidgetDataContext reloads on lock/unlock. Not yet verified in a built app.
 
 - **Severity**: high (verifier: defensible, arguably medium). **Category**: bug.
 - **Evidence**: `Telegram/WidgetKitWidget/TodayViewController.swift:68-218` (`getCommonTimeline`) builds
@@ -524,7 +526,9 @@ Status values: `todo`, `in progress`, `done (<commit>)`, `dropped (<reason>)`.
   back within one reload. Unit test a pure (peers, isLocked) → entry helper.
 - **Effort**: S. **Confidence**: high.
 
-### I-24. Siri replies and donated "Message X" shortcuts fail without Contacts access, and the app's `tg<id>` donations are not parsed — `todo`
+### I-24. Siri replies and donated "Message X" shortcuts fail without Contacts access, and the app's `tg<id>` donations are not parsed — `done (268c99ed)`
+
+- **Status**: Contacts gate only where address-book people are resolved (`siriSendMessageNeedsContacts`); `tg<id>` conversation identifiers parsed; `tg` persons pass `resolve(persons:)` (`siriPersonIsResolvable`). IntentsExtensionTests. Not yet verified on a device.
 
 - **Severity**: medium. **Category**: bug.
 - **Evidence**: `Telegram/SiriIntents/IntentHandler.swift:538` (resolveContent) and `:560` (confirm) require
@@ -546,7 +550,9 @@ Status values: `todo`, `in progress`, `done (<commit>)`, `dropped (<reason>)`.
   run a donated Send Message suggestion from Shortcuts.
 - **Effort**: S. **Confidence**: high on the code path; medium on Siri's exact call order for donated shortcuts.
 
-### I-25. Calling back from Phone Recents mis-decodes 64-bit user ids and always starts an audio call — `todo`
+### I-25. Calling back from Phone Recents mis-decodes 64-bit user ids and always starts an audio call — `done (d1de38a0)`
+
+- **Status**: CXHandle, incoming handles and donated INPerson are `nanogram-call:<accountId>:<packed peer>` (`CallKitHandle`, TelegramCallsUITests); raw and `tg` forms still parsed as users; real call capability donated and called back; `SupportedStartVideoCallIntent` removed. The NSE path was 806ff160/9363a551. Not yet verified in a built app.
 
 - **Severity**: medium. **Category**: bug.
 - **Evidence**: handles are written as the raw id with no namespace: `CallKitIntegration.swift:99-100`
@@ -572,7 +578,9 @@ Status values: `todo`, `in progress`, `done (<commit>)`, `dropped (<reason>)`.
   non-contact whose id > 2^32, tap it in Recents; call back a video call and it starts as video.
 - **Effort**: S. **Confidence**: high on the decoding mismatch; medium on how many users are affected.
 
-### I-26. Extensions can still trap when the account-manager databases cannot be opened — `todo`
+### I-26. Extensions can still trap when the account-manager databases cannot be opened — `partial (6a3af308, 268c99ed, d5e15bcc)`
+
+- **Status**: `AccountManager.openForExtension` / `setupExtensionAccountManager` return nil instead of trapping (non-owner SqliteValueBox open failures return nil; PostboxTests, TelegramCoreTests); Siri adopts it; message, call and search intents restricted while protected data is unavailable. Left: the Share extension, NotificationService and NotificationContent still call `setupAccountManager` (files owned by the share/notification work); switching them is a one-line change each.
 
 - **Severity**: medium (**Corrected**: frequency unproven, but it hits every extension). **Category**: bug.
 - **Evidence**: `submodules/TelegramCore/Sources/AccountManager/AccountManagerImpl.swift` (**Corrected** path):
@@ -593,7 +601,9 @@ Status values: `todo`, `in progress`, `done (<commit>)`, `dropped (<reason>)`.
   read messages; expect "open app" and no crash report.
 - **Effort**: M. **Confidence**: high that the traps exist; low-medium on frequency.
 
-### I-27. Widget refresh is not coalesced and each timeline asks to be refreshed at once — `todo`
+### I-27. Widget refresh is not coalesced and each timeline asks to be refreshed at once — `partial (2ae677a3)`
+
+- **Status**: foreground reloads debounced 3 s and at least 15 s apart; timelines use `.after(now + 30 min)`. Not done: `reloadTimelines(ofKind:)` (both widgets read the same chats, so both reload).
 
 - **Severity**: low (**Corrected**). **Category**: perf.
 - **Evidence**: `WidgetDataContext.swift:57-61` → `performReloadIfNeeded()` with no debounce; `:85`
@@ -610,7 +620,9 @@ Status values: `todo`, `in progress`, `done (<commit>)`, `dropped (<reason>)`.
   chat, before and after; `log stream --predicate 'subsystem == "com.apple.chrono"'`.
 - **Effort**: S. **Confidence**: high on the code; medium on the cost.
 
-### I-28. Widget configuration polling still runs every 60 s in the background — `todo`
+### I-28. Widget configuration polling still runs every 60 s in the background — `done (2ae677a3)`
+
+- **Status**: the 60 s tick runs only in the foreground.
 
 - **Severity**: low. **Category**: perf.
 - **Evidence**: `WidgetDataContext.swift:163-176` (fork `9bc6231a`): the comment says the 60 s poll replaced a
@@ -623,7 +635,9 @@ Status values: `todo`, `in progress`, `done (<commit>)`, `dropped (<reason>)`.
 - **How to verify**: log in `currentAdditionalPeerIds`; 5 minutes in the background with audio: 0-1 calls (~5 today).
 - **Effort**: S. **Confidence**: high.
 
-### I-29. Extension bootstrap re-runs for every intent and every widget timeline — `todo`
+### I-29. Extension bootstrap re-runs for every intent and every widget timeline — `done (268c99ed, 2ae677a3)`
+
+- **Status**: `SiriExtensionEnvironment` (one TempBox, logger, key read and account manager per Siri process) and `WidgetExtensionEnvironment` (once per widget process); account records are still read per handler.
 
 - **Severity**: low. **Category**: perf.
 - **Evidence**: `IntentHandler.handler(for:)` builds a new handler per intent (`:105-116`); each init repeats
@@ -641,7 +655,9 @@ Status values: `todo`, `in progress`, `done (<commit>)`, `dropped (<reason>)`.
   AccountManager open.
 - **Effort**: S. **Confidence**: medium.
 
-### I-30. The Intents extension declares the deprecated `INStartAudioCallIntent` — `todo`
+### I-30. The Intents extension declares the deprecated `INStartAudioCallIntent` — `done (d5e15bcc)`
+
+- **Status**: `IntentsSupported` declares `INStartCallIntent`; MARK fixed (268c99ed). Needs the device check in the spec.
 
 - **Severity**: low. **Category**: modernization.
 - **Evidence**: `Telegram/BUILD:1446` `IntentsSupported` lists `INStartAudioCallIntent` and not `INStartCallIntent`;
@@ -655,7 +671,9 @@ Status values: `todo`, `in progress`, `done (<commit>)`, `dropped (<reason>)`.
   `handle(INStartCallIntent)` and the call starts.
 - **Effort**: S. **Confidence**: low (needs a device check).
 
-### I-31. No App Intents adoption: legacy SiriKit widget configuration; no App Shortcuts, small/lock-screen/StandBy widgets, controls or interactive rows — `todo`
+### I-31. No App Intents adoption: legacy SiriKit widget configuration; no App Shortcuts, small/lock-screen/StandBy widgets, controls or interactive rows — `partial (2ae677a3, 268c99ed)`
+
+- **Status**: only the cleanup: dead iOS 14 widget configuration branches and the iOS 10 `resolveRecipients` overload removed. App Intents phases 1-3 (ChatEntity/App Shortcuts, AppIntentConfiguration migration, ControlWidget) not started: L effort and needs the App Intents metadata processor in Bazel; deferred.
 
 - **Severity**: medium (**Corrected**: a gap, not a defect). **Category**: modernization.
 - **Evidence**: `TodayViewController.swift:884`/`:910` `IntentConfiguration(kind:, intent: SelectFriendsIntent.self, …)`
@@ -677,7 +695,9 @@ Status values: `todo`, `in progress`, `done (<commit>)`, `dropped (<reason>)`.
   gallery offers the new families; unit-test the EntityQuery on a fixture Postbox.
 - **Effort**: L. **Confidence**: high on the gap; effort is an estimate.
 
-### I-32. Spotlight: contacts stay indexed while a passcode is set; generic item type, random version, file-URL thumbnail — `todo`
+### I-32. Spotlight: contacts stay indexed while a passcode is set; generic item type, random version, file-URL thumbnail — `done (a20126b2)`
+
+- **Status**: index emptied while a passcode is set; `UTType.contact`, displayName, @username alternate names, `thumbnailData`, content-derived version, stored item = indexed item, print removed. Not yet verified in a built app.
 
 - **Severity**: low. **Category**: bug. (Merges the Spotlight modernization and passcode findings.)
 - **Evidence**: `SharedAccountContext.swift:1094-1110` gates Spotlight only on `intentsSettings.contacts`; enabling a
@@ -697,7 +717,9 @@ Status values: `todo`, `in progress`, `done (<commit>)`, `dropped (<reason>)`.
   and check the person layout and avatar.
 - **Effort**: S. **Confidence**: high on the code; whether Spotlight can read the app-group thumbnail URL is unverified.
 
-### I-33. A newly added Chats widget and its snapshot are empty — `todo`
+### I-33. A newly added Chats widget and its snapshot are empty — `done (268c99ed, 2ae677a3)`
+
+- **Status**: `defaultFriends(for: SelectFriendsIntent)` (2 recent chats, 1 s bound); non-preview snapshots use the timeline's first entry.
 
 - **Severity**: low. **Category**: bug.
 - **Evidence**: `TodayViewController.swift:228`, `:246`: getSnapshot returns empty peers when `!context.isPreview`;
@@ -714,7 +736,9 @@ Status values: `todo`, `in progress`, `done (<commit>)`, `dropped (<reason>)`.
 
 ## Other integrations (URL schemes, files, pasteboard, drag and drop, screen sharing, location, photos, plist)
 
-### I-34. A tg:// link that cold-launches the app while logged out is never handled, and retapping it is ignored — `todo`
+### I-34. A tg:// link that cold-launches the app while logged out is never handled, and retapping it is ignored — `done (84ed6c28)`
+
+- **Status**: launch URLs go through `handleOpenURL`/`openUrl`; the de-dup flag always clears after 1 s; dead `launchOptions[.url]` branch removed. Not yet verified in a built app.
 
 - **Severity**: medium (**Corrected** from high). **Category**: bug.
 - **Evidence**: AppDelegate HEAD `:1837-1840` (`attach`, cold launch) routes tg/ton/app-scheme URLs to
@@ -735,7 +759,9 @@ Status values: `todo`, `in progress`, `done (<commit>)`, `dropped (<reason>)`.
   Today nothing; after, the proxy sheet on the auth screen. Repeat with webproxy and with the app running.
 - **Effort**: S. **Confidence**: high.
 
-### I-35. Picked iCloud/Files documents leak security-scoped access grants — `todo`
+### I-35. Picked iCloud/Files documents leak security-scoped access grants — `done (f3325f34)`
+
+- **Status**: scoped access stopped on every exit of the description, after the thumbnail and on coordination errors; the copy item keeps its deinit.
 
 - **Severity**: low (**Corrected** from medium). **Category**: memory.
 - **Evidence**: `submodules/ICloudResources/Sources/ICloudResources.swift:301` starts access; the thumbnail branch
@@ -752,7 +778,9 @@ Status values: `todo`, `in progress`, `done (<commit>)`, `dropped (<reason>)`.
   debug log of the start/stop balance.
 - **Effort**: S. **Confidence**: high.
 
-### I-36. Picking from Files/iCloud reads metadata synchronously on main, and iCloud-only files are fully decoded on main — `todo`
+### I-36. Picking from Files/iCloud reads metadata synchronously on main, and iCloud-only files are fully decoded on main — `partial (f3325f34)`
+
+- **Status**: descriptions built on a background queue; thumbnails via ImageIO (768 px max, oriented) and a private coordination queue. Not done: `asset.load(...)` async metadata and QLThumbnailGenerator (the sync AVAsset reads now run off main).
 
 - **Severity**: medium. **Category**: perf.
 - **Evidence**: `ChatControllerOpenAttachmentMenu.swift:1393` calls `iCloudFileDescription(url)` on main; for local
@@ -772,7 +800,9 @@ Status values: `todo`, `in progress`, `done (<commit>)`, `dropped (<reason>)`.
   lower Allocations peak, identical thumbnails.
 - **Effort**: M. **Confidence**: high.
 
-### I-37. Pasting an MP4 loads the whole file into RAM on main; `pasteboard.items` loads every representation — `todo`
+### I-37. Pasting an MP4 loads the whole file into RAM on main; `pasteboard.items` loads every representation — `done (ff598dbc)`
+
+- **Status**: MP4 copied to a temp file off main (`ChatTextInputPanelPasteData.video(URL)`); images read per item and type instead of `pasteboard.items`. The story composer's TextFieldComponent paste is unchanged. ChatTextInputPanelNodeTests pass; not yet verified in a built app.
 
 - **Severity**: medium. **Category**: memory.
 - **Evidence**: `submodules/TelegramUI/Components/Chat/ChatTextInputPanelNode/Sources/ChatTextInputPanelNode.swift:5800`
@@ -789,7 +819,9 @@ Status values: `todo`, `in progress`, `done (<commit>)`, `dropped (<reason>)`.
   of the file size, after flat. GIF, sticker and memoji paste still route correctly.
 - **Effort**: M. **Confidence**: high.
 
-### I-38. Drag and drop into a chat accepts only images — `todo`
+### I-38. Drag and drop into a chat accepts only images — `done (ccb69afc)`
+
+- **Status**: drops of videos and files accepted; videos/images to the paste screen, other files sent as documents; text and links left to the input. Not yet verified in a built app.
 
 - **Severity**: low. **Category**: modernization.
 - **Evidence**: `submodules/TelegramUI/Sources/ChatController.swift:10154`:
@@ -803,7 +835,9 @@ Status values: `todo`, `in progress`, `done (<commit>)`, `dropped (<reason>)`.
 - **How to verify**: iPad simulator: drag a .mov and a .pdf from Files into a chat; both are accepted and sent.
 - **Effort**: M. **Confidence**: high.
 
-### I-39. The screen-sharing extension allocates a pixel buffer per frame, an AudioConverter per audio buffer, and waits on a semaphore nothing signals — `todo`
+### I-39. The screen-sharing extension allocates a pixel buffer per frame, an AudioConverter per audio buffer, and waits on a semaphore nothing signals — `done (5c5e96a2)`
+
+- **Status**: CVPixelBufferPool with IOSurface, per-plane copy, no semaphore, one AudioConverter per format with a reused buffer and a non-EOF exhaustion status. Needs the device check in the spec (chroma, audio clicks, memory).
 
 - **Severity**: medium. **Category**: perf.
 - **Evidence**: `Telegram/BroadcastUpload/BroadcastUploadExtension.swift:254` `CVPixelBufferCreate(…)` per frame with
@@ -822,7 +856,9 @@ Status values: `todo`, `in progress`, `done (<commit>)`, `dropped (<reason>)`.
   extension memory flat and well under 50 MB, correct chroma, no audio clicks, lower CPU.
 - **Effort**: M. **Confidence**: medium (the plane-copy correctness needs a device check).
 
-### I-40. Live location runs GPS and compass at full rate in the background, and any map asks for Always access — `todo`
+### I-40. Live location runs GPS and compass at full rate in the background, and any map asks for Always access — `partial (745f2990)`
+
+- **Status**: Always requested only for live location; live location without a map open uses a 10 m filter and no heading (DeviceLocationManagerTests). Not done: `CLLocationUpdate.liveUpdates()` / `CLBackgroundActivitySession` on iOS 17+.
 
 - **Severity**: medium. **Category**: perf.
 - **Evidence**: `submodules/DeviceLocationManager/Sources/DeviceLocationManager.swift:56-59`
@@ -841,7 +877,9 @@ Status values: `todo`, `in progress`, `done (<commit>)`, `dropped (<reason>)`.
   Battery. Open the location picker with When In Use: no Always prompt.
 - **Effort**: M. **Confidence**: medium.
 
-### I-41. On the first photo grant, Limited is treated as full access and the gallery does not update that session — `todo`
+### I-41. On the first photo grant, Limited is treated as full access and the gallery does not update that session — `done (a42d0e19, d5e15bcc)`
+
+- **Status**: `.readWrite` request and status everywhere; observer registered for authorized or limited, also from the request callback.
 
 - **Severity**: low. **Category**: bug.
 - **Evidence**: `submodules/TelegramUI/Components/MediaAssetsContext/Sources/MediaAssetsContext.swift:20-23` registers
@@ -857,7 +895,9 @@ Status values: `todo`, `in progress`, `done (<commit>)`, `dropped (<reason>)`.
   Limited: Manage banner shows; take a photo in Camera and return: the grid updates.
 - **Effort**: S. **Confidence**: medium.
 
-### I-42. Add Proxy reads the clipboard on open, triggering the paste prompt — `todo`
+### I-42. Add Proxy reads the clipboard on open, triggering the paste prompt — `partial (c6023009)`
+
+- **Status**: no clipboard read on open (`hasStrings`/`hasURLs` only); the text is read when Paste is tapped. Not done: `detectPatterns` / `UIPasteControl`, so the tap itself may still show the system prompt. SettingsUITests pass.
 
 - **Severity**: low. **Category**: modernization.
 - **Evidence**: `submodules/SettingsUI/Sources/Data and Storage/ProxyServerSettingsController.swift:344`
@@ -871,7 +911,9 @@ Status values: `todo`, `in progress`, `done (<commit>)`, `dropped (<reason>)`.
   and fills the fields.
 - **Effort**: S. **Confidence**: high.
 
-### I-43. Plist and AppDelegate cleanups: unused `fetch` mode and `.refresh` task id, dead activity type, `fatalError` on unknown authorization — `todo`
+### I-43. Plist and AppDelegate cleanups: unused `fetch` mode and `.refresh` task id, dead activity type, `fatalError` on unknown authorization — `done (d5e15bcc)`
+
+- **Status**: `fetch`, `.refresh` and `RemindAboutChatIntent` removed; `@unknown default` treated as denied.
 
 - **Severity**: low. **Category**: modernization.
 - **Evidence**: `Telegram/BUILD:1871` UIBackgroundModes `fetch` and `:1753` permitted `{bundle}.refresh`, with no
