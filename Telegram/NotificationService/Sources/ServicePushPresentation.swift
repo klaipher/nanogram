@@ -16,17 +16,12 @@ enum ServicePushPresentation {
     /// extension may be suspended before a late attempt runs: try early, then once more.
     static let removalDelays: [Double] = [0.3, 1.0]
 
-    /// Telegram/BUILD grants `com.apple.developer.usernotifications.filtering` to this bundle only.
-    static func appCanFilterNotifications(baseAppBundleId: String) -> Bool {
-        return baseAppBundleId == "ph.telegra.Telegraph"
-    }
+    /// Telegram/BUILD sets this Info.plist flag from the same condition that grants
+    /// `com.apple.developer.usernotifications.filtering`, so the two cannot drift apart.
+    static let filteringInfoPlistKey = "NanogramNotificationFiltering"
 
-    /// The app's bundle id from the extension's (`<app>.NotificationService`).
-    static func baseAppBundleId(extensionBundleId: String) -> String? {
-        guard let lastDot = extensionBundleId.range(of: ".", options: .backwards) else {
-            return nil
-        }
-        return String(extensionBundleId[..<lastDot.lowerBound])
+    static func appCanFilterNotifications(infoDictionary: [String: Any]?) -> Bool {
+        return (infoDictionary?[filteringInfoPlistKey] as? Bool) == true
     }
 
     static func isEmpty(_ content: UNNotificationContent) -> Bool {

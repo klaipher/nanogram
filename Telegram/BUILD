@@ -580,7 +580,12 @@ official_notification_filtering_fragment = """
 <key>com.apple.developer.usernotifications.filtering</key>
 <true/>
 """
-notification_filtering_fragment = official_notification_filtering_fragment if telegram_bundle_id == "ph.telegra.Telegraph" else ""
+# The NotificationService extension reads this decision from its Info.plist
+# (NanogramNotificationFiltering, see ServicePushPresentation.swift): without the entitlement it
+# shows incoming calls as notifications instead of handing them to CallKit, and keeps service pushes
+# quiet. Change who gets the entitlement here only, so the two cannot drift apart.
+notification_filtering_enabled = telegram_bundle_id == "ph.telegra.Telegraph"
+notification_filtering_fragment = official_notification_filtering_fragment if notification_filtering_enabled else ""
 
 store_signin_fragment = """
 <key>com.apple.developer.applesignin</key>
@@ -1698,8 +1703,11 @@ plist_fragment(
             </array>
         </dict>
     </dict>
+    <key>NanogramNotificationFiltering</key>
+    <{notification_filtering}/>
     """.format(
-        telegram_bundle_id = telegram_bundle_id
+        telegram_bundle_id = telegram_bundle_id,
+        notification_filtering = "true" if notification_filtering_enabled else "false",
     )
 )
 

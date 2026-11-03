@@ -11,14 +11,15 @@ final class ServicePushPresentationTests: XCTestCase {
         return content
     }
 
-    func testOnlyTheOfficialBundleCanFilter() {
-        XCTAssertTrue(ServicePushPresentation.appCanFilterNotifications(baseAppBundleId: "ph.telegra.Telegraph"))
-        XCTAssertFalse(ServicePushPresentation.appCanFilterNotifications(baseAppBundleId: "org.klaipher.Nanogram"))
-    }
-
-    func testBaseAppBundleIdDropsTheExtensionSuffix() {
-        XCTAssertEqual(ServicePushPresentation.baseAppBundleId(extensionBundleId: "org.klaipher.Nanogram.NotificationService"), "org.klaipher.Nanogram")
-        XCTAssertNil(ServicePushPresentation.baseAppBundleId(extensionBundleId: "NoDots"))
+    // Telegram/BUILD writes the flag into the extension's Info.plist from the same condition that
+    // grants the entitlement; a missing or malformed flag means no entitlement.
+    func testFilteringFollowsTheInfoPlistFlag() {
+        let key = ServicePushPresentation.filteringInfoPlistKey
+        XCTAssertTrue(ServicePushPresentation.appCanFilterNotifications(infoDictionary: [key: true]))
+        XCTAssertFalse(ServicePushPresentation.appCanFilterNotifications(infoDictionary: [key: false]))
+        XCTAssertFalse(ServicePushPresentation.appCanFilterNotifications(infoDictionary: [key: "YES"]))
+        XCTAssertFalse(ServicePushPresentation.appCanFilterNotifications(infoDictionary: [:]))
+        XCTAssertFalse(ServicePushPresentation.appCanFilterNotifications(infoDictionary: nil))
     }
 
     // A read receipt's empty answer becomes a quiet, marked copy of the server's alert.

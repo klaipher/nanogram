@@ -514,6 +514,8 @@ private struct NotificationContent: CustomStringConvertible {
     var resolvedEmojiFiles: [Int64: String] = [:]
     var threadId: String?
     var sound: String?
+    /// A system sound (the ringtone of an incoming call); wins over `sound`.
+    var systemSound: UNNotificationSound?
     var badge: Int?
     var category: String?
     var userInfo: [AnyHashable: Any] = [:]
@@ -679,7 +681,9 @@ private struct NotificationContent: CustomStringConvertible {
         if let threadId = self.threadId {
             content.threadIdentifier = threadId
         }
-        if let sound = self.sound {
+        if let systemSound = self.systemSound {
+            content.sound = systemSound
+        } else if let sound = self.sound {
             content.sound = UNNotificationSound(named: UNNotificationSoundName(rawValue: sound))
         }
         if let badge = self.badge {
@@ -752,6 +756,18 @@ private func getCurrentRenderedTotalUnreadCount(accountManager: AccountManager<T
         }
         return (totalReadCounters.count(for: inAppSettings.totalUnreadCountDisplayStyle.category, in: inAppSettings.totalUnreadCountDisplayCategory.statsType, with: inAppSettings.totalUnreadCountIncludeTags), type)
     }
+}
+
+/// A call shown as a ringing notification (see `IncomingCallPushPresentation`).
+private func incomingCallNotificationContent(callerName: String?, incomingCallMessage: String, recipientAccountName: String?, accountId: Int64, fromId: PeerId) -> NotificationContent {
+    let alert = IncomingCallPushPresentation.alert(callerName: callerName, incomingCallMessage: incomingCallMessage)
+    var content = NotificationContent(isLockedMessage: nil)
+    content.recipientAccountName = recipientAccountName
+    content.title = alert.title
+    content.body = alert.body
+    content.systemSound = IncomingCallPushPresentation.sound
+    content.userInfo = IncomingCallPushPresentation.userInfo(accountId: accountId, peerId: fromId.toInt64(), fromUserId: fromId.id._internalGetInt64Value())
+    return content
 }
 
 @available(iOSApplicationExtension 10.0, iOS 10.0, *)
@@ -864,6 +880,7 @@ private final class NotificationServiceHandler {
         } else {
             incomingCallMessage = "is calling you"
         }
+        let canFilterNotifications = ServicePushPresentation.appCanFilterNotifications(infoDictionary: Bundle.main.infoDictionary)
 
         Logger.shared.log("NotificationService \(episode)", "Begin processing payload")
 
@@ -1420,7 +1437,8 @@ private final class NotificationServiceHandler {
                         switch action {
                         case let .call(callData):
                             if let stateManager = strongSelf.stateManager {
-                                let content = NotificationContent(isLockedMessage: nil)
+                                var content = NotificationContent(isLockedMessage: nil)
+                                content.userInfo = IncomingCallPushPresentation.markerUserInfo
                                 updateCurrentContent(content)
                                 
                                 let _ = (stateManager.postbox.transaction { transaction -> String? in
@@ -1441,34 +1459,40 @@ private final class NotificationServiceHandler {
                                         voipPayload["phoneNumber"] = phoneNumber
                                     }
 
-                                    if #available(iOS 14.5, *), voiceCallSettings.enableSystemIntegration {
+                                    // Shown when CallKit cannot take the call from here.
+                                    let ringingContent = incomingCallNotificationContent(
+                                        callerName: callData.peer?.debugDisplayTitle,
+                                        incomingCallMessage: incomingCallMessage,
+                                        recipientAccountName: recipientAccountName,
+                                        accountId: callData.accountId,
+                                        fromId: callData.fromId
+                                    )
+
+                                    if #available(iOS 14.5, *), IncomingCallPushPresentation.reportsToCallKit(systemIntegrationEnabled: voiceCallSettings.enableSystemIntegration, canFilterNotifications: canFilterNotifications) {
                                         Logger.shared.log("NotificationService \(episode)", "Will report voip notification")
-                                        let content = NotificationContent(isLockedMessage: nil)
+                                        var content = NotificationContent(isLockedMessage: nil)
+                                        content.userInfo = IncomingCallPushPresentation.markerUserInfo
                                         updateCurrentContent(content)
                                         
                                         CXProvider.reportNewIncomingVoIPPushPayload(voipPayload, completion: { error in
                                             Logger.shared.log("NotificationService \(episode)", "Did report voip notification, error: \(String(describing: error))")
 
+                                            if error != nil {
+                                                updateCurrentContent(ringingContent)
+                                            }
                                             completed()
                                         })
                                     } else {
-                                        var content = NotificationContent(isLockedMessage: nil)
-                                        content.recipientAccountName = recipientAccountName
-                                        if let peer = callData.peer {
-                                            content.title = peer.debugDisplayTitle
-                                            content.body = incomingCallMessage
-                                        } else {
-                                            content.body = "Incoming Call"
-                                        }
-                                        
-                                        updateCurrentContent(content)
+                                        Logger.shared.log("NotificationService \(episode)", "Showing the call as a notification")
+                                        updateCurrentContent(ringingContent)
                                         completed()
                                     }
                                 })
                             }
                         case let .groupCall(groupCallData):
                             if let stateManager = strongSelf.stateManager {
-                                let content = NotificationContent(isLockedMessage: nil)
+                                var content = NotificationContent(isLockedMessage: nil)
+                                content.userInfo = IncomingCallPushPresentation.markerUserInfo
                                 updateCurrentContent(content)
                                 
                                 let _ = (stateManager.postbox.transaction { transaction -> TelegramUser? in
@@ -1487,27 +1511,32 @@ private final class NotificationServiceHandler {
                                         voipPayload["phoneNumber"] = phoneNumber
                                     }
 
-                                    if #available(iOS 14.5, *), voiceCallSettings.enableSystemIntegration {
+                                    // Shown when CallKit cannot take the call from here.
+                                    let ringingContent = incomingCallNotificationContent(
+                                        callerName: fromPeer?.debugDisplayTitle ?? groupCallData.fromTitle,
+                                        incomingCallMessage: incomingCallMessage,
+                                        recipientAccountName: recipientAccountName,
+                                        accountId: groupCallData.accountId,
+                                        fromId: groupCallData.fromId
+                                    )
+
+                                    if #available(iOS 14.5, *), IncomingCallPushPresentation.reportsToCallKit(systemIntegrationEnabled: voiceCallSettings.enableSystemIntegration, canFilterNotifications: canFilterNotifications) {
                                         Logger.shared.log("NotificationService \(episode)", "Will report voip notification")
-                                        let content = NotificationContent(isLockedMessage: nil)
+                                        var content = NotificationContent(isLockedMessage: nil)
+                                        content.userInfo = IncomingCallPushPresentation.markerUserInfo
                                         updateCurrentContent(content)
                                         
                                         CXProvider.reportNewIncomingVoIPPushPayload(voipPayload, completion: { error in
                                             Logger.shared.log("NotificationService \(episode)", "Did report voip notification, error: \(String(describing: error))")
 
+                                            if error != nil {
+                                                updateCurrentContent(ringingContent)
+                                            }
                                             completed()
                                         })
                                     } else {
-                                        var content = NotificationContent(isLockedMessage: nil)
-                                        content.recipientAccountName = recipientAccountName
-                                        if let peer = fromPeer {
-                                            content.title = peer.debugDisplayTitle
-                                            content.body = incomingCallMessage
-                                        } else {
-                                            content.body = "Incoming Call"
-                                        }
-                                        
-                                        updateCurrentContent(content)
+                                        Logger.shared.log("NotificationService \(episode)", "Showing the group call as a notification")
+                                        updateCurrentContent(ringingContent)
                                         completed()
                                     }
                                 })
@@ -2715,9 +2744,7 @@ final class NotificationService: UNNotificationServiceExtension {
     private var episode: String?
     private var requestCompletion: ExtensionRequestCompletion?
     private var requestIdentifier: String?
-    private let canFilterNotifications: Bool = Bundle.main.bundleIdentifier
-        .flatMap(ServicePushPresentation.baseAppBundleId(extensionBundleId:))
-        .map(ServicePushPresentation.appCanFilterNotifications(baseAppBundleId:)) ?? false
+    private let canFilterNotifications: Bool = ServicePushPresentation.appCanFilterNotifications(infoDictionary: Bundle.main.infoDictionary)
     
     override init() {
         super.init()
