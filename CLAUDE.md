@@ -839,6 +839,18 @@ GPU (Metal) rendering of stickers and emoji, its debug switches and how to measu
   benchmark under the deep-audit fix-bench). Its invariant check runs only with `DEBUG`. Its
   `intersects` also returns true for a range that only touches the set (pinned by
   `//submodules/Utils/RangeSet:RangeSetTests`); keep that unless every caller is checked.
+- **MediaBox's file indexes never crash the app** (`StorageBox`: `storage`, `cache-storage`; and
+  `TimeBasedCleanup`'s scratch table). They open `SqliteValueBox(…, isDisposable: true)`: an open
+  that fails or whose setup cannot be written returns nil, an unpreparable statement is skipped
+  (reads find nothing, writes are dropped), a table whose creation failed is not recorded (the next
+  write creates it), and transaction/step failures only log, even under strict error handling. A
+  StorageBox whose file cannot be opened keeps its index in memory for that launch; it never
+  deletes the file itself (the valve and corruption handling in `SqliteValueBox` do). The account
+  database and the account manager keep the crash-and-relaunch policy (the default
+  `isDisposable: false`). Device crash this fixed: 202611020509, StorageBox's reindex reaching
+  `insertOrReplaceStatement`'s trap after `BEGIN`/`CREATE TABLE` failed silently
+  (`StorageBoxUnavailableDatabaseTests`; `SqliteValueBox.busyTimeoutMilliseconds` lets a test hold
+  a lock briefly).
 - **`SqliteValueBox.vacuum()` never crashes** (busy, disk full, I/O errors are logged and return
   false). Background maintenance (the `BGProcessingTask` cleanup, external power) calls
   `Postbox.optimizeStorageIfNeeded()`: VACUUM only when free pages are >= 25% of the file, at most
