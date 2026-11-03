@@ -19,14 +19,34 @@ private final class DeviceLocationSubscriber {
     }
 }
 
-private func getTopMode(subscribers: [DeviceLocationSubscriber]) -> DeviceLocationMode? {
-    var mode: DeviceLocationMode?
-    for subscriber in subscribers {
-        if mode == nil || subscriber.mode.rawValue > mode!.rawValue {
-            mode = subscriber.mode
-        }
+enum DeviceLocationAuthorization: Equatable {
+    case whenInUse
+    case always
+}
+
+struct DeviceLocationConfiguration: Equatable {
+    var distanceFilter: CLLocationDistance
+    var updatesHeading: Bool
+    var allowsBackgroundUpdates: Bool
+    var authorization: DeviceLocationAuthorization
+}
+
+/// How to run location for the current subscribers. A screen showing location (`.preciseForeground`: a map, the
+/// location picker) gets every fix and the compass. Live location alone (`.preciseAlways`, for hours, mostly in the
+/// background) sends one update per 4 s and takes its heading from the course while moving, so it skips moves
+/// under 10 m and the magnetometer. Only live location asks for Always access; a map asked for it too.
+func deviceLocationConfiguration(modes: [DeviceLocationMode]) -> DeviceLocationConfiguration? {
+    if modes.isEmpty {
+        return nil
     }
-    return mode
+    let hasScreen = modes.contains(.preciseForeground)
+    let hasLiveLocation = modes.contains(.preciseAlways)
+    return DeviceLocationConfiguration(
+        distanceFilter: hasScreen ? kCLDistanceFilterNone : 10.0,
+        updatesHeading: hasScreen,
+        allowsBackgroundUpdates: hasLiveLocation,
+        authorization: hasLiveLocation ? .always : .whenInUse
+    )
 }
 
 public final class DeviceLocationManager: NSObject {
@@ -34,11 +54,11 @@ public final class DeviceLocationManager: NSObject {
     private let log: ((String) -> Void)?
     
     private let manager: CLLocationManager
-    private var requestedAuthorization = false
+    private var requestedAuthorization: DeviceLocationAuthorization?
     
     private var nextSubscriberId: Int32 = 0
     private var subscribers: [DeviceLocationSubscriber] = []
-    private var currentTopMode: DeviceLocationMode?
+    private var currentConfiguration: DeviceLocationConfiguration?
     
     private var currentLocation: CLLocation?
     private var currentHeading: CLHeading?
@@ -98,35 +118,47 @@ public final class DeviceLocationManager: NSObject {
     private func updateTopMode() {
         assert(self.queue.isCurrent())
         
-        let previousTopMode = self.currentTopMode
-        let topMode = getTopMode(subscribers: self.subscribers)
-        if topMode != previousTopMode {
-            self.currentTopMode = topMode
-            if let topMode = topMode {
-                self.log?("setting mode \(topMode)")
-                switch topMode {
-                case .preciseForeground:
-                    self.manager.allowsBackgroundLocationUpdates = false
-                case .preciseAlways:
-                    self.manager.allowsBackgroundLocationUpdates = true
+        let previousConfiguration = self.currentConfiguration
+        let configuration = deviceLocationConfiguration(modes: self.subscribers.map(\.mode))
+        if configuration == previousConfiguration {
+            return
+        }
+        self.currentConfiguration = configuration
+        if let configuration {
+            self.log?("setting configuration \(configuration)")
+            self.manager.allowsBackgroundLocationUpdates = configuration.allowsBackgroundUpdates
+            self.manager.distanceFilter = configuration.distanceFilter
+            
+            switch configuration.authorization {
+            case .whenInUse:
+                if self.requestedAuthorization == nil {
+                    self.requestedAuthorization = .whenInUse
+                    self.manager.requestWhenInUseAuthorization()
                 }
-                
-                if previousTopMode == nil {
-                    if !self.requestedAuthorization {
-                        self.requestedAuthorization = true
-                        self.manager.requestAlwaysAuthorization()
-                    }
-
-                    self.manager.startUpdatingLocation()
-                    self.manager.startUpdatingHeading()
+            case .always:
+                if self.requestedAuthorization != .always {
+                    self.requestedAuthorization = .always
+                    self.manager.requestAlwaysAuthorization()
                 }
-            } else {
-                self.currentLocation = nil
-                self.currentHeading = nil
-                self.manager.stopUpdatingLocation()
-                self.manager.stopUpdatingHeading()
-                self.log?("stopped")
             }
+            
+            if previousConfiguration == nil {
+                self.manager.startUpdatingLocation()
+            }
+            if configuration.updatesHeading != (previousConfiguration?.updatesHeading ?? false) {
+                if configuration.updatesHeading {
+                    self.manager.startUpdatingHeading()
+                } else {
+                    self.manager.stopUpdatingHeading()
+                    self.currentHeading = nil
+                }
+            }
+        } else {
+            self.currentLocation = nil
+            self.currentHeading = nil
+            self.manager.stopUpdatingLocation()
+            self.manager.stopUpdatingHeading()
+            self.log?("stopped")
         }
     }
 }
@@ -149,7 +181,7 @@ extension DeviceLocationManager: CLLocationManagerDelegate {
         assert(self.queue.isCurrent())
         
         if let location = locations.first {
-            if self.currentTopMode != nil {
+            if self.currentConfiguration != nil {
                 self.currentLocation = location
                 for subscriber in self.subscribers {
                     subscriber.update(location, self.currentHeading?.effectiveHeading)
@@ -161,7 +193,7 @@ extension DeviceLocationManager: CLLocationManagerDelegate {
     public func locationManager(_ manager: CLLocationManager, didUpdateHeading newHeading: CLHeading) {
         assert(self.queue.isCurrent())
         
-        if self.currentTopMode != nil {
+        if self.currentConfiguration != nil {
             self.currentHeading = newHeading
             if let currentLocation = self.currentLocation {
                 for subscriber in self.subscribers {
