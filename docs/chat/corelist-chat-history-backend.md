@@ -907,6 +907,16 @@ The value participates in `isEqual(to:)` alongside `stableId`/`stableVersion`, s
 neighbors changed is unequal and re-applies. That is the backend's equivalent of `ListViewImpl`'s
 descriptor-diff invalidation.
 
+**A neighbor change is a new entry, never an assignment** (`withNeighbors`; `neighbors` is a `let`).
+The entries are objects, and the instance in `entries` is the very one CoreList holds as the row's
+previous item. Until 2026-11 the neighbor pass assigned `updated[index].neighbors = …`, so
+`isEqual(to:)` compared a row's new neighbors with themselves: an UNTOUCHED row whose neighbor
+changed (the previous newest message when one arrives, the rows around a deletion) was never
+re-applied and kept its old merge, tail and date header until something else rebuilt it (scrolling it
+out and back, or an update of its own message). Rows that arrive as `updateIndicesAndItems` (message
+attribute changes: listened, read, edited, reactions) were never affected: each is a fresh entry with a
+new `stableVersion`, re-applied and re-measured in the same pass.
+
 See the "Neighbor descriptors" section of the root `CLAUDE.md` for the load-bearing invariant: a
 descriptor must encode everything a neighbor reads, or the omitted fact goes stale on screen.
 

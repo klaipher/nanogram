@@ -978,11 +978,22 @@ final class CoreListChatHistoryBackend: ASDisplayNode, ChatHistoryListViewBacken
             // Neighbors are a function of final adjacency, so they are computed once the array has
             // settled rather than per-operation. Same index bases as ListView.neighbors(at:) — the
             // backend feeds items in ListView index order.
+            //
+            // A changed value is a NEW entry, never an assignment on the old one. The entries are
+            // objects, and the instance in `self.entries` is the very one CoreList holds as the row's
+            // OLD item, so writing to it made `isEqual(to:)` compare a row's new neighbors with
+            // themselves: an untouched row whose neighbor changed (the previous newest message when one
+            // arrives, the rows around a deletion) was never re-applied and kept its old merge, tail and
+            // date header until something else rebuilt it. ListViewImpl relayouts exactly those rows
+            // (`appliedNeighbors` against `neighbors(at:)`, ListView.swift:2182).
             for index in 0 ..< updated.count {
-                updated[index].neighbors = ListViewItemNeighbors(
+                let neighbors = ListViewItemNeighbors(
                     previous: index == 0 ? nil : updated[index - 1].listItem.neighborDescriptor,
                     next: index == updated.count - 1 ? nil : updated[index + 1].listItem.neighborDescriptor
                 )
+                if updated[index].neighbors != neighbors {
+                    updated[index] = updated[index].withNeighbors(neighbors)
+                }
             }
             self.entries = updated
         }
@@ -1717,8 +1728,10 @@ private final class CoreListEntryItem: CoreListItem {
     let stableVersion: Int
     let listItem: ListViewItem
     // Descriptors published by the adjacent entries. Compared in isEqual(to:) so a row re-applies
-    // when a neighbor changed, and passed into layout so merge/date decisions are correct.
-    var neighbors: ListViewItemNeighbors
+    // when a neighbor changed, and passed into layout so merge/date decisions are correct. A `let`:
+    // CoreList keeps this instance as the row's previous item, so a change must be a new entry
+    // (`withNeighbors`), or the comparison sees the new value on both sides.
+    let neighbors: ListViewItemNeighbors
 
     // The chat's horizontal insets, carried on the item so that changing them is a CONTENT change:
     // `isEqual(to:)` compares them, so a sidebar opening reconciles every row and the pass transition
@@ -1786,6 +1799,18 @@ private final class CoreListEntryItem: CoreListItem {
                                  leftInset: left,
                                  rightInset: right,
                                  neighbors: self.neighbors)
+    }
+
+    /// The same entry with new neighbors, preserving its identity and stable version so it reconciles
+    /// as a survivor whose content changed.
+    func withNeighbors(_ neighbors: ListViewItemNeighbors) -> CoreListEntryItem {
+        return CoreListEntryItem(stableId: self.stableId,
+                                 stableVersion: self.stableVersion,
+                                 listItem: self.listItem,
+                                 backend: self.backend,
+                                 leftInset: self.leftInset,
+                                 rightInset: self.rightInset,
+                                 neighbors: neighbors)
     }
 
     func view() -> UIView & CoreListItemView {
