@@ -351,14 +351,23 @@ private func topmostPresenter(_ host: DebugLogExportHost) -> UIViewController? {
     return presenter
 }
 
+/// The share sheet reports a share extension cancelled inside it (`completed == false` with its activity type) while it
+/// stays open, and the files are still offered; they go once an activity completes or the sheet is dismissed
+/// (`activityType == nil`).
+func debugLogShareSheetRemovesExport(completed: Bool, activityType: UIActivity.ActivityType?) -> Bool {
+    return completed || activityType == nil
+}
+
 private func presentShareSheet(host: DebugLogExportHost, files: [DebugLogExportFile], directory: URL) {
     guard let presenter = topmostPresenter(host) else {
         removeDebugLogExportDirectory(directory)
         return
     }
     let activityController = UIActivityViewController(activityItems: files.map { URL(fileURLWithPath: $0.path) }, applicationActivities: nil)
-    activityController.completionWithItemsHandler = { _, _, _, _ in
-        removeDebugLogExportDirectory(directory)
+    activityController.completionWithItemsHandler = { activityType, completed, _, _ in
+        if debugLogShareSheetRemovesExport(completed: completed, activityType: activityType) {
+            removeDebugLogExportDirectory(directory)
+        }
     }
     if let popover = activityController.popoverPresentationController {
         popover.sourceView = presenter.view
@@ -368,50 +377,106 @@ private func presentShareSheet(host: DebugLogExportHost, files: [DebugLogExportF
     presenter.present(activityController, animated: true, completion: nil)
 }
 
+struct DebugLogMailAttachment {
+    let data: Data
+    let mimeType: String
+    let fileName: String
+}
+
+/// Reads the files for a Mail composer off the main queue (a full export can be tens of MB) and hands them back on the
+/// main queue, in order; a file that cannot be read is left out.
+func loadDebugLogMailAttachments(files: [DebugLogExportFile], read: @escaping (String) -> Data? = { path in
+    return try? Data(contentsOf: URL(fileURLWithPath: path), options: .mappedIfSafe)
+}, completion: @escaping ([DebugLogMailAttachment]) -> Void) {
+    Queue.concurrentDefaultQueue().async {
+        let attachments = files.compactMap { file -> DebugLogMailAttachment? in
+            guard let data = read(file.path) else {
+                return nil
+            }
+            return DebugLogMailAttachment(data: data, mimeType: file.mimeType, fileName: file.name)
+        }
+        Queue.mainQueue().async {
+            completion(attachments)
+        }
+    }
+}
+
 /// Opens Mail with the files attached when a Mail account is set up, and the share sheet otherwise.
 /// Presenting MFMailComposeViewController without a Mail account raises an exception (TestFlight crash
 /// report: SIGABRT in -[UIViewController presentViewController:] from DebugLogAction.perform). It is
 /// presented from the topmost controller, so a sheet still on screen cannot reject the presentation.
-private func presentMailOrShareSheet(host: DebugLogExportHost, subject: String, files: [DebugLogExportFile], directory: URL) {
+private func presentMailOrShareSheet(host: DebugLogExportHost, subject: String, files: [DebugLogExportFile], directory: URL, finish: @escaping () -> Void) {
     guard MFMailComposeViewController.canSendMail() else {
         presentShareSheet(host: host, files: files, directory: directory)
+        finish()
         return
     }
-    guard let presenter = topmostPresenter(host) else {
-        removeDebugLogExportDirectory(directory)
-        return
-    }
-    let composeController = MFMailComposeViewController()
-    composeController.mailComposeDelegate = DebugLogMailComposeDelegate.shared
-    DebugLogMailComposeDelegate.shared.directories[ObjectIdentifier(composeController)] = directory
-    composeController.setSubject(subject)
-    for file in files {
-        if let data = try? Data(contentsOf: URL(fileURLWithPath: file.path), options: .mappedIfSafe) {
-            composeController.addAttachmentData(data, mimeType: file.mimeType, fileName: file.name)
+    loadDebugLogMailAttachments(files: files, completion: { attachments in
+        defer {
+            finish()
         }
-    }
-    presenter.present(composeController, animated: true, completion: nil)
+        guard let presenter = topmostPresenter(host) else {
+            removeDebugLogExportDirectory(directory)
+            return
+        }
+        let composeController = MFMailComposeViewController()
+        composeController.mailComposeDelegate = DebugLogMailComposeDelegate.shared
+        DebugLogMailComposeDelegate.shared.directories[ObjectIdentifier(composeController)] = directory
+        composeController.setSubject(subject)
+        for attachment in attachments {
+            composeController.addAttachmentData(attachment.data, mimeType: attachment.mimeType, fileName: attachment.fileName)
+        }
+        presenter.present(composeController, animated: true, completion: nil)
+    })
 }
 
-/// Keeps a chat export's directory until its messages have left (sent, or failed): they reference the files by path
-/// until the media box takes them over when the upload starts. Main queue only.
+enum DebugLogChatUploadState: Equatable {
+    /// Sent (stored again under its server id, so the local id reads nil) or deleted.
+    case gone
+    case sent
+    case sending
+    /// Failed; the chat's Retry reads the file again while it is still there.
+    case failed(fileExists: Bool)
+}
+
+/// Whether a chat export's directory can go: every message has left, or failed after its upload took the file.
+func debugLogChatUploadsSettled(_ states: [DebugLogChatUploadState]) -> Bool {
+    return states.allSatisfy { state in
+        switch state {
+        case .gone, .sent:
+            return true
+        case .sending:
+            return false
+        case let .failed(fileExists):
+            return !fileExists
+        }
+    }
+}
+
+/// Keeps a chat export's directory until its messages have left: they reference the files by path until the media box
+/// takes them over when the upload starts, and a failed message keeps its file for Retry until it is sent or deleted.
+/// Main queue only.
 private final class DebugLogChatUploads {
     static let shared = DebugLogChatUploads()
 
     private var disposables: [URL: MetaDisposable] = [:]
 
-    func keep(_ directory: URL, until ids: [EngineMessage.Id], context: AccountContext) {
+    func keep(_ directory: URL, until messages: [(id: EngineMessage.Id, path: String)], context: AccountContext) {
         let disposable = MetaDisposable()
         self.disposables[directory] = disposable
-        disposable.set((context.engine.data.subscribe(EngineDataList(ids.map(TelegramEngine.EngineData.Item.Messages.Message.init(id:))))
+        let paths = messages.map(\.path)
+        disposable.set((context.engine.data.subscribe(EngineDataList(messages.map { TelegramEngine.EngineData.Item.Messages.Message(id: $0.id) }))
         |> filter { messages -> Bool in
-            // A sent message is stored again under its server id, so the local id then reads nil.
-            return messages.allSatisfy { message in
+            let states = zip(messages, paths).map { message, path -> DebugLogChatUploadState in
                 guard let message else {
-                    return true
+                    return .gone
                 }
-                return !message.flags.contains(.Unsent) || message.flags.contains(.Failed)
+                if message.flags.contains(.Failed) {
+                    return .failed(fileExists: FileManager.default.fileExists(atPath: path))
+                }
+                return message.flags.contains(.Unsent) ? .sending : .sent
             }
+            return debugLogChatUploadsSettled(states)
         }
         |> take(1)
         |> deliverOnMainQueue).start(next: { [weak self] _ in
@@ -439,7 +504,9 @@ private func sendToChat(host: DebugLogExportHost, context: AccountContext, peer:
     |> deliverOnMainQueue).start(next: { ids in
         finish()
         let presentationData = host.sharedContext.currentPresentationData.with { $0 }
-        let queued = ids.compactMap { $0 }
+        let queued = zip(ids, files).compactMap { id, file -> (id: EngineMessage.Id, path: String)? in
+            return id.flatMap { (id: $0, path: file.path) }
+        }
         if queued.isEmpty {
             removeDebugLogExportDirectory(directory)
             presentDebugLogExportFailure(host: host, title: "Could Not Send \(spec.what)", text: "Please try again.", spec: spec)
@@ -554,8 +621,7 @@ func performDebugLogExport(host: DebugLogExportHost, kind: DebugLogExportKind, d
         host.push(controller)
     case .email:
         prepareDebugLogExport(host: host, spec: spec, prepare: prepare, deliver: { files, directory, finish in
-            presentMailOrShareSheet(host: host, subject: spec.subject, files: files, directory: directory)
-            finish()
+            presentMailOrShareSheet(host: host, subject: spec.subject, files: files, directory: directory, finish: finish)
         })
     case .otherApps:
         prepareDebugLogExport(host: host, spec: spec, prepare: prepare, deliver: { files, directory, finish in

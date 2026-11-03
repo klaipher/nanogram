@@ -212,6 +212,50 @@ final class DebugLogExportTests: XCTestCase {
         XCTAssertFalse(gate.isRunning)
     }
 
+    /// A share extension cancelled inside the sheet (Mail, Notes…) reports `completed == false` with its activity
+    /// type while the sheet stays open; the files are still offered, so only completion or dismissal removes them.
+    func testShareSheetKeepsTheExportWhileAnActivityIsCancelled() {
+        XCTAssertFalse(debugLogShareSheetRemovesExport(completed: false, activityType: .mail))
+        XCTAssertTrue(debugLogShareSheetRemovesExport(completed: true, activityType: .mail))
+        XCTAssertTrue(debugLogShareSheetRemovesExport(completed: false, activityType: nil))
+    }
+
+    /// A failed message can be retried from the chat, and the retry reads the file again; the directory goes once
+    /// every message is sent or deleted, or the upload has already taken a failed message's file.
+    func testChatUploadKeepsTheFilesOfAFailedMessageThatCanBeRetried() {
+        XCTAssertFalse(debugLogChatUploadsSettled([.failed(fileExists: true)]))
+        XCTAssertFalse(debugLogChatUploadsSettled([.sent, .failed(fileExists: true)]))
+        XCTAssertFalse(debugLogChatUploadsSettled([.sent, .sending]))
+        XCTAssertTrue(debugLogChatUploadsSettled([.failed(fileExists: false)]))
+        XCTAssertTrue(debugLogChatUploadsSettled([.sent, .gone]))
+    }
+
+    /// Mail attachments are read off the main queue; the composer is built with them on the main queue.
+    func testMailAttachmentsAreReadOffTheMainQueue() throws {
+        let files = [
+            DebugLogExportFile(name: "a.txt", path: "/a", mimeType: "text/plain"),
+            DebugLogExportFile(name: "b.zip", path: "/b", mimeType: "application/zip"),
+            DebugLogExportFile(name: "c.zip", path: "/missing", mimeType: "application/zip")
+        ]
+        var readOnMain: [Bool] = []
+        let lock = NSLock()
+        let done = self.expectation(description: "loaded")
+        loadDebugLogMailAttachments(files: files, read: { path in
+            lock.lock()
+            readOnMain.append(Thread.isMainThread)
+            lock.unlock()
+            return path == "/missing" ? nil : Data(path.utf8)
+        }, completion: { attachments in
+            XCTAssertTrue(Thread.isMainThread)
+            XCTAssertEqual(attachments.map(\.fileName), ["a.txt", "b.zip"])
+            XCTAssertEqual(attachments.map(\.mimeType), ["text/plain", "application/zip"])
+            XCTAssertEqual(attachments.map(\.data), [Data("/a".utf8), Data("/b".utf8)])
+            done.fulfill()
+        })
+        self.wait(for: [done], timeout: 5.0)
+        XCTAssertEqual(readOnMain, [false, false, false])
+    }
+
     /// The module's sources are bundled with the tests (`data` in BUILD). Only the shared export flow may pick a
     /// chat or send a message, and nothing may resolve a fixed username.
     func testNoExportUsesAFixedPeer() throws {
