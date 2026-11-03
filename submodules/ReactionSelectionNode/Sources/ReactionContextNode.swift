@@ -2797,6 +2797,16 @@ public final class ReactionContextNode: ASDisplayNode, ASScrollViewDelegate {
                 }
             }
             
+            let effectLog = ReactionAnimationFirstFrameLog(kind: .effect, reaction: "\(itemNode.item.reaction.rawValue)", fileIsLocal: effectAvailability == .local, requestTime: CFAbsoluteTimeGetCurrent())
+            Logger.shared.log("ReactionContextNode", effectLog.requestedLine)
+            var didLogEffectStart = false
+            additionalAnimationNodeValue.started = {
+                if !didLogEffectStart {
+                    didLogEffectStart = true
+                    Logger.shared.log("ReactionContextNode", effectLog.firstFrameLine(now: CFAbsoluteTimeGetCurrent()))
+                }
+            }
+
             let additionalAnimationFile = additionalAnimation._parse()
             additionalAnimationNodeValue.setup(source: AnimatedStickerResourceSource(account: itemNode.context.account, resource: additionalAnimationFile.resource), width: Int(effectFrame.width * 2.0), height: Int(effectFrame.height * 2.0), playbackMode: .once, mode: .direct(cachePathPrefix: self.context.engine.resources.shortLivedResourceCachePathPrefix(id: EngineMediaResource.Id(additionalAnimationFile.resource.id))))
             additionalAnimationNodeValue.frame = effectFrame

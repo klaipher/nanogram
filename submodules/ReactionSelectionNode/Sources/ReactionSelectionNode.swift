@@ -358,13 +358,18 @@ public final class ReactionNode: ASDisplayNode, ReactionItemNode {
             self.addSubnode(animationNode)
             
             var didReportStarted = false
-            let expansionTimestamp = CFAbsoluteTimeGetCurrent()
-            let reactionDescription = "\(self.item.reaction.rawValue)"
-            Logger.shared.log("ReactionNode", "reaction \(reactionDescription): larger animation requested, still icon kept until its first frame")
+            let largerAnimationResource = (largeExpanded ? self.item.largeListAnimation : self.item.listAnimation)._parse().resource
+            let firstFrameLog = ReactionAnimationFirstFrameLog(
+                kind: .largerAnimation,
+                reaction: "\(self.item.reaction.rawValue)",
+                fileIsLocal: self.context.engine.resources.completedResourcePath(id: EngineMediaResource.Id(largerAnimationResource.id)) != nil,
+                requestTime: CFAbsoluteTimeGetCurrent()
+            )
+            Logger.shared.log("ReactionNode", firstFrameLog.requestedLine + ", still icon kept until its first frame")
             animationNode.started = { [weak self] in
                 if !didReportStarted {
                     didReportStarted = true
-                    Logger.shared.log("ReactionNode", "reaction \(reactionDescription): larger animation first frame after \(Int((CFAbsoluteTimeGetCurrent() - expansionTimestamp) * 1000.0)) ms, still icon hidden")
+                    Logger.shared.log("ReactionNode", firstFrameLog.firstFrameLine(now: CFAbsoluteTimeGetCurrent()) + ", still icon hidden")
                     self?.expandedAnimationDidBegin?()
                     self?.expandedIconHandOver.expandedAnimationStarted()
                 }
