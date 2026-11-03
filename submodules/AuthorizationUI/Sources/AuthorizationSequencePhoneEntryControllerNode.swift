@@ -436,7 +436,7 @@ final class AuthorizationSequencePhoneEntryControllerNode: ASDisplayNode {
         self.qrInfoNode.maximumNumberOfLines = 0
         self.qrInfoNode.textAlignment = .center
         self.qrInfoNode.displaysAsynchronously = false
-        self.qrInfoNode.attributedText = NSAttributedString(string: "Open Telegram on your phone and go to\nSettings → Devices → \(strings.AuthSessions_LinkDesktopDevice)", font: Font.regular(15.0), textColor: theme.list.itemSecondaryTextColor, paragraphAlignment: .center)
+        self.qrInfoNode.attributedText = NSAttributedString(string: "Open Nanogram or Telegram on your phone and go to\nSettings → Devices → \(strings.AuthSessions_LinkDesktopDevice)", font: Font.regular(15.0), textColor: theme.list.itemSecondaryTextColor, paragraphAlignment: .center)
         self.qrInfoNode.isHidden = true
         
         self.proceedNode = SolidRoundedButtonNode(title: self.strings.Login_Continue, theme: SolidRoundedButtonTheme(theme: self.theme), glass: false, height: 50.0, cornerRadius: 50 * 0.5)

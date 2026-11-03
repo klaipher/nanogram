@@ -19,6 +19,11 @@ struct QrLoginView: View {
     }
 }
 
+/// The app's name in the watch app's own texts. "Telegram" stays where a text means the network.
+enum Brand {
+    static let appName = "Nanogram"
+}
+
 /// Pure presentational column for the QR-login screen. Hosted inside a `ScrollView` by
 /// `QrLoginView`; rendered directly (at a fixed width) by the previews so it captures in
 /// SnapshotPreviews, which does not flatten scroll-container content.
@@ -27,9 +32,13 @@ struct QrLoginContent: View {
     let isTestDc: Bool
     let errorMessage: String?
 
+    static let title = "Log in to \(Brand.appName) by QR Code"
+    /// Where to scan the code: the phone app can be Nanogram or Telegram, both link devices the same way.
+    static let steps = ["Open \(Brand.appName) or Telegram on your phone", "Settings", "Devices", "Scan QR"]
+
     var body: some View {
         VStack(spacing: 12) {
-            Text("Log in to Telegram by QR Code")
+            Text(Self.title)
                 .font(.headline)
                 .multilineTextAlignment(.center)
                 .frame(maxWidth: .infinity)
@@ -61,11 +70,12 @@ struct QrLoginContent: View {
 
     private var instructionSteps: some View {
         VStack(spacing: 4) {
-            Text("Settings on your Phone")
-            Image(systemName: "chevron.down").font(.caption)
-            Text("Devices")
-            Image(systemName: "chevron.down").font(.caption)
-            Text("Scan QR")
+            ForEach(Array(Self.steps.enumerated()), id: \.offset) { index, step in
+                if index > 0 {
+                    Image(systemName: "chevron.down").font(.caption)
+                }
+                Text(step)
+            }
         }
         .foregroundStyle(.secondary)
         .multilineTextAlignment(.center)
