@@ -44,6 +44,10 @@ let package = Package(
                 .define("NDEBUG", to: "1"),
                 .define("SQLITE_MAX_MMAP_SIZE", to: "0"),
                 .define("SQLITE_ENABLE_QPSG", to: "1"),
+                .define("SQLITE_OMIT_SHARED_CACHE", to: "1"),
+                .define("SQLITE_MAX_EXPR_DEPTH", to: "0"),
+                .define("SQLITE_LIKE_DOESNT_MATCH_BLOBS", to: "1"),
+                .define("SQLITE_USE_ALLOCA", to: "1"),
             ]),
     ]
 )

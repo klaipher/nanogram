@@ -1861,6 +1861,7 @@ public final class SqliteValueBox: ValueBox {
     }
     
     public func readWrite(_ table: ValueBoxTable, key: ValueBoxKey, _ process: (Int, (UnsafeMutableRawPointer, Int, Int) -> Void, (UnsafeRawPointer, Int, Int) -> Void) -> Void) {
+        precondition(self.queue.isCurrent())
         if let _ = self.tables[table.id] {
             let statement = self.getRowIdStatement(table, key: key)
             
@@ -1964,6 +1965,7 @@ public final class SqliteValueBox: ValueBox {
     }
     
     public func filteredRange(_ table: ValueBoxTable, start: ValueBoxKey, end: ValueBoxKey, values: (ValueBoxKey, ReadBuffer) -> ValueBoxFilterResult, limit: Int) {
+        precondition(self.queue.isCurrent())
         var acceptedCount = 0
         self.range(table, start: start, end: end, values: { key, value in
             switch values(key, value) {
@@ -1979,6 +1981,7 @@ public final class SqliteValueBox: ValueBox {
     }
     
     public func filteredRange(_ table: ValueBoxTable, start: ValueBoxKey, end: ValueBoxKey, keys: (ValueBoxKey) -> ValueBoxFilterResult, limit: Int) {
+        precondition(self.queue.isCurrent())
         var acceptedCount = 0
         self.range(table, start: start, end: end, keys: { key in
             switch keys(key) {
@@ -2215,6 +2218,7 @@ public final class SqliteValueBox: ValueBox {
     }
     
     public func renameTable(_ table: ValueBoxTable, to toTable: ValueBoxTable) {
+        precondition(self.queue.isCurrent())
         let sqliteTable = self.checkTable(table)
         let resultCode = database.execute("ALTER TABLE t\(table.id) RENAME TO t\(toTable.id)")
         precondition(resultCode)
@@ -2223,6 +2227,7 @@ public final class SqliteValueBox: ValueBox {
     }
     
     public func fullTextMatch(_ table: ValueBoxFullTextTable, collectionId: String?, query: String, tags: String?, values: (String, String) -> Bool) {
+        precondition(self.queue.isCurrent())
         if let _ = self.fullTextTables[table.id] {
             guard let queryData = query.data(using: .utf8) else {
                 return
@@ -2319,6 +2324,7 @@ public final class SqliteValueBox: ValueBox {
     }
     
     public func fullTextSet(_ table: ValueBoxFullTextTable, collectionId: String, itemId: String, contents: String, tags: String) {
+        precondition(self.queue.isCurrent())
         self.checkFullTextTable(table)
         
         guard let collectionIdData = collectionId.data(using: .utf8), let itemIdData = itemId.data(using: .utf8), let contentsData = contents.data(using: .utf8), let tagsData = tags.data(using: .utf8) else {
@@ -2331,6 +2337,7 @@ public final class SqliteValueBox: ValueBox {
     }
     
     public func fullTextRemove(_ table: ValueBoxFullTextTable, itemId: String, secure: Bool) {
+        precondition(self.queue.isCurrent())
         if let _ = self.fullTextTables[table.id] {
             if secure != self.secureDeleteEnabled {
                 self.secureDeleteEnabled = secure
@@ -2349,6 +2356,7 @@ public final class SqliteValueBox: ValueBox {
     }
     
     public func count(_ table: ValueBoxTable, start: ValueBoxKey, end: ValueBoxKey) -> Int {
+        precondition(self.queue.isCurrent())
         let _ = self.checkTable(table)
         
         var statementImpl: OpaquePointer? = nil
@@ -2379,6 +2387,7 @@ public final class SqliteValueBox: ValueBox {
     }
     
     public func count(_ table: ValueBoxTable) -> Int {
+        precondition(self.queue.isCurrent())
         let _ = self.checkTable(table)
         
         var statementImpl: OpaquePointer? = nil
@@ -2543,10 +2552,12 @@ public final class SqliteValueBox: ValueBox {
     }
     
     public func removeAllFromTable(_ table: ValueBoxTable) {
+        precondition(self.queue.isCurrent())
         let _ = self.database.execute("DELETE FROM t\(table.id)")
     }
     
     public func removeTable(_ table: ValueBoxTable) {
+        precondition(self.queue.isCurrent())
         let _ = self.database.execute("DROP TABLE t\(table.id)")
         self.tables.removeValue(forKey: table.id)
     }
@@ -2580,6 +2591,7 @@ public final class SqliteValueBox: ValueBox {
     }
     
     public func exportEncrypted(to exportBasePath: String, encryptionParameters: ValueBoxEncryptionParameters) {
+        precondition(self.queue.isCurrent())
         self.exportEncrypted(database: self.database, to: exportBasePath, encryptionParameters: encryptionParameters)
     }
         
@@ -2773,6 +2785,11 @@ extension SqliteValueBox {
         return result
     }
     
+    func connectionIsSerialized() -> Bool {
+        precondition(self.queue.isCurrent())
+        return sqlite3_db_mutex(self.database.handle) != nil
+    }
+
     func pragmaValue(_ name: String) -> String {
         return self.runPragma(self.database, name)
     }

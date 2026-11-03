@@ -441,4 +441,35 @@ final class SqliteValueBoxConnectionTests: XCTestCase {
         XCTAssertTrue(self.queryPlan("SELECT 1 FROM t\(self.withoutRowIdTable.id) WHERE key=?").contains("PRIMARY KEY"))
         XCTAssertTrue(self.queryPlan("SELECT 1 FROM t\(self.int64Table.id) WHERE key=?").contains("PRIMARY KEY"))
     }
+
+    // MARK: - Threading mode and compile options
+
+    func testConnectionsAreOpenedWithoutTheConnectionMutex() {
+        let box = self.open()
+        self.queue.sync {
+            XCTAssertFalse(box.connectionIsSerialized())
+        }
+        guard let readOnly = Database(self.databasePath, readOnly: true) else {
+            XCTFail("could not open a read-only connection")
+            return
+        }
+        XCTAssertNil(sqlite3_db_mutex(readOnly.handle))
+    }
+
+    func testDebugSwitchRestoresSerializedConnections() {
+        Database.debugSerializedConnections = true
+        defer {
+            Database.debugSerializedConnections = false
+        }
+        let box = self.open()
+        self.queue.sync {
+            XCTAssertTrue(box.connectionIsSerialized())
+        }
+    }
+
+    func testRecommendedCompileOptionsAreSet() {
+        for option in ["OMIT_SHARED_CACHE", "MAX_EXPR_DEPTH=0", "LIKE_DOESNT_MATCH_BLOBS", "USE_ALLOCA", "ENABLE_QPSG", "THREADSAFE=1"] {
+            XCTAssertEqual(sqlite3_compileoption_used(option), 1, option)
+        }
+    }
 }
