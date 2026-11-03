@@ -1609,14 +1609,6 @@ private func extractAccountManagerState(records: AccountRecordsView<TelegramAcco
             Logger.shared.log("App \(self.episodeId)", "isActive = \(value)")
         })
         
-        if let url = launchOptions?[.url] {
-            if let url = url as? URL, url.scheme == "tg" || url.scheme == "ton" || url.scheme == buildConfig.appSpecificUrlScheme || WalletContext.isTonConnectUrl(url.absoluteString) {
-                self.openUrlWhenReady(url: url, external: true)
-            } else if let urlString = url as? String, urlString.lowercased().hasPrefix("tg:") || urlString.lowercased().hasPrefix("ton:") || urlString.lowercased().hasPrefix("\(buildConfig.appSpecificUrlScheme):") || WalletContext.isTonConnectUrl(urlString), let url = URL(string: urlString) {
-                self.openUrlWhenReady(url: url, external: true)
-            }
-        }
-        
         if application.applicationState == .active {
             self.isInForegroundValue = true
             self.isInForegroundPromise.set(true)
@@ -1821,13 +1813,12 @@ private func extractAccountManagerState(records: AccountRecordsView<TelegramAcco
         self.mainWindow?.updateDeviceMetrics()
         self.window?.makeKeyAndVisible()
 
+        // A link that launches the app goes where a link to the running app goes: openUrl waits for the
+        // signed-in or the sign-in screen, so a tg://proxy, socks, webproxy or login-code link also works
+        // on a device that is signed out (waiting for a signed-in account dropped those). The scene
+        // lifecycle never puts the link in the launch options.
         for context in connectionOptions.urlContexts {
-            let url = context.url
-            if let buildConfig = self.buildConfig, url.scheme == "tg" || url.scheme == "ton" || url.scheme == buildConfig.appSpecificUrlScheme || WalletContext.isTonConnectUrl(url.absoluteString) {
-                self.openUrlWhenReady(url: url, external: true)
-            } else {
-                self.handleOpenURL(url)
-            }
+            self.handleOpenURL(context.url)
         }
 
         for userActivity in connectionOptions.userActivities {
@@ -2738,7 +2729,19 @@ private func extractAccountManagerState(records: AccountRecordsView<TelegramAcco
         guard self.openUrlInProgress != url else {
             return
         }
+        self.noteOpenUrlInProgress(url)
         self.openUrl(url: url)
+    }
+    
+    /// The same link delivered twice within a second (a launch and a scene callback) opens once. Only for that
+    /// second: a link still waiting for a signed-in account must not swallow the next tap on it.
+    private func noteOpenUrlInProgress(_ url: URL) {
+        self.openUrlInProgress = url
+        Queue.mainQueue().after(1.0, { [weak self] in
+            if let self, self.openUrlInProgress == url {
+                self.openUrlInProgress = nil
+            }
+        })
     }
 
     private func presentWalletUnavailable(in context: AuthorizedApplicationContext) {
@@ -3149,7 +3152,7 @@ private func extractAccountManagerState(records: AccountRecordsView<TelegramAcco
 
     private var openUrlInProgress: URL?
     private func openUrlWhenReady(accountId: AccountRecordId? = nil, url: URL, external: Bool = false) {
-        self.openUrlInProgress = url
+        self.noteOpenUrlInProgress(url)
         
         let signal = self.sharedContextPromise.get()
         |> take(1)
@@ -3184,10 +3187,6 @@ private func extractAccountManagerState(records: AccountRecordsView<TelegramAcco
             } else {
                 context.openUrl(url, external: external)
             }
-            
-            Queue.mainQueue().after(1.0, {
-                self?.openUrlInProgress = nil
-            })
         }))
     }
     
