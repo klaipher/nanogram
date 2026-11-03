@@ -841,7 +841,6 @@ public class GalleryController: ViewController, StandalonePresentableController,
         
         self.statusBar.statusBarStyle = .White
         
-        let baseLanguageCode = self.presentationData.strings.baseLanguageCode
         let message: Signal<(Message, Bool)?, NoError>
         var translateToLanguage: Signal<String?, NoError> = .single(nil)
         switch source {
@@ -872,14 +871,11 @@ public class GalleryController: ViewController, StandalonePresentableController,
                     }
                     return (message, false)
                 }
-                translateToLanguage = chatTranslationState(context: context, peerId: messageId.peerId, threadId: threadIdValue)
-                |> map { translationState in
-                    if let translationState, translationState.isEnabled {
-                        let translateToLanguage = translationState.toLang ?? baseLanguageCode
-                        return normalizeTranslationLanguage(translateToLanguage)
-                    } else {
-                        return nil
-                    }
+                // The chat's own decision (ChatTranslationDisplayPolicy): captions are translated only
+                // while the chat shows its messages translated, never with the bar hidden.
+                translateToLanguage = chatMessageTranslationLanguages(context: context, peerId: messageId.peerId, threadId: threadIdValue)
+                |> map { languages in
+                    return languages?.toLang
                 }
             case let .standaloneMessage(m, _):
                 message = .single((m, m.isCopyProtected()))

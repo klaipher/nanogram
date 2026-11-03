@@ -40,6 +40,7 @@ swift_library(
         "//submodules/TextFormat",
         "//submodules/Pasteboard",
         "//submodules/TelegramUI/Components/TranslationLanguagesContextMenuContent",
+        "//submodules/ChatTranslationDisplay",
     ],
     visibility = [
         "//visibility:public",

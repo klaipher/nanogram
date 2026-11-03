@@ -4,6 +4,7 @@ import SwiftSignalKit
 import TelegramCore
 import AccountContext
 import TelegramUIPreferences
+import ChatTranslationDisplay
 
 public struct ChatTranslationState: Codable {
     enum CodingKeys: String, CodingKey {
@@ -365,4 +366,39 @@ public func chatTranslationState(context: AccountContext, peerId: EnginePeer.Id,
     } else {
         return .single(nil)
     }
+}
+
+/// The languages the chat's messages are shown translated between outside the message list (the
+/// media viewer's caption), or nil for the originals. The same decision as the list
+/// (ChatHistoryListNode) and the bar (ChatControllerContentData): `ChatTranslationDisplayPolicy`.
+/// Both languages are normalized ("en", not "en-raw"), so `toLang` compares directly with
+/// `TranslationMessageAttribute.toLang`.
+public func chatMessageTranslationLanguages(context: AccountContext, peerId: EnginePeer.Id, threadId: Int64?) -> Signal<(fromLang: String, toLang: String)?, NoError> {
+    let baseLanguageCode = normalizeTranslationLanguage(context.sharedContext.currentPresentationData.with { $0 }.strings.baseLanguageCode)
+    return combineLatest(
+        chatTranslationState(context: context, peerId: peerId, threadId: threadId),
+        context.engine.data.subscribe(
+            TelegramEngine.EngineData.Item.Peer.TranslationHidden(id: peerId),
+            TelegramEngine.EngineData.Item.Peer.AutoTranslateEnabled(id: peerId),
+            TelegramEngine.EngineData.Item.Peer.Peer(id: context.account.peerId)
+        )
+    )
+    |> map { translationState, data -> (fromLang: String, toLang: String)? in
+        let (isHidden, hasAutoTranslate, accountPeer) = data
+        let isPremium = accountPeer?.isPremium ?? false
+        let messageLanguages = ChatTranslationDisplayPolicy.messageLanguages(
+            state: translationState.flatMap { ChatTranslationDetectedState(fromLang: $0.fromLang, toLang: $0.toLang, isEnabled: $0.isEnabled) },
+            isHidden: isHidden,
+            isPremium: isPremium,
+            hasAutoTranslate: hasAutoTranslate,
+            baseLanguageCode: baseLanguageCode
+        )
+        guard let messageLanguages else {
+            return nil
+        }
+        return (fromLang: normalizeTranslationLanguage(messageLanguages.fromLang), toLang: normalizeTranslationLanguage(messageLanguages.toLang))
+    }
+    |> distinctUntilChanged(isEqual: { lhs, rhs in
+        return lhs?.fromLang == rhs?.fromLang && lhs?.toLang == rhs?.toLang
+    })
 }

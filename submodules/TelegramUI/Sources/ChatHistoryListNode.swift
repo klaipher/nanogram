@@ -2272,15 +2272,14 @@ public final class ChatHistoryListNodeImpl: ASDisplayNode, ChatHistoryNode, Chat
                 
                 var translateToLanguage: (fromLang: String, toLang: String)?
                 let (translationStateValue, isTranslationHidden) = translationState
-                let canTranslateMessages = isPremium || autoTranslate
-                let translationResolution = ChatTranslationDisplayPolicy.resolve(
+                // The same decision as the media viewer's captions (chatMessageTranslationLanguages).
+                if let messageLanguages = ChatTranslationDisplayPolicy.messageLanguages(
                     state: translationStateValue.flatMap { ChatTranslationDetectedState(fromLang: $0.fromLang, toLang: $0.toLang, isEnabled: $0.isEnabled) },
                     isHidden: isTranslationHidden,
-                    isOffered: canTranslateMessages,
-                    canTranslateMessages: canTranslateMessages,
+                    isPremium: isPremium,
+                    hasAutoTranslate: autoTranslate,
                     baseLanguageCode: normalizeTranslationLanguage(chatPresentationData.strings.baseLanguageCode)
-                )
-                if let messageLanguages = translationResolution.messageLanguages {
+                ) {
                     translateToLanguage = (normalizeTranslationLanguage(messageLanguages.fromLang), normalizeTranslationLanguage(messageLanguages.toLang))
                 }
                 

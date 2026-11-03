@@ -62,3 +62,25 @@ public enum ChatTranslationDisplayPolicy {
         return ChatTranslationResolution(bar: bar, messageLanguages: messageLanguages)
     }
 }
+
+extension ChatTranslationDisplayPolicy {
+    /// The languages a view of the chat's messages translates between: the message list
+    /// (ChatHistoryListNode) and every view that shows the same messages outside it, such as the
+    /// media viewer's caption (GalleryUI, via TranslateUI's `chatMessageTranslationLanguages`).
+    /// Nil means the originals.
+    ///
+    /// The same answer as `resolve(...).messageLanguages` for the list, so a message is never
+    /// shown translated in one place and original in another: the bar must be on screen offering
+    /// "Show Original" (not hidden, a detected language, translation on), and the viewer must be
+    /// allowed to translate (Premium, or the channel's autotranslation).
+    ///
+    /// - Parameters:
+    ///   - isHidden: the peer's `translationHidden` flag.
+    ///   - isPremium: the account's Premium status.
+    ///   - hasAutoTranslate: the channel's autotranslation flag.
+    ///   - baseLanguageCode: the app language, already normalized ("en", not "en-raw").
+    public static func messageLanguages(state: ChatTranslationDetectedState?, isHidden: Bool, isPremium: Bool, hasAutoTranslate: Bool, baseLanguageCode: String) -> (fromLang: String, toLang: String)? {
+        let canTranslateMessages = isPremium || hasAutoTranslate
+        return self.resolve(state: state, isHidden: isHidden, isOffered: canTranslateMessages, canTranslateMessages: canTranslateMessages, baseLanguageCode: baseLanguageCode).messageLanguages
+    }
+}

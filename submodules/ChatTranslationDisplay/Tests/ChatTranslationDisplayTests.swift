@@ -89,4 +89,63 @@ final class ChatTranslationDisplayTests: XCTestCase {
             }
         }
     }
+    // MARK: - Message views outside the list (the media viewer's caption)
+
+    private func messageLanguages(_ state: ChatTranslationDetectedState?, isHidden: Bool = false, isPremium: Bool = true, hasAutoTranslate: Bool = false) -> (fromLang: String, toLang: String)? {
+        return ChatTranslationDisplayPolicy.messageLanguages(state: state, isHidden: isHidden, isPremium: isPremium, hasAutoTranslate: hasAutoTranslate, baseLanguageCode: "en")
+    }
+
+    // The reviewer's case: an autotranslated channel with the bar hidden. The chat shows the
+    // originals, so the media viewer must too; it used to show the caption translated, with no
+    // "Show Original" anywhere.
+    func testHiddenBarMeansOriginalCaptionsInTheMediaViewer() {
+        XCTAssertNil(self.messageLanguages(self.ukrainian, isHidden: true, isPremium: false, hasAutoTranslate: true))
+        XCTAssertNil(self.messageLanguages(self.ukrainian, isHidden: true, isPremium: true))
+    }
+
+    func testUndetectedLanguageMeansOriginalCaptions() {
+        XCTAssertNil(self.messageLanguages(ChatTranslationDetectedState(fromLang: "", toLang: "en", isEnabled: true)))
+    }
+
+    // A stored "translate" choice without Premium or channel autotranslation translates nothing.
+    func testNoTranslationRightsMeansOriginalCaptions() {
+        XCTAssertNil(self.messageLanguages(self.ukrainian, isPremium: false, hasAutoTranslate: false))
+    }
+
+    func testShowOriginalMeansOriginalCaptions() {
+        XCTAssertNil(self.messageLanguages(ChatTranslationDetectedState(fromLang: "uk", toLang: "en", isEnabled: false)))
+    }
+
+    func testTranslatedChatTranslatesCaptions() {
+        let premium = self.messageLanguages(self.ukrainian)
+        XCTAssertEqual(premium?.fromLang, "uk")
+        XCTAssertEqual(premium?.toLang, "en")
+        let autoTranslated = self.messageLanguages(ChatTranslationDetectedState(fromLang: "uk", toLang: "de", isEnabled: true), isPremium: false, hasAutoTranslate: true)
+        XCTAssertEqual(autoTranslated?.toLang, "de")
+    }
+
+    // Same answer as the list, for every input: the list and the media viewer never disagree.
+    func testMessageLanguagesMatchTheList() {
+        var states: [ChatTranslationDetectedState?] = [nil]
+        for fromLang in ["", "en", "uk"] {
+            for toLang in [nil, "en", "uk"] as [String?] {
+                for isEnabled in [false, true] {
+                    states.append(ChatTranslationDetectedState(fromLang: fromLang, toLang: toLang, isEnabled: isEnabled))
+                }
+            }
+        }
+        for state in states {
+            for isHidden in [false, true] {
+                for isPremium in [false, true] {
+                    for hasAutoTranslate in [false, true] {
+                        let canTranslateMessages = isPremium || hasAutoTranslate
+                        let list = self.resolve(state, isHidden: isHidden, isOffered: canTranslateMessages, canTranslateMessages: canTranslateMessages).messageLanguages
+                        let other = self.messageLanguages(state, isHidden: isHidden, isPremium: isPremium, hasAutoTranslate: hasAutoTranslate)
+                        XCTAssertEqual(list?.fromLang, other?.fromLang)
+                        XCTAssertEqual(list?.toLang, other?.toLang)
+                    }
+                }
+            }
+        }
+    }
 }
