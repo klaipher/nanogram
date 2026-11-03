@@ -28,3 +28,10 @@ func reactionSwitchesToInlineImmediately(base: Bool, isExpanded: Bool, effect: R
     }
     return effect == .notLocal
 }
+
+/// Whether a missing effect is what made the reaction go to the button at once: the reaction would
+/// otherwise have waited (`base` false) and is not the long-press reaction, which keeps its timer.
+/// Only then is the case logged.
+func reactionHandOffIsForcedByMissingEffect(base: Bool, isExpanded: Bool, effect: ReactionEffectAvailability) -> Bool {
+    return !base && reactionSwitchesToInlineImmediately(base: base, isExpanded: isExpanded, effect: effect)
+}

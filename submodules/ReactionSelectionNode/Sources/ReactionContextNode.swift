@@ -2776,13 +2776,15 @@ public final class ReactionContextNode: ASDisplayNode, ASScrollViewDelegate {
                 effectAvailability = .local
             } else {
                 effectAvailability = .notLocal
-                Logger.shared.log("ReactionContextNode", "reaction effect not downloaded at selection (\(self.didTriggerExpandedReaction ? "large" : "small")), handing over at once")
             }
         } else if itemNode.item.isCustom {
             // The generic effect is bundled, or a downloaded file read by path.
             effectAvailability = .local
         } else {
             effectAvailability = .none
+        }
+        if reactionHandOffIsForcedByMissingEffect(base: switchToInlineImmediately, isExpanded: self.didTriggerExpandedReaction, effect: effectAvailability) {
+            Logger.shared.log("ReactionContextNode", "reaction effect not downloaded at selection, handing the reaction to the button at once")
         }
         switchToInlineImmediately = reactionSwitchesToInlineImmediately(base: switchToInlineImmediately, isExpanded: self.didTriggerExpandedReaction, effect: effectAvailability)
         

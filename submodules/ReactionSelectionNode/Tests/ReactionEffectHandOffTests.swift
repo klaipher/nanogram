@@ -26,4 +26,15 @@ final class ReactionEffectHandOffTests: XCTestCase {
     func testExpandedReactionKeepsItsPath() {
         XCTAssertFalse(reactionSwitchesToInlineImmediately(base: false, isExpanded: true, effect: .notLocal))
     }
+
+    // The log line says the missing effect made the reaction go to the button at once. That is true
+    // only when it changed the outcome: not for a reaction that switches at once anyway, and not for
+    // the long-press reaction, which keeps its timer.
+    func testMissingEffectIsLoggedOnlyWhenItChangesTheHandOff() {
+        XCTAssertTrue(reactionHandOffIsForcedByMissingEffect(base: false, isExpanded: false, effect: .notLocal))
+        XCTAssertFalse(reactionHandOffIsForcedByMissingEffect(base: true, isExpanded: false, effect: .notLocal))
+        XCTAssertFalse(reactionHandOffIsForcedByMissingEffect(base: false, isExpanded: true, effect: .notLocal))
+        XCTAssertFalse(reactionHandOffIsForcedByMissingEffect(base: false, isExpanded: false, effect: .local))
+        XCTAssertFalse(reactionHandOffIsForcedByMissingEffect(base: false, isExpanded: false, effect: .none))
+    }
 }
