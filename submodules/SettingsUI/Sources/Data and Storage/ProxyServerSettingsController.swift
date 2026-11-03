@@ -252,10 +252,10 @@ struct ProxyServerSettingsControllerState: Equatable {
     }
 }
 
-private func proxyServerSettingsControllerEntries(presentationData: PresentationData, state: ProxyServerSettingsControllerState, pasteboardSettings: ProxyServerSettings?) -> [ProxySettingsEntry] {
+private func proxyServerSettingsControllerEntries(presentationData: PresentationData, state: ProxyServerSettingsControllerState, offersPasteboard: Bool) -> [ProxySettingsEntry] {
     var entries: [ProxySettingsEntry] = []
     
-    if let _ = pasteboardSettings {
+    if offersPasteboard {
         entries.append(.usePasteboardSettings(presentationData.theme, presentationData.strings.SocksProxySetup_PasteFromClipboard))
     }
     
@@ -323,7 +323,9 @@ func proxyServerSettingsController(sharedContext: SharedAccountContext, context:
     var currentUsername: String?
     var currentPassword: String?
     var currentSecret: String?
-    var pasteboardSettings: ProxyServerSettings?
+    // Reading another app's clipboard shows the paste prompt, so a new proxy only checks that the clipboard holds
+    // text (no prompt) and offers Paste; the text is read and parsed when the user taps it.
+    var offersPasteboard = false
     if let currentSettings = currentSettings {
         switch currentSettings.connection {
             case let .socks5(username, password):
@@ -341,16 +343,21 @@ func proxyServerSettingsController(sharedContext: SharedAccountContext, context:
                 currentMode = .web
         }
     } else {
-        let pasteboardText = UIPasteboard.general.string ?? ""
+        offersPasteboard = UIPasteboard.general.hasStrings || UIPasteboard.general.hasURLs
+    }
+    
+    let readPasteboardSettings: () -> ProxyServerSettings? = {
+        let pasteboardText = UIPasteboard.general.string ?? UIPasteboard.general.url?.absoluteString ?? ""
         if let webSettings = parseWebProxySettingsLink(pasteboardText) {
-            pasteboardSettings = webSettings
+            return webSettings
         } else if let proxy = parseProxyUrl(sharedContext: sharedContext, url: pasteboardText) {
             if let secret = proxy.secret, let parsedSecret = MTProxySecret.parseData(secret) {
-                pasteboardSettings = ProxyServerSettings(host: proxy.host, port: proxy.port, connection: .mtp(secret: parsedSecret.serialize()))
+                return ProxyServerSettings(host: proxy.host, port: proxy.port, connection: .mtp(secret: parsedSecret.serialize()))
             } else {
-                pasteboardSettings = ProxyServerSettings(host: proxy.host, port: proxy.port, connection: .socks5(username: proxy.username, password: proxy.password))
+                return ProxyServerSettings(host: proxy.host, port: proxy.port, connection: .socks5(username: proxy.username, password: proxy.password))
             }
         }
+        return nil
     }
 
     let initialState = ProxyServerSettingsControllerState(mode: currentMode, host: currentAddress ?? currentSettings?.host ?? "", port: (currentSettings?.port).flatMap { "\($0)" } ?? "", username: currentUsername ?? "", password: currentPassword ?? "", secret: currentSecret ?? "")
@@ -370,7 +377,7 @@ func proxyServerSettingsController(sharedContext: SharedAccountContext, context:
     }, share: {
         shareImpl?()
     }, usePasteboardSettings: {
-        if let pasteboardSettings = pasteboardSettings {
+        if let pasteboardSettings = readPasteboardSettings() {
             updateState { state in
                 var state = state
                 state.host = pasteboardSettings.host
@@ -431,7 +438,7 @@ func proxyServerSettingsController(sharedContext: SharedAccountContext, context:
         })
         
         let controllerState = ItemListControllerState(presentationData: ItemListPresentationData(presentationData), title: .text(presentationData.strings.SocksProxySetup_Title), leftNavigationButton: leftNavigationButton, rightNavigationButton: rightNavigationButton, backNavigationButton: ItemListBackButton(title: presentationData.strings.Common_Back), animateChanges: false)
-        let listState = ItemListNodeState(presentationData: ItemListPresentationData(presentationData), entries: proxyServerSettingsControllerEntries(presentationData: presentationData, state: state, pasteboardSettings: pasteboardSettings), style: .blocks, emptyStateItem: nil, animateChanges: false)
+        let listState = ItemListNodeState(presentationData: ItemListPresentationData(presentationData), entries: proxyServerSettingsControllerEntries(presentationData: presentationData, state: state, offersPasteboard: offersPasteboard), style: .blocks, emptyStateItem: nil, animateChanges: false)
         
         return (controllerState, (listState, arguments))
     }
