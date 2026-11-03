@@ -2382,6 +2382,14 @@ private func extractAccountManagerState(records: AccountRecordsView<TelegramAcco
     
     private func pushRegistryImpl(_ registry: PKPushRegistry, didReceiveIncomingPushWith payload: PKPushPayload, for type: PKPushType, completion: @escaping () -> Void) {
         Logger.shared.log("App \(self.episodeId) PushRegistry", "pushRegistry processing push notification")
+
+        // Every way out reports a call to CallKit (a placeholder ended at once if this push carries
+        // none we can use): iOS stops delivering VoIP pushes to an app that skips that.
+        let callReport = VoIPPushCallReport(reportFailedCall: { [self] in
+            if case PKPushType.voIP = type {
+                self.reportFailedIncomingCallKitCall()
+            }
+        }, completion: completion)
         
         let decryptedPayloadAndAccountId: ([AnyHashable: Any], AccountRecordId)?
         
@@ -2390,7 +2398,7 @@ private func extractAccountManagerState(records: AccountRecordsView<TelegramAcco
         } else {
             guard var encryptedPayload = payload.dictionaryPayload["p"] as? String else {
                 Logger.shared.log("App \(self.episodeId) PushRegistry", "encryptedPayload is nil")
-                completion()
+                callReport.complete()
                 return
             }
             encryptedPayload = encryptedPayload.replacingOccurrences(of: "-", with: "+")
@@ -2400,17 +2408,17 @@ private func extractAccountManagerState(records: AccountRecordsView<TelegramAcco
             }
             guard let payloadData = Data(base64Encoded: encryptedPayload) else {
                 Logger.shared.log("App \(self.episodeId) PushRegistry", "Couldn't decode encryptedPayload")
-                completion()
+                callReport.complete()
                 return
             }
             guard let keyId = notificationPayloadKeyId(data: payloadData) else {
                 Logger.shared.log("App \(self.episodeId) PushRegistry", "Couldn't parse payload key id")
-                completion()
+                callReport.complete()
                 return
             }
             guard let accountManagerState = self.accountManagerState else {
                 Logger.shared.log("App \(self.episodeId) PushRegistry", "accountManagerState is nil")
-                completion()
+                callReport.complete()
                 return
             }
 
@@ -2427,17 +2435,17 @@ private func extractAccountManagerState(records: AccountRecordsView<TelegramAcco
 
             guard let accountId = maybeAccountId, let notificationKey = maybeNotificationKey else {
                 Logger.shared.log("App \(self.episodeId) PushRegistry", "accountId or notificationKey is nil")
-                completion()
+                callReport.complete()
                 return
             }
             guard let decryptedPayload = decryptedNotificationPayload(key: notificationKey, data: payloadData) else {
                 Logger.shared.log("App \(self.episodeId) PushRegistry", "Couldn't decrypt payload")
-                completion()
+                callReport.complete()
                 return
             }
             guard let payloadJson = try? JSONSerialization.jsonObject(with: decryptedPayload, options: []) as? [AnyHashable: Any] else {
                 Logger.shared.log("App \(self.episodeId) PushRegistry", "Couldn't decode payload json")
-                completion()
+                callReport.complete()
                 return
             }
             
@@ -2446,7 +2454,7 @@ private func extractAccountManagerState(records: AccountRecordsView<TelegramAcco
         
         guard let (payloadJson, accountId) = decryptedPayloadAndAccountId else {
             Logger.shared.log("App \(self.episodeId) PushRegistry", "decryptedPayloadAndAccountId is nil")
-            completion()
+            callReport.complete()
             return
         }
         
@@ -2455,7 +2463,7 @@ private func extractAccountManagerState(records: AccountRecordsView<TelegramAcco
         if let fromIdString = payloadJson["from_id"] as? String, let fromId = Int64(fromIdString), let groupCallIdString = payloadJson["group_call_id"] as? String, let groupCallId = Int64(groupCallIdString), let messageIdString = payloadJson["msg_id"] as? String, let messageId = Int32(messageIdString), let fromTitle = payloadJson["from_title"] as? String {
             guard let callKitIntegration = CallKitIntegration.shared else {
                 Logger.shared.log("App \(self.episodeId) PushRegistry", "CallKitIntegration is not available")
-                completion()
+                callReport.complete()
                 return
             }
             
@@ -2485,6 +2493,7 @@ private func extractAccountManagerState(records: AccountRecordsView<TelegramAcco
                 displayTitle = strings.Call_IncomingGroupCallTitle_Single(fromTitle).string
             }
             
+            callReport.callReported()
             callKitIntegration.reportIncomingCall(
                 uuid: internalId,
                 stableId: groupCallId,
@@ -2578,8 +2587,7 @@ private func extractAccountManagerState(records: AccountRecordsView<TelegramAcco
         } else {
             guard var updateString = payloadJson["updates"] as? String else {
                 Logger.shared.log("App \(self.episodeId) PushRegistry", "updates is nil")
-                self.reportFailedIncomingCallKitCall()
-                completion()
+                callReport.complete()
                 return
             }
             
@@ -2590,22 +2598,21 @@ private func extractAccountManagerState(records: AccountRecordsView<TelegramAcco
             }
             guard let updateData = Data(base64Encoded: updateString) else {
                 Logger.shared.log("App \(self.episodeId) PushRegistry", "Couldn't decode updateData")
-                self.reportFailedIncomingCallKitCall()
-                completion()
+                callReport.complete()
                 return
             }
             guard let callUpdate = AccountStateManager.extractIncomingCallUpdate(data: updateData) else {
                 Logger.shared.log("App \(self.episodeId) PushRegistry", "Couldn't extract call update")
-                self.reportFailedIncomingCallKitCall()
-                completion()
+                callReport.complete()
                 return
             }
             guard let callKitIntegration = CallKitIntegration.shared else {
                 Logger.shared.log("App \(self.episodeId) PushRegistry", "CallKitIntegration is not available")
-                completion()
+                callReport.complete()
                 return
             }
             
+            callReport.callReported()
             callKitIntegration.reportIncomingCall(
                 uuid: CallSessionManager.getStableIncomingUUID(stableId: callUpdate.callId),
                 stableId: callUpdate.callId,
@@ -2676,7 +2683,7 @@ private func extractAccountManagerState(records: AccountRecordsView<TelegramAcco
         
         Logger.shared.log("App \(self.episodeId) PushRegistry", "Invoking completion handler")
         
-        completion()
+        callReport.complete()
     }
     
     public func pushRegistry(_ registry: PKPushRegistry, didInvalidatePushTokenFor type: PKPushType) {
