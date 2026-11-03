@@ -849,7 +849,7 @@ private func incomingCallNotificationContent(callerName: String?, incomingCallMe
     content.body = alert.body
     content.systemSound = IncomingCallPushPresentation.sound
     content.userInfo = IncomingCallPushPresentation.userInfo(accountId: accountId, peerId: fromId.toInt64(), fromUserId: fromId.id._internalGetInt64Value())
-    if #available(iOS 15.0, *), IncomingCallCommunication.drawsCaller(isAppLocked: isAppLocked), let callerName = alert.title {
+    if #available(iOS 15.0, *), IncomingCallCommunication.drawsCaller(isAppLocked: isAppLocked, displayNameOnLockscreen: caller.displayNameOnLockscreen), let callerName = alert.title {
         content.sender = NotificationContent.Sender(peerId: fromId, name: callerName, contactIdentifier: caller.contactIdentifier)
         content.senderImage = callerAvatar(mediaBox: caller.mediaBox, accountPeerId: caller.accountPeerId, callerId: fromId, callerPeer: caller.peer, callerName: callerName, displayNameOnLockscreen: caller.displayNameOnLockscreen)
         content.call = NotificationContent.Call(callId: callId, isVideo: isVideo)

@@ -66,8 +66,17 @@ final class IncomingCallCommunicationTests: XCTestCase {
     // the plain "<caller> / is calling you" one: no photo, and nothing donated to the system.
     @available(iOS 15.0, *)
     func testLockedAppDrawsNoCaller() {
-        XCTAssertTrue(IncomingCallCommunication.drawsCaller(isAppLocked: false))
-        XCTAssertFalse(IncomingCallCommunication.drawsCaller(isAppLocked: true))
+        XCTAssertTrue(IncomingCallCommunication.drawsCaller(isAppLocked: false, displayNameOnLockscreen: true))
+        XCTAssertFalse(IncomingCallCommunication.drawsCaller(isAppLocked: true, displayNameOnLockscreen: true))
+    }
+
+    // With names hidden on the lock screen a message is not a communication notification (no
+    // sender, nothing donated); the call keeps the plain banner too: no person, so no device
+    // contact and no interaction handed to the system.
+    @available(iOS 15.0, *)
+    func testHiddenNamesDrawNoCaller() {
+        XCTAssertFalse(IncomingCallCommunication.drawsCaller(isAppLocked: false, displayNameOnLockscreen: false))
+        XCTAssertFalse(IncomingCallCommunication.drawsCaller(isAppLocked: true, displayNameOnLockscreen: false))
     }
 
     // MARK: - Which picture
