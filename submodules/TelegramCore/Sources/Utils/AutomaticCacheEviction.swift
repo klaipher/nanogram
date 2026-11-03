@@ -16,6 +16,7 @@ final class AutomaticCacheEvictionContext {
         
         var settingsDisposable: Disposable?
         var processDisposable: Disposable?
+        private var currentSettings: CombinedSettings?
         
         init(queue: Queue, accountManager: AccountManager<TelegramAccountManagerTypes>, postbox: Postbox) {
             self.queue = queue
@@ -76,7 +77,14 @@ final class AutomaticCacheEvictionContext {
             })
         }
         
+        func rerun() {
+            if let settings = self.currentSettings {
+                self.restart(settings: settings)
+            }
+        }
+        
         private func restart(settings: CombinedSettings) {
+            self.currentSettings = settings
             self.processDisposable?.dispose()
             
             let processingQueue = self.processingQueue
@@ -267,5 +275,11 @@ final class AutomaticCacheEvictionContext {
         self.impl = QueueLocalObject(queue: queue, generate: {
             return Impl(queue: queue, accountManager: accountManager, postbox: postbox)
         })
+    }
+    
+    func rerun() {
+        self.impl.with { impl in
+            impl.rerun()
+        }
     }
 }

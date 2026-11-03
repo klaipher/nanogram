@@ -417,12 +417,31 @@ private final class TimeBasedCleanupImpl {
         }
     }
     
+    func rescan() -> Signal<Never, NoError> {
+        guard let general = self.generalMaxStoreTime, let shortLived = self.shortLivedMaxStoreTime, let gigabytesLimit = self.gigabytesLimit, let scan = self.makeScan(general: general, shortLived: shortLived, gigabytesLimit: gigabytesLimit) else {
+            return .complete()
+        }
+        return scan
+    }
+    
     private func resetScan(general: Int32, shortLived: Int32, gigabytesLimit: Int32) {
+        guard let scanOnce = self.makeScan(general: general, shortLived: shortLived, gigabytesLimit: gigabytesLimit) else {
+            self.scheduledScanDisposable.set(nil)
+            return
+        }
+        let scanFirstTime = scanOnce
+        |> delay(self.scanDelay, queue: Queue.concurrentDefaultQueue())
+        
+        let scan = scanFirstTime
+        self.scheduledScanDisposable.set((scan
+        |> deliverOn(self.queue)).start())
+    }
+    
+    private func makeScan(general: Int32, shortLived: Int32, gigabytesLimit: Int32) -> Signal<Never, NoError>? {
         let shortLived = gigabytesLimit == Int32.max ? Int32.max : shortLived
         
         if general == Int32.max && shortLived == Int32.max && gigabytesLimit == Int32.max {
-            self.scheduledScanDisposable.set(nil)
-            return
+            return nil
         }
         
         let generalPaths = self.generalPaths
@@ -615,12 +634,7 @@ private final class TimeBasedCleanupImpl {
                 let _ = cancelled.swap(true)
             }
         }
-        let scanFirstTime = scanOnce
-        |> delay(self.scanDelay, queue: Queue.concurrentDefaultQueue())
-        
-        let scan = scanFirstTime
-        self.scheduledScanDisposable.set((scan
-        |> deliverOn(self.queue)).start())
+        return scanOnce
     }
     
     func touch(paths: [String]) {
@@ -678,6 +692,14 @@ final class TimeBasedCleanup {
     func setMaxStoreTimes(general: Int32, shortLived: Int32, gigabytesLimit: Int32) {
         self.impl.with { impl in
             impl.setMaxStoreTimes(general: general, shortLived: shortLived, gigabytesLimit: gigabytesLimit)
+        }
+    }
+    
+    func rescan() -> Signal<Never, NoError> {
+        return self.impl.signalWith { impl, subscriber in
+            return impl.rescan().start(completed: {
+                subscriber.putCompletion()
+            })
         }
     }
 }

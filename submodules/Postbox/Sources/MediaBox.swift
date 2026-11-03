@@ -222,6 +222,20 @@ public final class MediaBox {
         self.timeBasedCleanup.setMaxStoreTimes(general: general, shortLived: shortLived, gigabytesLimit: gigabytesLimit)
     }
     
+    public func rescanCache() -> Signal<Never, NoError> {
+        let sweep = Signal<Never, NoError> { [weak self] subscriber in
+            guard let self else {
+                subscriber.putCompletion()
+                return EmptyDisposable
+            }
+            self.removeStaleEmptyPartialFiles(olderThan: Int(Date().timeIntervalSince1970) - 24 * 60 * 60, completion: { _ in
+                subscriber.putCompletion()
+            })
+            return EmptyDisposable
+        }
+        return self.timeBasedCleanup.rescan() |> then(sweep)
+    }
+    
     public static func idForFileName(name: String) -> String {
         if name.hasSuffix("_partial.meta") {
             return String(name[name.startIndex ..< name.index(name.endIndex, offsetBy: -13)])

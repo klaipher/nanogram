@@ -1710,6 +1710,11 @@ public class Account {
         )
     }
     
+    public func rescanCaches() -> Signal<Never, NoError> {
+        self.automaticCacheEvictionContext?.rerun()
+        return self.postbox.mediaBox.rescanCache()
+    }
+    
     public func restartContactManagement() {
         self.contactSyncManager.beginSync(importableContacts: self.importableContacts.get())
     }
