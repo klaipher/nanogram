@@ -121,6 +121,22 @@ public final class DiskWriteAccountingReporter: @unchecked Sendable {
         return "Disk writes (\(reason)): \(DiskWriteSnapshot.formatBytes(delta.totalBytes)) in \(Int(interval / 60.0)) min; \(delta.formattedCategories()). Since launch \(DiskWriteSnapshot.formatBytes(current.totalBytes)) in \(Int(sinceLaunch / 60.0)) min; today \(DiskWriteSnapshot.formatBytes(today.totalBytes))"
     }
 
+    /// `report(reason:)` before iOS may suspend the app, which can then kill it without any later report (a process
+    /// launched in the background by a push never gets an hourly or foreground one). Reports only when at least
+    /// `minimumBytes` were written since the last report, so the ledger is not rewritten on every short wakeup; a
+    /// smaller amount stays for the next report. Nil when nothing was reported.
+    @discardableResult
+    public func reportIfPending(atLeast minimumBytes: Int64, reason: String) -> String? {
+        let current = self.accounting.snapshot()
+        self.lock.lock()
+        let pendingBytes = current.subtracting(self.lastSnapshot).totalBytes
+        self.lock.unlock()
+        if pendingBytes < minimumBytes {
+            return nil
+        }
+        return self.report(reason: reason)
+    }
+
     /// The ledger as of the last report, plus what was written since (for Debug Settings and log exports).
     public func summary() -> String {
         let current = self.accounting.snapshot()

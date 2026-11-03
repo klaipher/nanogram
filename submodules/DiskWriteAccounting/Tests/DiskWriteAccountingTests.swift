@@ -78,6 +78,34 @@ final class DiskWriteAccountingTests: XCTestCase {
         XCTAssertTrue(nextReporter.summary().contains("\(day): 2.0 MB"))
     }
 
+    /// Before iOS may suspend the app (and kill it while suspended, without a later report), what was written since
+    /// the last report reaches the ledger: a background-launched process (a push) never sees an hourly or a
+    /// foreground report, so its writes were lost. Small amounts wait for the next report, so the ledger file is not
+    /// rewritten on every wakeup.
+    func testAReportBeforeSuspensionReachesTheLedgerOnlyPastItsMinimum() throws {
+        let directory = NSTemporaryDirectory() + "DiskWriteAccountingTests-" + UUID().uuidString
+        try FileManager.default.createDirectory(atPath: directory, withIntermediateDirectories: true)
+        defer {
+            let _ = try? FileManager.default.removeItem(atPath: directory)
+        }
+        let ledgerPath = directory + "/disk-writes.json"
+        let accounting = DiskWriteAccounting()
+        let reporter = DiskWriteAccountingReporter(accounting: accounting, ledgerPath: ledgerPath)
+
+        accounting.add("logs", bytes: 1000)
+        XCTAssertNil(reporter.reportIfPending(atLeast: 1024 * 1024, reason: "suspend"))
+        XCTAssertFalse(FileManager.default.fileExists(atPath: ledgerPath), "a small amount does not rewrite the ledger")
+
+        accounting.add("sqlite.wal.postbox/db", bytes: 2 * 1024 * 1024)
+        let line = reporter.reportIfPending(atLeast: 1024 * 1024, reason: "suspend")
+        XCTAssertNotNil(line)
+        XCTAssertTrue(line?.hasPrefix("Disk writes (suspend): 2.0 MB") == true, line ?? "")
+
+        // The process is killed while suspended: the next launch finds both amounts in the ledger.
+        let day = DiskWriteAccountingReporter.dayKey(Date())
+        XCTAssertEqual(DiskWriteLedger.load(path: ledgerPath).days[day]?.bytes, ["logs": 1000, "sqlite.wal.postbox/db": 2 * 1024 * 1024])
+    }
+
     func testAReportWithNothingWrittenDoesNotRewriteTheLedger() throws {
         let directory = NSTemporaryDirectory() + "DiskWriteAccountingTests-" + UUID().uuidString
         try FileManager.default.createDirectory(atPath: directory, withIntermediateDirectories: true)

@@ -10,6 +10,7 @@ import UniversalMediaPlayer
 import TelegramAudio
 import TelegramPresentationData
 import BackgroundDiagnostics
+import DiskWriteAccounting
 
 private struct AccountTasks {
     let stateSynchronization: Bool
@@ -1216,7 +1217,16 @@ public final class SharedWakeupManager {
             end()
             return
         }
-        taskRelease.release(writesStayEnabled: self.transactionsEnabled, backgroundTimeRemaining: self.backgroundTimeRemaining(), end: end)
+        let writesStayEnabled = self.transactionsEnabled
+        taskRelease.release(writesStayEnabled: writesStayEnabled, backgroundTimeRemaining: self.backgroundTimeRemaining(), end: writesStayEnabled ? end : {
+            // iOS may suspend the app once this ends and kill it while suspended, with no later report: a process
+            // the system launched for a push never gets an hourly or a foreground one. What it wrote reaches the
+            // per-day ledger first (from 1 MB, so short wakeups do not rewrite the ledger every time).
+            if let reporter = DiskWriteAccountingReporting.current, let line = reporter.reportIfPending(atLeast: 1024 * 1024, reason: "suspend") {
+                Logger.shared.log("Wakeup", line)
+            }
+            end()
+        })
     }
     
     /// Stops new transactions on every account database (Postbox, media storage and cache statistics) and calls

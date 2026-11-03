@@ -845,11 +845,16 @@ GPU (Metal) rendering of stickers and emoji, its debug switches and how to measu
   `HLSStreamingStorageTests` count the writes.
 - **Disk writes are counted by writer** (`DiskWriteAccounting`, always on): MediaBox data per media
   type (`mediaBox.video`, `mediaBox.sticker`, … from the fetch's `contentType`), file maps, cached
-  representations, SQLite WAL frames and checkpoints per database (from the WAL hook), animation-cache
-  items, the direct image cache, Spotlight, logs and the HLS temp files. AppDelegate logs one
-  `Disk writes (hourly|background): …` line per hour and on entering the background and keeps per-day
-  totals in `<root>/logs/disk-writes.json`, which Send MetricKit Reports includes, so a day's
-  `logicalDiskWrites` can be split by writer. A new large writer should report to it.
+  representations, SQLite WAL frames and checkpoints per database (from the WAL hook and the idle
+  checkpoint), animation-cache items, the direct image cache, Spotlight, logs and the HLS temp files.
+  AppDelegate logs one `Disk writes (hourly|background|foreground): …` line per hour and on each
+  transition, and `SharedWakeupManager.releaseBackgroundTime` reports (`suspend`, from 1 MB) right
+  before iOS may suspend the app: a process launched in the background for a push, then killed while
+  suspended, gets no other report. Per-day totals are in `<root>/logs/disk-writes.json`, which Send
+  MetricKit Reports includes, so a day's `logicalDiskWrites` can be split by writer. A new large writer
+  should report to it. `sqlite3_wal_checkpoint_v2`'s `pnCkpt` is the WAL's *total* backfilled frames,
+  so only its growth counts (`SqliteWalWriteAccounting`): summed per checkpoint, a WAL pinned by an
+  extension's reader read 1.2 GB of checkpoints for 16 MB written.
 - **The direct-fetch lookahead (`FFMpegLookahead`) reads from memory, not MediaBox, per read.** It
   answers "is it cached" from MediaBox's live range status and, once that covers the whole file,
   reads the complete file through one `pread` handle. Do not route its per-read path back through
