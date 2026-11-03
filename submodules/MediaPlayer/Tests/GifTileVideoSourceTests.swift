@@ -159,6 +159,88 @@ final class GifTileVideoSourceTests: XCTestCase {
         }
     }
 
+    // MARK: Video stickers (VP9 with alpha) on the tile path
+
+    // Video stickers in chat, and GIFs in the gallery and hover preview, also read through
+    // GifTileVideoSource, so their ARGB frames now come from the reused pool as well.
+    private func stickerPath() throws -> String {
+        return try MediaTestSupport.resourcePath("sticker_vp9", "webm")
+    }
+
+    private func stickerTile() throws -> GifTileVideoSource {
+        return GifTileVideoSource(path: try stickerPath(), hintVP9: true, width: 512, height: 512, usesHardwareDecoding: true, budget: HardwareDecoderBudget(limit: 16))
+    }
+
+    private func stickerReference() throws -> [Data] {
+        let source = SoftwareVideoSource(path: try stickerPath(), hintVP9: true, unpremultiplyAlpha: true, reusePixelBuffers: false)
+        XCTAssertFalse(source.reusesPixelBuffers)
+        return readLoop(source, maxPts: nil).map { $0.bytes }
+    }
+
+    private func alphaRange(_ pixelBuffer: CVPixelBuffer) -> (min: UInt8, max: UInt8) {
+        CVPixelBufferLockBaseAddress(pixelBuffer, .readOnly)
+        defer {
+            CVPixelBufferUnlockBaseAddress(pixelBuffer, .readOnly)
+        }
+        guard let base = CVPixelBufferGetBaseAddress(pixelBuffer)?.assumingMemoryBound(to: UInt8.self) else {
+            return (0, 0)
+        }
+        var minAlpha: UInt8 = 255
+        var maxAlpha: UInt8 = 0
+        let bytesPerRow = CVPixelBufferGetBytesPerRow(pixelBuffer)
+        for y in 0 ..< CVPixelBufferGetHeight(pixelBuffer) {
+            for x in 0 ..< CVPixelBufferGetWidth(pixelBuffer) {
+                let alpha = base[y * bytesPerRow + x * 4]
+                minAlpha = min(minAlpha, alpha)
+                maxAlpha = max(maxAlpha, alpha)
+            }
+        }
+        return (minAlpha, maxAlpha)
+    }
+
+    func testVideoStickerTileDecodesTransparentARGBFromThePool() throws {
+        let budget = HardwareDecoderBudget(limit: 16)
+        let tile = GifTileVideoSource(path: try stickerPath(), hintVP9: true, width: 512, height: 512, usesHardwareDecoding: true, budget: budget)
+        XCTAssertTrue(tile.source.hasStream)
+        XCTAssertFalse(tile.isPassthrough)
+        XCTAssertNil(tile.hardwareSlot)
+        XCTAssertEqual(budget.activeCount, 0)
+        XCTAssertTrue(tile.source.reusesPixelBuffers)
+
+        var held: [CVPixelBuffer] = []
+        let frames = readLoop(tile.source, maxPts: nil, consume: { held.append(CMSampleBufferGetImageBuffer($0.sampleBuffer)!) })
+        XCTAssertGreaterThan(frames.count, 10)
+        XCTAssertTrue(frames.allSatisfy { $0.frame.decoded })
+        for (index, pixelBuffer) in held.enumerated() {
+            XCTAssertEqual(CVPixelBufferGetPixelFormatType(pixelBuffer), kCVPixelFormatType_32ARGB, "frame \(index)")
+            let alpha = alphaRange(pixelBuffer)
+            XCTAssertEqual(alpha.min, 0, "frame \(index) lost its transparent edges")
+            XCTAssertEqual(alpha.max, 255, "frame \(index)")
+        }
+    }
+
+    func testVideoStickerTileFramesMatchFramesWithoutReuse() throws {
+        let reference = try stickerReference()
+        XCTAssertGreaterThan(reference.count, 10)
+        XCTAssertEqual(readLoop(try stickerTile().source, maxPts: nil).map { $0.bytes }, reference)
+    }
+
+    func testVideoStickerTileHeldFramesAreNotOverwrittenAcrossLoops() throws {
+        let reference = try stickerReference()
+        XCTAssertGreaterThan(reference.count, 10)
+
+        let tile = try stickerTile()
+        var held: [CMSampleBuffer] = []
+        let first = readLoop(tile.source, maxPts: nil, consume: { held.append($0.sampleBuffer) })
+        let last = try XCTUnwrap(first.last)
+        let _ = readLoop(tile.source, maxPts: CMTimeAdd(last.frame.position, last.frame.duration), consume: { held.append($0.sampleBuffer) })
+        XCTAssertEqual(held.count, reference.count * 2)
+        XCTAssertEqual(Set(held.map { ObjectIdentifier(CMSampleBufferGetImageBuffer($0)!) }).count, held.count)
+        for (index, sampleBuffer) in held.enumerated() {
+            XCTAssertEqual(MediaTestSupport.visibleBytes(CMSampleBufferGetImageBuffer(sampleBuffer)!), reference[index % reference.count], "held frame \(index) was overwritten")
+        }
+    }
+
     // MARK: Which due frames a tile enqueues
 
     private func frames(decoded: Bool, count: Int) throws -> [MediaTrackFrame] {
