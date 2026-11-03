@@ -95,6 +95,12 @@ final class AccountManagerImpl<Types: AccountManagerTypes> {
     private var noticeEntryViews = Bag<(MutableNoticeEntryView<Types>, ValuePipe<NoticeEntryView<Types>>)>()
     private var accessChallengeDataViews = Bag<(MutableAccessChallengeDataView, ValuePipe<AccessChallengeDataView>)>()
     
+    /// The account records in `basePath`'s atomic state, read without opening the account manager.
+    /// Its one caller is the Intents extension's widget handler, which may run before the app has
+    /// ever written that state (installed but not opened, nobody signed in) or while the file
+    /// cannot be read. Every such case reads as no accounts: the widget then lists no chats, which
+    /// is all it could show. This used to `preconditionFailure()`, crashing the extension
+    /// (Nanogram 13.1.1 (202611020509), MetricKit SIGTRAP in `WidgetIntentHandler.init`).
     static func getCurrentRecords(basePath: String) -> (records: [AccountRecord<Types.Attribute>], currentId: AccountRecordId?) {
         let atomicStatePath = "\(basePath)/atomic-state"
         do {
@@ -102,9 +108,8 @@ final class AccountManagerImpl<Types: AccountManagerTypes> {
             let atomicState = try JSONDecoder().decode(AccountManagerAtomicState<Types>.self, from: data)
             return (atomicState.records.sorted(by: { $0.key.int64 < $1.key.int64 }).map({ $1 }), atomicState.currentRecordId)
         } catch let e {
-            postboxLog("decode atomic state error: \(e)")
-            postboxLogSync()
-            preconditionFailure()
+            postboxLog("getCurrentRecords: no readable atomic state, reporting no accounts: \(e)")
+            return ([], nil)
         }
     }
     
