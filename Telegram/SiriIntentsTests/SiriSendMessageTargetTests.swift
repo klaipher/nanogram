@@ -31,6 +31,34 @@ final class SiriSendMessageTargetTests: XCTestCase {
         XCTAssertEqual(siriSendMessageTarget(conversationIdentifier: nil, recipientCustomIdentifier: "tg\(author.toInt64())"), author)
     }
 
+    /// The app donates "Message X" suggestions with `tg<peer id>` as the conversation (TelegramIntents).
+    func testDonatedConversationIdentifierNamesItsChat() {
+        let group = peerId(Namespaces.Peer.CloudGroup, 2001)
+        XCTAssertEqual(siriSendMessageTarget(conversationIdentifier: "tg\(group.toInt64())", recipientCustomIdentifier: nil), group)
+        XCTAssertEqual(siriSendMessageTarget(conversationIdentifier: "tg123", recipientCustomIdentifier: nil), PeerId(123))
+        XCTAssertNil(siriSendMessageTarget(conversationIdentifier: "tg", recipientCustomIdentifier: nil))
+    }
+
+    /// Contacts access is needed only to match address-book people; a reply to an announced message or a donated
+    /// suggestion already names its chat.
+    func testContactsAccessIsNeededOnlyWithoutAKnownChat() {
+        XCTAssertFalse(siriSendMessageNeedsContacts(conversationIdentifier: "123", recipientCustomIdentifiers: []))
+        XCTAssertFalse(siriSendMessageNeedsContacts(conversationIdentifier: "tg123", recipientCustomIdentifiers: []))
+        XCTAssertFalse(siriSendMessageNeedsContacts(conversationIdentifier: nil, recipientCustomIdentifiers: ["tg123"]))
+        XCTAssertTrue(siriSendMessageNeedsContacts(conversationIdentifier: nil, recipientCustomIdentifiers: []))
+        XCTAssertTrue(siriSendMessageNeedsContacts(conversationIdentifier: nil, recipientCustomIdentifiers: [nil]))
+        XCTAssertTrue(siriSendMessageNeedsContacts(conversationIdentifier: nil, recipientCustomIdentifiers: ["tg123", nil]))
+    }
+
+    /// A person this extension or the app handed Siri (`tg<peer id>`) is resolved by that id; it has no
+    /// address-book contact identifier.
+    func testOwnPersonsAreResolvedWithoutAContactIdentifier() {
+        XCTAssertTrue(siriPersonIsResolvable(contactIdentifier: nil, customIdentifier: "tg123"))
+        XCTAssertTrue(siriPersonIsResolvable(contactIdentifier: "ABC", customIdentifier: nil))
+        XCTAssertFalse(siriPersonIsResolvable(contactIdentifier: nil, customIdentifier: nil))
+        XCTAssertFalse(siriPersonIsResolvable(contactIdentifier: "", customIdentifier: "device-contact-42"))
+    }
+
     func testUnparsableIdentifiersNameNoTarget() {
         XCTAssertNil(siriSendMessageTarget(conversationIdentifier: "not-a-peer", recipientCustomIdentifier: nil))
         XCTAssertNil(siriSendMessageTarget(conversationIdentifier: nil, recipientCustomIdentifier: "device-contact-42"))

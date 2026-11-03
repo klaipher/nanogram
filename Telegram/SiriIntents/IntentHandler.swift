@@ -99,6 +99,66 @@ private func completing<T, E>(_ signal: Signal<Never, E>, with value: T) -> Sign
     }
 }
 
+/// What every handler in this process shares, set up once. Siri and widget configuration make a new handler for
+/// every request, and each used to repeat the app-group upgrades, start a new TempBox (deleting the previous
+/// handler's directory), read the key files and open the account manager again.
+private final class SiriExtensionEnvironment {
+    static let shared: SiriExtensionEnvironment? = SiriExtensionEnvironment()
+    
+    let buildConfig: BuildConfig
+    let appGroupUrl: URL
+    let rootPath: String
+    let encryptionParameters: ValueBoxEncryptionParameters
+    
+    private let accountManagerLock = NSLock()
+    private var accountManagerValue: AccountManager<TelegramAccountManagerTypes>?
+    
+    private init?() {
+        guard let appBundleIdentifier = Bundle.main.bundleIdentifier, let lastDotRange = appBundleIdentifier.range(of: ".", options: [.backwards]) else {
+            return nil
+        }
+        let baseAppBundleId = String(appBundleIdentifier[..<lastDotRange.lowerBound])
+        self.buildConfig = BuildConfig(baseAppBundleId: baseAppBundleId)
+        
+        let appGroupName = "group.\(baseAppBundleId)"
+        try! PasscodeEnvironment.shared.configure(PasscodeConfiguration(appGroupIdentifier: appGroupName, processRole: .appExtension))
+        guard let appGroupUrl = FileManager.default.containerURL(forSecurityApplicationGroupIdentifier: appGroupName) else {
+            return nil
+        }
+        self.appGroupUrl = appGroupUrl
+        
+        let rootPath = rootPathForBasePath(appGroupUrl.path)
+        self.rootPath = rootPath
+        performAppGroupUpgrades(appGroupPath: appGroupUrl.path, rootPath: rootPath)
+        
+        TempBox.initializeShared(basePath: rootPath, processType: "siri", launchSpecificId: Int64.random(in: Int64.min ... Int64.max))
+        
+        let logsPath = rootPath + "/logs/siri-logs"
+        let _ = try? FileManager.default.createDirectory(atPath: logsPath, withIntermediateDirectories: true, attributes: nil)
+        setupSharedLogger(rootPath: logsPath, path: logsPath)
+        
+        initializeAccountManagement()
+        
+        let deviceSpecificEncryptionParameters = BuildConfig.deviceSpecificEncryptionParameters(rootPath, baseAppBundleId: baseAppBundleId)
+        self.encryptionParameters = ValueBoxEncryptionParameters(forceEncryptionIfNoSet: false, key: ValueBoxEncryptionParameters.Key(data: deviceSpecificEncryptionParameters.key)!, salt: ValueBoxEncryptionParameters.Salt(data: deviceSpecificEncryptionParameters.salt)!)
+    }
+    
+    /// Opened by the first request that needs it and kept for the process. Nil while it cannot be opened (the app
+    /// holds the databases, protected data is unavailable); the next request tries again.
+    func accountManager() -> AccountManager<TelegramAccountManagerTypes>? {
+        self.accountManagerLock.lock()
+        defer {
+            self.accountManagerLock.unlock()
+        }
+        if let accountManagerValue = self.accountManagerValue {
+            return accountManagerValue
+        }
+        let accountManager: AccountManager<TelegramAccountManagerTypes>? = setupExtensionAccountManager(basePath: self.rootPath + "/accounts-metadata", isTemporary: true, isReadOnly: false, useCaches: false)
+        self.accountManagerValue = accountManager
+        return accountManager
+    }
+}
+
 @available(iOSApplicationExtension 10.0, iOS 10.0, *)
 @objc(IntentHandler)
 class IntentHandler: INExtension {
@@ -117,7 +177,9 @@ class IntentHandler: INExtension {
     }
 }
 
-@objc(IntentHandler)
+// Its own Objective-C name: two classes registered as `IntentHandler` (the principal class above) corrupt the
+// runtime's class list, which aborts the unit-test process on iOS 27.
+@objc(DefaultIntentHandler)
 class DefaultIntentHandler: INExtension, INSendMessageIntentHandling, INSearchForMessagesIntentHandling, INSetMessageAttributeIntentHandling, INStartCallIntentHandling {
     private let accountPromise = Promise<Account?>()
     private let allAccounts = Promise<[(AccountRecordId, PeerId, Bool)]>()
@@ -134,47 +196,33 @@ class DefaultIntentHandler: INExtension, INSendMessageIntentHandling, INSearchFo
     override init() {
         super.init()
         
-        guard let appBundleIdentifier = Bundle.main.bundleIdentifier, let lastDotRange = appBundleIdentifier.range(of: ".", options: [.backwards]) else {
+        guard let environment = SiriExtensionEnvironment.shared else {
+            self.accountPromise.set(.single(nil))
+            self.allAccounts.set(.single([]))
             return
         }
         
-        let baseAppBundleId = String(appBundleIdentifier[..<lastDotRange.lowerBound])
-        let buildConfig = BuildConfig(baseAppBundleId: baseAppBundleId)
-        
+        let buildConfig = environment.buildConfig
         let apiId: Int32 = buildConfig.apiId
         let apiHash: String = buildConfig.apiHash
         let languagesCategory = "ios"
         
-        let appGroupName = "group.\(baseAppBundleId)"
-        try! PasscodeEnvironment.shared.configure(PasscodeConfiguration(appGroupIdentifier: appGroupName, processRole: .appExtension))
-        let maybeAppGroupUrl = FileManager.default.containerURL(forSecurityApplicationGroupIdentifier: appGroupName)
-        
-        guard let appGroupUrl = maybeAppGroupUrl else {
-            return
-        }
-        
-        self.appGroupUrl = appGroupUrl
-        
-        let rootPath = rootPathForBasePath(appGroupUrl.path)
-        performAppGroupUpgrades(appGroupPath: appGroupUrl.path, rootPath: rootPath)
-        
+        self.appGroupUrl = environment.appGroupUrl
+        let rootPath = environment.rootPath
         self.rootPath = rootPath
-        
-        TempBox.initializeShared(basePath: rootPath, processType: "siri", launchSpecificId: Int64.random(in: Int64.min ... Int64.max))
-        
-        let logsPath = rootPath + "/logs/siri-logs"
-        let _ = try? FileManager.default.createDirectory(atPath: logsPath, withIntermediateDirectories: true, attributes: nil)
-        
-        setupSharedLogger(rootPath: logsPath, path: logsPath)
         
         let appVersion = (Bundle.main.infoDictionary?["CFBundleShortVersionString"] as? String) ?? "unknown"
         
-        initializeAccountManagement()
-        let accountManager: AccountManager<TelegramAccountManagerTypes> = setupAccountManager(basePath: rootPath + "/accounts-metadata", isTemporary: true, isReadOnly: false, useCaches: false, removeDatabaseOnError: false)
+        // Nil while another process holds the databases or protected data is unavailable: every
+        // handler then answers as with no account ("continue in the app") instead of crashing.
+        guard let accountManager = environment.accountManager() else {
+            self.accountPromise.set(.single(nil))
+            self.allAccounts.set(.single([]))
+            return
+        }
         self.accountManager = accountManager
         
-        let deviceSpecificEncryptionParameters = BuildConfig.deviceSpecificEncryptionParameters(rootPath, baseAppBundleId: baseAppBundleId)
-        let encryptionParameters = ValueBoxEncryptionParameters(forceEncryptionIfNoSet: false, key: ValueBoxEncryptionParameters.Key(data: deviceSpecificEncryptionParameters.key)!, salt: ValueBoxEncryptionParameters.Salt(data: deviceSpecificEncryptionParameters.salt)!)
+        let encryptionParameters = environment.encryptionParameters
         self.encryptionParameters = encryptionParameters
         
         // One read of the account records serves both the account list and the choice of the
@@ -306,21 +354,6 @@ class DefaultIntentHandler: INExtension, INSendMessageIntentHandling, INSearchFo
             }
         }
         
-        var personResolutionResult: INPersonResolutionResult {
-            switch self {
-            case let .success(person):
-                return .success(with: person)
-            case let .disambiguation(persons):
-                return .disambiguation(with: persons)
-            case .needsValue:
-                return .needsValue()
-            case .noResult, .refused, .noAccount:
-                return .unsupported()
-            case .skip:
-                return .notRequired()
-            }
-        }
-        
         var contactResolutionResult: INStartCallContactResolutionResult {
             switch self {
             case let .success(person):
@@ -354,7 +387,7 @@ class DefaultIntentHandler: INExtension, INSendMessageIntentHandling, INSearchFo
         
         var filteredPersons: [INPerson] = []
         for person in initialPersons {
-            if let contactIdentifier = person.contactIdentifier, !contactIdentifier.isEmpty {
+            if siriPersonIsResolvable(contactIdentifier: person.contactIdentifier, customIdentifier: person.customIdentifier) {
                 filteredPersons.append(person)
             }
             
@@ -461,17 +494,6 @@ class DefaultIntentHandler: INExtension, INSendMessageIntentHandling, INSearchFo
     
     // MARK: - INSendMessageIntentHandling
     
-     public func resolveRecipients(for intent: INSendMessageIntent, with completion: @escaping ([INPersonResolutionResult]) -> Void) {
-        guard CNContactStore.authorizationStatus(for: .contacts) == .authorized else {
-            completion([INPersonResolutionResult.notRequired()])
-            return
-        }
-        self.resolve(persons: intent.recipients, with: { result in
-            completion(result.map { $0.personResolutionResult })
-        })
-    }
-    
-    @available(iOSApplicationExtension 11.0, iOS 11.0, *)
     public func resolveRecipients(for intent: INSendMessageIntent, with completion: @escaping ([INSendMessageRecipientResolutionResult]) -> Void) {
         if let appGroupUrl = self.appGroupUrl {
             let rootPath = rootPathForBasePath(appGroupUrl.path)
@@ -481,7 +503,7 @@ class DefaultIntentHandler: INExtension, INSendMessageIntentHandling, INSearchFo
             }
         }
         
-        if let peerId = intent.conversationIdentifier.flatMap(Int64.init) {
+        if let peerId = siriSendMessageTarget(conversationIdentifier: intent.conversationIdentifier, recipientCustomIdentifier: nil) {
             let account = self.accountPromise.get()
             
             let signal = account
@@ -492,7 +514,7 @@ class DefaultIntentHandler: INExtension, INSendMessageIntentHandling, INSearchFo
                     // when the message was a group message. A group is "recipient" enough for
                     // Siri; the send handler routes by the conversation anyway.
                     return account.postbox.transaction { transaction -> SiriRecipientDecision in
-                        return siriRecipientDecision(transaction: transaction, accountPeerId: account.peerId, peerId: PeerId(peerId))
+                        return siriRecipientDecision(transaction: transaction, accountPeerId: account.peerId, peerId: peerId)
                     }
                     |> castError(IntentHandlingError.self)
                     |> map { decision -> INSendMessageRecipientResolutionResult in
@@ -517,7 +539,7 @@ class DefaultIntentHandler: INExtension, INSendMessageIntentHandling, INSearchFo
                 completion([INSendMessageRecipientResolutionResult.unsupported(forReason: .noAccount)])
             }))
         } else {
-            guard CNContactStore.authorizationStatus(for: .contacts) == .authorized else {
+            guard !siriSendMessageNeedsContacts(conversationIdentifier: nil, recipientCustomIdentifiers: (intent.recipients ?? []).map(\.customIdentifier)) || CNContactStore.authorizationStatus(for: .contacts) == .authorized else {
                 completion([INSendMessageRecipientResolutionResult.notRequired()])
                 return
             }
@@ -535,7 +557,7 @@ class DefaultIntentHandler: INExtension, INSendMessageIntentHandling, INSearchFo
                 return
             }
         }
-        guard CNContactStore.authorizationStatus(for: .contacts) == .authorized else {
+        guard !siriSendMessageNeedsContacts(conversationIdentifier: intent.conversationIdentifier, recipientCustomIdentifiers: (intent.recipients ?? []).map(\.customIdentifier)) || CNContactStore.authorizationStatus(for: .contacts) == .authorized else {
             completion(INStringResolutionResult.notRequired())
             return
         }
@@ -557,7 +579,7 @@ class DefaultIntentHandler: INExtension, INSendMessageIntentHandling, INSearchFo
             }
         }
         let userActivity = NSUserActivity(activityType: NSStringFromClass(INSendMessageIntent.self))
-        guard CNContactStore.authorizationStatus(for: .contacts) == .authorized else {
+        guard !siriSendMessageNeedsContacts(conversationIdentifier: intent.conversationIdentifier, recipientCustomIdentifiers: (intent.recipients ?? []).map(\.customIdentifier)) || CNContactStore.authorizationStatus(for: .contacts) == .authorized else {
             let response = INSendMessageIntentResponse(code: .failureRequiringAppLaunch, userActivity: userActivity)
             completion(response)
             return
@@ -819,7 +841,7 @@ class DefaultIntentHandler: INExtension, INSendMessageIntentHandling, INSearchFo
         }))
     }
     
-    // MARK: - INStartAudioCallIntentHandling
+    // MARK: - INStartCallIntentHandling
     public func resolveContacts(for intent: INStartCallIntent, with completion: @escaping ([INStartCallContactResolutionResult]) -> Void) {
         if let appGroupUrl = self.appGroupUrl {
             let rootPath = rootPathForBasePath(appGroupUrl.path)
@@ -980,38 +1002,15 @@ private final class WidgetIntentHandler {
     private var appGroupUrl: URL?
     
     init() {
-        guard let appBundleIdentifier = Bundle.main.bundleIdentifier, let lastDotRange = appBundleIdentifier.range(of: ".", options: [.backwards]) else {
+        guard let environment = SiriExtensionEnvironment.shared else {
+            self.allAccounts.set(.single([]))
             return
         }
         
-        let baseAppBundleId = String(appBundleIdentifier[..<lastDotRange.lowerBound])
-        
-        let appGroupName = "group.\(baseAppBundleId)"
-        let maybeAppGroupUrl = FileManager.default.containerURL(forSecurityApplicationGroupIdentifier: appGroupName)
-        
-        guard let appGroupUrl = maybeAppGroupUrl else {
-            return
-        }
-        
-        self.appGroupUrl = appGroupUrl
-        
-        let rootPath = rootPathForBasePath(appGroupUrl.path)
-        performAppGroupUpgrades(appGroupPath: appGroupUrl.path, rootPath: rootPath)
-        
+        self.appGroupUrl = environment.appGroupUrl
+        let rootPath = environment.rootPath
         self.rootPath = rootPath
-        
-        TempBox.initializeShared(basePath: rootPath, processType: "siri", launchSpecificId: Int64.random(in: Int64.min ... Int64.max))
-        
-        let logsPath = rootPath + "/logs/siri-logs"
-        let _ = try? FileManager.default.createDirectory(atPath: logsPath, withIntermediateDirectories: true, attributes: nil)
-        
-        setupSharedLogger(rootPath: rootPath, path: logsPath)
-        
-        initializeAccountManagement()
-        
-        let deviceSpecificEncryptionParameters = BuildConfig.deviceSpecificEncryptionParameters(rootPath, baseAppBundleId: baseAppBundleId)
-        let encryptionParameters = ValueBoxEncryptionParameters(forceEncryptionIfNoSet: false, key: ValueBoxEncryptionParameters.Key(data: deviceSpecificEncryptionParameters.key)!, salt: ValueBoxEncryptionParameters.Salt(data: deviceSpecificEncryptionParameters.salt)!)
-        self.encryptionParameters = encryptionParameters
+        self.encryptionParameters = environment.encryptionParameters
         
         let view = AccountManager<TelegramAccountManagerTypes>.getCurrentRecords(basePath: rootPath + "/accounts-metadata")
         
@@ -1142,8 +1141,10 @@ private final class WidgetIntentHandler {
         }))
     }
     
+    /// The most recent chats of the active account, for a newly added widget. Waits at most `timeout` (Siri calls
+    /// this synchronously while the user adds the widget); nothing rather than a hang when the store is slow.
     @available(iOSApplicationExtension 14.0, iOS 14.0, *)
-    func defaultFriends() -> [Friend]? {
+    func defaultFriends(limit: Int = 8, timeout: Double = 1.0) -> [Friend]? {
         guard let rootPath = self.rootPath, let encryptionParameters = self.encryptionParameters else {
             return []
         }
@@ -1152,10 +1153,10 @@ private final class WidgetIntentHandler {
             return []
         }
         
-        var resultItems: [Friend] = []
+        let resultItems = Atomic<[Friend]>(value: [])
         
         let semaphore: DispatchSemaphore = DispatchSemaphore(value: 0)
-        let _ = ((self.allAccounts.get()
+        let disposable = ((self.allAccounts.get()
         |> castError(Error.self)
         |> take(1)
         |> mapToSignal { accounts -> Signal<[Friend], Error> in
@@ -1172,7 +1173,7 @@ private final class WidgetIntentHandler {
                         if let peer = transaction.getPeer(id), !(peer is TelegramSecretChat), !peer.isDeleted {
                             peers.append(peer)
                         }
-                        if peers.count >= 8 {
+                        if peers.count >= limit {
                             break
                         }
                     }
@@ -1196,19 +1197,18 @@ private final class WidgetIntentHandler {
                 return combinedResult
             }
         }).start(next: { result in
-            resultItems = result
+            let _ = resultItems.swap(result)
             semaphore.signal()
         }, error: { error in
             semaphore.signal()
         }))
         
-        semaphore.wait()
-        
-        if resultItems.count > 8 {
-            resultItems = Array(resultItems.dropLast(resultItems.count - 8))
+        if semaphore.wait(timeout: .now() + timeout) == .timedOut {
+            disposable.dispose()
+            return []
         }
         
-        return resultItems
+        return Array(resultItems.with { $0 }.prefix(limit))
     }
 }
 
@@ -1226,6 +1226,12 @@ class FriendsIntentHandler: NSObject, SelectFriendsIntentHandling {
     @available(iOSApplicationExtension 14.0, iOS 14.0, *)
     func provideFriendsOptionsCollection(for intent: SelectFriendsIntent, searchTerm: String?, with completion: @escaping (INObjectCollection<Friend>?, Error?) -> Void) {
         self.handler.provideFriendsOptionsCollection(searchTerm: searchTerm, with: completion)
+    }
+    
+    /// A new Chats widget shows the two most recent chats instead of "Long tap to edit".
+    @available(iOSApplicationExtension 14.0, iOS 14.0, *)
+    func defaultFriends(for intent: SelectFriendsIntent) -> [Friend]? {
+        return self.handler.defaultFriends(limit: 2)
     }
 }
 

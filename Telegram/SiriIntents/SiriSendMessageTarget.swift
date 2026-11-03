@@ -10,15 +10,43 @@ import TelegramCore
 /// For a group message those differ, and sending to the recipient would drop a group reply
 /// into the author's private chat, so the conversation wins whenever it is present. Without
 /// one, the recipient is a person this extension resolved earlier, whose `customIdentifier`
-/// is `tg<peerId>`.
+/// is `tg<peerId>`. The app's own "Message X" donations (TelegramIntents) name the conversation
+/// `tg<peerId>` too.
 func siriSendMessageTarget(conversationIdentifier: String?, recipientCustomIdentifier: String?) -> PeerId? {
-    if let conversationIdentifier, let peerIdValue = Int64(conversationIdentifier) {
-        return PeerId(peerIdValue)
+    if let conversationIdentifier {
+        let digits = conversationIdentifier.hasPrefix("tg") ? conversationIdentifier.dropFirst(2) : Substring(conversationIdentifier)
+        if let peerIdValue = Int64(digits) {
+            return PeerId(peerIdValue)
+        }
     }
     if let recipientCustomIdentifier, recipientCustomIdentifier.hasPrefix("tg"), let peerIdValue = Int64(recipientCustomIdentifier.dropFirst(2)) {
         return PeerId(peerIdValue)
     }
     return nil
+}
+
+/// Whether a send needs Contacts access: only to match address-book people. A reply to a message
+/// Siri read, or a donated suggestion, already names its chat (the conversation, or persons this
+/// extension or the app handed Siri), and works with Contacts denied.
+func siriSendMessageNeedsContacts(conversationIdentifier: String?, recipientCustomIdentifiers: [String?]) -> Bool {
+    if siriSendMessageTarget(conversationIdentifier: conversationIdentifier, recipientCustomIdentifier: nil) != nil {
+        return false
+    }
+    if recipientCustomIdentifiers.isEmpty {
+        return true
+    }
+    return !recipientCustomIdentifiers.allSatisfy { identifier in
+        return siriSendMessageTarget(conversationIdentifier: nil, recipientCustomIdentifier: identifier) != nil
+    }
+}
+
+/// Whether recipient resolution can look a person up: an address-book contact, or a person this
+/// extension or the app handed Siri (`tg<peerId>`), which has no contact identifier.
+func siriPersonIsResolvable(contactIdentifier: String?, customIdentifier: String?) -> Bool {
+    if let contactIdentifier, !contactIdentifier.isEmpty {
+        return true
+    }
+    return siriSendMessageTarget(conversationIdentifier: nil, recipientCustomIdentifier: customIdentifier) != nil
 }
 
 /// Whether Siri may send a message to this peer.

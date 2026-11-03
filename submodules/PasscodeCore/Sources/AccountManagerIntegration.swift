@@ -63,32 +63,50 @@ private func resolveAccessChallenge(_ current: PostboxAccessChallengeData?, allo
 
 @available(macOS 10.15, *)
 public func setupAccountManager<Types: AccountManagerTypes>(basePath: String, isTemporary: Bool, isReadOnly: Bool, useCaches: Bool, removeDatabaseOnError: Bool, resetLocalSecrets: (() throws -> Void)? = nil) -> AccountManager<Types> {
-    let isMainProcess = PasscodeEnvironment.shared.isMainApp
-    let canReset = isMainProcess && !isTemporary && !isReadOnly
-    precondition(!canReset || resetLocalSecrets != nil)
-
     return AccountManager(
         basePath: basePath,
         isTemporary: isTemporary,
         isReadOnly: isReadOnly,
         useCaches: useCaches,
         removeDatabaseOnError: removeDatabaseOnError,
-        accessChallenge: AccountManagerAccessChallenge(
-            prepare: { isFreshInstallation in
-                let _ = try PasscodeEnvironment.shared.sharedAccessGroup()
-                PasscodeCredentialStore.shared.configureLock(directory: basePath)
-                if canReset && isFreshInstallation {
-                    try resetLocalSecrets?()
-                }
-            },
-            resolve: { current, allowMigration in
-                return try resolveAccessChallenge(current, allowMigration: allowMigration)
-            },
-            finishInitialization: {
-                if isMainProcess {
-                    try PasscodeCredentialStore.shared.resumeCleanup()
-                }
+        accessChallenge: passcodeAccessChallenge(basePath: basePath, isTemporary: isTemporary, isReadOnly: isReadOnly, resetLocalSecrets: resetLocalSecrets)
+    )
+}
+
+/// An extension's account manager, or nil when its databases cannot be opened right now (the app holds them,
+/// protected data is unavailable): the extension then answers as with no account instead of crashing.
+@available(macOS 10.15, *)
+public func setupExtensionAccountManager<Types: AccountManagerTypes>(basePath: String, isTemporary: Bool, isReadOnly: Bool, useCaches: Bool) -> AccountManager<Types>? {
+    return AccountManager<Types>.openForExtension(
+        basePath: basePath,
+        isTemporary: isTemporary,
+        isReadOnly: isReadOnly,
+        useCaches: useCaches,
+        accessChallenge: passcodeAccessChallenge(basePath: basePath, isTemporary: isTemporary, isReadOnly: isReadOnly, resetLocalSecrets: nil)
+    )
+}
+
+@available(macOS 10.15, *)
+private func passcodeAccessChallenge(basePath: String, isTemporary: Bool, isReadOnly: Bool, resetLocalSecrets: (() throws -> Void)?) -> AccountManagerAccessChallenge {
+    let isMainProcess = PasscodeEnvironment.shared.isMainApp
+    let canReset = isMainProcess && !isTemporary && !isReadOnly
+    precondition(!canReset || resetLocalSecrets != nil)
+
+    return AccountManagerAccessChallenge(
+        prepare: { isFreshInstallation in
+            let _ = try PasscodeEnvironment.shared.sharedAccessGroup()
+            PasscodeCredentialStore.shared.configureLock(directory: basePath)
+            if canReset && isFreshInstallation {
+                try resetLocalSecrets?()
             }
-        )
+        },
+        resolve: { current, allowMigration in
+            return try resolveAccessChallenge(current, allowMigration: allowMigration)
+        },
+        finishInitialization: {
+            if isMainProcess {
+                try PasscodeCredentialStore.shared.resumeCleanup()
+            }
+        }
     )
 }
