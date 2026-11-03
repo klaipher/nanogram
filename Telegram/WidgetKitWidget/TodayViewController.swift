@@ -22,23 +22,27 @@ struct ParsedPeer {
     var accountId: Int64
     var accountPeerId: Int64
     var peer: WidgetDataPeer
+    /// The app is passcode-locked: the row keeps the chat's name and photo and shows "Locked" instead of its last
+    /// message, with no unread count (notifications hide content the same way).
+    var isContentHidden: Bool = false
+}
+
+private extension ParsedPeers {
+    func hidingContent() -> ParsedPeers {
+        var result = self
+        result.peers = self.peers.map { peer in
+            var peer = peer
+            peer.peer = WidgetDataPeer(id: peer.peer.id, name: peer.peer.name, lastName: peer.peer.lastName, letters: peer.peer.letters, avatarPath: peer.peer.avatarPath, badge: nil, message: nil, isForum: peer.peer.isForum)
+            peer.isContentHidden = true
+            return peer
+        }
+        return result
+    }
 }
 
 struct ParsedPeers {
     var peers: [ParsedPeer]
     var updateTimestamp: Int32
-}
-
-private extension ParsedPeers {
-    init(accountId: Int64, peers: WidgetDataPeers) {
-        self.init(peers: peers.peers.map { peer -> ParsedPeer in
-            return ParsedPeer(
-                accountId: accountId,
-                accountPeerId: peers.accountPeerId,
-                peer: peer
-            )
-        }, updateTimestamp: peers.updateTimestamp)
-    }
 }
 
 private var installedSharedLogger = false
@@ -64,6 +68,64 @@ private func rootPathForBasePath(_ appGroupPath: String) -> String {
     return appGroupPath + "/telegram-data"
 }
 
+/// Set up once per widget-extension process; every timeline used to repeat it (a new TempBox, which deletes the
+/// previous one's directory, the passcode environment, the key-file reads).
+private final class WidgetExtensionEnvironment {
+    static let shared: WidgetExtensionEnvironment? = WidgetExtensionEnvironment()
+    
+    let rootPath: String
+    let encryptionParameters: EngineValueBoxEncryptionParameters
+    
+    private init?() {
+        guard let appBundleIdentifier = Bundle.main.bundleIdentifier, let lastDotRange = appBundleIdentifier.range(of: ".", options: [.backwards]) else {
+            return nil
+        }
+        let baseAppBundleId = String(appBundleIdentifier[..<lastDotRange.lowerBound])
+        
+        let appGroupName = "group.\(baseAppBundleId)"
+        try! PasscodeEnvironment.shared.configure(PasscodeConfiguration(appGroupIdentifier: appGroupName, processRole: .appExtension))
+        guard let appGroupUrl = FileManager.default.containerURL(forSecurityApplicationGroupIdentifier: appGroupName) else {
+            return nil
+        }
+        
+        let rootPath = rootPathForBasePath(appGroupUrl.path)
+        self.rootPath = rootPath
+        
+        EngineTempBox.initializeShared(basePath: rootPath, processType: "widget", launchSpecificId: Int64.random(in: Int64.min ... Int64.max))
+        
+        let logsPath = rootPath + "/logs/widget-logs"
+        let _ = try? FileManager.default.createDirectory(atPath: logsPath, withIntermediateDirectories: true, attributes: nil)
+        setupSharedLogger(rootPath: logsPath, path: logsPath)
+        
+        initializeAccountManagement()
+        
+        let deviceSpecificEncryptionParameters = BuildConfig.deviceSpecificEncryptionParameters(rootPath, baseAppBundleId: baseAppBundleId)
+        self.encryptionParameters = EngineValueBoxEncryptionParameters(forceEncryptionIfNoSet: false, key: EngineValueBoxEncryptionParameters.Key(data: deviceSpecificEncryptionParameters.key)!, salt: EngineValueBoxEncryptionParameters.Salt(data: deviceSpecificEncryptionParameters.salt)!)
+    }
+}
+
+/// The app asks WidgetKit to reload whenever a widget chat changes, so a timeline only needs a fallback refresh.
+private func widgetTimelinePolicy(now: Date) -> TimelineReloadPolicy {
+    return .after(now.addingTimeInterval(30.0 * 60.0))
+}
+
+/// The entries for the chats: as they are, then with their content hidden once the passcode lock applies (now, or
+/// when the auto-lock runs out while the widget is on screen).
+@available(iOS 14.0, *)
+private func widgetEntries(peers: ParsedPeers, lockSchedule: AppLockSchedule, now: Date) -> [SimpleEntry] {
+    switch lockSchedule {
+    case .unlocked:
+        return [SimpleEntry(date: now, contents: .peers(peers))]
+    case .locked:
+        return [SimpleEntry(date: now, contents: .peers(peers.hidingContent()))]
+    case let .locksIn(seconds):
+        return [
+            SimpleEntry(date: now, contents: .peers(peers)),
+            SimpleEntry(date: now.addingTimeInterval(Double(seconds)), contents: .peers(peers.hidingContent()))
+        ]
+    }
+}
+
 @available(iOS 14.0, *)
 private func getCommonTimeline(friends: [Friend]?, in context: TimelineProviderContext, completion: @escaping (Timeline<SimpleEntry>) -> ()) {
     if context.isPreview {
@@ -71,38 +133,16 @@ private func getCommonTimeline(friends: [Friend]?, in context: TimelineProviderC
         return
     }
     
-    let currentDate = Date()
-    let entryDate = Calendar.current.date(byAdding: .hour, value: 0, to: currentDate)!
+    let entryDate = Date()
     
-    guard let appBundleIdentifier = Bundle.main.bundleIdentifier, let lastDotRange = appBundleIdentifier.range(of: ".", options: [.backwards]) else {
+    guard let environment = WidgetExtensionEnvironment.shared else {
         completion(Timeline(entries: [SimpleEntry(date: entryDate, contents: .recent)], policy: .atEnd))
         return
     }
     
-    let baseAppBundleId = String(appBundleIdentifier[..<lastDotRange.lowerBound])
-    
-    let appGroupName = "group.\(baseAppBundleId)"
-    try! PasscodeEnvironment.shared.configure(PasscodeConfiguration(appGroupIdentifier: appGroupName, processRole: .appExtension))
-    let maybeAppGroupUrl = FileManager.default.containerURL(forSecurityApplicationGroupIdentifier: appGroupName)
-    
-    guard let appGroupUrl = maybeAppGroupUrl else {
-        completion(Timeline(entries: [SimpleEntry(date: entryDate, contents: .recent)], policy: .atEnd))
-        return
-    }
-    
-    let rootPath = rootPathForBasePath(appGroupUrl.path)
-    
-    EngineTempBox.initializeShared(basePath: rootPath, processType: "widget", launchSpecificId: Int64.random(in: Int64.min ... Int64.max))
-    
-    let logsPath = rootPath + "/logs/widget-logs"
-    let _ = try? FileManager.default.createDirectory(atPath: logsPath, withIntermediateDirectories: true, attributes: nil)
-    
-    setupSharedLogger(rootPath: logsPath, path: logsPath)
-    
-    initializeAccountManagement()
-    
-    let deviceSpecificEncryptionParameters = BuildConfig.deviceSpecificEncryptionParameters(rootPath, baseAppBundleId: baseAppBundleId)
-    let encryptionParameters = EngineValueBoxEncryptionParameters(forceEncryptionIfNoSet: false, key: EngineValueBoxEncryptionParameters.Key(data: deviceSpecificEncryptionParameters.key)!, salt: EngineValueBoxEncryptionParameters.Salt(data: deviceSpecificEncryptionParameters.salt)!)
+    let rootPath = environment.rootPath
+    let encryptionParameters = environment.encryptionParameters
+    let lockSchedule = appLockSchedule(state: readAppLockState(rootPath: rootPath), now: currentMonotonicTimestamp())
     
     var itemsByAccount: [Int64: [(Int64, Friend)]] = [:]
     var itemOrder: [(Int64, Int64)] = []
@@ -212,7 +252,7 @@ private func getCommonTimeline(friends: [Friend]?, in context: TimelineProviderC
         }
         
         let result = ParsedPeers(peers: orderedPeers, updateTimestamp: Int32(Date().timeIntervalSince1970))
-        completion(Timeline(entries: [SimpleEntry(date: entryDate, contents: .peers(result))], policy: .atEnd))
+        completion(Timeline(entries: widgetEntries(peers: result, lockSchedule: lockSchedule, now: entryDate), policy: widgetTimelinePolicy(now: entryDate)))
     })
 }
 
@@ -225,8 +265,14 @@ struct Provider: IntentTimelineProvider {
     }
 
     func getSnapshot(for configuration: SelectFriendsIntent, in context: Context, completion: @escaping (SimpleEntry) -> ()) {
-        let entry = SimpleEntry(date: Date(), contents: context.isPreview ? .preview : .peers(ParsedPeers(accountId: 0, peers: WidgetDataPeers(accountPeerId: 0, peers: [], updateTimestamp: 0))))
-        completion(entry)
+        if context.isPreview {
+            completion(SimpleEntry(date: Date(), contents: .preview))
+            return
+        }
+        // The configured chats, as the timeline shows them, not an empty widget.
+        getCommonTimeline(friends: configuration.friends, in: context, completion: { timeline in
+            completion(timeline.entries.first ?? SimpleEntry(date: Date(), contents: .recent))
+        })
     }
 
     func getTimeline(for configuration: SelectFriendsIntent, in context: Context, completion: @escaping (Timeline<Entry>) -> ()) {
@@ -243,8 +289,13 @@ struct AvatarsProvider: IntentTimelineProvider {
     }
 
     func getSnapshot(for configuration: SelectAvatarFriendsIntent, in context: Context, completion: @escaping (SimpleEntry) -> ()) {
-        let entry = SimpleEntry(date: Date(), contents: context.isPreview ? .preview : .peers(ParsedPeers(accountId: 0, peers: WidgetDataPeers(accountPeerId: 0, peers: [], updateTimestamp: 0))))
-        completion(entry)
+        if context.isPreview {
+            completion(SimpleEntry(date: Date(), contents: .preview))
+            return
+        }
+        getCommonTimeline(friends: configuration.friends, in: context, completion: { timeline in
+            completion(timeline.entries.first ?? SimpleEntry(date: Date(), contents: .recent))
+        })
     }
 
     func getTimeline(for configuration: SelectAvatarFriendsIntent, in context: Context, completion: @escaping (Timeline<Entry>) -> ()) {
@@ -384,7 +435,9 @@ struct WidgetView: View {
         var isPlaceholder = false
         switch content {
         case let .peer(peer):
-            if let message = peer.peer.message {
+            if peer.isContentHidden {
+                text = "🔒 \(self.presentationData.generalLockedTitle)"
+            } else if let message = peer.peer.message {
                 text = message.text
                 switch message.content {
                 case .text:
@@ -880,22 +933,13 @@ struct Static_Widget: Widget {
     public var body: some WidgetConfiguration {
         let presentationData = WidgetPresentationData.getForExtension()
         
-        if #available(iOSApplicationExtension 15.0, iOS 15.0, *) {
-            return IntentConfiguration(kind: kind, intent: SelectFriendsIntent.self, provider: Provider(), content: { entry in
-                WidgetView(data: getWidgetData(contents: entry.contents), presentationData: presentationData)
-            })
-            .supportedFamilies([.systemMedium])
-            .configurationDisplayName(presentationData.widgetChatsGalleryTitle)
-            .contentMarginsDisabled()
-            .description(presentationData.widgetChatsGalleryDescription)
-        } else {
-            return IntentConfiguration(kind: kind, intent: SelectFriendsIntent.self, provider: Provider(), content: { entry in
-                WidgetView(data: getWidgetData(contents: entry.contents), presentationData: presentationData)
-            })
-            .supportedFamilies([.systemMedium])
-            .configurationDisplayName(presentationData.widgetChatsGalleryTitle)
-            .description(presentationData.widgetChatsGalleryDescription)
-        }
+        return IntentConfiguration(kind: kind, intent: SelectFriendsIntent.self, provider: Provider(), content: { entry in
+            WidgetView(data: getWidgetData(contents: entry.contents), presentationData: presentationData)
+        })
+        .supportedFamilies([.systemMedium])
+        .configurationDisplayName(presentationData.widgetChatsGalleryTitle)
+        .contentMarginsDisabled()
+        .description(presentationData.widgetChatsGalleryDescription)
     }
 }
 
@@ -906,22 +950,13 @@ struct Static_AvatarsWidget: Widget {
     public var body: some WidgetConfiguration {
         let presentationData = WidgetPresentationData.getForExtension()
         
-        if #available(iOSApplicationExtension 15.0, iOS 15.0, *) {
-            return IntentConfiguration(kind: kind, intent: SelectAvatarFriendsIntent.self, provider: AvatarsProvider(), content: { entry in
-                AvatarsWidgetView(data: getWidgetData(contents: entry.contents), presentationData: presentationData)
-            })
-            .supportedFamilies([.systemMedium])
-            .configurationDisplayName(presentationData.widgetShortcutsGalleryTitle)
-            .contentMarginsDisabled()
-            .description(presentationData.widgetShortcutsGalleryDescription)
-        } else {
-            return IntentConfiguration(kind: kind, intent: SelectAvatarFriendsIntent.self, provider: AvatarsProvider(), content: { entry in
-                AvatarsWidgetView(data: getWidgetData(contents: entry.contents), presentationData: presentationData)
-            })
-            .supportedFamilies([.systemMedium])
-            .configurationDisplayName(presentationData.widgetShortcutsGalleryTitle)
-            .description(presentationData.widgetShortcutsGalleryDescription)
-        }
+        return IntentConfiguration(kind: kind, intent: SelectAvatarFriendsIntent.self, provider: AvatarsProvider(), content: { entry in
+            AvatarsWidgetView(data: getWidgetData(contents: entry.contents), presentationData: presentationData)
+        })
+        .supportedFamilies([.systemMedium])
+        .configurationDisplayName(presentationData.widgetShortcutsGalleryTitle)
+        .contentMarginsDisabled()
+        .description(presentationData.widgetShortcutsGalleryDescription)
     }
 }
 

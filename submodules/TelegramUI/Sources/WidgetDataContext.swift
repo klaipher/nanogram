@@ -28,11 +28,19 @@ private extension SelectFriendsIntent {
 }
 
 private final class WidgetReloadManager {
+    /// In the foreground a busy widget chat changes many times a second; each reload launches the widget
+    /// extension, which opens every configured account's encrypted store. Changes are gathered for a few
+    /// seconds, and reloads are at least `foregroundMinInterval` apart.
+    private static let foregroundDebounce: Double = 3.0
+    private static let foregroundMinInterval: Double = 15.0
+    
     private var inForeground = false
     private var inForegroundDisposable: Disposable?
     
     private var isReloadRequested = false
     private var lastBackgroundReload: Double?
+    private var lastForegroundReload: Double?
+    private var foregroundReloadTimer: SwiftSignalKit.Timer?
     
     init(inForeground: Signal<Bool, NoError>) {
         self.inForegroundDisposable = (inForeground
@@ -52,13 +60,38 @@ private final class WidgetReloadManager {
     
     deinit {
         self.inForegroundDisposable?.dispose()
+        self.foregroundReloadTimer?.invalidate()
+    }
+    
+    /// A change the widget must show at once (the passcode lock went on or off), in the foreground or not.
+    func reloadNow() {
+        self.isReloadRequested = true
+        self.performReloadIfNeeded()
     }
     
     func requestReload() {
         self.isReloadRequested = true
         
         if self.inForeground {
-            self.performReloadIfNeeded()
+            if self.foregroundReloadTimer != nil {
+                return
+            }
+            let now = CFAbsoluteTimeGetCurrent()
+            var delay = WidgetReloadManager.foregroundDebounce
+            if let lastForegroundReload = self.lastForegroundReload {
+                delay = max(delay, lastForegroundReload + WidgetReloadManager.foregroundMinInterval - now)
+            }
+            let timer = SwiftSignalKit.Timer(timeout: delay, repeat: false, completion: { [weak self] in
+                guard let self else {
+                    return
+                }
+                self.foregroundReloadTimer = nil
+                if self.inForeground {
+                    self.performReloadIfNeeded()
+                }
+            }, queue: Queue.mainQueue())
+            self.foregroundReloadTimer = timer
+            timer.start()
         } else {
             let timestamp = CFAbsoluteTimeGetCurrent()
             if let lastBackgroundReloadValue = self.lastBackgroundReload {
@@ -78,6 +111,11 @@ private final class WidgetReloadManager {
             return
         }
         self.isReloadRequested = false
+        if self.inForeground {
+            self.lastForegroundReload = CFAbsoluteTimeGetCurrent()
+        }
+        self.foregroundReloadTimer?.invalidate()
+        self.foregroundReloadTimer = nil
         
         DispatchQueue.global(qos: .background).async {
             if #available(iOSApplicationExtension 14.0, iOS 14.0, *) {
@@ -95,9 +133,24 @@ final class WidgetDataContext {
     private var disposable: Disposable?
     private var widgetPresentationDataDisposable: Disposable?
     private var notificationPresentationDataDisposable: Disposable?
+    private var lockDisposable: Disposable?
     
     init(basePath: String, inForeground: Signal<Bool, NoError>, activeAccounts: Signal<[Account], NoError>, presentationData: Signal<PresentationData, NoError>, appLockContext: AppLockContextImpl) {
         self.reloadManager = WidgetReloadManager(inForeground: inForeground)
+        
+        // The widgets hide message text and unread counts while the app is passcode-locked (they read the lock
+        // state themselves); redraw them when it locks or unlocks.
+        var previousIsLocked: Bool?
+        self.lockDisposable = (appLockContext.isCurrentlyLocked
+        |> distinctUntilChanged
+        |> deliverOnMainQueue).startStrict(next: { [weak self] isLocked in
+            defer {
+                previousIsLocked = isLocked
+            }
+            if previousIsLocked != nil {
+                self?.reloadManager.reloadNow()
+            }
+        })
         
         let queue = Queue()
         let currentAdditionalPeerIds: Signal<[AccountRecordId: Set<EnginePeer.Id>], NoError> = Signal { subscriber in
@@ -162,18 +215,20 @@ final class WidgetDataContext {
         |> runOn(queue)
         
         // Widget configurations change only when the user edits a widget on the home screen.
-        // Re-read them every 60 s and whenever the app comes to the foreground (was every 10 s,
-        // in the background too).
+        // Re-read them every 60 s while in the foreground and whenever the app comes to the
+        // foreground; never on a timer in the background (audio, calls keep the process alive).
         let periodicTick: Signal<Void, NoError> = (Signal<Void, NoError>.single(Void())
         |> then(
             Signal<Void, NoError>.complete()
             |> delay(60.0, queue: queue)
         ))
         |> restart
-        let updatedAdditionalPeerIds: Signal<[AccountRecordId: Set<EnginePeer.Id>], NoError> = combineLatest(queue: queue,
-            inForeground |> distinctUntilChanged,
-            periodicTick
-        )
+        let updatedAdditionalPeerIds: Signal<[AccountRecordId: Set<EnginePeer.Id>], NoError> = (inForeground
+        |> distinctUntilChanged
+        |> deliverOn(queue)
+        |> mapToSignal { inForeground -> Signal<Void, NoError> in
+            return inForeground ? periodicTick : .single(Void())
+        })
         |> mapToSignal { _ -> Signal<[AccountRecordId: Set<EnginePeer.Id>], NoError> in
             return currentAdditionalPeerIds
         }
@@ -337,6 +392,7 @@ final class WidgetDataContext {
     
     deinit {
         self.disposable?.dispose()
+        self.lockDisposable?.dispose()
         self.widgetPresentationDataDisposable?.dispose()
         self.notificationPresentationDataDisposable?.dispose()
     }
