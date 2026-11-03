@@ -5,52 +5,21 @@ internal import TelegramApi
 import MtProtoKit
 
 private final class ManagedSynchronizeViewStoriesOperationsHelper {
-    var operationDisposables: [PeerId: (Int32, Disposable)] = [:]
+    private let runner = PeerStoriesSynchronizationRunner<PeerMergedOperationLogEntry>()
     
     func update(_ entries: [PeerMergedOperationLogEntry]) -> (disposeOperations: [Disposable], beginOperations: [(PeerMergedOperationLogEntry, MetaDisposable)]) {
-        var disposeOperations: [Disposable] = []
-        var beginOperations: [(PeerMergedOperationLogEntry, MetaDisposable)] = []
-        
-        var validPeerIds: [PeerId] = []
+        var queued: [(peerId: PeerId, storyId: Int32?, entry: PeerMergedOperationLogEntry)] = []
         for entry in entries {
             guard let operation = entry.contents as? SynchronizeViewStoriesOperation else {
                 continue
             }
-            validPeerIds.append(entry.peerId)
-            var replace = true
-            if let current = self.operationDisposables[entry.peerId] {
-                if current.0 != operation.storyId {
-                    disposeOperations.append(current.1)
-                    replace = true
-                }
-            } else {
-                replace = true
-            }
-            if replace {
-                let disposable = MetaDisposable()
-                self.operationDisposables[entry.peerId] = (operation.storyId, disposable)
-                beginOperations.append((entry, disposable))
-            }
+            queued.append((peerId: entry.peerId, storyId: operation.storyId, entry: entry))
         }
-        
-        var removedPeerIds: [PeerId] = []
-        for (peerId, info) in self.operationDisposables {
-            if !validPeerIds.contains(peerId) {
-                removedPeerIds.append(peerId)
-                disposeOperations.append(info.1)
-            }
-        }
-        for peerId in removedPeerIds {
-            self.operationDisposables.removeValue(forKey: peerId)
-        }
-        
-        return (disposeOperations, beginOperations)
+        return self.runner.update(queued)
     }
     
     func reset() -> [Disposable] {
-        let disposables = Array(self.operationDisposables.values.map(\.1))
-        self.operationDisposables.removeAll()
-        return disposables
+        return self.runner.reset()
     }
 }
 
