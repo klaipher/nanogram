@@ -51,6 +51,14 @@ test_notes_failure_after_upload() {
   check "it prints the notes command for that build" grep -q "tf_notes.py IOS 202611031200 .*WhatToTest.txt" "$TMP/err"
 }
 
+# tf_notes.py exits 4 when App Store Connect rejected the build: no notes command can help.
+test_build_rejected_after_upload() {
+  run_testflight 0 4
+  check "a rejected build exits 4" [ "$STATUS" -eq 4 ]
+  check "it says to upload a new build" grep -q "build rejected by Apple; upload a new build" "$TMP/err"
+  check "it does not offer the notes command" not grep -q "notes not set" "$TMP/err"
+}
+
 test_upload_failure() {
   run_testflight 1 0
   check "a failed upload is not reported as exit 3" [ "$STATUS" -ne 0 -a "$STATUS" -ne 3 ]
@@ -188,6 +196,32 @@ test_archive_dsyms() {
   check "the newest older build is kept" [ -d "$TMP/archive/202610010034" ]
   check "a directory that is not a build is kept" [ -d "$TMP/archive/not-a-build" ]
 
+  # Ranked by build number, not by when a folder was last touched: touch the oldest builds last.
+  rm -rf "$TMP/archive"
+  mkdir -p "$TMP/archive"
+  for i in $(seq 10 34); do
+    mkdir -p "$TMP/archive/2026100100$i"
+    echo uuids > "$TMP/archive/2026100100$i/uuids.txt"
+    touch -t "2026110300$((70 - i))" "$TMP/archive/2026100100$i"
+  done
+  # A newer build number than this one (built earlier on another branch) and a folder with no uuids.txt.
+  mkdir -p "$TMP/archive/202612010000" "$TMP/archive/202612020000"
+  echo uuids > "$TMP/archive/202612010000/uuids.txt"
+  run_archive_dsyms "$build"
+  check "archive_dsyms succeeds again" [ "$STATUS" -eq 0 ]
+  check "the builds with the highest numbers are kept" [ -d "$TMP/archive/202610010034" ]
+  check "the lowest build numbers are removed, however recently touched" [ ! -e "$TMP/archive/202610010015" ]
+  check "the build just archived is kept" [ -d "$TMP/archive/202611031200" ]
+  check "a folder without uuids.txt is ignored" [ -d "$TMP/archive/202612020000" ]
+  builds="$(cd "$TMP/archive" && ls -d 2*/ | wc -l | tr -d ' ')"
+  check "20 builds plus the ignored folder remain (found $builds)" [ "$builds" -eq 21 ]
+
+  # TG_DSYM_KEEP below 1 still keeps the build just archived, even below a higher build number.
+  TG_DSYM_KEEP=0 run_archive_dsyms "$build"
+  check "archive_dsyms with TG_DSYM_KEEP=0 succeeds" [ "$STATUS" -eq 0 ]
+  check "TG_DSYM_KEEP=0 keeps the build just archived" [ -d "$TMP/archive/202611031200" ]
+  check "TG_DSYM_KEEP=0 keeps nothing else" [ ! -e "$TMP/archive/202612010000" ]
+
   # The app's dSYM from another build: refuse, and still clean up.
   rm -rf "$build/Telegram.app.dSYM"; cp -R "$build/Stale.appex.dSYM" "$build/Telegram.app.dSYM"
   run_archive_dsyms "$build"
@@ -198,6 +232,7 @@ test_archive_dsyms() {
 not() { ! "$@"; }
 
 test_notes_failure_after_upload
+test_build_rejected_after_upload
 test_upload_failure
 test_success
 test_device_push_environment

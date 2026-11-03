@@ -38,8 +38,8 @@ class FakeClock:
 
 
 class FakeResponse:
-    def __init__(self, body):
-        self.body = json.dumps(body).encode() if body is not None else b""
+    def __init__(self, body, raw=None):
+        self.body = raw if raw is not None else (json.dumps(body).encode() if body is not None else b"")
 
     def read(self):
         return self.body
@@ -53,7 +53,8 @@ class FakeResponse:
 
 class FakeAppStoreConnect:
     """Answers the four requests tf_notes.py makes. `failures` maps a request kind ("builds",
-    "get-localizations", "post", "patch") to a list of exceptions raised before it answers."""
+    "get-localizations", "post", "patch") to a list of exceptions raised before it answers (or
+    responses returned instead of the answer)."""
 
     def __init__(self, states):
         self.states = list(states)
@@ -82,7 +83,10 @@ class FakeAppStoreConnect:
             body = json.loads(request.data)
             self.localizations.append({"id": f"loc-{len(self.localizations)}", "attributes": dict(body["data"]["attributes"])})
         if self.failures.get(kind):
-            raise self.failures[kind].pop(0)
+            failure = self.failures[kind].pop(0)
+            if isinstance(failure, FakeResponse):
+                return failure
+            raise failure
         if kind == "builds":
             state = self.states.pop(0) if len(self.states) > 1 else self.states[0]
             return FakeResponse({"data": [] if state is None else [{"id": BUILD_ID, "attributes": {"processingState": state}}]})
@@ -100,6 +104,19 @@ class FakeAppStoreConnect:
 def http_error(code, retry_after=None):
     headers = {"Retry-After": str(retry_after)} if retry_after is not None else {}
     return urllib.error.HTTPError("https://api.appstoreconnect.apple.com", code, "error", headers, io.BytesIO(b"{}"))
+
+
+class UnreadableBody:
+    """An error response whose body times out while it is read."""
+    def read(self, *args):
+        raise socket.timeout("timed out")
+
+    def close(self):
+        pass
+
+
+def http_error_with_unreadable_body(code):
+    return urllib.error.HTTPError("https://api.appstoreconnect.apple.com", code, "error", {}, UnreadableBody())
 
 
 class TfNotesTests(unittest.TestCase):
@@ -182,6 +199,32 @@ class TfNotesTests(unittest.TestCase):
         self.assertIn("401", str(raised.exception.code))
         self.assertEqual(server.requests, ["builds"])
         self.assertEqual(self.clock.sleeps, [])
+
+
+    # Apple rejected the upload: a distinct exit code, so tg testflight can say a new build is needed.
+    def test_failed_processing_exits_with_its_own_code(self):
+        for state in ("FAILED", "INVALID"):
+            server = FakeAppStoreConnect(["PROCESSING", state])
+            with self.assertRaises(SystemExit) as raised, contextlib.redirect_stderr(io.StringIO()) as err:
+                self.run_main(server)
+            self.assertEqual(raised.exception.code, tf_notes.EXIT_BUILD_REJECTED)
+            self.assertEqual(tf_notes.EXIT_BUILD_REJECTED, 4)
+            self.assertIn(state, err.getvalue())
+            self.assertEqual(self.notes_set(server), [])
+
+    # A 200 whose body is cut off or not JSON (a proxy's page) is a passing failure.
+    def test_a_garbled_answer_is_retried(self):
+        server = FakeAppStoreConnect(["VALID"])
+        server.fail("builds", FakeResponse(None, raw=b"<html>busy</html>"), FakeResponse(None, raw=b'{"data": ['))
+        self.run_main(server)
+        self.assertEqual(self.notes_set(server), ["Fixes."])
+
+    def test_a_timeout_reading_an_error_body_is_retried(self):
+        server = FakeAppStoreConnect(["VALID"])
+        server.fail("builds", http_error_with_unreadable_body(503))
+        server.fail("post", http_error_with_unreadable_body(500))
+        self.run_main(server)
+        self.assertEqual(self.notes_set(server), ["Fixes."])
 
 
 if __name__ == "__main__":

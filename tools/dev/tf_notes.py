@@ -8,7 +8,10 @@
 until App Store Connect has processed the upload, then sets the notes; without it the build must
 already be there. With --wait, rate limiting (HTTP 429), server errors and network failures or
 timeouts are retried with backoff (5 s doubling to 60 s, or the server's Retry-After) until the
-window ends; setting the notes gets at least 2 more minutes of retries once the build is ready. --dry-run prints the build and its current notes and changes nothing. --check
+window ends (a garbled answer or an error body that times out counts as a network failure);
+setting the notes gets at least 2 more minutes of retries once the build is ready. When App Store
+Connect rejects the build (processing ended FAILED or INVALID) it exits 4: no notes can be set,
+upload a new build. --dry-run prints the build and its current notes and changes nothing. --check
 only validates the notes file (non-empty, at most 4000 characters) and makes no network call;
 `tg testflight` runs it before building.
 
@@ -39,6 +42,8 @@ POLL_SECONDS = 60
 RETRY_FIRST_SECONDS = 5
 # Retries left for setting the notes when the build became ready at the very end of the window.
 SET_NOTES_MIN_RETRY_SECONDS = 120
+# Exit code when App Store Connect rejected the build: tg testflight then asks for a new upload.
+EXIT_BUILD_REJECTED = 4
 
 
 class ApiError(Exception):
@@ -93,9 +98,18 @@ def call(method, path, body=None):
     try:
         with urllib.request.urlopen(req, timeout=60) as resp:
             raw = resp.read()
+        try:
             return json.loads(raw) if raw else {}
+        except ValueError as e:
+            # Cut off, or not App Store Connect's (a proxy's page): like a lost answer.
+            raise ApiError(f"{what}: unreadable answer ({e}): {raw[:200]!r}")
     except urllib.error.HTTPError as e:
-        raise ApiError(f"{what}: HTTP {e.code}: {e.read().decode()[:400]}", e.code, retry_after_seconds(e.headers))
+        try:
+            body = e.read().decode(errors="replace")[:400]
+        except (OSError, http.client.HTTPException) as read_error:
+            # The error's body timed out or broke off: no answer to judge, so retry.
+            raise ApiError(f"{what}: HTTP {e.code}, body unreadable: {read_error or type(read_error).__name__}")
+        raise ApiError(f"{what}: HTTP {e.code}: {body}", e.code, retry_after_seconds(e.headers))
     except urllib.error.URLError as e:
         raise ApiError(f"{what}: {e.reason}")
     except (OSError, http.client.HTTPException) as e:
@@ -152,7 +166,9 @@ def wait_for_processed_build(platform, number, deadline, minutes):
         if state == "VALID":
             return build
         if state in ("FAILED", "INVALID"):
-            sys.exit(f"build {number} ({platform}) processing ended {state}; no notes set")
+            print(f"build {number} ({platform}) processing ended {state}: App Store Connect rejected it; no notes set",
+                  file=sys.stderr)
+            sys.exit(EXIT_BUILD_REJECTED)
         if time.monotonic() >= deadline:
             sys.exit(f"build {number} ({platform}) not processed after {minutes} min (last state {state})")
         time.sleep(POLL_SECONDS)

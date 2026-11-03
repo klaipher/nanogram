@@ -515,7 +515,7 @@ cmd_device() {
 # Every TestFlight build's dSYMs, one directory per CFBundleVersion. Outside the repository and
 # every cache, so `tg clean`/`tg prune`, Bazel's disk-cache GC and cache cleanups never delete them;
 # a crash report from a tester (MetricKit, Xcode Organizer) can only be symbolicated with them.
-# The newest TG_DSYM_KEEP builds (default 20) are kept.
+# The TG_DSYM_KEEP builds with the highest build numbers (default 20, at least 1) are kept.
 DSYM_ARCHIVE="${TG_DSYM_DIR:-$HOME/Library/Application Support/Nanogram/dsyms}"
 DSYM_KEEP="${TG_DSYM_KEEP:-20}"
 
@@ -543,18 +543,27 @@ ipa_binary_uuids() {
   done
 }
 
-# prune_dsym_archive — keep the newest $DSYM_KEEP builds in $DSYM_ARCHIVE. A build is a directory
-# with a uuids.txt; anything else there is left alone.
+# prune_dsym_archive <build just archived> — keep the $DSYM_KEEP builds with the highest build
+# numbers in $DSYM_ARCHIVE, and always <build just archived>. A build is a directory named by its
+# build number (digits and dots) with a uuids.txt; anything else there is left alone. Ranked by
+# build number, not mtime: an mtime moves whenever a folder is touched.
 prune_dsym_archive() {
-  local dir count=0
+  local current="$1" keep="$DSYM_KEEP" dir count=1
+  case "$keep" in
+    ""|*[!0-9]*) warn "TG_DSYM_KEEP='$keep' is not a number; keeping 20 builds"; keep=20 ;;
+  esac
+  [ "$keep" -ge 1 ] || keep=1
   while IFS= read -r dir; do
+    [ "$dir" != "$current" ] || continue
+    case "$dir" in ""|.*|*[!0-9.]*) continue ;; esac
     [ -f "$DSYM_ARCHIVE/$dir/uuids.txt" ] || continue
+    # The build just archived holds the first place.
     count=$((count + 1))
-    if [ "$count" -gt "$DSYM_KEEP" ]; then
+    if [ "$count" -gt "$keep" ]; then
       rm -rf "${DSYM_ARCHIVE:?}/$dir"
-      say "Removed the dSYMs of build $dir (keeping the newest $DSYM_KEEP)"
+      say "Removed the dSYMs of build $dir (keeping $keep builds)"
     fi
-  done < <(ls -1t "$DSYM_ARCHIVE")
+  done < <(ls -1 "$DSYM_ARCHIVE" | sort -t. -k1,1nr -k2,2nr -k3,3nr -k4,4nr)
 }
 
 # archive_dsyms <ipa> — zip the dSYMs built with <ipa> (Make.py's release_arm64 builds them next to
@@ -616,7 +625,7 @@ archive_dsyms() {
   dwarfdump --uuid "${dsyms[@]}" | sed "s|$outdir/||" > "$dest/uuids.txt"
   ARCHIVED_DSYM_DIR="$dest"
   say "dSYMs for build $version ($(size_of "$dest")): $dest"
-  prune_dsym_archive
+  prune_dsym_archive "$version"
 }
 
 # tg testflight --notes <file> [--export-only] — release build for the App Store with a new build
@@ -626,6 +635,8 @@ archive_dsyms() {
 # dSYMs, and set with tools/dev/tf_notes.py once App Store Connect has processed the build
 # (waiting at most TG_TF_NOTES_WAIT minutes, default 45). If only that step fails, tg prints
 # "UPLOADED; notes not set; run: <command>" and exits 3: the build is uploaded, run the command.
+# If App Store Connect rejects the build while processing it, tg prints "build rejected by Apple;
+# upload a new build" and exits 4.
 cmd_testflight() {
   local notes="" export_only=0 upload_args=()
   while [ $# -gt 0 ]; do
@@ -660,7 +671,14 @@ cmd_testflight() {
 
   local notes_command=(python3 "$ROOT/tools/dev/tf_notes.py" IOS "$build" "$notes")
   say "Setting What to Test notes for $build once App Store Connect has processed it"
-  if ! "${notes_command[@]}" --wait "${TG_TF_NOTES_WAIT:-45}"; then
+  local notes_exit=0
+  "${notes_command[@]}" --wait "${TG_TF_NOTES_WAIT:-45}" || notes_exit=$?
+  if [ $notes_exit -eq 4 ]; then
+    # tf_notes.py: App Store Connect rejected the build (processing FAILED or INVALID).
+    printf '\033[31mbuild rejected by Apple; upload a new build\033[0m (build %s, see App Store Connect)\n' "$build" >&2
+    exit 4
+  fi
+  if [ $notes_exit -ne 0 ]; then
     # Exit 3, distinct from a failed build or upload: the build IS on TestFlight, so running
     # tg testflight again would upload a second one. Only the notes command is left to run.
     printf '\033[33mUPLOADED; notes not set; run:\033[0m' >&2
@@ -767,7 +785,7 @@ Usage: tools/dev/tg <command> [options]
 Environment: TG_CACHE_DIR, TG_CONFIG, TG_CODESIGNING, TG_BUILD_NUMBER,
              TG_WATCH_SIM, TG_WATCH_CACHE_DIR,
              TG_DSYM_DIR (default: ~/Library/Application Support/Nanogram/dsyms),
-             TG_DSYM_KEEP (builds whose dSYMs are kept, default 20),
+             TG_DSYM_KEEP (builds whose dSYMs are kept, highest build numbers, default 20, min 1),
              TG_TF_NOTES_WAIT (minutes tg testflight waits for processing, default 45)
 EOF
 }
