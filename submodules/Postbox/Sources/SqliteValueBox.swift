@@ -339,6 +339,8 @@ public final class SqliteValueBox: ValueBox {
         return !self.isDisposable
     }
     private var database: Database!
+    /// The current connection's write counter (also the WAL hook's context); the idle checkpoint reports to it too.
+    private var walWriteAccounting: SqliteWalWriteAccounting?
 
     /// Removes the database together with its `-wal` and `-shm`, never `db_sqlite` alone.
     /// Another process may still hold the WAL/shm pair open; a connection created at this
@@ -741,13 +743,15 @@ public final class SqliteValueBox: ValueBox {
         // The hook also counts the connection's writes (DiskWriteAccounting). Its context lives as long as the
         // process: SQLite may call the hook until the connection closes, and a connection is opened a few times
         // per process at most.
-        let writeAccounting = Unmanaged.passRetained(SqliteWalWriteAccounting(databasePath: self.databasePath, handle: database.handle)).toOpaque()
+        let walWriteAccounting = SqliteWalWriteAccounting(databasePath: self.databasePath, handle: database.handle)
+        self.walWriteAccounting = walWriteAccounting
+        let writeAccounting = Unmanaged.passRetained(walWriteAccounting).toOpaque()
         sqlite3_wal_hook(database.handle, { context, handle, schema, frames in
             let writeAccounting = context.flatMap { Unmanaged<SqliteWalWriteAccounting>.fromOpaque($0).takeUnretainedValue() }
             writeAccounting?.committed(walFrames: frames)
             if frames >= SqliteValueBox.walAutocheckpointFrames {
-                let checkpointed = passiveWalCheckpoint(handle, schema: schema, idle: false)
-                writeAccounting?.checkpointed(frames: checkpointed)
+                let backfilled = passiveWalCheckpoint(handle, schema: schema, idle: false)
+                writeAccounting?.checkpointed(backfilledFrames: backfilled)
             }
             return SQLITE_OK
         }, writeAccounting)
@@ -901,7 +905,8 @@ public final class SqliteValueBox: ValueBox {
     
     public func checkpoint() {
         precondition(self.queue.isCurrent())
-        passiveWalCheckpoint(self.database.handle, schema: "main", idle: true)
+        let backfilled = passiveWalCheckpoint(self.database.handle, schema: "main", idle: true)
+        self.walWriteAccounting?.checkpointed(backfilledFrames: backfilled)
     }
     
     @discardableResult
