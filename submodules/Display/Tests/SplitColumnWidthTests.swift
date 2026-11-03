@@ -218,4 +218,36 @@ final class SplitColumnWidthTests: XCTestCase {
         XCTAssertNil(store.preferredWidth(for: .landscape))
         XCTAssertNil(store.preferredWidth(for: .portrait))
     }
+
+    // MARK: Live drag (one layout per frame)
+
+    /// Three pan events in one frame: one layout, at the last width.
+    func test_liveDrag_coalescesEventsInAFrame() {
+        var drag = SplitColumnLiveDrag(startWidth: 458.0)
+        drag.update(width: 460.0)
+        drag.update(width: 463.0)
+        drag.update(width: 467.0)
+        XCTAssertEqual(drag.takeChange(), 467.0)
+        XCTAssertNil(drag.takeChange())
+        XCTAssertEqual(drag.appliedWidth, 467.0)
+    }
+
+    /// A frame with no event, or with the width already on screen, lays nothing out.
+    func test_liveDrag_noChange_noLayout() {
+        var drag = SplitColumnLiveDrag(startWidth: 458.0)
+        XCTAssertNil(drag.takeChange())
+        drag.update(width: 458.0)
+        XCTAssertNil(drag.takeChange())
+        drag.update(width: 470.0)
+        drag.update(width: 458.0)
+        XCTAssertNil(drag.takeChange())
+    }
+
+    func test_liveDrag_nextFrame() {
+        var drag = SplitColumnLiveDrag(startWidth: 458.0)
+        drag.update(width: 470.0)
+        XCTAssertEqual(drag.takeChange(), 470.0)
+        drag.update(width: 480.0)
+        XCTAssertEqual(drag.takeChange(), 480.0)
+    }
 }

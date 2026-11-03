@@ -188,3 +188,35 @@ public final class SplitColumnWidthStore {
         self.persist()
     }
 }
+
+/// The live width of a drag, applied at most once per display frame. Pan events can outnumber the frames the
+/// layout keeps up with (120 Hz on ProMotion), and each applied width lays out both columns: the chat list's
+/// rows and the chat's bubbles are measured again. The divider records every width (`update`) and a 60 fps
+/// display link takes the latest one (`takeChange`), so several events in a frame cost one layout, and a width
+/// equal to the one on screen costs none.
+public struct SplitColumnLiveDrag: Equatable {
+    public private(set) var appliedWidth: CGFloat
+    public private(set) var pendingWidth: CGFloat?
+
+    public init(startWidth: CGFloat) {
+        self.appliedWidth = startWidth
+        self.pendingWidth = nil
+    }
+
+    public mutating func update(width: CGFloat) {
+        self.pendingWidth = width
+    }
+
+    /// The width to lay out now, or nil when the screen already shows the latest one.
+    public mutating func takeChange() -> CGFloat? {
+        guard let pendingWidth = self.pendingWidth else {
+            return nil
+        }
+        self.pendingWidth = nil
+        if pendingWidth == self.appliedWidth {
+            return nil
+        }
+        self.appliedWidth = pendingWidth
+        return pendingWidth
+    }
+}

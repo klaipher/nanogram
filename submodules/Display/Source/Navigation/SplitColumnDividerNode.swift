@@ -6,7 +6,7 @@ import AsyncDisplayKit
 ///
 /// A transparent strip over the 1px separator line (`NavigationSplitContainer.separator`), 12pt into the list
 /// and 4pt into the chat, so it stays clear of the list's trailing buttons and the chat's close button. Dragging
-/// it resizes the list live (one navigation layout per pan event, `SplitColumnWidth.dragged`), with a selection
+/// it resizes the list live (at most one navigation layout per frame at 60 fps, `SplitColumnLiveDrag`), with a selection
 /// tick when it lands on a snap point; releasing writes the width for the window's shape
 /// (`SplitColumnWidthStore`), a double tap forgets it. A grabber appears while the strip is touched, dragged or
 /// under the pointer, which also turns into a ↔ arrow. VoiceOver sees an adjustable "Chat list width" element.
@@ -66,6 +66,9 @@ final class SplitColumnDividerView: UIView, UIPointerInteractionDelegate {
     /// The shape the drag started in: a rotation mid-drag must not leave a live width behind for it.
     private var dragShape: SplitColumnShape = .landscape
     private var lastSnapTarget: CGFloat?
+    /// The drag's latest width, laid out by `liveLayoutLink` at most once per frame.
+    private var liveDrag: SplitColumnLiveDrag?
+    private var liveLayoutLink: SharedDisplayLinkDriver.Link?
     private var isHovering = false
     private var isTouching = false
 
@@ -118,6 +121,7 @@ final class SplitColumnDividerView: UIView, UIPointerInteractionDelegate {
             if !isEnabled, self.dragStartWidth != nil {
                 // The window became too narrow (or compact) mid-drag: drop the drag, keep the stored width.
                 self.dragStartWidth = nil
+                self.stopLiveLayout()
                 self.store.cancelLive(for: self.dragShape)
             }
         }
@@ -209,6 +213,11 @@ final class SplitColumnDividerView: UIView, UIPointerInteractionDelegate {
             self.dragShape = self.shape
             self.dragStartWidth = self.masterWidth
             self.lastSnapTarget = nil
+            self.liveDrag = SplitColumnLiveDrag(startWidth: self.masterWidth)
+            self.liveLayoutLink?.invalidate()
+            self.liveLayoutLink = SharedDisplayLinkDriver.shared.add(framesPerSecond: .fps(60), { [weak self] _ in
+                self?.applyLiveWidth()
+            })
             self.hapticFeedback.prepareTap()
             self.updateGrabberVisibility(animated: true)
         case .changed:
@@ -222,12 +231,12 @@ final class SplitColumnDividerView: UIView, UIPointerInteractionDelegate {
                 self.hapticFeedback.tap()
             }
             self.lastSnapTarget = result.target
-            if result.width != self.masterWidth {
-                self.store.setLive(result.width, for: self.dragShape)
-                self.requestNavigationLayout(.immediate)
-            }
+            self.liveDrag?.update(width: result.width)
         case .ended:
             if self.dragStartWidth != nil {
+                // The last event's width, if no frame has shown it yet.
+                self.applyLiveWidth()
+                self.stopLiveLayout()
                 self.dragStartWidth = nil
                 if let width = self.store.liveWidth(for: self.dragShape) {
                     self.store.commit(width, for: self.dragShape)
@@ -236,6 +245,7 @@ final class SplitColumnDividerView: UIView, UIPointerInteractionDelegate {
             self.updateGrabberVisibility(animated: true)
         case .cancelled, .failed:
             if self.dragStartWidth != nil {
+                self.stopLiveLayout()
                 self.dragStartWidth = nil
                 self.store.cancelLive(for: self.dragShape)
                 self.requestNavigationLayout(.animated(duration: 0.3, curve: .spring))
@@ -244,6 +254,21 @@ final class SplitColumnDividerView: UIView, UIPointerInteractionDelegate {
         default:
             break
         }
+    }
+
+    /// One frame of a drag: lays out the latest width, if it is not on screen yet.
+    private func applyLiveWidth() {
+        guard self.dragStartWidth != nil, self.shape == self.dragShape, let width = self.liveDrag?.takeChange() else {
+            return
+        }
+        self.store.setLive(width, for: self.dragShape)
+        self.requestNavigationLayout(.immediate)
+    }
+
+    private func stopLiveLayout() {
+        self.liveLayoutLink?.invalidate()
+        self.liveLayoutLink = nil
+        self.liveDrag = nil
     }
 
     @objc private func doubleTapGesture(_ recognizer: UITapGestureRecognizer) {
