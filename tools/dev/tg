@@ -487,31 +487,97 @@ cmd_device() {
 # Every TestFlight build's dSYMs, one directory per CFBundleVersion. Outside the repository and
 # every cache, so `tg clean`/`tg prune`, Bazel's disk-cache GC and cache cleanups never delete them;
 # a crash report from a tester (MetricKit, Xcode Organizer) can only be symbolicated with them.
+# The newest TG_DSYM_KEEP builds (default 20) are kept.
 DSYM_ARCHIVE="${TG_DSYM_DIR:-$HOME/Library/Application Support/Nanogram/dsyms}"
+DSYM_KEEP="${TG_DSYM_KEEP:-20}"
+
+# ipa_binary_uuids <ipa> <work dir> — "<path in ipa> <UUID>" for every slice of every bundle
+# executable in <ipa> (the app, its extensions, frameworks and watch app), extracting only the
+# Info.plists and executables into <work dir>.
+ipa_binary_uuids() {
+  local ipa="$1" work="$2" entries plist executable
+  local plists=() executables=()
+  entries="$(unzip -Z1 "$ipa")"
+  while IFS= read -r plist; do
+    plists+=("$plist")
+  done < <(echo "$entries" | grep -E '^Payload/(.*/)?[^/]+\.(app|appex|framework)/Info\.plist$' || true)
+  [ ${#plists[@]} -gt 0 ] || die "no bundles in $ipa"
+  unzip -qo "$ipa" "${plists[@]}" -d "$work"
+  for plist in "${plists[@]}"; do
+    executable="${plist%/Info.plist}/$(plutil -extract CFBundleExecutable raw -o - "$work/$plist" 2>/dev/null)" || continue
+    # A static framework embedded as a stub has an Info.plist and no executable.
+    if echo "$entries" | grep -Fxq "$executable"; then executables+=("$executable"); fi
+  done
+  [ ${#executables[@]} -gt 0 ] || die "no executables in $ipa"
+  unzip -qo "$ipa" "${executables[@]}" -d "$work"
+  for executable in "${executables[@]}"; do
+    dwarfdump --uuid "$work/$executable" | awk -v path="$executable" '{ print path, $2 }'
+  done
+}
+
+# prune_dsym_archive — keep the newest $DSYM_KEEP builds in $DSYM_ARCHIVE. A build is a directory
+# with a uuids.txt; anything else there is left alone.
+prune_dsym_archive() {
+  local dir count=0
+  while IFS= read -r dir; do
+    [ -f "$DSYM_ARCHIVE/$dir/uuids.txt" ] || continue
+    count=$((count + 1))
+    if [ "$count" -gt "$DSYM_KEEP" ]; then
+      rm -rf "${DSYM_ARCHIVE:?}/$dir"
+      say "Removed the dSYMs of build $dir (keeping the newest $DSYM_KEEP)"
+    fi
+  done < <(ls -1t "$DSYM_ARCHIVE")
+}
 
 # archive_dsyms <ipa> — zip the dSYMs built with <ipa> (Make.py's release_arm64 builds them next to
 # it: --apple_generate_dsym --output_groups=+dsyms) into $DSYM_ARCHIVE/<CFBundleVersion>/, one
-# <name>.dSYM.zip each plus uuids.txt, and set ARCHIVED_DSYM_DIR. Fails when the app's dSYM does not
-# match the app in <ipa>, so a build is never uploaded without symbols we can use.
+# <name>.dSYM.zip each plus uuids.txt, and set ARCHIVED_DSYM_DIR. Only dSYMs whose UUIDs belong to a
+# binary in <ipa> are archived: bazel-bin keeps dSYMs of earlier builds (an extension since removed,
+# another configuration). The folder is emptied first, so a rebuilt build number holds this build's
+# alone. Fails when the app's dSYM does not match the app in <ipa>, so a build is never uploaded
+# without symbols we can use.
 archive_dsyms() {
-  local ipa="$1" outdir work version app_uuids dsym_uuids dest dsym name
+  local ipa="$1" outdir binaries version app_uuids dsym_uuids dest dsym name uuid matched
   outdir="$(cd -P "$(dirname "$ipa")" && pwd)"
-  local dsyms=()
-  for dsym in "$outdir"/*.dSYM; do [ -d "$dsym" ] && dsyms+=("$dsym"); done
-  [ ${#dsyms[@]} -gt 0 ] || die "no dSYMs next to $ipa"
+  local candidates=() dsyms=()
+  for dsym in "$outdir"/*.dSYM; do [ -d "$dsym" ] && candidates+=("$dsym"); done
+  [ ${#candidates[@]} -gt 0 ] || die "no dSYMs next to $ipa"
   [ -d "$outdir/Telegram.app.dSYM" ] || die "no Telegram.app.dSYM next to $ipa"
 
-  work="$(mktemp -d)"
-  unzip -q "$ipa" Payload/Telegram.app/Info.plist Payload/Telegram.app/Telegram -d "$work"
-  version="$(plutil -extract CFBundleVersion raw -o - "$work/Payload/Telegram.app/Info.plist")"
-  app_uuids="$(dwarfdump --uuid "$work/Payload/Telegram.app/Telegram" | awk '{ print $2 }' | sort | xargs)"
-  rm -rf "$work"
+  # In a subshell, so its EXIT trap removes the extracted files whatever happens.
+  binaries="$(
+    set -e
+    work="$(mktemp -d)"
+    trap 'rm -rf "$work"' EXIT
+    unzip -qo "$ipa" Payload/Telegram.app/Info.plist -d "$work"
+    echo "version $(plutil -extract CFBundleVersion raw -o - "$work/Payload/Telegram.app/Info.plist")"
+    ipa_binary_uuids "$ipa" "$work"
+  )" || die "cannot read the binaries in $ipa"
+  version="$(echo "$binaries" | awk '$1 == "version" { print $2 }')"
+  case "$version" in
+    ""|.*|*[!0-9.]*) die "no usable CFBundleVersion in $ipa: '$version'" ;;
+  esac
+  app_uuids="$(echo "$binaries" | awk '$1 == "Payload/Telegram.app/Telegram" { print $2 }' | sort | xargs)"
   dsym_uuids="$(dwarfdump --uuid "$outdir/Telegram.app.dSYM" | awk '{ print $2 }' | sort | xargs)"
-  [ -n "$version" ] || die "no CFBundleVersion in $ipa"
-  [ "$app_uuids" = "$dsym_uuids" ] \
+  [ -n "$app_uuids" ] && [ "$app_uuids" = "$dsym_uuids" ] \
     || die "Telegram.app.dSYM ($dsym_uuids) does not belong to the app in $ipa ($app_uuids)"
 
+  for dsym in "${candidates[@]}"; do
+    matched=0
+    for uuid in $(dwarfdump --uuid "$dsym" | awk '{ print $2 }'); do
+      if echo "$binaries" | awk -v uuid="$uuid" '$1 != "version" && $2 == uuid { found = 1 } END { exit !found }'; then
+        matched=1
+      fi
+    done
+    if [ $matched -eq 1 ]; then
+      dsyms+=("$dsym")
+    else
+      warn "not archiving $(basename "$dsym"): no binary in $ipa has its UUID (left from an earlier build)"
+    fi
+  done
+
   dest="$DSYM_ARCHIVE/$version"
+  rm -rf "$dest"
   mkdir -p "$dest"
   for dsym in "${dsyms[@]}"; do
     name="$(basename "$dsym")"
@@ -522,6 +588,7 @@ archive_dsyms() {
   dwarfdump --uuid "${dsyms[@]}" | sed "s|$outdir/||" > "$dest/uuids.txt"
   ARCHIVED_DSYM_DIR="$dest"
   say "dSYMs for build $version ($(size_of "$dest")): $dest"
+  prune_dsym_archive
 }
 
 # tg testflight --notes <file> [--export-only] — release build for the App Store with a new build
@@ -650,7 +717,7 @@ Usage: tools/dev/tg <command> [options]
                         Release build uploaded to TestFlight (new build number) with <file>
                         as its What to Test notes, set once Apple has processed it (no notes
                         needed with --export-only); keeps its dSYMs zipped in
-                        $TG_DSYM_DIR/<build number>/. Exit 3: uploaded, but the notes
+                        $TG_DSYM_DIR/<build number>/ (newest 20). Exit 3: uploaded, but the notes
                         are not set; run the command it prints, not testflight again
   project [--full]      Generate and open the Xcode project (simulator, no extensions)
   test [label]          Run tests (default: Tests/AllTests)
@@ -672,6 +739,7 @@ Usage: tools/dev/tg <command> [options]
 Environment: TG_CACHE_DIR, TG_CONFIG, TG_CODESIGNING, TG_BUILD_NUMBER,
              TG_WATCH_SIM, TG_WATCH_CACHE_DIR,
              TG_DSYM_DIR (default: ~/Library/Application Support/Nanogram/dsyms),
+             TG_DSYM_KEEP (builds whose dSYMs are kept, default 20),
              TG_TF_NOTES_WAIT (minutes tg testflight waits for processing, default 45)
 EOF
 }

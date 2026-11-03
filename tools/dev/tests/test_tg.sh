@@ -63,9 +63,111 @@ test_success() {
   check "upload then notes" [ "$(tr '\n' ' ' < "$TMP/calls")" = "upload notes " ]
 }
 
+# make_binary <path> <exit code>: a small Mach-O with its own UUID, and its dSYM at <path>.dSYM.
+make_binary() {
+  mkdir -p "$(dirname "$1")"
+  printf 'int main(void) { return %s; }\n' "$2" > "$1.c"
+  clang -g -o "$1" "$1.c" && dsymutil "$1" -o "$1.dSYM" && rm -f "$1.c"
+}
+
+# make_build <dir>: <dir>/Telegram.ipa (an app, an extension, a framework and a framework stub
+# without its executable, build 202611031200)
+# with the dSYMs Make.py leaves next to it, plus one from another build (Stale.appex.dSYM).
+make_build() {
+  local dir="$1" bin="$1/bin" app="$1/Payload/Telegram.app"
+  mkdir -p "$app/PlugIns/Share.appex" "$app/Frameworks/TelegramUIFramework.framework"
+  make_binary "$bin/Telegram" 1 && make_binary "$bin/Share" 2 && make_binary "$bin/TelegramUIFramework" 3 \
+    && make_binary "$bin/Stale" 4 || return 1
+  cp "$bin/Telegram" "$app/Telegram"
+  cp "$bin/Share" "$app/PlugIns/Share.appex/Share"
+  cp "$bin/TelegramUIFramework" "$app/Frameworks/TelegramUIFramework.framework/TelegramUIFramework"
+  plutil -create xml1 "$app/Info.plist"
+  plutil -insert CFBundleExecutable -string Telegram "$app/Info.plist"
+  plutil -insert CFBundleVersion -string 202611031200 "$app/Info.plist"
+  plutil -create xml1 "$app/PlugIns/Share.appex/Info.plist"
+  plutil -insert CFBundleExecutable -string Share "$app/PlugIns/Share.appex/Info.plist"
+  plutil -create xml1 "$app/Frameworks/TelegramUIFramework.framework/Info.plist"
+  plutil -insert CFBundleExecutable -string TelegramUIFramework "$app/Frameworks/TelegramUIFramework.framework/Info.plist"
+  # A static framework's stub (the watch app's TDLibFramework): an Info.plist, no executable.
+  mkdir -p "$app/Watch/Watch.app/Frameworks/TDLibFramework.framework"
+  plutil -create xml1 "$app/Watch/Watch.app/Frameworks/TDLibFramework.framework/Info.plist"
+  plutil -insert CFBundleExecutable -string TDLibFramework "$app/Watch/Watch.app/Frameworks/TDLibFramework.framework/Info.plist"
+  (cd "$dir" && zip -qr Telegram.ipa Payload) || return 1
+  mv "$bin/Telegram.dSYM" "$dir/Telegram.app.dSYM"
+  mv "$bin/Share.dSYM" "$dir/Share.appex.dSYM"
+  mv "$bin/TelegramUIFramework.dSYM" "$dir/TelegramUIFramework.framework.dSYM"
+  mv "$bin/Stale.dSYM" "$dir/Stale.appex.dSYM"
+}
+
+# run_archive_dsyms <build dir>: archive_dsyms on its ipa into $TMP/archive, with mktemp under
+# $TMP/tmpdir. Sets STATUS; output in $TMP/out, $TMP/err.
+run_archive_dsyms() {
+  mkdir -p "$TMP/tmpdir"
+  (
+    export TG_DSYM_DIR="$TMP/archive" TMPDIR="$TMP/tmpdir"
+    # shellcheck source=../tg
+    source "$TG"
+    archive_dsyms "$1/Telegram.ipa"
+  ) > "$TMP/out" 2> "$TMP/err"
+  STATUS=$?
+}
+
+archived() { [ -f "$TMP/archive/202611031200/$1.zip" ]; }
+not_archived() { [ ! -e "$TMP/archive/202611031200/$1.zip" ]; }
+tmpdir_empty() { [ -z "$(ls -A "$TMP/tmpdir")" ]; }
+
+test_archive_dsyms() {
+  local build="$TMP/build"
+  if ! make_build "$build" > "$TMP/fixture.log" 2>&1; then
+    echo "FAIL - building the fixture (clang, dsymutil): $(cat "$TMP/fixture.log")"
+    failures=$((failures + 1))
+    return
+  fi
+
+  # An earlier attempt at the same build number left a dSYM this build does not have.
+  mkdir -p "$TMP/archive/202611031200"
+  echo stale > "$TMP/archive/202611031200/Leftover.appex.dSYM.zip"
+  # 25 older builds, oldest first, and a directory that is not a build.
+  local i
+  for i in $(seq 10 34); do
+    mkdir -p "$TMP/archive/2026100100$i"
+    echo uuids > "$TMP/archive/2026100100$i/uuids.txt"
+    touch -t "2026100100$i" "$TMP/archive/2026100100$i"
+  done
+  mkdir -p "$TMP/archive/not-a-build"
+  touch -t 202601010000 "$TMP/archive/not-a-build"
+
+  run_archive_dsyms "$build"
+  check "archive_dsyms succeeds" [ "$STATUS" -eq 0 ]
+  check "the app's dSYM is archived" archived Telegram.app.dSYM
+  check "the extension's dSYM is archived" archived Share.appex.dSYM
+  check "the framework's dSYM is archived" archived TelegramUIFramework.framework.dSYM
+  check "a dSYM of no binary in the ipa is not archived" not_archived Stale.appex.dSYM
+  check "uuids.txt lists only this build's dSYMs" [ "$(grep -c . "$TMP/archive/202611031200/uuids.txt")" -eq 3 ]
+  check "uuids.txt does not list the stale dSYM" not grep -q Stale "$TMP/archive/202611031200/uuids.txt"
+  check "the build's folder is cleared first" not_archived Leftover.appex.dSYM
+  check "the temporary directory is removed" tmpdir_empty
+  local builds
+  builds="$(cd "$TMP/archive" && ls -d 2*/ | wc -l | tr -d ' ')"
+  check "only the newest 20 builds are kept (found $builds)" [ "$builds" -eq 20 ]
+  check "this build is kept" [ -d "$TMP/archive/202611031200" ]
+  check "the oldest builds are removed" [ ! -e "$TMP/archive/202610010010" ]
+  check "the newest older build is kept" [ -d "$TMP/archive/202610010034" ]
+  check "a directory that is not a build is kept" [ -d "$TMP/archive/not-a-build" ]
+
+  # The app's dSYM from another build: refuse, and still clean up.
+  rm -rf "$build/Telegram.app.dSYM"; cp -R "$build/Stale.appex.dSYM" "$build/Telegram.app.dSYM"
+  run_archive_dsyms "$build"
+  check "an app dSYM of another build fails" [ "$STATUS" -ne 0 ]
+  check "the temporary directory is removed after a failure" tmpdir_empty
+}
+
+not() { ! "$@"; }
+
 test_notes_failure_after_upload
 test_upload_failure
 test_success
+test_archive_dsyms
 
 if [ "$failures" -ne 0 ]; then
   echo "$failures failed"
