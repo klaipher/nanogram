@@ -469,7 +469,8 @@ public final class InlineStickerItemLayer: MultiAnimationRenderTarget {
         }
     }
     
-    private func setPlaceholderContents(_ image: CGImage?) {
+    /// Shows the sticker's silhouette placeholder, which does not count as content. Internal for tests.
+    func setPlaceholderContents(_ image: CGImage?) {
         self.isSettingPlaceholderContents = true
         self.contents = image
         self.isSettingPlaceholderContents = false

@@ -42,6 +42,8 @@ swift_library(
     ]),
     deps = [
         ":ReactionButtonListComponent",
+        "//submodules/TelegramUI/Components/EmojiTextAttachmentView:EmojiTextAttachmentView",
+        "//submodules/TelegramUI/Components/MultiAnimationRenderer:MultiAnimationRenderer",
     ],
 )
 
