@@ -2671,7 +2671,7 @@ public final class ReactionContextNode: ASDisplayNode, ASScrollViewDelegate {
             return
         }
         
-        let switchToInlineImmediately: Bool
+        var switchToInlineImmediately: Bool
         if itemNode.item.listAnimation.isVideoEmoji || itemNode.item.listAnimation.isVideoSticker || itemNode.item.listAnimation.isAnimatedSticker || itemNode.item.listAnimation.isStaticEmoji {
             switch itemNode.item.reaction.rawValue {
             case .builtin:
@@ -2761,6 +2761,23 @@ public final class ReactionContextNode: ASDisplayNode, ASScrollViewDelegate {
                 }
             }
         }
+        
+        let effectAvailability: ReactionEffectAvailability
+        if let additionalAnimation {
+            let effectResource = additionalAnimation._parse().resource
+            if self.context.engine.resources.completedResourcePath(id: EngineMediaResource.Id(effectResource.id)) != nil {
+                effectAvailability = .local
+            } else {
+                effectAvailability = .notLocal
+                Logger.shared.log("ReactionContextNode", "reaction effect not downloaded at selection (\(self.didTriggerExpandedReaction ? "large" : "small")), handing over at once")
+            }
+        } else if itemNode.item.isCustom {
+            // The generic effect is bundled, or a downloaded file read by path.
+            effectAvailability = .local
+        } else {
+            effectAvailability = .none
+        }
+        switchToInlineImmediately = reactionSwitchesToInlineImmediately(base: switchToInlineImmediately, isExpanded: self.didTriggerExpandedReaction, effect: effectAvailability)
         
         if let additionalAnimation = additionalAnimation {
             let additionalAnimationNodeValue = DefaultAnimatedStickerNodeImpl(rendererMode: .reactions, lottieSettings: self.context.lottieRenderingSettings)
