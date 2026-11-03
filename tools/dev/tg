@@ -14,6 +14,15 @@ CONFIG="${TG_CONFIG:-$ROOT/build-system/dev-configuration.json}"
 CODESIGNING="${TG_CODESIGNING:-$ROOT/build-system/fake-codesigning}"
 UPSTREAM_URL="https://github.com/TelegramMessenger/Telegram-iOS.git"
 
+# Device builds keep every output in bazel-out instead of only the top-level ones
+# (Bazel's default --remote_download_outputs=toplevel also applies to the disk cache).
+# With toplevel, a disk-cache hit leaves e.g. libPostbox.a only as a digest in the
+# output base; device builds are rare, so the disk-cache GC (.bazelrc, 40G) evicts
+# that blob during simulator work, and the next device build fails to link with
+# "Failed to fetch blobs ... Missing digest" (exit REMOTE_CACHE_EVICTED) instead of
+# rebuilding it. Simulator builds keep the default.
+DEVICE_DOWNLOAD_OUTPUTS="--remote_download_outputs=all"
+
 bazel_version() { python3 -c 'import json;print(json.load(open("versions.json"))["bazel"].split(":")[0])'; }
 xcode_version() { python3 -c 'import json;print(json.load(open("versions.json"))["xcode"])'; }
 bazel_bin() { echo "$ROOT/build-input/bazel-$(bazel_version)-darwin-$(uname -m)"; }
@@ -139,6 +148,7 @@ cmd_build() {
   # The app extensions (Share, Notification Service/Content, Intents, Widget)
   # are separate binaries that most UI work never touches.
   if [ $full -eq 0 ]; then bazel_args+=("--//Telegram:disableExtensions"); fi
+  if [ $device -eq 1 ]; then bazel_args+=("$DEVICE_DOWNLOAD_OUTPUTS"); fi
   if [ $device -eq 1 ] && security show-keychain-info "$FAKE_KEYCHAIN" >/dev/null 2>&1; then
     security unlock-keychain -p "" "$FAKE_KEYCHAIN" 2>/dev/null || true
   fi
@@ -427,15 +437,16 @@ cmd_device() {
   done
   [ -f "$config" ] || die "no device configuration at $config"
 
-  local signing_args=() make_args=()
+  local signing_args=() bazel_args=("$DEVICE_DOWNLOAD_OUTPUTS")
   if ls "$signing/profiles/"*.mobileprovision >/dev/null 2>&1; then
     signing_args=(--codesigningInformationPath="$signing")
   else
     warn "no profiles in $signing/profiles (run: python3 tools/dev/device_signing.py profiles)"
     warn "using free Xcode signing: no push notifications, no app extensions"
     signing_args=(--xcodeManagedCodesigning)
-    make_args=("--bazelArguments=--//Telegram:disableExtensions")
+    bazel_args+=("--//Telegram:disableExtensions")
   fi
+  local make_args=("--bazelArguments=${bazel_args[*]}")
   local watch_args=()
   if [ $watch -eq 1 ]; then
     # The embedded Apple Watch app (Telegram/WatchApp) uses the same api_id as the phone app.
