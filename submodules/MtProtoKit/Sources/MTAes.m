@@ -227,6 +227,7 @@ bool MyAesCbcDecrypt(const void *inBytes, int length, void *outBytes, const void
     return true;
 }
 
+// 128-bit big-endian counter, as in OpenSSL's CRYPTO_ctr128_encrypt.
 static void ctr128_inc(unsigned char *counter)
 {
     uint32_t n = 16, c = 1;
@@ -239,38 +240,44 @@ static void ctr128_inc(unsigned char *counter)
     } while (n);
 }
 
-static void ctr128_inc_aligned(unsigned char *counter)
+static uint64_t ctr128_low64(const unsigned char *counter)
 {
-    size_t *data, c, d, n;
-    const union {
-        long one;
-        char little;
-    } is_endian = {
-        1
-    };
-    
-    if (is_endian.little || ((size_t)counter % sizeof(size_t)) != 0) {
-        ctr128_inc(counter);
-        return;
+    uint64_t value = 0;
+    for (int i = 8; i < 16; i++) {
+        value = (value << 8) | counter[i];
     }
-    
-    data = (size_t *)counter;
-    c = 1;
-    n = 16 / sizeof(size_t);
-    do {
-        --n;
-        d = data[n] += c;
-        /* did addition carry? */
-        c = ((d - c) ^ d) >> (sizeof(size_t) * 8 - 1);
-    } while (n);
+    return value;
 }
 
+static void ctr128_add(unsigned char *counter, uint64_t blocks)
+{
+    uint64_t low = ctr128_low64(counter);
+    uint64_t sum = low + blocks;
+    for (int i = 15; i >= 8; i--) {
+        counter[i] = (uint8_t)sum;
+        sum >>= 8;
+    }
+    if (low + blocks < low) {
+        for (int i = 7; i >= 0; i--) {
+            counter[i]++;
+            if (counter[i] != 0) {
+                break;
+            }
+        }
+    }
+}
 
 @interface MTAesCtr () {
+    // ECB, for the rare stream that crosses a 2^64-block counter boundary.
     CCCryptorRef _cryptor;
+    // Native CTR. CommonCrypto's counter is only 64 bits wide (it wraps
+    // without a carry), so it is dropped at that boundary.
+    CCCryptorRef _ctrCryptor;
     
+    // Counter of the next keystream block; the CTR cryptor is always at it.
     unsigned char _ivec[16] __attribute__((aligned(16)));
     unsigned int _num;
+    // Keystream of the current block; valid while _num != 0.
     unsigned char _ecount[16] __attribute__((aligned(16)));
 }
 
@@ -295,7 +302,7 @@ static void ctr128_inc_aligned(unsigned char *counter)
 - (instancetype)initWithKey:(const void *)key keyLength:(int)keyLength iv:(const void *)iv ecount:(void *)ecount num:(uint32_t)num {
     self = [super init];
     if (self != nil) {
-        _num = num;
+        _num = num % 16;
         memcpy(_ecount, ecount, 16);
         memcpy(_ivec, iv, 16);
         
@@ -306,8 +313,8 @@ static void ctr128_inc_aligned(unsigned char *counter)
     return self;
 }
 
-// Without a cryptor _ecount would stay all-zero and encryptIn:out:len: would
-// copy its input through unchanged, so a failed create must fail the init.
+// Without a cryptor the keystream would be all zeros and encryptIn:out:len:
+// would copy its input through unchanged, so a failed create must fail the init.
 - (bool)createCryptorWithKey:(const void *)key keyLength:(int)keyLength {
     CCCryptorStatus status = CCCryptorCreate(kCCEncrypt, kCCAlgorithmAES128, kCCOptionECBMode, key, keyLength, nil, &_cryptor);
     if (status != kCCSuccess || _cryptor == NULL) {
@@ -315,15 +322,10 @@ static void ctr128_inc_aligned(unsigned char *counter)
         _cryptor = NULL;
         return false;
     }
-    return true;
-}
-
-// Advances the keystream by one block into _ecount.
-- (bool)nextKeystreamBlock {
-    size_t dataOutMoved = 0;
-    CCCryptorStatus status = CCCryptorUpdate(_cryptor, _ivec, 16, _ecount, 16, &dataOutMoved);
-    if (status != kCCSuccess || dataOutMoved != 16) {
-        MTAesLogFailure("MTAesCtr (update)", (int)status);
+    status = CCCryptorCreateWithMode(kCCEncrypt, kCCModeCTR, kCCAlgorithmAES, ccNoPadding, _ivec, key, keyLength, NULL, 0, 0, kCCModeOptionCTR_BE, &_ctrCryptor);
+    if (status != kCCSuccess || _ctrCryptor == NULL) {
+        MTAesLogFailure("MTAesCtr (create ctr)", (int)status);
+        _ctrCryptor = NULL;
         return false;
     }
     return true;
@@ -332,6 +334,9 @@ static void ctr128_inc_aligned(unsigned char *counter)
 - (void)dealloc {
     if (_cryptor) {
         CCCryptorRelease(_cryptor);
+    }
+    if (_ctrCryptor) {
+        CCCryptorRelease(_ctrCryptor);
     }
 }
 
@@ -347,75 +352,93 @@ static void ctr128_inc_aligned(unsigned char *counter)
     memcpy(iv, _ivec, 16);
 }
 
+// XORs `blocks` whole keystream blocks into in -> out and advances _ivec.
+- (bool)xorBlocksIn:(const unsigned char *)in out:(unsigned char *)out blocks:(size_t)blocks {
+    while (blocks != 0) {
+        if (_ctrCryptor != NULL) {
+            // Blocks left before the low 64 bits wrap; 0 stands for 2^64.
+            uint64_t untilWrap = 0 - ctr128_low64(_ivec);
+            size_t chunk = blocks;
+            bool reachesWrap = false;
+            if (untilWrap != 0 && (uint64_t)chunk >= untilWrap) {
+                chunk = (size_t)untilWrap;
+                reachesWrap = true;
+            }
+            size_t bytes = chunk * 16;
+            size_t moved = 0;
+            CCCryptorStatus status = CCCryptorUpdate(_ctrCryptor, in, bytes, out, bytes, &moved);
+            if (status != kCCSuccess || moved != bytes) {
+                MTAesLogFailure("MTAesCtr (update)", (int)status);
+                return false;
+            }
+            ctr128_add(_ivec, chunk);
+            if (reachesWrap) {
+                CCCryptorRelease(_ctrCryptor);
+                _ctrCryptor = NULL;
+            }
+            in += bytes;
+            out += bytes;
+            blocks -= chunk;
+        } else {
+            unsigned char keystream[16];
+            size_t moved = 0;
+            CCCryptorStatus status = CCCryptorUpdate(_cryptor, _ivec, 16, keystream, 16, &moved);
+            if (status != kCCSuccess || moved != 16) {
+                MTAesLogFailure("MTAesCtr (update)", (int)status);
+                return false;
+            }
+            ctr128_inc(_ivec);
+            for (int i = 0; i < 16; i++) {
+                out[i] = in[i] ^ keystream[i];
+            }
+            in += 16;
+            out += 16;
+            blocks -= 1;
+        }
+    }
+    return true;
+}
+
 // On a keystream failure the not-yet-processed output is zeroed and false is
 // returned; the input is never copied through.
 - (bool)encryptIn:(const unsigned char *)in out:(unsigned char *)out len:(size_t)len {
-    unsigned int n;
-    size_t l = 0;
-    
     assert(in);
     assert(out);
     assert(_num < 16);
     
-    n = _num;
-    
-    if (16 % sizeof(size_t) == 0) { /* always true actually */
-        do {
-            while (n && len) {
-                *(out++) = *(in++) ^ _ecount[n];
-                --len;
-                n = (n + 1) % 16;
-            }
-            
-            if (((size_t)in|(size_t)out|(size_t)_ivec)%sizeof(size_t) != 0)
-                break;
-            
-            while (len >= 16) {
-                if (![self nextKeystreamBlock]) {
-                    memset(out, 0, len);
-                    return false;
-                }
-                ctr128_inc_aligned(_ivec);
-                for (n = 0; n < 16; n += sizeof(size_t)) {
-                    *(size_t *)(out + n) =
-                    *(size_t *)(in + n) ^ *(size_t *)(_ecount + n);
-                }
-                len -= 16;
-                out += 16;
-                in += 16;
-                n = 0;
-            }
-            if (len) {
-                if (![self nextKeystreamBlock]) {
-                    memset(out, 0, len);
-                    return false;
-                }
-                ctr128_inc_aligned(_ivec);
-                while (len--) {
-                    out[n] = in[n] ^ _ecount[n];
-                    ++n;
-                }
-            }
-            _num = n;
-            return true;
-        } while (0);
-    }
-    /* the rest would be commonly eliminated by x86* compiler */
-    
-    while (l < len) {
-        if (n == 0) {
-            if (![self nextKeystreamBlock]) {
-                memset(out + l, 0, len - l);
-                return false;
-            }
-            ctr128_inc(_ivec);
-        }
-        out[l] = in[l] ^ _ecount[n];
-        ++l;
+    unsigned int n = _num;
+    while (n != 0 && len != 0) {
+        *(out++) = *(in++) ^ _ecount[n];
+        --len;
         n = (n + 1) % 16;
     }
-    
     _num = n;
+    if (len == 0) {
+        return true;
+    }
+    
+    size_t blocks = len / 16;
+    if (blocks != 0) {
+        if (![self xorBlocksIn:in out:out blocks:blocks]) {
+            memset(out, 0, len);
+            return false;
+        }
+        in += blocks * 16;
+        out += blocks * 16;
+        len -= blocks * 16;
+    }
+    
+    if (len != 0) {
+        static const unsigned char zeros[16] = { 0 };
+        if (![self xorBlocksIn:zeros out:_ecount blocks:1]) {
+            memset(out, 0, len);
+            return false;
+        }
+        for (size_t i = 0; i < len; i++) {
+            out[i] = in[i] ^ _ecount[i];
+        }
+        _num = (unsigned int)len;
+    }
     return true;
 }
 

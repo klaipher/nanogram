@@ -589,6 +589,7 @@ final class MutableChatListView {
     private var count: Int
     
     private let spaces: [ChatListViewSpace]
+    private let alwaysRefillSpaces: Bool
     fileprivate var state: ChatListViewState
     fileprivate var sampledState: ChatListViewSample
     
@@ -632,7 +633,8 @@ final class MutableChatListView {
             spaces.append(.group(groupId: self.groupId, pinned: .includePinned, predicate: filterPredicate))
         }
         self.spaces = spaces
-        self.state = ChatListViewState(postbox: postbox, currentTransaction: currentTransaction, spaces: self.spaces, anchorIndex: aroundIndex, summaryComponents: self.summaryComponents, extractCachedData: self.extractCachedData, halfLimit: count)
+        self.alwaysRefillSpaces = ChatListViewTestHooks.alwaysRefillSpaces
+        self.state = ChatListViewState(postbox: postbox, currentTransaction: currentTransaction, spaces: self.spaces, anchorIndex: aroundIndex, summaryComponents: self.summaryComponents, extractCachedData: self.extractCachedData, halfLimit: count, alwaysRefillSpaces: self.alwaysRefillSpaces)
         self.sampledState = self.state.sample(postbox: postbox, currentTransaction: currentTransaction)
         
         self.count = count
@@ -744,7 +746,7 @@ final class MutableChatListView {
     func refreshDueToExternalTransaction(postbox: PostboxImpl, currentTransaction: Transaction) -> Bool {
         var updated = false
         
-        self.state = ChatListViewState(postbox: postbox, currentTransaction: currentTransaction, spaces: self.spaces, anchorIndex: self.aroundIndex, summaryComponents: self.summaryComponents, extractCachedData: self.extractCachedData, halfLimit: self.count)
+        self.state = ChatListViewState(postbox: postbox, currentTransaction: currentTransaction, spaces: self.spaces, anchorIndex: self.aroundIndex, summaryComponents: self.summaryComponents, extractCachedData: self.extractCachedData, halfLimit: self.count, alwaysRefillSpaces: self.alwaysRefillSpaces)
         self.sampledState = self.state.sample(postbox: postbox, currentTransaction: currentTransaction)
         updated = true
         
@@ -778,11 +780,11 @@ final class MutableChatListView {
         }
         
         if transaction.updatedGlobalNotificationSettings && self.filterPredicate != nil {
-            self.state = ChatListViewState(postbox: postbox, currentTransaction: currentTransaction, spaces: self.spaces, anchorIndex: self.aroundIndex, summaryComponents: self.summaryComponents, extractCachedData: self.extractCachedData, halfLimit: self.count)
+            self.state = ChatListViewState(postbox: postbox, currentTransaction: currentTransaction, spaces: self.spaces, anchorIndex: self.aroundIndex, summaryComponents: self.summaryComponents, extractCachedData: self.extractCachedData, halfLimit: self.count, alwaysRefillSpaces: self.alwaysRefillSpaces)
             self.sampledState = self.state.sample(postbox: postbox, currentTransaction: currentTransaction)
             hasChanges = true
         } else if hasFilterChanges {
-            self.state = ChatListViewState(postbox: postbox, currentTransaction: currentTransaction, spaces: self.spaces, anchorIndex: self.aroundIndex, summaryComponents: self.summaryComponents, extractCachedData: self.extractCachedData, halfLimit: self.count)
+            self.state = ChatListViewState(postbox: postbox, currentTransaction: currentTransaction, spaces: self.spaces, anchorIndex: self.aroundIndex, summaryComponents: self.summaryComponents, extractCachedData: self.extractCachedData, halfLimit: self.count, alwaysRefillSpaces: self.alwaysRefillSpaces)
             self.sampledState = self.state.sample(postbox: postbox, currentTransaction: currentTransaction)
             hasChanges = true
         } else {

@@ -60,6 +60,8 @@ bool MTCheckMod(id<EncryptionProvider> _Nonnull provider, NSData * _Nonnull numb
 - (instancetype _Nullable)initWithKey:(const void * _Nonnull)key keyLength:(int)keyLength iv:(const void * _Nonnull)iv decrypt:(bool)decrypt;
 - (instancetype _Nullable)initWithKey:(const void * _Nonnull)key keyLength:(int)keyLength iv:(const void * _Nonnull)iv ecount:(void * _Nonnull)ecount num:(uint32_t)num;
 
+// OpenSSL CRYPTO_ctr128_encrypt state: position in the current block, its
+// keystream (meaningful while num != 0) and the counter of the next block.
 - (uint32_t)num;
 - (void * _Nonnull)ecount;
 - (void)getIv:(void * _Nonnull)iv;

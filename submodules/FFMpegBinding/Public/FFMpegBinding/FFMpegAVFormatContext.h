@@ -47,7 +47,17 @@ extern int FFMpegCodecIdAV1;
 - (void)setIOContext:(FFMpegAVIOContext *)ioContext;
 - (bool)openInputWithDirectFilePath:(NSString * _Nullable)directFilePath;
 - (bool)openInputWithDirectFilePath:(NSString * _Nullable)directFilePath ignoreEditList:(bool)ignoreEditList;
+// Reads stream parameters. Streams whose container header already describes them are not
+// decoded while probing (see FFMpegAVFormatContext.m); the decoder that plays them finds the
+// pixel format itself.
 - (bool)findStreamInfo;
+// fullProbe: decode frames while probing as FFmpeg does by default. For tests.
+- (bool)findStreamInfoWithFullProbe:(bool)fullProbe;
+// Streams the last findStreamInfo did not decode. For tests.
+@property (nonatomic, readonly) int32_t streamInfoProbeSkippedStreamCount;
+// Whether an avcC record's SPS tells the H.264 decoder its reorder delay (POC type 2, or a
+// VUI bitstream restriction), so the delay need not be guessed by decoding frames.
++ (bool)avcCSignalsReorderDelay:(NSData *)avcC;
 - (void)seekFrameForStreamIndex:(int32_t)streamIndex pts:(int64_t)pts positionOnKeyframe:(bool)positionOnKeyframe;
 - (void)seekFrameForStreamIndex:(int32_t)streamIndex byteOffset:(int64_t)byteOffset;
 - (bool)readFrameIntoPacket:(FFMpegPacket *)packet;

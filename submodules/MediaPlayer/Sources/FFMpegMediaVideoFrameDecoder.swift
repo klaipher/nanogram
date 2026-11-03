@@ -13,31 +13,7 @@ private let bufferCount = 32
 
 
 
-#if os(macOS)
-private let deviceColorSpace: CGColorSpace = {
-    if #available(OSX 10.11.2, *) {
-        if let colorSpace = CGColorSpace(name: CGColorSpace.displayP3) {
-            return colorSpace
-        } else {
-            return CGColorSpaceCreateDeviceRGB()
-        }
-    } else {
-        return CGColorSpaceCreateDeviceRGB()
-    }
-}()
-#else
-private let deviceColorSpace: CGColorSpace = {
-    if #available(iOSApplicationExtension 9.3, iOS 9.3, *) {
-        if let colorSpace = CGColorSpace(name: CGColorSpace.displayP3) {
-            return colorSpace
-        } else {
-            return CGColorSpaceCreateDeviceRGB()
-        }
-    } else {
-        return CGColorSpaceCreateDeviceRGB()
-    }
-}()
-#endif
+private let previewImageColorSpace: CGColorSpace = CGColorSpace(name: CGColorSpace.sRGB) ?? CGColorSpaceCreateDeviceRGB()
 public final class FFMpegMediaVideoFrameDecoder: MediaTrackFrameDecoder {
     public enum ReceiveResult {
         case error
@@ -58,6 +34,8 @@ public final class FFMpegMediaVideoFrameDecoder: MediaTrackFrameDecoder {
     
     public var reusesPixelBuffers: Bool = false
     private var reusablePixelBufferPool: (pool: CVPixelBufferPool, width: Int32, height: Int32, pixelFormat: OSType, alignment: Int32)?
+    private var cachedFormatDescription: CMVideoFormatDescription?
+    public var presentsUntaggedFrames: Bool = false
     
     private var delayedFrames: [MediaTrackFrame] = []
     
@@ -440,7 +418,7 @@ public final class FFMpegMediaVideoFrameDecoder: MediaTrackFrameDecoder {
         
         let bitmapInfo = CGBitmapInfo(rawValue: CGBitmapInfo.byteOrder32Little.rawValue | CGImageAlphaInfo.noneSkipFirst.rawValue)
         
-        guard let image = CGImage(width: Int(frame.width), height: Int(frame.height), bitsPerComponent: 8, bitsPerPixel: 32, bytesPerRow: argbBytesPerRow, space: deviceColorSpace, bitmapInfo: bitmapInfo, provider: provider, decode: nil, shouldInterpolate: false, intent: .defaultIntent) else {
+        guard let image = CGImage(width: Int(frame.width), height: Int(frame.height), bitsPerComponent: 8, bitsPerPixel: 32, bytesPerRow: argbBytesPerRow, space: previewImageColorSpace, bitmapInfo: bitmapInfo, provider: provider, decode: nil, shouldInterpolate: false, intent: .defaultIntent) else {
             return nil
         }
         
@@ -468,6 +446,19 @@ public final class FFMpegMediaVideoFrameDecoder: MediaTrackFrameDecoder {
         return pool
     }
     
+    private func formatDescription(for pixelBuffer: CVPixelBuffer) -> CMVideoFormatDescription? {
+        if let current = self.cachedFormatDescription, CMVideoFormatDescriptionMatchesImageBuffer(current, imageBuffer: pixelBuffer) {
+            return current
+        }
+        var formatRef: CMVideoFormatDescription?
+        let formatStatus = CMVideoFormatDescriptionCreateForImageBuffer(allocator: kCFAllocatorDefault, imageBuffer: pixelBuffer, formatDescriptionOut: &formatRef)
+        guard let format = formatRef, formatStatus == 0 else {
+            return nil
+        }
+        self.cachedFormatDescription = format
+        return format
+    }
+    
     private func convertVideoFrame(_ frame: FFMpegAVFrame, pts: CMTime, dts: CMTime, duration: CMTime, forceARGB: Bool = false, unpremultiplyAlpha: Bool = true, displayImmediately: Bool = true) -> MediaTrackFrame? {
         if frame.nativePixelFormat() == FFMpegAVFrameNativePixelFormat.videoToolbox {
             guard let pixelBufferRef = frame.data[3] else {
@@ -476,10 +467,11 @@ public final class FFMpegMediaVideoFrameDecoder: MediaTrackFrameDecoder {
             let unmanagedPixelBuffer = Unmanaged<CVPixelBuffer>.fromOpaque(UnsafeRawPointer(pixelBufferRef))
             let pixelBuffer = unmanagedPixelBuffer.takeUnretainedValue()
             
-            var formatRef: CMVideoFormatDescription?
-            let formatStatus = CMVideoFormatDescriptionCreateForImageBuffer(allocator: kCFAllocatorDefault, imageBuffer: pixelBuffer, formatDescriptionOut: &formatRef)
+            if self.presentsUntaggedFrames {
+                removeHardwareColorAttachments(pixelBuffer)
+            }
             
-            guard let format = formatRef, formatStatus == 0 else {
+            guard let format = self.formatDescription(for: pixelBuffer) else {
                 return nil
             }
             
@@ -504,6 +496,14 @@ public final class FFMpegMediaVideoFrameDecoder: MediaTrackFrameDecoder {
             }
             
             return MediaTrackFrame(type: .video, sampleBuffer: sampleBuffer!, resetDecoder: resetDecoder, decoded: true)
+        }
+        
+        if frame.pixelFormat == .YUV10 {
+            guard !forceARGB, let pixelBuffer = self.tenBitPixelBuffer(frame) else {
+                return nil
+            }
+            self.applyColorAttachments(pixelBuffer, frame: frame)
+            return self.decodedFrame(pixelBuffer: pixelBuffer, pts: pts, duration: duration, displayImmediately: displayImmediately)
         }
         
         guard let frame = self.planarFrameFor420Conversion(frame) else {
@@ -533,7 +533,7 @@ public final class FFMpegMediaVideoFrameDecoder: MediaTrackFrameDecoder {
         } else {
             switch frame.pixelFormat {
                 case .YUV:
-                    pixelFormat = kCVPixelFormatType_420YpCbCr8BiPlanarVideoRange
+                    pixelFormat = frame.colorRange == .full ? kCVPixelFormatType_420YpCbCr8BiPlanarFullRange : kCVPixelFormatType_420YpCbCr8BiPlanarVideoRange
                 case .YUVA:
                     pixelFormat = kCVPixelFormatType_420YpCbCr8VideoRange_8A_TriPlanar
                 default:
@@ -656,10 +656,88 @@ public final class FFMpegMediaVideoFrameDecoder: MediaTrackFrameDecoder {
 
         CVPixelBufferUnlockBaseAddress(pixelBuffer, [])
         
-        var formatRef: CMVideoFormatDescription?
-        let formatStatus = CMVideoFormatDescriptionCreateForImageBuffer(allocator: kCFAllocatorDefault, imageBuffer: pixelBuffer, formatDescriptionOut: &formatRef)
+        if pixelFormat != kCVPixelFormatType_32ARGB {
+            self.applyColorAttachments(pixelBuffer, frame: frame)
+        }
         
-        guard let format = formatRef, formatStatus == 0 else {
+        return self.decodedFrame(pixelBuffer: pixelBuffer, pts: pts, duration: duration, displayImmediately: displayImmediately)
+    }
+    
+    private func applyColorAttachments(_ pixelBuffer: CVPixelBuffer, frame: FFMpegAVFrame) {
+        let values: [(CFString, CFString?)]
+        if self.presentsUntaggedFrames {
+            values = [
+                (kCVImageBufferYCbCrMatrixKey, nil),
+                (kCVImageBufferColorPrimariesKey, nil),
+                (kCVImageBufferTransferFunctionKey, nil)
+            ]
+        } else {
+            values = [
+                (kCVImageBufferYCbCrMatrixKey, CVYCbCrMatrixGetStringForIntegerCodePoint(Int32(frame.colorMatrix))?.takeUnretainedValue()),
+                (kCVImageBufferColorPrimariesKey, CVColorPrimariesGetStringForIntegerCodePoint(Int32(frame.colorPrimaries))?.takeUnretainedValue()),
+                (kCVImageBufferTransferFunctionKey, CVTransferFunctionGetStringForIntegerCodePoint(Int32(frame.colorTransfer))?.takeUnretainedValue())
+            ]
+        }
+        for (key, value) in values {
+            if let value {
+                CVBufferSetAttachment(pixelBuffer, key, value, .shouldPropagate)
+            } else {
+                CVBufferRemoveAttachment(pixelBuffer, key)
+            }
+        }
+    }
+    
+    private func tenBitPixelBuffer(_ frame: FFMpegAVFrame) -> CVPixelBuffer? {
+        let width = Int(frame.width)
+        let height = Int(frame.height)
+        guard width > 0, height > 0, frame.lineSize[0] > 0, frame.lineSize[1] > 0, frame.lineSize[2] > 0, let srcY = frame.data[0], let srcU = frame.data[1], let srcV = frame.data[2] else {
+            return nil
+        }
+        let pixelFormat = frame.colorRange == .full ? kCVPixelFormatType_420YpCbCr10BiPlanarFullRange : kCVPixelFormatType_420YpCbCr10BiPlanarVideoRange
+        var pixelBufferRef: CVPixelBuffer?
+        if self.reusesPixelBuffers, let pool = self.reusablePixelBufferPool(width: frame.width, height: frame.height, pixelFormat: pixelFormat, alignment: 64) {
+            CVPixelBufferPoolCreatePixelBuffer(kCFAllocatorDefault, pool, &pixelBufferRef)
+        } else {
+            let options: [String: Any] = [kCVPixelBufferIOSurfacePropertiesKey as String: [:] as [String: Any]]
+            CVPixelBufferCreate(kCFAllocatorDefault, width, height, pixelFormat, options as CFDictionary, &pixelBufferRef)
+        }
+        guard let pixelBuffer = pixelBufferRef, CVPixelBufferLockBaseAddress(pixelBuffer, []) == kCVReturnSuccess else {
+            return nil
+        }
+        defer {
+            CVPixelBufferUnlockBaseAddress(pixelBuffer, [])
+        }
+        guard let dstY = CVPixelBufferGetBaseAddressOfPlane(pixelBuffer, 0), let dstUV = CVPixelBufferGetBaseAddressOfPlane(pixelBuffer, 1) else {
+            return nil
+        }
+        let dstYRow = CVPixelBufferGetBytesPerRowOfPlane(pixelBuffer, 0)
+        let dstUVRow = CVPixelBufferGetBytesPerRowOfPlane(pixelBuffer, 1)
+        let srcYRow = Int(frame.lineSize[0])
+        let srcURow = Int(frame.lineSize[1])
+        let srcVRow = Int(frame.lineSize[2])
+        for row in 0 ..< height {
+            let src = UnsafeRawPointer(srcY.advanced(by: row * srcYRow)).assumingMemoryBound(to: UInt16.self)
+            let dst = dstY.advanced(by: row * dstYRow).assumingMemoryBound(to: UInt16.self)
+            for column in 0 ..< width {
+                dst[column] = src[column] << 6
+            }
+        }
+        let chromaWidth = (width + 1) / 2
+        let chromaHeight = (height + 1) / 2
+        for row in 0 ..< chromaHeight {
+            let u = UnsafeRawPointer(srcU.advanced(by: row * srcURow)).assumingMemoryBound(to: UInt16.self)
+            let v = UnsafeRawPointer(srcV.advanced(by: row * srcVRow)).assumingMemoryBound(to: UInt16.self)
+            let dst = dstUV.advanced(by: row * dstUVRow).assumingMemoryBound(to: UInt16.self)
+            for column in 0 ..< chromaWidth {
+                dst[column * 2] = u[column] << 6
+                dst[column * 2 + 1] = v[column] << 6
+            }
+        }
+        return pixelBuffer
+    }
+    
+    private func decodedFrame(pixelBuffer: CVPixelBuffer, pts: CMTime, duration: CMTime, displayImmediately: Bool) -> MediaTrackFrame? {
+        guard let format = self.formatDescription(for: pixelBuffer) else {
             return nil
         }
         

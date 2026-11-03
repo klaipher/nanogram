@@ -142,6 +142,7 @@ public final class MediaBox {
     private let concurrentQueue = Queue.concurrentDefaultQueue()
     public let dataQueue = Queue(name: "MediaBox-Data")
     public let dataFileManager: MediaBoxFileManager
+    let liveFileMaps = MediaBoxLiveFileMaps()
     private let cacheQueue = Queue()
     private let timeBasedCleanup: TimeBasedCleanup
     
@@ -614,7 +615,7 @@ public final class MediaBox {
                 paths.partial + ".meta"
             ])
             
-            if let fileContext = MediaBoxFileContextV2Impl(queue: self.dataQueue, manager: self.dataFileManager, storageBox: self.storageBox, resourceId: id.stringRepresentation.data(using: .utf8)!, path: paths.complete, partialPath: paths.partial, metaPath: paths.partial + ".meta") {
+            if let fileContext = MediaBoxFileContextV2Impl(queue: self.dataQueue, manager: self.dataFileManager, storageBox: self.storageBox, resourceId: Data(id.stringRepresentation.utf8), path: paths.complete, partialPath: paths.partial, metaPath: paths.partial + ".meta", liveFileMaps: self.liveFileMaps) {
                 context = fileContext
                 self.fileContexts[resourceId] = fileContext
             } else {
@@ -717,6 +718,12 @@ public final class MediaBox {
             } else {
                 return nil
             }
+        } else if let liveMap = self.liveFileMaps.snapshot(metaPath: paths.partial + ".meta") {
+            guard let clippedRange = MediaBoxFileMap.contains(range, ranges: liveMap.ranges, truncationSize: liveMap.truncationSize), let file = ManagedFile(queue: nil, path: paths.partial, mode: .read) else {
+                return nil
+            }
+            let _ = file.seek(position: clippedRange.lowerBound)
+            return (file, Int(clippedRange.upperBound - clippedRange.lowerBound))
         } else {
             let tempManager = MediaBoxFileManager(queue: nil)
             return MediaBoxPartialFile.internal_extractPartialData(manager: tempManager, path: paths.partial, metaPath: paths.partial + ".meta", range: range)
@@ -728,6 +735,8 @@ public final class MediaBox {
         
         if let _ = fileSize(paths.complete) {
             return true
+        } else if let liveMap = self.liveFileMaps.snapshot(metaPath: paths.partial + ".meta") {
+            return MediaBoxFileMap.contains(range, ranges: liveMap.ranges, truncationSize: liveMap.truncationSize) != nil
         } else {
             let tempManager = MediaBoxFileManager(queue: nil)
             return MediaBoxPartialFile.internal_isPartialDataCached(manager: tempManager, path: paths.partial, metaPath: paths.partial + ".meta", range: range)

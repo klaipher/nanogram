@@ -705,7 +705,7 @@ final class MutableMessageHistoryView: MutablePostboxView {
                         }
                     case let .UpdateReadState(peerId, combinedReadState):
                         if case let .single(_, threadId) = self.peerIds, threadId != nil {
-                        } else {
+                        } else if self.transientReadStates != nil {
                             hasChanges = true
                             if let transientReadStates = self.transientReadStates {
                                 switch transientReadStates {

@@ -253,13 +253,28 @@ public final class AVAssetVideoDataReader: MediaDataReader {
             guard let videoTrack = asset.tracks(withMediaType: .video).first else {
                 return
             }
-            let videoOutput = AVAssetReaderTrackOutput(track: videoTrack, outputSettings: [String(kCVPixelBufferPixelFormatTypeKey): kCVPixelFormatType_420YpCbCr8BiPlanarVideoRange])
+            let videoOutput = AVAssetReaderTrackOutput(track: videoTrack, outputSettings: [String(kCVPixelBufferPixelFormatTypeKey): AVAssetVideoDataReader.outputPixelFormat(formatDescription: videoTrack.formatDescriptions.first.flatMap { $0 as! CMFormatDescription })])
             assetReader.add(videoOutput)
             if assetReader.startReading() {
                 self.assetReader = assetReader
                 self.assetOutput = videoOutput
             }
         }
+    }
+    
+    static func outputPixelFormat(formatDescription: CMFormatDescription?) -> OSType {
+        guard let formatDescription else {
+            return kCVPixelFormatType_420YpCbCr8BiPlanarVideoRange
+        }
+        if let bitsPerComponent = CMFormatDescriptionGetExtension(formatDescription, extensionKey: kCMFormatDescriptionExtension_BitsPerComponent) as? NSNumber, bitsPerComponent.intValue > 8 {
+            return kCVPixelFormatType_420YpCbCr10BiPlanarVideoRange
+        }
+        if let transferFunction = CMFormatDescriptionGetExtension(formatDescription, extensionKey: kCMFormatDescriptionExtension_TransferFunction) as? String {
+            if transferFunction == (kCMFormatDescriptionTransferFunction_ITU_R_2100_HLG as String) || transferFunction == (kCMFormatDescriptionTransferFunction_SMPTE_ST_2084_PQ as String) {
+                return kCVPixelFormatType_420YpCbCr10BiPlanarVideoRange
+            }
+        }
+        return kCVPixelFormatType_420YpCbCr8BiPlanarVideoRange
     }
     
     public func readSampleBuffer() -> MediaDataReaderReadSampleBufferResult {

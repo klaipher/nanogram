@@ -261,8 +261,12 @@ final class MediaBoxFileMap {
     }
     
     func contains(_ range: Range<Int64>) -> Range<Int64>? {
+        return MediaBoxFileMap.contains(range, ranges: self.ranges, truncationSize: self.truncationSize)
+    }
+    
+    static func contains(_ range: Range<Int64>, ranges: RangeSet<Int64>, truncationSize: Int64?) -> Range<Int64>? {
         let maxValue: Int64
-        if let truncationSize = self.truncationSize {
+        if let truncationSize = truncationSize {
             maxValue = truncationSize
         } else {
             maxValue = Int64.max
@@ -271,10 +275,54 @@ final class MediaBoxFileMap {
         let clippedRange: Range<Int64> = min(range.lowerBound, clippedUpperBound) ..< clippedUpperBound
         let clippedRangeSet = RangeSet<Int64>(clippedRange)
         
-        if self.ranges.isSuperset(of: clippedRangeSet) {
+        if ranges.isSuperset(of: clippedRangeSet) {
             return clippedRange
         } else {
             return nil
         }
+    }
+}
+
+/// The in-memory file maps of the partial files MediaBox is writing, keyed by meta path.
+///
+/// A file context writes its map to `<id>_partial.meta` only every
+/// `MediaBoxFileContextV2Impl.defaultWritesPerMapSerialization` writes (and on completion, reset,
+/// truncation and close), so the map on disk can lag behind the partial file. Readers in this
+/// process that bypass the context (`MediaBox.internal_resourceData`,
+/// `internal_resourceDataIsCached`) read the live map here instead. A map on disk that lags
+/// only ever claims less than the partial file holds, so after a crash the missing chunks are
+/// downloaded again.
+public final class MediaBoxLiveFileMaps {
+    struct Snapshot {
+        let ranges: RangeSet<Int64>
+        let truncationSize: Int64?
+    }
+    
+    private let lock = NSLock()
+    private var maps: [String: (owner: ObjectIdentifier, snapshot: Snapshot)] = [:]
+    
+    init() {
+    }
+    
+    func update(metaPath: String, owner: AnyObject, ranges: RangeSet<Int64>, truncationSize: Int64?) {
+        self.lock.lock()
+        self.maps[metaPath] = (ObjectIdentifier(owner), Snapshot(ranges: ranges, truncationSize: truncationSize))
+        self.lock.unlock()
+    }
+    
+    func remove(metaPath: String, owner: AnyObject) {
+        self.lock.lock()
+        if let current = self.maps[metaPath], current.owner == ObjectIdentifier(owner) {
+            self.maps.removeValue(forKey: metaPath)
+        }
+        self.lock.unlock()
+    }
+    
+    func snapshot(metaPath: String) -> Snapshot? {
+        self.lock.lock()
+        defer {
+            self.lock.unlock()
+        }
+        return self.maps[metaPath]?.snapshot
     }
 }

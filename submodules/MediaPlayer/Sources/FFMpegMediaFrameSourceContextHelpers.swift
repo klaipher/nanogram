@@ -28,6 +28,7 @@ public final class FFMpegMediaFrameSourceContextHelpers {
         extensions.setObject(0 as NSNumber, forKey: "FullRangeVideo" as NSString)
         extensions.setObject(1 as NSNumber, forKey: "CVFieldCount" as NSString)
         extensions.setObject(24 as NSNumber, forKey: "Depth" as NSString)
+        PassthroughFormatDescriptionColor.apply(to: extensions, avcC: extradata)
         
         var formatDescription: CMFormatDescription?
         CMVideoFormatDescriptionCreate(allocator: nil, codecType: CMVideoCodecType(formatId), width: width, height: height, extensions: extensions, formatDescriptionOut: &formatDescription)
@@ -84,6 +85,7 @@ public final class FFMpegMediaFrameSourceContextHelpers {
         extensions.setObject(0 as NSNumber, forKey: "FullRangeVideo" as NSString)
         extensions.setObject(1 as NSNumber, forKey: "CVFieldCount" as NSString)
         extensions.setObject(24 as NSNumber, forKey: "Depth" as NSString)
+        PassthroughFormatDescriptionColor.apply(to: extensions, hvcC: extradata)
         
         var formatDescription: CMFormatDescription?
         CMVideoFormatDescriptionCreate(allocator: nil, codecType: CMVideoCodecType(formatId), width: width, height: height, extensions: extensions, formatDescriptionOut: &formatDescription)
@@ -118,5 +120,20 @@ public final class FFMpegMediaFrameSourceContextHelpers {
         CMVideoFormatDescriptionCreate(allocator: nil, codecType: CMVideoCodecType(formatId), width: width, height: height, extensions: extensions, formatDescriptionOut: &formatDescription)
         
         return formatDescription*/
+    }
+}
+
+public enum MediaPlayerAudioFormat {
+    #if os(macOS)
+    public static let sampleRate: Int = 48000
+    #else
+    public static let sampleRate: Int = 44100
+    #endif
+    public static let channelCount: Int = 2
+}
+
+extension FFMpegMediaFrameSourceContextHelpers {
+    static func makeAudioDecoder(codecContext: FFMpegAVCodecContext) -> FFMpegAudioFrameDecoder {
+        return FFMpegAudioFrameDecoder(codecContext: codecContext, sampleRate: MediaPlayerAudioFormat.sampleRate, channelCount: MediaPlayerAudioFormat.channelCount)
     }
 }

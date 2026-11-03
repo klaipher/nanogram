@@ -146,6 +146,19 @@ public final class ManagedFile {
         assert(!self.isClosed)
         fsync(self.fd)
     }
+    
+    /// Orders this file's written data before any later write to the file system (for example a
+    /// `link()` that publishes the file), without waiting for the drive to flush its cache the
+    /// way `fsync` does. Falls back to `fsync` where `F_BARRIERFSYNC` is not supported.
+    public func barrierSync() {
+        if let queue = self.queue {
+            assert(queue.isCurrent())
+        }
+        assert(!self.isClosed)
+        if fcntl(self.fd, F_BARRIERFSYNC) != 0 {
+            fsync(self.fd)
+        }
+    }
 }
 
 public extension ManagedFile {

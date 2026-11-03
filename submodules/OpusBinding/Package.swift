@@ -23,7 +23,7 @@ let package = Package(
             name: "OpusBinding",
             dependencies: [],
             path: ".",
-            exclude: ["BUILD"],
+            exclude: ["BUILD", "Tests"],
             publicHeadersPath: "PublicHeaders",
             cSettings: [
                 .headerSearchPath("PublicHeaders"),
@@ -31,5 +31,9 @@ let package = Package(
                 .headerSearchPath("SharedHeaders/libopus/include"),
                 .headerSearchPath("Sources"),
             ]),
+        .testTarget(
+            name: "OpusBindingTests",
+            dependencies: [.target(name: "OpusBinding")],
+            path: "Tests"),
     ]
 )

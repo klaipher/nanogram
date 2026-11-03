@@ -341,6 +341,24 @@ private func _internal_translateMessagesByPeerId(account: Account, peerId: Engin
 
         let id: [Int32] = plainMessageIds.map { $0.id }
 
+        let serverTranslation: Signal<Api.messages.TranslatedText?, TranslationError> = account.network.request(Api.functions.messages.translateText(flags: flags, peer: inputPeer, id: id, text: nil, toLang: toLang, tone: tone != .neutral ? tone.rawValue : nil))
+        |> map(Optional.init)
+        |> mapError { error -> TranslationError in
+            if error.errorDescription.hasPrefix("FLOOD_WAIT") {
+                return .limitExceeded
+            } else if error.errorDescription == "MSG_ID_INVALID" {
+                return .invalidMessageId
+            } else if error.errorDescription == "INPUT_TEXT_EMPTY" {
+                return .textIsEmpty
+            } else if error.errorDescription == "INPUT_TEXT_TOO_LONG" {
+                return .textTooLong
+            } else if error.errorDescription == "TO_LANG_INVALID" {
+                return .invalidLanguage
+            } else {
+                return .generic
+            }
+        }
+
         let msgs: Signal<Api.messages.TranslatedText?, TranslationError>
         if id.isEmpty {
             msgs = .single(nil)
@@ -365,7 +383,7 @@ private func _internal_translateMessagesByPeerId(account: Account, peerId: Engin
                     |> castError(TranslationError.self)
                     |> mapToSignal { resultTexts -> Signal<Api.messages.TranslatedText?, TranslationError> in
                         guard let resultTexts else {
-                            return .fail(.generic)
+                            return serverTranslation
                         }
                         var result: [Api.TextWithEntities] = []
                         for messageId in plainMessageIds {
@@ -381,23 +399,7 @@ private func _internal_translateMessagesByPeerId(account: Account, peerId: Engin
                     }
                 }
             } else {
-                msgs = account.network.request(Api.functions.messages.translateText(flags: flags, peer: inputPeer, id: id, text: nil, toLang: toLang, tone: tone != .neutral ? tone.rawValue : nil))
-                |> map(Optional.init)
-                |> mapError { error -> TranslationError in
-                    if error.errorDescription.hasPrefix("FLOOD_WAIT") {
-                        return .limitExceeded
-                    } else if error.errorDescription == "MSG_ID_INVALID" {
-                        return .invalidMessageId
-                    } else if error.errorDescription == "INPUT_TEXT_EMPTY" {
-                        return .textIsEmpty
-                    } else if error.errorDescription == "INPUT_TEXT_TOO_LONG" {
-                        return .textTooLong
-                    } else if error.errorDescription == "TO_LANG_INVALID" {
-                        return .invalidLanguage
-                    } else {
-                        return .generic
-                    }
-                }
+                msgs = serverTranslation
             }
         }
         

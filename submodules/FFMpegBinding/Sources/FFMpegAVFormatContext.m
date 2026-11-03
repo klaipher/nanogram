@@ -7,6 +7,7 @@
 #import "libavcodec/avcodec.h"
 #import "libavformat/avformat.h"
 #import "libavutil/display.h"
+#import "libavutil/mem.h"
 
 int FFMpegCodecIdH264 = AV_CODEC_ID_H264;
 int FFMpegCodecIdHEVC = AV_CODEC_ID_HEVC;
@@ -37,8 +38,358 @@ static int get_stream_rotation(const AVStream *stream) {
     return 0;
 }
 
+typedef struct FFMpegBitReader {
+    const uint8_t *data;
+    size_t size;
+    size_t bitOffset;
+} FFMpegBitReader;
+
+static bool ffmpegBitReaderReadBit(FFMpegBitReader *reader, uint32_t *outBit) {
+    if (reader->bitOffset >= reader->size * 8) {
+        return false;
+    }
+    *outBit = (reader->data[reader->bitOffset / 8] >> (7 - (reader->bitOffset % 8))) & 1;
+    reader->bitOffset += 1;
+    return true;
+}
+
+static bool ffmpegBitReaderReadBits(FFMpegBitReader *reader, int count, uint32_t *outValue) {
+    uint32_t value = 0;
+    for (int i = 0; i < count; i++) {
+        uint32_t bit = 0;
+        if (!ffmpegBitReaderReadBit(reader, &bit)) {
+            return false;
+        }
+        value = (value << 1) | bit;
+    }
+    *outValue = value;
+    return true;
+}
+
+// Exp-Golomb ue(v). Values that need more than 31 bits are rejected.
+static bool ffmpegBitReaderReadUE(FFMpegBitReader *reader, uint32_t *outValue) {
+    int leadingZeros = 0;
+    while (true) {
+        uint32_t bit = 0;
+        if (!ffmpegBitReaderReadBit(reader, &bit)) {
+            return false;
+        }
+        if (bit) {
+            break;
+        }
+        leadingZeros += 1;
+        if (leadingZeros > 31) {
+            return false;
+        }
+    }
+    uint32_t suffix = 0;
+    if (!ffmpegBitReaderReadBits(reader, leadingZeros, &suffix)) {
+        return false;
+    }
+    *outValue = (uint32_t)(((uint64_t)1 << leadingZeros) - 1 + suffix);
+    return true;
+}
+
+static bool ffmpegSkipScalingList(FFMpegBitReader *reader, int size) {
+    int lastScale = 8;
+    int nextScale = 8;
+    for (int j = 0; j < size; j++) {
+        if (nextScale != 0) {
+            uint32_t codeNum = 0;
+            if (!ffmpegBitReaderReadUE(reader, &codeNum)) {
+                return false;
+            }
+            // se(v) from ue(v); the spec bounds delta_scale to -128...127.
+            int64_t delta = (codeNum & 1) ? ((int64_t)codeNum + 1) / 2 : -((int64_t)codeNum / 2);
+            if (delta < -128 || delta > 127) {
+                return false;
+            }
+            nextScale = (int)((lastScale + delta + 256) % 256);
+        }
+        lastScale = (nextScale == 0) ? lastScale : nextScale;
+    }
+    return true;
+}
+
+static bool ffmpegSkipHrdParameters(FFMpegBitReader *reader) {
+    uint32_t cpbCountMinus1 = 0, unused = 0;
+    if (!ffmpegBitReaderReadUE(reader, &cpbCountMinus1) || cpbCountMinus1 > 31) {
+        return false;
+    }
+    if (!ffmpegBitReaderReadBits(reader, 8, &unused)) {
+        return false;
+    }
+    for (uint32_t i = 0; i <= cpbCountMinus1; i++) {
+        if (!ffmpegBitReaderReadUE(reader, &unused) || !ffmpegBitReaderReadUE(reader, &unused) || !ffmpegBitReaderReadBits(reader, 1, &unused)) {
+            return false;
+        }
+    }
+    return ffmpegBitReaderReadBits(reader, 20, &unused);
+}
+
+// Parses the first SPS of an avcC record far enough to tell whether the decoder can know the
+// output delay without decoding: pic_order_cnt_type 2 (output order is decoding order) or a
+// VUI bitstream_restriction (max_num_reorder_frames is signalled, and FFmpeg's decoder then
+// uses it instead of guessing). Returns false for anything it cannot parse.
+static bool ffmpegAvcCSignalsReorderDelay(const uint8_t *extradata, int extradataSize) {
+    if (extradata == NULL || extradataSize < 8 || extradata[0] != 1) {
+        return false;
+    }
+    if ((extradata[5] & 0x1f) == 0) {
+        return false;
+    }
+    size_t spsLength = ((size_t)extradata[6] << 8) | (size_t)extradata[7];
+    if (spsLength < 4 || 8 + spsLength > (size_t)extradataSize) {
+        return false;
+    }
+    const uint8_t *nal = extradata + 8;
+    if ((nal[0] & 0x1f) != 7) {
+        return false;
+    }
+    // Drop the NAL header and the emulation prevention bytes.
+    uint8_t rbsp[512];
+    size_t rbspLength = 0;
+    int zeroCount = 0;
+    for (size_t i = 1; i < spsLength && rbspLength < sizeof(rbsp); i++) {
+        uint8_t byte = nal[i];
+        if (zeroCount >= 2 && byte == 3) {
+            zeroCount = 0;
+            continue;
+        }
+        rbsp[rbspLength++] = byte;
+        zeroCount = (byte == 0) ? (zeroCount + 1) : 0;
+    }
+    FFMpegBitReader reader = { .data = rbsp, .size = rbspLength, .bitOffset = 0 };
+    uint32_t profileIdc = 0, unused = 0, flag = 0;
+    if (!ffmpegBitReaderReadBits(&reader, 8, &profileIdc) || !ffmpegBitReaderReadBits(&reader, 16, &unused) || !ffmpegBitReaderReadUE(&reader, &unused)) {
+        return false;
+    }
+    switch (profileIdc) {
+        case 100: case 110: case 122: case 244: case 44: case 83: case 86: case 118: case 128: case 138: case 139: case 134: case 135: {
+            uint32_t chromaFormatIdc = 0;
+            if (!ffmpegBitReaderReadUE(&reader, &chromaFormatIdc) || chromaFormatIdc > 3) {
+                return false;
+            }
+            if (chromaFormatIdc == 3 && !ffmpegBitReaderReadBits(&reader, 1, &unused)) {
+                return false;
+            }
+            if (!ffmpegBitReaderReadUE(&reader, &unused) || !ffmpegBitReaderReadUE(&reader, &unused) || !ffmpegBitReaderReadBits(&reader, 1, &unused) || !ffmpegBitReaderReadBits(&reader, 1, &flag)) {
+                return false;
+            }
+            if (flag) {
+                int listCount = (chromaFormatIdc != 3) ? 8 : 12;
+                for (int i = 0; i < listCount; i++) {
+                    uint32_t present = 0;
+                    if (!ffmpegBitReaderReadBits(&reader, 1, &present)) {
+                        return false;
+                    }
+                    if (present && !ffmpegSkipScalingList(&reader, i < 6 ? 16 : 64)) {
+                        return false;
+                    }
+                }
+            }
+            break;
+        }
+        default:
+            break;
+    }
+    uint32_t pocType = 0;
+    if (!ffmpegBitReaderReadUE(&reader, &unused) || !ffmpegBitReaderReadUE(&reader, &pocType)) {
+        return false;
+    }
+    if (pocType == 0) {
+        if (!ffmpegBitReaderReadUE(&reader, &unused)) {
+            return false;
+        }
+    } else if (pocType == 1) {
+        uint32_t cycleLength = 0;
+        if (!ffmpegBitReaderReadBits(&reader, 1, &unused) || !ffmpegBitReaderReadUE(&reader, &unused) || !ffmpegBitReaderReadUE(&reader, &unused) || !ffmpegBitReaderReadUE(&reader, &cycleLength) || cycleLength > 255) {
+            return false;
+        }
+        for (uint32_t i = 0; i < cycleLength; i++) {
+            if (!ffmpegBitReaderReadUE(&reader, &unused)) {
+                return false;
+            }
+        }
+    } else if (pocType != 2) {
+        return false;
+    }
+    uint32_t frameMbsOnly = 0;
+    // max_num_ref_frames, gaps flag, width, height, frame_mbs_only_flag
+    if (!ffmpegBitReaderReadUE(&reader, &unused) || !ffmpegBitReaderReadBits(&reader, 1, &unused) || !ffmpegBitReaderReadUE(&reader, &unused) || !ffmpegBitReaderReadUE(&reader, &unused) || !ffmpegBitReaderReadBits(&reader, 1, &frameMbsOnly)) {
+        return false;
+    }
+    if (!frameMbsOnly && !ffmpegBitReaderReadBits(&reader, 1, &unused)) {
+        return false;
+    }
+    // direct_8x8_inference_flag, frame_cropping_flag
+    if (!ffmpegBitReaderReadBits(&reader, 1, &unused) || !ffmpegBitReaderReadBits(&reader, 1, &flag)) {
+        return false;
+    }
+    if (flag) {
+        for (int i = 0; i < 4; i++) {
+            if (!ffmpegBitReaderReadUE(&reader, &unused)) {
+                return false;
+            }
+        }
+    }
+    uint32_t vuiPresent = 0;
+    if (!ffmpegBitReaderReadBits(&reader, 1, &vuiPresent)) {
+        return false;
+    }
+    if (!vuiPresent) {
+        return pocType == 2;
+    }
+    // aspect_ratio_info
+    if (!ffmpegBitReaderReadBits(&reader, 1, &flag)) {
+        return false;
+    }
+    if (flag) {
+        uint32_t aspectRatioIdc = 0;
+        if (!ffmpegBitReaderReadBits(&reader, 8, &aspectRatioIdc)) {
+            return false;
+        }
+        if (aspectRatioIdc == 255 && !ffmpegBitReaderReadBits(&reader, 32, &unused)) {
+            return false;
+        }
+    }
+    // overscan_info
+    if (!ffmpegBitReaderReadBits(&reader, 1, &flag) || (flag && !ffmpegBitReaderReadBits(&reader, 1, &unused))) {
+        return false;
+    }
+    // video_signal_type
+    if (!ffmpegBitReaderReadBits(&reader, 1, &flag)) {
+        return false;
+    }
+    if (flag) {
+        uint32_t colourDescription = 0;
+        if (!ffmpegBitReaderReadBits(&reader, 4, &unused) || !ffmpegBitReaderReadBits(&reader, 1, &colourDescription) || (colourDescription && !ffmpegBitReaderReadBits(&reader, 24, &unused))) {
+            return false;
+        }
+    }
+    // chroma_loc_info
+    if (!ffmpegBitReaderReadBits(&reader, 1, &flag) || (flag && (!ffmpegBitReaderReadUE(&reader, &unused) || !ffmpegBitReaderReadUE(&reader, &unused)))) {
+        return false;
+    }
+    // timing_info
+    if (!ffmpegBitReaderReadBits(&reader, 1, &flag) || (flag && (!ffmpegBitReaderReadBits(&reader, 32, &unused) || !ffmpegBitReaderReadBits(&reader, 32, &unused) || !ffmpegBitReaderReadBits(&reader, 1, &unused)))) {
+        return false;
+    }
+    uint32_t nalHrd = 0, vclHrd = 0;
+    if (!ffmpegBitReaderReadBits(&reader, 1, &nalHrd) || (nalHrd && !ffmpegSkipHrdParameters(&reader))) {
+        return false;
+    }
+    if (!ffmpegBitReaderReadBits(&reader, 1, &vclHrd) || (vclHrd && !ffmpegSkipHrdParameters(&reader))) {
+        return false;
+    }
+    if ((nalHrd || vclHrd) && !ffmpegBitReaderReadBits(&reader, 1, &unused)) {
+        return false;
+    }
+    // pic_struct_present_flag, bitstream_restriction_flag
+    uint32_t bitstreamRestriction = 0;
+    if (!ffmpegBitReaderReadBits(&reader, 1, &unused) || !ffmpegBitReaderReadBits(&reader, 1, &bitstreamRestriction)) {
+        return false;
+    }
+    if (!bitstreamRestriction) {
+        return pocType == 2;
+    }
+    // The rest must be present and small: FFmpeg drops a truncated restriction, reads these
+    // with get_ue_golomb_31, and rejects num_reorder_frames above 16.
+    if (!ffmpegBitReaderReadBits(&reader, 1, &unused)) {
+        return false;
+    }
+    for (int i = 0; i < 6; i++) {
+        uint32_t value = 0;
+        if (!ffmpegBitReaderReadUE(&reader, &value) || value > 31) {
+            return false;
+        }
+        if (i == 4 && value > 16) {
+            return false;
+        }
+    }
+    return true;
+}
+
+// Whether avformat_find_stream_info can leave this stream's decoder closed. It decodes
+// frames only to learn the pixel format and, for H.264, the reorder delay. The decoder
+// that plays the stream learns the pixel format itself, so this holds when the container
+// header has the size and the reorder delay is known without decoding.
+static bool ffmpegStreamInfoProbeCanSkipDecoding(const AVFormatContext *context, const AVStream *stream) {
+    if (context->iformat == NULL || context->iformat->name == NULL) {
+        return false;
+    }
+    bool isMov = strcmp(context->iformat->name, "mov,mp4,m4a,3gp,3g2,mj2") == 0;
+    bool isMatroska = strcmp(context->iformat->name, "matroska,webm") == 0;
+    if (!isMov && !isMatroska) {
+        return false;
+    }
+    const AVCodecParameters *par = stream->codecpar;
+    if (par->codec_type != AVMEDIA_TYPE_VIDEO || par->width <= 0 || par->height <= 0) {
+        return false;
+    }
+    if ((stream->disposition & AV_DISPOSITION_ATTACHED_PIC) != 0) {
+        return false;
+    }
+    switch (par->codec_id) {
+        case AV_CODEC_ID_VP9:
+            // VP9 does not reorder output.
+            return true;
+        case AV_CODEC_ID_HEVC:
+            // The decoder takes the reorder depth from the SPS. mov only: matroska has no dts,
+            // and FFmpeg guesses it from the probe decoder's delay.
+            return isMov;
+        case AV_CODEC_ID_H264:
+            // mov derives the delay from the composition offsets of the whole sample table.
+            // Fragmented files report 0, so 0 is trusted only when the SPS rules out reordering.
+            if (!isMov) {
+                return false;
+            }
+            return par->video_delay > 0 || ffmpegAvcCSignalsReorderDelay(par->extradata, par->extradata_size);
+        default:
+            return false;
+    }
+}
+// Decoders the stream-info probe may open: all except those of codecs whose streams can all
+// skip decoding. The same list goes to every stream, because avformat_find_stream_info can
+// open one stream's decoder with another stream's options. nil when no stream can skip.
+static NSString *ffmpegStreamInfoProbeCodecWhitelist(const AVFormatContext *context, int32_t *outSkippedStreamCount) {
+    *outSkippedStreamCount = 0;
+    NSMutableSet<NSNumber *> *blockedCodecIds = [[NSMutableSet alloc] init];
+    NSMutableSet<NSNumber *> *probedCodecIds = [[NSMutableSet alloc] init];
+    int32_t candidateCount = 0;
+    for (unsigned int i = 0; i < context->nb_streams; i++) {
+        const AVStream *stream = context->streams[i];
+        if (ffmpegStreamInfoProbeCanSkipDecoding(context, stream)) {
+            [blockedCodecIds addObject:@(stream->codecpar->codec_id)];
+        } else {
+            [probedCodecIds addObject:@(stream->codecpar->codec_id)];
+        }
+    }
+    // A codec shared with a stream that needs the probe stays allowed.
+    [blockedCodecIds minusSet:probedCodecIds];
+    if (blockedCodecIds.count == 0) {
+        return nil;
+    }
+    for (unsigned int i = 0; i < context->nb_streams; i++) {
+        if ([blockedCodecIds containsObject:@(context->streams[i]->codecpar->codec_id)]) {
+            candidateCount += 1;
+        }
+    }
+    NSMutableArray<NSString *> *names = [[NSMutableArray alloc] init];
+    void *iterator = NULL;
+    const AVCodec *codec = NULL;
+    while ((codec = av_codec_iterate(&iterator)) != NULL) {
+        if (av_codec_is_decoder(codec) && codec->name != NULL && ![blockedCodecIds containsObject:@(codec->id)]) {
+            [names addObject:[NSString stringWithUTF8String:codec->name]];
+        }
+    }
+    *outSkippedStreamCount = candidateCount;
+    return [names componentsJoinedByString:@","];
+}
+
 @interface FFMpegAVFormatContext () {
     AVFormatContext *_impl;
+    int32_t _streamInfoProbeSkippedStreamCount;
 }
 
 @end
@@ -89,8 +440,40 @@ static int get_stream_rotation(const AVStream *stream) {
 }
 
 - (bool)findStreamInfo {
+    return [self findStreamInfoWithFullProbe:false];
+}
+
+- (bool)findStreamInfoWithFullProbe:(bool)fullProbe {
+    _streamInfoProbeSkippedStreamCount = 0;
+    NSString *whitelist = nil;
+    int32_t skippedStreamCount = 0;
+    if (!fullProbe) {
+        whitelist = ffmpegStreamInfoProbeCodecWhitelist(_impl, &skippedStreamCount);
+    }
+    if (whitelist != nil) {
+        // The probe copies this into the options of every decoder it opens.
+        _impl->codec_whitelist = av_strdup(whitelist.UTF8String);
+        if (_impl->codec_whitelist == NULL) {
+            skippedStreamCount = 0;
+        }
+    }
     int result = avformat_find_stream_info(_impl, nil);
+    if (_impl->codec_whitelist != NULL) {
+        av_freep(&_impl->codec_whitelist);
+        _streamInfoProbeSkippedStreamCount = skippedStreamCount;
+    }
     return result >= 0;
+}
+
+- (int32_t)streamInfoProbeSkippedStreamCount {
+    return _streamInfoProbeSkippedStreamCount;
+}
+
++ (bool)avcCSignalsReorderDelay:(NSData *)avcC {
+    if (avcC.length > INT32_MAX) {
+        return false;
+    }
+    return ffmpegAvcCSignalsReorderDelay(avcC.bytes, (int)avcC.length);
 }
 
 - (void)seekFrameForStreamIndex:(int32_t)streamIndex pts:(int64_t)pts positionOnKeyframe:(bool)positionOnKeyframe {

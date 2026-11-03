@@ -11,17 +11,19 @@
 
 /// A collection of two elements, to avoid heap allocation when calling
 /// `replaceSubrange` with just two elements.
+@usableFromInline
 internal struct Pair<Element>: RandomAccessCollection {
+  @usableFromInline
   var pair: (first: Element, second: Element)
   
-  init(_ first: Element, _ second: Element) {
+  @inlinable init(_ first: Element, _ second: Element) {
     self.pair = (first, second)
   }
   
-  var startIndex: Int { 0 }
-  var endIndex: Int { 2 }
+  @inlinable var startIndex: Int { 0 }
+  @inlinable var endIndex: Int { 2 }
   
-  subscript(position: Int) -> Element {
+  @inlinable subscript(position: Int) -> Element {
     get {
       switch position {
       case 0: return pair.first

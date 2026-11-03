@@ -2583,7 +2583,7 @@ final class PostboxImpl {
                     let _ = self.transaction { _ in
                         self.processTypingDraftExpirations(expirationTimeout: expirationTimeout)
                     }.startStandalone()
-                }, queue: self.queue)
+                }, queue: self.queue, leeway: .precise)
                 self.nextTypingDraftExpirationTimer?.start()
                 self.nextTypingDraftExpirationTimestamp = nextTypingDraftExpirationTimestamp
             }
@@ -2868,6 +2868,9 @@ final class PostboxImpl {
         for peer in peers {
             let currentPeer = self.peerTable.get(peer.id)
             if let updatedPeer = update(currentPeer, peer) {
+                if let currentPeer, self.peerTable.encodesIdentically(currentPeer, updatedPeer) {
+                    continue
+                }
                 self.peerTable.set(updatedPeer)
                 self.currentUpdatedPeers[updatedPeer.id] = updatedPeer
                 var previousIndexNameWasEmpty = true
@@ -3000,6 +3003,9 @@ final class PostboxImpl {
         for peerId in peerIds {
             let currentData = self.cachedPeerDataTable.get(peerId)
             if let updatedData = update(peerId, currentData) {
+                if let currentData, self.cachedPeerDataTable.encodesIdentically(currentData, updatedData) {
+                    continue
+                }
                 self.cachedPeerDataTable.set(id: peerId, data: updatedData)
                 self.currentUpdatedCachedPeerData[peerId] = (currentData, updatedData)
             }
@@ -4576,6 +4582,7 @@ final class PostboxImpl {
             for table in self.tables {
                 table.clearMemoryCache()
             }
+            self.valueBox.releaseMemory()
         }).start()
     }
     
