@@ -143,6 +143,28 @@ ios_unit_test(
     ],
 )
 
+# Automatic Power Saving following the system's energy signals on every device (EnergyRules.swift) alone.
+swift_library(
+    name = "EnergyRulesTestsLib",
+    testonly = True,
+    srcs = [
+        "Tests/EnergyRulesTests.swift",
+    ],
+    deps = [
+        ":Display",
+        "//submodules/SSignalKit/SwiftSignalKit:SwiftSignalKit",
+    ],
+)
+
+ios_unit_test(
+    name = "EnergyRulesTests",
+    minimum_os_version = "15.0",
+    runner = ":DisplayTestRunner",
+    deps = [
+        ":EnergyRulesTestsLib",
+    ],
+)
+
 # The second iPad batch of the iPadOS 27 audit (TabletEnergyRules, TabletMainMenuRules, TabletPencilRules,
 # TabletOrientationRules) alone.
 swift_library(

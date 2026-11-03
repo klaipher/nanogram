@@ -266,7 +266,7 @@ final class TabletReviewFixesTests: XCTestCase {
         let scheduler = ManualScheduler()
         var current = self.conditions()
         let monitor = SystemEnergyConditionsMonitor(notificationCenter: center, read: { current }, now: { scheduler.time }, schedule: scheduler.schedule)
-        monitor.deviceType = .tablet
+        monitor.observesSystemConditions = true
 
         var values: [Bool] = []
         let disposable = monitor.requestsEnergySavingUpdates().start(next: { values.append($0) })
@@ -306,20 +306,19 @@ final class TabletReviewFixesTests: XCTestCase {
         let scheduler = ManualScheduler()
         var current = self.conditions(lowPower: true)
         let monitor = SystemEnergyConditionsMonitor(notificationCenter: NotificationCenter(), read: { current }, now: { scheduler.time }, schedule: scheduler.schedule)
-        monitor.deviceType = .tablet
+        monitor.observesSystemConditions = true
         XCTAssertTrue(monitor.requestsEnergySaving)
         current = self.conditions()
         scheduler.advance(to: 1.0)
         XCTAssertFalse(monitor.requestsEnergySaving)
     }
 
-    // MARK: - I5 The phone keeps upstream's battery signal
+    // MARK: - I5 Without the system signals, upstream's battery signal
 
-    func test_monitor_observesSystemOnTabletOnly() {
+    func test_monitor_observesSystemOnlyOnceTurnedOn() {
         let monitor = SystemEnergyConditionsMonitor(notificationCenter: NotificationCenter(), read: { .nominal })
-        monitor.deviceType = .phone
         XCTAssertFalse(monitor.observesSystemConditions)
-        monitor.deviceType = .tablet
+        monitor.observesSystemConditions = true
         XCTAssertTrue(monitor.observesSystemConditions)
     }
 

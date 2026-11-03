@@ -380,8 +380,8 @@ public final class SharedAccountContextImpl: SharedAccountContext {
         self.currentInAppNotificationSettings = Atomic(value: initialPresentationDataAndSettings.inAppNotificationSettings)
         self.currentChatSettings = Atomic(value: initialPresentationDataAndSettings.chatSettings)
         
-        // iPad (audit B-3): Power Saving also follows the system's energy signals; phones never do.
-        SystemEnergyConditionsMonitor.shared.deviceType = mainWindow?.deviceType ?? .phone
+        // Power Saving also follows the system's energy signals (audit B-3, every device type); not in extensions.
+        SystemEnergyConditionsMonitor.shared.observesSystemConditions = applicationBindings.isMainApp && mainWindow != nil
         if automaticEnergyUsageShouldBeOnNow(settings: self.currentAutomaticMediaDownloadSettings) {
             self.energyUsageSettings = EnergyUsageSettings.powerSavingDefault
         } else {

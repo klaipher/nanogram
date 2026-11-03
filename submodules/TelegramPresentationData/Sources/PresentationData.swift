@@ -571,8 +571,8 @@ private func automaticThemeShouldSwitch(_ settings: AutomaticThemeSwitchSetting,
 }
 
 public func automaticEnergyUsageShouldBeOnNow(settings: MediaAutoDownloadSettings) -> Bool {
-    // iPad (audit B-3): also while the system asks to save energy (thermal state, Low Power Mode, iOS 27 reduced
-    // resource usage; `SystemEnergyConditionsMonitor`). Never on a phone, and never when the user chose "Off".
+    // Also while the system asks to save energy (audit B-3, every device type: thermal state, Low Power Mode, iOS 27
+    // reduced resource usage; `SystemEnergyConditionsMonitor`). Never when the user chose "Off".
     return automaticEnergySavingIsOn(activationThreshold: settings.energyUsageSettings.activationThreshold, batteryLevel: UIDevice.current.batteryLevel, systemRequests: SystemEnergyConditionsMonitor.shared.requestsEnergySaving)
 }
 
@@ -587,7 +587,7 @@ public func automaticEnergyUsageShouldBeOn(settings: MediaAutoDownloadSettings) 
     } else if settings.energyUsageSettings.activationThreshold >= 96 {
         return .single(true)
     } else if !SystemEnergyConditionsMonitor.shared.observesSystemConditions {
-        // Phones (review I5): upstream's battery signal, unchanged.
+        // Not observing the system (app extensions, review I5): upstream's battery signal, unchanged.
         return Signal { subscriber in
             subscriber.putNext(automaticEnergyUsageShouldBeOnNow(settings: settings))
             
@@ -602,7 +602,7 @@ public func automaticEnergyUsageShouldBeOn(settings: MediaAutoDownloadSettings) 
         |> runOn(Queue.mainQueue())
         |> distinctUntilChanged
     } else {
-        // iPad (audit B-3): the battery and the system's signals. `deliverOnMainQueue` stays: the system's
+        // The battery and the system's signals (audit B-3, every device type). `deliverOnMainQueue` stays: the system's
         // notifications arrive on any thread, and the map reads the battery level and UIApplication on main.
         let battery = Signal<Void, NoError> { subscriber in
             subscriber.putNext(Void())

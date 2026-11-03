@@ -6,7 +6,7 @@ import SwiftSignalKit
 
 /// The second iPad batch of the iPadOS 27 audit (2026-11-03): B-3 Power Saving signals, B-1 display-link cap and
 /// pacing log, A-6 menu bar, A-14/B-7 Pencil, A-8 orientation locks. Every case pairs the iPad behaviour with the
-/// phone one, which must stay what upstream does.
+/// phone one, which must stay what upstream does, except B-3, which applies to every device now (`EnergyRulesTests`).
 final class TabletSecondBatchRulesTests: XCTestCase {
     // MARK: B-3 Power Saving follows the system
 
@@ -14,17 +14,13 @@ final class TabletSecondBatchRulesTests: XCTestCase {
         return SystemEnergyConditions(thermalState: thermal, isLowPowerModeEnabled: lowPower, prefersReducedResourceUsage: reduced)
     }
 
-    func test_tablet_eachSystemSignalRequestsEnergySaving() {
-        XCTAssertFalse(systemRequestsEnergySaving(self.conditions(), deviceType: .tablet))
-        XCTAssertFalse(systemRequestsEnergySaving(self.conditions(thermal: .fair), deviceType: .tablet))
-        XCTAssertTrue(systemRequestsEnergySaving(self.conditions(thermal: .serious), deviceType: .tablet))
-        XCTAssertTrue(systemRequestsEnergySaving(self.conditions(thermal: .critical), deviceType: .tablet))
-        XCTAssertTrue(systemRequestsEnergySaving(self.conditions(lowPower: true), deviceType: .tablet))
-        XCTAssertTrue(systemRequestsEnergySaving(self.conditions(reduced: true), deviceType: .tablet))
-    }
-
-    func test_phone_systemSignalsAreIgnored() {
-        XCTAssertFalse(systemRequestsEnergySaving(self.conditions(thermal: .critical, lowPower: true, reduced: true), deviceType: .phone))
+    func test_eachSystemSignalRequestsEnergySaving() {
+        XCTAssertFalse(systemRequestsEnergySaving(self.conditions()))
+        XCTAssertFalse(systemRequestsEnergySaving(self.conditions(thermal: .fair)))
+        XCTAssertTrue(systemRequestsEnergySaving(self.conditions(thermal: .serious)))
+        XCTAssertTrue(systemRequestsEnergySaving(self.conditions(thermal: .critical)))
+        XCTAssertTrue(systemRequestsEnergySaving(self.conditions(lowPower: true)))
+        XCTAssertTrue(systemRequestsEnergySaving(self.conditions(reduced: true)))
     }
 
     /// In automatic mode a system request turns Power Saving on with a full battery, and off again when it clears.
@@ -58,14 +54,14 @@ final class TabletSecondBatchRulesTests: XCTestCase {
         }
     }
 
-    func test_monitor_tablet_followsNotificationsAndClears() {
+    func test_monitor_followsNotificationsAndClears() {
         let center = NotificationCenter()
         var current = self.conditions()
         // A clock the test moves: a serious thermal state is released only after the hysteresis delay
         // (`TabletReviewFixesTests.test_monitor_thermalHysteresis`); no timer is left behind.
         var time = 0.0
         let monitor = SystemEnergyConditionsMonitor(notificationCenter: center, read: { current }, now: { time }, schedule: { _, _ in EmptyDisposable })
-        monitor.deviceType = .tablet
+        monitor.observesSystemConditions = true
 
         var values: [Bool] = []
         let disposable = monitor.requestsEnergySavingUpdates().start(next: { values.append($0) })
@@ -90,18 +86,6 @@ final class TabletSecondBatchRulesTests: XCTestCase {
         current = self.conditions(thermal: .critical)
         center.post(name: ProcessInfo.thermalStateDidChangeNotification, object: nil)
         XCTAssertEqual(values.count, 4)
-    }
-
-    func test_monitor_phone_neverRequests() {
-        let center = NotificationCenter()
-        let monitor = SystemEnergyConditionsMonitor(notificationCenter: center, read: { SystemEnergyConditions(thermalState: .critical, isLowPowerModeEnabled: true, prefersReducedResourceUsage: true) })
-        monitor.deviceType = .phone
-        XCTAssertFalse(monitor.requestsEnergySaving)
-        var values: [Bool] = []
-        let disposable = monitor.requestsEnergySavingUpdates().start(next: { values.append($0) })
-        center.post(name: ProcessInfo.thermalStateDidChangeNotification, object: nil)
-        XCTAssertEqual(values, [false])
-        disposable.dispose()
     }
 
     // MARK: B-1 Shared display link rate
