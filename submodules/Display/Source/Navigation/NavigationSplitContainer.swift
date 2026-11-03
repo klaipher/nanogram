@@ -10,13 +10,11 @@ enum NavigationSplitContainerScrollToTop {
 
 /// The width of the master pane. While the fold is active and runs vertically through the whole
 /// container (iPhone Duo half-open in landscape), the split sits on the hinge's midline, so the
-/// chat list and the chat each get one side of the fold. Otherwise a third of the width, at least
-/// 320pt and at most half.
+/// chat list and the chat each get one side of the fold. Otherwise the width the user dragged the
+/// divider to for this window shape, kept in range (Nanogram: `SplitColumnWidth.swift`), or by
+/// default a third of the width, at least 320pt and at most half.
 public func splitMasterWidth(containerSize: CGSize, division: CGRect?) -> CGFloat {
-    if let division, division.width < containerSize.width, division.minY <= 0.5, division.maxY >= containerSize.height - 0.5 {
-        return floorToScreenPixels(division.midX)
-    }
-    return min(max(320.0, floor(containerSize.width / 3.0)), floor(containerSize.width / 2.0))
+    return splitMasterWidth(containerSize: containerSize, division: division, preferredWidth: SplitColumnWidthStore.shared.preferredWidth(containerSize: containerSize))
 }
 
 final class NavigationSplitContainer: ASDisplayNode {
@@ -25,6 +23,7 @@ final class NavigationSplitContainer: ASDisplayNode {
     private let masterContainer: NavigationContainer
     private let detailContainer: NavigationContainer
     private let separator: ASDisplayNode
+    private let divider: SplitColumnDividerNode
     
     private(set) var masterControllers: [ViewController] = []
     private(set) var detailControllers: [ViewController] = []
@@ -60,11 +59,14 @@ final class NavigationSplitContainer: ASDisplayNode {
         self.separator = ASDisplayNode()
         self.separator.backgroundColor = theme.separatorColor
         
+        self.divider = SplitColumnDividerNode()
+        
         super.init()
         
         self.addSubnode(self.masterContainer)
         self.addSubnode(self.detailContainer)
         self.addSubnode(self.separator)
+        self.addSubnode(self.divider)
     }
     
     func hasNonReadyControllers() -> Bool {
@@ -78,7 +80,9 @@ final class NavigationSplitContainer: ASDisplayNode {
     }
     
     func updateTheme(theme: NavigationControllerTheme) {
+        self.theme = theme
         self.separator.backgroundColor = theme.separatorColor
+        self.divider.updateGrabberColor(theme.separatorColor)
     }
     
     /// The master controllers highlight the chat the detail pane shows (`updateNavigationCustomData`);
@@ -108,6 +112,7 @@ final class NavigationSplitContainer: ASDisplayNode {
         transition.updateFrame(node: self.masterContainer, frame: CGRect(origin: CGPoint(), size: CGSize(width: masterWidth, height: layout.size.height)))
         transition.updateFrame(node: self.detailContainer, frame: CGRect(origin: CGPoint(x: masterWidth, y: 0.0), size: CGSize(width: detailWidth, height: layout.size.height)))
         transition.updateFrame(node: self.separator, frame: CGRect(origin: CGPoint(x: masterWidth, y: 0.0), size: CGSize(width: UIScreenPixel, height: layout.size.height)))
+        self.divider.update(containerSize: layout.size, masterWidth: masterWidth, isEnabled: SplitColumnWidth.isResizable(isTablet: layout.deviceMetrics.type == .tablet, containerSize: layout.size, division: layout.division), grabberColor: self.theme.separatorColor, transition: transition)
         
         if let detailsPlaceholderNode {
             let needsTiling = layout.size.width > layout.size.height

@@ -98,3 +98,25 @@ ios_unit_test(
         ":TabletLayoutTestsLib",
     ],
 )
+
+# The resizable chat-list column (SplitColumnWidth.swift) alone.
+swift_library(
+    name = "SplitColumnWidthTestsLib",
+    testonly = True,
+    srcs = [
+        "Tests/SplitColumnWidthTests.swift",
+        "Tests/SplitMasterWidthTests.swift",
+    ],
+    deps = [
+        ":Display",
+    ],
+)
+
+ios_unit_test(
+    name = "SplitColumnWidthTests",
+    minimum_os_version = "15.0",
+    runner = ":DisplayTestRunner",
+    deps = [
+        ":SplitColumnWidthTestsLib",
+    ],
+)
