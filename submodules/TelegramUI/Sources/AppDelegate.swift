@@ -2048,7 +2048,11 @@ private func extractAccountManagerState(records: AccountRecordsView<TelegramAcco
                     //UIApplication.shared.applicationIconBadgeNumber = 1
                 }
             }
-            UIApplication.shared.applicationIconBadgeNumber = Int(count)
+            if #available(iOS 16.0, *) {
+                UNUserNotificationCenter.current().setBadgeCount(Int(count), withCompletionHandler: nil)
+            } else {
+                UIApplication.shared.applicationIconBadgeNumber = Int(count)
+            }
         }))
     }
 
@@ -3389,13 +3393,12 @@ private func extractAccountManagerState(records: AccountRecordsView<TelegramAcco
     
     @available(iOS 10.0, *)
     func userNotificationCenter(_ center: UNUserNotificationCenter, willPresent notification: UNNotification, withCompletionHandler completionHandler: @escaping (UNNotificationPresentationOptions) -> Void) {
+        // The handler must be called exactly once on every path, or the system holds the block.
         let _ = (accountIdFromNotification(notification, sharedContext: self.sharedContextPromise.get())
+        |> take(1)
         |> deliverOnMainQueue).start(next: { accountId in
-            if let context = self.contextValue {
-                if let accountId = accountId, context.context.account.id != accountId || notification.request.content.userInfo["url"] != nil {
-                    completionHandler([.banner, .list])
-                }
-            }
+            let showsBanner = ForegroundNotificationPresentation.showsBanner(notificationAccountId: accountId?.int64, currentAccountId: self.contextValue?.context.account.id.int64, hasUrl: notification.request.content.userInfo["url"] != nil)
+            completionHandler(showsBanner ? [.banner, .list] : [])
         })
     }
     

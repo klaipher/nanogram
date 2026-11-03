@@ -938,10 +938,10 @@ GPU (Metal) rendering of stickers and emoji, its debug switches and how to measu
 ## Framework export lists (computed by the build)
 
 `TelegramUIFramework` and `TelegramCoreFramework` export only the symbols their clients use.
-- **`TelegramUIFramework`:** its clients are the app binary and the Share, Notification Content,
-  Broadcast Upload and Notification Service extensions. It exports 194 of 161,496 public
+- **`TelegramUIFramework`:** its clients are the app binary and the Share, Broadcast Upload and
+  Notification Service extensions (the unused Notification Content extension was removed 2026-11-03). It exports 194 of 161,496 public
   symbols in release (214 in debug), which cut it by 13.6 MB (−11.9%).
-- **`TelegramCoreFramework`:** its clients are TelegramUI, the app binary and all six extensions.
+- **`TelegramCoreFramework`:** its clients are TelegramUI, the app binary and all five extensions.
   It exports 5,279 of 39,436 in release, which cut it by 1.4 MB (−9.2%).
 
 Together, `.ipa` −5.4 MB. The symbol tables went, and so did the unused public code they kept alive.

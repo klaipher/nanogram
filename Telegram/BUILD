@@ -867,7 +867,6 @@ framework_exported_symbols(
         ":Main",
         ":Lib",
         ":ShareExtensionLib",
-        ":NotificationContentExtensionLib",
         ":BroadcastUploadExtensionLib",
         ":WidgetExtensionLib",
         ":IntentsExtensionLib",
@@ -1036,7 +1035,6 @@ framework_exported_symbols(
         ":Main",
         ":Lib",
         ":ShareExtensionLib",
-        ":NotificationContentExtensionLib",
         ":BroadcastUploadExtensionLib",
         "//Telegram/NotificationService:NotificationServiceExtensionLib",
     ],
@@ -1189,114 +1187,6 @@ ios_extension(
         "//conditions:default": "@build_configuration//provisioning:Share.mobileprovision",
     }),
     deps = [":ShareExtensionLib"],
-    frameworks = [
-        ":TelegramUIFramework"
-    ],
-)
-
-plist_fragment(
-    name = "NotificationContentInfoPlist",
-    extension = "plist",
-    template = 
-    """
-    <key>CFBundleDevelopmentRegion</key>
-    <string>en</string>
-    <key>CFBundleIdentifier</key>
-    <string>{telegram_bundle_id}.NotificationContent</string>
-    <key>CFBundleName</key>
-    <string>Nanogram</string>
-    <key>CFBundlePackageType</key>
-    <string>XPC!</string>
-    <key>NSExtension</key>
-    <dict>
-        <key>NSExtensionAttributes</key>
-        <dict>
-            <key>UNNotificationExtensionCategory</key>
-            <array>
-                <string>withReplyMedia</string>
-                <string>withMuteMedia</string>
-            </array>
-            <key>UNNotificationExtensionInitialContentSizeRatio</key>
-            <real>0.0001</real>
-        </dict>
-        <key>NSExtensionPointIdentifier</key>
-        <string>com.apple.usernotifications.content-extension</string>
-        <key>NSExtensionPrincipalClass</key>
-        <string>NotificationViewController</string>
-    </dict>
-    """.format(
-        telegram_bundle_id = telegram_bundle_id,
-    )
-)
-
-objc_library(
-    name = "NotificationContentExtensionLink",
-    srcs = [
-        "NotificationContent/main.m",
-    ],
-    sdk_frameworks = [
-        "UserNotificationsUI",
-    ],
-)
-
-swift_library(
-    name = "NotificationContentExtensionLib",
-    module_name = "NotificationContentExtensionLib",
-    srcs = glob([
-        "NotificationContent/**/*.swift",
-    ]),
-    copts = [
-        "-warnings-as-errors",
-    ],
-    deps = [
-        "//submodules/TelegramUI:TelegramUI",
-        "//submodules/PasscodeCore",
-        ":NotificationContentExtensionLink",
-    ],
-)
-
-'''genrule(
-    name = "SetMinOsVersionNotificationContentExtension",
-    cmd_bash =
-"""
-    name=NotificationContentExtension.appex
-    cat $(location PatchMinOSVersion.source.sh) | sed -e "s/<<<MIN_OS_VERSION>>>/10\\.0/g" | sed -e "s/<<<NAME>>>/$$name/g" > $(location SetMinOsVersionNotificationContentExtension.sh)
-""",
-    srcs = [
-        "PatchMinOSVersion.source.sh",
-    ],
-    outs = [
-        "SetMinOsVersionNotificationContentExtension.sh",
-    ],
-    executable = True,
-    visibility = [
-        "//visibility:public",
-    ]
-)'''
-
-ios_extension(
-    name = "NotificationContentExtension",
-    bundle_id = "{telegram_bundle_id}.NotificationContent".format(
-        telegram_bundle_id = telegram_bundle_id,
-    ),
-    families = [
-        "iphone",
-        "ipad",
-    ],
-    infoplists = [
-        ":NotificationContentInfoPlist",
-        ":VersionInfoPlist",
-        ":RequiredDeviceCapabilitiesPlist",
-        ":BuildNumberInfoPlist",
-        ":AppNameInfoPlist",
-    ],
-    minimum_os_version = minimum_os_version, # maintain the same minimum OS version across extensions
-    #ipa_post_processor = ":SetMinOsVersionNotificationContentExtension",
-    provisioning_profile = select({
-        ":disableProvisioningProfilesSetting": None,
-        "//conditions:default": "@build_configuration//provisioning:NotificationContent.mobileprovision",
-    }),
-    deps = [":NotificationContentExtensionLib"],
     frameworks = [
         ":TelegramUIFramework"
     ],
@@ -2006,7 +1896,6 @@ ios_application(
         ":disableExtensionsSetting": [],
         "//conditions:default": [
             ":ShareExtension",
-            ":NotificationContentExtension",
             ":NotificationServiceExtension" + notificationServiceExtensionVersion,
             ":IntentsExtension",
             ":WidgetExtension",
