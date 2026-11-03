@@ -586,7 +586,24 @@ public func automaticEnergyUsageShouldBeOn(settings: MediaAutoDownloadSettings) 
         return .single(false)
     } else if settings.energyUsageSettings.activationThreshold >= 96 {
         return .single(true)
+    } else if !SystemEnergyConditionsMonitor.shared.observesSystemConditions {
+        // Phones (review I5): upstream's battery signal, unchanged.
+        return Signal { subscriber in
+            subscriber.putNext(automaticEnergyUsageShouldBeOnNow(settings: settings))
+            
+            let observer = NotificationCenter.default.addObserver(forName: UIDevice.batteryLevelDidChangeNotification, object: nil, queue: OperationQueue.main, using: { _ in
+                subscriber.putNext(automaticEnergyUsageShouldBeOnNow(settings: settings))
+            })
+            
+            return ActionDisposable {
+                NotificationCenter.default.removeObserver(observer)
+            }
+        }
+        |> runOn(Queue.mainQueue())
+        |> distinctUntilChanged
     } else {
+        // iPad (audit B-3): the battery and the system's signals. `deliverOnMainQueue` stays: the system's
+        // notifications arrive on any thread, and the map reads the battery level and UIApplication on main.
         let battery = Signal<Void, NoError> { subscriber in
             subscriber.putNext(Void())
             
@@ -598,7 +615,6 @@ public func automaticEnergyUsageShouldBeOn(settings: MediaAutoDownloadSettings) 
                 NotificationCenter.default.removeObserver(observer)
             }
         }
-        // A single value on phones, so there the result is upstream's battery signal.
         let system = SystemEnergyConditionsMonitor.shared.requestsEnergySavingUpdates()
         return combineLatest(battery, system |> deliverOnMainQueue)
         |> map { _, _ -> Bool in

@@ -150,6 +150,7 @@ swift_library(
     testonly = True,
     srcs = [
         "Tests/TabletSecondBatchRulesTests.swift",
+        "Tests/TabletReviewFixesTests.swift",
     ],
     deps = [
         ":Display",

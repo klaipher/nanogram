@@ -1,20 +1,26 @@
 import Foundation
 import UIKit
 
-// A-8 (iPadOS 27 audit, 2026-11-03): orientation locks in resizable windows. On iOS 27 an app's supported orientations
-// are "a preference … ignored when your app is running in a resizable environment" (WWDC26-278), so a screen that locks
-// rotation by narrowing the mask (recording a round video or a voice message, `ViewController.lockOrientation`) is not
-// locked in Stage Manager or a windowed iPad app. iOS 26 adds `prefersInterfaceOrientationLocked`, which is honoured
-// there.
+// A-8 (iPadOS 27 audit, 2026-11-03): orientation locks on iPad. On iOS 27 an app's supported orientations are "a
+// preference … ignored when your app is running in a resizable environment" (WWDC26-278). iOS 26 adds
+// `prefersInterfaceOrientationLocked`, but the SDK header (UIViewController.h) says the system considers it only when
+// the scene is centred, takes the whole screen and is not covered by another scene: full screen, not a resizable
+// Stage Manager or windowed-apps window. There, nothing an app sets keeps the orientation (review I1, 2026-11-03);
+// rotation while recording in such a window is P-12's (the recording screens must lay out in any shape).
 
-/// Whether the window's root controller asks the system to keep the current orientation: on a tablet, whenever the
-/// orientations the visible screens allow are narrower than the window's default (`defaultOrientations`, all four on
-/// an iPad), which is what every lock and every orientation-restricted screen produces. Never on a phone.
-public func windowPrefersInterfaceOrientationLocked(deviceType: DeviceType, supportedOrientations: UIInterfaceOrientationMask, defaultOrientations: UIInterfaceOrientationMask) -> Bool {
+/// Whether the window's root controller asks the system to keep the current orientation: on a tablet, only while the
+/// visible screens allow one axis, portrait or landscape (`lockOrientation` produces the current orientation alone;
+/// an orientation-restricted screen one axis). A mask with both axes is not a lock, in particular a compact
+/// controller's default `.allButUpsideDown`. Never on a phone.
+public func windowPrefersInterfaceOrientationLocked(deviceType: DeviceType, supportedOrientations: UIInterfaceOrientationMask) -> Bool {
     guard case .tablet = deviceType else {
         return false
     }
-    return supportedOrientations != defaultOrientations && defaultOrientations.isSuperset(of: supportedOrientations)
+    if supportedOrientations.isEmpty {
+        return false
+    }
+    let portraitAxis: UIInterfaceOrientationMask = [.portrait, .portraitUpsideDown]
+    return portraitAxis.isSuperset(of: supportedOrientations) || UIInterfaceOrientationMask.landscape.isSuperset(of: supportedOrientations)
 }
 
 /// The interface orientation of a window scene: on a tablet with iOS 26, the scene's effective geometry

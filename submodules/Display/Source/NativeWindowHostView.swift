@@ -182,12 +182,12 @@ private final class WindowRootViewController: UIViewController {
         return self.orientations
     }
     
-    /// iPad (audit A-8): keeps the current orientation while the visible screens narrow the orientations (a round
-    /// video or voice message recording, an orientation-restricted screen), also in a resizable window, where the
-    /// mask alone is ignored on iOS 27. Never on a phone (`windowPrefersInterfaceOrientationLocked`).
+    /// iPad (audit A-8): keeps the current orientation while the visible screens allow one axis only (a round video
+    /// or voice message recording, an orientation-restricted screen). The system honours it only for a full-screen
+    /// scene, not in a resizable window. Never on a phone (`windowPrefersInterfaceOrientationLocked`).
     @available(iOS 26.0, *)
     override var prefersInterfaceOrientationLocked: Bool {
-        return windowPrefersInterfaceOrientationLocked(deviceType: UIDevice.current.userInterfaceIdiom == .pad ? .tablet : .phone, supportedOrientations: self.orientations, defaultOrientations: defaultOrientations)
+        return windowPrefersInterfaceOrientationLocked(deviceType: UIDevice.current.userInterfaceIdiom == .pad ? .tablet : .phone, supportedOrientations: self.orientations)
     }
     
     override func traitCollectionDidChange(_ previousTraitCollection: UITraitCollection?) {

@@ -370,8 +370,21 @@ final class ChatImageGalleryItemNode: ZoomableContentGalleryItemNode {
         }
         let displaySize = dimensions.cgSize.fitted(CGSize(width: 1280.0, height: 1280.0)).dividedByScreenScale().integralFloor
         
-        self.systemLiveText.attach(to: self.imageNode.view, deviceType: self.context.sharedContext.mainWindow?.deviceType ?? .phone, isContentProtected: self.peerIsCopyProtected || self.isSecret, makeImage: {
+        // Called on a background queue: the view and the conditions are read on the main thread (`imageReady`).
+        self.systemLiveText.imageReady(makeImage: {
             return generate(TransformImageArguments(corners: ImageCorners(), imageSize: displaySize, boundingSize: displaySize, intrinsicInsets: UIEdgeInsets()))?.generateImage()
+        }, target: { [weak self] in
+            guard let self else {
+                return nil
+            }
+            let context = self.context
+            return (self.imageNode.view, GalleryLiveTextConditions(
+                deviceType: context.sharedContext.mainWindow?.deviceType ?? .phone,
+                isSupported: false,
+                isContentProtected: self.peerIsCopyProtected || self.isSecret,
+                isAnalysisDisabled: context.sharedContext.immediateExperimentalUISettings.disableImageContentAnalysis,
+                isPowerSaving: automaticEnergyUsageShouldBeOnNow(settings: context.sharedContext.currentAutomaticMediaDownloadSettings)
+            ))
         })
         
         self.recognitionDisposable.set((recognizedContent(context: self.context, image: { return generate(TransformImageArguments(corners: ImageCorners(), imageSize: displaySize, boundingSize: displaySize, intrinsicInsets: UIEdgeInsets()))?.generateImage() }, messageId: message.id)
@@ -500,6 +513,7 @@ final class ChatImageGalleryItemNode: ZoomableContentGalleryItemNode {
     
     fileprivate func setImage(userLocation: MediaResourceUserLocation, imageReference: ImageMediaReference) {
         if self.contextAndMedia == nil || !self.contextAndMedia!.1.media.isEqual(to: imageReference.media) {
+            self.systemLiveText.reset()
             if let largestSize = largestRepresentationForPhoto(imageReference.media, maxSize: PixelDimensions(fullScreenImageMaxSize)) {
                 let displaySize = largestSize.dimensions.cgSize.fitted(fullScreenImageMaxSize).dividedByScreenScale().integralFloor
                 self.imageNode.asyncLayout()(TransformImageArguments(corners: ImageCorners(), imageSize: displaySize, boundingSize: displaySize, intrinsicInsets: UIEdgeInsets()))()
@@ -903,6 +917,7 @@ final class ChatImageGalleryItemNode: ZoomableContentGalleryItemNode {
     
     func setFile(context: AccountContext, userLocation: MediaResourceUserLocation, fileReference: FileMediaReference, force: Bool = false) {
         if self.contextAndMedia == nil || !self.contextAndMedia!.1.media.isEqual(to: fileReference.media) || force {
+            self.systemLiveText.reset()
             if var largestSize = (fileReference.media.dimensions ?? self.fetchedDimensions) {
                 var displaySize = largestSize.cgSize.dividedByScreenScale()
                 if let previewDimensions = largestImageRepresentation(fileReference.media.previewRepresentations)?.dimensions {
@@ -1174,6 +1189,12 @@ final class ChatImageGalleryItemNode: ZoomableContentGalleryItemNode {
         
         self.statusNodeContainer.layer.animatePosition(from: self.statusNodeContainer.position, to: CGPoint(x: transformedSuperFrame.midX, y: transformedSuperFrame.midY), duration: 0.25, timingFunction: kCAMediaTimingFunctionSpring, removeOnCompletion: false)
         self.statusNodeContainer.layer.animateAlpha(from: 1.0, to: 0.0, duration: 0.15, timingFunction: CAMediaTimingFunctionName.easeIn.rawValue, removeOnCompletion: false)
+    }
+    
+    override func centralityUpdated(isCentral: Bool) {
+        super.centralityUpdated(isCentral: isCentral)
+        
+        self.systemLiveText.centralityUpdated(isCentral: isCentral)
     }
     
     override func visibilityUpdated(isVisible: Bool) {

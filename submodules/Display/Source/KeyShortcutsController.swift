@@ -103,22 +103,32 @@ public class KeyShortcutsController: UIResponder {
             let shortcuts = self.collectShortcuts()
             self.effectiveShortcuts = shortcuts
             let items = mainMenuItems(section: section, shortcuts: shortcuts.map { (title: $0.title, input: $0.input, modifiers: $0.modifiers) })
-            completion(items.map { item -> UIMenuElement in
-                let command: UICommand
-                if item.showsKeyEquivalent {
-                    command = UIKeyCommand(title: item.title, action: #selector(KeyShortcutsController.handleKeyCommand(_:)), input: item.input, modifierFlags: item.modifiers)
-                } else {
-                    command = UICommand(title: item.title, action: #selector(KeyShortcutsController.handleMainMenuCommand(_:)), propertyList: KeyShortcutsController.mainMenuPropertyList(input: item.input, modifiers: item.modifiers))
-                }
-                if !item.isRepeatable {
-                    command.repeatBehavior = .nonRepeatable
-                }
-                return command
-            })
+            completion(KeyShortcutsController.mainMenuCommands(for: items))
         }
     }
     
-    private static func mainMenuPropertyList(input: String, modifiers: UIKeyModifierFlags) -> String {
+    /// The menu elements for `items`. UIKit identifies a main-menu command by its action and property list, and every
+    /// item shares one of two actions, so each carries its key as its property list (review I2): without it File's
+    /// ⌘N/⌘L and View's ⌘1–⌘9 were the same command to UIKit. The property list does not change how a key command
+    /// finds its shortcut (`KeyShortcut.isEqual(to:)` compares input and modifiers).
+    @available(iOS 26.0, *)
+    static func mainMenuCommands(for items: [MainMenuItem]) -> [UICommand] {
+        return items.map { item -> UICommand in
+            let command: UICommand
+            let propertyList = KeyShortcutsController.mainMenuPropertyList(input: item.input, modifiers: item.modifiers)
+            if item.showsKeyEquivalent {
+                command = UIKeyCommand(title: item.title, image: nil, action: #selector(KeyShortcutsController.handleKeyCommand(_:)), input: item.input, modifierFlags: item.modifiers, propertyList: propertyList)
+            } else {
+                command = UICommand(title: item.title, action: #selector(KeyShortcutsController.handleMainMenuCommand(_:)), propertyList: propertyList)
+            }
+            if !item.isRepeatable {
+                command.repeatBehavior = .nonRepeatable
+            }
+            return command
+        }
+    }
+    
+    static func mainMenuPropertyList(input: String, modifiers: UIKeyModifierFlags) -> String {
         return "\(modifiers.rawValue):\(input)"
     }
     

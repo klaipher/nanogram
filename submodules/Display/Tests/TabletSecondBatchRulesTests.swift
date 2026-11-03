@@ -61,7 +61,10 @@ final class TabletSecondBatchRulesTests: XCTestCase {
     func test_monitor_tablet_followsNotificationsAndClears() {
         let center = NotificationCenter()
         var current = self.conditions()
-        let monitor = SystemEnergyConditionsMonitor(notificationCenter: center, read: { current })
+        // A clock the test moves: a serious thermal state is released only after the hysteresis delay
+        // (`TabletReviewFixesTests.test_monitor_thermalHysteresis`); no timer is left behind.
+        var time = 0.0
+        let monitor = SystemEnergyConditionsMonitor(notificationCenter: center, read: { current }, now: { time }, schedule: { _, _ in EmptyDisposable })
         monitor.deviceType = .tablet
 
         var values: [Bool] = []
@@ -75,6 +78,7 @@ final class TabletSecondBatchRulesTests: XCTestCase {
         current = self.conditions(lowPower: true)
         center.post(name: Notification.Name.NSProcessInfoPowerStateDidChange, object: nil)
 
+        time += SystemEnergyConditionsMonitor.thermalReleaseDelay
         current = self.conditions()
         center.post(name: Notification.Name.NSProcessInfoPowerStateDidChange, object: nil)
         XCTAssertFalse(monitor.requestsEnergySaving)
@@ -300,13 +304,13 @@ final class TabletSecondBatchRulesTests: XCTestCase {
     // MARK: A-8 Orientation lock
 
     func test_orientationLock_tablet() {
-        XCTAssertFalse(windowPrefersInterfaceOrientationLocked(deviceType: .tablet, supportedOrientations: .all, defaultOrientations: .all))
-        XCTAssertTrue(windowPrefersInterfaceOrientationLocked(deviceType: .tablet, supportedOrientations: .landscape, defaultOrientations: .all))
-        XCTAssertTrue(windowPrefersInterfaceOrientationLocked(deviceType: .tablet, supportedOrientations: .portrait, defaultOrientations: .all))
+        XCTAssertFalse(windowPrefersInterfaceOrientationLocked(deviceType: .tablet, supportedOrientations: .all))
+        XCTAssertTrue(windowPrefersInterfaceOrientationLocked(deviceType: .tablet, supportedOrientations: .landscape))
+        XCTAssertTrue(windowPrefersInterfaceOrientationLocked(deviceType: .tablet, supportedOrientations: .portrait))
     }
 
     func test_orientationLock_phoneNever() {
-        XCTAssertFalse(windowPrefersInterfaceOrientationLocked(deviceType: .phone, supportedOrientations: .portrait, defaultOrientations: .allButUpsideDown))
+        XCTAssertFalse(windowPrefersInterfaceOrientationLocked(deviceType: .phone, supportedOrientations: .portrait))
     }
 
     func test_sceneOrientation() {

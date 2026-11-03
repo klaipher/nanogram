@@ -90,28 +90,124 @@ public func automaticEnergySavingBatteryConditionIsOn(activationThreshold: Int32
     }
 }
 
+/// The thermal half of `systemRequestsEnergySaving`, with hysteresis (review I4): on as soon as the state is serious or
+/// critical, off only once it has stayed at fair or below for `releaseDelay`, counted from the last serious reading.
+/// Under load the state often moves between fair and serious, and without this each move switched the whole energy
+/// settings (autoplay, animations) on and off.
+public struct ThermalEnergySavingLatch: Equatable {
+    public private(set) var isOn: Bool = false
+    /// When the state was first read below serious since it was last serious, while on.
+    public private(set) var coolSince: Double?
+
+    public init() {
+    }
+
+    public mutating func update(thermalState: ProcessInfo.ThermalState, now: Double, releaseDelay: Double) {
+        switch thermalState {
+        case .serious, .critical:
+            self.isOn = true
+            self.coolSince = nil
+        default:
+            guard self.isOn else {
+                self.coolSince = nil
+                return
+            }
+            let coolSince = self.coolSince ?? now
+            if now - coolSince >= releaseDelay {
+                self.isOn = false
+                self.coolSince = nil
+            } else {
+                self.coolSince = coolSince
+            }
+        }
+    }
+
+    /// When it turns off if the state stays below serious; nil when off or still hot.
+    public func releaseTime(releaseDelay: Double) -> Double? {
+        guard self.isOn, let coolSince = self.coolSince else {
+            return nil
+        }
+        return coolSince + releaseDelay
+    }
+}
+
 /// Watches the system's energy conditions (`SystemEnergyConditions`) for automatic Power Saving. Its device type is
 /// set once at launch from the main window; until then, and on phones, it never requests energy saving and observes
 /// nothing.
 public final class SystemEnergyConditionsMonitor {
     public static let shared = SystemEnergyConditionsMonitor(notificationCenter: .default, read: { SystemEnergyConditions.current() })
 
+    /// How long the thermal state must stay below serious before Power Saving it caused turns off.
+    public static let thermalReleaseDelay: Double = 120.0
+
     private let notificationCenter: NotificationCenter
     private let read: () -> SystemEnergyConditions
+    private let now: () -> Double
+    private let schedule: (Double, @escaping () -> Void) -> Disposable
 
     public var deviceType: DeviceType = .phone
 
-    public init(notificationCenter: NotificationCenter, read: @escaping () -> SystemEnergyConditions) {
+    public init(notificationCenter: NotificationCenter, read: @escaping () -> SystemEnergyConditions, now: @escaping () -> Double = { CACurrentMediaTime() }, schedule: @escaping (Double, @escaping () -> Void) -> Disposable = SystemEnergyConditionsMonitor.mainQueueTimer) {
         self.notificationCenter = notificationCenter
         self.read = read
+        self.now = now
+        self.schedule = schedule
     }
 
-    /// Whether the system asks to save energy right now.
-    public var requestsEnergySaving: Bool {
-        guard case .tablet = self.deviceType else {
+    public static func mainQueueTimer(delay: Double, action: @escaping () -> Void) -> Disposable {
+        let timer = SwiftSignalKit.Timer(timeout: delay, repeat: false, completion: action, queue: Queue.mainQueue())
+        timer.start()
+        return ActionDisposable {
+            timer.invalidate()
+        }
+    }
+
+    private let thermalLatch = Atomic<ThermalEnergySavingLatch>(value: ThermalEnergySavingLatch())
+
+    /// Whether this monitor ever observes the system: on a tablet only. Elsewhere callers keep upstream's
+    /// battery-only Power Saving signal unchanged (review I5).
+    public var observesSystemConditions: Bool {
+        if case .tablet = self.deviceType {
+            return true
+        } else {
             return false
         }
-        return systemRequestsEnergySaving(self.read(), deviceType: self.deviceType)
+    }
+
+    /// Whether the system asks to save energy right now: Low Power Mode or reduced resource usage as they are, the
+    /// thermal state through `ThermalEnergySavingLatch`.
+    public var requestsEnergySaving: Bool {
+        guard self.observesSystemConditions else {
+            return false
+        }
+        return self.evaluate().requests
+    }
+
+    private func evaluate() -> (requests: Bool, releaseIn: Double?) {
+        let conditions = self.read()
+        let now = self.now()
+        let releaseDelay = SystemEnergyConditionsMonitor.thermalReleaseDelay
+        let latch = self.thermalLatch.modify { latch in
+            var latch = latch
+            latch.update(thermalState: conditions.thermalState, now: now, releaseDelay: releaseDelay)
+            return latch
+        }
+        let requests = latch.isOn || conditions.isLowPowerModeEnabled || conditions.prefersReducedResourceUsage
+        return (requests, latch.releaseTime(releaseDelay: releaseDelay).map { max(0.0, $0 - now) })
+    }
+
+    /// Sends the current value, and while a thermal release is pending, reads again when it is due (no notification
+    /// marks the end of the cool-down).
+    private func deliver(to subscriber: Subscriber<Bool, NoError>, recheck: MetaDisposable) {
+        let (requests, releaseIn) = self.evaluate()
+        subscriber.putNext(requests)
+        if let releaseIn {
+            recheck.set(self.schedule(releaseIn, { [weak self] in
+                self?.deliver(to: subscriber, recheck: recheck)
+            }))
+        } else {
+            recheck.set(nil)
+        }
     }
 
     /// The names of the notifications after which the conditions are read again.
@@ -123,24 +219,34 @@ public final class SystemEnergyConditionsMonitor {
         return names
     }
 
-    /// `requestsEnergySaving` now and again whenever a condition may have changed (the notifications can arrive on
-    /// any thread). A single false on phones.
+    /// `requestsEnergySaving` now, again whenever a condition may have changed (the notifications can arrive on any
+    /// thread), and when a thermal cool-down ends. A single false on phones.
     public func requestsEnergySavingUpdates() -> Signal<Bool, NoError> {
-        guard case .tablet = self.deviceType else {
+        guard self.observesSystemConditions else {
             return .single(false)
         }
         let notificationCenter = self.notificationCenter
         return Signal { [weak self] subscriber in
-            subscriber.putNext(self?.requestsEnergySaving ?? false)
+            let recheck = MetaDisposable()
+            if let self {
+                self.deliver(to: subscriber, recheck: recheck)
+            } else {
+                subscriber.putNext(false)
+            }
             let observers = SystemEnergyConditionsMonitor.conditionChangeNotifications.map { name in
                 return notificationCenter.addObserver(forName: name, object: nil, queue: nil, using: { _ in
-                    subscriber.putNext(self?.requestsEnergySaving ?? false)
+                    if let self {
+                        self.deliver(to: subscriber, recheck: recheck)
+                    } else {
+                        subscriber.putNext(false)
+                    }
                 })
             }
             return ActionDisposable {
                 for observer in observers {
                     notificationCenter.removeObserver(observer)
                 }
+                recheck.dispose()
             }
         }
     }
