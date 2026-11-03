@@ -255,6 +255,9 @@ typedef NS_ENUM(int32_t, OngoingCallDataSavingWebrtc) {
 - (void)setOnFatalError:(dispatch_block_t _Nullable)onError;
 - (void)setOnPause:(void (^ _Nullable)(bool))onPause;
 - (void)setOnIsActiveUpdated:(void (^ _Nonnull)(bool))onIsActiveUpdated;
+/// 0 nominal ... 3 critical. With the thermal video ladder switch on, the encoder is fed a smaller
+/// picture and fewer frames per second at higher levels. Local only.
+- (void)setThermalLevel:(int32_t)level;
 
 #if TARGET_OS_IOS
 - (void)submitSampleBuffer:(CMSampleBufferRef _Nonnull)sampleBuffer rotation:(OngoingCallVideoOrientationWebrtc)rotation completion:(void (^_Nonnull)())completion;
@@ -285,6 +288,14 @@ typedef NS_ENUM(int32_t, OngoingCallDataSavingWebrtc) {
 + (void)setLivestreamHardwareDecoding:(bool)enabled;
 + (void)setNativeCapturePath:(bool)enabled;
 + (void)setEncoderLowLatency:(bool)enabled;
+
+/// Local-only power switches (Debug Settings). Same rules.
++ (void)setThreadQoS:(bool)enabled;
++ (void)setThermalVideoLadder:(bool)enabled;
++ (void)setBackgroundVideoDrop:(bool)enabled;
+/// Runtime state while the background drop switch is on: the app is in the background and Picture in
+/// Picture is not showing the incoming video.
++ (void)setIncomingVideoDropped:(bool)dropped;
 
 /// Local-only call audio switches (Debug Settings). Same rules: nothing negotiated or sent changes.
 + (void)setSystemNoiseSuppression:(bool)enabled;

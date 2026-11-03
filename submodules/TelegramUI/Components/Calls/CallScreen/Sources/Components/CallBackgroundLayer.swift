@@ -134,27 +134,53 @@ final class CallBackgroundLayer: MetalEngineSubjectLayer, MetalEngineSubject {
             guard let self else {
                 return
             }
-            self.displayLinkSubscription = SharedDisplayLinkDriver.shared.add(framesPerSecond: .fps(30), { [weak self] timeDelta in
-                guard let self else {
-                    return
-                }
-                self.colorTransition.update()
-                self.phaseAcceleration.update()
-                
-                let stepCount = 8
-                var phaseStep: CGFloat = 0.5 * timeDelta
-                phaseStep += phaseStep * self.phaseAcceleration.value * 0.5
-                self.phase = (self.phase + Float(phaseStep)).truncatingRemainder(dividingBy: Float(stepCount))
-                
-                self.setNeedsUpdate()
-            })
+            self.updateDisplayLink()
         }
         self.didExitHierarchy = { [weak self] in
             guard let self else {
                 return
             }
-            self.displayLinkSubscription = nil
+            self.updateDisplayLink()
         }
+        self.colorTransition.didStartAnimation = { [weak self] in
+            self?.updateDisplayLink()
+        }
+        self.phaseAcceleration.didStartAnimation = { [weak self] in
+            self?.updateDisplayLink()
+        }
+    }
+    
+    /// Frames are produced while the background drifts, or in energy saving while a colour or acceleration
+    /// animation is still running. A frozen background in energy saving costs nothing.
+    private func updateDisplayLink() {
+        let needsLink = CallScreenLinkPolicy.backgroundNeedsLink(isInHierarchy: self.isInHierarchy, isEnergySaving: self.isEnergySavingEnabled, hasRunningAnimation: self.colorTransition.hasRunningAnimation || self.phaseAcceleration.hasRunningAnimation)
+        if !needsLink {
+            self.displayLinkSubscription = nil
+            return
+        }
+        if self.displayLinkSubscription != nil {
+            return
+        }
+        self.displayLinkSubscription = SharedDisplayLinkDriver.shared.add(framesPerSecond: .fps(30), { [weak self] timeDelta in
+            guard let self else {
+                return
+            }
+            self.colorTransition.update()
+            self.phaseAcceleration.update()
+            
+            if !self.isEnergySavingEnabled {
+                let stepCount = 8
+                var phaseStep: CGFloat = 0.5 * timeDelta
+                phaseStep += phaseStep * self.phaseAcceleration.value * 0.5
+                self.phase = (self.phase + Float(phaseStep)).truncatingRemainder(dividingBy: Float(stepCount))
+            }
+            
+            self.setNeedsUpdate()
+            
+            if !CallScreenLinkPolicy.backgroundNeedsLink(isInHierarchy: self.isInHierarchy, isEnergySaving: self.isEnergySavingEnabled, hasRunningAnimation: self.colorTransition.hasRunningAnimation || self.phaseAcceleration.hasRunningAnimation) {
+                self.displayLinkSubscription = nil
+            }
+        })
     }
     
     override init(layer: Any) {
@@ -171,7 +197,12 @@ final class CallBackgroundLayer: MetalEngineSubjectLayer, MetalEngineSubject {
     }
     
     func update(stateIndex: Int, isEnergySavingEnabled: Bool, transition: ComponentTransition) {
+        let energySavingChanged = self.isEnergySavingEnabled != isEnergySavingEnabled
         self.isEnergySavingEnabled = isEnergySavingEnabled
+        if energySavingChanged {
+            // The frozen frame (phase 0) is drawn once when saving turns on; drifting resumes when it turns off.
+            self.setNeedsUpdate()
+        }
         
         if self.stateIndex != stateIndex {
             self.stateIndex = stateIndex
@@ -183,6 +214,7 @@ final class CallBackgroundLayer: MetalEngineSubjectLayer, MetalEngineSubject {
             }
             self.setNeedsUpdate()
         }
+        self.updateDisplayLink()
     }
     
     func update(context: MetalEngineSubjectContext) {

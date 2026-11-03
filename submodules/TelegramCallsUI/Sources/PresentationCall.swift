@@ -130,7 +130,12 @@ public final class PresentationCallImpl: PresentationCall {
     private var dropCallKitCallTimer: SwiftSignalKit.Timer?
     
     private var useFrontCamera: Bool = true
-    private var videoCapturer: OngoingCallVideoCapturer?
+    private var videoCapturer: OngoingCallVideoCapturer? {
+        didSet {
+            self.updateThermalBinding()
+        }
+    }
+    private var thermalLevelDisposable: Disposable?
     public var hasVideo: Bool {
         return self.videoCapturer != nil
     }
@@ -239,6 +244,7 @@ public final class PresentationCallImpl: PresentationCall {
         self.isVideo = startWithVideo
         if self.isVideo {
             self.videoCapturer = OngoingCallVideoCapturer()
+            self.updateThermalBinding()
             self.statePromise.set(PresentationCallState(state: isOutgoing ? .waiting : .ringing, videoState: .active(isScreencast: self.isScreencastActive, endpointId: ""), remoteVideoState: .inactive, remoteAudioState: .active, remoteBatteryLevel: .normal, supportsConferenceCalls: self.supportsConferenceCalls))
         } else {
             self.statePromise.set(PresentationCallState(state: isOutgoing ? .waiting : .ringing, videoState: self.isVideoPossible ? .inactive : .notAvailable, remoteVideoState: .inactive, remoteAudioState: .active, remoteBatteryLevel: .normal, supportsConferenceCalls: self.supportsConferenceCalls))
@@ -448,7 +454,26 @@ public final class PresentationCallImpl: PresentationCall {
         }
     }
     
+    /// Feeds the call thermal level to the camera capturer while there is one. The engine acts on it only with
+    /// "Calls: thermal video ladder" on; otherwise it just remembers the number.
+    private func updateThermalBinding() {
+        if self.videoCapturer == nil {
+            self.thermalLevelDisposable?.dispose()
+            self.thermalLevelDisposable = nil
+            return
+        }
+        if self.thermalLevelDisposable != nil {
+            return
+        }
+        CallThermalGovernor.shared.start()
+        self.thermalLevelDisposable = (CallThermalGovernor.shared.level
+        |> deliverOnMainQueue).startStrict(next: { [weak self] level in
+            self?.videoCapturer?.setThermalLevel(level.rawValue)
+        })
+    }
+    
     deinit {
+        self.thermalLevelDisposable?.dispose()
         self.audioSessionShouldBeActiveDisposable?.dispose()
         self.audioSessionActiveDisposable?.dispose()
         self.sessionStateDisposable?.dispose()

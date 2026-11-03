@@ -1348,11 +1348,17 @@ namespace {
 
 class GroupCallVideoSinkAdapter : public rtc::VideoSinkInterface<webrtc::VideoFrame> {
 public:
-    GroupCallVideoSinkAdapter(void (^frameReceived)(webrtc::VideoFrame const &)) {
+    GroupCallVideoSinkAdapter(void (^frameReceived)(webrtc::VideoFrame const &), bool dropsWhileBackgrounded = false) {
         _frameReceived = [frameReceived copy];
+        _dropsWhileBackgrounded = dropsWhileBackgrounded;
     }
 
     void OnFrame(const webrtc::VideoFrame& nativeVideoFrame) override {
+        // The app is in the background and Picture in Picture is not showing this video: nothing
+        // can display the frame, so it is not mapped or handed on. The decoder keeps running.
+        if (_dropsWhileBackgrounded && tgcalls::CallsRuntimeSwitches::backgroundVideoDrop() && tgcalls::CallsRuntimeSwitches::incomingVideoDropped()) {
+            return;
+        }
         @autoreleasepool {
             if (_frameReceived) {
                 _frameReceived(nativeVideoFrame);
@@ -1362,6 +1368,7 @@ public:
 
 private:
     void (^_frameReceived)(webrtc::VideoFrame const &);
+    bool _dropsWhileBackgrounded = false;
 };
 
 class DirectConnectionChannelImpl : public tgcalls::DirectConnectionChannel {
@@ -1406,6 +1413,10 @@ private:
 @implementation GroupCallVideoSink
 
 - (instancetype)initWithSink:(void (^_Nonnull)(CallVideoFrameData * _Nonnull))sink {
+    return [self initWithSink:sink dropsWhileBackgrounded:false];
+}
+
+- (instancetype)initWithSink:(void (^_Nonnull)(CallVideoFrameData * _Nonnull))sink dropsWhileBackgrounded:(bool)dropsWhileBackgrounded {
     self = [super init];
     if (self != nil) {
         void (^storedSink)(CallVideoFrameData * _Nonnull) = [sink copy];
@@ -1473,7 +1484,7 @@ private:
             if (storedSink && mappedBuffer) {
                 storedSink([[CallVideoFrameData alloc] initWithBuffer:mappedBuffer frame:videoFrame mirrorHorizontally:mirrorHorizontally mirrorVertically:mirrorVertically hasDeviceRelativeVideoRotation:hasDeviceRelativeVideoRotation deviceRelativeVideoRotation:deviceRelativeVideoRotation]);
             }
-        }));
+        }, dropsWhileBackgrounded));
     }
     return self;
 }
@@ -1647,6 +1658,10 @@ tgcalls::VideoCaptureInterfaceObject *GetVideoCaptureAssumingSameThread(tgcalls:
 #else
     _interface->setOnPause(onPause);
 #endif
+}
+
+- (void)setThermalLevel:(int32_t)level {
+    _interface->setThermalLevel((int)level);
 }
 
 - (void)setOnIsActiveUpdated:(void (^)(bool))onIsActiveUpdated {
@@ -1836,6 +1851,22 @@ static void (*InternalVoipLoggingFunction)(NSString *) = NULL;
 
 + (void)setEncoderLowLatency:(bool)enabled {
     tgcalls::CallsRuntimeSwitches::setEncoderLowLatency(enabled);
+}
+
++ (void)setThreadQoS:(bool)enabled {
+    tgcalls::CallsRuntimeSwitches::setThreadQoS(enabled);
+}
+
++ (void)setThermalVideoLadder:(bool)enabled {
+    tgcalls::CallsRuntimeSwitches::setThermalVideoLadder(enabled);
+}
+
++ (void)setBackgroundVideoDrop:(bool)enabled {
+    tgcalls::CallsRuntimeSwitches::setBackgroundVideoDrop(enabled);
+}
+
++ (void)setIncomingVideoDropped:(bool)dropped {
+    tgcalls::CallsRuntimeSwitches::setIncomingVideoDropped(dropped);
 }
 
 + (void)setSystemNoiseSuppression:(bool)enabled {
@@ -2446,7 +2477,7 @@ static void (*InternalVoipLoggingFunction)(NSString *) = NULL;
     int sinkId = _nextSinkId;
     _nextSinkId += 1;
     
-    GroupCallVideoSink *storedSink = [[GroupCallVideoSink alloc] initWithSink:sink];
+    GroupCallVideoSink *storedSink = [[GroupCallVideoSink alloc] initWithSink:sink dropsWhileBackgrounded:isIncoming];
     _sinks[@(sinkId)] = storedSink;
 
     if (_tgVoip) {

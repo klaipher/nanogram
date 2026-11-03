@@ -18,6 +18,7 @@ import TelegramVoip
 import MetalEngine
 import DeviceAccess
 import LibYuvBinding
+import TelegramUIPreferences
 
 final class CallControllerNodeV2: ViewControllerTracingNode, CallControllerNodeProtocol {
     private struct PanGestureState {
@@ -85,6 +86,7 @@ final class CallControllerNodeV2: ViewControllerTracingNode, CallControllerNodeP
     private var audioOutputCheckTimer: Foundation.Timer?
     
     private var applicationInForegroundDisposable: Disposable?
+    private var energyUsageDisposable: Disposable?
     
     private var localVideo: AdaptedCallVideoSource?
     private var remoteVideo: AdaptedCallVideoSource?
@@ -260,6 +262,33 @@ final class CallControllerNodeV2: ViewControllerTracingNode, CallControllerNodeP
             }
         })
         
+        // The energy-saving state follows the settings and the system (battery, heat, Low Power Mode) while the call
+        // is on screen; it used to be read once when the screen was created.
+        let sharedContext = self.sharedContext
+        self.energyUsageDisposable = (sharedContext.automaticMediaDownloadSettings
+        |> mapToSignal { settings -> Signal<Bool, NoError> in
+            return automaticEnergyUsageShouldBeOn(settings: settings)
+            |> map { isAutomaticallyOn -> Bool in
+                let energyUsageSettings = isAutomaticallyOn ? EnergyUsageSettings.powerSavingDefault : settings.energyUsageSettings
+                return CallScreenLinkPolicy.isEnergySaving(fullTranslucency: energyUsageSettings.fullTranslucency)
+            }
+        }
+        |> distinctUntilChanged
+        |> deliverOnMainQueue).startStrict(next: { [weak self] isEnergySaving in
+            guard let self, var callScreenState = self.callScreenState else {
+                return
+            }
+            if callScreenState.isEnergySavingEnabled != isEnergySaving {
+                callScreenState.isEnergySavingEnabled = isEnergySaving
+                self.callScreenState = callScreenState
+                self.update(transition: .immediate)
+            }
+        })
+        
+        self.callScreen.pictureInPictureActiveUpdated = { isActive in
+            CallBackgroundVideoGate.shared.setPictureInPictureActive(isActive)
+        }
+        
         self.applicationInForegroundDisposable = (self.sharedContext.applicationBindings.applicationInForeground
         |> filter { $0 }
         |> deliverOnMainQueue).startStrict(next: { [weak self] _ in
@@ -303,6 +332,8 @@ final class CallControllerNodeV2: ViewControllerTracingNode, CallControllerNodeP
         self.audioOutputCheckTimer?.invalidate()
         self.signalQualityTimer?.invalidate()
         self.applicationInForegroundDisposable?.dispose()
+        self.energyUsageDisposable?.dispose()
+        CallBackgroundVideoGate.shared.setPictureInPictureActive(false)
     }
     
     func updateAudioOutputs(availableOutputs: [AudioSessionOutput], currentOutput: AudioSessionOutput?) {

@@ -233,7 +233,15 @@ public final class PrivateCallScreen: OverlayMaskContainerView, AVPictureInPictu
     private var areControlsHidden: Bool = false
     private var swapLocalAndRemoteVideo: Bool = false
     public private(set) var isPictureInPictureRequested: Bool = false
-    private var isPictureInPictureActive: Bool = false
+    private var isPictureInPictureActive: Bool = false {
+        didSet {
+            if self.isPictureInPictureActive != oldValue {
+                self.pictureInPictureActiveUpdated?(self.isPictureInPictureActive)
+            }
+        }
+    }
+    /// Called when Picture in Picture starts or stops showing the call.
+    public var pictureInPictureActiveUpdated: ((Bool) -> Void)?
     
     private var hideEmojiTooltipTimer: Foundation.Timer?
     private var hideControlsTimer: Foundation.Timer?
@@ -245,6 +253,8 @@ public final class PrivateCallScreen: OverlayMaskContainerView, AVPictureInPictu
     private var targetAudioLevel: Float = 0.0
     private var audioLevel: Float = 0.0
     private var audioLevelUpdateSubscription: SharedDisplayLinkDriver.Link?
+    private var isInHierarchy: Bool = false
+    private var displaysAudioLevelBlob: Bool = true
     
     public var speakerAction: (() -> Void)?
     public var flipCameraAction: (() -> Void)?
@@ -322,18 +332,15 @@ public final class PrivateCallScreen: OverlayMaskContainerView, AVPictureInPictu
             guard let self else {
                 return
             }
-            self.audioLevelUpdateSubscription = SharedDisplayLinkDriver.shared.add { [weak self] _ in
-                guard let self else {
-                    return
-                }
-                self.attenuateAudioLevelStep()
-            }
+            self.isInHierarchy = true
+            self.updateAudioLevelLink()
         }
         (self.layer as? SimpleLayer)?.didExitHierarchy = { [weak self] in
             guard let self else {
                 return
             }
-            self.audioLevelUpdateSubscription = nil
+            self.isInHierarchy = false
+            self.updateAudioLevelLink()
         }
         
         self.addGestureRecognizer(UITapGestureRecognizer(target: self, action: #selector(self.tapGesture(_:))))
@@ -438,26 +445,53 @@ public final class PrivateCallScreen: OverlayMaskContainerView, AVPictureInPictu
         } else {
             self.targetAudioLevel = 0.0
         }
+        self.updateAudioLevelLink()
     }
     
-    private func attenuateAudioLevelStep() {
-        self.audioLevel = self.audioLevel * 0.8 + (self.targetAudioLevel + self.audioLevelBump) * 0.2
+    /// The smoothing link runs only while the level moves: at rest (no level, no target, no bump) the screen
+    /// produces no frames for it. It runs at 30 Hz; the step is time-based, so the feel matches the old 60 Hz one.
+    private func updateAudioLevelLink() {
+        let needsLink = self.isInHierarchy && self.canAnimateAudioLevel && CallScreenLinkPolicy.audioLevelNeedsLink(audioLevel: self.audioLevel, target: self.targetAudioLevel, bump: self.audioLevelBump)
+        if !needsLink {
+            self.audioLevelUpdateSubscription = nil
+            return
+        }
+        if self.audioLevelUpdateSubscription != nil {
+            return
+        }
+        self.audioLevelUpdateSubscription = SharedDisplayLinkDriver.shared.add(framesPerSecond: .fps(30), { [weak self] deltaTime in
+            guard let self else {
+                return
+            }
+            self.attenuateAudioLevelStep(deltaTime: Double(deltaTime))
+        })
+    }
+    
+    private func attenuateAudioLevelStep(deltaTime: Double) {
+        let keep = CallScreenLinkPolicy.attenuationKeep(deltaTime: deltaTime)
+        self.audioLevel = self.audioLevel * keep + (self.targetAudioLevel + self.audioLevelBump) * (1.0 - keep)
         if self.audioLevel <= 0.01 {
             self.audioLevel = 0.0
         }
         self.updateAudioLevel()
+        if !CallScreenLinkPolicy.audioLevelNeedsLink(audioLevel: self.audioLevel, target: self.targetAudioLevel, bump: self.audioLevelBump) {
+            self.audioLevelUpdateSubscription = nil
+        }
     }
     
     private func updateAudioLevel() {
         if self.canAnimateAudioLevel {
             let additionalAvatarScale = CGFloat(max(0.0, min(self.audioLevel, 5.0)) * 0.05)
-            self.currentAvatarAudioScale = 1.0 + additionalAvatarScale
-            self.avatarTransformLayer.transform = CATransform3DMakeScale(self.currentAvatarAudioScale, self.currentAvatarAudioScale, 1.0)
-            
-            if let params = self.params, case .terminated = params.state.lifecycleState {
-            } else {
-                let blobAmplificationFactor: CGFloat = 2.0
-                self.blobTransformLayer.transform = CATransform3DMakeScale(1.0 + additionalAvatarScale * blobAmplificationFactor, 1.0 + additionalAvatarScale * blobAmplificationFactor, 1.0)
+            let avatarScale = 1.0 + additionalAvatarScale
+            if CallScreenLinkPolicy.shouldWriteScale(previous: self.currentAvatarAudioScale, new: avatarScale) || avatarScale == 1.0 && self.currentAvatarAudioScale != 1.0 {
+                self.currentAvatarAudioScale = avatarScale
+                self.avatarTransformLayer.transform = CATransform3DMakeScale(self.currentAvatarAudioScale, self.currentAvatarAudioScale, 1.0)
+                
+                if let params = self.params, case .terminated = params.state.lifecycleState {
+                } else {
+                    let blobAmplificationFactor: CGFloat = 2.0
+                    self.blobTransformLayer.transform = CATransform3DMakeScale(1.0 + additionalAvatarScale * blobAmplificationFactor, 1.0 + additionalAvatarScale * blobAmplificationFactor, 1.0)
+                }
             }
         }
     }
@@ -1261,13 +1295,22 @@ public final class PrivateCallScreen: OverlayMaskContainerView, AVPictureInPictu
         
         if !displayAudioLevelBlob {
             genericAlphaTransition.setScale(layer: self.blobLayer, scale: 0.3)
-            genericAlphaTransition.setAlpha(layer: self.blobLayer, alpha: 0.0)
+            // The blobs keep animating while they fade out, then stop producing frames.
+            genericAlphaTransition.setAlpha(layer: self.blobLayer, alpha: 0.0, completion: { [weak self] _ in
+                guard let self, !self.displaysAudioLevelBlob else {
+                    return
+                }
+                self.blobLayer.isShown = false
+            })
+            self.displaysAudioLevelBlob = false
             self.canAnimateAudioLevel = false
             self.audioLevel = 0.0
             self.currentAvatarAudioScale = 1.0
             transition.setScale(layer: self.avatarTransformLayer, scale: 1.0)
             transition.setScale(layer: self.blobTransformLayer, scale: 1.0)
         } else {
+            self.displaysAudioLevelBlob = true
+            self.blobLayer.isShown = true
             genericAlphaTransition.setAlpha(layer: self.blobLayer, alpha: (self.isAnimatedOutToGroupCall || (expandedEmojiKeyOverlapsAvatar && !havePrimaryVideo)) ? 0.0 : 1.0)
             transition.setScale(layer: self.blobLayer, scale: (self.isAnimatedOutToGroupCall || expandedEmojiKeyOverlapsAvatar) ? 0.001 : 1.0)
             if !havePrimaryVideo {
@@ -1303,11 +1346,13 @@ public final class PrivateCallScreen: OverlayMaskContainerView, AVPictureInPictu
             if !self.processedInitialAudioLevelBump {
                 self.processedInitialAudioLevelBump = true
                 self.audioLevelBump = 2.0
+                self.updateAudioLevelLink()
                 DispatchQueue.main.asyncAfter(deadline: DispatchTime.now() + 0.2, execute: { [weak self] in
                     guard let self else {
                         return
                     }
                     self.audioLevelBump = 0.0
+                    self.updateAudioLevelLink()
                 })
             }
         case let .terminated(terminatedState):

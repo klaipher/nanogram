@@ -97,6 +97,18 @@ public struct ExperimentalUISettings: Codable, Equatable {
     /// Debug Settings ▸ "Calls: keep audio mode". Off by default. Starting the call audio no longer replaces
     /// the videoChat audio-session mode of a video call with voiceChat. Local only.
     public var callsKeepSessionMode: Bool
+    /// Debug Settings ▸ "Calls: thread QoS". Off by default. The call engine's network, media and worker
+    /// threads run at user-initiated quality of service. Read when the engine threads are created, so a
+    /// change applies from the next app launch. Local only.
+    public var callsThreadQoS: Bool
+    /// Debug Settings ▸ "Calls: thermal video ladder". Off by default. While the device is hot or in Low Power
+    /// Mode the camera picture handed to the encoder gets smaller and slower (a local output-format request;
+    /// nothing is negotiated). Applies from the next level change.
+    public var callsThermalVideoLadder: Bool
+    /// Debug Settings ▸ "Calls: drop background video". Off by default. While the app is in the background
+    /// and Picture in Picture is not showing the call, incoming 1:1 video frames are dropped before they reach
+    /// the app. The decoder keeps running and nothing is signalled to the peer.
+    public var callsBackgroundVideoDrop: Bool
     public var stickerRendererMode: StickerRendererMode
 
     public static var defaultSettings: ExperimentalUISettings {
@@ -164,7 +176,10 @@ public struct ExperimentalUISettings: Codable, Equatable {
         callsSystemNoiseSuppression: Bool = false,
         callsAdvancedDucking: Bool = true,
         callsOpusFirstLossFloor: Bool = true,
-        callsKeepSessionMode: Bool = false
+        callsKeepSessionMode: Bool = false,
+        callsThreadQoS: Bool = false,
+        callsThermalVideoLadder: Bool = false,
+        callsBackgroundVideoDrop: Bool = false
     ) {
         self.keepChatNavigationStack = keepChatNavigationStack
         self.skipReadHistory = skipReadHistory
@@ -202,6 +217,9 @@ public struct ExperimentalUISettings: Codable, Equatable {
         self.callsAdvancedDucking = callsAdvancedDucking
         self.callsOpusFirstLossFloor = callsOpusFirstLossFloor
         self.callsKeepSessionMode = callsKeepSessionMode
+        self.callsThreadQoS = callsThreadQoS
+        self.callsThermalVideoLadder = callsThermalVideoLadder
+        self.callsBackgroundVideoDrop = callsBackgroundVideoDrop
     }
     
     /// Revision of Nanogram's defaults that a saved blob was written with. Revision 1 turned on large
@@ -253,6 +271,9 @@ public struct ExperimentalUISettings: Codable, Equatable {
         self.callsAdvancedDucking = try container.decodeIfPresent(Bool.self, forKey: "callsAdvancedDucking") ?? true
         self.callsOpusFirstLossFloor = try container.decodeIfPresent(Bool.self, forKey: "callsOpusFirstLossFloor") ?? true
         self.callsKeepSessionMode = try container.decodeIfPresent(Bool.self, forKey: "callsKeepSessionMode") ?? false
+        self.callsThreadQoS = try container.decodeIfPresent(Bool.self, forKey: "callsThreadQoS") ?? false
+        self.callsThermalVideoLadder = try container.decodeIfPresent(Bool.self, forKey: "callsThermalVideoLadder") ?? false
+        self.callsBackgroundVideoDrop = try container.decodeIfPresent(Bool.self, forKey: "callsBackgroundVideoDrop") ?? false
 
         if savedDefaultsRevision < 1 {
             // Saved before the GPU renderers became the default: both were the old CPU defaults.
@@ -302,6 +323,9 @@ public struct ExperimentalUISettings: Codable, Equatable {
         try container.encode(self.callsAdvancedDucking, forKey: "callsAdvancedDucking")
         try container.encode(self.callsOpusFirstLossFloor, forKey: "callsOpusFirstLossFloor")
         try container.encode(self.callsKeepSessionMode, forKey: "callsKeepSessionMode")
+        try container.encode(self.callsThreadQoS, forKey: "callsThreadQoS")
+        try container.encode(self.callsThermalVideoLadder, forKey: "callsThermalVideoLadder")
+        try container.encode(self.callsBackgroundVideoDrop, forKey: "callsBackgroundVideoDrop")
         try container.encode(ExperimentalUISettings.nanogramDefaultsRevision, forKey: "nanogramDefaultsRevision")
     }
 }

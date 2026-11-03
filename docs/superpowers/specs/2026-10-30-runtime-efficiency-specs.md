@@ -51,7 +51,7 @@ Status values: `todo`, `in progress`, `done (<commit>)`, `dropped (<reason>)`.
   when stationary.
 - **Check**: share live location for 15 min stationary; compare edit requests and Energy Log.
 
-### R4. Group-call logging always on, and an unbounded in-memory log during screen sharing — `in progress`: fixed in the tgcalls working tree, not committed (no fork remote for tgcalls)
+### R4. Group-call logging always on, and an unbounded in-memory log during screen sharing — `done` (tgcalls ad9aa93 and b483fca from Mac 013adcb/469020f, plus a 16 MB size cap on the log sink and a one-hour cap on the 1 Hz bitrate history: tgcalls abbdaed), host-tested, not yet verified on a device
 
 - **Where**: `submodules/TgVoipWebrtc/Sources/OngoingCallThreadLocalContext.mm:2680` (`need_log = true`);
   `tgcalls/group/GroupInstanceCustomImpl.cpp:3773-3780` (`SetLogToStderr(true)`, `LS_INFO`);
@@ -59,6 +59,7 @@ Status values: `todo`, `in progress`, `done (<commit>)`, `dropped (<reason>)`.
   `tgcalls/LogSinkImpl.cpp:55` (`ostringstream` that is never drained).
 - **Fix**: no stderr logging in release; with an empty path, don't install the sink.
 - **Check**: memory of the broadcast extension over a 30 min screen share.
+- **Calls batch C (2026-11-04)**: release builds also send nothing to WebRTC's debug log (`LS_NONE`), so INFO lines are not formatted without a sink; the file sink stops at 16 MB with a marker line.
 
 ### R5. The cheaper custom-emoji renderer is behind a debug switch — `dropped` (timer tolerance kept, 3cd4aadf; the compressed path renders visibly differently; buffer reuse was disabled upstream in 47239681a7 "Fix animation cache", 2022)
 

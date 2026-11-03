@@ -614,6 +614,12 @@ public final class OngoingCallVideoCapturer {
         self.impl.setIsVideoEnabled(value)
     }
 
+    /// The call thermal level (0 nominal ... 3 critical). With "Calls: thermal video ladder" on, the encoder is fed a
+    /// smaller picture and fewer frames per second from level 2. Local only.
+    public func setThermalLevel(_ level: Int) {
+        self.impl.setThermalLevel(Int32(level))
+    }
+
     public func injectSampleBuffer(_ sampleBuffer: CMSampleBuffer, rotation: CGImagePropertyOrientation, completion: @escaping () -> Void) {
         var videoRotation: OngoingCallVideoOrientation = .rotation0
         switch rotation {
@@ -894,6 +900,19 @@ public final class OngoingCallContext {
         OngoingCallThreadLocalContextWebrtc.setAdvancedDucking(advancedDucking)
         OngoingCallThreadLocalContextWebrtc.setOpusFirstLossFloor(opusFirstLossFloor)
         OngoingCallThreadLocalContextWebrtc.setKeepSessionMode(keepSessionMode)
+    }
+
+    /// Local-only call power switches from Debug Settings (same rules as the video and audio ones).
+    public static func applyPowerExperiments(threadQoS: Bool, thermalVideoLadder: Bool, backgroundVideoDrop: Bool) {
+        OngoingCallThreadLocalContextWebrtc.setThreadQoS(threadQoS)
+        OngoingCallThreadLocalContextWebrtc.setThermalVideoLadder(thermalVideoLadder)
+        OngoingCallThreadLocalContextWebrtc.setBackgroundVideoDrop(backgroundVideoDrop)
+    }
+
+    /// Runtime state for the background video drop: the app is in the background and Picture in Picture is not
+    /// showing the incoming 1:1 video.
+    public static func setIncomingVideoDropped(_ dropped: Bool) {
+        OngoingCallThreadLocalContextWebrtc.setIncomingVideoDropped(dropped)
     }
 
     /// Aligns the shared WebRTC audio session configuration with the one ManagedAudioSession

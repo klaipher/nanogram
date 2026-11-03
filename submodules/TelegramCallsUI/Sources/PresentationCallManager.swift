@@ -153,6 +153,12 @@ public final class PresentationCallManagerImpl: PresentationCallManager {
                 opusFirstLossFloor: settings.callsOpusFirstLossFloor,
                 keepSessionMode: settings.callsKeepSessionMode
             )
+            OngoingCallContext.applyPowerExperiments(
+                threadQoS: settings.callsThreadQoS,
+                thermalVideoLadder: settings.callsThermalVideoLadder,
+                backgroundVideoDrop: settings.callsBackgroundVideoDrop
+            )
+            CallBackgroundVideoGate.shared.setEnabled(settings.callsBackgroundVideoDrop)
         })
         
         var startCallImpl: ((AccountContext, UUID, EnginePeer.Id?, String, Bool) -> Signal<Bool, NoError>)?

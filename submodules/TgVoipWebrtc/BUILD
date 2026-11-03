@@ -425,6 +425,24 @@ policy_cc_test(
 )
 
 policy_cc_test(
+    name = "stream_render_policy_test",
+    src = "tgcalls/tgcalls/group/StreamRenderPolicyTest.cpp",
+    headers = ["group/StreamRenderPolicy.h"],
+)
+
+policy_cc_test(
+    name = "call_power_policy_test",
+    src = "tgcalls/tgcalls/CallPowerPolicyTest.cpp",
+    headers = ["CallPowerPolicy.h", "CallsRuntimeSwitches.h"],
+)
+
+policy_cc_test(
+    name = "bounded_history_test",
+    src = "tgcalls/tgcalls/BoundedHistoryPolicyTest.cpp",
+    headers = ["BoundedHistory.h"],
+)
+
+policy_cc_test(
     name = "video_plane_layout_test",
     src = "tgcalls/tgcalls/VideoPlaneLayoutTest.cpp",
     headers = ["VideoPlaneLayout.h"],

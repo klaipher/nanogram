@@ -74,6 +74,39 @@ public final class CallBlobsLayer: MetalEngineSubjectLayer, MetalEngineSubject {
     
     private var displayLinkSubscription: SharedDisplayLinkDriver.Link?
     
+    /// Whether the blobs are drawn at all. Hidden (muted, terminated, energy saving) they stop animating, and so
+    /// stop producing frames.
+    public var isShown: Bool = true {
+        didSet {
+            if self.isShown != oldValue {
+                self.updateDisplayLink()
+            }
+        }
+    }
+    
+    private func updateDisplayLink() {
+        if !CallScreenLinkPolicy.blobsNeedLink(isInHierarchy: self.isInHierarchy, isShown: self.isShown) {
+            self.displayLinkSubscription = nil
+            return
+        }
+        if self.displayLinkSubscription != nil {
+            return
+        }
+        self.displayLinkSubscription = SharedDisplayLinkDriver.shared.add(framesPerSecond: .fps(30), { [weak self] deltaTime in
+            guard let self else {
+                return
+            }
+            self.phase += 3.0 * Float(deltaTime)
+            if self.phase >= 1.0 {
+                for i in 0 ..< self.blobs.count {
+                    self.blobs[i].advance()
+                }
+            }
+            self.phase = self.phase.truncatingRemainder(dividingBy: 1.0)
+            self.setNeedsUpdate()
+        })
+    }
+    
     public init(colors: [UIColor] = [UIColor(white: 1.0, alpha: 0.35), UIColor(white: 1.0, alpha: 0.35)]) {
         super.init()
         
@@ -81,25 +114,13 @@ public final class CallBlobsLayer: MetalEngineSubjectLayer, MetalEngineSubject {
             guard let self else {
                 return
             }
-            self.displayLinkSubscription = SharedDisplayLinkDriver.shared.add(framesPerSecond: .fps(30), { [weak self] deltaTime in
-                guard let self else {
-                    return
-                }
-                self.phase += 3.0 * Float(deltaTime)
-                if self.phase >= 1.0 {
-                    for i in 0 ..< self.blobs.count {
-                        self.blobs[i].advance()
-                    }
-                }
-                self.phase = self.phase.truncatingRemainder(dividingBy: 1.0)
-                self.setNeedsUpdate()
-            })
+            self.updateDisplayLink()
         }
         self.didExitHierarchy = { [weak self] in
             guard let self else {
                 return
             }
-            self.displayLinkSubscription = nil
+            self.updateDisplayLink()
         }
         
         self.isOpaque = false

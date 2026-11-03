@@ -305,6 +305,9 @@ enum DebugControllerEntry: ItemListNodeEntry {
     case callsAdvancedDucking(Bool)
     case callsOpusFirstLossFloor(Bool)
     case callsKeepSessionMode(Bool)
+    case callsThreadQoS(Bool)
+    case callsThermalVideoLadder(Bool)
+    case callsBackgroundVideoDrop(Bool)
     case enableNetworkFramework(Bool)
     case enableNetworkExperiments(Bool)
     case rustMTProtoEngine(Bool)
@@ -328,7 +331,7 @@ enum DebugControllerEntry: ItemListNodeEntry {
             return DebugControllerSection.web.rawValue
         case .experimentsHeader, .keepChatNavigationStack, .skipReadHistory, .alwaysDisplayTyping, .crashOnSlowQueries, .crashOnMemoryPressure:
             return DebugControllerSection.experiments.rawValue
-        case .compressedEmojiCache, .checkSerializedData, .enableQuickReactionSwitch, .fakeGlass, .inputDecEngineEditor, .forceListViewImplChatBackend, .forceRLottieBackend, .respectSystemMicrophone, .videoMessageCameraMode, .videoMessageCloseFocus, .videoMessageCameraMatrix, .liveStreamV2, .groupCallReferenceEngine, .callsLivestreamHardwareDecoding, .callsNativeCapturePath, .callsEncoderLowLatency, .callsSystemNoiseSuppression, .callsAdvancedDucking, .callsOpusFirstLossFloor, .callsKeepSessionMode:
+        case .compressedEmojiCache, .checkSerializedData, .enableQuickReactionSwitch, .fakeGlass, .inputDecEngineEditor, .forceListViewImplChatBackend, .forceRLottieBackend, .respectSystemMicrophone, .videoMessageCameraMode, .videoMessageCloseFocus, .videoMessageCameraMatrix, .liveStreamV2, .groupCallReferenceEngine, .callsLivestreamHardwareDecoding, .callsNativeCapturePath, .callsEncoderLowLatency, .callsSystemNoiseSuppression, .callsAdvancedDucking, .callsOpusFirstLossFloor, .callsKeepSessionMode, .callsThreadQoS, .callsThermalVideoLadder, .callsBackgroundVideoDrop:
             return DebugControllerSection.experiments.rawValue
         case .springSendAnimation, .fakeWalletTransfers, .stickerRendererMode, .disableImageContentAnalysis, .disableLanguageRecognition, .localTranscription, .enableVoipTcp, .tabletDisplayLinkFrameRateCap:
             return DebugControllerSection.experiments.rawValue
@@ -421,6 +424,13 @@ enum DebugControllerEntry: ItemListNodeEntry {
         case .tabletDisplayLinkFrameRateCap:
             // Appended right after `enableVoipTcp`; see the ordering note at `springSendAnimation`.
             return 81
+        case .callsThreadQoS:
+            // Appended right after `tabletDisplayLinkFrameRateCap`; see the ordering note at `springSendAnimation`.
+            return 82
+        case .callsThermalVideoLadder:
+            return 83
+        case .callsBackgroundVideoDrop:
+            return 84
         case .checkSerializedData:
             return 58
         case .enableQuickReactionSwitch:
@@ -1035,6 +1045,36 @@ enum DebugControllerEntry: ItemListNodeEntry {
                     })
                 }).start()
             })
+        case let .callsThreadQoS(value):
+            return ItemListSwitchItem(presentationData: presentationData, systemStyle: .glass, title: "Calls: thread QoS [Restart App]", value: value, sectionId: self.section, style: .blocks, updated: { value in
+                let _ = arguments.sharedContext.accountManager.transaction ({ transaction in
+                    transaction.updateSharedData(ApplicationSpecificSharedDataKeys.experimentalUISettings, { settings in
+                        var settings = settings?.get(ExperimentalUISettings.self) ?? ExperimentalUISettings.defaultSettings
+                        settings.callsThreadQoS = value
+                        return EnginePreferencesEntry(settings)
+                    })
+                }).start()
+            })
+        case let .callsThermalVideoLadder(value):
+            return ItemListSwitchItem(presentationData: presentationData, systemStyle: .glass, title: "Calls: thermal video ladder", value: value, sectionId: self.section, style: .blocks, updated: { value in
+                let _ = arguments.sharedContext.accountManager.transaction ({ transaction in
+                    transaction.updateSharedData(ApplicationSpecificSharedDataKeys.experimentalUISettings, { settings in
+                        var settings = settings?.get(ExperimentalUISettings.self) ?? ExperimentalUISettings.defaultSettings
+                        settings.callsThermalVideoLadder = value
+                        return EnginePreferencesEntry(settings)
+                    })
+                }).start()
+            })
+        case let .callsBackgroundVideoDrop(value):
+            return ItemListSwitchItem(presentationData: presentationData, systemStyle: .glass, title: "Calls: drop background video", value: value, sectionId: self.section, style: .blocks, updated: { value in
+                let _ = arguments.sharedContext.accountManager.transaction ({ transaction in
+                    transaction.updateSharedData(ApplicationSpecificSharedDataKeys.experimentalUISettings, { settings in
+                        var settings = settings?.get(ExperimentalUISettings.self) ?? ExperimentalUISettings.defaultSettings
+                        settings.callsBackgroundVideoDrop = value
+                        return EnginePreferencesEntry(settings)
+                    })
+                }).start()
+            })
         case let .enableNetworkFramework(value):
             return ItemListSwitchItem(presentationData: presentationData, systemStyle: .glass, title: "Network X [Restart App]", value: value, sectionId: self.section, style: .blocks, updated: { value in
                 if let context = arguments.context {
@@ -1214,6 +1254,9 @@ func debugControllerEntries(environment: DebugControllerEntriesEnvironment, them
         entries.append(.localTranscription(experimentalSettings.localTranscription))
         entries.append(.enableVoipTcp(experimentalSettings.enableVoipTcp))
         entries.append(.tabletDisplayLinkFrameRateCap(experimentalSettings.tabletDisplayLinkFrameRateCap))
+        entries.append(.callsThreadQoS(experimentalSettings.callsThreadQoS))
+        entries.append(.callsThermalVideoLadder(experimentalSettings.callsThermalVideoLadder))
+        entries.append(.callsBackgroundVideoDrop(experimentalSettings.callsBackgroundVideoDrop))
     }
 
     if isMainApp {
