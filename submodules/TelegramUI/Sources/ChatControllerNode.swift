@@ -2753,7 +2753,8 @@ class ChatControllerNode: ASDisplayNode, ASScrollViewDelegate {
         
         var isInputExpansionEnabled = false
         if case .media = self.chatPresentationInterfaceState.inputMode {
-            isInputExpansionEnabled = true
+            // Nanogram: no stretching on iPad (ChatTabletInputRules.swift).
+            isInputExpansionEnabled = chatMediaInputAllowsExpansion(widthClass: layout.metrics.widthClass)
         }
         
         let previousInputPanelBackgroundFrame = self.inputPanelBackgroundNode.frame

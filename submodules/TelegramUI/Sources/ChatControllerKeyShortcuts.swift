@@ -338,6 +338,7 @@ extension ChatControllerImpl {
             })
         ]
         
-        return inputShortcuts + otherShortcuts
+        // Nanogram: Esc (ChatControllerEscapeShortcut.swift).
+        return inputShortcuts + otherShortcuts + [self.escapeKeyShortcut]
     }
 }

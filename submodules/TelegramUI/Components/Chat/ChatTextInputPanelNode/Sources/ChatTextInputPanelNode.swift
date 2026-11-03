@@ -4736,9 +4736,10 @@ public class ChatTextInputPanelNode: ChatInputPanelNode, ASEditableTextNodeDeleg
             }
         }
         
-        let hideExpandMediaInput = false
+        // Nanogram: on iPad the microphone stays and there is no up-chevron (ChatTabletInputRules.swift).
+        let hideExpandMediaInput = !chatMediaInputAllowsExpansion(widthClass: self.validLayout?.7.widthClass)
         
-        if mediaInputIsActive {
+        if mediaInputIsActive && !hideExpandMediaInput {
             hideMicButton = true
         }
         
