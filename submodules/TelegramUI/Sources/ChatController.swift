@@ -10151,7 +10151,9 @@ public final class ChatControllerImpl: TelegramBaseController, ChatController, G
     
     @available(iOSApplicationExtension 11.0, iOS 11.0, *)
     public func dropInteraction(_ interaction: UIDropInteraction, canHandle session: UIDropSession) -> Bool {
-        return session.hasItemsConforming(toTypeIdentifiers: [UTType.image.identifier])
+        // Images and videos (the paste screen) and files (sent as documents). Text and links stay with the
+        // input field.
+        return session.items.contains(where: { chatDroppedFileType($0.itemProvider) != nil || $0.itemProvider.canLoadObject(ofClass: UIImage.self) })
     }
     
     @available(iOSApplicationExtension 11.0, iOS 11.0, *)
@@ -10170,6 +10172,12 @@ public final class ChatControllerImpl: TelegramBaseController, ChatController, G
     
     @available(iOSApplicationExtension 11.0, iOS 11.0, *)
     public func dropInteraction(_ interaction: UIDropInteraction, performDrop session: UIDropSession) {
+        let providers = session.items.map(\.itemProvider)
+        if !providers.allSatisfy({ $0.canLoadObject(ofClass: UIImage.self) }) {
+            self.chatDisplayNode.updateDropInteraction(isActive: false)
+            self.performFileDrop(providers: providers)
+            return
+        }
         session.loadObjects(ofClass: UIImage.self) { [weak self] imageItems in
             guard let strongSelf = self, !imageItems.isEmpty else {
                 return
@@ -10191,6 +10199,110 @@ public final class ChatControllerImpl: TelegramBaseController, ChatController, G
             strongSelf.chatDisplayNode.updateDropInteraction(isActive: false)
             strongSelf.displayPasteMenu(images.map { .image($0) })
         }
+    }
+    
+    /// A drop that is not only images: each item is copied to a file of ours off the main queue (the provider's file
+    /// is gone once its handler returns). Videos and images go to the paste screen as a pasted video does; anything
+    /// else is sent as a document, as from the file picker.
+    private func performFileDrop(providers: [NSItemProvider]) {
+        let lock = NSLock()
+        var media: [(index: Int, media: MediaPickerScreenImpl.Subject.Media)] = []
+        var files: [(index: Int, url: URL, name: String)] = []
+        let group = DispatchGroup()
+        let directory = URL(fileURLWithPath: NSTemporaryDirectory()).appendingPathComponent("drop-\(Int64.random(in: 0 ... Int64.max))", isDirectory: true)
+        let _ = try? FileManager.default.createDirectory(at: directory, withIntermediateDirectories: true)
+        
+        for (index, provider) in providers.enumerated() {
+            if provider.hasItemConformingToTypeIdentifier(UTType.movie.identifier) || !provider.canLoadObject(ofClass: UIImage.self) {
+                guard let type = chatDroppedFileType(provider) else {
+                    continue
+                }
+                let isVideo = UTType(type)?.conforms(to: .movie) == true
+                group.enter()
+                let _ = provider.loadFileRepresentation(forTypeIdentifier: type, completionHandler: { url, _ in
+                    defer {
+                        group.leave()
+                    }
+                    guard let url else {
+                        return
+                    }
+                    let name = provider.suggestedName.flatMap { suggestedName -> String in
+                        let pathExtension = url.pathExtension
+                        if pathExtension.isEmpty || (suggestedName as NSString).pathExtension.lowercased() == pathExtension.lowercased() {
+                            return suggestedName
+                        }
+                        return suggestedName + "." + pathExtension
+                    } ?? url.lastPathComponent
+                    let target = directory.appendingPathComponent("\(index)-" + (name as NSString).lastPathComponent)
+                    guard let _ = try? FileManager.default.copyItem(at: url, to: target) else {
+                        return
+                    }
+                    lock.lock()
+                    if isVideo {
+                        media.append((index, .video(target)))
+                    } else {
+                        files.append((index, target, name))
+                    }
+                    lock.unlock()
+                })
+            } else {
+                group.enter()
+                let _ = provider.loadObject(ofClass: UIImage.self, completionHandler: { image, _ in
+                    defer {
+                        group.leave()
+                    }
+                    if let image = image as? UIImage {
+                        lock.lock()
+                        media.append((index, .image(image)))
+                        lock.unlock()
+                    }
+                })
+            }
+        }
+        
+        group.notify(queue: .main, execute: { [weak self] in
+            guard let self else {
+                return
+            }
+            let sortedMedia = media.sorted(by: { $0.index < $1.index }).map(\.media)
+            let sortedFiles = files.sorted(by: { $0.index < $1.index })
+            if !sortedMedia.isEmpty {
+                self.displayPasteMenu(sortedMedia)
+            }
+            if !sortedFiles.isEmpty {
+                self.enqueueDroppedFiles(sortedFiles.map { (url: $0.url, name: $0.name) })
+            }
+        })
+    }
+    
+    private func enqueueDroppedFiles(_ files: [(url: URL, name: String)]) {
+        guard canSendMessagesToChat(self.presentationInterfaceState) else {
+            return
+        }
+        let replyMessageSubject = self.presentationInterfaceState.interfaceState.replyMessageSubject
+        let groupingKey: Int64? = files.count > 1 ? Int64.random(in: Int64.min ... Int64.max) : nil
+        var messages: [EnqueueMessage] = []
+        for file in files {
+            let fileId = Int64.random(in: Int64.min ... Int64.max)
+            let size = ((try? FileManager.default.attributesOfItem(atPath: file.url.path))?[.size] as? NSNumber)?.int64Value
+            let mimeType = guessMimeTypeByFileExtension((file.name as NSString).pathExtension)
+            // The upload moves the file into the media box.
+            let resource = LocalFileReferenceMediaResource(localFilePath: file.url.path, randomId: fileId, isUniquelyReferencedTemporaryFile: true, size: size)
+            let media = TelegramMediaFile(fileId: EngineMedia.Id(namespace: Namespaces.Media.LocalFile, id: fileId), partialReference: nil, resource: resource, previewRepresentations: [], videoThumbnails: [], immediateThumbnailData: nil, mimeType: mimeType, size: size, attributes: [.FileName(fileName: file.name)], alternativeRepresentations: [])
+            messages.append(.message(text: "", attributes: [], inlineStickers: [:], mediaReference: .standalone(media: media), threadId: self.chatLocation.threadId, replyToMessageId: replyMessageSubject?.subjectModel, replyToStoryId: nil, localGroupingKey: groupingKey, correlationId: nil, bubbleUpEmojiOrStickersets: []))
+        }
+        self.chatDisplayNode.setupSendActionOnViewUpdate({ [weak self] in
+            guard let self else {
+                return
+            }
+            self.chatDisplayNode.collapseInput()
+            self.updateChatPresentationInterfaceState(animated: true, interactive: false, {
+                $0.updatedInterfaceState { $0.withUpdatedReplyMessageSubject(nil).withUpdatedSendMessageEffect(nil).withUpdatedPostSuggestionState(nil) }
+            })
+        }, nil)
+        self.presentPaidMessageAlertIfNeeded(completion: { [weak self] postpone in
+            self?.sendMessages(messages, postpone: postpone)
+        })
     }
     
     @available(iOSApplicationExtension 11.0, iOS 11.0, *)
@@ -11489,4 +11601,26 @@ public final class ChatControllerImpl: TelegramBaseController, ChatController, G
     public var contentContainerNode: ASDisplayNode {
         return self.chatDisplayNode.contentContainerNode
     }
+}
+
+/// The type a dropped item is read as when it is not only an image: a video, or any file. Text and links (which
+/// are data too) are not files.
+func chatDroppedFileType(_ provider: NSItemProvider) -> String? {
+    for identifier in provider.registeredTypeIdentifiers {
+        guard let type = UTType(identifier) else {
+            continue
+        }
+        if type.conforms(to: .movie) {
+            return identifier
+        }
+    }
+    for identifier in provider.registeredTypeIdentifiers {
+        guard let type = UTType(identifier) else {
+            continue
+        }
+        if type.conforms(to: .data) && !type.conforms(to: .text) && !type.conforms(to: .url) && !type.conforms(to: .image) {
+            return identifier
+        }
+    }
+    return nil
 }
