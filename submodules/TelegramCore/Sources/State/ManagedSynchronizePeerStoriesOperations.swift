@@ -4,40 +4,51 @@ import SwiftSignalKit
 internal import TelegramApi
 import MtProtoKit
 
+/// One request per peer in a mergedOperationLogView window. A peer's request is started once and keeps running
+/// while the peer stays queued; it is cancelled when the peer leaves the window, and replaced when the peer's
+/// queued story id changes (a newer story was read while the older read was still being sent).
 final class PeerStoriesSynchronizationRunner<Entry> {
-    private var operationDisposables: [PeerId: MetaDisposable] = [:]
+    private var operations: [PeerId: (storyId: Int32?, disposable: MetaDisposable)] = [:]
     
     func update(_ entries: [(peerId: PeerId, entry: Entry)]) -> (disposeOperations: [Disposable], beginOperations: [(Entry, MetaDisposable)]) {
+        return self.update(entries.map { (peerId: $0.peerId, storyId: Int32?.none, entry: $0.entry) })
+    }
+    
+    func update(_ entries: [(peerId: PeerId, storyId: Int32?, entry: Entry)]) -> (disposeOperations: [Disposable], beginOperations: [(Entry, MetaDisposable)]) {
         var disposeOperations: [Disposable] = []
         var beginOperations: [(Entry, MetaDisposable)] = []
         
         var validPeerIds: [PeerId] = []
-        for (peerId, entry) in entries {
+        for (peerId, storyId, entry) in entries {
             validPeerIds.append(peerId)
-            if self.operationDisposables[peerId] == nil {
-                let disposable = MetaDisposable()
-                self.operationDisposables[peerId] = disposable
-                beginOperations.append((entry, disposable))
+            if let current = self.operations[peerId] {
+                if current.storyId == storyId {
+                    continue
+                }
+                disposeOperations.append(current.disposable)
             }
+            let disposable = MetaDisposable()
+            self.operations[peerId] = (storyId, disposable)
+            beginOperations.append((entry, disposable))
         }
         
         var removedPeerIds: [PeerId] = []
-        for (peerId, disposable) in self.operationDisposables {
+        for (peerId, operation) in self.operations {
             if !validPeerIds.contains(peerId) {
                 removedPeerIds.append(peerId)
-                disposeOperations.append(disposable)
+                disposeOperations.append(operation.disposable)
             }
         }
         for peerId in removedPeerIds {
-            self.operationDisposables.removeValue(forKey: peerId)
+            self.operations.removeValue(forKey: peerId)
         }
         
         return (disposeOperations, beginOperations)
     }
     
     func reset() -> [Disposable] {
-        let disposables = Array(self.operationDisposables.values)
-        self.operationDisposables.removeAll()
+        let disposables: [Disposable] = self.operations.values.map(\.disposable)
+        self.operations.removeAll()
         return disposables
     }
 }
