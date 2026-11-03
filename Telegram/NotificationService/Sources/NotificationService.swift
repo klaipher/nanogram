@@ -482,16 +482,55 @@ private func peerAvatar(mediaBox: MediaBox, accountPeerId: PeerId, peer: Peer, i
         }
     }
 
-    let cachedPath = mediaBox.cachedRepresentationPathForId("lettersAvatar2-\(peer.displayLetters.joined(separator: ","))\(isStory ? "-story" : "")", representationId: "intents.png", keepDuration: .shortLived)
+    return lettersAvatar(mediaBox: mediaBox, peerId: peer.id, letters: peer.displayLetters, isStory: isStory)
+}
+
+@available(iOS 15.0, *)
+private func lettersAvatar(mediaBox: MediaBox, peerId: PeerId, letters: [String], isStory: Bool) -> INImage? {
+    let cachedPath = mediaBox.cachedRepresentationPathForId("lettersAvatar2-\(letters.joined(separator: ","))\(isStory ? "-story" : "")", representationId: "intents.png", keepDuration: .shortLived)
     if let _ = fileSize(cachedPath) {
         return INImage(url: URL(fileURLWithPath: storeTemporaryImage(path: cachedPath, fileExtension: "jpg")))
     } else {
-        let image = avatarImage(path: nil, peerId: peer.id, letters: peer.displayLetters, size: CGSize(width: 50.0, height: 50.0), isStory: isStory)
+        let image = avatarImage(path: nil, peerId: peerId, letters: letters, size: CGSize(width: 50.0, height: 50.0), isStory: isStory)
         if let data = image.pngData() {
             let _ = try? data.write(to: URL(fileURLWithPath: cachedPath), options: .atomic)
         }
         return INImage(url: URL(fileURLWithPath: storeTemporaryImage(path: cachedPath, fileExtension: "jpg")))
     }
+}
+
+/// The picture of an incoming call's notification (`IncomingCallCommunication.avatarSource`).
+@available(iOS 15.0, *)
+private func callerAvatar(mediaBox: MediaBox, accountPeerId: PeerId, callerId: PeerId, callerPeer: Peer?, callerName: String?, displayNameOnLockscreen: Bool) -> INImage? {
+    switch IncomingCallCommunication.avatarSource(displayNameOnLockscreen: displayNameOnLockscreen, hasCallerPeer: callerPeer != nil, callerName: callerName) {
+    case .none:
+        return nil
+    case .peer:
+        return callerPeer.flatMap { peerAvatar(mediaBox: mediaBox, accountPeerId: accountPeerId, peer: $0, isStory: false) }
+    case let .letters(letters):
+        return lettersAvatar(mediaBox: mediaBox, peerId: callerId, letters: letters, isStory: false)
+    }
+}
+
+/// The device contact a peer was imported from, which lets the system match the person to a
+/// contact (its photo, Focus's allowed people).
+private func localContactIdentifier(transaction: Transaction, peerId: PeerId) -> String? {
+    var foundLocalId: String?
+    transaction.enumerateDeviceContactImportInfoItems({ _, value in
+        if let value = value as? TelegramDeviceContactImportedData {
+            switch value {
+            case let .imported(data, _, importedPeerId):
+                if importedPeerId == peerId {
+                    foundLocalId = data.localIdentifiers.first
+                    return false
+                }
+            default:
+                break
+            }
+        }
+        return true
+    })
+    return foundLocalId
 }
 
 @available(iOSApplicationExtension 10.0, iOS 10.0, *)
@@ -534,6 +573,14 @@ private struct NotificationContent: CustomStringConvertible {
 
     var sender: Sender?
     var senderImage: INImage?
+
+    /// Set for a ringing call: the notification is then drawn from an `INStartCallIntent` for
+    /// `sender` (`IncomingCallCommunication`) instead of a message intent.
+    struct Call {
+        var callId: Int64?
+        var isVideo: Bool
+    }
+    var call: Call?
     
     var isLockedMessage: String?
     
@@ -613,6 +660,36 @@ private struct NotificationContent: CustomStringConvertible {
             intent.setImage(senderImage, forParameterNamed: \.sender)
         }
         return intent
+    }
+
+    /// The ringing call notification as a communication notification for a call, so the system
+    /// draws the caller's photo; unchanged when there is no caller or the system refuses the intent.
+    @available(iOS 15.0, *)
+    private func updatedForCall(_ content: UNNotificationContent, call: Call) -> UNNotificationContent {
+        guard self.isLockedMessage == nil, let sender = self.sender, let caller = IncomingCallCommunication.caller(peerId: sender.peerId.toInt64(), callerName: sender.name, recipientAccountName: self.recipientAccountName, contactIdentifier: sender.contactIdentifier) else {
+            return content
+        }
+        let date = Date()
+        let donatedIntent = IncomingCallCommunication.intent(caller: IncomingCallCommunication.person(caller, name: caller.donatedName, image: self.senderImage), callId: call.callId, isVideo: call.isVideo, date: date)
+        let interaction = INInteraction(intent: donatedIntent, response: nil)
+        interaction.direction = .incoming
+        interaction.donate(completion: nil)
+
+        // As for messages, only the drawn copy names the recipient account.
+        let displayedIntent: INStartCallIntent
+        if caller.displayedName == caller.donatedName {
+            displayedIntent = donatedIntent
+        } else {
+            displayedIntent = IncomingCallCommunication.intent(caller: IncomingCallCommunication.person(caller, name: caller.displayedName, image: self.senderImage), callId: call.callId, isVideo: call.isVideo, date: date)
+        }
+        return IncomingCallCommunication.updatedContent(content, intent: displayedIntent, update: { content, intent in
+            do {
+                return try content.updating(from: intent)
+            } catch let e {
+                Logger.shared.log("NotificationService", "Call notification kept without the caller: \(e)")
+                throw e
+            }
+        })
     }
 
     func generate() -> UNNotificationContent {
@@ -701,6 +778,10 @@ private struct NotificationContent: CustomStringConvertible {
             }
         }
 
+        if #available(iOS 15.0, *), let call = self.call {
+            return self.updatedForCall(content, call: call)
+        }
+
         if #available(iOS 15.0, *) {
             if self.isLockedMessage == nil, let sender = self.sender, let donatedSenderName = names.donatedSenderName, let displayedSenderName = names.displayedSenderName {
                 let donatedIntent = self.incomingMessageIntent(sender: sender, senderName: donatedSenderName, groupName: donatedSenderName, body: content.body)
@@ -758,8 +839,9 @@ private func getCurrentRenderedTotalUnreadCount(accountManager: AccountManager<T
     }
 }
 
-/// A call shown as a ringing notification (see `IncomingCallPushPresentation`).
-private func incomingCallNotificationContent(callerName: String?, incomingCallMessage: String, recipientAccountName: String?, accountId: Int64, fromId: PeerId) -> NotificationContent {
+/// A call shown as a ringing notification (see `IncomingCallPushPresentation`), drawn with the
+/// caller's photo (see `IncomingCallCommunication`).
+private func incomingCallNotificationContent(callerName: String?, incomingCallMessage: String, recipientAccountName: String?, accountId: Int64, fromId: PeerId, caller: (mediaBox: MediaBox, accountPeerId: PeerId, peer: Peer?, contactIdentifier: String?, displayNameOnLockscreen: Bool), callId: Int64?, isVideo: Bool) -> NotificationContent {
     let alert = IncomingCallPushPresentation.alert(callerName: callerName, incomingCallMessage: incomingCallMessage)
     var content = NotificationContent(isLockedMessage: nil)
     content.recipientAccountName = recipientAccountName
@@ -767,6 +849,11 @@ private func incomingCallNotificationContent(callerName: String?, incomingCallMe
     content.body = alert.body
     content.systemSound = IncomingCallPushPresentation.sound
     content.userInfo = IncomingCallPushPresentation.userInfo(accountId: accountId, peerId: fromId.toInt64(), fromUserId: fromId.id._internalGetInt64Value())
+    if #available(iOS 15.0, *), let callerName = alert.title {
+        content.sender = NotificationContent.Sender(peerId: fromId, name: callerName, contactIdentifier: caller.contactIdentifier)
+        content.senderImage = callerAvatar(mediaBox: caller.mediaBox, accountPeerId: caller.accountPeerId, callerId: fromId, callerPeer: caller.peer, callerName: callerName, displayNameOnLockscreen: caller.displayNameOnLockscreen)
+        content.call = NotificationContent.Call(callId: callId, isVideo: isVideo)
+    }
     return content
 }
 
@@ -1070,6 +1157,7 @@ private final class NotificationServiceHandler {
                         var updates: String
                         var accountId: Int64
                         var peer: EnginePeer?
+                        var isVideo: Bool
                         var localContactId: String?
                     }
                     
@@ -1139,6 +1227,7 @@ private final class NotificationServiceHandler {
                     } else if let callIdString = payloadJson["call_id"] as? String, let callAccessHashString = payloadJson["call_ah"] as? String, let peerId = peerId, let updates = payloadJson["updates"] as? String {
                         if let callId = Int64(callIdString), let callAccessHash = Int64(callAccessHashString) {
                             var peer: EnginePeer?
+                            var isVideo = false
                             
                             var updateString = updates
                             updateString = updateString.replacingOccurrences(of: "-", with: "+")
@@ -1149,6 +1238,7 @@ private final class NotificationServiceHandler {
                             if let updateData = Data(base64Encoded: updateString) {
                                 if let callUpdate = AccountStateManager.extractIncomingCallUpdate(data: updateData) {
                                     peer = callUpdate.peer
+                                    isVideo = callUpdate.isVideo
                                 }
                             }
                             
@@ -1158,7 +1248,8 @@ private final class NotificationServiceHandler {
                                 fromId: peerId,
                                 updates: updates,
                                 accountId: recordId.int64,
-                                peer: peer
+                                peer: peer,
+                                isVideo: isVideo
                             )
                         }
                     }
@@ -1441,13 +1532,10 @@ private final class NotificationServiceHandler {
                                 content.userInfo = IncomingCallPushPresentation.markerUserInfo
                                 updateCurrentContent(content)
                                 
-                                let _ = (stateManager.postbox.transaction { transaction -> String? in
-                                    if let peer = transaction.getPeer(callData.fromId) as? TelegramUser {
-                                        return peer.phone
-                                    } else {
-                                        return nil
-                                    }
-                                }).start(next: { phoneNumber in
+                                let _ = (stateManager.postbox.transaction { transaction -> (phoneNumber: String?, peer: Peer?, contactIdentifier: String?) in
+                                    let storedPeer = transaction.getPeer(callData.fromId)
+                                    return ((storedPeer as? TelegramUser)?.phone, storedPeer ?? callData.peer?._asPeer(), localContactIdentifier(transaction: transaction, peerId: callData.fromId))
+                                }).start(next: { phoneNumber, callerPeer, contactIdentifier in
                                     var voipPayload: [AnyHashable: Any] = [
                                         "call_id": "\(callData.id)",
                                         "call_ah": "\(callData.accessHash)",
@@ -1465,7 +1553,10 @@ private final class NotificationServiceHandler {
                                         incomingCallMessage: incomingCallMessage,
                                         recipientAccountName: recipientAccountName,
                                         accountId: callData.accountId,
-                                        fromId: callData.fromId
+                                        fromId: callData.fromId,
+                                        caller: (stateManager.postbox.mediaBox, stateManager.accountPeerId, callerPeer, contactIdentifier, inAppNotificationSettings.displayNameOnLockscreen),
+                                        callId: callData.id,
+                                        isVideo: callData.isVideo
                                     )
 
                                     if #available(iOS 14.5, *), IncomingCallPushPresentation.reportsToCallKit(systemIntegrationEnabled: voiceCallSettings.enableSystemIntegration, canFilterNotifications: canFilterNotifications) {
@@ -1495,9 +1586,10 @@ private final class NotificationServiceHandler {
                                 content.userInfo = IncomingCallPushPresentation.markerUserInfo
                                 updateCurrentContent(content)
                                 
-                                let _ = (stateManager.postbox.transaction { transaction -> TelegramUser? in
-                                    return transaction.getPeer(groupCallData.fromId) as? TelegramUser
-                                }).start(next: { fromPeer in
+                                let _ = (stateManager.postbox.transaction { transaction -> (peer: Peer?, contactIdentifier: String?) in
+                                    return (transaction.getPeer(groupCallData.fromId), localContactIdentifier(transaction: transaction, peerId: groupCallData.fromId))
+                                }).start(next: { callerPeer, contactIdentifier in
+                                    let fromPeer = callerPeer as? TelegramUser
                                     var voipPayload: [AnyHashable: Any] = [
                                         "group_call_id": "\(groupCallData.id)",
                                         "msg_id": "\(groupCallData.messageId)",
@@ -1517,7 +1609,10 @@ private final class NotificationServiceHandler {
                                         incomingCallMessage: incomingCallMessage,
                                         recipientAccountName: recipientAccountName,
                                         accountId: groupCallData.accountId,
-                                        fromId: groupCallData.fromId
+                                        fromId: groupCallData.fromId,
+                                        caller: (stateManager.postbox.mediaBox, stateManager.accountPeerId, callerPeer, contactIdentifier, inAppNotificationSettings.displayNameOnLockscreen),
+                                        callId: groupCallData.id,
+                                        isVideo: groupCallData.isVideo
                                     )
 
                                     if #available(iOS 14.5, *), IncomingCallPushPresentation.reportsToCallKit(systemIntegrationEnabled: voiceCallSettings.enableSystemIntegration, canFilterNotifications: canFilterNotifications) {

@@ -1700,6 +1700,7 @@ plist_fragment(
             <key>IntentsSupported</key>
             <array>
                 <string>INSendMessageIntent</string>
+                <string>INStartCallIntent</string>
             </array>
         </dict>
     </dict>
@@ -1844,6 +1845,7 @@ plist_fragment(
     <key>NSUserActivityTypes</key>
     <array>
         <string>INSendMessageIntent</string>
+        <string>INStartCallIntent</string>
         <string>RemindAboutChatIntent</string>
     </array>
     <key>UIApplicationSceneManifest</key>
