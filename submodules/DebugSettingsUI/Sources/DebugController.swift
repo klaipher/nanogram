@@ -1,4 +1,5 @@
 import Foundation
+import DiskWriteAccounting
 import UIKit
 import Display
 import SwiftSignalKit
@@ -1005,7 +1006,14 @@ enum DebugControllerEntry: ItemListNodeEntry {
             return ItemListDisclosureItem(presentationData: presentationData, systemStyle: .glass, title: "Send MetricKit Reports", label: "", sectionId: self.section, style: .blocks, action: {
                 // Metric and diagnostic reports MetricKit delivered to this device (MetricReportStore). They
                 // leave the device only from here, to a chat, an email or an app you pick.
-                let reports = MetricReportStore.shared.reports().map { ($0.name, $0.path) }
+                var reports = MetricReportStore.shared.reports().map { ($0.name, $0.path) }
+                // Who wrote how much, per day (DiskWriteAccounting), to set beside the reports' disk writes.
+                if let reporter = DiskWriteAccountingReporting.current, let ledgerPath = DiskWriteAccountingReporting.ledgerPath {
+                    reporter.report(reason: "export")
+                    if FileManager.default.fileExists(atPath: ledgerPath) {
+                        reports.append(("disk-writes.json", ledgerPath))
+                    }
+                }
                 if reports.isEmpty {
                     let presentationData = arguments.sharedContext.currentPresentationData.with { $0 }
                     arguments.presentController(OverlayStatusController(theme: presentationData.theme, type: .genericSuccess("No MetricKit reports yet. iOS delivers them about once a day.", false)), nil)

@@ -19,6 +19,7 @@ swift_library(
         "//submodules/TelegramUI/Components/AnimationCache:AnimationCache",
         "//submodules/TelegramUI/Components/AnimationCache/ImageDCT:ImageDCT",
         "//third-party/subcodec:SubcodecObjC",
+        "//submodules/DiskWriteAccounting",
     ],
     visibility = [
         "//visibility:public",

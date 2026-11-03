@@ -4,6 +4,7 @@ import Postbox
 internal import TelegramApi
 import NetworkLogging
 import ManagedFile
+import DiskWriteAccounting
 
 private let queue = DispatchQueue(label: "org.telegram.Telegram.trace", qos: .utility)
 
@@ -162,6 +163,7 @@ public final class Logger {
         data.withUnsafeBytes { rawBytes -> Void in
             let _ = file.write(rawBytes.baseAddress!, count: count)
         }
+        DiskWriteAccounting.shared.add(DiskWriteCategory.logs, bytes: count)
     }
     
     private func appendShortLog(_ data: Data, to file: ManagedFile) {
@@ -434,6 +436,7 @@ public final class Logger {
                         }
                         var newline: UInt8 = 0x0a
                         let _ = currentFile.write(&newline, count: 1)
+                        DiskWriteAccounting.shared.add(DiskWriteCategory.logs, bytes: data.count + 1)
                         if let file = self.file {
                             self.file = (file.0, file.1 + data.count + 1)
                         } else {

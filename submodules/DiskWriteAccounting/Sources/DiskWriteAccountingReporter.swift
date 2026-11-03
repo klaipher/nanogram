@@ -135,3 +135,49 @@ public final class DiskWriteAccountingReporter: @unchecked Sendable {
 private func twoDigits(_ value: Int) -> String {
     return value < 10 ? "0\(value)" : "\(value)"
 }
+
+/// The app's reporter, installed once at launch (AppDelegate) and read by Debug Settings and the log exports.
+public enum DiskWriteAccountingReporting {
+    private final class Holder: @unchecked Sendable {
+        let lock = NSLock()
+        var reporter: DiskWriteAccountingReporter?
+        var ledgerPath: String?
+    }
+
+    private static let holder = Holder()
+
+    @discardableResult
+    public static func install(ledgerPath: String) -> DiskWriteAccountingReporter {
+        let holder = DiskWriteAccountingReporting.holder
+        holder.lock.lock()
+        defer {
+            holder.lock.unlock()
+        }
+        if let reporter = holder.reporter {
+            return reporter
+        }
+        let reporter = DiskWriteAccountingReporter(ledgerPath: ledgerPath)
+        holder.reporter = reporter
+        holder.ledgerPath = ledgerPath
+        return reporter
+    }
+
+    public static var current: DiskWriteAccountingReporter? {
+        let holder = DiskWriteAccountingReporting.holder
+        holder.lock.lock()
+        defer {
+            holder.lock.unlock()
+        }
+        return holder.reporter
+    }
+
+    /// Where the per-day ledger is kept (a JSON file), for the MetricKit export.
+    public static var ledgerPath: String? {
+        let holder = DiskWriteAccountingReporting.holder
+        holder.lock.lock()
+        defer {
+            holder.lock.unlock()
+        }
+        return holder.ledgerPath
+    }
+}

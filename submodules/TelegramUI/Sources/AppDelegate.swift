@@ -58,6 +58,7 @@ import LiquidGlassShapes
 import AnimatedStickerNode
 import MTProtoRustEngine
 import BackgroundDiagnostics
+import DiskWriteAccounting
 
 #if DEBUG
 import AlertComponent
@@ -254,6 +255,8 @@ private func extractAccountManagerState(records: AccountRecordsView<TelegramAcco
     private let sharedContextPromise = Promise<SharedApplicationContext>()
     /// The "lock" background task begun on the latest entry into the background.
     private var lockBackgroundTask: OneShotBackgroundTask<UIBackgroundTaskIdentifier>?
+    private var diskWriteReportTimer: Foundation.Timer?
+    
     private lazy var backgroundDiagnostics = BackgroundDiagnosticsScheduler(now: {
         // Wall clock, so a suspension in between shows as a late report.
         return CFAbsoluteTimeGetCurrent()
@@ -795,6 +798,7 @@ private func extractAccountManagerState(records: AccountRecordsView<TelegramAcco
         let logsPath = rootPath + "/logs/app-logs"
         let _ = try? FileManager.default.createDirectory(atPath: logsPath, withIntermediateDirectories: true, attributes: nil)
         Logger.setSharedLogger(Logger(rootPath: rootPath, basePath: logsPath))
+        self.startDiskWriteReports(ledgerPath: rootPath + "/logs/disk-writes.json")
 
         setManagedAudioSessionLogger({ s in
             Logger.shared.log("ManagedAudioSession", s)
@@ -2135,6 +2139,8 @@ private func extractAccountManagerState(records: AccountRecordsView<TelegramAcco
         self.isActiveValue = false
         self.isActivePromise.set(false)
         
+        self.reportDiskWrites(reason: "background")
+        
         // Ended once, by its 5 s deadline or the system's expiration, whichever comes first.
         let lockTask = OneShotBackgroundTask<UIBackgroundTaskIdentifier>(end: { taskId in
             UIApplication.shared.endBackgroundTask(taskId)
@@ -2171,6 +2177,33 @@ private func extractAccountManagerState(records: AccountRecordsView<TelegramAcco
         })
     }
     
+    /// Who wrote how much to disk (DiskWriteAccounting): one log line an hour while the app runs, one on entering the
+    /// background and one on returning to the foreground, and the per-day totals in `logs/disk-writes.json`, which Send MetricKit Reports includes. The
+    /// counters are always on; the log line reaches the file only with "Log to File" on.
+    private func startDiskWriteReports(ledgerPath: String) {
+        DiskWriteAccountingReporting.install(ledgerPath: ledgerPath)
+        self.diskWriteReportTimer?.invalidate()
+        let timer = Foundation.Timer(timeInterval: 60.0 * 60.0, repeats: true, block: { [weak self] _ in
+            self?.reportDiskWrites(reason: "hourly")
+        })
+        timer.tolerance = 60.0
+        RunLoop.main.add(timer, forMode: .common)
+        self.diskWriteReportTimer = timer
+    }
+    
+    private func reportDiskWrites(reason: String) {
+        guard let reporter = DiskWriteAccountingReporting.current else {
+            return
+        }
+        let episodeId = self.episodeId
+        DispatchQueue.global(qos: .utility).async {
+            // Outside the log call: its message is only evaluated with "Log to File" on, and the ledger must be
+            // updated either way.
+            let line = reporter.report(reason: reason)
+            Logger.shared.log("App \(episodeId)", line)
+        }
+    }
+    
     /// One log line about what the app still holds after entering the background (see BackgroundDiagnostics). Only
     /// with "Log to File" on; nothing leaves the device.
     private func logBackgroundDiagnostics(secondsInBackground: Double) {
@@ -2202,6 +2235,8 @@ private func extractAccountManagerState(records: AccountRecordsView<TelegramAcco
 
     func handleWillEnterForeground() {
         self.backgroundDiagnostics.willEnterForeground()
+        // What was written while in the background (background sync, downloads, pushes).
+        self.reportDiskWrites(reason: "foreground")
         if self.isActiveValue {
             self.isInForegroundValue = true
             self.isInForegroundPromise.set(true)

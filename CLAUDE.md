@@ -830,7 +830,26 @@ GPU (Metal) rendering of stickers and emoji, its debug switches and how to measu
   and stall a streaming reader. The on-disk map only ever claims less than was written, so a crash
   costs a re-download; a torn map still fails its CRC/length check and is discarded
   (`MediaBoxMapSerializationBatchingTests`). Before `link()` publishes a completed file the data is
-  ordered with `F_BARRIERFSYNC` (`ManagedFile.barrierSync`), not `fsync`.
+  ordered with `F_BARRIERFSYNC` (`ManagedFile.barrierSync`), not `fsync`. A context writes **no** map
+  when it opens: a resource whose status is only looked at creates no file, and a missing map reads as
+  empty (it used to write an empty `.meta` for every resource it opened; `MediaBoxWriteAccountingTests`).
+- **The HLS player writes each streamed byte once** (`HLSStreamingStorage`, MediaPlayer). A segment is
+  fetched into its MediaBox resource and served to hls.js from there (a cached one with no write and no
+  fetch); the server source records what it served (`HLSServedSegments`), and an appended segment whose
+  bytes are exactly a served range (confirmed byte for byte against the cache) becomes a
+  `ChunkMediaPlayerPart.MediaBoxRanges` part (initialization range + segment range) that FFmpeg reads in
+  place, holding the resource with `keepResource`. Only bytes hls.js changed, and hardware AV1 (played
+  by AVFoundation from a path), still go through a TempBox `.mp4`. It used to be three writes per byte
+  (a TempBox partial file, a copy into MediaBox, the `.mp4`) and two per cached replay (MetricKit
+  2026-11-02: 35 of 101 disk-write samples). Probing is in memory (`extractFFMpegMediaInfo(data:)`).
+  `HLSStreamingStorageTests` count the writes.
+- **Disk writes are counted by writer** (`DiskWriteAccounting`, always on): MediaBox data per media
+  type (`mediaBox.video`, `mediaBox.sticker`, … from the fetch's `contentType`), file maps, cached
+  representations, SQLite WAL frames and checkpoints per database (from the WAL hook), animation-cache
+  items, the direct image cache, Spotlight, logs and the HLS temp files. AppDelegate logs one
+  `Disk writes (hourly|background): …` line per hour and on entering the background and keeps per-day
+  totals in `<root>/logs/disk-writes.json`, which Send MetricKit Reports includes, so a day's
+  `logicalDiskWrites` can be split by writer. A new large writer should report to it.
 - **The direct-fetch lookahead (`FFMpegLookahead`) reads from memory, not MediaBox, per read.** It
   answers "is it cached" from MediaBox's live range status and, once that covers the whole file,
   reads the complete file through one `pread` handle. Do not route its per-read path back through

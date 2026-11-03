@@ -1,4 +1,5 @@
 import Foundation
+import DiskWriteAccounting
 import UIKit
 import SwiftSignalKit
 import TelegramCore
@@ -144,6 +145,7 @@ private final class SpotlightIndexStorage {
                             }
                             if let resultImage = context.generateImage(), let resultData = resultImage.pngData(), let _ = try? resultData.write(to: URL(fileURLWithPath: avatarPath)) {
                                 resolvedAvatarPath = avatarPath
+                                DiskWriteAccounting.shared.add(DiskWriteCategory.spotlightIndex, bytes: resultData.count)
                             } else {
                                 updatedAvatarSourcePath = nil
                             }
@@ -177,6 +179,7 @@ private final class SpotlightIndexStorage {
                 encodeItem.avatarSourcePath = updatedAvatarSourcePath
                 if let data = try? JSONEncoder().encode(encodeItem) {
                     let _ = try? data.write(to: URL(fileURLWithPath: itemDataPath), options: [.atomic])
+                    DiskWriteAccounting.shared.add(DiskWriteCategory.spotlightIndex, bytes: data.count)
                 }
                 
                 // What was indexed, as stored: comparing with the item as given re-indexed a contact whose photo

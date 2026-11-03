@@ -25,6 +25,7 @@ swift_library(
         "//submodules/NetworkLogging:NetworkLogging",
         "//submodules/Reachability:Reachability",
         "//submodules/ManagedFile:ManagedFile",
+        "//submodules/DiskWriteAccounting",
         "//submodules/Utils/RangeSet:RangeSet",
         "//submodules/Utils/DarwinDirStat",
         "//submodules/Emoji",

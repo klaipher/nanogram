@@ -3,6 +3,7 @@ import UIKit
 import SwiftSignalKit
 import CryptoUtils
 import ManagedFile
+import DiskWriteAccounting
 import Compression
 import AnimationCache
 import ImageDCT
@@ -1594,6 +1595,8 @@ private func adaptItemFromHigherResolution(currentQueue: Queue, itemPath: String
         guard let _ = try? FileManager.default.moveItem(atPath: result.animationPath, toPath: itemPath) else {
             return nil
         }
+        // The converted item was written once, to the file just moved into place.
+        DiskWriteAccounting.shared.add(DiskWriteCategory.animationCache, bytes: Int(fileSize(itemPath) ?? 0))
         if let size = fileSize(itemPath) {
             updateStorageStats(itemPath, size)
         }
@@ -1650,6 +1653,8 @@ private func generateFirstFrameFromItem(currentQueue: Queue, itemPath: String, a
         guard let _ = try? FileManager.default.moveItem(atPath: result.animationPath, toPath: itemPath) else {
             return false
         }
+        // The converted item was written once, to the file just moved into place.
+        DiskWriteAccounting.shared.add(DiskWriteCategory.animationCache, bytes: Int(fileSize(itemPath) ?? 0))
         if let size = fileSize(itemPath) {
             updateStorageStats(itemPath, size)
         }
@@ -1816,6 +1821,8 @@ private func storeConvertedItem(resultPath: String, itemDirectoryPath: String, i
     guard let _ = try? FileManager.default.moveItem(atPath: resultPath, toPath: itemPath) else {
         return false
     }
+    // The converted item was written once, to the file just moved into place.
+    DiskWriteAccounting.shared.add(DiskWriteCategory.animationCache, bytes: Int(fileSize(itemPath) ?? 0))
     if let size = fileSize(itemPath) {
         updateStorageStats(itemPath, size)
     }
@@ -2033,6 +2040,7 @@ public final class DCTAnimationCacheImpl: AnimationCache {
                             completion(AnimationCacheItemResult(item: nil, isFinal: true))
                             return
                         }
+                        DiskWriteAccounting.shared.add(DiskWriteCategory.animationCache, bytes: Int(fileSize(itemFirstFramePath) ?? 0))
                         if let size = fileSize(itemFirstFramePath) {
                             updateStorageStats(itemFirstFramePath, size)
                         }

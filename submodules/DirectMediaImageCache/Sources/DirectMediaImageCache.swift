@@ -1,4 +1,5 @@
 import Foundation
+import DiskWriteAccounting
 import SwiftSignalKit
 import Postbox
 import TelegramCore
@@ -116,6 +117,7 @@ private func storeImage(context: DrawingContext, mediaBox: MediaBox, resourceId:
         vImageConvert_BGRA8888toRGB565(&source, &target, vImage_Flags(kvImageDoNotTile))
 
         let _ = file.write(targetData, count: targetLength)
+        DiskWriteAccounting.shared.add(DiskWriteCategory.directMediaImageCache, bytes: targetLength)
         if let pathData = path.data(using: .utf8), let size = file.getSize() {
             mediaBox.cacheStorageBox.update(id: pathData, size: size)
         }
@@ -126,6 +128,7 @@ private func storeImage(context: DrawingContext, mediaBox: MediaBox, resourceId:
             return nil
         }
         let _ = try? resultData.write(to: URL(fileURLWithPath: path))
+        DiskWriteAccounting.shared.add(DiskWriteCategory.directMediaImageCache, bytes: resultData.count)
         if let pathData = path.data(using: .utf8) {
             mediaBox.cacheStorageBox.update(id: pathData, size: Int64(resultData.count))
         }

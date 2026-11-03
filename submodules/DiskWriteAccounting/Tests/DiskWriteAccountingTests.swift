@@ -100,3 +100,13 @@ final class DiskWriteAccountingTests: XCTestCase {
         XCTAssertNotNil(ledger.days["2026-10-07"])
     }
 }
+
+final class DiskWriteAccountingReportingTests: XCTestCase {
+    func testTheAppReporterIsInstalledOnce() {
+        let first = DiskWriteAccountingReporting.install(ledgerPath: NSTemporaryDirectory() + "a.json")
+        let second = DiskWriteAccountingReporting.install(ledgerPath: NSTemporaryDirectory() + "b.json")
+        XCTAssertTrue(first === second)
+        XCTAssertTrue(DiskWriteAccountingReporting.current === first)
+        XCTAssertEqual(DiskWriteAccountingReporting.ledgerPath, NSTemporaryDirectory() + "a.json")
+    }
+}
