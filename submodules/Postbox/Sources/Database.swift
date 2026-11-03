@@ -66,9 +66,9 @@ public final class Database {
     }
 
     #if DEBUG
-    static var debugSerializedConnections: Bool = ProcessInfo.processInfo.environment["NANOGRAM_SQLITE_FULLMUTEX"] == "1"
+    nonisolated(unsafe) static var debugSerializedConnections: Bool = ProcessInfo.processInfo.environment["NANOGRAM_SQLITE_FULLMUTEX"] == "1"
     #else
-    static var debugSerializedConnections: Bool = false
+    nonisolated(unsafe) static var debugSerializedConnections: Bool = false
     #endif
 
     private static func openHandle(_ location: String, readOnly: Bool) -> Result<OpaquePointer?, OpenError> {
