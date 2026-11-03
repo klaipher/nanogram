@@ -987,7 +987,7 @@ private final class MediaPlayerContext {
             })
         }
         
-        var statusTimestamp = CACurrentMediaTime()
+        var statusUpdateTimestamp = CACurrentMediaTime()
         let playbackStatus: MediaPlayerPlaybackStatus
         var isPlaying = false
         var isPaused = false
@@ -1003,7 +1003,7 @@ private final class MediaPlayerContext {
                 playbackStatus = .paused
             } else if reportRate.isZero {
                 playbackStatus = .playing
-                statusTimestamp = 0.0
+                statusUpdateTimestamp = 0.0
             } else {
                 playbackStatus = .playing
             }
@@ -1015,8 +1015,8 @@ private final class MediaPlayerContext {
             }
         }
         
-        if self.lastStatusUpdateTimestamp == nil || self.lastStatusUpdateTimestamp! < statusTimestamp + 500 {
-            lastStatusUpdateTimestamp = statusTimestamp
+        if self.lastStatusUpdateTimestamp == nil || self.lastStatusUpdateTimestamp! < statusUpdateTimestamp + 500 {
+            lastStatusUpdateTimestamp = statusUpdateTimestamp
             var reportTimestamp = timestamp
             if case .seeking(_, timestamp, _, _, _, _) = self.state {
                 reportTimestamp = timestamp
@@ -1027,7 +1027,8 @@ private final class MediaPlayerContext {
             } else {
                 statusTimestamp = min(max(reportTimestamp, 0.0), duration)
             }
-            let status = MediaPlayerStatus(generationTimestamp: CACurrentMediaTime(), duration: duration, dimensions: CGSize(), timestamp: statusTimestamp, baseRate: self.baseRate, seekId: self.seekId, status: playbackStatus, soundEnabled: self.enableSound)
+            let generationTimestamp = mediaPlayerStatusGenerationTimestamp(status: playbackStatus, reportRate: reportRate, now: CACurrentMediaTime())
+            let status = MediaPlayerStatus(generationTimestamp: generationTimestamp, duration: duration, dimensions: CGSize(), timestamp: statusTimestamp, baseRate: self.baseRate, seekId: self.seekId, status: playbackStatus, soundEnabled: self.enableSound)
             self.playerStatus.set(.single(status))
             let _ = self.playerStatusValue.swap(status)
         }
