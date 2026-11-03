@@ -71,6 +71,7 @@ public final class PresentationCallManagerImpl: PresentationCallManager {
     }
     
     private var ringingStatesDisposable: Disposable?
+    private var videoExperimentsDisposable: Disposable?
     
     private let hasActivePersonalCallsPromise = ValuePromise<Bool>(false, ignoreRepeated: true)
     private let hasActiveGroupCallsPromise = ValuePromise<Bool>(false, ignoreRepeated: true)
@@ -135,6 +136,18 @@ public final class PresentationCallManagerImpl: PresentationCallManager {
         
         self.isMediaPlaying = isMediaPlaying
         self.resumeMediaPlayback = resumeMediaPlayback
+        
+        // The call video switches in Debug Settings reach the engine through process-wide flags, so they
+        // follow the setting while it changes, not only at the start of a call.
+        self.videoExperimentsDisposable = (accountManager.sharedData(keys: [ApplicationSpecificSharedDataKeys.experimentalUISettings])
+        |> deliverOnMainQueue).start(next: { sharedData in
+            let settings = sharedData.entries[ApplicationSpecificSharedDataKeys.experimentalUISettings]?.get(ExperimentalUISettings.self) ?? .defaultSettings
+            OngoingCallContext.applyVideoExperiments(
+                livestreamHardwareDecoding: settings.callsLivestreamHardwareDecoding,
+                nativeCapturePath: settings.callsNativeCapturePath,
+                encoderLowLatency: settings.callsEncoderLowLatency
+            )
+        })
         
         var startCallImpl: ((AccountContext, UUID, EnginePeer.Id?, String, Bool) -> Signal<Bool, NoError>)?
         var answerCallImpl: ((UUID) -> Void)?
@@ -307,6 +320,7 @@ public final class PresentationCallManagerImpl: PresentationCallManager {
     deinit {
         self.currentCallDisposable.dispose()
         self.ringingStatesDisposable?.dispose()
+        self.videoExperimentsDisposable?.dispose()
         self.removeCurrentCallDisposable.dispose()
         self.removeCurrentGroupCallDisposable.dispose()
         self.startCallDisposable.dispose()

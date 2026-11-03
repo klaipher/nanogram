@@ -278,6 +278,14 @@ typedef NS_ENUM(int32_t, OngoingCallDataSavingWebrtc) {
 
 + (void)setupLoggingFunction:(void (* _Nullable)(NSString * _Nullable))loggingFunction;
 + (void)applyServerConfig:(NSString * _Nullable)data;
+
+/// Local-only switches for call video optimisations that are not validated on a device yet (Debug
+/// Settings). They never change what is negotiated or sent to the peer; each one falls back to the
+/// previous path at runtime on any error. Set before a call starts, process-wide.
++ (void)setLivestreamHardwareDecoding:(bool)enabled;
++ (void)setNativeCapturePath:(bool)enabled;
++ (void)setEncoderLowLatency:(bool)enabled;
+
 + (int32_t)maxLayer;
 + (NSArray<NSString *> * _Nonnull)versionsWithIncludeReference:(bool)includeReference;
 

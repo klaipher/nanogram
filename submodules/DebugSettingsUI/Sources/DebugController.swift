@@ -298,6 +298,9 @@ enum DebugControllerEntry: ItemListNodeEntry {
     case enableQuickReactionSwitch(Bool)
     case liveStreamV2(Bool)
     case groupCallReferenceEngine(Bool)
+    case callsLivestreamHardwareDecoding(Bool)
+    case callsNativeCapturePath(Bool)
+    case callsEncoderLowLatency(Bool)
     case enableNetworkFramework(Bool)
     case enableNetworkExperiments(Bool)
     case rustMTProtoEngine(Bool)
@@ -321,7 +324,7 @@ enum DebugControllerEntry: ItemListNodeEntry {
             return DebugControllerSection.web.rawValue
         case .experimentsHeader, .keepChatNavigationStack, .skipReadHistory, .alwaysDisplayTyping, .crashOnSlowQueries, .crashOnMemoryPressure:
             return DebugControllerSection.experiments.rawValue
-        case .compressedEmojiCache, .checkSerializedData, .enableQuickReactionSwitch, .fakeGlass, .inputDecEngineEditor, .forceListViewImplChatBackend, .forceRLottieBackend, .respectSystemMicrophone, .videoMessageCameraMode, .videoMessageCloseFocus, .videoMessageCameraMatrix, .liveStreamV2, .groupCallReferenceEngine:
+        case .compressedEmojiCache, .checkSerializedData, .enableQuickReactionSwitch, .fakeGlass, .inputDecEngineEditor, .forceListViewImplChatBackend, .forceRLottieBackend, .respectSystemMicrophone, .videoMessageCameraMode, .videoMessageCloseFocus, .videoMessageCameraMatrix, .liveStreamV2, .groupCallReferenceEngine, .callsLivestreamHardwareDecoding, .callsNativeCapturePath, .callsEncoderLowLatency:
             return DebugControllerSection.experiments.rawValue
         case .springSendAnimation, .fakeWalletTransfers, .stickerRendererMode, .disableImageContentAnalysis, .disableLanguageRecognition, .localTranscription, .enableVoipTcp, .tabletDisplayLinkFrameRateCap:
             return DebugControllerSection.experiments.rawValue
@@ -422,6 +425,13 @@ enum DebugControllerEntry: ItemListNodeEntry {
             return 60
         case .groupCallReferenceEngine:
             return 62
+        case .callsLivestreamHardwareDecoding:
+            // Appended right after `groupCallReferenceEngine`; see the ordering note at `springSendAnimation`.
+            return 63
+        case .callsNativeCapturePath:
+            return 64
+        case .callsEncoderLowLatency:
+            return 65
         case .springSendAnimation:
             // ItemList asserts its entries are in strictly increasing order (`<`: section, then
             // `sortIndex`, which is the stableId here; ItemListControllerNode.swift), so an id must
@@ -943,6 +953,36 @@ enum DebugControllerEntry: ItemListNodeEntry {
                     })
                 }).start()
             })
+        case let .callsLivestreamHardwareDecoding(value):
+            return ItemListSwitchItem(presentationData: presentationData, systemStyle: .glass, title: "Calls: livestream hardware decoding", value: value, sectionId: self.section, style: .blocks, updated: { value in
+                let _ = arguments.sharedContext.accountManager.transaction ({ transaction in
+                    transaction.updateSharedData(ApplicationSpecificSharedDataKeys.experimentalUISettings, { settings in
+                        var settings = settings?.get(ExperimentalUISettings.self) ?? ExperimentalUISettings.defaultSettings
+                        settings.callsLivestreamHardwareDecoding = value
+                        return EnginePreferencesEntry(settings)
+                    })
+                }).start()
+            })
+        case let .callsNativeCapturePath(value):
+            return ItemListSwitchItem(presentationData: presentationData, systemStyle: .glass, title: "Calls: native camera frames", value: value, sectionId: self.section, style: .blocks, updated: { value in
+                let _ = arguments.sharedContext.accountManager.transaction ({ transaction in
+                    transaction.updateSharedData(ApplicationSpecificSharedDataKeys.experimentalUISettings, { settings in
+                        var settings = settings?.get(ExperimentalUISettings.self) ?? ExperimentalUISettings.defaultSettings
+                        settings.callsNativeCapturePath = value
+                        return EnginePreferencesEntry(settings)
+                    })
+                }).start()
+            })
+        case let .callsEncoderLowLatency(value):
+            return ItemListSwitchItem(presentationData: presentationData, systemStyle: .glass, title: "Calls: low-latency encoder", value: value, sectionId: self.section, style: .blocks, updated: { value in
+                let _ = arguments.sharedContext.accountManager.transaction ({ transaction in
+                    transaction.updateSharedData(ApplicationSpecificSharedDataKeys.experimentalUISettings, { settings in
+                        var settings = settings?.get(ExperimentalUISettings.self) ?? ExperimentalUISettings.defaultSettings
+                        settings.callsEncoderLowLatency = value
+                        return EnginePreferencesEntry(settings)
+                    })
+                }).start()
+            })
         case let .enableNetworkFramework(value):
             return ItemListSwitchItem(presentationData: presentationData, systemStyle: .glass, title: "Network X [Restart App]", value: value, sectionId: self.section, style: .blocks, updated: { value in
                 if let context = arguments.context {
@@ -1104,6 +1144,9 @@ func debugControllerEntries(environment: DebugControllerEntriesEnvironment, them
         entries.append(.enableQuickReactionSwitch(!experimentalSettings.disableQuickReaction))
         entries.append(.liveStreamV2(experimentalSettings.liveStreamV2))
         entries.append(.groupCallReferenceEngine(experimentalSettings.groupCallReferenceEngine))
+        entries.append(.callsLivestreamHardwareDecoding(experimentalSettings.callsLivestreamHardwareDecoding))
+        entries.append(.callsNativeCapturePath(experimentalSettings.callsNativeCapturePath))
+        entries.append(.callsEncoderLowLatency(experimentalSettings.callsEncoderLowLatency))
         entries.append(.springSendAnimation(experimentalSettings.springSendAnimation))
         if environment.isDevAccount {
             entries.append(.fakeWalletTransfers(experimentalSettings.fakeWalletTransfers))

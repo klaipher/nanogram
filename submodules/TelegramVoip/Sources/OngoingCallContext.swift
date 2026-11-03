@@ -878,6 +878,15 @@ public final class OngoingCallContext {
         OngoingCallThreadLocalContextWebrtc.setupAudioSession()
     }
     
+    /// Local-only call video switches from Debug Settings. They change how this device decodes, captures
+    /// and encodes; nothing about them is negotiated or sent to the peer. Process-wide, applied when the
+    /// setting changes and read by the engine when a call or stream starts.
+    public static func applyVideoExperiments(livestreamHardwareDecoding: Bool, nativeCapturePath: Bool, encoderLowLatency: Bool) {
+        OngoingCallThreadLocalContextWebrtc.setLivestreamHardwareDecoding(livestreamHardwareDecoding)
+        OngoingCallThreadLocalContextWebrtc.setNativeCapturePath(nativeCapturePath)
+        OngoingCallThreadLocalContextWebrtc.setEncoderLowLatency(encoderLowLatency)
+    }
+
     /// Aligns the shared WebRTC audio session configuration with the one ManagedAudioSession
     /// installs for a call, without touching the live AVAudioSession. Use this when the audio
     /// session has not been taken over yet.

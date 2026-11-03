@@ -4,6 +4,8 @@
 #import "MediaUtils.h"
 
 #import "Instance.h"
+#import "CallsRuntimeSwitches.h"
+#import "VideoPlaneLayout.h"
 #import "InstanceImpl.h"
 #import "v2/InstanceV2Impl.h"
 #import "v2/InstanceV2ReferenceImpl.h"
@@ -1255,7 +1257,7 @@ static std::atomic<bool> sharedCallAudioDeviceLegacyBehavior{false};
             nv12Buffer.get();
         }];
 
-        _uv = [[NSData alloc] initWithBytesNoCopy:(void *)nv12Buffer->DataUV() length:nv12Buffer->StrideUV() * _height deallocator:^(__unused void * _Nonnull bytes, __unused NSUInteger length) {
+        _uv = [[NSData alloc] initWithBytesNoCopy:(void *)nv12Buffer->DataUV() length:tgcalls::videoPlaneByteLength(nv12Buffer->StrideUV(), tgcalls::chromaPlaneRows(_height)) deallocator:^(__unused void * _Nonnull bytes, __unused NSUInteger length) {
             nv12Buffer.get();
         }];
     }
@@ -1280,11 +1282,11 @@ static std::atomic<bool> sharedCallAudioDeviceLegacyBehavior{false};
             i420Buffer.get();
         }];
 
-        _u = [[NSData alloc] initWithBytesNoCopy:(void *)i420Buffer->DataU() length:i420Buffer->StrideU() * _height deallocator:^(__unused void * _Nonnull bytes, __unused NSUInteger length) {
+        _u = [[NSData alloc] initWithBytesNoCopy:(void *)i420Buffer->DataU() length:tgcalls::videoPlaneByteLength(i420Buffer->StrideU(), tgcalls::chromaPlaneRows(_height)) deallocator:^(__unused void * _Nonnull bytes, __unused NSUInteger length) {
             i420Buffer.get();
         }];
 
-        _v = [[NSData alloc] initWithBytesNoCopy:(void *)i420Buffer->DataV() length:i420Buffer->StrideV() * _height deallocator:^(__unused void * _Nonnull bytes, __unused NSUInteger length) {
+        _v = [[NSData alloc] initWithBytesNoCopy:(void *)i420Buffer->DataV() length:tgcalls::videoPlaneByteLength(i420Buffer->StrideV(), tgcalls::chromaPlaneRows(_height)) deallocator:^(__unused void * _Nonnull bytes, __unused NSUInteger length) {
             i420Buffer.get();
         }];
     }
@@ -1822,6 +1824,18 @@ static void (*InternalVoipLoggingFunction)(NSString *) = NULL;
 }
 
 + (void)applyServerConfig:(NSString *)string {
+}
+
++ (void)setLivestreamHardwareDecoding:(bool)enabled {
+    tgcalls::CallsRuntimeSwitches::setLivestreamHardwareDecoding(enabled);
+}
+
++ (void)setNativeCapturePath:(bool)enabled {
+    tgcalls::CallsRuntimeSwitches::setNativeCapturePath(enabled);
+}
+
++ (void)setEncoderLowLatency:(bool)enabled {
+    tgcalls::CallsRuntimeSwitches::setEncoderLowLatency(enabled);
 }
 
 + (void)setupSharedAudioSessionConfiguration {

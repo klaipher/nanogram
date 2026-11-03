@@ -1,5 +1,6 @@
 load("@rules_cc//cc:cc_library.bzl", "cc_library")
 load("@rules_cc//cc:cc_test.bzl", "cc_test")
+load(":policy_test.bzl", "policy_cc_test")
 load("@rules_cc//cc:objc_library.bzl", "objc_library")
 
 load("@build_bazel_rules_apple//apple:ios.bzl", "ios_unit_test")
@@ -391,6 +392,33 @@ cc_test(
         "//conditions:default": ["-framework", "CoreFoundation", "-framework", "Security"],
     }),
     deps = [":tgcalls_core"],
+)
+
+# Header-only policy tests: no WebRTC, no FFmpeg, no platform code, so they build in seconds.
+# Each covers the decision logic behind one switchable call optimisation; the platform code
+# that applies the decision is only compile-checked.
+policy_cc_test(
+    name = "livestream_decode_policy_test",
+    src = "tgcalls/tgcalls/group/LivestreamDecodePolicyTest.cpp",
+    headers = ["group/LivestreamDecodePolicy.h", "CallsRuntimeSwitches.h"],
+)
+
+policy_cc_test(
+    name = "capture_frame_policy_test",
+    src = "tgcalls/tgcalls/platform/darwin/CaptureFramePolicyTest.cpp",
+    headers = ["platform/darwin/CaptureFramePolicy.h"],
+)
+
+policy_cc_test(
+    name = "encoder_mode_policy_test",
+    src = "tgcalls/tgcalls/platform/darwin/EncoderModePolicyTest.cpp",
+    headers = ["platform/darwin/EncoderModePolicy.h"],
+)
+
+policy_cc_test(
+    name = "video_plane_layout_test",
+    src = "tgcalls/tgcalls/VideoPlaneLayoutTest.cpp",
+    headers = ["VideoPlaneLayout.h"],
 )
 
 # Pure C++ core library for non-iOS targets (e.g. CLI tools).

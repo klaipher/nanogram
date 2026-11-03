@@ -110,7 +110,7 @@ Status values: `todo`, `in progress`, `done (<commit>)`, `dropped (<reason>)`.
 
 ## Medium changes (M)
 
-### R10. Livestream video in group calls is decoded in software — `todo`, verified
+### R10. Livestream video in group calls is decoded in software — `in progress`: hardware decoding implemented behind Debug Settings "Calls: livestream hardware decoding" (default off, per-stream software fallback, 2-session cap), host-tested and compile-checked, not yet verified on a device
 
 - **Where**: `tgcalls/tgcalls/platform/darwin/DarwinFFMpeg.mm:21-31` (`setupDarwinVideoDecoding` returns
   immediately; the VideoToolbox code is commented out), called from `group/VideoStreamingPart.cpp:345`; each

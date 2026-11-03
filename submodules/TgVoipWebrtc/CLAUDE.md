@@ -667,3 +667,35 @@ WebRTC's `assignPayloadTypes` assigns dynamic PTs starting at 100 in order: VP8 
 - `SignalingSctpConnection::OnReadyToSend()` had a missing `break` after the first send failure in its pending-data flush loop. This could cause application-level message reordering (though the application handles it gracefully via `_pendingIceCandidates` buffering). Fixed in our fork.
 - `InstanceV2ReferenceImpl::writeStateLogRecords()` had a use-after-free: it captured a raw `Call*` pointer on the media thread and posted it to the worker thread. If `stop()` called `_peerConnection->Close()` (which destroys `Call`) between the post and worker thread execution, the worker thread would dereference a dangling pointer. The `call_ptr_` field in WebRTC's `PeerConnection` is `Call* const` and is never nulled, so the existing null check didn't catch this. Fixed with an `_isStopped` atomic flag checked in the worker thread lambda before accessing `call`. Manifested as ~2% segfault rate under 250-process parallel load; 100% pass rate after fix (5000/5000).
 - WebRTC's `RTC_LOG` writes to stdout, not stderr. There is no way to separate it from application output within a single process. The local mass test harness (`run-local-test.sh`) works around this by using separate processes and checking exit codes rather than parsing output.
+
+## Local call-video switches (Batch A, 2026-11)
+
+Three Debug Settings switches reach tgcalls through `tgcalls::CallsRuntimeSwitches` (process-wide atomics,
+`tgcalls/CallsRuntimeSwitches.h`), set from `PresentationCallManagerImpl` via
+`OngoingCallContext.applyVideoExperiments` whenever the setting changes. All default OFF, none touches the wire
+(no SDP, signalling, negotiation or codec-list change), and each falls back to the old path at runtime:
+
+- **`callsLivestreamHardwareDecoding`**: live stream video decodes with VideoToolbox (`DarwinFFMpeg.mm`,
+  `PlatformInterface::setupHardwareVideoDecoding`). `group/LivestreamDecodePolicy.h` holds the decisions (eligibility:
+  8-bit 4:2:0 H.264/HEVC, progressive, at most 4096; a 2-session process cap; per-stream "hardware failed" latch;
+  pruning of per-endpoint decoder state). `get_format` must return VideoToolbox only when FFmpeg offers it and
+  otherwise `avcodec_default_get_format`: answering a format that is not in the list blacks the stream out (the
+  same bug the main app fixed in `FFMpegAVCodecContext.m`). A hardware error ends the current part and the stream
+  decodes in software from the next one. One log line per decoder: `livestream decode: hardware|software (reason) ...`.
+  The simulator has no usable hwaccel; `TARGET_OS_SIMULATOR` keeps it software.
+- **`callsNativeCapturePath`**: camera NV12 pixel buffers reach the encoder as `ObjCFrameBuffer(TGRTCCVPixelBuffer)`
+  instead of being converted to I420 (`VideoCameraCapturer.mm`, `DarwinVideoSource.mm` builds the adapted
+  `RTCCVPixelBuffer`). Decisions in `platform/darwin/CaptureFramePolicy.h`: a paused camera drops the frame before any
+  crop or conversion (this part is always on, it only removes wasted work); a burst of `OutOfBuffers` drops latches the
+  capture back to I420; the camera runs at the adapter's 25 fps when its format allows. The switch is read when a capture
+  starts, so toggling it applies to the next camera start. Colour: native frames keep the camera's real range tag
+  (`420v`), where the I420 copy re-labelled video-range data as full range, so the picture may look slightly different.
+- **`callsEncoderLowLatency`**: iOS 14.5+ `kVTVideoEncoderSpecification_EnableLowLatencyRateControl` plus
+  `RealTime=true` in `TGRTCVideoEncoderH264.mm` (`platform/darwin/EncoderModePolicy.h`). Session creation failure, or
+  the negotiated profile not applying in that mode, rebuilds the standard session and latches low-latency off for the
+  process. HEVC and the Mac encoders are unchanged.
+
+Host tests for the pure policies are header-only `cc_test`s declared with `policy_cc_test` (`policy_test.bzl`, builds in
+seconds, no tgcalls_core): `livestream_decode_policy_test`, `capture_frame_policy_test`, `encoder_mode_policy_test`,
+`video_plane_layout_test`. Their `.cpp` files have a `main()`, so they are in `tgcalls/Package.swift`'s exclude list.
+**Shared tgcalls code: every commit here must be cherry-picked onto the Mac branch (`nanogram-mac`) too.**

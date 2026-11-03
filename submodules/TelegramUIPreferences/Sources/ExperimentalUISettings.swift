@@ -71,6 +71,17 @@ public struct ExperimentalUISettings: Codable, Equatable {
     /// Debug Settings ▸ "iPad: Display Link 120 Hz Cap" (audit B-1, off by default): an iPad's shared display link
     /// follows the rate its animations ask for instead of always 120 Hz; toggling it starts a frame-pacing log.
     public var tabletDisplayLinkFrameRateCap: Bool
+    /// Debug Settings ▸ "Calls: livestream hardware decoding". Off by default. Live stream video is decoded
+    /// with VideoToolbox instead of FFmpeg's software decoders (at most 2 sessions, per-stream fallback to
+    /// software on any error). Local only: nothing is negotiated or sent. Read when a call starts.
+    public var callsLivestreamHardwareDecoding: Bool
+    /// Debug Settings ▸ "Calls: native camera frames". Off by default. Camera frames reach the encoder as
+    /// NV12 pixel buffers instead of being converted to I420 on the CPU first. Local only.
+    public var callsNativeCapturePath: Bool
+    /// Debug Settings ▸ "Calls: low-latency encoder". Off by default. The H.264 VideoToolbox encoder runs in
+    /// real-time low-latency rate-control mode on iOS 14.5+, retrying without it if the session cannot be
+    /// created. Local only.
+    public var callsEncoderLowLatency: Bool
     public var stickerRendererMode: StickerRendererMode
 
     public static var defaultSettings: ExperimentalUISettings {
@@ -131,7 +142,10 @@ public struct ExperimentalUISettings: Codable, Equatable {
         showCrashReportAlerts: Bool? = nil,
         videoMessageCloseFocus: Bool = false,
         videoMessageCameraMatrix: RoundVideoCameraMatrix = .bt709,
-        tabletDisplayLinkFrameRateCap: Bool = false
+        tabletDisplayLinkFrameRateCap: Bool = false,
+        callsLivestreamHardwareDecoding: Bool = false,
+        callsNativeCapturePath: Bool = false,
+        callsEncoderLowLatency: Bool = false
     ) {
         self.keepChatNavigationStack = keepChatNavigationStack
         self.skipReadHistory = skipReadHistory
@@ -162,6 +176,9 @@ public struct ExperimentalUISettings: Codable, Equatable {
         self.videoMessageCameraMatrix = videoMessageCameraMatrix
         self.stickerRendererMode = stickerRendererMode
         self.tabletDisplayLinkFrameRateCap = tabletDisplayLinkFrameRateCap
+        self.callsLivestreamHardwareDecoding = callsLivestreamHardwareDecoding
+        self.callsNativeCapturePath = callsNativeCapturePath
+        self.callsEncoderLowLatency = callsEncoderLowLatency
     }
     
     /// Revision of Nanogram's defaults that a saved blob was written with. Revision 1 turned on large
@@ -207,6 +224,9 @@ public struct ExperimentalUISettings: Codable, Equatable {
         self.tabletDisplayLinkFrameRateCap = try container.decodeIfPresent(Bool.self, forKey: "tabletDisplayLinkFrameRateCap") ?? false
 
         if savedDefaultsRevision < 1 {
+        self.callsLivestreamHardwareDecoding = try container.decodeIfPresent(Bool.self, forKey: "callsLivestreamHardwareDecoding") ?? false
+        self.callsNativeCapturePath = try container.decodeIfPresent(Bool.self, forKey: "callsNativeCapturePath") ?? false
+        self.callsEncoderLowLatency = try container.decodeIfPresent(Bool.self, forKey: "callsEncoderLowLatency") ?? false
             // Saved before the GPU renderers became the default: both were the old CPU defaults.
             if self.stickerRendererMode == .cpu {
                 self.stickerRendererMode = .gpuLarge
@@ -249,6 +269,9 @@ public struct ExperimentalUISettings: Codable, Equatable {
         try container.encode(self.tabletDisplayLinkFrameRateCap, forKey: "tabletDisplayLinkFrameRateCap")
         try container.encode(ExperimentalUISettings.nanogramDefaultsRevision, forKey: "nanogramDefaultsRevision")
     }
+        try container.encode(self.callsLivestreamHardwareDecoding, forKey: "callsLivestreamHardwareDecoding")
+        try container.encode(self.callsNativeCapturePath, forKey: "callsNativeCapturePath")
+        try container.encode(self.callsEncoderLowLatency, forKey: "callsEncoderLowLatency")
 }
 
 public func updateExperimentalUISettingsInteractively(accountManager: AccountManager<TelegramAccountManagerTypes>, _ f: @escaping (ExperimentalUISettings) -> ExperimentalUISettings) -> Signal<Void, NoError> {
