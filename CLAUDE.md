@@ -920,6 +920,16 @@ GPU (Metal) rendering of stickers and emoji, its debug switches and how to measu
   1/40 s drain that is every other tick, so the time label updates at ~20 Hz (it was ~47 Hz). Tests:
   `//submodules/VoiceRecorderInput:VoiceRecorderInputTests` (Opus output identical to the old
   packetizer for a synthetic producer).
+- **Voice message progress on a first play.** `MediaPlayer` reports `.playing` before the audio
+  renderer's clock runs (audio session still activating, `reportRate` 0) with the position frozen;
+  such a status carries `generationTimestamp` 0 (`mediaPlayerStatusGenerationTimestamp`), which every
+  consumer reads as "show the timestamp, do not extrapolate". Stamped with `now` (upstream), the
+  waveform ran ahead of the silent player and drew itself fully played. An unlistened incoming voice
+  message passes its highlight as `AudioWaveformComponent.unplayedColor`, which the waveform drops as
+  soon as it sees its message play (`AudioWaveformUnplayedHighlight`); the bubble otherwise keeps the
+  all-active waveform, hiding the progress, until it lays out again after the message is marked
+  listened. Tests: `UniversalMediaPlayerTests` (`MediaPlayerStatusGenerationTests`),
+  `//submodules/TelegramUI/Components/AudioWaveformComponent:AudioWaveformComponentTests`.
 
 ## Framework export lists (computed by the build)
 

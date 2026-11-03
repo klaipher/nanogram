@@ -1298,28 +1298,26 @@ public final class ChatMessageInteractiveFileNode: ASDisplayNode {
                                     waveformTransition = .immediate
                                 }
                                 
-                                let waveformColor: UIColor
-                                if arguments.incoming {
-                                    if consumableContentIcon != nil {
-                                        waveformColor = messageTheme.mediaActiveControlColor
-                                    } else {
-                                        waveformColor = messageTheme.mediaInactiveControlColor
-                                    }
-                                } else {
-                                    waveformColor = messageTheme.mediaInactiveControlColor
-                                }
-                                
                                 var isTranscriptionInProgress = false
                                 if case .inProgress = effectiveAudioTranscriptionState {
                                     isTranscriptionInProgress = true
                                 }
                                 
+                                // An unlistened incoming message is drawn all in the active colour. The waveform
+                                // drops that itself once the message plays: this bubble only lays out again after
+                                // the message is marked listened, and until then no progress would be visible.
+                                var waveformUnplayedColor: UIColor?
+                                if arguments.incoming && consumableContentIcon != nil && !isTranscriptionInProgress {
+                                    waveformUnplayedColor = messageTheme.mediaActiveControlColor
+                                }
+                                
                                 let _ = waveformView.update(
                                     transition: waveformTransition.withUserData(ComponentHostViewSkipSettingFrame()),
                                     component: AnyComponent(AudioWaveformComponent(
-                                        backgroundColor: isTranscriptionInProgress ? messageTheme.mediaInactiveControlColor : waveformColor,
+                                        backgroundColor: messageTheme.mediaInactiveControlColor,
                                         foregroundColor: messageTheme.mediaActiveControlColor,
                                         shimmerColor: isTranscriptionInProgress ? messageTheme.mediaActiveControlColor : nil,
+                                        unplayedColor: waveformUnplayedColor,
                                         style: .bottom,
                                         samples: audioWaveform?.samples ?? Data(),
                                         peak: audioWaveform?.peak ?? 0,

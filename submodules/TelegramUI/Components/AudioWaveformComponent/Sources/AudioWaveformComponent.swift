@@ -15,6 +15,8 @@ public final class AudioWaveformComponent: Component {
     public let backgroundColor: UIColor
     public let foregroundColor: UIColor
     public let shimmerColor: UIColor?
+    // Drawn instead of `backgroundColor` until the message starts playing (an unlistened voice message).
+    public let unplayedColor: UIColor?
     public let style: Style
     public let samples: Data
     public let peak: Int32
@@ -27,6 +29,7 @@ public final class AudioWaveformComponent: Component {
         backgroundColor: UIColor,
         foregroundColor: UIColor,
         shimmerColor: UIColor?,
+        unplayedColor: UIColor? = nil,
         style: Style,
         samples: Data,
         peak: Int32,
@@ -38,6 +41,7 @@ public final class AudioWaveformComponent: Component {
         self.backgroundColor = backgroundColor
         self.foregroundColor = foregroundColor
         self.shimmerColor = shimmerColor
+        self.unplayedColor = unplayedColor
         self.style = style
         self.samples = samples
         self.peak = peak
@@ -55,6 +59,9 @@ public final class AudioWaveformComponent: Component {
             return false
         }
         if lhs.shimmerColor != rhs.shimmerColor {
+            return false
+        }
+        if lhs.unplayedColor != rhs.unplayedColor {
             return false
         }
         if lhs.style != rhs.style {
@@ -204,6 +211,7 @@ public final class AudioWaveformComponent: Component {
         private var validSize: CGSize?
         
         private var playbackStatus: MediaPlayerStatus?
+        private var unplayedHighlight = AudioWaveformUnplayedHighlight()
         private var scrubbingBeginTimestamp: Double?
         private var scrubbingTimestampValue: Double?
         private var isAwaitingScrubbingApplication: Bool = false
@@ -382,6 +390,8 @@ public final class AudioWaveformComponent: Component {
                 )
             }
             
+            self.unplayedHighlight.update(requested: component.unplayedColor != nil, contentChanged: self.component?.samples != component.samples)
+            
             self.component = component
             self.validSize = size
             
@@ -396,6 +406,8 @@ public final class AudioWaveformComponent: Component {
                         strongSelf.isAwaitingScrubbingApplication = false
                         strongSelf.scrubbingTimestampValue = nil
                     }
+                    
+                    strongSelf.unplayedHighlight.update(status: value.status)
                     
                     if strongSelf.playbackStatus != value {
                         strongSelf.playbackStatus = value
@@ -613,6 +625,9 @@ public final class AudioWaveformComponent: Component {
                     
                     if component.backgroundColor.alpha > 0.0 {
                         var backgroundColor = component.backgroundColor
+                        if self.unplayedHighlight.isDrawn, let unplayedColor = component.unplayedColor {
+                            backgroundColor = unplayedColor
+                        }
                         if component.isViewOnceMessage {
                             backgroundColor = component.foregroundColor.withMultipliedAlpha(0.0)
                         }
