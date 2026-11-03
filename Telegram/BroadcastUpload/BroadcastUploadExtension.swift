@@ -114,6 +114,10 @@ private final class EmbeddedBroadcastUploadImpl: BroadcastUploadImpl {
     
     private var sampleBuffers: [CMSampleBuffer] = []
     private var lastAcceptedTimestamp: Double?
+    /// Output buffers are recycled (IOSurface-backed, so the encoder takes them without a copy); a new one per frame
+    /// was ~4.5 MB allocated 30 times a second against the extension's 50 MB limit.
+    private var pixelBufferPool: CVPixelBufferPool?
+    private var pixelBufferPoolKey: (width: Int, height: Int, format: OSType)?
     
     init(extensionContext: RPBroadcastSampleHandler) {
         self.extensionContext = extensionContext
@@ -247,33 +251,53 @@ private final class EmbeddedBroadcastUploadImpl: BroadcastUploadImpl {
         
         let width = CVPixelBufferGetWidth(sourcePixelBuffer)
         let height = CVPixelBufferGetHeight(sourcePixelBuffer)
-        let sourceBytesPerRow = CVPixelBufferGetBytesPerRow(sourcePixelBuffer)
-        
-        var outputPixelBuffer: CVPixelBuffer?
         let pixelFormat = CVPixelBufferGetPixelFormatType(sourcePixelBuffer)
-        CVPixelBufferCreate(nil, width, height, pixelFormat, nil, &outputPixelBuffer)
-        guard let outputPixelBuffer else {
+        
+        guard let outputPixelBuffer = self.makeOutputPixelBuffer(width: width, height: height, format: pixelFormat) else {
             return
         }
-        CVPixelBufferLockBaseAddress(sourcePixelBuffer, [])
+        CVPixelBufferLockBaseAddress(sourcePixelBuffer, .readOnly)
         CVPixelBufferLockBaseAddress(outputPixelBuffer, [])
+        defer {
+            CVPixelBufferUnlockBaseAddress(sourcePixelBuffer, .readOnly)
+            CVPixelBufferUnlockBaseAddress(outputPixelBuffer, [])
+        }
         
-        let outputBytesPerRow = CVPixelBufferGetBytesPerRow(outputPixelBuffer)
-        
-        let sourceBaseAddress = CVPixelBufferGetBaseAddress(sourcePixelBuffer)
-        let outputBaseAddress = CVPixelBufferGetBaseAddress(outputPixelBuffer)
-        
-        if outputBytesPerRow == sourceBytesPerRow {
-            memcpy(outputBaseAddress!, sourceBaseAddress!, height * outputBytesPerRow)
-        } else {
-            for y in 0 ..< height {
-                memcpy(outputBaseAddress!.advanced(by: y * outputBytesPerRow), sourceBaseAddress!.advanced(by: y * sourceBytesPerRow), min(sourceBytesPerRow, outputBytesPerRow))
+        func copyRows(source: UnsafeMutableRawPointer?, sourceBytesPerRow: Int, output: UnsafeMutableRawPointer?, outputBytesPerRow: Int, rows: Int) {
+            guard let source, let output else {
+                return
+            }
+            if sourceBytesPerRow == outputBytesPerRow {
+                memcpy(output, source, rows * outputBytesPerRow)
+            } else {
+                let rowBytes = min(sourceBytesPerRow, outputBytesPerRow)
+                for y in 0 ..< rows {
+                    memcpy(output.advanced(by: y * outputBytesPerRow), source.advanced(by: y * sourceBytesPerRow), rowBytes)
+                }
             }
         }
         
-        defer {
-            CVPixelBufferUnlockBaseAddress(sourcePixelBuffer, [])
-            CVPixelBufferUnlockBaseAddress(outputPixelBuffer, [])
+        // ReplayKit's frames are bi-planar YUV: each plane has its own base address, stride and height. The
+        // buffer's base address on a planar buffer is not the luma plane.
+        if CVPixelBufferIsPlanar(sourcePixelBuffer) {
+            let planeCount = min(CVPixelBufferGetPlaneCount(sourcePixelBuffer), CVPixelBufferGetPlaneCount(outputPixelBuffer))
+            for plane in 0 ..< planeCount {
+                copyRows(
+                    source: CVPixelBufferGetBaseAddressOfPlane(sourcePixelBuffer, plane),
+                    sourceBytesPerRow: CVPixelBufferGetBytesPerRowOfPlane(sourcePixelBuffer, plane),
+                    output: CVPixelBufferGetBaseAddressOfPlane(outputPixelBuffer, plane),
+                    outputBytesPerRow: CVPixelBufferGetBytesPerRowOfPlane(outputPixelBuffer, plane),
+                    rows: min(CVPixelBufferGetHeightOfPlane(sourcePixelBuffer, plane), CVPixelBufferGetHeightOfPlane(outputPixelBuffer, plane))
+                )
+            }
+        } else {
+            copyRows(
+                source: CVPixelBufferGetBaseAddress(sourcePixelBuffer),
+                sourceBytesPerRow: CVPixelBufferGetBytesPerRow(sourcePixelBuffer),
+                output: CVPixelBufferGetBaseAddress(outputPixelBuffer),
+                outputBytesPerRow: CVPixelBufferGetBytesPerRow(outputPixelBuffer),
+                rows: height
+            )
         }
         
         var orientation = CGImagePropertyOrientation.up
@@ -283,13 +307,34 @@ private final class EmbeddedBroadcastUploadImpl: BroadcastUploadImpl {
             }
         }
         
+        // No wait here: nothing signalled the old semaphore, so every frame blocked for 1/30 s. The timestamp gate
+        // above already keeps the rate at 30 fps.
         if let outputSampleBuffer = sampleBufferFromPixelBuffer(pixelBuffer: outputPixelBuffer) {
-            let semaphore = DispatchSemaphore(value: 0)
             self.screencastCapturer.injectSampleBuffer(outputSampleBuffer, rotation: orientation, completion: {
-                //semaphore.signal()
             })
-            let _ = semaphore.wait(timeout: DispatchTime.now() + 1.0 / 30.0)
         }
+    }
+    
+    private func makeOutputPixelBuffer(width: Int, height: Int, format: OSType) -> CVPixelBuffer? {
+        if let key = self.pixelBufferPoolKey, key.width == width, key.height == height, key.format == format {
+        } else {
+            let pixelBufferAttributes: [String: Any] = [
+                kCVPixelBufferPixelFormatTypeKey as String: format,
+                kCVPixelBufferWidthKey as String: width,
+                kCVPixelBufferHeightKey as String: height,
+                kCVPixelBufferIOSurfacePropertiesKey as String: [String: Any]()
+            ]
+            var pool: CVPixelBufferPool?
+            CVPixelBufferPoolCreate(kCFAllocatorDefault, [kCVPixelBufferPoolMinimumBufferCountKey as String: 3] as CFDictionary, pixelBufferAttributes as CFDictionary, &pool)
+            self.pixelBufferPool = pool
+            self.pixelBufferPoolKey = (width, height, format)
+        }
+        guard let pool = self.pixelBufferPool else {
+            return nil
+        }
+        var pixelBuffer: CVPixelBuffer?
+        CVPixelBufferPoolCreatePixelBuffer(kCFAllocatorDefault, pool, &pixelBuffer)
+        return pixelBuffer
     }
     
     func processAudioSampleBuffer(data: Data) {
@@ -388,10 +433,7 @@ private final class EmbeddedBroadcastUploadImpl: BroadcastUploadImpl {
             return
         }
 
-        let format = CustomAudioConverter.Format(
-            numChannels: Int(asbd.pointee.mChannelsPerFrame),
-            sampleRate: Int(asbd.pointee.mSampleRate)
-        )
+        let format = CustomAudioConverter.Format(asbd.pointee)
         if self.audioConverter?.format != format {
             self.audioConverter = CustomAudioConverter(asbd: asbd)
         }
@@ -403,23 +445,70 @@ private final class EmbeddedBroadcastUploadImpl: BroadcastUploadImpl {
     }
 }
 
+/// Returned by the input callback when the current buffer is used up. Unlike 0 packets with `noErr` (end of
+/// stream), it keeps the converter's resampler state for the next buffer, so consecutive buffers join without
+/// clicks.
+private let converterInputExhausted: OSStatus = 0x6E6F6D6F // 'nomo'
+
+/// One converter per input format, kept across buffers (a new AudioConverter every ~20 ms cost CPU and restarted
+/// the resampler each time).
 private final class CustomAudioConverter {
     struct Format: Equatable {
-        let numChannels: Int
-        let sampleRate: Int
+        let sampleRate: Double
+        let formatId: AudioFormatID
+        let formatFlags: AudioFormatFlags
+        let bytesPerPacket: UInt32
+        let channelsPerFrame: UInt32
+        let bitsPerChannel: UInt32
+
+        init(_ asbd: AudioStreamBasicDescription) {
+            self.sampleRate = asbd.mSampleRate
+            self.formatId = asbd.mFormatID
+            self.formatFlags = asbd.mFormatFlags
+            self.bytesPerPacket = asbd.mBytesPerPacket
+            self.channelsPerFrame = asbd.mChannelsPerFrame
+            self.bitsPerChannel = asbd.mBitsPerChannel
+        }
     }
 
     let format: Format
+    private var inputDescription: AudioStreamBasicDescription
+    private var outputDescription = AudioStreamBasicDescription(
+        mSampleRate: 48000.0,
+        mFormatID: kAudioFormatLinearPCM,
+        mFormatFlags: kAudioFormatFlagIsSignedInteger | kAudioFormatFlagsNativeEndian | kAudioFormatFlagIsPacked,
+        mBytesPerPacket: 2,
+        mFramesPerPacket: 1,
+        mBytesPerFrame: 2,
+        mChannelsPerFrame: 1,
+        mBitsPerChannel: 16,
+        mReserved: 0
+    )
+    private var audioConverter: AudioConverterRef?
+    private let outputSize = 32768 * 2
+    private var outputBuffer: UnsafeMutableRawPointer
 
-    var currentInputDescription: UnsafePointer<AudioStreamBasicDescription>?
     var currentBuffer: AudioBuffer?
     var currentBufferOffset: UInt32 = 0
+    var currentBytesPerPacket: UInt32 {
+        return self.inputDescription.mBytesPerPacket
+    }
 
     init(asbd: UnsafePointer<AudioStreamBasicDescription>) {
-        self.format = Format(
-            numChannels: Int(asbd.pointee.mChannelsPerFrame),
-            sampleRate: Int(asbd.pointee.mSampleRate)
-        )
+        self.format = Format(asbd.pointee)
+        self.inputDescription = asbd.pointee
+        self.outputBuffer = UnsafeMutableRawPointer.allocate(byteCount: self.outputSize, alignment: 16)
+        var audioConverter: AudioConverterRef?
+        if AudioConverterNew(&self.inputDescription, &self.outputDescription, &audioConverter) == noErr {
+            self.audioConverter = audioConverter
+        }
+    }
+
+    deinit {
+        if let audioConverter = self.audioConverter {
+            AudioConverterDispose(audioConverter)
+        }
+        self.outputBuffer.deallocate()
     }
 
     func convert(sampleBuffer: CMSampleBuffer) -> Data? {
@@ -447,20 +536,7 @@ private final class CustomAudioConverter {
             return nil
         }
 
-        var outputDescription = AudioStreamBasicDescription(
-            mSampleRate: 48000.0,
-            mFormatID: kAudioFormatLinearPCM,
-            mFormatFlags: kAudioFormatFlagIsSignedInteger | kAudioFormatFlagsNativeEndian | kAudioFormatFlagIsPacked,
-            mBytesPerPacket: 2,
-            mFramesPerPacket: 1,
-            mBytesPerFrame: 2,
-            mChannelsPerFrame: 1,
-            mBitsPerChannel: 16,
-            mReserved: 0
-        )
-        var maybeAudioConverter: AudioConverterRef?
-        let _ = AudioConverterNew(asbd, &outputDescription, &maybeAudioConverter)
-        guard let audioConverter = maybeAudioConverter else {
+        guard let audioConverter = self.audioConverter, self.inputDescription.mBytesPerPacket != 0 else {
             return nil
         }
 
@@ -470,41 +546,30 @@ private final class CustomAudioConverter {
             mData: mData
         )
         self.currentBufferOffset = 0
-        self.currentInputDescription = asbd
 
-        var numPackets: UInt32?
-        let outputSize = 32768 * 2
-        var outputBuffer = Data(count: outputSize)
-        outputBuffer.withUnsafeMutableBytes { (outputBytes: UnsafeMutableRawBufferPointer) -> Void in
-            var outputBufferList = AudioBufferList()
-            outputBufferList.mNumberBuffers = 1
-            outputBufferList.mBuffers.mNumberChannels = outputDescription.mChannelsPerFrame
-            outputBufferList.mBuffers.mDataByteSize = UInt32(outputSize)
-            outputBufferList.mBuffers.mData = outputBytes.baseAddress!
+        var outputBufferList = AudioBufferList()
+        outputBufferList.mNumberBuffers = 1
+        outputBufferList.mBuffers.mNumberChannels = self.outputDescription.mChannelsPerFrame
+        outputBufferList.mBuffers.mDataByteSize = UInt32(self.outputSize)
+        outputBufferList.mBuffers.mData = self.outputBuffer
 
-            var outputDataPacketSize = UInt32(outputSize) / outputDescription.mBytesPerPacket
+        var outputDataPacketSize = UInt32(self.outputSize) / self.outputDescription.mBytesPerPacket
 
-            let result = AudioConverterFillComplexBuffer(
-                audioConverter,
-                converterComplexInputDataProc,
-                Unmanaged.passUnretained(self).toOpaque(),
-                &outputDataPacketSize,
-                &outputBufferList,
-                nil
-            )
-            if result == noErr {
-                numPackets = outputDataPacketSize
-            }
+        let result = AudioConverterFillComplexBuffer(
+            audioConverter,
+            converterComplexInputDataProc,
+            Unmanaged.passUnretained(self).toOpaque(),
+            &outputDataPacketSize,
+            &outputBufferList,
+            nil
+        )
+        self.currentBuffer = nil
+        withExtendedLifetime(blockBuffer) {
         }
-
-        AudioConverterDispose(audioConverter)
-
-        if let numPackets = numPackets {
-            outputBuffer.count = Int(numPackets * outputDescription.mBytesPerPacket)
-            return outputBuffer
-        } else {
+        guard result == noErr || result == converterInputExhausted else {
             return nil
         }
+        return Data(bytes: self.outputBuffer, count: Int(outputDataPacketSize * self.outputDescription.mBytesPerPacket))
     }
 }
 
@@ -514,27 +579,28 @@ private func converterComplexInputDataProc(inAudioConverter: AudioConverterRef, 
         return 0
     }
     let instance = Unmanaged<CustomAudioConverter>.fromOpaque(inUserData).takeUnretainedValue()
-    guard let currentBuffer = instance.currentBuffer else {
+    let bytesPerPacket = instance.currentBytesPerPacket
+    guard let currentBuffer = instance.currentBuffer, bytesPerPacket != 0 else {
         ioNumberDataPackets.pointee = 0
-        return 0
-    }
-    guard let currentInputDescription = instance.currentInputDescription else {
-        ioNumberDataPackets.pointee = 0
-        return 0
+        return converterInputExhausted
     }
 
-    let numPacketsInBuffer = currentBuffer.mDataByteSize / currentInputDescription.pointee.mBytesPerPacket
-    let numPacketsAvailable = numPacketsInBuffer - instance.currentBufferOffset / currentInputDescription.pointee.mBytesPerPacket
+    let numPacketsInBuffer = currentBuffer.mDataByteSize / bytesPerPacket
+    let numPacketsAvailable = numPacketsInBuffer - instance.currentBufferOffset / bytesPerPacket
+    if numPacketsAvailable == 0 {
+        ioNumberDataPackets.pointee = 0
+        return converterInputExhausted
+    }
 
     let numPacketsToRead = min(ioNumberDataPackets.pointee, numPacketsAvailable)
     ioNumberDataPackets.pointee = numPacketsToRead
 
     ioData.pointee.mNumberBuffers = 1
     ioData.pointee.mBuffers.mData = currentBuffer.mData?.advanced(by: Int(instance.currentBufferOffset))
-    ioData.pointee.mBuffers.mDataByteSize = currentBuffer.mDataByteSize - instance.currentBufferOffset
+    ioData.pointee.mBuffers.mDataByteSize = numPacketsToRead * bytesPerPacket
     ioData.pointee.mBuffers.mNumberChannels = currentBuffer.mNumberChannels
 
-    instance.currentBufferOffset += numPacketsToRead * currentInputDescription.pointee.mBytesPerPacket
+    instance.currentBufferOffset += numPacketsToRead * bytesPerPacket
 
     return 0
 }
