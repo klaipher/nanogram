@@ -162,3 +162,69 @@ final class OggOpusWriterContinuityTests: XCTestCase {
         XCTAssertEqual(decoded.samples, uninterruptedSampleCount(frames: 100))
     }
 }
+
+private func decodedSamples(_ data: Data) -> [Int16] {
+    let path = NSTemporaryDirectory() + "opus_samples_\(UUID().uuidString).ogg"
+    try! data.write(to: URL(fileURLWithPath: path))
+    defer {
+        try? FileManager.default.removeItem(atPath: path)
+    }
+    guard let reader = OggOpusReader(path: path) else {
+        return []
+    }
+    var result: [Int16] = []
+    var buffer = [Int16](repeating: 0, count: 960 * 8)
+    while true {
+        let count = buffer.withUnsafeMutableBytes { reader.read($0.baseAddress!, bufSize: Int32(960 * 8)) }
+        if count <= 0 {
+            break
+        }
+        result.append(contentsOf: buffer[0 ..< Int(count)])
+    }
+    return result
+}
+
+final class OggOpusWriterLiveEncoderTests: XCTestCase {
+    private func encode(_ body: (TGOggOpusWriter, TGDataItem) -> Void) -> [Int16] {
+        let item = TGDataItem(data: Data())!
+        let writer = TGOggOpusWriter()
+        XCTAssertTrue(writer.begin(with: item))
+        body(writer, item)
+        XCTAssertTrue(writer.writeFrame(nil, frameByteCount: 0))
+        assertSingleLogicalStream(item.data())
+        return decodedSamples(item.data())
+    }
+
+    func testPausingTheLiveWriterLeavesTheAudioUntouched() {
+        let uninterrupted = self.encode { writer, _ in
+            write(writer, frames: 0 ..< 100)
+        }
+        let pausedLive = self.encode { writer, _ in
+            write(writer, frames: 0 ..< 50)
+            _ = writer.pause()
+            write(writer, frames: 50 ..< 100)
+        }
+        XCTAssertEqual(pausedLive.count, uninterrupted.count)
+        let join = 50 * 960
+        let window = (join - 960) ..< min(join + 960 * 2, uninterrupted.count)
+        let difference = window.map { abs(Int(pausedLive[$0]) - Int(uninterrupted[$0])) }.max() ?? 0
+        XCTAssertLessThan(difference, 100, "a flush-only pause must not disturb the join beyond the encoder's run-to-run noise")
+    }
+
+    func testRestoringTheEncoderOnResumeChangesTheJoin() {
+        let uninterrupted = self.encode { writer, _ in
+            write(writer, frames: 0 ..< 100)
+        }
+        let restored = self.encode { writer, item in
+            write(writer, frames: 0 ..< 50)
+            let state = writer.pause()
+            XCTAssertTrue(writer.resume(with: item, encoderState: state))
+            write(writer, frames: 50 ..< 100)
+        }
+        XCTAssertEqual(restored.count, uninterrupted.count)
+        let join = 50 * 960
+        let window = (join - 960) ..< min(join + 960 * 2, uninterrupted.count)
+        let difference = window.map { abs(Int(restored[$0]) - Int(uninterrupted[$0])) }.max() ?? 0
+        XCTAssertGreaterThan(difference, 500, "a cold encoder at the join is audible; the recorder keeps the live one")
+    }
+}
