@@ -68,6 +68,9 @@ public struct ExperimentalUISettings: Codable, Equatable {
     /// with the 1x framing kept (`Camera.RoundVideoCloseFocus`). Read when the camera screen opens.
     public var videoMessageCloseFocus: Bool
     public var videoMessageCameraMatrix: RoundVideoCameraMatrix
+    /// Debug Settings ▸ "iPad: Display Link 120 Hz Cap" (audit B-1, off by default): an iPad's shared display link
+    /// follows the rate its animations ask for instead of always 120 Hz; toggling it starts a frame-pacing log.
+    public var tabletDisplayLinkFrameRateCap: Bool
     public var stickerRendererMode: StickerRendererMode
 
     public static var defaultSettings: ExperimentalUISettings {
@@ -127,7 +130,8 @@ public struct ExperimentalUISettings: Codable, Equatable {
         stickerRendererMode: StickerRendererMode = .gpuLarge,
         showCrashReportAlerts: Bool? = nil,
         videoMessageCloseFocus: Bool = false,
-        videoMessageCameraMatrix: RoundVideoCameraMatrix = .bt709
+        videoMessageCameraMatrix: RoundVideoCameraMatrix = .bt709,
+        tabletDisplayLinkFrameRateCap: Bool = false
     ) {
         self.keepChatNavigationStack = keepChatNavigationStack
         self.skipReadHistory = skipReadHistory
@@ -157,6 +161,7 @@ public struct ExperimentalUISettings: Codable, Equatable {
         self.videoMessageCloseFocus = videoMessageCloseFocus
         self.videoMessageCameraMatrix = videoMessageCameraMatrix
         self.stickerRendererMode = stickerRendererMode
+        self.tabletDisplayLinkFrameRateCap = tabletDisplayLinkFrameRateCap
     }
     
     /// Revision of Nanogram's defaults that a saved blob was written with. Revision 1 turned on large
@@ -199,6 +204,7 @@ public struct ExperimentalUISettings: Codable, Equatable {
         self.videoMessageCloseFocus = try container.decodeIfPresent(Bool.self, forKey: "videoMessageCloseFocus") ?? false
         // A new key: blobs saved before it existed (and unknown values) get the BT.709 default.
         self.videoMessageCameraMatrix = (try container.decodeIfPresent(String.self, forKey: "videoMessageCameraMatrix")).flatMap(RoundVideoCameraMatrix.init(rawValue:)) ?? .bt709
+        self.tabletDisplayLinkFrameRateCap = try container.decodeIfPresent(Bool.self, forKey: "tabletDisplayLinkFrameRateCap") ?? false
 
         if savedDefaultsRevision < 1 {
             // Saved before the GPU renderers became the default: both were the old CPU defaults.
@@ -240,6 +246,7 @@ public struct ExperimentalUISettings: Codable, Equatable {
         try container.encode(self.stickerRendererMode.rawValue, forKey: "stickerRendererMode")
         try container.encode(self.videoMessageCloseFocus, forKey: "videoMessageCloseFocus")
         try container.encode(self.videoMessageCameraMatrix.rawValue, forKey: "videoMessageCameraMatrix")
+        try container.encode(self.tabletDisplayLinkFrameRateCap, forKey: "tabletDisplayLinkFrameRateCap")
         try container.encode(ExperimentalUISettings.nanogramDefaultsRevision, forKey: "nanogramDefaultsRevision")
     }
 }

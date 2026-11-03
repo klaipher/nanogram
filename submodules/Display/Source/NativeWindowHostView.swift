@@ -15,13 +15,14 @@ private let defaultOrientations: UIInterfaceOrientationMask = {
 func getCurrentViewInterfaceOrientation(view: UIView) -> UIInterfaceOrientation {
     var orientation: UIInterfaceOrientation = .portrait
     if #available(iOS 13.0, *) {
+        // iPad (audit A-8): the effective geometry's orientation, which follows a resizable window.
         if let window = view as? UIWindow {
             if let windowScene = window.windowScene {
-                orientation = windowScene.interfaceOrientation
+                orientation = windowScene.nanogramInterfaceOrientation()
             }
         } else {
             if let windowScene = view.window?.windowScene {
-                orientation = windowScene.interfaceOrientation
+                orientation = windowScene.nanogramInterfaceOrientation()
             }
         }
     } else {
@@ -103,6 +104,10 @@ private final class WindowRootViewController: UIViewController {
     var orientations: UIInterfaceOrientationMask = defaultOrientations {
         didSet {
             if oldValue != self.orientations {
+                // iPad (audit A-8): masks are ignored in resizable windows on iOS 27; ask for the lock too.
+                if #available(iOSApplicationExtension 26.0, iOS 26.0, *) {
+                    self.setNeedsUpdateOfPrefersInterfaceOrientationLocked()
+                }
                 if self.orientations == .portrait {
                     if #available(iOSApplicationExtension 16.0, iOS 16.0, *) {
                         // The scene of this controller's own window, not whichever `connectedScenes` lists first.
@@ -175,6 +180,14 @@ private final class WindowRootViewController: UIViewController {
     
     override var supportedInterfaceOrientations: UIInterfaceOrientationMask {
         return self.orientations
+    }
+    
+    /// iPad (audit A-8): keeps the current orientation while the visible screens narrow the orientations (a round
+    /// video or voice message recording, an orientation-restricted screen), also in a resizable window, where the
+    /// mask alone is ignored on iOS 27. Never on a phone (`windowPrefersInterfaceOrientationLocked`).
+    @available(iOS 26.0, *)
+    override var prefersInterfaceOrientationLocked: Bool {
+        return windowPrefersInterfaceOrientationLocked(deviceType: UIDevice.current.userInterfaceIdiom == .pad ? .tablet : .phone, supportedOrientations: self.orientations, defaultOrientations: defaultOrientations)
     }
     
     override func traitCollectionDidChange(_ previousTraitCollection: UITraitCollection?) {

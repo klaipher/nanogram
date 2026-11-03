@@ -571,18 +571,14 @@ private func automaticThemeShouldSwitch(_ settings: AutomaticThemeSwitchSetting,
 }
 
 public func automaticEnergyUsageShouldBeOnNow(settings: MediaAutoDownloadSettings) -> Bool {
-    if settings.energyUsageSettings.activationThreshold <= 4 {
-        return false
-    } else if settings.energyUsageSettings.activationThreshold >= 96 {
-        return true
-    } else {
-        let batteryLevel = UIDevice.current.batteryLevel
-        if batteryLevel < 0.0 {
-            return false
-        } else {
-            return batteryLevel <= Float(settings.energyUsageSettings.activationThreshold) / 100.0
-        }
-    }
+    // iPad (audit B-3): also while the system asks to save energy (thermal state, Low Power Mode, iOS 27 reduced
+    // resource usage; `SystemEnergyConditionsMonitor`). Never on a phone, and never when the user chose "Off".
+    return automaticEnergySavingIsOn(activationThreshold: settings.energyUsageSettings.activationThreshold, batteryLevel: UIDevice.current.batteryLevel, systemRequests: SystemEnergyConditionsMonitor.shared.requestsEnergySaving)
+}
+
+/// Upstream's battery rule alone: whether the "Power Saving is on at N% battery" alert describes why it is on.
+public func automaticEnergyUsageBatteryConditionNow(settings: MediaAutoDownloadSettings) -> Bool {
+    return automaticEnergySavingBatteryConditionIsOn(activationThreshold: settings.energyUsageSettings.activationThreshold, batteryLevel: UIDevice.current.batteryLevel)
 }
 
 public func automaticEnergyUsageShouldBeOn(settings: MediaAutoDownloadSettings) -> Signal<Bool, NoError> {
@@ -591,16 +587,22 @@ public func automaticEnergyUsageShouldBeOn(settings: MediaAutoDownloadSettings) 
     } else if settings.energyUsageSettings.activationThreshold >= 96 {
         return .single(true)
     } else {
-        return Signal { subscriber in
-            subscriber.putNext(automaticEnergyUsageShouldBeOnNow(settings: settings))
+        let battery = Signal<Void, NoError> { subscriber in
+            subscriber.putNext(Void())
             
             let observer = NotificationCenter.default.addObserver(forName: UIDevice.batteryLevelDidChangeNotification, object: nil, queue: OperationQueue.main, using: { _ in
-                subscriber.putNext(automaticEnergyUsageShouldBeOnNow(settings: settings))
+                subscriber.putNext(Void())
             })
             
             return ActionDisposable {
                 NotificationCenter.default.removeObserver(observer)
             }
+        }
+        // A single value on phones, so there the result is upstream's battery signal.
+        let system = SystemEnergyConditionsMonitor.shared.requestsEnergySavingUpdates()
+        return combineLatest(battery, system |> deliverOnMainQueue)
+        |> map { _, _ -> Bool in
+            return automaticEnergyUsageShouldBeOnNow(settings: settings)
         }
         |> runOn(Queue.mainQueue())
         |> distinctUntilChanged

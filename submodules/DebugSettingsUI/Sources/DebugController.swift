@@ -287,6 +287,7 @@ enum DebugControllerEntry: ItemListNodeEntry {
     case disableLanguageRecognition(Bool)
     case localTranscription(Bool)
     case enableVoipTcp(Bool)
+    case tabletDisplayLinkFrameRateCap(Bool)
     case forceRLottieBackend(Bool)
     case respectSystemMicrophone(Bool)
     case videoMessageCameraMode(ExperimentalUISettings.VideoMessageCameraMode)
@@ -322,7 +323,7 @@ enum DebugControllerEntry: ItemListNodeEntry {
             return DebugControllerSection.experiments.rawValue
         case .compressedEmojiCache, .checkSerializedData, .enableQuickReactionSwitch, .fakeGlass, .inputDecEngineEditor, .forceListViewImplChatBackend, .forceRLottieBackend, .respectSystemMicrophone, .videoMessageCameraMode, .videoMessageCloseFocus, .videoMessageCameraMatrix, .liveStreamV2, .groupCallReferenceEngine:
             return DebugControllerSection.experiments.rawValue
-        case .springSendAnimation, .fakeWalletTransfers, .stickerRendererMode, .disableImageContentAnalysis, .disableLanguageRecognition, .localTranscription, .enableVoipTcp:
+        case .springSendAnimation, .fakeWalletTransfers, .stickerRendererMode, .disableImageContentAnalysis, .disableLanguageRecognition, .localTranscription, .enableVoipTcp, .tabletDisplayLinkFrameRateCap:
             return DebugControllerSection.experiments.rawValue
         case .enableNetworkFramework, .enableNetworkExperiments, .rustMTProtoEngine, .networkEngineInfo:
             return DebugControllerSection.videoExperiments2.rawValue
@@ -410,6 +411,9 @@ enum DebugControllerEntry: ItemListNodeEntry {
             return 79
         case .enableVoipTcp:
             return 80
+        case .tabletDisplayLinkFrameRateCap:
+            // Appended right after `enableVoipTcp`; see the ordering note at `springSendAnimation`.
+            return 81
         case .checkSerializedData:
             return 58
         case .enableQuickReactionSwitch:
@@ -890,6 +894,15 @@ enum DebugControllerEntry: ItemListNodeEntry {
                     return settings
                 }).start()
             })
+        case let .tabletDisplayLinkFrameRateCap(value):
+            // iPad audit B-1: the measurement switch for the shared display link's 120 Hz override. Off = upstream.
+            return ItemListSwitchItem(presentationData: presentationData, systemStyle: .glass, title: "iPad: Display Link 120 Hz Cap", text: "Animations run at the rate they ask for instead of always 120 Hz. Toggling logs frame pacing (\"SharedDisplayLink pacing\") every 10 s.", value: value, sectionId: self.section, style: .blocks, updated: { value in
+                let _ = updateExperimentalUISettingsInteractively(accountManager: arguments.sharedContext.accountManager, { settings in
+                    var settings = settings
+                    settings.tabletDisplayLinkFrameRateCap = value
+                    return settings
+                }).start()
+            })
         case let .checkSerializedData(value):
             return ItemListSwitchItem(presentationData: presentationData, systemStyle: .glass, title: "Check Serialized Data", value: value, sectionId: self.section, style: .blocks, updated: { value in
                 let _ = arguments.sharedContext.accountManager.transaction ({ transaction in
@@ -1101,6 +1114,7 @@ func debugControllerEntries(environment: DebugControllerEntriesEnvironment, them
         entries.append(.disableLanguageRecognition(experimentalSettings.disableLanguageRecognition))
         entries.append(.localTranscription(experimentalSettings.localTranscription))
         entries.append(.enableVoipTcp(experimentalSettings.enableVoipTcp))
+        entries.append(.tabletDisplayLinkFrameRateCap(experimentalSettings.tabletDisplayLinkFrameRateCap))
     }
 
     if isMainApp {

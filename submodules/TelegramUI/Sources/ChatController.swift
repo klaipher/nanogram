@@ -8304,7 +8304,9 @@ public final class ChatControllerImpl: TelegramBaseController, ChatController, G
                 
                 if isPowerSavingEnabled != previousValueValue && previousValueValue != nil && isPowerSavingEnabled {
                     let batteryLevel = UIDevice.current.batteryLevel
-                    if batteryLevel > 0.0 && self.view.window != nil {
+                    // The alert names the battery level, so only when the battery turned Power Saving on: on an
+                    // iPad it also follows the system's signals (audit B-3), and then says nothing.
+                    if batteryLevel > 0.0 && self.view.window != nil && automaticEnergyUsageBatteryConditionNow(settings: self.context.sharedContext.currentAutomaticMediaDownloadSettings) {
                         let presentationData = self.context.sharedContext.currentPresentationData.with { $0 }
                         let batteryPercentage = Int(batteryLevel * 100.0)
                         

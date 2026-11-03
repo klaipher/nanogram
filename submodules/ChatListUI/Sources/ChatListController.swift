@@ -2398,7 +2398,9 @@ public class ChatListControllerImpl: TelegramBaseController, ChatListController 
                 
                 if isPowerSavingEnabled != previousValueValue && previousValueValue != nil && isPowerSavingEnabled {
                     let batteryLevel = UIDevice.current.batteryLevel
-                    if batteryLevel > 0.0 && self.view.window != nil {
+                    // The alert names the battery level, so only when the battery turned Power Saving on: on an
+                    // iPad it also follows the system's signals (audit B-3), and then says nothing.
+                    if batteryLevel > 0.0 && self.view.window != nil && automaticEnergyUsageBatteryConditionNow(settings: self.context.sharedContext.currentAutomaticMediaDownloadSettings) {
                         let presentationData = self.context.sharedContext.currentPresentationData.with { $0 }
                         let batteryPercentage = Int(batteryLevel * 100.0)
                         
@@ -4923,8 +4925,21 @@ public class ChatListControllerImpl: TelegramBaseController, ChatListController 
             }
         }
         
+        // Titled so the iPad menu bar (audit A-6, View menu) lists each folder by name.
+        let availableFilters = self.chatListDisplayNode.mainContainerNode.availableFilters
         let folderShortcuts: [KeyShortcut] = (0 ... 9).map { index in
-            return KeyShortcut(input: "\(index)", modifiers: [.command], action: {
+            var title = ""
+            if index >= 1 && index - 1 < availableFilters.count {
+                switch availableFilters[index - 1] {
+                case .all:
+                    title = strings.ChatList_Tabs_AllChats
+                case let .filter(filter):
+                    if case let .filter(_, filterTitle, _, _) = filter {
+                        title = filterTitle.text
+                    }
+                }
+            }
+            return KeyShortcut(title: title, input: "\(index)", modifiers: [.command], action: {
                 if index == 0 {
                     openChat(0)
                 } else {

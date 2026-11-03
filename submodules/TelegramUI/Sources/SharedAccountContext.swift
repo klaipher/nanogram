@@ -380,6 +380,8 @@ public final class SharedAccountContextImpl: SharedAccountContext {
         self.currentInAppNotificationSettings = Atomic(value: initialPresentationDataAndSettings.inAppNotificationSettings)
         self.currentChatSettings = Atomic(value: initialPresentationDataAndSettings.chatSettings)
         
+        // iPad (audit B-3): Power Saving also follows the system's energy signals; phones never do.
+        SystemEnergyConditionsMonitor.shared.deviceType = mainWindow?.deviceType ?? .phone
         if automaticEnergyUsageShouldBeOnNow(settings: self.currentAutomaticMediaDownloadSettings) {
             self.energyUsageSettings = EnergyUsageSettings.powerSavingDefault
         } else {
@@ -543,6 +545,11 @@ public final class SharedAccountContextImpl: SharedAccountContext {
         
         GlassBackgroundView.useCustomGlassImpl = immediateExperimentalUISettingsValue.with({ $0.fakeGlass })
         ManagedAudioSessionImpl.respectsSystemRecordingInput = immediateExperimentalUISettingsValue.with({ $0.respectSystemMicrophone })
+        // iPad audit B-1: the display-link cap A/B (Debug Settings) and its pacing log.
+        SharedDisplayLinkDriver.shared.pacingLog = { line in
+            Logger.shared.log("DisplayLink", line)
+        }
+        SharedDisplayLinkDriver.shared.capsTabletFrameRate = immediateExperimentalUISettingsValue.with({ $0.tabletDisplayLinkFrameRateCap })
         
         self.experimentalUISettingsDisposable = (self.accountManager.sharedData(keys: [ApplicationSpecificSharedDataKeys.experimentalUISettings])
         |> deliverOnMainQueue).start(next: { sharedData in
@@ -552,6 +559,7 @@ public final class SharedAccountContextImpl: SharedAccountContext {
                 flatBuffers_checkedGet = settings.checkSerializedData
                 GlassBackgroundView.useCustomGlassImpl = settings.fakeGlass
                 ManagedAudioSessionImpl.respectsSystemRecordingInput = settings.respectSystemMicrophone
+                SharedDisplayLinkDriver.shared.capsTabletFrameRate = settings.tabletDisplayLinkFrameRateCap
             }
         })
         

@@ -458,6 +458,17 @@ private func extractAccountManagerState(records: AccountRecordsView<TelegramAcco
         self.window = window
         self.nativeWindow = window
         
+        // iPad (audit A-6): the iPadOS 26 menu bar lists the visible screens' shortcuts (File, View, Chat, Format).
+        if #available(iOS 26.0, *), mainMenuIsInstalled(deviceType: self.mainWindow?.deviceType ?? .phone, available: true) {
+            MainMenuInstaller.chatMenuTitle = { [weak self] in
+                return self?.contextValue?.context.sharedContext.currentPresentationData.with({ $0 }).strings.Chat_BottomSearchPanel_DisplayModeChat ?? "Chat"
+            }
+            MainMenuInstaller.formatMenuTitle = { [weak self] in
+                return self?.contextValue?.context.sharedContext.currentPresentationData.with({ $0 }).strings.TextFormat_Format ?? "Format"
+            }
+            MainMenuInstaller.install()
+        }
+        
         hostView.containerView.layer.addSublayer(MetalEngine.shared.rootLayer)
         // Compile the pipelines that would otherwise stall their first use. Not only on a fresh archive: while the
         // archive is switched off `isFresh` is always false and every launch compiles them on first use.
@@ -1427,6 +1438,10 @@ private func extractAccountManagerState(records: AccountRecordsView<TelegramAcco
             }
             self.crashReportPromptDisposable.set(nil)
             self.contextValue = context
+            if #available(iOS 26.0, *), mainMenuIsInstalled(deviceType: self.mainWindow?.deviceType ?? .phone, available: true) {
+                // The menu titles are the account's language from here on.
+                MainMenuInstaller.setNeedsRebuild()
+            }
             if let context = context {
                 setupLegacyComponents(context: context.context)
                 let isReady = context.isReady.get()

@@ -25,6 +25,7 @@ extension ChatControllerImpl {
         let strings = self.presentationData.strings
         
         var inputShortcuts: [KeyShortcut] = []
+        // The titles name these shortcuts in the iPad menu bar (audit A-6: Format, File ▸ Close).
         if self.chatDisplayNode.isInputViewFocused {
             // The format shortcuts ask the panel first: on the native rich-text engine they run the
             // editor's own command (`performNativeFormatShortcut`), which keeps the document's blocks
@@ -32,7 +33,7 @@ extension ChatControllerImpl {
             // transform as one undoable step (`performLegacyFormatShortcut`), the Format menu's rule.
             // The bare input-state path below is only for a panel that is neither.
             inputShortcuts = [
-                KeyShortcut(input: "B", modifiers: [.command], action: { [weak self] in
+                KeyShortcut(title: strings.TextFormat_Bold, input: "B", modifiers: [.command], action: { [weak self] in
                     if let strongSelf = self {
                         if strongSelf.chatDisplayNode.textInputPanelNode?.performNativeFormatShortcut(.bold) == true {
                             return
@@ -45,7 +46,7 @@ extension ChatControllerImpl {
                         }
                     }
                 }),
-                KeyShortcut(input: "I", modifiers: [.command], action: { [weak self] in
+                KeyShortcut(title: strings.TextFormat_Italic, input: "I", modifiers: [.command], action: { [weak self] in
                     if let strongSelf = self {
                         if strongSelf.chatDisplayNode.textInputPanelNode?.performNativeFormatShortcut(.italic) == true {
                             return
@@ -58,7 +59,7 @@ extension ChatControllerImpl {
                         }
                     }
                 }),
-                KeyShortcut(input: "M", modifiers: [.shift, .command], action: { [weak self] in
+                KeyShortcut(title: strings.TextFormat_Monospace, input: "M", modifiers: [.shift, .command], action: { [weak self] in
                     if let strongSelf = self {
                         if strongSelf.chatDisplayNode.textInputPanelNode?.performNativeFormatShortcut(.monospace) == true {
                             return
@@ -71,7 +72,7 @@ extension ChatControllerImpl {
                         }
                     }
                 }),
-                KeyShortcut(input: "U", modifiers: [.command], action: { [weak self] in
+                KeyShortcut(title: strings.TextFormat_Underline, input: "U", modifiers: [.command], action: { [weak self] in
                     if let strongSelf = self {
                         if strongSelf.chatDisplayNode.textInputPanelNode?.performNativeFormatShortcut(.underline) == true {
                             return
@@ -84,7 +85,7 @@ extension ChatControllerImpl {
                         }
                     }
                 }),
-                KeyShortcut(input: "X", modifiers: [.command, .shift], action: { [weak self] in
+                KeyShortcut(title: strings.TextFormat_Strikethrough, input: "X", modifiers: [.command, .shift], action: { [weak self] in
                     if let strongSelf = self {
                         if strongSelf.chatDisplayNode.textInputPanelNode?.performNativeFormatShortcut(.strikethrough) == true {
                             return
@@ -97,7 +98,7 @@ extension ChatControllerImpl {
                         }
                     }
                 }),
-                KeyShortcut(input: "P", modifiers: [.command, .shift], action: { [weak self] in
+                KeyShortcut(title: strings.TextFormat_Spoiler, input: "P", modifiers: [.command, .shift], action: { [weak self] in
                     if let strongSelf = self {
                         if strongSelf.chatDisplayNode.textInputPanelNode?.performNativeFormatShortcut(.spoiler) == true {
                             return
@@ -110,7 +111,7 @@ extension ChatControllerImpl {
                         }
                     }
                 }),
-                KeyShortcut(input: "K", modifiers: [.command], action: { [weak self] in
+                KeyShortcut(title: strings.TextFormat_Link, input: "K", modifiers: [.command], action: { [weak self] in
                     if let strongSelf = self {
                         strongSelf.interfaceInteraction?.openLinkEditing()
                     }
@@ -199,6 +200,7 @@ extension ChatControllerImpl {
         
         inputShortcuts.append(
             KeyShortcut(
+                title: strings.Common_Close,
                 input: "W",
                 modifiers: [.command],
                 action: { [weak self] in

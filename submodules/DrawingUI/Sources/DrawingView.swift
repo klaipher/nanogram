@@ -137,6 +137,7 @@ public final class DrawingView: UIView, UIGestureRecognizerDelegate, UIPencilInt
     private var previousPointTimestamp: Double?
     
     private let pencilInteraction: UIInteraction?
+    private var isHoverPreviewVisible = false
         
     public init(size: CGSize, gestureView: UIView? = nil) {
         self.imageSize = size
@@ -179,6 +180,11 @@ public final class DrawingView: UIView, UIGestureRecognizerDelegate, UIPencilInt
         if #available(iOS 12.1, *), let pencilInteraction = self.pencilInteraction as? UIPencilInteraction {
             pencilInteraction.delegate = self
             self.addInteraction(pencilInteraction)
+        }
+        
+        if #available(iOS 16.1, *), UIDevice.current.userInterfaceIdiom == .pad {
+            let hoverGestureRecognizer = UIHoverGestureRecognizer(target: self, action: #selector(self.handlePencilHover(_:)))
+            (gestureView ?? self).addGestureRecognizer(hoverGestureRecognizer)
         }
         
         self.backgroundColor = .clear
@@ -284,7 +290,15 @@ public final class DrawingView: UIView, UIGestureRecognizerDelegate, UIPencilInt
                     return
                 }
                 strongSelf.previousPointTimestamp = currentTimestamp
-                strongSelf.uncommitedElement?.updatePath(point, state: state, zoomScale: strongSelf.zoomScale)
+                // iPad (audit B-7): every touch sample since the last step, not only the event's last one.
+                let samples = strongSelf.drawingGesturePipeline?.takeSamples(velocity: point.velocity) ?? []
+                if samples.isEmpty {
+                    strongSelf.uncommitedElement?.updatePath(point, state: state, zoomScale: strongSelf.zoomScale)
+                } else {
+                    for sample in samples {
+                        strongSelf.uncommitedElement?.updatePath(sample, state: state, zoomScale: strongSelf.zoomScale)
+                    }
+                }
                 
 //                if case let .direct(point) = path, let lastPoint = line.points.last {
 //                    if let previousStrokePoint = strongSelf.previousStrokePoint, line.points.count > 10 {
@@ -356,6 +370,12 @@ public final class DrawingView: UIView, UIGestureRecognizerDelegate, UIPencilInt
                 strongSelf.isDrawing = false
                 strongSelf.strokeRecognitionTimer?.invalidate()
                 strongSelf.strokeRecognitionTimer = nil
+                // iPad (audit B-7): samples the last throttled steps left are drawn before the stroke ends.
+                if state == .ended, let samples = strongSelf.drawingGesturePipeline?.takeSamples(velocity: point.velocity), samples.count > 1 {
+                    for sample in samples.dropLast() {
+                        strongSelf.uncommitedElement?.updatePath(sample, state: .changed, zoomScale: strongSelf.zoomScale)
+                    }
+                }
                 strongSelf.uncommitedElement?.updatePath(point, state: state, zoomScale: strongSelf.zoomScale)
                 
                 if strongSelf.uncommitedElement?.isValid == true {
@@ -478,6 +498,96 @@ public final class DrawingView: UIView, UIGestureRecognizerDelegate, UIPencilInt
             self.requestedToolsToggle()
         default:
             break
+        }
+    }
+    
+    // iPad (audit A-14): iOS 17.5's tap and the Pencil Pro's squeeze. With these implemented the system no longer calls
+    // `pencilInteractionDidTap` there; below 17.5 it still does.
+    @available(iOS 17.5, *)
+    public func pencilInteraction(_ interaction: UIPencilInteraction, didReceiveTap tap: UIPencilInteraction.Tap) {
+        self.performPencilCommand(pencilDrawingCommand(for: DrawingView.pencilPreferredAction(UIPencilInteraction.preferredTapAction)))
+    }
+    
+    @available(iOS 17.5, *)
+    public func pencilInteraction(_ interaction: UIPencilInteraction, didReceiveSqueeze squeeze: UIPencilInteraction.Squeeze) {
+        guard squeeze.phase == .ended else {
+            return
+        }
+        self.performPencilCommand(pencilDrawingCommand(for: DrawingView.pencilPreferredAction(UIPencilInteraction.preferredSqueezeAction)))
+    }
+    
+    private func performPencilCommand(_ command: PencilDrawingCommand) {
+        switch command {
+        case .toggleEraser:
+            self.requestedEraserToggle()
+        case .toggleTools:
+            self.requestedToolsToggle()
+        case .showColorPicker:
+            self.requestedColorPicker()
+        case .none:
+            break
+        }
+    }
+    
+    @available(iOS 12.1, *)
+    private static func pencilPreferredAction(_ action: UIPencilPreferredAction) -> PencilPreferredAction {
+        switch action {
+        case .ignore:
+            return .ignore
+        case .switchEraser:
+            return .switchEraser
+        case .switchPrevious:
+            return .switchPrevious
+        case .showColorPalette:
+            return .showColorPalette
+        default:
+            break
+        }
+        if #available(iOS 17.5, *) {
+            switch action {
+            case .showInkAttributes:
+                return .showInkAttributes
+            case .showContextualPalette:
+                return .showContextualPalette
+            case .runSystemShortcut:
+                return .runSystemShortcut
+            default:
+                break
+            }
+        }
+        return .unknown
+    }
+    
+    /// iPad (audit A-14): the brush-size preview follows a hovering Pencil (M2 and later iPads).
+    @available(iOS 16.1, *)
+    @objc private func handlePencilHover(_ gestureRecognizer: UIHoverGestureRecognizer) {
+        var prefersHoverToolPreview = true
+        if #available(iOS 17.5, *) {
+            prefersHoverToolPreview = UIPencilInteraction.prefersHoverToolPreview
+        }
+        let isPencilHover = gestureRecognizer.zOffset > 0.0
+        let shows = drawingShowsHoverPreview(deviceType: UIDevice.current.userInterfaceIdiom == .pad ? .tablet : .phone, isPencilHover: isPencilHover, prefersHoverToolPreview: prefersHoverToolPreview)
+        switch gestureRecognizer.state {
+        case .began, .changed:
+            if shows && !self.isDrawing && self.tool != .blur {
+                CATransaction.begin()
+                CATransaction.setDisableActions(true)
+                self.brushSizePreviewLayer.position = gestureRecognizer.location(in: self)
+                CATransaction.commit()
+                if !self.isHoverPreviewVisible {
+                    self.isHoverPreviewVisible = true
+                    self.setBrushSizePreview(self.toolBrushSize)
+                }
+            } else if self.isHoverPreviewVisible {
+                self.isHoverPreviewVisible = false
+                self.setBrushSizePreview(nil)
+            }
+        default:
+            if self.isHoverPreviewVisible {
+                self.isHoverPreviewVisible = false
+                self.setBrushSizePreview(nil)
+                self.brushSizePreviewLayer.position = CGPoint(x: self.bounds.width / 2.0, y: self.bounds.height / 2.0)
+            }
         }
     }
         

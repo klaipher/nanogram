@@ -142,3 +142,26 @@ ios_unit_test(
         ":SplitColumnWidthTestsLib",
     ],
 )
+
+# The second iPad batch of the iPadOS 27 audit (TabletEnergyRules, TabletMainMenuRules, TabletPencilRules,
+# TabletOrientationRules) alone.
+swift_library(
+    name = "TabletSecondBatchTestsLib",
+    testonly = True,
+    srcs = [
+        "Tests/TabletSecondBatchRulesTests.swift",
+    ],
+    deps = [
+        ":Display",
+        "//submodules/SSignalKit/SwiftSignalKit:SwiftSignalKit",
+    ],
+)
+
+ios_unit_test(
+    name = "TabletSecondBatchTests",
+    minimum_os_version = "15.0",
+    runner = ":DisplayTestRunner",
+    deps = [
+        ":TabletSecondBatchTestsLib",
+    ],
+)
