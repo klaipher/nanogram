@@ -54,6 +54,7 @@ import WalletContext
 import WalletSendScreen
 import PasscodeCore
 import LiquidGlassShapes
+import AnimatedStickerNode
 import MTProtoRustEngine
 import BackgroundDiagnostics
 
@@ -469,6 +470,9 @@ private func extractAccountManagerState(records: AccountRecordsView<TelegramAcco
         // Compile the pipelines that would otherwise stall their first use. Not only on a fresh archive: while the
         // archive is switched off `isFresh` is always false and every launch compiles them on first use.
         prewarmLiquidGlassShapes([.crest], qos: .utility)
+        // Likewise the sticker renderer's Metal device, shader library and pipelines, which the first
+        // large sticker or emoji otherwise sets up on the main thread.
+        AnimatedStickerMetalPrewarm.start()
         
         if !UIDevice.current.isBatteryMonitoringEnabled {
             UIDevice.current.isBatteryMonitoringEnabled = true

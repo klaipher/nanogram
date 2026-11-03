@@ -211,7 +211,11 @@ public final class AnimationCompressor {
     }
     
     public final class SharedContext {
-        public static let shared: SharedContext = SharedContext()!
+        /// Nil where the process has no Metal device or the shader bundle is missing. Thread-safe.
+        public static let sharedIfAvailable: SharedContext? = SharedContext()
+        public static var shared: SharedContext {
+            return SharedContext.sharedIfAvailable!
+        }
         
         public let device: MTLDevice
         let defaultLibrary: MTLLibrary

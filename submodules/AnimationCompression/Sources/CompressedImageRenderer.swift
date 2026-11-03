@@ -13,9 +13,10 @@ private struct Vertex {
 
 public final class CompressedImageRenderer {
     private final class Shared {
-        static let shared: Shared = {
-            return Shared(sharedContext: AnimationCompressor.SharedContext.shared)!
-        }()
+        static let sharedIfAvailable: Shared? = AnimationCompressor.SharedContext.sharedIfAvailable.flatMap(Shared.init(sharedContext:))
+        static var shared: Shared {
+            return Shared.sharedIfAvailable!
+        }
         
         let sharedContext: AnimationCompressor.SharedContext
         
@@ -152,6 +153,14 @@ public final class CompressedImageRenderer {
     
     // CPU-side decoding and uploads, one frame at a time.
     private let uploadQueue = DispatchQueue(label: "org.telegram.CompressedImageRenderer.upload", qos: .userInitiated)
+    
+    /// Sets up the Metal device, the shader library and the render pipelines every renderer shares,
+    /// once per process. Thread-safe; returns false where Metal is unavailable. The first renderer
+    /// otherwise does this on the main thread.
+    @discardableResult
+    public static func prewarmSharedPipelines() -> Bool {
+        return Shared.sharedIfAvailable != nil
+    }
     
     public init?(sharedContext: AnimationCompressor.SharedContext) {
         self.sharedContext = sharedContext
