@@ -80,6 +80,11 @@ public struct ContainerViewLayout: Equatable {
     /// over a regular-width window. Set by the container that makes that presentation decision, never
     /// inferred from geometry, and carried into every layout derived from it.
     public var presentedInFormSheet: Bool
+    /// iPad (iPadOS 26+): the block the window's controls (close, minimize, arrange) take in its top-left corner,
+    /// measured from the corner (`windowControlsCorner`); nil when there are none or the layout does not reach
+    /// that corner. Not an initializer parameter: the window sets it, and the `with…` copies and the split
+    /// container's master pane carry it; a layout built from scratch has none, as upstream.
+    public var windowControls: CGSize? = nil
     
     public init(size: CGSize, metrics: LayoutMetrics, deviceMetrics: DeviceMetrics, intrinsicInsets: UIEdgeInsets, safeInsets: UIEdgeInsets, reservedCorners: ContainerViewLayoutCorners, division: CGRect?, additionalInsets: UIEdgeInsets, statusBarHeight: CGFloat?, inputHeight: CGFloat?, inputHeightIsInteractivellyChanging: Bool, inVoiceOver: Bool, presentedInFormSheet: Bool) {
         self.size = size
@@ -98,31 +103,52 @@ public struct ContainerViewLayout: Equatable {
     }
     
     public func addedInsets(insets: UIEdgeInsets) -> ContainerViewLayout {
-        return ContainerViewLayout(size: self.size, metrics: self.metrics, deviceMetrics: self.deviceMetrics, intrinsicInsets: UIEdgeInsets(top: self.intrinsicInsets.top + insets.top, left: self.intrinsicInsets.left + insets.left, bottom: self.intrinsicInsets.bottom + insets.bottom, right: self.intrinsicInsets.right + insets.right), safeInsets: self.safeInsets, reservedCorners: self.reservedCorners, division: self.division, additionalInsets: self.additionalInsets, statusBarHeight: self.statusBarHeight, inputHeight: self.inputHeight, inputHeightIsInteractivellyChanging: self.inputHeightIsInteractivellyChanging, inVoiceOver: self.inVoiceOver, presentedInFormSheet: self.presentedInFormSheet)
+        // A copy, so that fields outside the initializer (`windowControls`) are kept.
+        var layout = self
+        layout.intrinsicInsets = UIEdgeInsets(top: self.intrinsicInsets.top + insets.top, left: self.intrinsicInsets.left + insets.left, bottom: self.intrinsicInsets.bottom + insets.bottom, right: self.intrinsicInsets.right + insets.right)
+        return layout
     }
     
     public func withUpdatedSize(_ size: CGSize) -> ContainerViewLayout {
-        return ContainerViewLayout(size: size, metrics: self.metrics, deviceMetrics: self.deviceMetrics, intrinsicInsets: self.intrinsicInsets, safeInsets: self.safeInsets, reservedCorners: self.reservedCorners, division: self.division, additionalInsets: self.additionalInsets, statusBarHeight: self.statusBarHeight, inputHeight: self.inputHeight, inputHeightIsInteractivellyChanging: self.inputHeightIsInteractivellyChanging, inVoiceOver: self.inVoiceOver, presentedInFormSheet: self.presentedInFormSheet)
+        // A copy, so that fields outside the initializer (`windowControls`) are kept.
+        var layout = self
+        layout.size = size
+        return layout
     }
     
     public func withUpdatedIntrinsicInsets(_ intrinsicInsets: UIEdgeInsets) -> ContainerViewLayout {
-        return ContainerViewLayout(size: self.size, metrics: self.metrics, deviceMetrics: self.deviceMetrics, intrinsicInsets: intrinsicInsets, safeInsets: self.safeInsets, reservedCorners: self.reservedCorners, division: self.division, additionalInsets: self.additionalInsets, statusBarHeight: self.statusBarHeight, inputHeight: self.inputHeight, inputHeightIsInteractivellyChanging: self.inputHeightIsInteractivellyChanging, inVoiceOver: self.inVoiceOver, presentedInFormSheet: self.presentedInFormSheet)
+        // A copy, so that fields outside the initializer (`windowControls`) are kept.
+        var layout = self
+        layout.intrinsicInsets = intrinsicInsets
+        return layout
     }
     
     public func withUpdatedSafeInsets(_ safeInsets: UIEdgeInsets) -> ContainerViewLayout {
-        return ContainerViewLayout(size: self.size, metrics: self.metrics, deviceMetrics: self.deviceMetrics, intrinsicInsets: self.intrinsicInsets, safeInsets: safeInsets, reservedCorners: self.reservedCorners, division: self.division, additionalInsets: self.additionalInsets, statusBarHeight: self.statusBarHeight, inputHeight: self.inputHeight, inputHeightIsInteractivellyChanging: self.inputHeightIsInteractivellyChanging, inVoiceOver: self.inVoiceOver, presentedInFormSheet: self.presentedInFormSheet)
+        // A copy, so that fields outside the initializer (`windowControls`) are kept.
+        var layout = self
+        layout.safeInsets = safeInsets
+        return layout
     }
     
     public func withUpdatedAdditionalInsets(_ additionalInsets: UIEdgeInsets) -> ContainerViewLayout {
-        return ContainerViewLayout(size: self.size, metrics: self.metrics, deviceMetrics: self.deviceMetrics, intrinsicInsets: self.intrinsicInsets, safeInsets: self.safeInsets, reservedCorners: self.reservedCorners, division: self.division, additionalInsets: additionalInsets, statusBarHeight: self.statusBarHeight, inputHeight: self.inputHeight, inputHeightIsInteractivellyChanging: self.inputHeightIsInteractivellyChanging, inVoiceOver: self.inVoiceOver, presentedInFormSheet: self.presentedInFormSheet)
+        // A copy, so that fields outside the initializer (`windowControls`) are kept.
+        var layout = self
+        layout.additionalInsets = additionalInsets
+        return layout
     }
     
     public func withUpdatedInputHeight(_ inputHeight: CGFloat?) -> ContainerViewLayout {
-        return ContainerViewLayout(size: self.size, metrics: self.metrics, deviceMetrics: self.deviceMetrics, intrinsicInsets: self.intrinsicInsets, safeInsets: self.safeInsets, reservedCorners: self.reservedCorners, division: self.division, additionalInsets: self.additionalInsets, statusBarHeight: self.statusBarHeight, inputHeight: inputHeight, inputHeightIsInteractivellyChanging: self.inputHeightIsInteractivellyChanging, inVoiceOver: self.inVoiceOver, presentedInFormSheet: self.presentedInFormSheet)
+        // A copy, so that fields outside the initializer (`windowControls`) are kept.
+        var layout = self
+        layout.inputHeight = inputHeight
+        return layout
     }
     
     public func withUpdatedMetrics(_ metrics: LayoutMetrics) -> ContainerViewLayout {
-        return ContainerViewLayout(size: self.size, metrics: metrics, deviceMetrics: self.deviceMetrics, intrinsicInsets: self.intrinsicInsets, safeInsets: self.safeInsets, reservedCorners: self.reservedCorners, division: self.division, additionalInsets: self.additionalInsets, statusBarHeight: self.statusBarHeight, inputHeight: self.inputHeight, inputHeightIsInteractivellyChanging: self.inputHeightIsInteractivellyChanging, inVoiceOver: self.inVoiceOver, presentedInFormSheet: self.presentedInFormSheet)
+        // A copy, so that fields outside the initializer (`windowControls`) are kept.
+        var layout = self
+        layout.metrics = metrics
+        return layout
     }
 }
 

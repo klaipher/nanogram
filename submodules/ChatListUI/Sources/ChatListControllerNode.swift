@@ -1721,6 +1721,8 @@ final class ChatListControllerNode: ASDisplayNode, ASGestureRecognizerDelegate {
                 leftInset: layout.safeInsets.left,
                 rightInset: layout.safeInsets.right,
                 trailingButtonsInset: layout.navigationBarTrailingButtonsInset,
+                // iPad: the Edit button clears the window controls.
+                leadingButtonsInset: layout.navigationBarLeadingButtonsInset,
                 search: ChatListNavigationBar.Search(isEnabled: true),
                 activeSearch: self.isSearchDisplayControllerActive,
                 primaryContent: headerContent?.primaryContent,

@@ -3430,11 +3430,13 @@ public final class ChatHistoryListNodeImpl: ASDisplayNode, ChatHistoryNode, Chat
                 }
             }
             
+            // iPad: about one more screen of media each way (3 on iPhone, as upstream).
+            let mediaPrefetchLimit = chatHistoryMediaPrefetchLimit(viewportHeight: self.listView.visibleSize.height, deviceType: self.context.sharedContext.mainWindow?.deviceType ?? .phone)
             func addMediaToPrefetch(_ message: Message, _ media: Media, _ messages: inout [(Message, Media)]) -> Bool {
                 if media is TelegramMediaImage || media is TelegramMediaFile {
                     messages.append((message, media))
                 }
-                if messages.count >= 3 {
+                if messages.count >= mediaPrefetchLimit {
                     return false
                 } else {
                     return true

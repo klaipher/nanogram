@@ -105,7 +105,8 @@ private final class WindowRootViewController: UIViewController {
             if oldValue != self.orientations {
                 if self.orientations == .portrait {
                     if #available(iOSApplicationExtension 16.0, iOS 16.0, *) {
-                        let windowScene = UIApplication.shared.connectedScenes.first as? UIWindowScene
+                        // The scene of this controller's own window, not whichever `connectedScenes` lists first.
+                        let windowScene = preferredWindowScene(ownScene: self.view.window?.windowScene, connectedScenes: UIApplication.shared.connectedScenes.compactMap { $0 as? UIWindowScene }, isForegroundActive: { $0.activationState == .foregroundActive })
                         windowScene?.requestGeometryUpdate(.iOS(interfaceOrientations: .portrait))
                         self.setNeedsUpdateOfSupportedInterfaceOrientations()
                     } else if UIDevice.current.orientation != .portrait {

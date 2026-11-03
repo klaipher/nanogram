@@ -231,6 +231,8 @@ final class ChatImageGalleryItemNode: ZoomableContentGalleryItemNode {
     
     private let imageNode: TransformImageNode
     private var recognizedContentNode: RecognizedContentContainer?
+    /// iPad: the system's Live Text on the photo, beside Telegram's text button (`GallerySystemLiveText`).
+    private let systemLiveText = GallerySystemLiveText()
     
     private let recognitionOverlayContentNode: ImageRecognitionOverlayContentNode
     
@@ -367,6 +369,10 @@ final class ChatImageGalleryItemNode: ZoomableContentGalleryItemNode {
             return
         }
         let displaySize = dimensions.cgSize.fitted(CGSize(width: 1280.0, height: 1280.0)).dividedByScreenScale().integralFloor
+        
+        self.systemLiveText.attach(to: self.imageNode.view, deviceType: self.context.sharedContext.mainWindow?.deviceType ?? .phone, isContentProtected: self.peerIsCopyProtected || self.isSecret, makeImage: {
+            return generate(TransformImageArguments(corners: ImageCorners(), imageSize: displaySize, boundingSize: displaySize, intrinsicInsets: UIEdgeInsets()))?.generateImage()
+        })
         
         self.recognitionDisposable.set((recognizedContent(context: self.context, image: { return generate(TransformImageArguments(corners: ImageCorners(), imageSize: displaySize, boundingSize: displaySize, intrinsicInsets: UIEdgeInsets()))?.generateImage() }, messageId: message.id)
         |> deliverOnMainQueue).start(next: { [weak self] results in

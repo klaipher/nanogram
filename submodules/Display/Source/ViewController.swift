@@ -510,7 +510,7 @@ public protocol CustomViewControllerNavigationDataSummary: AnyObject {
             
             navigationBar.trailingButtonsInset = layout.navigationBarTrailingButtonsInset
             navigationBar.sideColumnPlacement = self.navigationBarSideColumnPlacement(layout: layout)
-            navigationBar.updateLayout(size: navigationBarFrame.size, defaultHeight: navigationLayout.defaultContentHeight, additionalTopHeight: additionalTopHeight, additionalContentHeight: self.additionalNavigationBarHeight, additionalBackgroundHeight: additionalBackgroundHeight, leftInset: layout.safeInsets.left, rightInset: layout.safeInsets.right, appearsHidden: !self.displayNavigationBar, transition: transition)
+            navigationBar.updateLayout(size: navigationBarFrame.size, defaultHeight: navigationLayout.defaultContentHeight, additionalTopHeight: additionalTopHeight, additionalContentHeight: self.additionalNavigationBarHeight, additionalBackgroundHeight: additionalBackgroundHeight, leftInset: layout.safeInsets.left + layout.navigationBarLeadingButtonsInset, rightInset: layout.safeInsets.right, appearsHidden: !self.displayNavigationBar, transition: transition)
             if !transition.isAnimated {
                 navigationBar.layer.removeAnimation(forKey: "bounds")
                 navigationBar.layer.removeAnimation(forKey: "position")

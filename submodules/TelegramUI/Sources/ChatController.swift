@@ -4534,6 +4534,7 @@ public final class ChatControllerImpl: TelegramBaseController, ChatController, G
                                 presentController: { [weak self] c in
                                     self?.present(c, in: .window(.root))
                                 },
+                                sourceRect: self.translationSourceRect(messageId: message?.id),
                                 display: { [weak self] c in
                                     self?.push(c)
                                 }
@@ -7076,6 +7077,24 @@ public final class ChatControllerImpl: TelegramBaseController, ChatController, G
                 }
             }
         })
+    }
+
+    /// iPad: the frame, in the window, of the message whose text is being translated, for the system translation
+    /// popover to point at (`presentTranslateScreen(sourceRect:)`). Nil when it is not on screen.
+    func translationSourceRect(messageId: MessageId?) -> CGRect? {
+        guard let messageId, let window = self.view.window else {
+            return nil
+        }
+        var result: CGRect?
+        self.chatDisplayNode.historyNode.forEachItemNode { itemNode in
+            guard result == nil, let itemNode = itemNode as? ChatMessageItemView, let item = itemNode.item else {
+                return
+            }
+            if item.message.id == messageId {
+                result = itemNode.view.convert(itemNode.bounds, to: window)
+            }
+        }
+        return result
     }
 
     deinit {

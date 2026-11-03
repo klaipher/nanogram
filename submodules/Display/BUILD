@@ -99,6 +99,28 @@ ios_unit_test(
     ],
 )
 
+# iPad system-API rules (TabletSystemRules.swift) alone.
+swift_library(
+    name = "TabletSystemTestsLib",
+    testonly = True,
+    srcs = [
+        "Tests/TabletSystemRulesTests.swift",
+    ],
+    deps = [
+        ":Display",
+        "//submodules/SSignalKit/SwiftSignalKit:SwiftSignalKit",
+    ],
+)
+
+ios_unit_test(
+    name = "TabletSystemTests",
+    minimum_os_version = "15.0",
+    runner = ":DisplayTestRunner",
+    deps = [
+        ":TabletSystemTestsLib",
+    ],
+)
+
 # The resizable chat-list column (SplitColumnWidth.swift) alone.
 swift_library(
     name = "SplitColumnWidthTestsLib",

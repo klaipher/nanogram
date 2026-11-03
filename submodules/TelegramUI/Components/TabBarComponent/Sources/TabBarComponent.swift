@@ -525,6 +525,15 @@ public final class TabBarComponent: Component {
                 }
                 item.contextAction?(gesture, itemView.contextContainerView)
             }
+            
+            // iPad: at the accessibility text sizes a long press shows the tab's label enlarged (the system Large
+            // Content Viewer); lifting the finger over a tab selects it. iPhone keeps upstream's long press.
+            if Display.showsLargeContentViewer(deviceType: UIDevice.current.userInterfaceIdiom == .pad ? .tablet : .phone) {
+                let interaction = UILargeContentViewerInteraction(delegate: self)
+                self.addInteraction(interaction)
+                // A context menu waits for the viewer's gesture to fail; it only begins at the accessibility sizes.
+                self.contextGestureContainerView.contextGesture?.require(toFail: interaction.gestureRecognizerForExclusionRelationship)
+            }
         }
         
         required public init?(coder: NSCoder) {
@@ -537,6 +546,21 @@ public final class TabBarComponent: Component {
         
         public func gestureRecognizer(_ gestureRecognizer: UIGestureRecognizer, shouldRecognizeSimultaneouslyWith otherGestureRecognizer: UIGestureRecognizer) -> Bool {
             return true
+        }
+        
+        private func largeContentItem(at point: CGPoint) -> (TabBarComponent.Item, ItemComponent.View)? {
+            guard let component = self.component else {
+                return nil
+            }
+            for item in component.items {
+                guard let itemView = self.itemViews[item.id]?.view as? ItemComponent.View, itemView.superview != nil else {
+                    continue
+                }
+                if itemView.bounds.contains(self.convert(point, to: itemView)) {
+                    return (item, itemView)
+                }
+            }
+            return nil
         }
 
         @objc private func onTabSelectionGesture(_ recognizer: TabSelectionRecognizer) {
@@ -1290,6 +1314,13 @@ private final class ItemComponent: Component {
                 }
             }
 
+            // iPad: the label the Large Content Viewer shows (TabBarComponent.View adds the interaction).
+            self.showsLargeContentViewer = true
+            self.largeContentTitle = title
+            if case let .tabBarItem(tabBarItem) = component.item.content {
+                self.largeContentImage = tabBarItem.image
+            }
+
             let titleSize = self.title.update(
                 transition: .immediate,
                 component: AnyComponent(MultilineTextComponent(
@@ -1361,5 +1392,18 @@ private final class ItemComponent: Component {
     
     func update(view: View, availableSize: CGSize, state: EmptyComponentState, environment: Environment<Empty>, transition: ComponentTransition) -> CGSize {
         return view.update(component: self, availableSize: availableSize, state: state, environment: environment, transition: transition)
+    }
+}
+
+extension TabBarComponent.View: UILargeContentViewerInteractionDelegate {
+    public func largeContentViewerInteraction(_ interaction: UILargeContentViewerInteraction, itemAt point: CGPoint) -> UILargeContentViewerItem? {
+        return self.largeContentItem(at: point)?.1
+    }
+
+    public func largeContentViewerInteraction(_ interaction: UILargeContentViewerInteraction, didEndOn item: UILargeContentViewerItem?, at point: CGPoint) {
+        guard let (tabItem, _) = self.largeContentItem(at: point) else {
+            return
+        }
+        tabItem.action(false)
     }
 }

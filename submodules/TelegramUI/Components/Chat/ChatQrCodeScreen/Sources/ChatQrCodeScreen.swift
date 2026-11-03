@@ -1257,8 +1257,8 @@ private class ChatQrCodeScreenNode: ViewControllerTracingNode, ASScrollViewDeleg
                         }
                     }
                     if let window = strongSelf.view.window {
-                        activityController.popoverPresentationController?.sourceView = window
-                        activityController.popoverPresentationController?.sourceRect = CGRect(origin: CGPoint(x: window.bounds.width / 2.0, y: window.bounds.size.height - 1.0), size: CGSize(width: 1.0, height: 1.0))
+                        // iPad: the popover points at the Share button.
+                        anchorNativePopover(activityController, window: window, sourceView: strongSelf.doneButton.view)
                     }
                     strongSelf.context.sharedContext.applicationBindings.presentNativeController(activityController)
                 }
@@ -1282,8 +1282,8 @@ private class ChatQrCodeScreenNode: ViewControllerTracingNode, ASScrollViewDeleg
                         }
                     }
                     if let window = strongSelf.view.window {
-                        activityController.popoverPresentationController?.sourceView = window
-                        activityController.popoverPresentationController?.sourceRect = CGRect(origin: CGPoint(x: window.bounds.width / 2.0, y: window.bounds.size.height - 1.0), size: CGSize(width: 1.0, height: 1.0))
+                        // iPad: the popover points at the Share button.
+                        anchorNativePopover(activityController, window: window, sourceView: strongSelf.doneButton.view)
                     }
                     strongSelf.context.sharedContext.applicationBindings.presentNativeController(activityController)
                 }

@@ -388,7 +388,7 @@ public final class SharedAccountContextImpl: SharedAccountContext {
         
         let presentationData: Signal<PresentationData, NoError> = .single(initialPresentationDataAndSettings.presentationData)
         |> then(
-            updatedPresentationData(accountManager: self.accountManager, applicationInForeground: self.applicationBindings.applicationInForeground, systemUserInterfaceStyle: mainWindow?.systemUserInterfaceStyle ?? .single(.light))
+            updatedPresentationData(accountManager: self.accountManager, applicationInForeground: self.applicationBindings.applicationInForeground, systemUserInterfaceStyle: mainWindow?.systemUserInterfaceStyle ?? .single(.light), deviceType: mainWindow?.deviceType ?? .phone)
         )
         self._presentationData.set(presentationData)
         self._automaticMediaDownloadSettings.set(.single(initialPresentationDataAndSettings.automaticMediaDownloadSettings)
@@ -447,6 +447,9 @@ public final class SharedAccountContextImpl: SharedAccountContext {
             }
         ))
         
+        // iPad: system popovers, pickers and share sheets take the theme's accent instead of the system blue.
+        mainWindow?.updateSystemTintColor(accentColor: initialPresentationDataAndSettings.presentationData.theme.list.itemAccentColor)
+        
         self.presentationDataDisposable.set((self.presentationData
         |> deliverOnMainQueue).start(next: { [weak self] next in
             if let strongSelf = self {
@@ -470,6 +473,7 @@ public final class SharedAccountContextImpl: SharedAccountContext {
                 }
                 if themeUpdated {
                     updateLegacyTheme()
+                    strongSelf.mainWindow?.updateSystemTintColor(accentColor: next.theme.list.itemAccentColor)
                     
                     /*if #available(iOS 13.0, *) {
                         let userInterfaceStyle: UIUserInterfaceStyle

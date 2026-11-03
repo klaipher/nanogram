@@ -1,4 +1,5 @@
 import UIKit
+import Display
 
 @objc(SceneDelegate) final class SceneDelegate: UIResponder, UIWindowSceneDelegate {
     var window: UIWindow?
@@ -22,6 +23,10 @@ import UIKit
         self.isPrimaryScene = true
         appDelegate.attach(scene: windowScene, connectionOptions: connectionOptions)
         self.window = appDelegate.window
+        // iPad (Stage Manager, windowed apps): the window cannot be made smaller than an iPhone-width chat.
+        if let minimumSize = minimumWindowSize(deviceType: appDelegate.mainWindow?.deviceType ?? .phone) {
+            windowScene.sizeRestrictions?.minimumSize = minimumSize
+        }
     }
 
     func sceneDidBecomeActive(_ scene: UIScene) {

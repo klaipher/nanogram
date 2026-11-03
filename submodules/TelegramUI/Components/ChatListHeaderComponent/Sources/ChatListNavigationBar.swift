@@ -63,6 +63,9 @@ public final class ChatListNavigationBar: Component {
     public let rightInset: CGFloat
     /// iPhone Duo: see `ChatListHeaderComponent.trailingButtonsInset`.
     public let trailingButtonsInset: CGFloat
+    /// iPad: how much further than `leftInset` the header's leading buttons start, to clear the window controls
+    /// (`ContainerViewLayout.navigationBarLeadingButtonsInset`). The search field below keeps `leftInset`.
+    public let leadingButtonsInset: CGFloat
     public let search: Search?
     public let activeSearch: ActiveSearch?
     public let primaryContent: ChatListHeaderComponent.Content?
@@ -95,6 +98,7 @@ public final class ChatListNavigationBar: Component {
         leftInset: CGFloat,
         rightInset: CGFloat,
         trailingButtonsInset: CGFloat = 0.0,
+        leadingButtonsInset: CGFloat = 0.0,
         search: Search?,
         activeSearch: ActiveSearch?,
         primaryContent: ChatListHeaderComponent.Content?,
@@ -124,6 +128,7 @@ public final class ChatListNavigationBar: Component {
         self.leftInset = leftInset
         self.rightInset = rightInset
         self.trailingButtonsInset = trailingButtonsInset
+        self.leadingButtonsInset = leadingButtonsInset
         self.search = search
         self.activeSearch = activeSearch
         self.primaryContent = primaryContent
@@ -167,6 +172,9 @@ public final class ChatListNavigationBar: Component {
             return false
         }
         if lhs.trailingButtonsInset != rhs.trailingButtonsInset {
+            return false
+        }
+        if lhs.leadingButtonsInset != rhs.leadingButtonsInset {
             return false
         }
         if lhs.search != rhs.search {
@@ -622,7 +630,7 @@ public final class ChatListNavigationBar: Component {
             self.storiesUnlocked = storiesUnlocked
             
             let headerComponent = ChatListHeaderComponent(
-                leftInset: component.leftInset + 16.0,
+                leftInset: component.leftInset + component.leadingButtonsInset + 16.0,
                 rightInset: component.rightInset + 16.0,
                 trailingButtonsInset: component.trailingButtonsInset,
                 primaryContent: component.primaryContent,

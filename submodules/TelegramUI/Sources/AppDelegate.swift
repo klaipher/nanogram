@@ -957,7 +957,7 @@ private func extractAccountManagerState(records: AccountRecordsView<TelegramAcco
                 UIApplication.shared.open(url, options: [:], completionHandler: nil)
             }
         }, openSubscriptions: {
-            if #available(iOS 15, *), let scene = UIApplication.shared.connectedScenes.first as? UIWindowScene {
+            if #available(iOS 15, *), let scene = self.mainWindow?.preferredWindowScene {
                 let _ = Task {
                     try await AppStore.showManageSubscriptions(in: scene)
                 }
@@ -1051,7 +1051,7 @@ private func extractAccountManagerState(records: AccountRecordsView<TelegramAcco
         }, forceOrientation: { orientation in
             let value = orientation.rawValue
             if #available(iOSApplicationExtension 16.0, iOS 16.0, *) {
-                let windowScene = UIApplication.shared.connectedScenes.first as? UIWindowScene
+                let windowScene = self.mainWindow?.preferredWindowScene
                 var interfaceOrientations: UIInterfaceOrientationMask = []
                 switch orientation {
                 case .portrait:
@@ -3446,6 +3446,10 @@ private func extractAccountManagerState(records: AccountRecordsView<TelegramAcco
             }
             
             let activityController = UIActivityViewController(activityItems: activityItems, applicationActivities: nil)
+            // On iPad a popover without an anchor raises an exception.
+            if let window = self.window {
+                anchorNativePopover(activityController, window: window, sourceView: nil)
+            }
             
             self.window?.rootViewController?.present(activityController, animated: true, completion: nil)
         })

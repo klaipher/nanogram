@@ -7,6 +7,8 @@ private struct WindowReservedArea: Equatable {
     var safeInsets: UIEdgeInsets
     var reservedCorners: ContainerViewLayoutCorners
     var division: CGRect?
+    /// iPad: the window controls' corner block (`windowControlsCorner`).
+    var windowControls: CGSize? = nil
 }
 
 private struct WindowLayout: Equatable {
@@ -151,7 +153,21 @@ private func windowReservedArea(hostView: WindowHostView, deviceMetrics: DeviceM
         }
         return WindowReservedArea(safeInsets: safeInsets, reservedCorners: iPhoneDuoReservedCorners(windowSize: windowSize, orientation: orientation), division: iPhoneDuoDivision(windowSize: windowSize, reported: hostView.activeDivision))
     }
-    return WindowReservedArea(safeInsets: deviceSafeInsets(deviceMetrics: deviceMetrics, windowSize: windowSize), reservedCorners: .none, division: nil)
+    return WindowReservedArea(safeInsets: deviceSafeInsets(deviceMetrics: deviceMetrics, windowSize: windowSize), reservedCorners: .none, division: nil, windowControls: windowControlsCorner(hostView: hostView, deviceMetrics: deviceMetrics))
+}
+
+/// iPad (iPadOS 26+): the window controls' block in the top-left corner (`windowControlsCorner(deviceType:…)`), from
+/// the window's safe area adapted to its corners. Nil on phones, below iOS 26 and without controls. Kept out of
+/// `reservedCorners`, which means iPhone Duo's status corner to its readers (`statusBarIsInCorner` and others).
+private func windowControlsCorner(hostView: WindowHostView, deviceMetrics: DeviceMetrics) -> CGSize? {
+    guard deviceMetrics.type == .tablet else {
+        return nil
+    }
+    if #available(iOS 26.0, *) {
+        let view = hostView.eventView
+        return windowControlsCorner(deviceType: deviceMetrics.type, safeInsets: view.safeAreaInsets, horizontallyAdapted: view.edgeInsets(for: .safeArea(cornerAdaptation: .horizontal)), verticallyAdapted: view.edgeInsets(for: .safeArea(cornerAdaptation: .vertical)))
+    }
+    return nil
 }
 
 /// Resolves the height reserved for the home indicator. On a multi-display device its presence comes
@@ -189,7 +205,9 @@ private func containedLayoutForWindowLayout(_ layout: WindowLayout, deviceMetric
         resolvedSafeInsets = deviceSafeInsets(deviceMetrics: deviceMetrics, windowSize: layout.size)
     }
     
-    return ContainerViewLayout(size: layout.size, metrics: layout.metrics, deviceMetrics: deviceMetrics, intrinsicInsets: UIEdgeInsets(top: 0.0, left: 0.0, bottom: layout.onScreenNavigationHeight ?? 0.0, right: 0.0), safeInsets: resolvedSafeInsets, reservedCorners: layout.reservedArea.reservedCorners, division: layout.reservedArea.division, additionalInsets: UIEdgeInsets(), statusBarHeight: resolvedStatusBarHeight, inputHeight: updatedInputHeight, inputHeightIsInteractivellyChanging: layout.upperKeyboardInputPositionBound != nil && layout.upperKeyboardInputPositionBound != layout.size.height && layout.inputHeight != nil, inVoiceOver: layout.inVoiceOver, presentedInFormSheet: false)
+    var result = ContainerViewLayout(size: layout.size, metrics: layout.metrics, deviceMetrics: deviceMetrics, intrinsicInsets: UIEdgeInsets(top: 0.0, left: 0.0, bottom: layout.onScreenNavigationHeight ?? 0.0, right: 0.0), safeInsets: resolvedSafeInsets, reservedCorners: layout.reservedArea.reservedCorners, division: layout.reservedArea.division, additionalInsets: UIEdgeInsets(), statusBarHeight: resolvedStatusBarHeight, inputHeight: updatedInputHeight, inputHeightIsInteractivellyChanging: layout.upperKeyboardInputPositionBound != nil && layout.upperKeyboardInputPositionBound != layout.size.height && layout.inputHeight != nil, inVoiceOver: layout.inVoiceOver, presentedInFormSheet: false)
+    result.windowControls = layout.reservedArea.windowControls
+    return result
 }
 
 public func doesViewTreeDisableInteractiveTransitionGestureRecognizer(_ view: UIView, keyboardOnly: Bool = false) -> Bool {
@@ -388,6 +406,10 @@ public class Window1 {
     public let badgeView: UIImageView
     
     private var deviceMetrics: DeviceMetrics
+    /// Phone or tablet, for iPad-only decisions outside a layout pass (`TabletSystemRules.swift`).
+    public var deviceType: DeviceType {
+        return self.deviceMetrics.type
+    }
     
     public let statusBarHost: StatusBarHost?
     private let keyboardManager: KeyboardManager?
@@ -1116,7 +1138,7 @@ public class Window1 {
         // divider onto or off the hinge; that one change is animated, but only when no update is
         // pending: `UpdatingLayout.update` replaces a pending `.immediate` transition even without
         // `overrideTransition`, which would turn an unfold's immediate size change into a spring.
-        let onlyDivisionChanged = self.updatingLayout == nil && reservedArea.safeInsets == current.reservedArea.safeInsets && reservedArea.reservedCorners == current.reservedArea.reservedCorners && onScreenNavigationHeight == current.onScreenNavigationHeight
+        let onlyDivisionChanged = self.updatingLayout == nil && reservedArea.safeInsets == current.reservedArea.safeInsets && reservedArea.reservedCorners == current.reservedArea.reservedCorners && reservedArea.windowControls == current.reservedArea.windowControls && onScreenNavigationHeight == current.onScreenNavigationHeight
         let transition: ContainedViewLayoutTransition = onlyDivisionChanged ? .animated(duration: 0.3, curve: .spring) : .immediate
         self.updateLayout { layout in
             layout.update(reservedArea: reservedArea, transition: transition, overrideTransition: false)

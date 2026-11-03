@@ -4629,6 +4629,10 @@ extension ChatControllerImpl {
                     presentController: { [weak self] c in
                         self?.present(c, in: .window(.root))
                     },
+                    // iPad: the popover points at the input panel.
+                    sourceRect: self.chatDisplayNode.textInputPanelNode.flatMap { panel in
+                        return self.view.window.flatMap { window in panel.view.convert(panel.bounds, to: window) }
+                    },
                     display: { [weak self] c in
                         self?.push(c)
                     }
