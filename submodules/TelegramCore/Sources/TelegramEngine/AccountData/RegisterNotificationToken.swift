@@ -46,11 +46,23 @@ func _internal_registerNotificationToken(account: Account, token: Data, type: No
             return true
         }
         |> `catch` { error -> Signal<Bool, NoError> in
-            if error.errorDescription == "TOKEN_WAS_INVALIDATED" {
-                return .single(false)
-            } else {
-                return .single(true)
-            }
+            let failure = notificationTokenRegistrationFailure(errorDescription: error.errorDescription, type: type, sandbox: sandbox)
+            Logger.shared.log("RegisterNotificationToken", failure.logLine)
+            return .single(failure.registered)
         }
     }
+}
+
+/// A failed `account.registerDevice`: only an invalidated token counts as not registered (the
+/// caller drops it); any other error is treated as registered, as upstream does, so a token the
+/// server keeps refusing is not retried forever. The log line names the error, never the token.
+func notificationTokenRegistrationFailure(errorDescription: String, type: NotificationTokenType, sandbox: Bool) -> (registered: Bool, logLine: String) {
+    let typeName: String
+    switch type {
+    case .aps:
+        typeName = "aps"
+    case .voip:
+        typeName = "voip"
+    }
+    return (errorDescription != "TOKEN_WAS_INVALIDATED", "registerDevice failed: \(errorDescription) (type \(typeName), sandbox \(sandbox))")
 }
