@@ -529,7 +529,8 @@ archive_dsyms() {
 # testflight). The build's dSYMs are kept in $DSYM_ARCHIVE/<build number>/ before the upload.
 # Every upload gets What to Test notes: <file> is checked before the build, copied next to the
 # dSYMs, and set with tools/dev/tf_notes.py once App Store Connect has processed the build
-# (waiting at most TG_TF_NOTES_WAIT minutes, default 45); if that fails, tg prints the command.
+# (waiting at most TG_TF_NOTES_WAIT minutes, default 45). If only that step fails, tg prints
+# "UPLOADED; notes not set; run: <command>" and exits 3: the build is uploaded, run the command.
 cmd_testflight() {
   local notes="" export_only=0 upload_args=()
   while [ $# -gt 0 ]; do
@@ -565,9 +566,12 @@ cmd_testflight() {
   local notes_command=(python3 "$ROOT/tools/dev/tf_notes.py" IOS "$build" "$notes")
   say "Setting What to Test notes for $build once App Store Connect has processed it"
   if ! "${notes_command[@]}" --wait "${TG_TF_NOTES_WAIT:-45}"; then
-    warn "What to Test notes are not set. Once build $build has processed, run:"
-    printf ' ' >&2; printf ' %q' "${notes_command[@]}" >&2; printf '\n' >&2
-    return 1
+    # Exit 3, distinct from a failed build or upload: the build IS on TestFlight, so running
+    # tg testflight again would upload a second one. Only the notes command is left to run.
+    printf '\033[33mUPLOADED; notes not set; run:\033[0m' >&2
+    printf ' %q' "${notes_command[@]}" >&2; printf '\n' >&2
+    warn "build $build is uploaded; do not run tg testflight again for it"
+    exit 3
   fi
   say "Build $build uploaded with What to Test notes"
 }
@@ -646,7 +650,8 @@ Usage: tools/dev/tg <command> [options]
                         Release build uploaded to TestFlight (new build number) with <file>
                         as its What to Test notes, set once Apple has processed it (no notes
                         needed with --export-only); keeps its dSYMs zipped in
-                        $TG_DSYM_DIR/<build number>/
+                        $TG_DSYM_DIR/<build number>/. Exit 3: uploaded, but the notes
+                        are not set; run the command it prints, not testflight again
   project [--full]      Generate and open the Xcode project (simulator, no extensions)
   test [label]          Run tests (default: Tests/AllTests)
   new-module <dir>      Create a Swift module that uses the strict Swift 6 preset
@@ -670,6 +675,9 @@ Environment: TG_CACHE_DIR, TG_CONFIG, TG_CODESIGNING, TG_BUILD_NUMBER,
              TG_TF_NOTES_WAIT (minutes tg testflight waits for processing, default 45)
 EOF
 }
+
+# Sourced (tools/dev/tests/test_tg.sh): define the functions only.
+[ "${BASH_SOURCE[0]}" = "$0" ] || return 0
 
 command="${1:-help}"; shift || true
 case "$command" in
