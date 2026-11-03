@@ -9,6 +9,7 @@ import TelegramUIPreferences
 import AppBundle
 import Sunrise
 import PresentationStrings
+import NanogramBranding
 
 public struct PresentationDateTimeFormat: Equatable {
     public let timeFormat: PresentationTimeFormat
@@ -149,7 +150,8 @@ public func dictFromLocalization(_ value: Localization) -> [String: String] {
                 dict["\(key)_any"] = other
         }
     }
-    return dict
+    // Nanogram: the packs say "Telegram" where they mean this app.
+    return nanogramBrandedStrings(dict)
 }
 
 private func currentDateTimeFormat() -> PresentationDateTimeFormat {

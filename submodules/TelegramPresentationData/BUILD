@@ -22,6 +22,7 @@ swift_library(
         "//submodules/TinyThumbnail:TinyThumbnail",
         "//submodules/FastBlur:FastBlur",
         "//Telegram:PresentationStrings",
+        "//submodules/NanogramBranding",
     ],
     visibility = [
         "//visibility:public",
