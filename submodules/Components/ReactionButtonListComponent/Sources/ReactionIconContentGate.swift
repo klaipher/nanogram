@@ -10,7 +10,7 @@ import Foundation
 /// that still has nothing to show. A reset drops the work (`cancelAll`), and the button's subviews, the
 /// stand-in included, go with it, so a stand-in never outlives its button. Main thread only.
 public final class ReactionIconContentGate {
-    private var hasContent: Bool = false
+    public private(set) var hasContent: Bool = false
     private var pending: [() -> Void] = []
 
     public init() {

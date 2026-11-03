@@ -2585,6 +2585,9 @@ public final class ReactionContextNode: ASDisplayNode, ASScrollViewDelegate {
         //targetSnapshotView.backgroundColor = .blue
         self.view.insertSubview(targetSnapshotView, belowSubview: itemNode.view)
         
+        let bridgeView = ReactionContextNode.makeEmptyButtonBridge(itemNode: itemNode, targetView: targetView, hideNode: hideNode, sourceFrame: sourceFrame, targetFrame: targetFrame, in: self.view)
+        let bridgeCenter = targetView.convert(targetFrame.center, from: self.view)
+        
         var completedTarget = false
         var targetScaleCompleted = false
         let intermediateCompletion: () -> Void = {
@@ -2619,7 +2622,11 @@ public final class ReactionContextNode: ASDisplayNode, ASScrollViewDelegate {
                 targetView.alpha = 1.0
                 targetView.isHidden = false
                 if let targetView = targetView as? ReactionIconView {
-                    targetView.updateIsAnimationHidden(isAnimationHidden: false, transition: .immediate)
+                    if let bridgeView {
+                        targetView.handOffAnimation(from: bridgeView, adoptingAt: bridgeCenter)
+                    } else {
+                        targetView.updateIsAnimationHidden(isAnimationHidden: false, transition: .immediate)
+                    }
                 }
                 targetSnapshotView?.isHidden = true
                 targetScaleCompleted = true
@@ -3017,6 +3024,33 @@ public final class ReactionContextNode: ASDisplayNode, ASScrollViewDelegate {
     /// was empty for a few seconds.
     static func handOffWhenButtonHasContent(itemNode: ASDisplayNode, targetView: ReactionIconView) {
         targetView.handOffAnimation(from: itemNode.view)
+    }
+    
+    /// For the long-press reaction's flight into the button: when the button's layer has drawn
+    /// nothing yet, a snapshot of the reaction node that flies along with it, lands at the button's
+    /// size and then stands in for the layer until its first frame.
+    ///
+    /// The flight cross-fades the reaction node into a snapshot of the button, which was a snapshot
+    /// of an empty layer with a cold animation cache, and then showed that layer: the reaction
+    /// vanished into an empty button. Returns nil when the button can show itself (it has a frame,
+    /// or it was never hidden).
+    static func makeEmptyButtonBridge(itemNode: ASDisplayNode, targetView: UIView, hideNode: Bool, sourceFrame: CGRect, targetFrame: CGRect, in containerView: UIView) -> UIView? {
+        guard hideNode, let targetView = targetView as? ReactionIconView, !targetView.animationHasContent else {
+            return nil
+        }
+        guard itemNode.bounds.width > 0.0, let bridgeView = itemNode.view.snapshotContentTree() else {
+            return nil
+        }
+        let scale = targetFrame.width / itemNode.bounds.width
+        bridgeView.bounds = CGRect(origin: CGPoint(), size: itemNode.bounds.size)
+        bridgeView.center = targetFrame.center
+        bridgeView.layer.transform = CATransform3DMakeScale(scale, scale, 1.0)
+        containerView.insertSubview(bridgeView, belowSubview: itemNode.view)
+        
+        let duration: Double = 0.16
+        bridgeView.layer.animatePosition(from: sourceFrame.center, to: targetFrame.center, duration: duration)
+        bridgeView.layer.animateScale(from: 1.0, to: scale, duration: duration)
+        return bridgeView
     }
     
     override public func hitTest(_ point: CGPoint, with event: UIEvent?) -> UIView? {
@@ -3820,6 +3854,9 @@ public final class StandaloneReactionAnimation: ASDisplayNode {
         targetSnapshotView.frame = targetFrame
         self.view.insertSubview(targetSnapshotView, belowSubview: itemNode.view)
         
+        let bridgeView = ReactionContextNode.makeEmptyButtonBridge(itemNode: itemNode, targetView: targetView, hideNode: hideNode, sourceFrame: sourceFrame, targetFrame: targetFrame, in: self.view)
+        let bridgeCenter = targetView.convert(targetFrame.center, from: self.view)
+        
         var completedTarget = false
         var targetScaleCompleted = false
         let intermediateCompletion: () -> Void = {
@@ -3846,7 +3883,11 @@ public final class StandaloneReactionAnimation: ASDisplayNode {
                 targetView.alpha = 1.0
                 targetView.isHidden = false
                 if let targetView = targetView as? ReactionIconView {
-                    targetView.updateIsAnimationHidden(isAnimationHidden: false, transition: .immediate)
+                    if let bridgeView {
+                        targetView.handOffAnimation(from: bridgeView, adoptingAt: bridgeCenter)
+                    } else {
+                        targetView.updateIsAnimationHidden(isAnimationHidden: false, transition: .immediate)
+                    }
                 }
                 targetSnapshotView?.isHidden = true
                 targetScaleCompleted = true
@@ -3918,6 +3959,7 @@ public final class StandaloneReactionAnimation: ASDisplayNode {
         selfTargetBounds = selfTargetBounds.insetBy(dx: -selfTargetBounds.width * 0.5, dy: -selfTargetBounds.height * 0.5)
         
         let selfTargetRect = self.view.convert(selfTargetBounds, from: targetView)
+        let starCenterInTarget = CGPoint(x: selfTargetBounds.midX, y: selfTargetBounds.midY)
         
         var expandedSize: CGSize = selfTargetRect.size
         if didTriggerExpandedReaction {
@@ -4054,8 +4096,14 @@ public final class StandaloneReactionAnimation: ASDisplayNode {
                 
                 if let targetView = targetView as? ReactionIconView {
                     if switchToInlineImmediately {
-                        targetView.updateIsAnimationHidden(isAnimationHidden: false, transition: .immediate)
-                        starView.isHidden = true
+                        if targetView.animationHasContent {
+                            targetView.updateIsAnimationHidden(isAnimationHidden: false, transition: .immediate)
+                            starView.isHidden = true
+                        } else {
+                            // The button's layer has drawn nothing yet: the star moves into the
+                            // button and stays there until it has.
+                            targetView.handOffAnimation(from: starView, adoptingAt: starCenterInTarget)
+                        }
                     } else {
                         targetView.updateIsAnimationHidden(isAnimationHidden: true, transition: .immediate)
                     }

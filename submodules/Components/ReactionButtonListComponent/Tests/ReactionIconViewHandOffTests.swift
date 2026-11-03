@@ -63,4 +63,41 @@ final class ReactionIconViewHandOffTests: XCTestCase {
         XCTAssertTrue(standIn.superview === elsewhere)
         XCTAssertFalse(view.isAnimationHidden)
     }
+
+    // The long-press and stars reactions fly a view of their own into the button. When the button's
+    // layer has drawn nothing yet, that view moves into the button, keeping its size and scale, and
+    // stands in there until the first frame (the long-press path used to fly in a snapshot of the
+    // empty layer instead, and then showed the empty layer).
+    func testAStandInFlownInIsAdoptedUntilTheFirstFrame() {
+        let view = self.makeView()
+        let elsewhere = UIView(frame: CGRect(x: 0.0, y: 0.0, width: 300.0, height: 300.0))
+        let standIn = UIView(frame: CGRect(x: 100.0, y: 100.0, width: 120.0, height: 120.0))
+        standIn.layer.transform = CATransform3DMakeScale(0.25, 0.25, 1.0)
+        elsewhere.addSubview(standIn)
+        standIn.layer.add(CABasicAnimation(keyPath: "opacity"), forKey: "opacity")
+
+        view.handOffAnimation(from: standIn, adoptingAt: CGPoint(x: 10.0, y: 10.0))
+        XCTAssertTrue(standIn.superview === view)
+        XCTAssertEqual(standIn.center, CGPoint(x: 10.0, y: 10.0))
+        XCTAssertEqual(standIn.bounds.size, CGSize(width: 120.0, height: 120.0))
+        XCTAssertTrue(CATransform3DEqualToTransform(standIn.layer.transform, CATransform3DMakeScale(0.25, 0.25, 1.0)))
+        XCTAssertNil(standIn.layer.animationKeys(), "the flight's animations end with it")
+        XCTAssertTrue(view.isAnimationHidden)
+
+        view.contentGate.setHasContent(true)
+        XCTAssertNil(standIn.superview)
+        XCTAssertFalse(view.isAnimationHidden)
+    }
+
+    func testAFlownInStandInIsNotAdoptedWhenTheLayerHasAFrame() {
+        let view = self.makeView()
+        view.contentGate.setHasContent(true)
+        let elsewhere = UIView()
+        let standIn = UIView()
+        elsewhere.addSubview(standIn)
+
+        view.handOffAnimation(from: standIn, adoptingAt: CGPoint(x: 10.0, y: 10.0))
+        XCTAssertNil(standIn.superview, "nothing to stand in for: the view goes")
+        XCTAssertFalse(view.isAnimationHidden)
+    }
 }

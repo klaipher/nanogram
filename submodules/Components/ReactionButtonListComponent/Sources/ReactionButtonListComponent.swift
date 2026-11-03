@@ -236,6 +236,22 @@ public final class ReactionIconView: PortalSourceView {
         })
     }
     
+    /// Like `handOffAnimation(from:)`, for a view flown in from elsewhere (the long-press and stars
+    /// reactions): while the layer has no frame, `standIn` moves into this view at `center` (in this
+    /// view's coordinates), keeping its bounds and transform, its flight's animations removed, and
+    /// stands in there. When the layer has a frame it is simply removed.
+    public func handOffAnimation(from standIn: UIView, adoptingAt center: CGPoint) {
+        standIn.layer.removeAllAnimations()
+        if self.contentGate.hasContent {
+            standIn.removeFromSuperview()
+            self.updateIsAnimationHidden(isAnimationHidden: false, transition: .immediate)
+            return
+        }
+        self.addSubview(standIn)
+        standIn.center = center
+        self.handOffAnimation(from: standIn)
+    }
+    
     public var animationHasContent: Bool {
         return self.animationLayer?.hasDisplayedContent ?? false
     }
