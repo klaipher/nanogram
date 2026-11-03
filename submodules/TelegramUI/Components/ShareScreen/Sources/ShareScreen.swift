@@ -295,6 +295,9 @@ public final class ShareScreen: ViewControllerComponentContainer {
         didSet { self.refreshComponent() }
     }
     public var canSendInHighQuality = false
+    /// Set when the user picked "Send in HD" for this send; an external sender reads it to scale
+    /// photos to the larger size.
+    public private(set) var sendsInHighQuality = false
     fileprivate let externalConfiguration: ShareScreenExternalConfiguration?
     fileprivate var loadingNode: ASDisplayNode?
     fileprivate var captureCaption: (() -> NSAttributedString)?
@@ -524,12 +527,13 @@ public final class ShareScreen: ViewControllerComponentContainer {
         let showNames = self.showSenderNames
         let items: Signal<ContextController.Items, NoError> = showNames.get()
         |> map { [weak self] showNamesValue -> ContextController.Items in
-            func sendItem(_ title: String, icon: String, silently: Bool) -> ContextMenuItem {
+            func sendItem(_ title: String, icon: String, silently: Bool, highQuality: Bool = false) -> ContextMenuItem {
                 return .action(ContextMenuActionItem(text: title, icon: { theme in
                     generateTintedImage(image: UIImage(bundleImageName: icon), color: theme.contextMenu.primaryColor)
                 }, action: { _, dismiss in
                     dismiss(.default)
                     guard let self else { return }
+                    self.sendsInHighQuality = highQuality
                     self.sender.hidesSenderNames = showsSenderNameOptions && !showNamesValue
                     self.sender.send(peers: self.model.selection.peers, topics: self.model.selection.topics, caption: self.captureCaption?() ?? self.caption, silently: silently)
                 }))
@@ -548,7 +552,7 @@ public final class ShareScreen: ViewControllerComponentContainer {
                 items.append(.separator)
             }
             if isExternal && canSendInHighQuality {
-                items.append(sendItem(data.strings.Attachment_SendInHd, icon: "Chat/Context Menu/QualityHd", silently: true))
+                items.append(sendItem(data.strings.Attachment_SendInHd, icon: "Chat/Context Menu/QualityHd", silently: false, highQuality: true))
             }
             items.append(sendItem(data.strings.Conversation_SendMessage_SendSilently, icon: "Chat/Input/Menu/SilentIcon", silently: true))
             items.append(sendItem(data.strings.Conversation_ForwardOptions_SendMessage, icon: "Chat/Context Menu/Resend", silently: false))
@@ -677,6 +681,7 @@ public final class ShareScreen: ViewControllerComponentContainer {
             if self.copyIsLink, let linkCopied = self.linkCopied { linkCopied(self.effectiveStartTimestamp) } else { self.actionCompleted?() }
             self.close()
         } else {
+            self.sendsInHighQuality = false
             self.sender.send(peers: self.model.selection.peers, topics: self.model.selection.topics, caption: caption)
         }
     }

@@ -13,6 +13,7 @@ import LegacyUI
 import PeerInfoUI
 import ShareItems
 import ShareItemsImpl
+import NotificationsPresentationData
 import SettingsUI
 import PasscodeUI
 import OpenSSLEncryptionProvider
@@ -294,12 +295,7 @@ public class ShareRootControllerImpl {
             
             var initialPresentationDataAndSettings: InitialPresentationDataAndSettings?
             let semaphore = DispatchSemaphore(value: 0)
-            let systemUserInterfaceStyle: WindowUserInterfaceStyle
-            if #available(iOSApplicationExtension 12.0, iOS 12.0, *) {
-                systemUserInterfaceStyle = WindowUserInterfaceStyle(style: traitCollection.userInterfaceStyle)
-            } else {
-                systemUserInterfaceStyle = .light
-            }
+            let systemUserInterfaceStyle = WindowUserInterfaceStyle(style: traitCollection.userInterfaceStyle)
             let _ = currentPresentationDataAndSettings(accountManager: accountManager, systemUserInterfaceStyle: systemUserInterfaceStyle).start(next: { value in
                 initialPresentationDataAndSettings = value
                 semaphore.signal()
@@ -314,20 +310,17 @@ public class ShareRootControllerImpl {
             let presentationData = initialPresentationDataAndSettings!.presentationData
             presentationDataPromise.set(.single(presentationData))
             
-            var immediatePeerId: EnginePeer.Id?
+            // The chat of a tapped share-sheet suggestion (`SendMessageSuggestions`).
+            var suggestionTarget: SendMessageSuggestions.Target?
             #if DEBUG
             // Xcode crashes
-            immediatePeerId = nil
+            suggestionTarget = nil
             #else
-            if #available(iOS 13.2, *), let sendMessageIntent = self.getExtensionContext()?.intent as? INSendMessageIntent {
-                if let contact = sendMessageIntent.recipients?.first, let handle = contact.customIdentifier, handle.hasPrefix("tg") {
-                    let string = handle.suffix(from: handle.index(handle.startIndex, offsetBy: 2))
-                    if let peerId = Int64(string) {
-                        immediatePeerId = EnginePeer.Id(peerId)
-                    }
-                }
+            if let sendMessageIntent = self.getExtensionContext()?.intent as? INSendMessageIntent {
+                suggestionTarget = SendMessageSuggestions.target(conversationIdentifier: sendMessageIntent.conversationIdentifier, recipientCustomIdentifiers: (sendMessageIntent.recipients ?? []).map(\.customIdentifier))
             }
             #endif
+            let immediatePeerId: EnginePeer.Id? = suggestionTarget.map { EnginePeer.Id($0.peerId) }
             
             /*let account: Signal<(SharedAccountContextImpl, Account, [AccountWithInfo]), ShareAuthorizationError> = internalContext.sharedContext.accountManager.transaction { transaction -> (SharedAccountContextImpl, LoggingSettings) in
                 return (internalContext.sharedContext, transaction.getSharedData(SharedDataKeys.loggingSettings)?.get(LoggingSettings.self) ?? LoggingSettings.defaultSettings)
@@ -396,32 +389,69 @@ public class ShareRootControllerImpl {
                 isICloudEnabled: false
             )
             
-            let accountData: Signal<(ShareControllerEnvironment, ShareControllerAccountContext, [ShareControllerSwitchableAccount]), NoError> = initializationData.makeTempContext(
-                accountManager, appLockContext, applicationBindings, initialPresentationDataAndSettings!, networkArguments
-            )
-            |> mapToSignal { context in
-                context.sharedContext.activeAccountContexts
-                |> filter { $0.primary != nil }
-                |> take(1)
-                |> mapToSignal { accounts -> Signal<(ShareControllerEnvironment, ShareControllerAccountContext, [ShareControllerSwitchableAccount]), NoError> in
-                    guard let primary = accounts.primary else { return .complete() }
-                    let contexts = accounts.accounts.map { $0.1 }
-                    let environment = ShareControllerExtensionEnvironment(sharedContext: primary.sharedContext, accounts: contexts)
-                    return combineLatest(contexts.map { accountContext in
-                        accountContext.engine.data.get(TelegramEngine.EngineData.Item.Peer.Peer(id: accountContext.account.peerId))
-                        |> map { peer -> ShareControllerSwitchableAccount? in
-                            guard let peer else { return nil }
-                            return ShareControllerSwitchableAccount(account: ShareControllerAppAccountContext(context: accountContext), peer: peer)
+            // Without a signed-in account (never signed in, logged out of every account) there is
+            // nothing to share to: say so instead of opening one, which would wait forever for a
+            // primary account and start a login from the extension.
+            let accountState: Signal<(hasSignedInAccount: Bool, suggestionsAccountPeerId: Int64?), ShareAuthorizationError> = accountManager.transaction { transaction -> (hasSignedInAccount: Bool, suggestionsAccountPeerId: Int64?) in
+                let hasSignedInAccount = transaction.getRecords().contains(where: { record in
+                    return !record.attributes.contains(where: { attribute in
+                        if case .loggedOut = attribute {
+                            return true
+                        } else {
+                            return false
                         }
                     })
-                    |> map { accounts in
-                        return (environment, ShareControllerAppAccountContext(context: primary), accounts.compactMap { $0 })
+                })
+                let intentsSettings = transaction.getSharedData(ApplicationSpecificSharedDataKeys.intentsSettings)?.get(IntentsSettings.self) ?? IntentsSettings.defaultSettings
+                return (hasSignedInAccount, intentsSettings.account?.toInt64())
+            }
+            |> castError(ShareAuthorizationError.self)
+            |> mapToSignal { state -> Signal<(hasSignedInAccount: Bool, suggestionsAccountPeerId: Int64?), ShareAuthorizationError> in
+                if !state.hasSignedInAccount {
+                    return .fail(.unauthorized)
+                }
+                return .single(state)
+            }
+            
+            let accountData: Signal<(ShareControllerEnvironment, ShareControllerAccountContext, [ShareControllerSwitchableAccount]), ShareAuthorizationError> = accountState
+            |> mapToSignal { state -> Signal<(ShareControllerEnvironment, ShareControllerAccountContext, [ShareControllerSwitchableAccount]), ShareAuthorizationError> in
+                return initializationData.makeTempContext(
+                    accountManager, appLockContext, applicationBindings, initialPresentationDataAndSettings!, networkArguments
+                )
+                |> castError(ShareAuthorizationError.self)
+                |> mapToSignal { context -> Signal<(ShareControllerEnvironment, ShareControllerAccountContext, [ShareControllerSwitchableAccount]), ShareAuthorizationError> in
+                    return context.sharedContext.activeAccountContexts
+                    |> filter { $0.primary != nil }
+                    |> take(1)
+                    |> castError(ShareAuthorizationError.self)
+                    |> mapToSignal { accounts -> Signal<(ShareControllerEnvironment, ShareControllerAccountContext, [ShareControllerSwitchableAccount]), ShareAuthorizationError> in
+                        guard let primary = accounts.primary else { return .fail(.unauthorized) }
+                        let contexts = accounts.accounts.map { $0.1 }
+                        // A suggestion opens in the account it was donated from, not the primary one.
+                        var initialContext: AccountContext = primary
+                        if let suggestionTarget, let accountPeerId = SendMessageSuggestions.accountPeerId(for: suggestionTarget, suggestionsAccountPeerId: state.suggestionsAccountPeerId, signedInAccountPeerIds: contexts.map { $0.account.peerId.toInt64() }), let context = contexts.first(where: { $0.account.peerId.toInt64() == accountPeerId }) {
+                            initialContext = context
+                        }
+                        let environment = ShareControllerExtensionEnvironment(sharedContext: primary.sharedContext, accounts: contexts)
+                        return combineLatest(contexts.map { accountContext in
+                            accountContext.engine.data.get(TelegramEngine.EngineData.Item.Peer.Peer(id: accountContext.account.peerId))
+                            |> map { peer -> ShareControllerSwitchableAccount? in
+                                guard let peer else { return nil }
+                                return ShareControllerSwitchableAccount(account: ShareControllerAppAccountContext(context: accountContext), peer: peer)
+                            }
+                        })
+                        |> castError(ShareAuthorizationError.self)
+                        |> map { accounts in
+                            return (environment, ShareControllerAppAccountContext(context: initialContext), accounts.compactMap { $0 })
+                        }
                     }
                 }
+                // The account cannot be opened (a database upgrade the app has not run yet, a
+                // database that cannot be read): the same alert, rather than a blank sheet.
+                |> timeout(10.0, queue: Queue.mainQueue(), alternate: .fail(.unauthorized))
             }
 
             let applicationInterface: Signal<(ShareControllerEnvironment, ShareControllerAccountContext, PostboxAccessChallengeData, [ShareControllerSwitchableAccount]), ShareAuthorizationError> = accountData
-            |> castError(ShareAuthorizationError.self)
             |> mapToSignal { data -> Signal<(ShareControllerEnvironment, ShareControllerAccountContext, PostboxAccessChallengeData, [ShareControllerSwitchableAccount]), ShareAuthorizationError> in
                 let (environment, context, otherAccounts) = data
                 
@@ -477,11 +507,13 @@ public class ShareRootControllerImpl {
                             } |> runOn(Queue.mainQueue())
                         }
                         
-                        let sentItems: ([EnginePeer.Id], [EnginePeer.Id: Int64], [EnginePeer.Id: StarsAmount], [PreparedShareItemContent], ShareControllerAccountContext, Bool, String) -> Signal<ShareControllerExternalStatus, NoError> = { peerIds, threadIds, requireStars, contents, account, silently, additionalText in
+                        // A send the server refuses (slow mode, flood wait, media not allowed in
+                        // the chat, a paid-message refusal) fails here, so the sheet shows its error
+                        // instead of the success check.
+                        let sentItems: ([EnginePeer.Id], [EnginePeer.Id: Int64], [EnginePeer.Id: StarsAmount], [PreparedShareItemContent], ShareControllerAccountContext, Bool, String) -> Signal<ShareControllerExternalStatus, ShareControllerError> = { peerIds, threadIds, requireStars, contents, account, silently, additionalText in
                             let sentItems = sentShareItems(accountPeerId: account.accountPeerId, postbox: account.stateManager.postbox, network: account.stateManager.network, stateManager: account.stateManager, auxiliaryMethods: makeTelegramAccountAuxiliaryMethods(uploadInBackground: nil), to: peerIds, threadIds: threadIds, requireStars: requireStars, items: contents, silently: silently, additionalText: additionalText)
-                            |> `catch` { _ -> Signal<
-                                Float, NoError> in
-                                return .complete()
+                            |> mapError { _ -> ShareControllerError in
+                                return .generic
                             }
                             return sentItems
                             |> map { value -> ShareControllerExternalStatus in
@@ -494,10 +526,16 @@ public class ShareRootControllerImpl {
                         let itemCount = max(1, extensionItems.reduce(0) { $0 + ($1.attachments?.count ?? 0) })
 
                         guard let appContext = context as? ShareControllerAppAccountContext else { return }
+                        // Set once the controller exists; its send closure reads "Send in HD" from it.
+                        final class ShareScreenReference {
+                            weak var controller: ShareScreen?
+                        }
+                        let shareScreenReference = ShareScreenReference()
                         let shareController = ShareScreen(context: appContext.context, subject: .fromExternal(itemCount, { peerIds, threadIds, requireStars, additionalText, account, silently in
                             if let strongSelf = self, let inputItems = strongSelf.getExtensionContext()?.inputItems, !inputItems.isEmpty, !peerIds.isEmpty {
-                                let rawSignals = TGItemProviderSignals.itemSignals(forInputItems: inputItems)!
-                                return preparedShareItems(postbox: account.stateManager.postbox, network: account.stateManager.network, to: peerIds[0], dataItems: rawSignals)
+                                let highQuality = shareScreenReference.controller?.sendsInHighQuality ?? false
+                                let rawSignals = TGItemProviderSignals.itemSignals(forInputItems: inputItems, highQuality: highQuality)
+                                return preparedShareItems(postbox: account.stateManager.postbox, network: account.stateManager.network, to: peerIds[0], dataItems: rawSignals, highQuality: highQuality)
                                 |> map(Optional.init)
                                 |> `catch` { error -> Signal<PreparedShareItems?, ShareControllerError> in
                                     switch error {
@@ -521,11 +559,9 @@ public class ShareRootControllerImpl {
                                         |> castError(ShareControllerError.self)
                                         |> mapToSignal { contents -> Signal<ShareControllerExternalStatus, ShareControllerError> in
                                             return sentItems(peerIds, threadIds, requireStars, contents, account, silently, additionalText)
-                                            |> castError(ShareControllerError.self)
                                         }
                                     case let .done(contents):
                                         return sentItems(peerIds, threadIds, requireStars, contents, account, silently, additionalText)
-                                        |> castError(ShareControllerError.self)
                                     }
                                 }
                             } else {
@@ -535,6 +571,7 @@ public class ShareRootControllerImpl {
                             guard let context = account.account as? ShareControllerAppAccountContext else { return nil }
                             return (context: context.context, peer: account.peer)
                         }, immediatePeerId: immediatePeerId))
+                        shareScreenReference.controller = shareController
                         shareController.presentationArguments = ViewControllerPresentationArguments(presentationAnimation: .modalSheet)
                         shareController.dismissed = {
                             //inForeground.set(false)
@@ -556,57 +593,57 @@ public class ShareRootControllerImpl {
                         
                         if canShareToStory {
                             shareController.canSendInHighQuality = canSendInHighQuality
-                            shareController.shareStory = { [weak self] in
+                            shareController.shareStory = { [weak self, weak shareController] in
                                 guard let self else {
                                     return
                                 }
                                 if let inputItems = self.getExtensionContext()?.inputItems, inputItems.count == 1, let item = inputItems[0] as? NSExtensionItem, let attachments = item.attachments {
                                     let sessionId = Int64.random(in: 1000000 ..< .max)
                                     
-                                    let storiesPath = rootPath + "/share/stories/\(sessionId)"
+                                    let sharedStoriesPath = rootPath + "/share/stories"
+                                    removeStaleSharedStorySessions(path: sharedStoriesPath, olderThan: 24.0 * 60.0 * 60.0)
+                                    let storiesPath = sharedStoriesPath + "/\(sessionId)"
                                     let _ = try? FileManager.default.createDirectory(atPath: storiesPath, withIntermediateDirectories: true, attributes: nil)
-                                    var index = 0
                                     
                                     let dispatchGroup = DispatchGroup()
+                                    let copiedCount = Atomic<Int>(value: 0)
                                     
-                                    for attachment in attachments {
-                                        let fileIndex = index
+                                    // Copied, not read into memory, under the file's own extension: the
+                                    // app tells images from videos by it.
+                                    func copyAttachment(_ attachment: NSItemProvider, type: UTType, index: Int, defaultExtension: String) {
+                                        dispatchGroup.enter()
+                                        attachment.loadFileRepresentation(forTypeIdentifier: type.identifier, completionHandler: { url, _ in
+                                            if let url {
+                                                let pathExtension = url.pathExtension.isEmpty ? defaultExtension : url.pathExtension.lowercased()
+                                                let filePath = storiesPath + "/\(index).\(pathExtension)"
+                                                try? FileManager.default.removeItem(atPath: filePath)
+                                                do {
+                                                    try FileManager.default.copyItem(at: url, to: URL(fileURLWithPath: filePath))
+                                                    let _ = copiedCount.modify { $0 + 1 }
+                                                } catch {
+                                                    Logger.shared.log("ShareExtension", "Story attachment copy failed: \(error)")
+                                                }
+                                            }
+                                            dispatchGroup.leave()
+                                        })
+                                    }
+                                    
+                                    for (index, attachment) in attachments.enumerated() {
                                         if attachment.hasItemConformingToTypeIdentifier(UTType.image.identifier) {
-                                            dispatchGroup.enter()
-                                            attachment.loadFileRepresentation(forTypeIdentifier: UTType.image.identifier, completionHandler: { url, _ in
-                                                if let url, let imageData = try? Data(contentsOf: url) {
-                                                    let filePath = storiesPath + "/\(fileIndex).jpg"
-                                                    try? FileManager.default.removeItem(atPath: filePath)
-                                                    
-                                                    do {
-                                                        try imageData.write(to: URL(fileURLWithPath: filePath))
-                                                    } catch {
-                                                        print("Error: \(error)")
-                                                    }
-                                                }
-                                                dispatchGroup.leave()
-                                            })
+                                            copyAttachment(attachment, type: .image, index: index, defaultExtension: "jpg")
                                         } else if attachment.hasItemConformingToTypeIdentifier(UTType.movie.identifier) {
-                                            dispatchGroup.enter()
-                                            attachment.loadFileRepresentation(forTypeIdentifier: UTType.movie.identifier, completionHandler: { url, _ in
-                                                if let url {
-                                                    let filePath = storiesPath + "/\(fileIndex).mp4"
-                                                    try? FileManager.default.removeItem(atPath: filePath)
-                                                    
-                                                    do {
-                                                        try FileManager.default.copyItem(at: url, to: URL(fileURLWithPath: filePath))
-                                                    } catch {
-                                                        print("Error: \(error)")
-                                                    }
-                                                }
-                                                dispatchGroup.leave()
-                                            })
+                                            copyAttachment(attachment, type: .movie, index: index, defaultExtension: "mp4")
                                         }
-                                        index += 1
                                     }
                                     
                                     dispatchGroup.notify(queue: .main) {
-                                        self.openUrl("tg://shareStory?session=\(sessionId)")
+                                        if copiedCount.with({ $0 }) > 0 {
+                                            self.openUrl("tg://shareStory?session=\(sessionId)")
+                                        } else {
+                                            try? FileManager.default.removeItem(atPath: storiesPath)
+                                            let presentationData = environment.presentationData
+                                            shareController?.present(standardTextAlertController(theme: AlertControllerTheme(presentationData: presentationData), title: nil, text: presentationData.strings.Login_UnknownError, actions: [TextAlertAction(type: .defaultAction, title: presentationData.strings.Common_OK, action: {})]), in: .window(.root))
+                                        }
                                     }
                                 }
                             }
@@ -857,12 +894,7 @@ public class ShareRootControllerImpl {
                     return
                 }
 
-                let modalPresentation: Bool
-                if #available(iOSApplicationExtension 13.0, iOS 13.0, *) {
-                    modalPresentation = true
-                } else {
-                    modalPresentation = false
-                }
+                let modalPresentation = true
                 
                 self?.passcodeDisposable.set(passcodeEntryController(
                     accountManager: accountManager,
@@ -897,7 +929,7 @@ public class ShareRootControllerImpl {
                 }))
             }
             
-            self.disposable.set(applicationInterface.start(next: { _, _, _, _ in }, error: { [weak self] error in
+            let presentAuthorizationAlert: () -> Void = { [weak self] in
                 guard let strongSelf = self else {
                     return
                 }
@@ -906,7 +938,17 @@ public class ShareRootControllerImpl {
                     self?.getExtensionContext()?.completeRequest(returningItems: nil, completionHandler: nil)
                 })])
                 strongSelf.mainWindow?.present(controller, on: .root)
-            }, completed: {}))
+            }
+            var receivedInterface = false
+            self.disposable.set((applicationInterface |> deliverOnMainQueue).start(next: { _, _, _, _ in
+                receivedInterface = true
+            }, error: { _ in
+                presentAuthorizationAlert()
+            }, completed: {
+                if !receivedInterface {
+                    presentAuthorizationAlert()
+                }
+            }))
         }
     }
 }

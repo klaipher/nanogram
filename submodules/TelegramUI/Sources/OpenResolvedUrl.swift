@@ -45,6 +45,7 @@ import AuthConfirmationScreen
 import OpenInExternalAppUI
 import CreateBotScreen
 import WalletSendScreen
+import ShareItems
 
 private func defaultNavigationForPeerId(_ peerId: EnginePeer.Id?, navigation: ChatControllerInteractionNavigateToPeer) -> ChatControllerInteractionNavigateToPeer {
     if case .default = navigation {
@@ -1271,43 +1272,33 @@ func openResolvedUrlImpl(
             dismissInput()
         
             let rootPath = context.sharedContext.applicationBindings.containerPath + "/telegram-data"
-            let storiesPath = rootPath + "/share/stories/\(sessionId)"
+            let sharedStoriesPath = rootPath + "/share/stories"
+            let storiesPath = sharedStoriesPath + "/\(sessionId)"
+            let filePaths = SharedStorySession.filePaths(sessionPath: storiesPath)
         
-            var filePaths: [String] = []
-            do {
-                let directoryContents = try FileManager.default.contentsOfDirectory(atPath: storiesPath)
-                
-                for item in directoryContents {
-                    let fullPath = storiesPath + "/" + item
-                    
-                    var isDirectory: ObjCBool = false
-                    if FileManager.default.fileExists(atPath: fullPath, isDirectory: &isDirectory) && !isDirectory.boolValue {
-                        filePaths.append(fullPath)
-                    }
-                }
-                filePaths.sort { lhs, rhs in
-                    let lhsName = ((lhs as NSString).lastPathComponent as NSString).deletingPathExtension
-                    let rhsName = ((rhs as NSString).lastPathComponent as NSString).deletingPathExtension
-                    if let lhsValue = Int(lhsName), let rhsValue = Int(rhsName) {
-                        return lhsValue < rhsValue
-                    }
-                    return lhsName < rhsName
-                }
-            } catch {
-            }
-        
+            // Photos are decoded here and videos moved into the temporary box, so the session's
+            // copies in the app group go as soon as the editor has its subjects.
             func subject(for path: String) -> MediaEditorScreenImpl.Subject? {
-                if path.hasSuffix(".jpg") {
+                if SharedStorySession.isImage(path: path) {
                     if let image = UIImage(contentsOfFile: path)?.fixedOrientation() {
                         return .image(image: image, dimensions: PixelDimensions(image.size), additionalImage: nil, additionalImagePosition: .topLeft, fromCamera: false)
                     }
                 } else {
-                    let asset = AVURLAsset(url: URL(fileURLWithPath: path))
+                    let pathExtension = (path as NSString).pathExtension
+                    let tempFile = EngineTempBox.shared.tempFile(fileName: "story.\(pathExtension.isEmpty ? "mp4" : pathExtension)")
+                    let videoPath: String
+                    do {
+                        try FileManager.default.moveItem(atPath: path, toPath: tempFile.path)
+                        videoPath = tempFile.path
+                    } catch {
+                        return nil
+                    }
+                    let asset = AVURLAsset(url: URL(fileURLWithPath: videoPath))
                     var dimensions = PixelDimensions(width: 1080, height: 1920)
                     if let videoTrack = asset.tracks(withMediaType: .video).first {
                         dimensions = PixelDimensions(videoTrack.naturalSize)
                     }
-                    return .video(videoPath: path, thumbnail: nil, mirror: false, additionalVideoPath: nil, additionalThumbnail: nil, dimensions: dimensions, duration: asset.duration.seconds, videoPositionChanges: [], additionalVideoPosition: .bottomLeft, fromCamera: false)
+                    return .video(videoPath: videoPath, thumbnail: nil, mirror: false, additionalVideoPath: nil, additionalThumbnail: nil, dimensions: dimensions, duration: asset.duration.seconds, videoPositionChanges: [], additionalVideoPosition: .bottomLeft, fromCamera: false)
                 }
                 return nil
             }
@@ -1326,6 +1317,8 @@ func openResolvedUrlImpl(
                     source = subject
                 }
             }
+            try? FileManager.default.removeItem(atPath: storiesPath)
+            removeStaleSharedStorySessions(path: sharedStoriesPath, olderThan: 24.0 * 60.0 * 60.0)
         
             if let navigationController = context.sharedContext.mainWindow?.viewController as? NavigationController {
                 for controller in navigationController.overlayControllers {

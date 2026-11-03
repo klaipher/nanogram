@@ -24,6 +24,7 @@ swift_library(
         "//submodules/PeerInfoUI",
         "//submodules/ShareItems",
         "//submodules/ShareItems/Impl:ShareItemsImpl",
+        "//submodules/NotificationsPresentationData:NotificationsPresentationData",
         "//submodules/SettingsUI",
         "//submodules/PasscodeUI",
         "//submodules/OpenSSLEncryptionProvider",

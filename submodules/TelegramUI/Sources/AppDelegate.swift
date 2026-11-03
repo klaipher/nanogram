@@ -2915,11 +2915,27 @@ private func extractAccountManagerState(records: AccountRecordsView<TelegramAcco
                     return true
                 }
             } else if let sendMessageIntent = userActivity.interaction?.intent as? INSendMessageIntent {
-                if let contact = sendMessageIntent.recipients?.first, let handle = contact.customIdentifier, handle.hasPrefix("tg") {
-                    let string = handle.suffix(from: handle.index(handle.startIndex, offsetBy: 2))
-                    if let value = Int64(string) {
-                        self.openChatWhenReady(accountId: nil, peerId: PeerId(value), threadId: nil, activateInput: true, storyId: nil)
+                // A share-sheet or Siri suggestion: the chat it names, in the account suggestions are
+                // donated from (not whichever account is current).
+                if let target = SendMessageSuggestions.target(conversationIdentifier: sendMessageIntent.conversationIdentifier, recipientCustomIdentifiers: (sendMessageIntent.recipients ?? []).map(\.customIdentifier)) {
+                    let _ = (self.sharedContextPromise.get()
+                    |> take(1)
+                    |> mapToSignal { sharedApplicationContext -> Signal<(AccountRecordId?, PeerId), NoError> in
+                        let sharedContext = sharedApplicationContext.sharedContext
+                        return combineLatest(
+                            sharedContext.activeAccountContexts |> take(1),
+                            sharedContext.accountManager.sharedData(keys: [ApplicationSpecificSharedDataKeys.intentsSettings]) |> take(1)
+                        )
+                        |> map { accounts, sharedData -> (AccountRecordId?, PeerId) in
+                            let settings = sharedData.entries[ApplicationSpecificSharedDataKeys.intentsSettings]?.get(IntentsSettings.self) ?? IntentsSettings.defaultSettings
+                            let signedIn = accounts.accounts.map { (peerId: $0.1.account.peerId.toInt64(), id: $0.0) }
+                            let accountPeerId = SendMessageSuggestions.accountPeerId(for: target, suggestionsAccountPeerId: settings.account?.toInt64(), signedInAccountPeerIds: signedIn.map(\.peerId))
+                            return (signedIn.first(where: { $0.peerId == accountPeerId })?.id, PeerId(target.peerId))
+                        }
                     }
+                    |> deliverOnMainQueue).start(next: { [weak self] accountId, peerId in
+                        self?.openChatWhenReady(accountId: accountId, peerId: peerId, threadId: nil, activateInput: true, storyId: nil)
+                    })
                 }
             }
         }

@@ -821,7 +821,9 @@ public final class SharedAccountContextImpl: SharedAccountContext {
                     self.performAccountSettingsImportIfNecessary()
                 }
                 
-                if self.activeAccountsValue!.primary == nil && self.activeAccountsValue!.currentAuth == nil {
+                // Only the app starts a login: an extension that finds no account must not write an
+                // auth record into the shared accounts metadata.
+                if self.activeAccountsValue!.primary == nil && self.activeAccountsValue!.currentAuth == nil && self.applicationBindings.isMainApp {
                     self.beginNewAuth(testingEnvironment: self.testingEnvironment)
                 }
             }))

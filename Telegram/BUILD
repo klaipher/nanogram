@@ -1126,7 +1126,7 @@ plist_fragment(
         ANY $attachment.registeredTypeIdentifiers UTI-CONFORMS-TO "public.data" ||
         ANY $attachment.registeredTypeIdentifiers UTI-CONFORMS-TO "public.vcard" ||
         ANY $attachment.registeredTypeIdentifiers UTI-CONFORMS-TO "com.apple.pkpass"
-    ).@count == $extensionItem.attachments.@count
+    ).@count == $extensionItem.attachments.@count AND $extensionItem.attachments.@count &lt;= 100
 ).@count &gt; 0</string>
         </dict>
         <key>NSExtensionPointIdentifier</key>

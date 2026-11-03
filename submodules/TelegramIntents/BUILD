@@ -13,6 +13,7 @@ swift6_library(
         "//submodules/AccountContext:AccountContext",
         "//submodules/TelegramPresentationData:TelegramPresentationData",
         "//submodules/AvatarNode:AvatarNode",
+        "//submodules/NotificationsPresentationData:NotificationsPresentationData",
     ],
     visibility = [
         "//visibility:public",

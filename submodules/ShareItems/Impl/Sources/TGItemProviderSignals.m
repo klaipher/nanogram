@@ -10,9 +10,17 @@
 
 #import <MimeTypes/MimeTypes.h>
 
+static const CGFloat TGShareImageMaxPixelSize = 1280.0;
+static const CGFloat TGShareImageHighQualityMaxPixelSize = 2560.0;
+
 @implementation TGItemProviderSignals
 
 + (NSArray<MTSignal *> *)itemSignalsForInputItems:(NSArray *)inputItems
+{
+    return [self itemSignalsForInputItems:inputItems highQuality:false];
+}
+
++ (NSArray<MTSignal *> *)itemSignalsForInputItems:(NSArray *)inputItems highQuality:(bool)highQuality
 {
     NSMutableArray *itemSignals = [[NSMutableArray alloc] init];
     NSMutableArray *providers = [[NSMutableArray alloc] init];
@@ -59,7 +67,7 @@
         else if ([provider hasItemConformingToTypeIdentifier:UTTypeGIF.identifier])
             dataSignal = [self signalForDataItemProvider:provider];
         else if ([provider hasItemConformingToTypeIdentifier:UTTypeImage.identifier])
-            dataSignal = [self signalForImageItemProvider:provider];
+            dataSignal = [self signalForImageItemProvider:provider maxPixelSize:highQuality ? TGShareImageHighQualityMaxPixelSize : TGShareImageMaxPixelSize];
         else if ([provider hasItemConformingToTypeIdentifier:UTTypeFileURL.identifier])
         {
             dataSignal = [[self signalForUrlItemProvider:provider] mapToSignal:^MTSignal *(NSURL *url)
@@ -127,7 +135,7 @@
     {
         [itemProvider loadItemForTypeIdentifier:UTTypeData.identifier options:nil completionHandler:^(NSData *data, NSError *error)
         {
-            if (error != nil)
+            if (error != nil || ![data isKindOfClass:[NSData class]])
                 [subscriber putError:nil];
             else
             {
@@ -140,136 +148,123 @@
     }];
 }
 
-__unused static UIImage *TGScaleImageToPixelSize(UIImage *image, CGSize size) {
-    UIGraphicsBeginImageContextWithOptions(size, true, 1.0f);
-    [image drawInRect:CGRectMake(0, 0, size.width, size.height) blendMode:kCGBlendModeCopy alpha:1.0f];
-    UIImage *result = UIGraphicsGetImageFromCurrentImageContext();
-    UIGraphicsEndImageContext();
++ (NSDictionary *)scaledJpegImageFromSource:(CGImageSourceRef)source maxPixelSize:(CGFloat)maxPixelSize
+{
+    if (source == NULL) {
+        return nil;
+    }
+    NSDictionary *options = @{
+        (id)kCGImageSourceCreateThumbnailWithTransform: @YES,
+        (id)kCGImageSourceCreateThumbnailFromImageAlways: @YES,
+        (id)kCGImageSourceShouldCacheImmediately: @YES,
+        (id)kCGImageSourceThumbnailMaxPixelSize: @(maxPixelSize)
+    };
+    // A +1 reference: ARC does not manage CF types, so every exit below releases it.
+    CGImageRef image = CGImageSourceCreateThumbnailAtIndex(source, 0, (__bridge CFDictionaryRef)options);
+    if (image == NULL) {
+        return nil;
+    }
+    CGSize dimensions = CGSizeMake(CGImageGetWidth(image), CGImageGetHeight(image));
     
+    // Encoded in memory: a temporary file per photo was never removed.
+    NSMutableData *jpegData = [[NSMutableData alloc] init];
+    CGImageDestinationRef destination = CGImageDestinationCreateWithData((__bridge CFMutableDataRef)jpegData, (__bridge CFStringRef)UTTypeJPEG.identifier, 1, NULL);
+    if (destination == NULL) {
+        CGImageRelease(image);
+        return nil;
+    }
+    NSDictionary *properties = @{ (__bridge NSString *)kCGImageDestinationLossyCompressionQuality: @(0.52) };
+    CGImageDestinationSetProperties(destination, (__bridge CFDictionaryRef)properties);
+    CGImageDestinationAddImage(destination, image, nil);
+    bool finalized = CGImageDestinationFinalize(destination);
+    CFRelease(destination);
+    CGImageRelease(image);
+    
+    if (!finalized || jpegData.length == 0) {
+        return nil;
+    }
+    return @{@"scaledImageData": jpegData, @"scaledImageDimensions": [NSValue valueWithCGSize:dimensions]};
+}
+
++ (NSDictionary *)scaledJpegImageWithData:(NSData *)data maxPixelSize:(CGFloat)maxPixelSize
+{
+    if (data == nil) {
+        return nil;
+    }
+    NSDictionary *sourceOptions = @{ (id)kCGImageSourceShouldCache: @NO };
+    CGImageSourceRef source = CGImageSourceCreateWithData((__bridge CFDataRef)data, (__bridge CFDictionaryRef)sourceOptions);
+    if (source == NULL) {
+        return nil;
+    }
+    NSDictionary *result = [self scaledJpegImageFromSource:source maxPixelSize:maxPixelSize];
+    CFRelease(source);
     return result;
 }
 
-__unused static CGSize TGFitSize(CGSize size, CGSize maxSize) {
-    if (size.width < 1)
-        size.width = 1;
-    if (size.height < 1)
-        size.height = 1;
-    
-    if (size.width > maxSize.width)
-    {
-        size.height = floor((size.height * maxSize.width / size.width));
-        size.width = maxSize.width;
++ (NSDictionary *)scaledJpegImageWithURL:(NSURL *)url maxPixelSize:(CGFloat)maxPixelSize
+{
+    if (url == nil) {
+        return nil;
     }
-    if (size.height > maxSize.height)
-    {
-        size.width = floor((size.width * maxSize.height / size.height));
-        size.height = maxSize.height;
+    NSDictionary *sourceOptions = @{ (id)kCGImageSourceShouldCache: @NO };
+    CGImageSourceRef source = CGImageSourceCreateWithURL((__bridge CFURLRef)url, (__bridge CFDictionaryRef)sourceOptions);
+    if (source == NULL) {
+        return nil;
     }
-    return size;
+    NSDictionary *result = [self scaledJpegImageFromSource:source maxPixelSize:maxPixelSize];
+    CFRelease(source);
+    return result;
 }
 
-+ (MTSignal *)signalForImageItemProvider:(NSItemProvider *)itemProvider
++ (MTSignal *)signalForImageItemProvider:(NSItemProvider *)itemProvider maxPixelSize:(CGFloat)maxPixelSize
 {
     return [[MTSignal alloc] initWithGenerator:^id<MTDisposable>(MTSubscriber *subscriber)
     {
-        bool preferAsFile = false;
-        
-        CGSize maxSize = CGSizeMake(1280.0, 1280.0);
+        CGSize maxSize = CGSizeMake(maxPixelSize, maxPixelSize);
         NSDictionary *imageOptions = @{
             NSItemProviderPreferredImageSizeKey: [NSValue valueWithCGSize:maxSize]
         };
-        if (preferAsFile) {
-            imageOptions = nil;
-        }
         if ([itemProvider hasItemConformingToTypeIdentifier:UTTypeImage.identifier]) {
             [itemProvider loadItemForTypeIdentifier:UTTypeImage.identifier options:imageOptions completionHandler:^(id<NSSecureCoding> _Nullable item, NSError * _Null_unspecified error) {
                 if (error != nil && ![(NSObject *)item respondsToSelector:@selector(CGImage)] && ![(NSObject *)item respondsToSelector:@selector(absoluteString)]) {
                     [itemProvider loadItemForTypeIdentifier:UTTypeData.identifier options:nil completionHandler:^(NSData *data, NSError *error)
                      {
-                         if (error != nil)
+                         if (error != nil || ![data isKindOfClass:[NSData class]])
                              [subscriber putError:nil];
                          else
                          {
-                             [subscriber putNext:@{@"data": data}];
+                             [subscriber putNext:@{@"data": data, @"maxImagePixelSize": @(maxPixelSize)}];
                              [subscriber putCompletion];
                          }
                      }];
                 } else {
                     if ([(NSObject *)item respondsToSelector:@selector(absoluteString)]) {
-                        NSURL *url = (NSURL *)item;
-                        
-                        if (preferAsFile) {
-                            NSData *data = [[NSData alloc] initWithContentsOfURL:url options:NSDataReadingMappedIfSafe error:nil];
-                            if (data == nil) {
-                                [subscriber putError:nil];
-                                return;
-                            }
-                            NSString *fileName = [[url pathComponents] lastObject];
-                            if (fileName.length == 0) {
-                                fileName = @"file.bin";
-                            }
-                            NSString *extension = [fileName pathExtension];
-                            NSString *mimeType = [TGMimeTypeMap mimeTypeForExtension:[extension lowercaseString]];
-                            if (mimeType == nil) {
-                                mimeType = @"application/octet-stream";
-                            }
-                            [subscriber putNext:@{@"data": data, @"fileName": fileName, @"mimeType": mimeType, @"treatAsFile": @true}];
+                        NSDictionary *result = [self scaledJpegImageWithURL:(NSURL *)item maxPixelSize:maxPixelSize];
+                        if (result != nil) {
+                            [subscriber putNext:result];
                             [subscriber putCompletion];
                         } else {
-                            CGImageSourceRef src = CGImageSourceCreateWithURL((__bridge CFURLRef) url, NULL);
-
-                            CFDictionaryRef options = (__bridge CFDictionaryRef) @{
-                                (id) kCGImageSourceCreateThumbnailWithTransform : @YES,
-                                (id) kCGImageSourceCreateThumbnailFromImageAlways : @YES,
-                                (id) kCGImageSourceThumbnailMaxPixelSize : @(maxSize.width)
-                            };
-                            
-                            CGImageRef image = CGImageSourceCreateThumbnailAtIndex(src, 0, options);
-                            CFRelease(src);
-                            
-                            if (image == nil) {
-                                [subscriber putError:nil];
-                                return;
-                            }
-                            
-                            NSString *tempPath = [NSTemporaryDirectory() stringByAppendingPathComponent:[[NSString alloc] initWithFormat:@"img%d", (int)arc4random()]];
-                            CFURLRef tempUrl = (__bridge CFURLRef)[NSURL fileURLWithPath:tempPath];
-                            CGImageDestinationRef destination = CGImageDestinationCreateWithURL(tempUrl, (__bridge CFStringRef)UTTypeJPEG.identifier, 1, NULL);
-                            NSDictionary *properties = @{ (__bridge NSString *)kCGImageDestinationLossyCompressionQuality: @(0.52)};
-
-                            CGImageDestinationSetProperties(destination, (__bridge CFDictionaryRef)properties);
-                            CGImageDestinationAddImage(destination, image, nil);
-                            
-                            if (!CGImageDestinationFinalize(destination)) {
-                                CFRelease(destination);
-                                
-                                [subscriber putError:nil];
-                                return;
-                            }
-                            
-                            CFRelease(destination);
-                            NSData *resultData = [[NSData alloc] initWithContentsOfFile:tempPath options:NSDataReadingMappedIfSafe error:nil];
-                            if (resultData != nil) {
-                                [subscriber putNext:@{@"scaledImageData": resultData, @"scaledImageDimensions": [NSValue valueWithCGSize:CGSizeMake(CGImageGetWidth(image), CGImageGetHeight(image))]}];
-                                [subscriber putCompletion];
-                            } else {
-                                [subscriber putError:nil];
-                            }
+                            [subscriber putError:nil];
                         }
-                    } else {
-                        [subscriber putNext:@{@"image": item}];
+                    } else if ([(NSObject *)item isKindOfClass:[NSData class]]) {
+                        [subscriber putNext:@{@"data": item, @"maxImagePixelSize": @(maxPixelSize)}];
                         [subscriber putCompletion];
+                    } else if ([(NSObject *)item isKindOfClass:[UIImage class]]) {
+                        [subscriber putNext:@{@"image": item, @"maxImagePixelSize": @(maxPixelSize)}];
+                        [subscriber putCompletion];
+                    } else {
+                        [subscriber putError:nil];
                     }
                 }
             }];
         } else {
             [itemProvider loadItemForTypeIdentifier:UTTypeData.identifier options:nil completionHandler:^(NSData *data, NSError *error)
              {
-                 if (error != nil)
+                 if (error != nil || ![data isKindOfClass:[NSData class]])
                      [subscriber putError:nil];
                  else
                  {
-                     [subscriber putNext:@{@"data": data}];
+                     [subscriber putNext:@{@"data": data, @"maxImagePixelSize": @(maxPixelSize)}];
                      [subscriber putCompletion];
                  }
              }];
@@ -285,7 +280,7 @@ __unused static CGSize TGFitSize(CGSize size, CGSize maxSize) {
     {
         [itemProvider loadItemForTypeIdentifier:UTTypeAudio.identifier options:nil completionHandler:^(NSURL *url, NSError *error)
         {
-            if (error != nil)
+            if (error != nil || ![url isKindOfClass:[NSURL class]])
                [subscriber putError:nil];
             else
             {
@@ -296,8 +291,10 @@ __unused static CGSize TGFitSize(CGSize size, CGSize maxSize) {
         return nil;
     }];
     
-    return [itemSignal map:^id(NSURL *url)
+    return [itemSignal mapToSignal:^MTSignal *(NSURL *url)
     {
+        if (![url isKindOfClass:[NSURL class]])
+            return [MTSignal fail:nil];
         AVAsset *asset = [AVURLAsset URLAssetWithURL:url options:nil];
         if (asset == nil)
             return [MTSignal fail:nil];
@@ -344,7 +341,7 @@ __unused static CGSize TGFitSize(CGSize size, CGSize maxSize) {
         if (titleString.length > 0)
             result[@"title"] = titleString;
         
-        return result;
+        return [MTSignal single:result];
     }];
 }
 
@@ -354,15 +351,17 @@ __unused static CGSize TGFitSize(CGSize size, CGSize maxSize) {
     {
         AVAssetImageGenerator *imageGenerator = [[AVAssetImageGenerator alloc] initWithAsset:asset];
         imageGenerator.appliesPreferredTrackTransform = true;
+        // Only the four corners are read: a small frame is enough, not a full-resolution copy.
+        imageGenerator.maximumSize = CGSizeMake(64.0, 64.0);
         [imageGenerator generateCGImagesAsynchronouslyForTimes:@[ [NSValue valueWithCMTime:kCMTimeZero] ] completionHandler:^(CMTime requestedTime, CGImageRef  _Nullable image, CMTime actualTime, AVAssetImageGeneratorResult result, NSError * _Nullable error)
         {
-            if (error != nil)
+            if (error != nil || image == NULL)
             {
                 [subsriber putError:nil];
             }
             else
             {
-                [subsriber putNext:[UIImage imageWithCGImage:image]];
+                [subsriber putNext:@([self imageHasWhiteCorners:image])];
                 [subsriber putCompletion];
             }
         }];
@@ -373,26 +372,40 @@ __unused static CGSize TGFitSize(CGSize size, CGSize maxSize) {
         }];
     }];
     
-    return [imageSignal map:^NSNumber *(UIImage *image)
-    {
-        CFDataRef pixelData = CGDataProviderCopyData(CGImageGetDataProvider(image.CGImage));
-        const UInt8 *data = CFDataGetBytePtr(pixelData);
-        
-        bool (^isWhitePixel)(NSInteger, NSInteger) = ^bool(NSInteger x, NSInteger y)
-        {
-            int pixelInfo = ((image.size.width  * y) + x ) * 4;
-            
-            UInt8 red = data[pixelInfo];
-            UInt8 green = data[(pixelInfo + 1)];
-            UInt8 blue = data[pixelInfo + 2];
-            
-            return (red > 250 && green > 250 && blue > 250);
-        };
-        
-        CFRelease(pixelData);
-
-        return @(isWhitePixel(0, 0) && isWhitePixel(image.size.width - 1, 0) && isWhitePixel(0, image.size.height - 1) && isWhitePixel(image.size.width - 1, image.size.height - 1));
+    // A frame that cannot be read is sent as an ordinary video rather than failing the share.
+    return [imageSignal catch:^MTSignal *(__unused id error) {
+        return [MTSignal single:@false];
     }];
+}
+
++ (bool)imageHasWhiteCorners:(CGImageRef)image
+{
+    // Drawn into a bitmap of known layout, so neither the source's pixel format nor its row
+    // padding decides which bytes are read.
+    const size_t width = MAX((size_t)1, MIN(CGImageGetWidth(image), (size_t)64));
+    const size_t height = MAX((size_t)1, MIN(CGImageGetHeight(image), (size_t)64));
+    const size_t bytesPerRow = width * 4;
+    uint8_t *pixels = calloc(height, bytesPerRow);
+    if (pixels == NULL) {
+        return false;
+    }
+    CGColorSpaceRef colorSpace = CGColorSpaceCreateDeviceRGB();
+    CGContextRef context = CGBitmapContextCreate(pixels, width, height, 8, bytesPerRow, colorSpace, kCGImageAlphaNoneSkipLast | kCGBitmapByteOrder32Big);
+    CGColorSpaceRelease(colorSpace);
+    if (context == NULL) {
+        free(pixels);
+        return false;
+    }
+    CGContextDrawImage(context, CGRectMake(0.0, 0.0, width, height), image);
+    CGContextRelease(context);
+    
+    bool (^isWhitePixel)(size_t, size_t) = ^bool(size_t x, size_t y) {
+        const uint8_t *pixel = pixels + y * bytesPerRow + x * 4;
+        return pixel[0] > 250 && pixel[1] > 250 && pixel[2] > 250;
+    };
+    bool result = isWhitePixel(0, 0) && isWhitePixel(width - 1, 0) && isWhitePixel(0, height - 1) && isWhitePixel(width - 1, height - 1);
+    free(pixels);
+    return result;
 }
 
 + (MTSignal *)signalForVideoItemProvider:(NSItemProvider *)itemProvider
@@ -401,15 +414,18 @@ __unused static CGSize TGFitSize(CGSize size, CGSize maxSize) {
     {
         [itemProvider loadItemForTypeIdentifier:UTTypeMovie.identifier options:nil completionHandler:^(NSURL *url, NSError *error)
         {
-            if (error != nil)
+            if (error != nil || ![url isKindOfClass:[NSURL class]])
             {
                 [subscriber putError:nil];
             }
             else
             {
                 AVURLAsset *asset = [[AVURLAsset alloc] initWithURL:url options:nil];
-                [subscriber putNext:asset];
-                [subscriber putCompletion];
+                // Loaded here, off the provider's callback, so the synchronous reads below do not block on I/O.
+                [asset loadValuesAsynchronouslyForKeys:@[@"tracks", @"metadata", @"duration"] completionHandler:^{
+                    [subscriber putNext:asset];
+                    [subscriber putCompletion];
+                }];
             }
         }];
         
@@ -421,7 +437,17 @@ __unused static CGSize TGFitSize(CGSize size, CGSize maxSize) {
         AVAssetTrack *videoTrack = [[asset tracksWithMediaType:AVMediaTypeVideo] firstObject];
         if (videoTrack == nil)
         {
-            return [MTSignal fail:nil];
+            // A movie with no video track (an audio-only .mov or .m4v) is sent as a file.
+            NSData *data = [[NSData alloc] initWithContentsOfURL:asset.URL options:NSDataReadingMappedIfSafe error:nil];
+            if (data == nil)
+                return [MTSignal fail:nil];
+            NSString *fileName = asset.URL.lastPathComponent;
+            if (fileName.length == 0)
+                fileName = @"file.bin";
+            NSString *mimeType = [TGMimeTypeMap mimeTypeForExtension:[fileName.pathExtension lowercaseString]];
+            if (mimeType == nil)
+                mimeType = @"application/octet-stream";
+            return [MTSignal single:@{@"data": data, @"fileName": fileName, @"mimeType": mimeType, @"treatAsFile": @true}];
         }
         else
         {
@@ -461,7 +487,7 @@ __unused static CGSize TGFitSize(CGSize size, CGSize maxSize) {
     {
         [itemProvider loadItemForTypeIdentifier:UTTypeFileURL.identifier options:nil completionHandler:^(NSURL *url, NSError *error)
         {
-            if (error != nil)
+            if (error != nil || ![url isKindOfClass:[NSURL class]])
                 [subscriber putError:nil];
             else
             {
@@ -480,7 +506,7 @@ __unused static CGSize TGFitSize(CGSize size, CGSize maxSize) {
     {
         [itemProvider loadItemForTypeIdentifier:UTTypeText.identifier options:nil completionHandler:^(NSString *text, NSError *error)
         {
-            if (error != nil)
+            if (error != nil || ![text isKindOfClass:[NSString class]])
                 [subscriber putError:nil];
             else
             {
@@ -499,7 +525,7 @@ __unused static CGSize TGFitSize(CGSize size, CGSize maxSize) {
     {
         [itemProvider loadItemForTypeIdentifier:UTTypeURL.identifier options:nil completionHandler:^(NSURL *url, NSError *error)
         {
-            if (error != nil)
+            if (error != nil || ![url isKindOfClass:[NSURL class]])
                 [subscriber putError:nil];
             else
             {
@@ -518,7 +544,7 @@ __unused static CGSize TGFitSize(CGSize size, CGSize maxSize) {
     {
         [itemProvider loadItemForTypeIdentifier:UTTypeVCard.identifier options:nil completionHandler:^(NSData *vcard, NSError *error)
         {
-            if (error != nil)
+            if (error != nil || ![vcard isKindOfClass:[NSData class]])
                 [subscriber putError:nil];
             else
             {
@@ -537,7 +563,7 @@ __unused static CGSize TGFitSize(CGSize size, CGSize maxSize) {
     {
         [itemProvider loadItemForTypeIdentifier:@"com.apple.pkpass" options:nil completionHandler:^(id data, NSError *error)
         {
-            if (error != nil)
+            if (error != nil || ![data isKindOfClass:[NSData class]])
             {
                 [subscriber putError:nil];
             }
