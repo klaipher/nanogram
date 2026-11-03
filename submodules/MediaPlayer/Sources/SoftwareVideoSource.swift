@@ -78,7 +78,7 @@ public final class SoftwareVideoSource {
         return self.videoStream != nil
     }
     
-    public init(path: String, hintVP9: Bool, unpremultiplyAlpha: Bool, passthroughDecoder: Bool = false, useHardwareAcceleration: Bool = false, reusePixelBuffers: Bool = false) {
+    public init(path: String, hintVP9: Bool, unpremultiplyAlpha: Bool, passthroughDecoder: Bool = false, useHardwareAcceleration: Bool = false, skipLoopFilter: Bool = false, reusePixelBuffers: Bool = false) {
         let _ = FFMpegMediaFrameSourceContextHelpers.registerFFMpegGlobals
         
         self.hintVP9 = hintVP9
@@ -170,6 +170,9 @@ public final class SoftwareVideoSource {
                     if avFormatContext.codecParams(atStreamIndex: streamIndex, to: codecContext) {
                         if useHardwareAcceleration {
                             codecContext.setupHardwareAccelerationIfPossible()
+                        }
+                        if skipLoopFilter {
+                            codecContext.setSkipLoopFilterToAll()
                         }
                         if codecContext.open() {
                             let decoder = FFMpegMediaVideoFrameDecoder(codecContext: codecContext)

@@ -72,4 +72,14 @@ public enum GifTileHardwareDecoding {
         }
         return HardwareDecoderSlot.acquire(from: budget)
     }
+
+    public static func decoderOptions(width: Int?, height: Int?, hintVP9: Bool, budget: HardwareDecoderBudget = GifTileHardwareDecoding.budget) -> (slot: HardwareDecoderSlot?, skipLoopFilter: Bool) {
+        if hintVP9 {
+            return (nil, false)
+        }
+        guard let width = width, let height = height, let slot = self.acquireSlot(width: width, height: height, budget: budget) else {
+            return (nil, true)
+        }
+        return (slot, false)
+    }
 }
