@@ -24,10 +24,10 @@ final class SqliteValueBoxConnectionTests: XCTestCase {
         super.tearDown()
     }
 
-    private func open(inMemory: Bool = false, isTemporary: Bool = true, removeDatabaseOnError: Bool = true, useCaches: Bool = true) -> SqliteValueBox {
+    private func open(inMemory: Bool = false, isTemporary: Bool = true, removeDatabaseOnError: Bool = true, useCaches: Bool = true, cacheSizePages: Int? = nil) -> SqliteValueBox {
         var result: SqliteValueBox?
         self.queue.sync {
-            result = SqliteValueBox(basePath: self.basePath, queue: self.queue, isTemporary: isTemporary, isReadOnly: false, useCaches: useCaches, removeDatabaseOnError: removeDatabaseOnError, encryptionParameters: nil, upgradeProgress: { _ in }, inMemory: inMemory)
+            result = SqliteValueBox(basePath: self.basePath, queue: self.queue, isTemporary: isTemporary, isReadOnly: false, useCaches: useCaches, removeDatabaseOnError: removeDatabaseOnError, encryptionParameters: nil, cacheSizePages: cacheSizePages, upgradeProgress: { _ in }, inMemory: inMemory)
             if let result {
                 self.openedBoxes.append(result)
             }
@@ -308,5 +308,137 @@ final class SqliteValueBoxConnectionTests: XCTestCase {
         self.fill(box, table: self.binaryTable, count: 1)
         let walSize = self.fileSize(self.databasePath + "-wal")
         XCTAssertLessThanOrEqual(walSize, SqliteValueBox.walJournalSizeLimit, "wal is \(walSize) bytes")
+    }
+
+    // MARK: - Page cache size
+
+    func testCacheSizeIsOnlyChangedWhenAsked() {
+        let defaultBox = self.open(useCaches: true)
+        let extensionBox = self.open(useCaches: false)
+        let shareExtensionBox = self.open(useCaches: false, cacheSizePages: 256)
+        self.queue.sync {
+            XCTAssertEqual(defaultBox.pragmaValue("cache_size"), "-2000")
+            XCTAssertEqual(extensionBox.pragmaValue("cache_size"), "32")
+            XCTAssertEqual(shareExtensionBox.pragmaValue("cache_size"), "256")
+        }
+    }
+
+    // MARK: - FTS5 index corruption
+
+    func testOnlyCorruptVirtualTableIsRebuildable() {
+        let corruptVirtualTable = SQLITE_CORRUPT | (1 << 8)
+        XCTAssertTrue(isRebuildableFullTextCorruption(resultCode: SQLITE_CORRUPT, extendedResultCode: corruptVirtualTable))
+        XCTAssertFalse(isRebuildableFullTextCorruption(resultCode: SQLITE_CORRUPT, extendedResultCode: SQLITE_CORRUPT))
+        XCTAssertFalse(isRebuildableFullTextCorruption(resultCode: SQLITE_CORRUPT, extendedResultCode: SQLITE_CORRUPT | (2 << 8)))
+        XCTAssertFalse(isRebuildableFullTextCorruption(resultCode: SQLITE_CORRUPT, extendedResultCode: SQLITE_CORRUPT | (3 << 8)))
+        XCTAssertFalse(isRebuildableFullTextCorruption(resultCode: SQLITE_IOERR, extendedResultCode: corruptVirtualTable))
+        XCTAssertFalse(isRebuildableFullTextCorruption(resultCode: SQLITE_BUSY, extendedResultCode: SQLITE_BUSY))
+    }
+
+    private let fullTextTable = ValueBoxFullTextTable(id: 7)
+
+    private func makeCorruptFullTextIndex(_ box: SqliteValueBox, count: Int) {
+        self.queue.sync {
+            box.begin()
+            for i in 0 ..< count {
+                box.fullTextSet(self.fullTextTable, collectionId: "c\(i % 50)", itemId: "i\(i)", contents: "hello world message number \(i)", tags: "t")
+            }
+            box.commit()
+        }
+        guard let damage = Database(self.databasePath, readOnly: false) else {
+            XCTFail("could not open a second connection")
+            return
+        }
+        XCTAssertTrue(damage.execute("UPDATE ft7_data SET block = zeroblob(length(block)) WHERE id > 10"))
+        XCTAssertFalse(damage.execute("INSERT INTO ft7(ft7) VALUES('integrity-check')"))
+    }
+
+    private func matchCount(_ box: SqliteValueBox, query: String) -> Int {
+        var result = 0
+        self.queue.sync {
+            box.begin()
+            box.fullTextMatch(self.fullTextTable, collectionId: nil, query: query, tags: nil, values: { _, _ in
+                result += 1
+                return true
+            })
+            box.commit()
+        }
+        return result
+    }
+
+    func testOwnerRebuildsACorruptFullTextIndexInsteadOfDeletingTheDatabase() {
+        let owner = self.open(isTemporary: false, removeDatabaseOnError: true, useCaches: false)
+        self.fill(owner, table: self.int64Table, count: 10)
+        self.makeCorruptFullTextIndex(owner, count: 3000)
+
+        XCTAssertEqual(self.matchCount(owner, query: "hello"), 3000)
+        XCTAssertTrue(FileManager.default.fileExists(atPath: self.databasePath))
+        self.queue.sync {
+            owner.begin()
+            XCTAssertEqual(owner.count(self.int64Table), 10)
+            owner.fullTextSet(self.fullTextTable, collectionId: "c", itemId: "new", contents: "fresh words", tags: "t")
+            owner.commit()
+        }
+        XCTAssertEqual(self.matchCount(owner, query: "fresh"), 1)
+        let check = Database(self.databasePath, readOnly: false)
+        XCTAssertEqual(check?.execute("INSERT INTO ft7(ft7) VALUES('integrity-check')"), true)
+    }
+
+    func testNonOwnerLeavesACorruptFullTextIndexAlone() {
+        let owner = self.open(isTemporary: false, removeDatabaseOnError: true, useCaches: false)
+        self.makeCorruptFullTextIndex(owner, count: 3000)
+
+        let extensionBox = self.open(isTemporary: true, removeDatabaseOnError: true, useCaches: false)
+        XCTAssertEqual(self.matchCount(extensionBox, query: "hello"), 0)
+        XCTAssertTrue(FileManager.default.fileExists(atPath: self.databasePath))
+        let check = Database(self.databasePath, readOnly: false)
+        XCTAssertEqual(check?.execute("INSERT INTO ft7(ft7) VALUES('integrity-check')"), false, "a non-owner must not rewrite the index")
+    }
+
+    // MARK: - exists() reads no value
+
+    private let withoutRowIdTable = ValueBoxTable(id: 2002, keyType: .binary, compactValuesOnCreation: true)
+    private let rowIdBinaryTable = ValueBoxTable(id: 2003, keyType: .binary, compactValuesOnCreation: false)
+
+    private func queryPlan(_ sql: String) -> String {
+        guard let database = Database(self.databasePath, readOnly: true) else {
+            XCTFail("could not open a second connection")
+            return ""
+        }
+        var statement: OpaquePointer?
+        XCTAssertEqual(sqlite3_prepare_v2(database.handle, "EXPLAIN QUERY PLAN " + sql, -1, &statement, nil), SQLITE_OK)
+        var details: [String] = []
+        while sqlite3_step(statement) == SQLITE_ROW {
+            if let text = sqlite3_column_text(statement, 3) {
+                details.append(String(cString: text))
+            }
+        }
+        sqlite3_finalize(statement)
+        return details.joined(separator: "; ")
+    }
+
+    func testExistsIsCorrectOnEveryTableKindAndReadsNoValue() {
+        let box = self.open(isTemporary: false)
+        let tables = [self.int64Table, self.rowIdBinaryTable, self.withoutRowIdTable]
+        for table in tables {
+            self.fill(box, table: table, count: 50, valueSize: 3000)
+        }
+        self.queue.sync {
+            for table in tables {
+                XCTAssertTrue(box.exists(table, key: self.key(SqliteValueBoxConnectionTests.rowKeyOffset)), "t\(table.id)")
+                XCTAssertTrue(box.exists(table, key: self.key(SqliteValueBoxConnectionTests.rowKeyOffset + 49)), "t\(table.id)")
+                XCTAssertFalse(box.exists(table, key: self.key(0)), "t\(table.id)")
+                XCTAssertFalse(box.exists(table, key: self.key(1000)), "t\(table.id)")
+            }
+            XCTAssertFalse(box.exists(ValueBoxTable(id: 2999, keyType: .int64, compactValuesOnCreation: false), key: self.key(10)))
+            let statements = box.liveStatementSQL()
+            for table in tables {
+                XCTAssertTrue(statements.contains("SELECT 1 FROM t\(table.id) WHERE key=?"), "t\(table.id): \(statements)")
+                XCTAssertFalse(statements.contains("SELECT value FROM t\(table.id) WHERE key=?"), "t\(table.id): \(statements)")
+            }
+        }
+        XCTAssertTrue(self.queryPlan("SELECT 1 FROM t\(self.rowIdBinaryTable.id) WHERE key=?").contains("COVERING INDEX"))
+        XCTAssertTrue(self.queryPlan("SELECT 1 FROM t\(self.withoutRowIdTable.id) WHERE key=?").contains("PRIMARY KEY"))
+        XCTAssertTrue(self.queryPlan("SELECT 1 FROM t\(self.int64Table.id) WHERE key=?").contains("PRIMARY KEY"))
     }
 }

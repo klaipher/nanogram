@@ -111,6 +111,11 @@ public final class Database {
         }
     }
     
+    /// `sqlite3_exec`'s result code (`SQLITE_OK` on success), for callers that handle failures.
+    public func executeReturningCode(_ SQL: String) -> Int32 {
+        return sqlite3_exec(self.handle, SQL, nil, nil, nil)
+    }
+    
     public func currentError() -> String? {
         if let error = sqlite3_errmsg(self.handle), let str = NSString(utf8String: error) {
             return "SQL error \(str)"

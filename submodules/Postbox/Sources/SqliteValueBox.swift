@@ -80,29 +80,64 @@ struct SqlitePreparedStatement {
     func step(handle: OpaquePointer?, _ initial: Bool = false, pathToRemoveOnError: String?) -> Bool {
         let res = sqlite3_step(statement)
         if res != SQLITE_ROW && res != SQLITE_DONE {
-            let errorString: String
-            if let error = sqlite3_errmsg(handle), let str = NSString(utf8String: error) {
-                errorString = "SQL error \(res): \(str) on step"
-            } else {
-                errorString = "SQL error \(res) on step"
-            }
-            postboxLog(errorString)
-
-            if res == SQLITE_CORRUPT {
-                if let path = pathToRemoveOnError {
-                    postboxLog("Corrupted DB at step, dropping")
-                    SqliteValueBox.removeDatabaseFiles(databasePath: path)
-                    postboxLogSync()
-                    preconditionFailure()
-                }
-            }
-
-            if valueBoxStrictErrorHandling {
-                postboxLogSync()
-                preconditionFailure(errorString)
-            }
+            self.handleStepError(res, handle: handle, pathToRemoveOnError: pathToRemoveOnError)
         }
         return res == SQLITE_ROW
+    }
+
+    enum FullTextStepResult {
+        case row
+        case done
+        case corruptIndex
+        /// Any other error, already handled as `step` handles it.
+        case failed
+    }
+
+    /// `step` for a statement on an FTS5 table. On the owning connection, damage inside the FTS5
+    /// index (SQLITE_CORRUPT_VTAB) returns `.corruptIndex` so the index can be rebuilt; every
+    /// other error, plain SQLITE_CORRUPT included, takes the same path as `step`.
+    func stepFullText(handle: OpaquePointer?, pathToRemoveOnError: String?) -> FullTextStepResult {
+        let res = sqlite3_step(statement)
+        if res == SQLITE_ROW {
+            return .row
+        }
+        if res == SQLITE_DONE {
+            return .done
+        }
+        if pathToRemoveOnError != nil && isRebuildableFullTextCorruption(resultCode: res, extendedResultCode: sqlite3_extended_errcode(handle)) {
+            if let error = sqlite3_errmsg(handle), let str = NSString(utf8String: error) {
+                postboxLog("SQL error \(res): \(str) on step, full-text index is corrupt")
+            } else {
+                postboxLog("SQL error \(res) on step, full-text index is corrupt")
+            }
+            return .corruptIndex
+        }
+        self.handleStepError(res, handle: handle, pathToRemoveOnError: pathToRemoveOnError)
+        return .failed
+    }
+
+    private func handleStepError(_ res: Int32, handle: OpaquePointer?, pathToRemoveOnError: String?) {
+        let errorString: String
+        if let error = sqlite3_errmsg(handle), let str = NSString(utf8String: error) {
+            errorString = "SQL error \(res): \(str) on step"
+        } else {
+            errorString = "SQL error \(res) on step"
+        }
+        postboxLog(errorString)
+
+        if res == SQLITE_CORRUPT {
+            if let path = pathToRemoveOnError {
+                postboxLog("Corrupted DB at step, dropping")
+                SqliteValueBox.removeDatabaseFiles(databasePath: path)
+                postboxLogSync()
+                preconditionFailure()
+            }
+        }
+
+        if valueBoxStrictErrorHandling {
+            postboxLogSync()
+            preconditionFailure(errorString)
+        }
     }
 
     struct SqlError: Error {
@@ -236,6 +271,13 @@ func isLockContentionSqliteResultCode(_ code: Int32) -> Bool {
     }
 }
 
+/// FTS5 reports damage inside its own index as SQLITE_CORRUPT_VTAB, which a rebuild from the
+/// content table repairs. Plain SQLITE_CORRUPT, even from an FTS shadow table's B-tree, is
+/// damage to the file itself and is not rebuildable.
+func isRebuildableFullTextCorruption(resultCode: Int32, extendedResultCode: Int32) -> Bool {
+    return resultCode & 0xff == SQLITE_CORRUPT && extendedResultCode == (SQLITE_CORRUPT | (1 << 8))
+}
+
 private struct TablePairKey: Hashable {
     let table1: Int32
     let table2: Int32
@@ -250,6 +292,8 @@ public final class SqliteValueBox: ValueBox {
     private let useCaches: Bool
     private let inMemory: Bool
     private let encryptionParameters: ValueBoxEncryptionParameters?
+    /// Page cache size for this connection; nil keeps the default (32 pages without caches).
+    private let cacheSizePages: Int?
     private let databasePath: String
     /// Whether this connection may delete the database to recover from an error. Folded from
     /// the caller's request and the connection kind: only the owning read-write connection
@@ -349,6 +393,8 @@ public final class SqliteValueBox: ValueBox {
     private var fullTextMatchCollectionTagsStatements: [Int32 : SqlitePreparedStatement] = [:]
     private var preparedPageCountStatement: SqlitePreparedStatement?
     private var beginStatement: SqlitePreparedStatement?
+    /// FTS tables this connection has rebuilt; one that is corrupt again is left alone.
+    private var rebuiltFullTextTables = Set<Int32>()
     private var commitStatement: SqlitePreparedStatement?
     
     private var secureDeleteEnabled: Bool = false
@@ -359,7 +405,7 @@ public final class SqliteValueBox: ValueBox {
     
     private let queue: Queue
     
-    public init?(basePath: String, queue: Queue, isTemporary: Bool, isReadOnly: Bool, useCaches: Bool, removeDatabaseOnError: Bool, encryptionParameters: ValueBoxEncryptionParameters?, upgradeProgress: (Float) -> Void, inMemory: Bool = false) {
+    public init?(basePath: String, queue: Queue, isTemporary: Bool, isReadOnly: Bool, useCaches: Bool, removeDatabaseOnError: Bool, encryptionParameters: ValueBoxEncryptionParameters?, cacheSizePages: Int? = nil, upgradeProgress: (Float) -> Void, inMemory: Bool = false) {
         self.basePath = basePath
         self.isTemporary = isTemporary
         self.isReadOnly = isReadOnly
@@ -367,6 +413,7 @@ public final class SqliteValueBox: ValueBox {
         self.removeDatabaseOnError = removeDatabaseOnError && !isReadOnly && !isTemporary
         self.inMemory = inMemory
         self.encryptionParameters = encryptionParameters
+        self.cacheSizePages = cacheSizePages
         self.databasePath = basePath + "/db_sqlite"
         self.queue = queue
         if let database = self.openDatabase(encryptionParameters: encryptionParameters, isTemporary: isTemporary, isReadOnly: isReadOnly, upgradeProgress: upgradeProgress) {
@@ -589,7 +636,10 @@ public final class SqliteValueBox: ValueBox {
 
         postboxLog("Did set up encryption")
 
-        if !self.useCaches {
+        if let cacheSizePages = self.cacheSizePages {
+            resultCode = database.execute("PRAGMA cache_size=\(cacheSizePages)")
+            assert(resultCode)
+        } else if !self.useCaches {
             resultCode = database.execute("PRAGMA cache_size=32")
             assert(resultCode)
         }
@@ -1357,7 +1407,7 @@ public final class SqliteValueBox: ValueBox {
             resultStatement = statement
         } else {
             var statement: OpaquePointer? = nil
-            let status = sqlite3_prepare_v3(self.database.handle, "SELECT rowid FROM t\(table.id) WHERE key=?", -1, SQLITE_PREPARE_PERSISTENT, &statement, nil)
+            let status = sqlite3_prepare_v3(self.database.handle, "SELECT 1 FROM t\(table.id) WHERE key=?", -1, SQLITE_PREPARE_PERSISTENT, &statement, nil)
             precondition(status == SQLITE_OK)
             let preparedStatement = SqlitePreparedStatement(statement: statement)
             self.existsStatements[table.id] = preparedStatement
@@ -1834,10 +1884,14 @@ public final class SqliteValueBox: ValueBox {
     
     public func exists(_ table: ValueBoxTable, key: ValueBoxKey) -> Bool {
         precondition(self.queue.isCurrent())
-        if let _ = self.get(table, key: key) {
-            return true
+        var result = false
+        if let _ = self.tables[table.id] {
+            let statement = self.existsStatement(table, key: key)
+            result = statement.step(handle: self.database.handle, pathToRemoveOnError: self.pathToRemoveOnError)
+            statement.reset()
         }
-        return false
+        withExtendedLifetime(key, {})
+        return result
     }
     
     public func range(_ table: ValueBoxTable, start: ValueBoxKey, end: ValueBoxKey, values: (ValueBoxKey, ReadBuffer) -> Bool, limit: Int) {
@@ -2174,38 +2228,94 @@ public final class SqliteValueBox: ValueBox {
                 return
             }
             
-            var statement: SqlitePreparedStatement?
-            if let collectionId = collectionId {
-                if let collectionIdData = collectionId.data(using: .utf8) {
-                    if let tags = tags {
-                        if let tagsData = tags.data(using: .utf8) {
-                            statement = self.fullTextMatchCollectionTagsStatement(table, collectionId: collectionIdData, contents: queryData, tags: tagsData)
+            self.runFullTextStatement(table, makeStatement: {
+                var statement: SqlitePreparedStatement?
+                if let collectionId = collectionId {
+                    if let collectionIdData = collectionId.data(using: .utf8) {
+                        if let tags = tags {
+                            if let tagsData = tags.data(using: .utf8) {
+                                statement = self.fullTextMatchCollectionTagsStatement(table, collectionId: collectionIdData, contents: queryData, tags: tagsData)
+                            }
+                        } else {
+                            statement = self.fullTextMatchCollectionStatement(table, collectionId: collectionIdData, contents: queryData)
                         }
-                    } else {
-                        statement = self.fullTextMatchCollectionStatement(table, collectionId: collectionIdData, contents: queryData)
                     }
+                } else {
+                    statement = self.fullTextMatchGlobalStatement(table, contents: queryData)
                 }
-            } else {
-                statement = self.fullTextMatchGlobalStatement(table, contents: queryData)
-            }
-            
-            if let statement = statement {
-                while statement.step(handle: self.database.handle, pathToRemoveOnError: self.pathToRemoveOnError) {
-                    let resultCollectionId = statement.stringAt(0)
-                    let resultItemId = statement.stringAt(1)
-                    
-                    if let resultCollectionId = resultCollectionId, let resultItemId = resultItemId {
-                        if !values(resultCollectionId, resultItemId) {
-                            break
-                        }
-                    } else {
-                        assertionFailure()
-                    }
-                }
+                return statement
+            }, row: { statement in
+                let resultCollectionId = statement.stringAt(0)
+                let resultItemId = statement.stringAt(1)
                 
-                statement.reset()
-            }
+                if let resultCollectionId = resultCollectionId, let resultItemId = resultItemId {
+                    return values(resultCollectionId, resultItemId)
+                } else {
+                    assertionFailure()
+                    return true
+                }
+            })
         }
+    }
+
+    /// Steps a statement on an FTS5 table. After SQLITE_CORRUPT_VTAB the owner rebuilds the
+    /// index and runs the statement once more, unless it had already returned rows.
+    private func runFullTextStatement(_ table: ValueBoxFullTextTable, makeStatement: () -> SqlitePreparedStatement?, row: (SqlitePreparedStatement) -> Bool) {
+        while true {
+            guard let statement = makeStatement() else {
+                return
+            }
+            var deliveredRows = false
+            var indexIsCorrupt = false
+            stepping: while true {
+                switch statement.stepFullText(handle: self.database.handle, pathToRemoveOnError: self.pathToRemoveOnError) {
+                case .row:
+                    deliveredRows = true
+                    if !row(statement) {
+                        break stepping
+                    }
+                case .done, .failed:
+                    break stepping
+                case .corruptIndex:
+                    indexIsCorrupt = true
+                    break stepping
+                }
+            }
+            statement.reset()
+            if indexIsCorrupt && self.rebuildFullTextIndex(table) && !deliveredRows {
+                continue
+            }
+            return
+        }
+    }
+
+    /// Rebuilds an FTS5 index from its content table, at most once per table and connection, so
+    /// a damaged search index costs a rebuild instead of the whole account database. Runs
+    /// between statements, inside the caller's transaction. Returns whether it rebuilt.
+    private func rebuildFullTextIndex(_ table: ValueBoxFullTextTable) -> Bool {
+        if self.rebuiltFullTextTables.contains(table.id) {
+            postboxLog("SqliteValueBox: ft\(table.id) is corrupt again after a rebuild, leaving it")
+            return false
+        }
+        self.rebuiltFullTextTables.insert(table.id)
+        postboxLog("SqliteValueBox: rebuilding the corrupt full-text index ft\(table.id)")
+        var statement: OpaquePointer? = nil
+        let status = sqlite3_prepare_v2(self.database.handle, "INSERT INTO ft\(table.id)(ft\(table.id)) VALUES('rebuild')", -1, &statement, nil)
+        guard status == SQLITE_OK, statement != nil else {
+            sqlite3_finalize(statement)
+            postboxLog("SqliteValueBox: could not prepare the rebuild of ft\(table.id): \(status)")
+            return false
+        }
+        let preparedStatement = SqlitePreparedStatement(statement: statement)
+        // Any other error, plain SQLITE_CORRUPT included, takes the usual path.
+        let result = preparedStatement.stepFullText(handle: self.database.handle, pathToRemoveOnError: self.pathToRemoveOnError)
+        preparedStatement.destroy()
+        if case .done = result {
+            postboxLog("SqliteValueBox: rebuilt ft\(table.id)")
+            return true
+        }
+        postboxLog("SqliteValueBox: the rebuild of ft\(table.id) failed")
+        return false
     }
     
     public func fullTextSet(_ table: ValueBoxFullTextTable, collectionId: String, itemId: String, contents: String, tags: String) {
@@ -2215,10 +2325,9 @@ public final class SqliteValueBox: ValueBox {
             return
         }
         
-        let statement = self.fullTextInsertStatement(table, collectionId: collectionIdData, itemId: itemIdData, contents: contentsData, tags: tagsData)
-        while statement.step(handle: self.database.handle, pathToRemoveOnError: self.pathToRemoveOnError) {
-        }
-        statement.reset()
+        self.runFullTextStatement(table, makeStatement: {
+            return self.fullTextInsertStatement(table, collectionId: collectionIdData, itemId: itemIdData, contents: contentsData, tags: tagsData)
+        }, row: { _ in true })
     }
     
     public func fullTextRemove(_ table: ValueBoxFullTextTable, itemId: String, secure: Bool) {
@@ -2233,10 +2342,9 @@ public final class SqliteValueBox: ValueBox {
                 return
             }
             
-            let statement = self.fullTextDeleteStatement(table, itemId: itemIdData)
-            while statement.step(handle: self.database.handle, pathToRemoveOnError: self.pathToRemoveOnError) {
-            }
-            statement.reset()
+            self.runFullTextStatement(table, makeStatement: {
+                return self.fullTextDeleteStatement(table, itemId: itemIdData)
+            }, row: { _ in true })
         }
     }
     
@@ -2526,11 +2634,103 @@ public final class SqliteValueBox: ValueBox {
         return updatedDatabase
     }
     
-    public func vacuum() {
-        var resultCode = self.database.execute("VACUUM")
-        precondition(resultCode)
-        resultCode = self.database.execute("PRAGMA wal_checkpoint(TRUNCATE)")
-        precondition(resultCode)
+    /// Rebuilds the database file without its free pages. Never crashes: a busy database
+    /// (another process, such as the notification extension, holding it), a full disk or an I/O
+    /// error is logged and returned as `false`, and the database stays as it was.
+    @discardableResult
+    public func vacuum() -> Bool {
+        precondition(self.queue.isCurrent())
+        let vacuumCode = self.database.executeReturningCode("VACUUM")
+        if vacuumCode != SQLITE_OK {
+            postboxLog("SqliteValueBox: VACUUM failed: \(SqliteValueBox.describeVacuumFailure(vacuumCode)) (\(self.database.currentError() ?? "no message"))")
+            return false
+        }
+        let checkpointCode = self.database.executeReturningCode("PRAGMA wal_checkpoint(TRUNCATE)")
+        if checkpointCode != SQLITE_OK {
+            // The VACUUM itself is committed; the WAL is truncated at a later checkpoint.
+            postboxLog("SqliteValueBox: wal_checkpoint after VACUUM failed: \(SqliteValueBox.describeVacuumFailure(checkpointCode))")
+        }
+        return true
+    }
+    
+    static func describeVacuumFailure(_ code: Int32) -> String {
+        switch code & 0xff {
+        case SQLITE_BUSY, SQLITE_LOCKED:
+            return "database busy (\(code))"
+        case SQLITE_FULL:
+            return "disk full (\(code))"
+        case SQLITE_IOERR:
+            return "I/O error (\(code))"
+        case SQLITE_READONLY:
+            return "read-only database (\(code))"
+        case SQLITE_NOMEM:
+            return "out of memory (\(code))"
+        default:
+            return "error \(code)"
+        }
+    }
+    
+    public struct PageStats: Equatable {
+        public let pageCount: Int64
+        public let freePageCount: Int64
+        public let pageSize: Int64
+        
+        public var freeFraction: Double {
+            return self.pageCount > 0 ? Double(self.freePageCount) / Double(self.pageCount) : 0.0
+        }
+    }
+    
+    private func pragmaInt64(_ name: String) -> Int64? {
+        var statement: OpaquePointer? = nil
+        defer {
+            sqlite3_finalize(statement)
+        }
+        guard sqlite3_prepare_v2(self.database.handle, "PRAGMA \(name)", -1, &statement, nil) == SQLITE_OK else {
+            return nil
+        }
+        guard sqlite3_step(statement) == SQLITE_ROW else {
+            return nil
+        }
+        return sqlite3_column_int64(statement, 0)
+    }
+    
+    public func pageStats() -> PageStats? {
+        precondition(self.queue.isCurrent())
+        guard let pageCount = self.pragmaInt64("page_count"), let freePageCount = self.pragmaInt64("freelist_count"), let pageSize = self.pragmaInt64("page_size") else {
+            return nil
+        }
+        return PageStats(pageCount: pageCount, freePageCount: freePageCount, pageSize: pageSize)
+    }
+    
+    public enum ConditionalVacuumResult: Equatable {
+        case vacuumed(before: PageStats, after: PageStats?)
+        case notFragmented(PageStats)
+        case insufficientDiskSpace(needed: Int64, available: Int64)
+        case failed
+    }
+    
+    /// VACUUMs only when at least `minFreeFraction` of the file is free pages, and only when the
+    /// disk has room for the copy VACUUM writes (about the size of the live data, plus the WAL).
+    public func vacuumIfFragmented(minFreeFraction: Double, availableDiskSpace: Int64?) -> ConditionalVacuumResult {
+        precondition(self.queue.isCurrent())
+        guard let before = self.pageStats() else {
+            postboxLog("SqliteValueBox: cannot read page counts")
+            return .failed
+        }
+        if before.pageCount == 0 || before.freeFraction < minFreeFraction {
+            return .notFragmented(before)
+        }
+        let needed = (before.pageCount - before.freePageCount) * before.pageSize * 2
+        if let availableDiskSpace = availableDiskSpace, availableDiskSpace < needed {
+            postboxLog("SqliteValueBox: skipping VACUUM, \(availableDiskSpace) bytes free, \(needed) needed")
+            return .insufficientDiskSpace(needed: needed, available: availableDiskSpace)
+        }
+        if !self.vacuum() {
+            return .failed
+        }
+        let after = self.pageStats()
+        postboxLog("SqliteValueBox: VACUUM \(before.pageCount) -> \(after?.pageCount ?? -1) pages (\(before.freePageCount) free before)")
+        return .vacuumed(before: before, after: after)
     }
 }
 
