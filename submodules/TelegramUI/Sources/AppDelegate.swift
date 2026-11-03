@@ -2148,8 +2148,22 @@ private func extractAccountManagerState(records: AccountRecordsView<TelegramAcco
             return taskId == .invalid ? nil : taskId
         }
         self.lockBackgroundTask = lockTask
-        DispatchQueue.main.asyncAfter(deadline: DispatchTime.now() + 5.0, execute: {
-            lockTask.end()
+        DispatchQueue.main.asyncAfter(deadline: DispatchTime.now() + 5.0, execute: { [weak self] in
+            guard let self else {
+                lockTask.end()
+                return
+            }
+            // Through the wakeup manager, which pauses database writes (and waits for the running
+            // transaction) before the task ends, unless something else keeps the app awake (0xdead10cc).
+            let _ = (self.sharedContextPromise.get()
+            |> take(1)
+            |> deliverOnMainQueue).start(next: { sharedApplicationContext in
+                sharedApplicationContext.wakeupManager.releaseBackgroundTime {
+                    MainActor.assumeIsolated {
+                        lockTask.end()
+                    }
+                }
+            })
         })
         
         self.backgroundDiagnostics.didEnterBackground(isEnabled: Logger.shared.logToFile, report: { [weak self] secondsInBackground in
