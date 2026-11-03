@@ -173,4 +173,94 @@ final class AccountManagerExtensionReadOnlyTests: XCTestCase {
         XCTAssertEqual(state.accessChallengeData, Self.keychainPasscode)
         XCTAssertEqual(legacyAccessChallenge(), Self.keychainPasscode)
     }
+
+    // MARK: - Finding 2: only a missing atomic state falls back to the legacy tables
+
+    private static let legacyRecord = AccountRecordId(rawValue: 1)
+    private static let appRecord = AccountRecordId(rawValue: 2)
+    private static let legacyPasscode: PostboxAccessChallengeData = .numericalPassword(value: "1234")
+
+    /// The legacy tables an app updated from an old version still has: one account and a passcode.
+    private func seedLegacyTables() {
+        withLegacyTables { records, metadata in
+            var recordOperations: [AccountManagerRecordOperation<Types.Attribute>] = []
+            var metadataOperations: [AccountManagerMetadataOperation<Types.Attribute>] = []
+            records.setRecord(id: Self.legacyRecord, record: AccountRecord<Types.Attribute>(id: Self.legacyRecord, attributes: [], temporarySessionId: nil), operations: &recordOperations)
+            metadata.setCurrentAccountId(Self.legacyRecord, operations: &metadataOperations)
+            metadata.setAccessChallengeData(Self.legacyPasscode)
+        }
+    }
+
+    /// The app's own state: a different account than the stale legacy one.
+    private func writeAppState() throws -> Data {
+        let state = AccountManagerAtomicState<Types>(records: [Self.appRecord: AccountRecord<Types.Attribute>(id: Self.appRecord, attributes: [], temporarySessionId: nil)], currentRecordId: Self.appRecord, accessChallengeData: Self.legacyPasscode)
+        let data = try JSONEncoder().encode(state)
+        try data.write(to: atomicStateURL)
+        return data
+    }
+
+    private func makeAtomicStateUnreadable() throws {
+        try FileManager.default.setAttributes([.posixPermissions: 0o000], ofItemAtPath: atomicStateURL.path)
+        XCTAssertThrowsError(try Data(contentsOf: atomicStateURL), "the test needs a file that exists but cannot be read")
+    }
+
+    private func atomicStateBytes() throws -> Data {
+        try FileManager.default.setAttributes([.posixPermissions: 0o644], ofItemAtPath: atomicStateURL.path)
+        return try Data(contentsOf: atomicStateURL)
+    }
+
+    func testExtensionWithoutAtomicStateUsesTheLegacyRecords() {
+        seedLegacyTables()
+
+        let manager = openAsExtension()
+        let view = manager._internalAccountRecordsSync()
+        XCTAssertEqual(view.records.map(\.id), [Self.legacyRecord])
+        XCTAssertEqual(view.currentRecord?.id, Self.legacyRecord)
+        XCTAssertEqual(run(manager, { $0.getAccessChallengeData() }), Self.legacyPasscode)
+        XCTAssertFalse(FileManager.default.fileExists(atPath: atomicStateURL.path))
+    }
+
+    func testExtensionWithUnreadableAtomicStateOpensWithNoAccountsAndNeverWritesIt() throws {
+        seedLegacyTables()
+        let original = try writeAppState()
+        try makeAtomicStateUnreadable()
+
+        let manager = openAsExtension()
+        let view = manager._internalAccountRecordsSync()
+        XCTAssertTrue(view.records.isEmpty, "the stale legacy records are not the app's accounts")
+        XCTAssertNil(view.currentRecord)
+        XCTAssertEqual(run(manager, { $0.getAccessChallengeData() }), Self.legacyPasscode, "the extension still locks")
+        run(manager, { transaction in
+            _ = transaction.createRecord([])
+        })
+
+        XCTAssertEqual(try atomicStateBytes(), original, "an extension must not overwrite the app's state")
+    }
+
+    func testExtensionWithUndecodableAtomicStateOpensWithNoAccounts() throws {
+        seedLegacyTables()
+        let garbage = Data("not json".utf8)
+        try garbage.write(to: atomicStateURL)
+
+        let manager = openAsExtension()
+        let view = manager._internalAccountRecordsSync()
+        XCTAssertTrue(view.records.isEmpty, "the stale legacy records are not the app's accounts")
+        XCTAssertNil(view.currentRecord)
+        run(manager, { transaction in
+            _ = transaction.createRecord([])
+        })
+        XCTAssertEqual(try Data(contentsOf: atomicStateURL), garbage)
+    }
+
+    func testAppWithUnreadableAtomicStateKeepsTheUpstreamRebuild() throws {
+        seedLegacyTables()
+        _ = try writeAppState()
+        try makeAtomicStateUnreadable()
+
+        let view = open(removeDatabaseOnError: true, isTemporary: false)._internalAccountRecordsSync()
+        XCTAssertEqual(view.records.map(\.id), [Self.legacyRecord], "upstream: the app rebuilds the state from the legacy tables")
+        // An atomic write keeps the replaced file's 0000 mode, so read it the way the test can.
+        let rebuilt = try JSONDecoder().decode(AccountManagerAtomicState<Types>.self, from: atomicStateBytes())
+        XCTAssertEqual(Array(rebuilt.records.keys), [Self.legacyRecord])
+    }
 }

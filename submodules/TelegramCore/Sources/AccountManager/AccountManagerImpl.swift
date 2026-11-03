@@ -60,6 +60,19 @@ public struct AccountManagerModifier<Types: AccountManagerTypes> {
     public let setStoredLoginTokens: ([Data]) -> Void
 }
 
+/// Whether reading a file failed because it does not exist (as opposed to permissions, data
+/// protection or I/O).
+private func isFileNotFoundError(_ error: Error) -> Bool {
+    let error = error as NSError
+    if error.domain == NSCocoaErrorDomain && (error.code == NSFileReadNoSuchFileError || error.code == NSFileNoSuchFileError) {
+        return true
+    }
+    if error.domain == NSPOSIXErrorDomain && error.code == Int(ENOENT) {
+        return true
+    }
+    return false
+}
+
 final class AccountManagerImpl<Types: AccountManagerTypes> {
     private let queue: Queue
     private let basePath: String
@@ -171,15 +184,21 @@ final class AccountManagerImpl<Types: AccountManagerTypes> {
         }
         
         // The app (`removeDatabaseOnError`) owns the atomic state: it builds it from the legacy tables
-        // when the file is missing, and crashes after removing a file it cannot decode, so that the
+        // when the file cannot be read, and crashes after removing a file it cannot decode, so that the
         // next launch rebuilds it. The extensions (Notification Service, Siri, Share, Notification
         // Content) open with `removeDatabaseOnError: false` and used to `preconditionFailure()` in
         // both cases, which in the Notification Service drops the push: an app installed but never
-        // opened, or a file unreadable at that moment. They now read what the app would build from the
-        // legacy tables (no accounts on a fresh install) and keep it in memory only, never writing or
-        // removing the app's file.
+        // opened, or a file unreadable at that moment. They now open read-only (`isStateInMemoryOnly`),
+        // never writing or removing the app's file. Only a missing file means the app has not built
+        // the state yet, so only then do they read what the app would build from the legacy tables
+        // (no accounts on a fresh install). A file that exists but cannot be read or decoded is the
+        // app's, and the legacy tables may hold accounts long since removed from it: no accounts.
         let legacyRecordTable = self.legacyRecordTable
         let legacyMetadataTable = self.legacyMetadataTable
+        let noAccountsState: () -> AccountManagerAtomicState<Types> = {
+            // The legacy passcode still locks the extension.
+            return AccountManagerAtomicState(accessChallengeData: legacyMetadataTable.getAccessChallengeData())
+        }
         let legacyAtomicState: () -> AccountManagerAtomicState<Types> = {
             var legacyRecordDict: [AccountRecordId: AccountRecord<Types.Attribute>] = [:]
             for record in legacyRecordTable.getRecords() {
@@ -200,8 +219,9 @@ final class AccountManagerImpl<Types: AccountManagerTypes> {
                     let _ = try? FileManager.default.removeItem(atPath: self.atomicStatePath)
                     preconditionFailure()
                 } else {
-                    postboxLog("AccountManager: undecodable atomic state in an extension, using the legacy records in memory, read-only")
-                    self.currentAtomicState = legacyAtomicState()
+                    postboxLog("AccountManager: undecodable atomic state in an extension, opening with no accounts, read-only")
+                    postboxLogSync()
+                    self.currentAtomicState = noAccountsState()
                     self.isStateInMemoryOnly = true
                 }
             }
@@ -212,9 +232,14 @@ final class AccountManagerImpl<Types: AccountManagerTypes> {
             if removeDatabaseOnError {
                 self.currentAtomicState = legacyAtomicState()
                 self.syncAtomicStateToFile()
-            } else {
+            } else if isFileNotFoundError(e) {
                 postboxLog("AccountManager: no atomic state in an extension, using the legacy records in memory, read-only")
                 self.currentAtomicState = legacyAtomicState()
+                self.isStateInMemoryOnly = true
+            } else {
+                postboxLog("AccountManager: atomic state exists but cannot be read in an extension (\(e)), opening with no accounts, read-only")
+                postboxLogSync()
+                self.currentAtomicState = noAccountsState()
                 self.isStateInMemoryOnly = true
             }
         }
