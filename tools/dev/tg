@@ -179,6 +179,8 @@ cmd_build() {
     --configuration="$configuration" \
     ${extra[@]+"${extra[@]}"}
   if [ $device -eq 0 ]; then
+    # No Telegram name or logo where the app means itself (tools/dev/lint/branding.py).
+    python3 "$ROOT/tools/dev/lint/branding.py" --bundle "$ROOT/bazel-bin/Telegram/Telegram.app"
     say "Built: $ROOT/bazel-bin/Telegram/Telegram.app"
   else
     say "Built: $ROOT/bazel-bin/Telegram/Telegram.ipa"
