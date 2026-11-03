@@ -59,6 +59,7 @@ swift_library(
     ]),
     deps = [
         ":ReactionSelectionNode",
+        "//submodules/AsyncDisplayKit:AsyncDisplayKit",
     ],
 )
 

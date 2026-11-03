@@ -101,6 +101,12 @@ public final class ReactionIconView: PortalSourceView {
     
     private var disposable: Disposable?
     
+    // One line per change of what the icon shows (written only while logging is on in Debug
+    // Settings), so a device can tell an icon that never got a frame from one that was hidden.
+    private func logState(_ event: String) {
+        Logger.shared.log("ReactionIcon", "\(String(UInt(bitPattern: ObjectIdentifier(self).hashValue), radix: 36)) file \(self.fileId ?? 0): \(event)")
+    }
+    
     public var iconFrame: CGRect? {
         if let animationLayer = self.animationLayer {
             return animationLayer.frame
@@ -197,6 +203,7 @@ public final class ReactionIconView: PortalSourceView {
     public func updateIsAnimationHidden(isAnimationHidden: Bool, transition: ContainedViewLayoutTransition) {
         if self.isAnimationHidden != isAnimationHidden {
             self.isAnimationHidden = isAnimationHidden
+            self.logState(isAnimationHidden ? "hidden (a stand-in is in its place)" : "displayed (has frame: \(self.animationLayer?.hasDisplayedContent ?? false))")
             
             if let animationLayer = self.animationLayer {
                 transition.updateAlpha(layer: animationLayer, alpha: isAnimationHidden ? 0.0 : 1.0)
@@ -316,12 +323,15 @@ public final class ReactionIconView: PortalSourceView {
         self.animationLayer = animationLayer
         self.addAnimationLayer(animationLayer)
         
+        let requestTimestamp = CFAbsoluteTimeGetCurrent()
+        self.logState("requested (has frame: \(animationLayer.hasDisplayedContent), animates: \(animateIdle))")
         self.contentGate.setHasContent(animationLayer.hasDisplayedContent)
         if !animationLayer.hasDisplayedContent {
             animationLayer.contentDisplayed = { [weak self, weak animationLayer] in
                 guard let self, let animationLayer, self.animationLayer === animationLayer else {
                     return
                 }
+                self.logState("first frame after \(Int((CFAbsoluteTimeGetCurrent() - requestTimestamp) * 1000.0)) ms\(self.contentGate.hasPendingWork ? ", stand-in handed off" : "")")
                 self.contentGate.setHasContent(true)
             }
         }

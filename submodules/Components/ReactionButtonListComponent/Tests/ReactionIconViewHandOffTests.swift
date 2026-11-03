@@ -1,6 +1,7 @@
 import Foundation
 import UIKit
 import XCTest
+import TelegramCore
 @testable import ReactionButtonListComponent
 
 // Every path that puts a reaction into a message's button (the picker, a double tap's quick
@@ -9,6 +10,15 @@ import XCTest
 // Revealing without waiting showed an empty button, a brand-new one (a reaction just added) above
 // all. The hand-off is the button's: it waits for the first frame.
 final class ReactionIconViewHandOffTests: XCTestCase {
+    // The view logs its state changes; as in the app, a shared logger exists (here a silent one).
+    override class func setUp() {
+        super.setUp()
+        let logger = Logger(rootPath: NSTemporaryDirectory(), basePath: NSTemporaryDirectory() + "reaction-icon-logs-" + UUID().uuidString)
+        logger.logToFile = false
+        logger.logToConsole = false
+        Logger.setSharedLogger(logger)
+    }
+    
     private func makeView() -> ReactionIconView {
         return ReactionIconView(frame: CGRect(x: 0.0, y: 0.0, width: 20.0, height: 20.0))
     }

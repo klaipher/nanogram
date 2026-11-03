@@ -159,6 +159,9 @@ public final class ReactionNode: ASDisplayNode, ReactionItemNode {
     
     private var dismissedStillAnimationNodes: [AnimatedStickerNode] = []
     
+    // The drawn icon stays until the larger animation of a sent reaction has a frame.
+    private let expandedIconHandOver = ReactionExpandedIconHandOver()
+    
     private var fetchStickerDisposable: Disposable?
     private var fetchFullAnimationDisposable: Disposable?
     
@@ -233,6 +236,11 @@ public final class ReactionNode: ASDisplayNode, ReactionItemNode {
                 if strongSelf.loopIdle {
                     strongSelf.staticAnimationNode.playLoop()
                 }
+            } else if strongSelf.expandedIconHandOver.showsStaticIconAfterAppearAnimation(hasExpandedAnimation: true) {
+                // The larger animation has no frame yet: the still icon takes the appear
+                // animation's place until it has, rather than leaving the reaction empty.
+                strongSelf.staticAnimationNode.isHidden = false
+                strongSelf.expandedIconHandOver.fadeOutWhenExpandedAnimationStarts(strongSelf.staticAnimationNode, duration: 0.2)
             }
             
             strongSelf.animateInAnimationNode?.removeFromSupernode()
@@ -350,10 +358,15 @@ public final class ReactionNode: ASDisplayNode, ReactionItemNode {
             self.addSubnode(animationNode)
             
             var didReportStarted = false
+            let expansionTimestamp = CFAbsoluteTimeGetCurrent()
+            let reactionDescription = "\(self.item.reaction.rawValue)"
+            Logger.shared.log("ReactionNode", "reaction \(reactionDescription): larger animation requested, still icon kept until its first frame")
             animationNode.started = { [weak self] in
                 if !didReportStarted {
                     didReportStarted = true
+                    Logger.shared.log("ReactionNode", "reaction \(reactionDescription): larger animation first frame after \(Int((CFAbsoluteTimeGetCurrent() - expansionTimestamp) * 1000.0)) ms, still icon hidden")
                     self?.expandedAnimationDidBegin?()
+                    self?.expandedIconHandOver.expandedAnimationStarted()
                 }
             }
             
@@ -369,9 +382,10 @@ public final class ReactionNode: ASDisplayNode, ReactionItemNode {
             animationNode.updateLayout(size: expandedAnimationFrame.size)
             
             if transition.isAnimated {
+                // The drawn icons fade out when the larger animation has a frame, not before: its
+                // file may still be downloading, and until then they are all the reaction shows.
                 if let stillAnimationNode = self.stillAnimationNode, !stillAnimationNode.frame.isEmpty {
-                    stillAnimationNode.alpha = 0.0
-                    stillAnimationNode.layer.animateAlpha(from: 1.0, to: 0.0, duration: 0.2, completion: { [weak self] _ in
+                    self.expandedIconHandOver.fadeOutWhenExpandedAnimationStarts(stillAnimationNode, duration: 0.2, completion: { [weak self] in
                         guard let strongSelf = self, let stillAnimationNode = strongSelf.stillAnimationNode else {
                             return
                         }
@@ -380,8 +394,7 @@ public final class ReactionNode: ASDisplayNode, ReactionItemNode {
                     })
                 }
                 if let animateInAnimationNode = self.animateInAnimationNode {
-                    animateInAnimationNode.alpha = 0.0
-                    animateInAnimationNode.layer.animateAlpha(from: 1.0, to: 0.0, duration: 0.2, completion: { [weak self] _ in
+                    self.expandedIconHandOver.fadeOutWhenExpandedAnimationStarts(animateInAnimationNode, duration: 0.2, completion: { [weak self] in
                         guard let strongSelf = self, let animateInAnimationNode = strongSelf.animateInAnimationNode else {
                             return
                         }
@@ -406,8 +419,7 @@ public final class ReactionNode: ASDisplayNode, ReactionItemNode {
                     transition.animateTransformScale(node: self.staticAnimationNode, from: self.staticAnimationNode.bounds.width / animationFrame.width)
                     transition.animatePositionAdditive(node: self.staticAnimationNode, offset: CGPoint(x: self.staticAnimationNode.frame.midX - animationFrame.midX, y: self.staticAnimationNode.frame.midY - animationFrame.midY))
                     
-                    self.staticAnimationNode.alpha = 0.0
-                    self.staticAnimationNode.layer.animateAlpha(from: 1.0, to: 0.0, duration: 0.2)
+                    self.expandedIconHandOver.fadeOutWhenExpandedAnimationStarts(self.staticAnimationNode, duration: 0.2)
                 }
                 
                 if let customContentsNode = self.customContentsNode, !customContentsNode.isHidden {
@@ -415,8 +427,7 @@ public final class ReactionNode: ASDisplayNode, ReactionItemNode {
                     transition.animatePositionAdditive(node: customContentsNode, offset: CGPoint(x: customContentsNode.frame.midX - animationFrame.midX, y: customContentsNode.frame.midY - animationFrame.midY))
                     
                     if self.item.listAnimation.isVideoEmoji || self.item.listAnimation.isVideoSticker || self.item.listAnimation.isAnimatedSticker || self.item.listAnimation.isStaticSticker || self.item.listAnimation.isStaticEmoji {
-                        customContentsNode.alpha = 0.0
-                        customContentsNode.layer.animateAlpha(from: 1.0, to: 0.0, duration: 0.2)
+                        self.expandedIconHandOver.fadeOutWhenExpandedAnimationStarts(customContentsNode, duration: 0.2)
                     }
                 }
                 
