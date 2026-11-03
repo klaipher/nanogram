@@ -116,7 +116,16 @@ enum HeaderPartState {
 }
 
 final class MultipartUploadManager {
-    let parallelParts: Int
+    private let increaseParallelParts: Bool
+    var parallelParts: Int {
+        if self.increaseParallelParts {
+            return 30
+        } else if self.defaultPartSize < 512 * 1024 {
+            return 6
+        } else {
+            return 3
+        }
+    }
     var defaultPartSize: Int64
     var bigTotalParts: Int?
     var bigParts: Bool
@@ -124,7 +133,7 @@ final class MultipartUploadManager {
     private let useLargerParts: Bool
     
     let queue = Queue()
-    let fileId: Int64
+    private(set) var fileId: Int64
     
     let dataSignal: Signal<MultipartUploadData, NoError>
     
@@ -140,6 +149,7 @@ final class MultipartUploadManager {
     var resourceData: MultipartUploadData?
     
     var headerPartState: HeaderPartState
+    private let hasHeaderPart: Bool
     
     let state: MultipartUploadState
     
@@ -150,11 +160,7 @@ final class MultipartUploadManager {
         arc4random_buf(&fileId, 8)
         self.fileId = fileId
         
-        if increaseParallelParts {
-            self.parallelParts = 30
-        } else {
-            self.parallelParts = 3
-        }
+        self.increaseParallelParts = increaseParallelParts
         
         self.forceNoBigParts = forceNoBigParts
         self.useLargerParts = useLargerParts
@@ -166,6 +172,7 @@ final class MultipartUploadManager {
         self.progress = progress
         self.completed = completed
         
+        self.hasHeaderPart = headerSize != 0
         if headerSize == 0 {
             self.headerPartState = .ready
         } else {
@@ -224,6 +231,19 @@ final class MultipartUploadManager {
     }
     
     func checkState() {
+        if let resourceData = self.resourceData, resourceData.complete, resourceData.size > 10 * 1024 * 1024, !self.bigParts, !self.forceNoBigParts, self.committedOffset != 0 || !self.uploadedParts.isEmpty || !self.uploadingParts.isEmpty {
+            for (_, (_, disposable)) in self.uploadingParts {
+                disposable.dispose()
+            }
+            self.uploadingParts.removeAll()
+            self.uploadedParts.removeAll()
+            self.committedOffset = 0
+            self.state.effectiveSize = 0
+            self.headerPartState = self.hasHeaderPart ? .notStarted : .ready
+            var fileId: Int64 = 0
+            arc4random_buf(&fileId, 8)
+            self.fileId = fileId
+        }
         if let resourceData = self.resourceData, resourceData.complete && resourceData.size != 0 {
             if self.committedOffset == 0 && self.uploadedParts.isEmpty && self.uploadingParts.isEmpty {
                 if resourceData.size > 10 * 1024 * 1024, !self.forceNoBigParts {
@@ -235,7 +255,7 @@ final class MultipartUploadManager {
                     if self.useLargerParts {
                         self.defaultPartSize = 256 * 1024
                     } else {
-                        self.defaultPartSize = 16 * 1024
+                        self.defaultPartSize = 128 * 1024
                     }
                     self.bigTotalParts = nil
                 }
@@ -446,8 +466,23 @@ func multipartUpload(network: Network, postbox: Postbox, source: MultipartUpload
             let fetchedResource: Signal<Void, FetchResourceError>
             switch source {
                 case let .resource(resource):
-                    dataSignal = postbox.mediaBox.resourceData(resource.resource, option: .incremental(waitUntilFetchStatus: true)) |> map { MultipartUploadData.resourceData($0) }
                     headerSize = resource.resource.headerSize
+                    let resourceData = postbox.mediaBox.resourceData(resource.resource, option: .incremental(waitUntilFetchStatus: true))
+                    if headerSize > 0 {
+                        dataSignal = combineLatest(resourceData, postbox.mediaBox.resourceRangesStatus(resource.resource))
+                        |> map { data, ranges -> MultipartUploadData in
+                            if data.complete {
+                                return .resourceData(data)
+                            }
+                            var writtenPrefix: Int64 = 0
+                            if let first = ranges.ranges.first, first.lowerBound == 0 {
+                                writtenPrefix = first.upperBound
+                            }
+                            return .resourceData(MediaResourceData(path: data.path, offset: 0, size: writtenPrefix, complete: false))
+                        }
+                    } else {
+                        dataSignal = resourceData |> map { MultipartUploadData.resourceData($0) }
+                    }
                     fetchedResource = fetchedMediaResource(mediaBox: postbox.mediaBox, userLocation: .other, userContentType: .other, reference: resource)
                     |> map { _ in }
                 case let .tempFile(file):
