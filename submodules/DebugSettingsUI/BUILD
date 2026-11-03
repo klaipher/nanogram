@@ -50,6 +50,10 @@ swift_library(
     srcs = glob([
         "Tests/**/*.swift",
     ]),
+    # The module's sources, read by DebugLogExportTests to check that no export sends to a fixed chat.
+    data = glob([
+        "Sources/**/*.swift",
+    ]),
     deps = [
         ":DebugSettingsUI",
         "//submodules/TelegramCore:TelegramCore",

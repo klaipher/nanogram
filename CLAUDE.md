@@ -663,6 +663,11 @@ Invariants the compiler does not check; each has a test.
 - **Debug Settings** entries are built by `debugControllerEntries(environment:...)`; ids must increase in append
   order or ItemList traps. `//submodules/DebugSettingsUI:DebugSettingsUITests` checks every combination and that
   settings stored by older builds (keys of removed switches) still decode.
+- **Debug log exports** (Send Logs and its kinds, Profile Logs, MetricKit Reports, Crash Logs and the post-crash
+  prompt, the chat menu's Send Logs) all go through `presentDebugLogExport` (`DebugLogExport.swift`): "Via
+  Nanogram…" (a chat the user picks), "Via Email…" (share sheet without a Mail account), "Other Apps…". Each kind
+  only supplies its files. Nothing is sent to a fixed chat or bot (the crash log used to go to
+  `@iOSCrashReportsBot`); `DebugLogExportTests` scans the module's sources for that and pins the Nanogram names.
 - **MetricKit**: `CrashReportCollector` keeps metric/diagnostic reports in `MetricReportStore`
   (`Library/Application Support/CrashReports/MetricKit`, deduplicated by content, bounded), via `MetricManager` on
   iOS 27+ and the MX payloads on iOS 15-26; crash diagnostics still feed `CrashReportStore` from MX on all
