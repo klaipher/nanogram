@@ -45,4 +45,23 @@ final class IncomingCallNotificationsTests: XCTestCase {
         XCTAssertTrue(IncomingCallNotifications.appRingsOrCallEnded(isIntegratedWithCallKit: false, isRinging: false))
         XCTAssertFalse(IncomingCallNotifications.appRingsOrCallEnded(isIntegratedWithCallKit: false, isRinging: true))
     }
+
+    // MARK: - Calling back from a donated call
+
+    // The person of a call notification's INStartCallIntent names the account the call came to
+    // and the caller; "call back" (AppDelegate) calls from that account, not the active one.
+    func testCallBackIdentifierRoundTrips() {
+        let identifier = IncomingCallNotifications.callBackIdentifier(accountId: -8_123_456_789_012, peerId: 1234)
+        XCTAssertEqual(IncomingCallNotifications.callBack(identifier: identifier), IncomingCallNotifications.CallBack(accountId: -8_123_456_789_012, peerId: 1234))
+        let other = IncomingCallNotifications.callBackIdentifier(accountId: 42, peerId: Int64.max)
+        XCTAssertEqual(IncomingCallNotifications.callBack(identifier: other), IncomingCallNotifications.CallBack(accountId: 42, peerId: Int64.max))
+    }
+
+    // Handles that are not the extension's (Siri, the system's call history, the older "tg<peer>"
+    // custom identifiers and bare peer ids) are left to the existing call-back paths.
+    func testOtherHandlesAreNotCallBacks() {
+        for identifier in ["1234", "tg1234", "+15551234567", "", "nanogram-call:", "nanogram-call:42", "nanogram-call:42:x", "nanogram-call:42:1:2", "other:42:1"] {
+            XCTAssertNil(IncomingCallNotifications.callBack(identifier: identifier), identifier)
+        }
+    }
 }

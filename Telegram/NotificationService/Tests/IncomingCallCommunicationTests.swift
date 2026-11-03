@@ -1,6 +1,7 @@
 import XCTest
 import Intents
 import UserNotifications
+import NotificationsPresentationData
 @testable import NotificationServiceExtensionLib
 
 /// The ringing call notification is a communication notification for a call (INStartCallIntent),
@@ -18,7 +19,7 @@ final class IncomingCallCommunicationTests: XCTestCase {
     // banner shows today (with the account it was delivered to) is the one it is drawn with.
     @available(iOS 15.0, *)
     func testCallerIsDrawnWithTheBannersTitle() throws {
-        let caller = try XCTUnwrap(IncomingCallCommunication.caller(peerId: 1234, callerName: "Alice", recipientAccountName: "peter", contactIdentifier: "C-1"))
+        let caller = try XCTUnwrap(IncomingCallCommunication.caller(accountId: 42, peerId: 1234, callerName: "Alice", recipientAccountName: "peter", contactIdentifier: "C-1"))
         let names = NotificationNames(title: "Alice", senderName: nil, silent: false, recipientAccountName: "peter")
         XCTAssertEqual(caller.displayedName, names.title)
         XCTAssertEqual(caller.displayedName, "Alice → peter")
@@ -30,7 +31,7 @@ final class IncomingCallCommunicationTests: XCTestCase {
 
     @available(iOS 15.0, *)
     func testCallerWithOneAccount() throws {
-        let caller = try XCTUnwrap(IncomingCallCommunication.caller(peerId: 1234, callerName: "Alice", recipientAccountName: nil, contactIdentifier: nil))
+        let caller = try XCTUnwrap(IncomingCallCommunication.caller(accountId: 42, peerId: 1234, callerName: "Alice", recipientAccountName: nil, contactIdentifier: nil))
         XCTAssertEqual(caller.displayedName, "Alice")
         XCTAssertEqual(caller.donatedName, "Alice")
     }
@@ -38,21 +39,22 @@ final class IncomingCallCommunicationTests: XCTestCase {
     // A call without a name keeps the "Incoming Call" banner as it is.
     @available(iOS 15.0, *)
     func testNoCallerWithoutAName() {
-        XCTAssertNil(IncomingCallCommunication.caller(peerId: 1234, callerName: nil, recipientAccountName: "peter", contactIdentifier: nil))
-        XCTAssertNil(IncomingCallCommunication.caller(peerId: 1234, callerName: "", recipientAccountName: "peter", contactIdentifier: nil))
+        XCTAssertNil(IncomingCallCommunication.caller(accountId: 42, peerId: 1234, callerName: nil, recipientAccountName: "peter", contactIdentifier: nil))
+        XCTAssertNil(IncomingCallCommunication.caller(accountId: 42, peerId: 1234, callerName: "", recipientAccountName: "peter", contactIdentifier: nil))
     }
 
-    // The app's "call back" handler (AppDelegate, INStartCallIntent user activity) reads an
-    // unknown-type handle as the peer id.
+    // The app's "call back" handler (AppDelegate, INStartCallIntent user activity) reads the
+    // handle as the account the call came to and the caller, and calls from that account.
     @available(iOS 15.0, *)
-    func testPersonCarriesThePeerIdAndThePhoto() throws {
-        let caller = try XCTUnwrap(IncomingCallCommunication.caller(peerId: 1234, callerName: "Alice", recipientAccountName: "peter", contactIdentifier: "C-1"))
+    func testPersonCarriesTheAccountThePeerIdAndThePhoto() throws {
+        let caller = try XCTUnwrap(IncomingCallCommunication.caller(accountId: 42, peerId: 1234, callerName: "Alice", recipientAccountName: "peter", contactIdentifier: "C-1"))
         let image = INImage(imageData: Data([0x1]))
         let person = IncomingCallCommunication.person(caller, name: caller.displayedName, image: image)
         XCTAssertEqual(person.displayName, "Alice → peter")
-        XCTAssertEqual(person.personHandle?.value, "1234")
         XCTAssertEqual(person.personHandle?.type, .unknown)
-        XCTAssertEqual(person.customIdentifier, "1234")
+        let expected = IncomingCallNotifications.CallBack(accountId: 42, peerId: 1234)
+        XCTAssertEqual(person.personHandle?.value.flatMap(IncomingCallNotifications.callBack(identifier:)), expected)
+        XCTAssertEqual(person.customIdentifier.flatMap(IncomingCallNotifications.callBack(identifier:)), expected)
         XCTAssertEqual(person.contactIdentifier, "C-1")
         // INPerson keeps a copy of the image.
         XCTAssertNotNil(person.image)
@@ -66,8 +68,8 @@ final class IncomingCallCommunicationTests: XCTestCase {
     // the plain "<caller> / is calling you" one: no photo, and nothing donated to the system.
     @available(iOS 15.0, *)
     func testLockedAppDrawsNoCaller() {
-        XCTAssertTrue(IncomingCallCommunication.drawsCaller(isAppLocked: false, displayNameOnLockscreen: true))
-        XCTAssertFalse(IncomingCallCommunication.drawsCaller(isAppLocked: true, displayNameOnLockscreen: true))
+        XCTAssertTrue(IncomingCallCommunication.drawsCaller(isAppLocked: false, displayNameOnLockscreen: true, isGroupCall: false))
+        XCTAssertFalse(IncomingCallCommunication.drawsCaller(isAppLocked: true, displayNameOnLockscreen: true, isGroupCall: false))
     }
 
     // With names hidden on the lock screen a message is not a communication notification (no
@@ -75,8 +77,15 @@ final class IncomingCallCommunicationTests: XCTestCase {
     // contact and no interaction handed to the system.
     @available(iOS 15.0, *)
     func testHiddenNamesDrawNoCaller() {
-        XCTAssertFalse(IncomingCallCommunication.drawsCaller(isAppLocked: false, displayNameOnLockscreen: false))
-        XCTAssertFalse(IncomingCallCommunication.drawsCaller(isAppLocked: true, displayNameOnLockscreen: false))
+        XCTAssertFalse(IncomingCallCommunication.drawsCaller(isAppLocked: false, displayNameOnLockscreen: false, isGroupCall: false))
+        XCTAssertFalse(IncomingCallCommunication.drawsCaller(isAppLocked: true, displayNameOnLockscreen: false, isGroupCall: false))
+    }
+
+    // A group call invite is no call to the inviter: calling them back (the donated intent's
+    // "call back") would place a 1:1 call. Its banner stays the plain one, with nothing donated.
+    @available(iOS 15.0, *)
+    func testGroupCallsDrawNoCaller() {
+        XCTAssertFalse(IncomingCallCommunication.drawsCaller(isAppLocked: false, displayNameOnLockscreen: true, isGroupCall: true))
     }
 
     // MARK: - Which picture
@@ -106,7 +115,7 @@ final class IncomingCallCommunicationTests: XCTestCase {
 
     @available(iOS 15.0, *)
     func testIntentRingsAnIncomingAudioCall() throws {
-        let caller = try XCTUnwrap(IncomingCallCommunication.caller(peerId: 1234, callerName: "Alice", recipientAccountName: nil, contactIdentifier: nil))
+        let caller = try XCTUnwrap(IncomingCallCommunication.caller(accountId: 42, peerId: 1234, callerName: "Alice", recipientAccountName: nil, contactIdentifier: nil))
         let person = IncomingCallCommunication.person(caller, name: caller.displayedName, image: nil)
         let date = Date(timeIntervalSince1970: 1000)
         let intent = IncomingCallCommunication.intent(caller: person, callId: 777, isVideo: false, date: date)
@@ -124,7 +133,7 @@ final class IncomingCallCommunicationTests: XCTestCase {
 
     @available(iOS 15.0, *)
     func testIntentForAVideoCall() throws {
-        let caller = try XCTUnwrap(IncomingCallCommunication.caller(peerId: 1234, callerName: "Alice", recipientAccountName: nil, contactIdentifier: nil))
+        let caller = try XCTUnwrap(IncomingCallCommunication.caller(accountId: 42, peerId: 1234, callerName: "Alice", recipientAccountName: nil, contactIdentifier: nil))
         let person = IncomingCallCommunication.person(caller, name: caller.displayedName, image: nil)
         let intent = IncomingCallCommunication.intent(caller: person, callId: nil, isVideo: true, date: Date())
         XCTAssertEqual(intent.callCapability, .videoCall)
@@ -154,7 +163,7 @@ final class IncomingCallCommunicationTests: XCTestCase {
     @available(iOS 15.0, *)
     func testAFailedUpdateKeepsTheBanner() throws {
         let content = self.ringingContent()
-        let caller = try XCTUnwrap(IncomingCallCommunication.caller(peerId: 1234, callerName: "Alice", recipientAccountName: nil, contactIdentifier: nil))
+        let caller = try XCTUnwrap(IncomingCallCommunication.caller(accountId: 42, peerId: 1234, callerName: "Alice", recipientAccountName: nil, contactIdentifier: nil))
         let intent = IncomingCallCommunication.intent(caller: IncomingCallCommunication.person(caller, name: "Alice", image: nil), callId: 1, isVideo: false, date: Date())
         let result = IncomingCallCommunication.updatedContent(content, intent: intent, update: { _, _ in
             throw UpdateFailure.refused
@@ -168,7 +177,7 @@ final class IncomingCallCommunicationTests: XCTestCase {
     @available(iOS 15.0, *)
     func testUpdateHandsTheIntentToTheSystem() throws {
         let content = self.ringingContent()
-        let caller = try XCTUnwrap(IncomingCallCommunication.caller(peerId: 1234, callerName: "Alice", recipientAccountName: nil, contactIdentifier: nil))
+        let caller = try XCTUnwrap(IncomingCallCommunication.caller(accountId: 42, peerId: 1234, callerName: "Alice", recipientAccountName: nil, contactIdentifier: nil))
         let intent = IncomingCallCommunication.intent(caller: IncomingCallCommunication.person(caller, name: "Alice", image: nil), callId: 1, isVideo: false, date: Date())
         let updated = UNMutableNotificationContent()
         var received: INStartCallIntent?
@@ -185,7 +194,7 @@ final class IncomingCallCommunicationTests: XCTestCase {
     @available(iOS 15.0, *)
     func testSystemUpdateKeepsWhatTheBannerHad() throws {
         let content = self.ringingContent()
-        let caller = try XCTUnwrap(IncomingCallCommunication.caller(peerId: 1234, callerName: "Alice", recipientAccountName: nil, contactIdentifier: nil))
+        let caller = try XCTUnwrap(IncomingCallCommunication.caller(accountId: 42, peerId: 1234, callerName: "Alice", recipientAccountName: nil, contactIdentifier: nil))
         let intent = IncomingCallCommunication.intent(caller: IncomingCallCommunication.person(caller, name: "Alice", image: nil), callId: 1, isVideo: false, date: Date())
         let updated: UNNotificationContent
         do {

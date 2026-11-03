@@ -577,6 +577,8 @@ private struct NotificationContent: CustomStringConvertible {
     /// Set for a ringing call: the notification is then drawn from an `INStartCallIntent` for
     /// `sender` (`IncomingCallCommunication`) instead of a message intent.
     struct Call {
+        /// The account the call came to (`AccountRecordId`), which calling back calls from.
+        var accountId: Int64
         var callId: Int64?
         var isVideo: Bool
     }
@@ -666,7 +668,7 @@ private struct NotificationContent: CustomStringConvertible {
     /// draws the caller's photo; unchanged when there is no caller or the system refuses the intent.
     @available(iOS 15.0, *)
     private func updatedForCall(_ content: UNNotificationContent, call: Call) -> UNNotificationContent {
-        guard self.isLockedMessage == nil, let sender = self.sender, let caller = IncomingCallCommunication.caller(peerId: sender.peerId.toInt64(), callerName: sender.name, recipientAccountName: self.recipientAccountName, contactIdentifier: sender.contactIdentifier) else {
+        guard self.isLockedMessage == nil, let sender = self.sender, let caller = IncomingCallCommunication.caller(accountId: call.accountId, peerId: sender.peerId.toInt64(), callerName: sender.name, recipientAccountName: self.recipientAccountName, contactIdentifier: sender.contactIdentifier) else {
             return content
         }
         let date = Date()
@@ -843,7 +845,7 @@ private func getCurrentRenderedTotalUnreadCount(accountManager: AccountManager<T
 /// caller's photo (see `IncomingCallCommunication`) unless the app is locked or names are hidden on
 /// the lock screen. Made only to be shown (`IncomingCallPushPresentation.present`): the caller's
 /// device contact and photo are looked up then, never before CallKit is offered the call.
-private func makeIncomingCallNotificationContent(postbox: Postbox, accountPeerId: PeerId, callerName: String?, callerPeer: Peer?, incomingCallMessage: String, recipientAccountName: String?, accountId: Int64, fromId: PeerId, isAppLocked: Bool, displayNameOnLockscreen: Bool, callId: Int64?, isVideo: Bool, completion: @escaping (NotificationContent) -> Void) {
+private func makeIncomingCallNotificationContent(postbox: Postbox, accountPeerId: PeerId, callerName: String?, callerPeer: Peer?, incomingCallMessage: String, recipientAccountName: String?, accountId: Int64, fromId: PeerId, isAppLocked: Bool, displayNameOnLockscreen: Bool, isGroupCall: Bool, callId: Int64?, isVideo: Bool, completion: @escaping (NotificationContent) -> Void) {
     let alert = IncomingCallPushPresentation.alert(callerName: callerName, incomingCallMessage: incomingCallMessage)
     var content = NotificationContent(isLockedMessage: nil)
     content.recipientAccountName = recipientAccountName
@@ -852,14 +854,14 @@ private func makeIncomingCallNotificationContent(postbox: Postbox, accountPeerId
     content.systemSound = IncomingCallPushPresentation.sound
     content.userInfo = IncomingCallPushPresentation.userInfo(accountId: accountId, peerId: fromId.toInt64(), fromUserId: fromId.id._internalGetInt64Value())
     if #available(iOS 15.0, *) {
-        if IncomingCallCommunication.drawsCaller(isAppLocked: isAppLocked, displayNameOnLockscreen: displayNameOnLockscreen), let callerName = alert.title {
+        if IncomingCallCommunication.drawsCaller(isAppLocked: isAppLocked, displayNameOnLockscreen: displayNameOnLockscreen, isGroupCall: isGroupCall), let callerName = alert.title {
             let _ = (postbox.transaction { transaction -> String? in
                 return localContactIdentifier(transaction: transaction, peerId: fromId)
             }).start(next: { contactIdentifier in
                 var content = content
                 content.sender = NotificationContent.Sender(peerId: fromId, name: callerName, contactIdentifier: contactIdentifier)
                 content.senderImage = callerAvatar(mediaBox: postbox.mediaBox, accountPeerId: accountPeerId, callerId: fromId, callerPeer: callerPeer, callerName: callerName, displayNameOnLockscreen: displayNameOnLockscreen)
-                content.call = NotificationContent.Call(callId: callId, isVideo: isVideo)
+                content.call = NotificationContent.Call(accountId: accountId, callId: callId, isVideo: isVideo)
                 completion(content)
             })
             return
@@ -1591,6 +1593,7 @@ private final class NotificationServiceHandler {
                                                 fromId: callData.fromId,
                                                 isAppLocked: isLockedMessage != nil,
                                                 displayNameOnLockscreen: inAppNotificationSettings.displayNameOnLockscreen,
+                                                isGroupCall: false,
                                                 callId: callData.id,
                                                 isVideo: callData.isVideo,
                                                 completion: done
@@ -1661,6 +1664,7 @@ private final class NotificationServiceHandler {
                                                 fromId: groupCallData.fromId,
                                                 isAppLocked: isLockedMessage != nil,
                                                 displayNameOnLockscreen: inAppNotificationSettings.displayNameOnLockscreen,
+                                                isGroupCall: true,
                                                 callId: groupCallData.id,
                                                 isVideo: groupCallData.isVideo,
                                                 completion: done

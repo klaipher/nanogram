@@ -2857,6 +2857,14 @@ private func extractAccountManagerState(records: AccountRecordsView<TelegramAcco
                     }
                 }
                 
+                // A call the notification service extension rang (its donated INStartCallIntent):
+                // call the caller back from the account the call came to, audio or video as it was.
+                if let contact = startCallContacts.first, let callBack = [contact.customIdentifier, contact.personHandle?.value].lazy.compactMap({ $0.flatMap(IncomingCallNotifications.callBack(identifier:)) }).first {
+                    let isVideoCall = (userActivity.interaction?.intent as? INStartCallIntent)?.callCapability == .videoCall
+                    self.startCallWhenReady(accountId: AccountRecordId(rawValue: callBack.accountId), peerId: PeerId(callBack.peerId), isVideo: isVideoCall)
+                    return true
+                }
+
                 if let contact = startCallContacts.first {
                     let contactByIdentifier: Signal<EnginePeer?, NoError>
                     if let context = self.contextValue?.context, let contactIdentifier = contact.contactIdentifier {

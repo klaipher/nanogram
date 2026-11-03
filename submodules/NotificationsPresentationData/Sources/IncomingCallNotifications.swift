@@ -46,4 +46,32 @@ public enum IncomingCallNotifications {
     public static func appRingsOrCallEnded(isIntegratedWithCallKit: Bool, isRinging: Bool) -> Bool {
         return isIntegratedWithCallKit || !isRinging
     }
+
+    /// Who a donated incoming call (the extension's `INStartCallIntent`) calls back: the caller,
+    /// from the account the call came to (`AccountRecordId`), not whichever account is active.
+    public struct CallBack: Equatable, Sendable {
+        public var accountId: Int64
+        public var peerId: Int64
+
+        public init(accountId: Int64, peerId: Int64) {
+            self.accountId = accountId
+            self.peerId = peerId
+        }
+    }
+
+    private static let callBackPrefix = "nanogram-call"
+
+    /// The handle (and custom identifier) of the caller in a donated incoming call.
+    public static func callBackIdentifier(accountId: Int64, peerId: Int64) -> String {
+        return "\(callBackPrefix):\(accountId):\(peerId)"
+    }
+
+    /// Nil for any other handle (a bare peer id, "tg<peer id>", a phone number).
+    public static func callBack(identifier: String) -> CallBack? {
+        let parts = identifier.split(separator: ":", omittingEmptySubsequences: false)
+        guard parts.count == 3, parts[0] == callBackPrefix, let accountId = Int64(parts[1]), let peerId = Int64(parts[2]) else {
+            return nil
+        }
+        return CallBack(accountId: accountId, peerId: peerId)
+    }
 }

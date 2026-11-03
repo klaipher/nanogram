@@ -1,6 +1,7 @@
 import Foundation
 import Intents
 import UserNotifications
+import NotificationsPresentationData
 
 /// The ringing call notification (`IncomingCallPushPresentation`) as a communication notification
 /// for a call: the content is updated from an `INStartCallIntent` naming the caller, so iOS draws
@@ -10,6 +11,7 @@ import UserNotifications
 @available(iOS 15.0, *)
 enum IncomingCallCommunication {
     struct Caller: Equatable {
+        var accountId: Int64
         var peerId: Int64
         /// The name the notification is drawn with: the system draws the title from it and hides the
         /// subtitle, so it is the banner's title, with the account it was delivered to.
@@ -20,7 +22,7 @@ enum IncomingCallCommunication {
     }
 
     /// Nil without a name: the "Incoming Call" banner then stays as it is.
-    static func caller(peerId: Int64, callerName: String?, recipientAccountName: String?, contactIdentifier: String?) -> Caller? {
+    static func caller(accountId: Int64, peerId: Int64, callerName: String?, recipientAccountName: String?, contactIdentifier: String?) -> Caller? {
         guard let callerName, !callerName.isEmpty else {
             return nil
         }
@@ -28,21 +30,24 @@ enum IncomingCallCommunication {
         guard let displayedName = names.displayedSenderName, let donatedName = names.donatedSenderName else {
             return nil
         }
-        return Caller(peerId: peerId, displayedName: displayedName, donatedName: donatedName, contactIdentifier: contactIdentifier)
+        return Caller(accountId: accountId, peerId: peerId, displayedName: displayedName, donatedName: donatedName, contactIdentifier: contactIdentifier)
     }
 
-    /// The handle is the peer id with an unknown type, which the app's call-back handler (an
-    /// `INStartCallIntent` user activity in `AppDelegate`) reads as the peer to call.
+    /// The handle names the account the call came to and the caller
+    /// (`IncomingCallNotifications.callBackIdentifier`), with an unknown type: the app's call-back
+    /// handler (an `INStartCallIntent` user activity in `AppDelegate`) calls the caller from that
+    /// account.
     static func person(_ caller: Caller, name: String, image: INImage?) -> INPerson {
+        let identifier = IncomingCallNotifications.callBackIdentifier(accountId: caller.accountId, peerId: caller.peerId)
         var nameComponents = PersonNameComponents()
         nameComponents.nickname = name
         return INPerson(
-            personHandle: INPersonHandle(value: "\(caller.peerId)", type: .unknown),
+            personHandle: INPersonHandle(value: identifier, type: .unknown),
             nameComponents: nameComponents,
             displayName: name,
             image: image,
             contactIdentifier: caller.contactIdentifier,
-            customIdentifier: "\(caller.peerId)",
+            customIdentifier: identifier,
             isMe: false,
             suggestionType: .none
         )
@@ -50,9 +55,10 @@ enum IncomingCallCommunication {
 
     /// Whether the ringing notification is drawn as the caller's (their photo, the interaction
     /// donated) rather than kept as the plain banner. Not while the passcode lock is on, nor with
-    /// names hidden on the lock screen: a message then names no sender either.
-    static func drawsCaller(isAppLocked: Bool, displayNameOnLockscreen: Bool) -> Bool {
-        return !isAppLocked && displayNameOnLockscreen
+    /// names hidden on the lock screen: a message then names no sender either. Nor for a group call
+    /// invite: calling back the donated caller would place a 1:1 call to the inviter.
+    static func drawsCaller(isAppLocked: Bool, displayNameOnLockscreen: Bool, isGroupCall: Bool) -> Bool {
+        return !isAppLocked && displayNameOnLockscreen && !isGroupCall
     }
 
     enum AvatarSource: Equatable {
