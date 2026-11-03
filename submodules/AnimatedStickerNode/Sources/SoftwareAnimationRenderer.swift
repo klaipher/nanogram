@@ -6,8 +6,84 @@ import SwiftSignalKit
 import YuvConversion
 import Accelerate
 
+// The renderer's view. A frame without a tint goes straight into the layer (see displayFrame), and
+// UIImageView clears its layer's contents when it changes size, content mode or highlight while it
+// has no image: a still, paused or finished sticker then stayed empty until a next frame that may
+// never come. The frame is put back after each of those.
+private final class DirectFrameImageView: UIImageView {
+    var directContents: AnyObject? {
+        didSet {
+            self.restoreDirectContents()
+        }
+    }
+    
+    override var frame: CGRect {
+        didSet {
+            if oldValue.size != self.frame.size {
+                self.restoreDirectContents()
+            }
+        }
+    }
+    
+    override var bounds: CGRect {
+        didSet {
+            if oldValue.size != self.bounds.size {
+                self.restoreDirectContents()
+            }
+        }
+    }
+    
+    override var contentMode: UIView.ContentMode {
+        didSet {
+            self.restoreDirectContents()
+        }
+    }
+    
+    override var isHighlighted: Bool {
+        didSet {
+            self.restoreDirectContents()
+        }
+    }
+    
+    override func layoutSubviews() {
+        super.layoutSubviews()
+        self.restoreDirectContents()
+    }
+    
+    private func restoreDirectContents() {
+        guard self.image == nil, let directContents = self.directContents else {
+            return
+        }
+        if (self.layer.contents as AnyObject?) !== directContents {
+            self.layer.contents = directContents
+        }
+    }
+}
+
 final class SoftwareAnimationRenderer: ASDisplayNode, AnimationRenderer {
     private let templateImageSupport: Bool
+    
+    // What the image view's layer shows without an image: the last untinted frame, or contents
+    // copied from another node (cloneCurrentFrame).
+    private var directContents: AnyObject? {
+        didSet {
+            if self.isNodeLoaded, let imageView = self.view as? DirectFrameImageView {
+                imageView.directContents = self.directContents
+            }
+        }
+    }
+    
+    override var contents: Any? {
+        get {
+            return super.contents
+        }
+        set {
+            super.contents = newValue
+            if self.templateImageSupport {
+                self.directContents = newValue as AnyObject?
+            }
+        }
+    }
     
     private var highlightedContentNode: ASDisplayNode?
     private var highlightedColor: UIColor?
@@ -23,8 +99,16 @@ final class SoftwareAnimationRenderer: ASDisplayNode, AnimationRenderer {
         
         if templateImageSupport {
             self.setViewBlock({
-                return UIImageView()
+                return DirectFrameImageView()
             })
+        }
+    }
+    
+    override func didLoad() {
+        super.didLoad()
+        
+        if let imageView = self.view as? DirectFrameImageView {
+            imageView.directContents = self.directContents
         }
     }
         
@@ -208,7 +292,9 @@ final class SoftwareAnimationRenderer: ASDisplayNode, AnimationRenderer {
                 imageView.image = nil
             }
             imageView.layer.contents = image?.cgImage
+            self.directContents = image?.cgImage
         } else {
+            self.directContents = nil
             imageView.image = image
         }
     }
@@ -223,6 +309,7 @@ final class SoftwareAnimationRenderer: ASDisplayNode, AnimationRenderer {
             if self.templateImageSupport, let imageView = self.view as? UIImageView {
                 imageView.image = nil
                 // The frame may have been put into the layer directly.
+                self.directContents = nil
                 imageView.layer.contents = nil
             } else {
                 self.contents = nil

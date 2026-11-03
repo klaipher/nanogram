@@ -183,6 +183,45 @@ final class SoftwareAnimationRendererTests: XCTestCase {
         container.removeFromSuperview()
     }
 
+    // UIKit clears an image view's layer contents when the view changes size and has no image, so a
+    // frame put into the layer directly was lost on a resize: a still, paused or finished sticker
+    // (a reaction's still frame, a cloned frame) stayed empty until a next frame that never came.
+    func testFrameSurvivesResize() throws {
+        let bytesPerRow = DeviceGraphicsContextSettings.shared.bytesPerRow(forWidth: self.width)
+        let source = makeStraightBgraFrame(width: self.width, height: self.height, bytesPerRow: bytesPerRow)
+        let renderer = self.makeRenderer()
+        self.render(renderer, data: source, type: .argb, mulAlpha: true, bytesPerRow: bytesPerRow)
+        let cgImage = try XCTUnwrap(renderer.currentFrameImage?.cgImage)
+
+        renderer.frame = CGRect(x: 0, y: 0, width: 96, height: 80)
+        renderer.view.layoutIfNeeded()
+        XCTAssertTrue((renderer.layer.contents as AnyObject?) === cgImage, "after a frame resize")
+
+        renderer.bounds = CGRect(x: 0, y: 0, width: 60, height: 50)
+        renderer.view.layoutIfNeeded()
+        XCTAssertTrue((renderer.layer.contents as AnyObject?) === cgImage, "after a bounds resize")
+
+        renderer.view.frame = CGRect(x: 0, y: 0, width: 48, height: 40)
+        renderer.view.layoutIfNeeded()
+        XCTAssertTrue((renderer.layer.contents as AnyObject?) === cgImage, "after a view resize")
+    }
+
+    // A frame copied from another node (cloneCurrentFrame) before the renderer gets its size.
+    func testClonedFrameSurvivesTheFirstSize() throws {
+        let bytesPerRow = DeviceGraphicsContextSettings.shared.bytesPerRow(forWidth: self.width)
+        let source = makeStraightBgraFrame(width: self.width, height: self.height, bytesPerRow: bytesPerRow)
+        let other = self.makeRenderer()
+        self.render(other, data: source, type: .argb, mulAlpha: true, bytesPerRow: bytesPerRow)
+        let cgImage = try XCTUnwrap(other.currentFrameImage?.cgImage)
+
+        let renderer = SoftwareAnimationRenderer(templateImageSupport: true)
+        let _ = renderer.view
+        renderer.contents = other.contents
+        renderer.frame = CGRect(x: 0, y: 0, width: 48, height: 40)
+        renderer.view.layoutIfNeeded()
+        XCTAssertTrue((renderer.layer.contents as AnyObject?) === cgImage)
+    }
+
     // An overlay that replaces the content hides the frame, in either display mode.
     func testReplacingOverlayHidesTheFrame() throws {
         let bytesPerRow = DeviceGraphicsContextSettings.shared.bytesPerRow(forWidth: self.width)
