@@ -5,6 +5,7 @@ import SwiftSignalKit
 import Display
 import Pdf
 import AVFoundation
+import ImageIO
 
 public struct ICloudFileResourceId {
     public let urlData: String
@@ -126,6 +127,10 @@ private func descriptionWithUrl(_ url: URL) -> ICloudFileDescription? {
         guard url.startAccessingSecurityScopedResource() else {
             return nil
         }
+        // Every way out gives the grant back; each one leaked is a kernel resource until relaunch.
+        defer {
+            url.stopAccessingSecurityScopedResource()
+        }
         
         guard let urlData = try? url.bookmarkData(options: URL.BookmarkCreationOptions.suitableForBookmarkFile, includingResourceValuesForKeys: nil, relativeTo: nil) else {
             return nil
@@ -185,8 +190,6 @@ private func descriptionWithUrl(_ url: URL) -> ICloudFileDescription? {
             audioMetadata: audioMetadata
         )
         
-        url.stopAccessingSecurityScopedResource()
-        
         return result
     } else {
         return nil
@@ -206,8 +209,11 @@ public func iCloudFileDescription(_ url: URL) -> Signal<ICloudFileDescription?, 
         }
         
         if !isRemote || isCurrent {
-            subscriber.putNext(descriptionWithUrl(url))
-            subscriber.putCompletion()
+            // A bookmark and synchronous AVAsset metadata reads: never on the picker's main queue.
+            Queue.concurrentDefaultQueue().async {
+                subscriber.putNext(descriptionWithUrl(url))
+                subscriber.putCompletion()
+            }
             return EmptyDisposable
         } else {
             final class WrappedQuery {
@@ -235,8 +241,10 @@ public func iCloudFileDescription(_ url: URL) -> Signal<ICloudFileDescription?, 
                     return
                 }
                 
-                subscriber.putNext(descriptionWithUrl(url))
-                subscriber.putCompletion()
+                Queue.concurrentDefaultQueue().async {
+                    subscriber.putNext(descriptionWithUrl(url))
+                    subscriber.putCompletion()
+                }
             })
             
             query.query.start()
@@ -271,6 +279,24 @@ private final class ICloudFileResourceCopyItem: EngineRawMediaResourceDataFetchC
         }
         return success
     }
+}
+
+/// Decodes at most `maxPixelSize` on the longer side (ImageIO thumbnail), in display orientation, instead of the
+/// whole image: a 48 MP photo was decoded in full for a 256-point thumbnail.
+private func downsampledImage(url: URL, maxPixelSize: CGFloat) -> UIImage? {
+    guard let source = CGImageSourceCreateWithURL(url as CFURL, [kCGImageSourceShouldCache: false] as CFDictionary) else {
+        return nil
+    }
+    let options: [CFString: Any] = [
+        kCGImageSourceCreateThumbnailFromImageAlways: true,
+        kCGImageSourceCreateThumbnailWithTransform: true,
+        kCGImageSourceShouldCacheImmediately: true,
+        kCGImageSourceThumbnailMaxPixelSize: maxPixelSize
+    ]
+    guard let image = CGImageSourceCreateThumbnailAtIndex(source, 0, options as CFDictionary) else {
+        return nil
+    }
+    return UIImage(cgImage: image)
 }
 
 public func fetchICloudFileResource(resource: ICloudFileResource) -> Signal<EngineMediaResourceDataFetchResult, EngineMediaResourceDataFetchError> {
@@ -313,12 +339,14 @@ public func fetchICloudFileResource(resource: ICloudFileResource) -> Signal<Engi
                 if isAudioFile, let artworkData = audioArtworkData(from: AVURLAsset(url: url)), let originalImage = UIImage(data: artworkData), let image = generateScaledImage(image: originalImage, size: originalImage.size.fitted(CGSize(width: 256, height: 256.0))), let jpegData = image.jpegData(compressionQuality: 0.5) {
                     data = jpegData
                 } else if !isAudioFile {
-                    if let imageData = try? Data(contentsOf: url, options: .mappedIfSafe), let originalImage = UIImage(data: imageData), let image = generateScaledImage(image: originalImage, size: originalImage.size.fitted(CGSize(width: 256, height: 256.0))), let jpegData = image.jpegData(compressionQuality: 0.5) {
+                    if let originalImage = downsampledImage(url: url, maxPixelSize: 256.0 * 3.0), let image = generateScaledImage(image: originalImage, size: originalImage.size.fitted(CGSize(width: 256, height: 256.0))), let jpegData = image.jpegData(compressionQuality: 0.5) {
                         data = jpegData
                     } else if let image = generatePdfPreviewImage(url: url, size: CGSize(width: 256, height: 256.0)), let jpegData = image.jpegData(compressionQuality: 0.5) {
                         data = jpegData
                     }
                 }
+                // The thumbnail is made; only the copy item (below) keeps the grant, until it is released.
+                url.stopAccessingSecurityScopedResource()
                 if let _ = try? data.write(to: URL(fileURLWithPath: tempFile.path)) {
                     subscriber.putNext(.moveTempFile(file: tempFile))
                 }
@@ -329,24 +357,29 @@ public func fetchICloudFileResource(resource: ICloudFileResource) -> Signal<Engi
         }
         
         if !isRemote || isCurrent {
-            //url.stopAccessingSecurityScopedResource()
             complete()
             return EmptyDisposable
         }
         
+        // A private queue: the thumbnail of a file that was not downloaded yet is decoded here, never on main.
+        let coordinationQueue = OperationQueue()
+        coordinationQueue.maxConcurrentOperationCount = 1
         let fileCoordinator = NSFileCoordinator(filePresenter: nil)
         let fileAccessIntent = NSFileAccessIntent.readingIntent(with: url, options: [.withoutChanges])
-        fileCoordinator.coordinate(with: [fileAccessIntent], queue: OperationQueue.main, byAccessor: { error in
+        fileCoordinator.coordinate(with: [fileAccessIntent], queue: coordinationQueue, byAccessor: { error in
             if error == nil {
-                //url.stopAccessingSecurityScopedResource()
                 complete()
             } else {
+                url.stopAccessingSecurityScopedResource()
                 subscriber.putCompletion()
             }
         })
         
         return ActionDisposable {
+            // A cancelled coordination calls the accessor with an error, which gives the grant back.
             fileCoordinator.cancel()
+            withExtendedLifetime(coordinationQueue) {
+            }
         }
     }
 }
