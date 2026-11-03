@@ -25,6 +25,16 @@ private func describeState(_ state: NWConnection.State) -> String {
 }
 
 @available(iOS 12.0, macOS 14.0, *)
+func configureNetworkFrameworkTcpOptions(_ tcpOptions: NWProtocolTCP.Options) {
+    tcpOptions.noDelay = true
+    tcpOptions.enableKeepalive = true
+    tcpOptions.keepaliveIdle = 30
+    tcpOptions.keepaliveCount = 3
+    tcpOptions.keepaliveInterval = 10
+    tcpOptions.enableFastOpen = true
+}
+
+@available(iOS 12.0, macOS 14.0, *)
 final class NetworkFrameworkTcpConnectionInterface: NSObject, MTTcpConnectionInterface {
     private struct ReadRequest {
         let length: Int
@@ -130,12 +140,7 @@ final class NetworkFrameworkTcpConnectionInterface: NSObject, MTTcpConnectionInt
             let port = NWEndpoint.Port(rawValue: port)!
             
             let tcpOptions = NWProtocolTCP.Options()
-            tcpOptions.noDelay = true
-            tcpOptions.enableKeepalive = true
-            tcpOptions.keepaliveIdle = 5
-            tcpOptions.keepaliveCount = 2
-            tcpOptions.keepaliveInterval = 5
-            tcpOptions.enableFastOpen = true
+            configureNetworkFrameworkTcpOptions(tcpOptions)
             
             let parameters = NWParameters(tls: nil, tcp: tcpOptions)
             // nw_parameters_set_prefer_no_proxy defaults to false, so Network.framework routes
