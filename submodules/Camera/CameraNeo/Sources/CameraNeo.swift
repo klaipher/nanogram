@@ -38,7 +38,10 @@ final class CameraNeo: NSObject, CameraProtocol {
     private let session: AVCaptureSession
     private var wantsRunning = false
     private var isConfigured = false
-    private var isInvalidated = false
+    private let invalidation = CameraSessionInvalidation()
+    private var isInvalidated: Bool {
+        return self.invalidation.isInvalidated
+    }
 
     private var backDevice: AVCaptureDevice?
     private var frontDevice: AVCaptureDevice?
@@ -160,7 +163,9 @@ final class CameraNeo: NSObject, CameraProtocol {
             if self.session.isRunning {
                 self.session.stopRunning()
             }
-            self.tearDownSession()
+            if self.invalidation.needsTearDownOnDeinit {
+                self.tearDownSession()
+            }
         }
         if DispatchQueue.getSpecific(key: self.sessionQueueKey) != nil {
             cleanUpSession()
@@ -201,12 +206,23 @@ final class CameraNeo: NSObject, CameraProtocol {
                 self.session.stopRunning()
             }
             if invalidate {
-                self.isInvalidated = true
-                self.tearDownSession()
-                DispatchQueue.main.async { [weak self] in
-                    self?.previewView?.invalidate()
-                    self?.secondaryPreviewView?.invalidate()
-                }
+                // Once: the preview layers leave the session on main before the session's graph is torn down
+                // here, never at the same time (see CameraSessionInvalidation for the lock ordering).
+                self.previewView?.stopConnectionChanges()
+                self.secondaryPreviewView?.stopConnectionChanges()
+                let previewView = self.previewView
+                let secondaryPreviewView = self.secondaryPreviewView
+                self.invalidation.invalidate(
+                    sessionQueue: self.sessionQueue,
+                    mainQueue: .main,
+                    detachPreview: {
+                        previewView?.invalidate()
+                        secondaryPreviewView?.invalidate()
+                    },
+                    tearDown: {
+                        self.tearDownSession()
+                    }
+                )
             }
         }
 

@@ -89,17 +89,35 @@ final class CameraPreviewView: UIView, CameraSimplePreviewView {
     /// change also keeps its order relative to the start or stop queued right after it.
     var connectionQueue: DispatchQueue?
 
+    /// Set on the connection queue when the camera invalidates its session: the layer is about to be detached from
+    /// the session on main, and a connection change still queued then would race that detach (see
+    /// `CameraSessionInvalidation`).
+    private let connectionChangesStopped = Atomic<Bool>(value: false)
+
+    func stopConnectionChanges() {
+        let _ = self.connectionChangesStopped.swap(true)
+    }
+
     var isEnabled: Bool = true {
         didSet {
-            Self.applyConnectionEnabled(self.isEnabled, layer: self.videoPreviewLayer, queue: self.connectionQueue)
+            Self.applyConnectionEnabled(self.isEnabled, layer: self.videoPreviewLayer, queue: self.connectionQueue, isStopped: self.connectionChangesStopped)
         }
     }
 
     /// Applies `isEnabled` to the preview layer's connection: asynchronously on `queue`, in the order the changes
-    /// were made, or directly when there is no queue.
-    static func applyConnectionEnabled(_ isEnabled: Bool, layer: AVCaptureVideoPreviewLayer, queue: DispatchQueue?) {
-        Self.perform(on: queue) { [weak layer] in
+    /// were made, or directly when there is no queue; not at all once `isStopped`.
+    static func applyConnectionEnabled(_ isEnabled: Bool, layer: AVCaptureVideoPreviewLayer, queue: DispatchQueue?, isStopped: Atomic<Bool>) {
+        Self.performConnectionChange(on: queue, isStopped: { isStopped.with { $0 } }) { [weak layer] in
             layer?.connection?.isEnabled = isEnabled
+        }
+    }
+
+    /// `perform(on:)`, skipping `f` if `isStopped` is true by the time it would run.
+    static func performConnectionChange(on queue: DispatchQueue?, isStopped: @escaping () -> Bool, _ f: @escaping () -> Void) {
+        Self.perform(on: queue) {
+            if !isStopped() {
+                f()
+            }
         }
     }
 

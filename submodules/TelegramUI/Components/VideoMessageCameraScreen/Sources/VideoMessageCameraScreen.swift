@@ -1217,8 +1217,7 @@ public class VideoMessageCameraScreen: ViewController {
         }
 
         func animateOut(completion: @escaping () -> Void) {
-            self.camera?.stopCapture(invalidate: true)
-                                    
+            // The camera is already invalidated: its one caller, requestDismiss, stops it first.
             UIView.animate(withDuration: 0.25, animations: {
                 self.backgroundView.alpha = 0.0
             }, completion: { [weak self] _ in
