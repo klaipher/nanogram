@@ -38,6 +38,7 @@ import StoreKit
 import PhoneNumberFormat
 import AuthorizationUI
 import ManagedFile
+import ShareItems
 import DeviceProximity
 import MediaEditor
 import TelegramUIDeclareEncodables
@@ -742,6 +743,9 @@ private func extractAccountManagerState(records: AccountRecordsView<TelegramAcco
         let encryptionParameters = ValueBoxEncryptionParameters(forceEncryptionIfNoSet: false, key: ValueBoxEncryptionParameters.Key(data: deviceSpecificEncryptionParameters.key)!, salt: ValueBoxEncryptionParameters.Salt(data: deviceSpecificEncryptionParameters.salt)!)
         
         TempBox.initializeShared(basePath: rootPath, processType: "app", launchSpecificId: Int64.random(in: Int64.min ... Int64.max))
+        // Attachment copies a killed share extension left behind (up to a whole video each), on a
+        // background queue.
+        removeStaleShareItemFiles(parentPath: shareItemFilesPath(rootPath: rootPath))
         
         let writeAbilityTestFile = TempBox.shared.tempFile(fileName: "test.bin")
         var writeAbilityTestSuccess = true

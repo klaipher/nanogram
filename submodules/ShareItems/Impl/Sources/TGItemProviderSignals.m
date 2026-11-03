@@ -155,6 +155,10 @@ static const CGFloat TGShareImageHighQualityMaxPixelSize = 2560.0;
 /// Copies the file into its own directory under `temporaryDirectory`, keeping its name. On APFS (the
 /// extension's container and the app group are on one volume) the copy is a clone: no file data is
 /// read, written or held in memory. Nil when it cannot be copied.
+///
+/// `temporaryDirectory` is never created here: it is the send attempt's directory, which exists
+/// exactly while the attempt runs, so a copy that comes after the attempt ended fails instead of
+/// leaving a full-size file in a directory nobody removes.
 + (NSURL *)copyFileAtURL:(NSURL *)url toTemporaryDirectory:(NSString *)temporaryDirectory
 {
     if (![url isKindOfClass:[NSURL class]] || !url.isFileURL || temporaryDirectory.length == 0)
@@ -164,7 +168,7 @@ static const CGFloat TGShareImageHighQualityMaxPixelSize = 2560.0;
         fileName = @"file.bin";
     NSString *directory = [temporaryDirectory stringByAppendingPathComponent:[[NSUUID UUID] UUIDString]];
     NSFileManager *fileManager = [NSFileManager defaultManager];
-    if (![fileManager createDirectoryAtPath:directory withIntermediateDirectories:true attributes:nil error:nil])
+    if (![fileManager createDirectoryAtPath:directory withIntermediateDirectories:false attributes:nil error:nil])
         return nil;
     NSURL *destination = [NSURL fileURLWithPath:[directory stringByAppendingPathComponent:fileName]];
     NSError *error = nil;
@@ -176,6 +180,22 @@ static const CGFloat TGShareImageHighQualityMaxPixelSize = 2560.0;
     return destination;
 }
 
+/// `copyFileAtURL:toTemporaryDirectory:` for a load that may finish after its share was cancelled
+/// (a completion handler already running cannot be stopped): no copy once `disposed` is set, and a
+/// copy that was being made when it was set is removed.
++ (NSURL *)copyFileAtURL:(NSURL *)url toTemporaryDirectory:(NSString *)temporaryDirectory disposed:(MTAtomic *)disposed
+{
+    if ([[disposed value] boolValue])
+        return nil;
+    NSURL *copy = [self copyFileAtURL:url toTemporaryDirectory:temporaryDirectory];
+    if (copy != nil && [[disposed value] boolValue])
+    {
+        [[NSFileManager defaultManager] removeItemAtURL:[copy URLByDeletingLastPathComponent] error:nil];
+        return nil;
+    }
+    return copy;
+}
+
 /// A copy, under `temporaryDirectory`, of the provider's file for `typeIdentifier`, as an NSURL. The
 /// system writes the attachment to disk instead of handing it over in memory; its file exists only
 /// inside the completion handler, so the copy is made there.
@@ -183,9 +203,10 @@ static const CGFloat TGShareImageHighQualityMaxPixelSize = 2560.0;
 {
     return [[MTSignal alloc] initWithGenerator:^id<MTDisposable>(MTSubscriber *subscriber)
     {
+        MTAtomic *disposed = [[MTAtomic alloc] initWithValue:@false];
         NSProgress *progress = [itemProvider loadFileRepresentationForTypeIdentifier:typeIdentifier completionHandler:^(NSURL *url, NSError *error)
         {
-            NSURL *copy = error == nil ? [self copyFileAtURL:url toTemporaryDirectory:temporaryDirectory] : nil;
+            NSURL *copy = error == nil ? [self copyFileAtURL:url toTemporaryDirectory:temporaryDirectory disposed:disposed] : nil;
             if (copy == nil)
                 [subscriber putError:nil];
             else
@@ -197,6 +218,7 @@ static const CGFloat TGShareImageHighQualityMaxPixelSize = 2560.0;
         // A share cancelled while the system still fetches the file (from iCloud, say) stops it.
         return [[MTBlockDisposable alloc] initWithBlock:^
         {
+            [disposed swap:@true];
             if (!progress.isFinished)
                 [progress cancel];
         }];
@@ -227,13 +249,14 @@ static const CGFloat TGShareImageHighQualityMaxPixelSize = 2560.0;
     
     MTSignal *urlSignal = [[MTSignal alloc] initWithGenerator:^id<MTDisposable>(MTSubscriber *subscriber)
     {
+        MTAtomic *disposed = [[MTAtomic alloc] initWithValue:@false];
         [itemProvider loadItemForTypeIdentifier:urlTypeIdentifier options:nil completionHandler:^(NSURL *url, NSError *error)
         {
             NSURL *copy = nil;
             if (error == nil && [url isKindOfClass:[NSURL class]] && url.isFileURL)
             {
                 bool accessing = [url startAccessingSecurityScopedResource];
-                copy = [self copyFileAtURL:url toTemporaryDirectory:temporaryDirectory];
+                copy = [self copyFileAtURL:url toTemporaryDirectory:temporaryDirectory disposed:disposed];
                 if (accessing)
                     [url stopAccessingSecurityScopedResource];
             }
@@ -245,7 +268,11 @@ static const CGFloat TGShareImageHighQualityMaxPixelSize = 2560.0;
                 [subscriber putCompletion];
             }
         }];
-        return nil;
+        // The load cannot be cancelled; its copy is skipped, or removed, instead.
+        return [[MTBlockDisposable alloc] initWithBlock:^
+        {
+            [disposed swap:@true];
+        }];
     }];
     return [fileSignal catch:^MTSignal *(__unused id error)
     {
@@ -754,9 +781,7 @@ static void set_bits(uint8_t *bytes, int32_t bitOffset, int32_t numBits, int32_t
         return nil;
     }
     
-    NSMutableData *_waveformSamples = [[NSMutableData alloc] init];
-    int16_t _waveformPeak = 0;
-    int _waveformPeakCount = 0;
+    TGAudioWaveformPeaks *peaks = [[TGAudioWaveformPeaks alloc] init];
     
     while (iPodAssetReader.status == AVAssetReaderStatusReading) {
         CMSampleBufferRef nextBuffer = [readerOutput copyNextSampleBuffer];
@@ -767,26 +792,7 @@ static void set_bits(uint8_t *bytes, int32_t bitOffset, int32_t numBits, int32_t
             CMSampleBufferGetAudioBufferListWithRetainedBlockBuffer(nextBuffer, NULL, &abl, sizeof(abl), NULL, NULL, kCMSampleBufferFlag_AudioBufferList_Assure16ByteAlignment, &blockBuffer);
             UInt64 size = CMSampleBufferGetTotalSampleSize(nextBuffer);
             if (size != 0) {
-                int16_t *samples = (int16_t *)(abl.mBuffers[0].mData);
-                int count = (int)size / 2;
-                
-                for (int i = 0; i < count; i++) {
-                    int16_t sample = samples[i];
-                    if (sample < 0) {
-                        sample = -sample;
-                    }
-                    
-                    if (_waveformPeak < sample) {
-                        _waveformPeak = sample;
-                    }
-                    _waveformPeakCount++;
-                    
-                    if (_waveformPeakCount >= 100) {
-                        [_waveformSamples appendBytes:&_waveformPeak length:2];
-                        _waveformPeak = 0;
-                        _waveformPeakCount = 0;
-                    }
-                }
+                [peaks addSamples:(const int16_t *)(abl.mBuffers[0].mData) count:(NSUInteger)(size / 2)];
             }
             
             CFRelease(nextBuffer);
@@ -799,17 +805,102 @@ static void set_bits(uint8_t *bytes, int32_t bitOffset, int32_t numBits, int32_t
         }
     }
     
+    return [peaks waveform];
+}
+
+@end
+
+@implementation TGAudioWaveformPeaks
+{
+    // Each kept peak is the largest of `_peakWidth` consecutive peaks of 100 samples. When the
+    // buffer fills, neighbouring pairs are merged and the width doubles, so memory stays fixed
+    // (8 KB) however long the audio is.
+    int16_t _peaks[4096];
+    NSUInteger _count;
+    NSUInteger _peakWidth;
+    int16_t _pendingPeak;
+    NSUInteger _pendingWidth;
+    int16_t _currentPeak;
+    int _currentSampleCount;
+}
+
++ (NSUInteger)capacity
+{
+    return 4096;
+}
+
+- (instancetype)init
+{
+    self = [super init];
+    if (self != nil)
+        _peakWidth = 1;
+    return self;
+}
+
+- (void)addPeak:(int16_t)peak
+{
+    if (_pendingPeak < peak)
+        _pendingPeak = peak;
+    _pendingWidth++;
+    if (_pendingWidth < _peakWidth)
+        return;
+    _peaks[_count++] = _pendingPeak;
+    _pendingPeak = 0;
+    _pendingWidth = 0;
+    if (_count == [TGAudioWaveformPeaks capacity])
+    {
+        NSUInteger half = _count / 2;
+        for (NSUInteger i = 0; i < half; i++)
+            _peaks[i] = MAX(_peaks[2 * i], _peaks[2 * i + 1]);
+        _count = half;
+        _peakWidth *= 2;
+    }
+}
+
+- (void)addSamples:(const int16_t *)samples count:(NSUInteger)count
+{
+    for (NSUInteger i = 0; i < count; i++) {
+        int16_t sample = samples[i];
+        if (sample < 0) {
+            sample = -sample;
+        }
+        if (_currentPeak < sample) {
+            _currentPeak = sample;
+        }
+        _currentSampleCount++;
+        if (_currentSampleCount >= 100) {
+            [self addPeak:_currentPeak];
+            _currentPeak = 0;
+            _currentSampleCount = 0;
+        }
+    }
+}
+
+- (NSUInteger)storedPeakCount
+{
+    return _count + (_pendingWidth != 0 ? 1 : 0);
+}
+
+- (NSData *)scaledPeaks
+{
     int16_t scaledSamples[100];
     memset(scaledSamples, 0, 100 * 2);
-    int16_t *samples = _waveformSamples.mutableBytes;
-    int count = (int)_waveformSamples.length / 2;
-    for (int i = 0; i < count; i++) {
-        int16_t sample = samples[i];
-        int index = i * 100 / count;
+    NSUInteger count = [self storedPeakCount];
+    for (NSUInteger i = 0; i < count; i++) {
+        // The last one may be a partly filled merge.
+        int16_t sample = i < _count ? _peaks[i] : _pendingPeak;
+        NSUInteger index = i * 100 / count;
         if (scaledSamples[index] < sample) {
             scaledSamples[index] = sample;
         }
     }
+    return [NSData dataWithBytes:scaledSamples length:sizeof(scaledSamples)];
+}
+
+- (NSData *)waveform
+{
+    int16_t scaledSamples[100];
+    [[self scaledPeaks] getBytes:scaledSamples length:sizeof(scaledSamples)];
     
     int16_t peak = 0;
     int64_t sumSamples = 0;
@@ -828,7 +919,7 @@ static void set_bits(uint8_t *bytes, int32_t bitOffset, int32_t numBits, int32_t
     }
     
     for (int i = 0; i < 100; i++) {
-        uint16_t sample = (uint16_t)((int64_t)samples[i]);
+        uint16_t sample = (uint16_t)((int64_t)scaledSamples[i]);
         if (sample > calculatedPeak) {
             scaledSamples[i] = calculatedPeak;
         }
@@ -836,7 +927,9 @@ static void set_bits(uint8_t *bytes, int32_t bitOffset, int32_t numBits, int32_t
     
     int numSamples = 100;
     int bitstreamLength = (numSamples * 5) / 8 + (((numSamples * 5) % 8) == 0 ? 0 : 1);
-    NSMutableData *result = [[NSMutableData alloc] initWithLength:bitstreamLength];
+    // set_bits reads and writes four bytes at a time: room for the last value's, trimmed after.
+    NSMutableData *result = [[NSMutableData alloc] initWithLength:bitstreamLength + 4];
+    if (peak > 0)
     {
         int32_t maxSample = peak;
         uint16_t const *samples = (uint16_t *)scaledSamples;
@@ -847,6 +940,7 @@ static void set_bits(uint8_t *bytes, int32_t bitOffset, int32_t numBits, int32_t
             set_bits(bytes, i * 5, 5, value & 31);
         }
     }
+    [result setLength:bitstreamLength];
     
     return result;
 }

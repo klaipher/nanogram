@@ -229,6 +229,8 @@ public class ShareRootControllerImpl {
             performAppGroupUpgrades(appGroupPath: self.initializationData.appGroupPath, rootPath: rootPath)
             
             EngineTempBox.initializeShared(basePath: rootPath, processType: "share", launchSpecificId: Int64.random(in: Int64.min ... Int64.max))
+            // Copies a killed share left behind, on a background queue (they can be gigabytes).
+            removeStaleShareItemFiles(parentPath: shareItemFilesPath(rootPath: rootPath))
             
             let logsPath = rootPath + "/logs/share-logs"
             let _ = try? FileManager.default.createDirectory(atPath: logsPath, withIntermediateDirectories: true, attributes: nil)
@@ -536,11 +538,9 @@ public class ShareRootControllerImpl {
                                 let highQuality = shareScreenReference.controller?.sendsInHighQuality ?? false
                                 // Large attachments are cloned into a directory of this attempt and
                                 // sent from there, never read into memory; it is removed when the
-                                // send finishes, fails or is cancelled (and a day later if the
-                                // extension was killed).
-                                let shareItemFilesPath = rootPath + "/share/items"
-                                removeStaleSharedStorySessions(path: shareItemFilesPath, olderThan: 24.0 * 60.0 * 60.0)
-                                return withShareItemFiles(parentPath: shareItemFilesPath) { temporaryDirectory -> Signal<ShareControllerExternalStatus, ShareControllerError> in
+                                // send finishes, fails or is cancelled (and by the next launch of
+                                // the app or the extension, an hour later, if the extension was killed).
+                                return withShareItemFiles(parentPath: shareItemFilesPath(rootPath: rootPath)) { temporaryDirectory -> Signal<ShareControllerExternalStatus, ShareControllerError> in
                                     return preparedShareItems(postbox: account.stateManager.postbox, network: account.stateManager.network, to: peerIds[0], dataItems: TGItemProviderSignals.itemSignals(forInputItems: inputItems, highQuality: highQuality, temporaryDirectory: temporaryDirectory), highQuality: highQuality)
                                     |> map(Optional.init)
                                     |> `catch` { error -> Signal<PreparedShareItems?, ShareControllerError> in
@@ -608,7 +608,10 @@ public class ShareRootControllerImpl {
                                     let sessionId = Int64.random(in: 1000000 ..< .max)
                                     
                                     let sharedStoriesPath = rootPath + "/share/stories"
-                                    removeStaleSharedStorySessions(path: sharedStoriesPath, olderThan: 24.0 * 60.0 * 60.0)
+                                    // Off the main thread: it can delete large videos.
+                                    DispatchQueue.global(qos: .utility).async {
+                                        removeStaleSharedStorySessions(path: sharedStoriesPath, olderThan: 24.0 * 60.0 * 60.0)
+                                    }
                                     let storiesPath = sharedStoriesPath + "/\(sessionId)"
                                     let _ = try? FileManager.default.createDirectory(atPath: storiesPath, withIntermediateDirectories: true, attributes: nil)
                                     

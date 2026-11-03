@@ -117,19 +117,54 @@ private func onShareItemTermination<T, E>(_ action: @escaping () -> Void) -> (Si
     }
 }
 
+/// Where the share extension keeps its copies of shared attachments: one directory per send
+/// attempt (`withShareItemFiles`).
+public func shareItemFilesPath(rootPath: String) -> String {
+    return rootPath + "/share/items"
+}
+
+/// How long an attempt directory may go untouched before a sweep removes it. A running attempt
+/// touches its directory as its share makes progress (`withShareItemFiles`), so one untouched for
+/// this long belongs to an extension that was killed.
+public let shareItemFilesStaleAge: TimeInterval = 60.0 * 60.0
+
+/// Removes, on a background queue, the attempt directories under `parentPath` untouched for
+/// `olderThan` seconds: what an extension killed during a share left behind (a clone of a 2 GB
+/// video owns its blocks once the system's own file is gone). Removing them can take a while, so
+/// never on the caller's thread. `completion` is called on that queue.
+public func removeStaleShareItemFiles(parentPath: String, olderThan: TimeInterval = shareItemFilesStaleAge, completion: (() -> Void)? = nil) {
+    DispatchQueue.global(qos: .utility).async {
+        removeStaleSharedStorySessions(path: parentPath, olderThan: olderThan)
+        completion?()
+    }
+}
+
 /// Runs `body` with a new directory under `parentPath` for the share's copies of its attachments
 /// (`TGItemProviderSignals`' `temporaryDirectory`). The directory and everything in it is removed
 /// when the signal completes, fails or is cancelled; each send attempt gets its own.
-public func withShareItemFiles<T, E>(parentPath: String, _ body: @escaping (String) -> Signal<T, E>) -> Signal<T, E> {
+///
+/// While the share makes progress the directory's modification date is renewed, at most every
+/// `touchInterval` seconds, so a sweep (`removeStaleShareItemFiles`, by the app or by another
+/// extension) never takes the copies of a long upload that is still running.
+public func withShareItemFiles<T, E>(parentPath: String, touchInterval: TimeInterval = 60.0, _ body: @escaping (String) -> Signal<T, E>) -> Signal<T, E> {
     return Signal { subscriber in
         let path = parentPath + "/" + UUID().uuidString
         let _ = try? FileManager.default.createDirectory(atPath: path, withIntermediateDirectories: true, attributes: nil)
+        let lastTouch = Atomic<Double>(value: CFAbsoluteTimeGetCurrent())
         return (body(path)
         |> onShareItemTermination {
             DispatchQueue.global(qos: .utility).async {
                 let _ = try? FileManager.default.removeItem(atPath: path)
             }
         }).start(next: { value in
+            let now = CFAbsoluteTimeGetCurrent()
+            let touch = lastTouch.modify { previous in
+                return now - previous >= touchInterval ? now : previous
+            } == now
+            if touch {
+                // One metadata write; nothing is read.
+                utimes(path, nil)
+            }
             subscriber.putNext(value)
         }, error: { error in
             subscriber.putError(error)
@@ -474,7 +509,7 @@ private func preparedShareItem(postbox: Postbox, network: Network, to peerId: Pe
             let mimeType = value["mimeType"] as? String ?? "audio/ogg"
             
             var waveform: MemoryBuffer?
-            if let waveformData = TGItemProviderSignals.audioWaveform(url) {
+            if let waveformData = shareAudioWaveform(url: url, isVoice: isVoice) {
                 waveform = MemoryBuffer(data: waveformData)
             }
             
@@ -524,6 +559,26 @@ private func preparedShareItem(postbox: Postbox, network: Network, to peerId: Pe
         return .single(.userInteractionRequired(.contact(contactData)))
     } else {
         return .fail(.generic)
+    }
+}
+
+/// The waveform sent with a shared audio file: only a voice message has one. Making it decodes the
+/// whole file, which other audio (music, an audiobook) would pay for before its upload starts.
+public func shareAudioWaveform(url: URL, isVoice: Bool) -> Data? {
+    if !isVoice {
+        return nil
+    }
+    return TGItemProviderSignals.audioWaveform(url)
+}
+
+/// One signal per shared item, each preparing its item with `prepare` only when it is started:
+/// the work done before an upload (a waveform, a photo downsample, a PDF preview) then runs when
+/// the concurrency limit gives the item its turn, not for every item as the share begins.
+public func preparedShareItemSignals<T, E>(_ items: [[String: Any]], prepare: @escaping ([String: Any]) -> Signal<T, E>) -> [Signal<T, E>] {
+    return items.map { item in
+        return deferred {
+            return prepare(item)
+        }
     }
 }
 
@@ -638,9 +693,9 @@ public func combineLatestLimitingConcurrency<T, E>(_ signals: [Signal<T, E>], pe
 public func preparedShareItems(postbox: Postbox, network: Network, to peerId: PeerId, dataItems: [MTSignal], highQuality: Bool = false) -> Signal<PreparedShareItems, PreparedShareItemError> {
     let shareItems = shareItemDictionaries(dataItems: dataItems)
     |> mapToSignal { items -> Signal<[PreparedShareItem], PreparedShareItemError> in
-        return combineLatestLimitingConcurrency(items.map {
-            preparedShareItem(postbox: postbox, network: network, to: peerId, value: $0, highQuality: highQuality)
-        }, pendingValue: .progress(0.0), maxConcurrent: maxConcurrentPreparedShareItems)
+        return combineLatestLimitingConcurrency(preparedShareItemSignals(items, prepare: { item in
+            return preparedShareItem(postbox: postbox, network: network, to: peerId, value: item, highQuality: highQuality)
+        }), pendingValue: .progress(0.0), maxConcurrent: maxConcurrentPreparedShareItems)
     }
         
     return shareItems
