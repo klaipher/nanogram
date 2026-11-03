@@ -72,6 +72,14 @@ static enum AVPixelFormat getPreferredPixelFormat(__unused AVCodecContext *ctx, 
     return status == 0;
 }
 
+- (void)setThreadCount:(int32_t)threadCount {
+    _impl->thread_count = threadCount;
+}
+
+- (int32_t)threadCount {
+    return (int32_t)_impl->thread_count;
+}
+
 - (void)setupHardwareAccelerationIfPossible {
     if (av_hwdevice_ctx_create(&_impl->hw_device_ctx, AV_HWDEVICE_TYPE_VIDEOTOOLBOX, nil, nil, 0) >= 0) {
         _impl->get_format = getPreferredPixelFormat;

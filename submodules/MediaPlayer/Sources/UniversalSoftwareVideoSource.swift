@@ -213,6 +213,7 @@ private final class UniversalSoftwareVideoSourceImpl {
             if let codec = FFMpegAVCodec.find(forId: codecId, preferHardwareAccelerationCapable: false) {
                 let codecContext = FFMpegAVCodecContext(codec: codec)
                 if avFormatContext.codecParams(atStreamIndex: streamIndex, to: codecContext) {
+                    FFMpegSoftwareDecodeThreads.apply(to: codecContext, codecId: codecId, width: metrics.width, height: metrics.height)
                     if codecContext.open() {
                         videoStream = SoftwareVideoStream(index: Int(streamIndex), fps: fps, timebase: timebase, duration: duration, decoder: FFMpegMediaVideoFrameDecoder(codecContext: codecContext), rotationAngle: rotationAngle, aspect: aspect)
                         break
