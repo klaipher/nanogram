@@ -75,6 +75,11 @@ final class AccountManagerImpl<Types: AccountManagerTypes> {
     
     private var currentAtomicState: AccountManagerAtomicState<Types>
     private var currentAtomicStateUpdated = false
+    /// An extension that found no usable atomic state holds one built in memory. That session never
+    /// writes the atomic state or the legacy tables: the app's first launch decides from both whether
+    /// it is a fresh installation, and resets the keychain's local secrets (an old passcode lock,
+    /// wallet secrets) only then. Writing either would make it keep those secrets.
+    private var isStateInMemoryOnly = false
     
     private let legacyMetadataTable: AccountManagerMetadataTable<Types.Attribute>
     private let legacyRecordTable: AccountManagerRecordTable<Types.Attribute>
@@ -195,8 +200,9 @@ final class AccountManagerImpl<Types: AccountManagerTypes> {
                     let _ = try? FileManager.default.removeItem(atPath: self.atomicStatePath)
                     preconditionFailure()
                 } else {
-                    postboxLog("AccountManager: undecodable atomic state in an extension, using the legacy records in memory")
+                    postboxLog("AccountManager: undecodable atomic state in an extension, using the legacy records in memory, read-only")
                     self.currentAtomicState = legacyAtomicState()
+                    self.isStateInMemoryOnly = true
                 }
             }
         } catch let e {
@@ -207,14 +213,15 @@ final class AccountManagerImpl<Types: AccountManagerTypes> {
                 self.currentAtomicState = legacyAtomicState()
                 self.syncAtomicStateToFile()
             } else {
-                postboxLog("AccountManager: no atomic state in an extension, using the legacy records in memory")
+                postboxLog("AccountManager: no atomic state in an extension, using the legacy records in memory, read-only")
                 self.currentAtomicState = legacyAtomicState()
+                self.isStateInMemoryOnly = true
             }
         }
         
         let tableAccessChallengeData = self.legacyMetadataTable.getAccessChallengeData()
         if self.currentAtomicState.accessChallengeData != .none {
-            if tableAccessChallengeData == .none {
+            if tableAccessChallengeData == .none && !self.isStateInMemoryOnly {
                 self.legacyMetadataTable.setAccessChallengeData(self.currentAtomicState.accessChallengeData)
             }
         } else if tableAccessChallengeData != .none {
@@ -223,7 +230,7 @@ final class AccountManagerImpl<Types: AccountManagerTypes> {
         }
         
         do {
-            let allowMigration = !isReadOnly && !isTemporary
+            let allowMigration = !isReadOnly && !isTemporary && !self.isStateInMemoryOnly
             let migrated = try self.resolveAccessChallenge(self.currentAtomicState.accessChallengeData, allowMigration)
             if allowMigration {
                 if let migrated, migrated != self.currentAtomicState.accessChallengeData || migrated != self.legacyMetadataTable.getAccessChallengeData() {
@@ -311,6 +318,17 @@ final class AccountManagerImpl<Types: AccountManagerTypes> {
             let updated = f(self.sharedDataTable.get(key: key))
             self.sharedDataTable.set(key: key, value: updated, updatedKeys: &self.currentUpdatedSharedDataKeys)
         }, getAccessChallengeData: {
+            if self.isStateInMemoryOnly {
+                // Resolved without migration and kept in memory: the extension still locks with the
+                // keychain's passcode, and the app's state stays as the app left it.
+                let current = self.currentAtomicState.accessChallengeData
+                if let resolved = try? self.resolveAccessChallenge(current, false), resolved != current {
+                    self.currentAtomicState.accessChallengeData = resolved
+                    self.currentUpdatedAccessChallengeData = resolved
+                    return resolved
+                }
+                return current
+            }
             let current = self.legacyMetadataTable.getAccessChallengeData()
             if let migrated = try? self.resolveAccessChallenge(current, true), migrated != current {
                 self.legacyMetadataTable.setAccessChallengeData(migrated)
@@ -329,11 +347,17 @@ final class AccountManagerImpl<Types: AccountManagerTypes> {
             }
             self.currentUpdatedAccessChallengeData = data
             self.currentAtomicStateUpdated = true
-            self.legacyMetadataTable.setAccessChallengeData(data)
+            if !self.isStateInMemoryOnly {
+                self.legacyMetadataTable.setAccessChallengeData(data)
+            }
             self.currentAtomicState.accessChallengeData = data
         }, getVersion: {
             return self.legacyMetadataTable.getVersion()
         }, setVersion: { version in
+            if self.isStateInMemoryOnly {
+                postboxLog("AccountManager: setVersion ignored, the state is in memory only")
+                return
+            }
             self.legacyMetadataTable.setVersion(version)
         }, getNotice: { key in
             self.noticeTable.get(key: key)
@@ -375,7 +399,7 @@ final class AccountManagerImpl<Types: AccountManagerTypes> {
         crash: @escaping () throws -> Never
     ) throws -> Never {
         assert(self.queue.isCurrent())
-        guard self.canCleanPasscodeMetadata else {
+        guard self.canCleanPasscodeMetadata, !self.isStateInMemoryOnly else {
             throw AccountManagerPasscodeMigrationTestError.unsupportedAccountManager
         }
         switch legacy {
@@ -439,6 +463,9 @@ final class AccountManagerImpl<Types: AccountManagerTypes> {
     }
 
     private func syncAtomicStateToFile() {
+        if self.isStateInMemoryOnly {
+            return
+        }
         if let data = try? JSONEncoder().encode(self.currentAtomicState) {
             if let _ = try? data.write(to: URL(fileURLWithPath: self.atomicStatePath), options: [.atomic]) {
             } else {
