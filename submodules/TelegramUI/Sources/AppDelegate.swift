@@ -2267,13 +2267,17 @@ private func extractAccountManagerState(records: AccountRecordsView<TelegramAcco
         let delivered = notifications.map { notification -> (identifier: String, userInfo: [AnyHashable: Any]) in
             return (notification.request.identifier, notification.request.content.userInfo)
         }
+        let datedDelivered = notifications.map { notification -> (identifier: String, userInfo: [AnyHashable: Any], date: Date) in
+            return (notification.request.identifier, notification.request.content.userInfo, notification.date)
+        }
         Queue.mainQueue().async { [weak self] in
             guard let self else {
                 return
             }
-            let identifiers = ServicePushNotifications.staleIdentifiers(delivered: delivered, includeServerFallbacks: self.isActiveValue)
+            var identifiers = ServicePushNotifications.staleIdentifiers(delivered: delivered, includeServerFallbacks: self.isActiveValue)
+            identifiers.append(contentsOf: IncomingCallNotifications.staleIdentifiers(delivered: datedDelivered, now: Date()))
             if !identifiers.isEmpty {
-                Logger.shared.log("App \(self.episodeId)", "Removing \(identifiers.count) service push notifications")
+                Logger.shared.log("App \(self.episodeId)", "Removing \(identifiers.count) service push and stale call notifications")
                 UNUserNotificationCenter.current().removeDeliveredNotifications(withIdentifiers: identifiers)
             }
         }
@@ -2502,6 +2506,10 @@ private func extractAccountManagerState(records: AccountRecordsView<TelegramAcco
                 isVideo: isVideo,
                 displayTitle: displayTitle,
                 completion: { error in
+                    if error == nil {
+                        // CallKit rings it now: the extension's ringing notification must not ring too.
+                        removeDeliveredIncomingCallNotifications(peerId: fromPeerId)
+                    }
                     if let error = error {
                         if error.domain == "com.apple.CallKit.error.incomingcall" && (error.code == -3 || error.code == 3) {
                             Logger.shared.log("PresentationCall", "reportIncomingCall device in DND mode")
@@ -2621,6 +2629,10 @@ private func extractAccountManagerState(records: AccountRecordsView<TelegramAcco
                 isVideo: callUpdate.isVideo,
                 displayTitle: callUpdate.peer.debugDisplayTitle,
                 completion: { error in
+                    if error == nil {
+                        // CallKit rings it now: the extension's ringing notification must not ring too.
+                        removeDeliveredIncomingCallNotifications(peerId: callUpdate.peer.id)
+                    }
                     if let error = error {
                         if error.domain == "com.apple.CallKit.error.incomingcall" && (error.code == -3 || error.code == 3) {
                             Logger.shared.log("PresentationCall", "reportIncomingCall device in DND mode")

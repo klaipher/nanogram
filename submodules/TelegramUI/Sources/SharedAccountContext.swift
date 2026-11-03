@@ -2,6 +2,7 @@ import Foundation
 import UIKit
 import AsyncDisplayKit
 import TelegramCore
+import NotificationsPresentationData
 import SwiftSignalKit
 import WebProxyTransport
 import Display
@@ -227,6 +228,7 @@ public final class SharedAccountContextImpl: SharedAccountContext {
     
     public let hasOngoingCall = ValuePromise<Bool>(false)
     private var awaitingCallConnectionDisposable: Disposable?
+    private var incomingCallNotificationDisposable: Disposable?
     private var callPeerDisposable: Disposable?
     private var callIsConferenceDisposable: Disposable?
     
@@ -1137,6 +1139,7 @@ public final class SharedAccountContextImpl: SharedAccountContext {
         self.groupCallDisposable?.dispose()
         self.callStateDisposable?.dispose()
         self.awaitingCallConnectionDisposable?.dispose()
+        self.incomingCallNotificationDisposable?.dispose()
         self.callPeerDisposable?.dispose()
     }
     
@@ -1203,12 +1206,18 @@ public final class SharedAccountContextImpl: SharedAccountContext {
         }
         
         if let currentCall = self.currentCall {
-            if case .call = currentCall {
+            if case let .call(previousCall) = currentCall {
                 self.callPeerDisposable?.dispose()
                 self.callPeerDisposable = nil
                 
                 self.awaitingCallConnectionDisposable?.dispose()
                 self.awaitingCallConnectionDisposable = nil
+                
+                self.incomingCallNotificationDisposable?.dispose()
+                self.incomingCallNotificationDisposable = nil
+                if !previousCall.isOutgoing {
+                    removeDeliveredIncomingCallNotifications(peerId: previousCall.peerId)
+                }
                 
                 self.notificationController?.setBlocking(nil)
             }
@@ -1331,6 +1340,23 @@ public final class SharedAccountContextImpl: SharedAccountContext {
                         ))
                     })
                 }
+                
+                // The notification service extension may have rung this call as a notification
+                // (`IncomingCallNotifications`): it goes once CallKit rings the call or it stops ringing.
+                let isIntegratedWithCallKit = call.isIntegratedWithCallKit
+                let callPeerId = call.peerId
+                self.incomingCallNotificationDisposable = (call.state
+                |> filter { state in
+                    var isRinging = false
+                    if case .ringing = state.state {
+                        isRinging = true
+                    }
+                    return IncomingCallNotifications.appRingsOrCallEnded(isIntegratedWithCallKit: isIntegratedWithCallKit, isRinging: isRinging)
+                }
+                |> take(1)
+                |> deliverOnMainQueue).start(next: { _ in
+                    removeDeliveredIncomingCallNotifications(peerId: callPeerId)
+                })
                 
                 self.awaitingCallConnectionDisposable = (call.state
                 |> filter { state in

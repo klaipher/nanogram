@@ -1,5 +1,6 @@
 import XCTest
 import UserNotifications
+import CallKit
 @testable import NotificationServiceExtensionLib
 
 final class IncomingCallPushPresentationTests: XCTestCase {
@@ -46,5 +47,25 @@ final class IncomingCallPushPresentationTests: XCTestCase {
             throw XCTSkip("no ringtone sound before iOS 15.2")
         }
         XCTAssertEqual(IncomingCallPushPresentation.sound, UNNotificationSound.defaultRingtone)
+    }
+    // CallKit refusing a call the user filtered (blocked caller, Do Not Disturb, restricted or
+    // protected modes) or one it already shows must not turn into a ringing notification. Only a
+    // failure to hand the call over at all (no entitlement, unknown) falls back to it.
+    func testRingsOnlyWhenCallKitCouldNotTakeTheCall() {
+        let refusals: [Int] = [
+            CXErrorCodeIncomingCallError.Code.callUUIDAlreadyExists.rawValue,
+            CXErrorCodeIncomingCallError.Code.filteredByDoNotDisturb.rawValue,
+            CXErrorCodeIncomingCallError.Code.filteredByBlockList.rawValue,
+            5, 6, 7, 99
+        ]
+        for code in refusals {
+            let error = NSError(domain: CXErrorDomainIncomingCall, code: code)
+            XCTAssertFalse(IncomingCallPushPresentation.ringsAfterCallKitError(error), "code \(code)")
+        }
+        for code in [CXErrorCodeIncomingCallError.Code.unknown.rawValue, CXErrorCodeIncomingCallError.Code.unentitled.rawValue] {
+            let error = NSError(domain: CXErrorDomainIncomingCall, code: code)
+            XCTAssertTrue(IncomingCallPushPresentation.ringsAfterCallKitError(error), "code \(code)")
+        }
+        XCTAssertTrue(IncomingCallPushPresentation.ringsAfterCallKitError(NSError(domain: "SomethingElse", code: 2)))
     }
 }

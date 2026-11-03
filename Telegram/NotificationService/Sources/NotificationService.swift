@@ -1477,7 +1477,7 @@ private final class NotificationServiceHandler {
                                         CXProvider.reportNewIncomingVoIPPushPayload(voipPayload, completion: { error in
                                             Logger.shared.log("NotificationService \(episode)", "Did report voip notification, error: \(String(describing: error))")
 
-                                            if error != nil {
+                                            if let error, IncomingCallPushPresentation.ringsAfterCallKitError(error) {
                                                 updateCurrentContent(ringingContent)
                                             }
                                             completed()
@@ -1529,7 +1529,7 @@ private final class NotificationServiceHandler {
                                         CXProvider.reportNewIncomingVoIPPushPayload(voipPayload, completion: { error in
                                             Logger.shared.log("NotificationService \(episode)", "Did report voip notification, error: \(String(describing: error))")
 
-                                            if error != nil {
+                                            if let error, IncomingCallPushPresentation.ringsAfterCallKitError(error) {
                                                 updateCurrentContent(ringingContent)
                                             }
                                             completed()

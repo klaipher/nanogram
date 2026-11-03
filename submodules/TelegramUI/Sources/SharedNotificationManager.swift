@@ -7,6 +7,7 @@ import TelegramPresentationData
 import TelegramUIPreferences
 import TelegramCallsUI
 import AccountContext
+import NotificationsPresentationData
 
 private final class PollStateContext {
     let subscribers = Bag<(Bool) -> Void>()
@@ -505,4 +506,20 @@ public final class SharedNotificationManager {
             }
         }
     }
+}
+
+/// Takes down the ringing notification the notification service extension showed for a call from
+/// `peerId` (`IncomingCallNotifications`), once the app rings that call itself or it has stopped.
+func removeDeliveredIncomingCallNotifications(peerId: EnginePeer.Id) {
+    let center = UNUserNotificationCenter.current()
+    center.getDeliveredNotifications(completionHandler: { notifications in
+        let delivered = notifications.map { notification -> (identifier: String, userInfo: [AnyHashable: Any]) in
+            return (notification.request.identifier, notification.request.content.userInfo)
+        }
+        let identifiers = IncomingCallNotifications.identifiers(delivered: delivered, peerId: peerId.toInt64())
+        if !identifiers.isEmpty {
+            Logger.shared.log("NotificationManager", "removing \(identifiers.count) incoming call notifications")
+            center.removeDeliveredNotifications(withIdentifiers: identifiers)
+        }
+    })
 }
