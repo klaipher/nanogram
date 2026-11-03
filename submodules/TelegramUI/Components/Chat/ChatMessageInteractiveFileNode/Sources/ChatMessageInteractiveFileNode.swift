@@ -1671,7 +1671,9 @@ public final class ChatMessageInteractiveFileNode: ASDisplayNode {
             if let playerStatus = self.playerStatus {
                 var playerPosition: Double?
                 var playerDuration: Double = 0.0
+                var countsAhead = false
                 if !playerStatus.generationTimestamp.isZero, case .playing = playerStatus.status {
+                    countsAhead = true
                     playerPosition = playerStatus.timestamp + (CACurrentMediaTime() - playerStatus.generationTimestamp) * playerStatus.baseRate
                 } else {
                     playerPosition = playerStatus.timestamp
@@ -1684,7 +1686,9 @@ public final class ChatMessageInteractiveFileNode: ASDisplayNode {
                 let durationFont = Font.regular(floor(presentationData.fontSize.baseDisplaySize * 11.0 / 17.0))
                 downloadingStrings = (durationString, durationString, durationFont)
                 
-                playbackState = (playerStatus.timestamp, playerDuration, playerStatus.generationTimestamp)
+                // The view-once ring counts ahead from the generation exactly when the time label does; 0
+                // tells it not to (a paused or buffering player, or one whose clock has not started).
+                playbackState = (playerStatus.timestamp, playerDuration, countsAhead ? playerStatus.generationTimestamp : 0.0)
             }
         }
         

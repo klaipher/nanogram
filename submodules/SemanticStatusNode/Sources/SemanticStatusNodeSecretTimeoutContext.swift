@@ -119,7 +119,15 @@ final class SemanticStatusNodeSecretTimeoutContext: SemanticStatusNodeStateConte
     
     func drawingState(transitionFraction: CGFloat) -> SemanticStatusNodeStateDrawingState {
         let timestamp = CACurrentMediaTime()
-        let position = self.position + (timestamp - self.generationTimestamp)
+        // A generation of 0 is a MediaPlayer status whose clock is not running (a first play before the
+        // audio session is up, a paused or buffering player): show the position, do not count ahead.
+        // Counted from 0 it ran the whole device uptime ahead and drew the ring fully used up.
+        let position: Double
+        if self.generationTimestamp.isZero {
+            position = self.position
+        } else {
+            position = self.position + (timestamp - self.generationTimestamp)
+        }
         let resolvedValue: CGFloat
         if self.duration > 0.0 {
             resolvedValue = position / self.duration

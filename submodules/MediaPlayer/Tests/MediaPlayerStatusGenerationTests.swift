@@ -45,6 +45,17 @@ final class MediaPlayerStatusGenerationTests: XCTestCase {
         XCTAssertEqual(self.displayedProgress(running, at: startTime + 1.5), 0.5, accuracy: 0.0001)
     }
 
+    // The loop at the end: the player reports `.playing` with its clock stopped (rate 0) at the end,
+    // then seeks to the start. Stamped with `now`, a consumer that does not clamp (the view-once ring,
+    // the time label) counted past the end until the seek's status arrived.
+    func testPlayingAtTheLoopEndDoesNotRunPastTheEnd() {
+        let now = 1000.0
+        let atEnd = self.status(.playing, reportRate: 0.0, timestamp: 3.0, duration: 3.0, now: now)
+
+        XCTAssertEqual(atEnd.generationTimestamp, 0.0)
+        XCTAssertEqual(atEnd.timestamp, 3.0)
+    }
+
     func testPausedAndBufferingKeepTheirTimestamp() {
         let now = 1000.0
         XCTAssertEqual(mediaPlayerStatusGenerationTimestamp(status: .paused, reportRate: 0.0, now: now), now)

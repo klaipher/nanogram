@@ -928,8 +928,12 @@ GPU (Metal) rendering of stickers and emoji, its debug switches and how to measu
   message passes its highlight as `AudioWaveformComponent.unplayedColor`, which the waveform drops as
   soon as it sees its message play (`AudioWaveformUnplayedHighlight`); the bubble otherwise keeps the
   all-active waveform, hiding the progress, until it lays out again after the message is marked
-  listened. Tests: `UniversalMediaPlayerTests` (`MediaPlayerStatusGenerationTests`),
-  `//submodules/TelegramUI/Components/AudioWaveformComponent:AudioWaveformComponentTests`.
+  listened. A generation of 0 is also what the loop at the end reports. **No consumer may count ahead
+  from a 0 generation**: the view-once voice ring (`SemanticStatusNodeSecretTimeoutContext`) did, and
+  drew itself used up (device uptime ahead) on every first play and resume. Tests:
+  `UniversalMediaPlayerTests` (`MediaPlayerStatusGenerationTests`),
+  `//submodules/TelegramUI/Components/AudioWaveformComponent:AudioWaveformComponentTests`,
+  `//submodules/SemanticStatusNode:SemanticStatusNodeTests`.
 
 ## Framework export lists (computed by the build)
 
