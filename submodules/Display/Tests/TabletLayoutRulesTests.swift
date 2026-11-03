@@ -14,29 +14,44 @@ final class TabletLayoutRulesTests: XCTestCase {
     /// The owner's iPad: the input assistant bar of sticker mode (about 80pt) went away with an empty end frame,
     /// and the height stayed. An empty frame on a tablet now means nothing is docked.
     func test_tablet_emptyFrameChange_isHidden() {
-        XCTAssertEqual(windowKeyboardNotificationDecision(kind: .willChangeFrame, isTablet: true, endFrame: .zero, screenHeight: 1032.0), .hidden)
-        XCTAssertEqual(windowKeyboardNotificationDecision(kind: .willChangeFrame, isTablet: true, endFrame: CGRect(x: 0.0, y: 952.0, width: 1376.0, height: 0.0), screenHeight: 1032.0), .hidden)
+        XCTAssertEqual(windowKeyboardNotificationDecision(kind: .willChangeFrame, isRegularWidth: true, deviceType: .tablet, endFrame: .zero, screenHeight: 1032.0), .hidden)
+        XCTAssertEqual(windowKeyboardNotificationDecision(kind: .willChangeFrame, isRegularWidth: true, deviceType: .tablet, endFrame: CGRect(x: 0.0, y: 952.0, width: 1376.0, height: 0.0), screenHeight: 1032.0), .hidden)
     }
 
     func test_tablet_hideWithEmptyOrOffscreenFrame_isHidden() {
-        XCTAssertEqual(windowKeyboardNotificationDecision(kind: .willHide, isTablet: true, endFrame: .zero, screenHeight: 1032.0), .hidden)
-        XCTAssertEqual(windowKeyboardNotificationDecision(kind: .willHide, isTablet: true, endFrame: CGRect(x: 0.0, y: 1032.0, width: 1376.0, height: 80.0), screenHeight: 1032.0), .hidden)
+        XCTAssertEqual(windowKeyboardNotificationDecision(kind: .willHide, isRegularWidth: true, deviceType: .tablet, endFrame: .zero, screenHeight: 1032.0), .hidden)
+        XCTAssertEqual(windowKeyboardNotificationDecision(kind: .willHide, isRegularWidth: true, deviceType: .tablet, endFrame: CGRect(x: 0.0, y: 1032.0, width: 1376.0, height: 80.0), screenHeight: 1032.0), .hidden)
     }
 
     /// A real keyboard is always measured, so it never covers the input bar; a hide that still reports an
     /// on-screen frame is left to the frame-change notification.
     func test_tablet_realKeyboard_isMeasured() {
         let keyboard = CGRect(x: 0.0, y: 1032.0 - 491.0, width: 1376.0, height: 491.0)
-        XCTAssertEqual(windowKeyboardNotificationDecision(kind: .willChangeFrame, isTablet: true, endFrame: keyboard, screenHeight: 1032.0), .measure)
-        XCTAssertEqual(windowKeyboardNotificationDecision(kind: .willChangeFrame, isTablet: true, endFrame: CGRect(x: 0.0, y: 952.0, width: 1376.0, height: 80.0), screenHeight: 1032.0), .measure)
-        XCTAssertEqual(windowKeyboardNotificationDecision(kind: .willHide, isTablet: true, endFrame: keyboard, screenHeight: 1032.0), .keep)
+        XCTAssertEqual(windowKeyboardNotificationDecision(kind: .willChangeFrame, isRegularWidth: true, deviceType: .tablet, endFrame: keyboard, screenHeight: 1032.0), .measure)
+        XCTAssertEqual(windowKeyboardNotificationDecision(kind: .willChangeFrame, isRegularWidth: true, deviceType: .tablet, endFrame: CGRect(x: 0.0, y: 952.0, width: 1376.0, height: 80.0), screenHeight: 1032.0), .measure)
+        XCTAssertEqual(windowKeyboardNotificationDecision(kind: .willHide, isRegularWidth: true, deviceType: .tablet, endFrame: keyboard, screenHeight: 1032.0), .keep)
     }
 
     func test_phone_isUpstream() {
-        XCTAssertEqual(windowKeyboardNotificationDecision(kind: .willChangeFrame, isTablet: false, endFrame: .zero, screenHeight: 874.0), .measure)
-        XCTAssertEqual(windowKeyboardNotificationDecision(kind: .willChangeFrame, isTablet: false, endFrame: CGRect(x: 0.0, y: 538.0, width: 402.0, height: 336.0), screenHeight: 874.0), .measure)
-        XCTAssertEqual(windowKeyboardNotificationDecision(kind: .willHide, isTablet: false, endFrame: .zero, screenHeight: 874.0), .keep)
-        XCTAssertEqual(windowKeyboardNotificationDecision(kind: .willHide, isTablet: false, endFrame: CGRect(x: 0.0, y: 874.0, width: 402.0, height: 336.0), screenHeight: 874.0), .keep)
+        XCTAssertEqual(windowKeyboardNotificationDecision(kind: .willChangeFrame, isRegularWidth: false, deviceType: .phone, endFrame: .zero, screenHeight: 874.0), .measure)
+        XCTAssertEqual(windowKeyboardNotificationDecision(kind: .willChangeFrame, isRegularWidth: false, deviceType: .phone, endFrame: CGRect(x: 0.0, y: 538.0, width: 402.0, height: 336.0), screenHeight: 874.0), .measure)
+        XCTAssertEqual(windowKeyboardNotificationDecision(kind: .willHide, isRegularWidth: false, deviceType: .phone, endFrame: .zero, screenHeight: 874.0), .keep)
+        XCTAssertEqual(windowKeyboardNotificationDecision(kind: .willHide, isRegularWidth: false, deviceType: .phone, endFrame: CGRect(x: 0.0, y: 874.0, width: 402.0, height: 336.0), screenHeight: 874.0), .keep)
+    }
+
+    /// iPhone Duo unfolded in landscape is regular width but a phone: upstream ignores an empty frame there, and a
+    /// hide is left to the frame-change notification. The tablet rules must not reach it.
+    func test_regularWidthPhone_isUpstream() {
+        XCTAssertEqual(windowKeyboardNotificationDecision(kind: .willChangeFrame, isRegularWidth: true, deviceType: .phone, endFrame: .zero, screenHeight: 669.0), .keep)
+        XCTAssertEqual(windowKeyboardNotificationDecision(kind: .willChangeFrame, isRegularWidth: true, deviceType: .phone, endFrame: CGRect(x: 0.0, y: 400.0, width: 951.0, height: 269.0), screenHeight: 669.0), .measure)
+        XCTAssertEqual(windowKeyboardNotificationDecision(kind: .willHide, isRegularWidth: true, deviceType: .phone, endFrame: .zero, screenHeight: 669.0), .keep)
+        XCTAssertEqual(windowKeyboardNotificationDecision(kind: .willHide, isRegularWidth: true, deviceType: .phone, endFrame: CGRect(x: 0.0, y: 669.0, width: 951.0, height: 269.0), screenHeight: 669.0), .keep)
+    }
+
+    /// A compact-width iPad window (Slide Over, a narrow Stage Manager window) is laid out as a phone: upstream.
+    func test_compactTabletWindow_isUpstream() {
+        XCTAssertEqual(windowKeyboardNotificationDecision(kind: .willChangeFrame, isRegularWidth: false, deviceType: .tablet, endFrame: .zero, screenHeight: 1032.0), .measure)
+        XCTAssertEqual(windowKeyboardNotificationDecision(kind: .willHide, isRegularWidth: false, deviceType: .tablet, endFrame: .zero, screenHeight: 1032.0), .keep)
     }
 
     // MARK: Keyboard orientation
@@ -130,11 +145,17 @@ final class TabletLayoutRulesTests: XCTestCase {
 
     // MARK: Floating bottom panels
 
-    /// The owner's screenshot: the ~80pt assistant bar of sticker mode raised the tab bar to 88pt over the chat
-    /// list. Only a real keyboard raises it.
-    func test_regular_assistantBar_doesNotRaise() {
-        XCTAssertEqual(floatingBottomPanelsInset(layout: self.layout(size: CGSize(width: 458.0, height: 1032.0), widthClass: .regular, inputHeight: 80.0)), 20.0)
-        XCTAssertEqual(floatingBottomPanelsInset(layout: self.layout(size: CGSize(width: 458.0, height: 1032.0), widthClass: .regular, inputHeight: 100.0)), 20.0)
+    /// A hardware keyboard's shortcuts bar (about 50-80pt) is drawn across the bottom, so the tab bar and the edit
+    /// toolbar rise above it, as upstream. (The ~80pt bar of the chat's sticker mode is no longer shown at all:
+    /// `ChatInputAssistantSuppressor`.)
+    func test_regular_shortcutsBar_raises() {
+        XCTAssertEqual(floatingBottomPanelsInset(layout: self.layout(size: CGSize(width: 458.0, height: 1032.0), widthClass: .regular, inputHeight: 70.0)), 78.0)
+        XCTAssertEqual(floatingBottomPanelsInset(layout: self.layout(size: CGSize(width: 458.0, height: 1032.0), widthClass: .regular, inputHeight: 100.0)), 108.0)
+    }
+
+    /// A Stage Manager window that a real keyboard overlaps by only 60pt reports 60pt: the bar still clears it.
+    func test_regular_partialKeyboardOverlap_raises() {
+        XCTAssertEqual(floatingBottomPanelsInset(layout: self.layout(size: CGSize(width: 458.0, height: 900.0), widthClass: .regular, inputHeight: 60.0)), 68.0)
     }
 
     func test_regular_realKeyboard_raises() {
@@ -159,6 +180,12 @@ final class TabletLayoutRulesTests: XCTestCase {
     func test_mediaPanelBar_phone_isUpstream() {
         XCTAssertEqual(mediaPanelBottomBarEdgeEffectFrame(barSize: CGSize(width: 402.0, height: 74.0), defaultHeight: 80.0), CGRect(x: 0.0, y: -6.0, width: 402.0, height: 80.0))
         XCTAssertEqual(mediaPanelBottomBarEdgeEffectFrame(barSize: CGSize(width: 375.0, height: 54.0), defaultHeight: 80.0), CGRect(x: 0.0, y: -26.0, width: 375.0, height: 80.0))
+    }
+
+    /// iPhone before iOS 26 (34pt home-indicator inset: 34 + 34 + 20 = 88pt), and iPhone in landscape: upstream too.
+    func test_mediaPanelBar_olderPhone_isUpstream() {
+        XCTAssertEqual(mediaPanelBottomBarEdgeEffectFrame(barSize: CGSize(width: 402.0, height: 88.0), defaultHeight: 80.0), CGRect(x: 0.0, y: 8.0, width: 402.0, height: 80.0))
+        XCTAssertEqual(mediaPanelBottomBarEdgeEffectFrame(barSize: CGSize(width: 874.0, height: 75.0), defaultHeight: 80.0), CGRect(x: 0.0, y: -5.0, width: 874.0, height: 80.0))
     }
 
     /// iPad with the bar lifted (34 + 95 + 20 = 149pt): the fade still starts just above the switch, as on iPhone,

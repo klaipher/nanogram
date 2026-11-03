@@ -2754,7 +2754,7 @@ class ChatControllerNode: ASDisplayNode, ASScrollViewDelegate {
         var isInputExpansionEnabled = false
         if case .media = self.chatPresentationInterfaceState.inputMode {
             // Nanogram: no stretching on iPad (ChatTabletInputRules.swift).
-            isInputExpansionEnabled = chatMediaInputAllowsExpansion(widthClass: layout.metrics.widthClass)
+            isInputExpansionEnabled = chatMediaInputAllowsExpansion(widthClass: layout.metrics.widthClass, deviceType: layout.deviceMetrics.type)
         }
         
         let previousInputPanelBackgroundFrame = self.inputPanelBackgroundNode.frame
@@ -3704,6 +3704,7 @@ class ChatControllerNode: ASDisplayNode, ASScrollViewDelegate {
     }
 
     private let emptyInputView = EmptyKeyboardInputView()
+    private let inputAssistantSuppressor = ChatInputAssistantSuppressor()
     private func chatPresentationInterfaceStateInputView(_ state: ChatPresentationInterfaceState) -> UIView? {
         switch state.inputMode {
         case .text:
@@ -3912,6 +3913,8 @@ class ChatControllerNode: ASDisplayNode, ASScrollViewDelegate {
                 } else {
                     if richTextInputNode.keyboardInputView !== updatedInputView {
                         richTextInputNode.keyboardInputView = updatedInputView
+                        // Nanogram: no input assistant bar under the sticker panel on iPad (ChatInputAssistantSuppressor.swift).
+                        self.inputAssistantSuppressor.update(responder: updatedInputView.flatMap { chatInputResponder(in: richTextInputNode.inputView, withInputView: $0) }, suppress: chatSuppressesInputAssistant(isMediaInput: updatedInputView != nil, deviceType: self.validLayout?.0.deviceMetrics.type))
                         if richTextInputNode.isInputFirstResponder {
                             if self.chatPresentationInterfaceStateRequiresInputFocus(chatPresentationInterfaceState), let validLayout = self.validLayout {
                                 if case .compact = validLayout.0.metrics.widthClass {

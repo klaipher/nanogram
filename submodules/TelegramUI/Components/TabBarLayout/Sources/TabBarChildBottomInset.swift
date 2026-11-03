@@ -8,7 +8,9 @@ import Display
 /// on iPad, with the bar raised for a keyboard, the estimate was far off. When the bar has been laid out for this
 /// same layout, its own inset is used (`computedBottomInset`, the space from the bar's top to the bottom edge).
 public func tabBarChildBottomInset(layout: ContainerViewLayout, computedLayout: ContainerViewLayout?, computedBottomInset: CGFloat?) -> CGFloat {
-    if let computedLayout, let computedBottomInset, computedLayout == layout {
+    // iPad only: on iPhone the bar's inset can include the previous tab's search-keyboard lift, and the upstream
+    // estimate is right there anyway.
+    if layout.deviceMetrics.type == .tablet, let computedLayout, let computedBottomInset, computedLayout == layout {
         return computedBottomInset
     }
     var options: ContainerViewLayoutInsetOptions = []

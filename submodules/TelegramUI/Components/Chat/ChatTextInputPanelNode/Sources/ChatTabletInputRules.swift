@@ -7,9 +7,10 @@ import Display
 /// Whether the sticker/emoji/GIF panel can be stretched upwards (the up-chevron in the input row, and dragging
 /// the panel). On iPhone the panel is short and stretching it is useful. On iPad the panel is keyboard-sized
 /// already, and the chevron took the microphone's place while stretching filled the whole chat; there the
-/// microphone stays and the panel keeps its height.
-public func chatMediaInputAllowsExpansion(widthClass: ContainerViewLayoutSizeClass?) -> Bool {
-    return widthClass != .regular
+/// microphone stays and the panel keeps its height. Only an iPad: iPhone Duo unfolded is regular width too, and
+/// keeps the upstream short panel that stretches.
+public func chatMediaInputAllowsExpansion(widthClass: ContainerViewLayoutSizeClass?, deviceType: DeviceType?) -> Bool {
+    return !(widthClass == .regular && deviceType == .tablet)
 }
 
 /// What Esc does in a chat, in order: cancel editing, then the reply, then the forward, then close the
@@ -69,4 +70,12 @@ public func chatEscapeAction(_ state: ChatEscapeState) -> ChatEscapeAction? {
         return .navigateBack
     }
     return nil
+}
+
+/// Whether the open chat adds Esc to the window's key commands. Only on iPad (iPhone keeps upstream, where the
+/// chat had no Esc of its own). The window keeps one command per key, and the chat's comes after the chat
+/// list's, so while a text field outside the chat has the focus (the chat list's search field in split view) the
+/// chat leaves Esc to that field's controller.
+public func chatHandlesEscapeKey(deviceType: DeviceType?, firstResponderIsOutsideChat: Bool) -> Bool {
+    return deviceType == .tablet && !firstResponderIsOutsideChat
 }

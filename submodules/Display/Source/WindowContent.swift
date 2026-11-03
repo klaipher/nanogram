@@ -684,7 +684,7 @@ public class Window1 {
                 
                 var keyboardFrame: CGRect = (notification.userInfo?[UIResponder.keyboardFrameEndUserInfoKey] as? NSValue)?.cgRectValue ?? CGRect()
                 // Nanogram: on a tablet an empty end frame means nothing is docked any more (TabletLayoutRules.swift).
-                let notificationDecision = windowKeyboardNotificationDecision(kind: .willChangeFrame, isTablet: isTablet, endFrame: keyboardFrame, screenHeight: (notification.object as? UIScreen)?.bounds.height ?? UIScreen.main.bounds.height)
+                let notificationDecision = windowKeyboardNotificationDecision(kind: .willChangeFrame, isRegularWidth: isTablet, deviceType: strongSelf.deviceMetrics.type, endFrame: keyboardFrame, screenHeight: (notification.object as? UIScreen)?.bounds.height ?? UIScreen.main.bounds.height)
                 if case .keep = notificationDecision {
                     return
                 }
@@ -832,7 +832,7 @@ public class Window1 {
                 isTablet = true
             }
             let endFrame: CGRect = (notification.userInfo?[UIResponder.keyboardFrameEndUserInfoKey] as? NSValue)?.cgRectValue ?? CGRect()
-            let decision = windowKeyboardNotificationDecision(kind: .willHide, isTablet: isTablet, endFrame: endFrame, screenHeight: (notification.object as? UIScreen)?.bounds.height ?? UIScreen.main.bounds.height)
+            let decision = windowKeyboardNotificationDecision(kind: .willHide, isRegularWidth: isTablet, deviceType: self.deviceMetrics.type, endFrame: endFrame, screenHeight: (notification.object as? UIScreen)?.bounds.height ?? UIScreen.main.bounds.height)
             guard case .hidden = decision else {
                 return
             }

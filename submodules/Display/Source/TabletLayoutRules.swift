@@ -22,22 +22,23 @@ public enum WindowKeyboardNotificationDecision: Equatable {
     case keep
 }
 
-/// On a tablet, a keyboard notification whose end frame is empty means that nothing is docked at the bottom of
-/// the screen: the keyboard was undocked or made floating, or the input assistant (shortcuts) bar that the system
-/// shows above an empty custom input view (the chat's sticker mode) went away. Upstream ignored such frames, so
-/// the last height (about 80pt for that bar) stayed in the layout with nothing drawn in it, and every screen kept
-/// an empty band under its input bar until the next keyboard appeared. A hide notification whose end frame is
-/// empty or below the screen also means hidden. iPhone keeps the upstream behaviour: there an empty frame is
-/// measured (and yields zero) and a hide notification is left to the frame-change one.
-public func windowKeyboardNotificationDecision(kind: WindowKeyboardNotificationKind, isTablet: Bool, endFrame: CGRect, screenHeight: CGFloat?) -> WindowKeyboardNotificationDecision {
+/// On an iPad in a regular-width window, a keyboard notification whose end frame is empty means that nothing is
+/// docked at the bottom of the screen: the keyboard was undocked or made floating, or the input assistant
+/// (shortcuts) bar went away. Upstream ignored such frames, so the last height (about 80pt for that bar) stayed in
+/// the layout with nothing drawn in it, and every screen kept an empty band under its input bar until the next
+/// keyboard appeared. A hide notification whose end frame is empty or below the screen also means hidden.
+/// Everything else keeps the upstream behaviour: a regular-width phone (iPhone Duo unfolded) ignores an empty
+/// frame, a compact window measures it (and gets zero), and a hide is left to the frame-change notification.
+public func windowKeyboardNotificationDecision(kind: WindowKeyboardNotificationKind, isRegularWidth: Bool, deviceType: DeviceType, endFrame: CGRect, screenHeight: CGFloat?) -> WindowKeyboardNotificationDecision {
+    let isTabletRegular = isRegularWidth && deviceType == .tablet
     switch kind {
     case .willChangeFrame:
-        if isTablet && endFrame.isEmpty {
-            return .hidden
+        if isRegularWidth && endFrame.isEmpty {
+            return isTabletRegular ? .hidden : .keep
         }
         return .measure
     case .willHide:
-        guard isTablet else {
+        guard isTabletRegular else {
             return .keep
         }
         if endFrame.isEmpty {
@@ -69,15 +70,15 @@ public func layoutKeyboardIsLandscape(size: CGSize, deviceType: DeviceType, inte
 
 // MARK: - Floating bottom panels (tab bar, edit toolbars)
 
-/// The smallest reported input height that is a real software keyboard on a tablet. Anything lower is the
-/// system's input assistant / shortcuts bar, which never covers a column other than the focused one.
-public let tabletRealKeyboardMinimumHeight: CGFloat = 100.0
-
 /// The distance from the bottom edge to a floating bottom panel (the tab bar, a list's edit toolbar). In a
-/// regular-width layout the panel rises above the keyboard.
+/// regular-width layout the panel rises above whatever the system reports at the bottom: a keyboard, a hardware
+/// keyboard's shortcuts bar, or the part of a keyboard that overlaps a Stage Manager window. This is the upstream
+/// rule, shared by both call sites. (It once ignored heights up to 100pt, for the ~80pt assistant bar of the
+/// chat's sticker mode; that bar is no longer shown at all, `ChatInputAssistantSuppressor`, and the cutoff left
+/// the tab bar under a real shortcuts bar.)
 public func floatingBottomPanelsInset(layout: ContainerViewLayout) -> CGFloat {
     var panelsBottomInset: CGFloat = layout.insets(options: []).bottom
-    if layout.metrics.widthClass == .regular, let inputHeight = layout.inputHeight, inputHeight > tabletRealKeyboardMinimumHeight {
+    if layout.metrics.widthClass == .regular, let inputHeight = layout.inputHeight, inputHeight != 0.0 {
         panelsBottomInset = inputHeight + 8.0
     }
     if panelsBottomInset == 0.0 {
@@ -97,9 +98,17 @@ public func floatingBottomPanelsInset(layout: ContainerViewLayout) -> CGFloat {
 /// The fade now starts no lower than `mediaPanelBottomBarEdgeEffectOverhang` above the switch, as it does on
 /// iPhone (74pt bar: -6), and always reaches the bar's bottom.
 public func mediaPanelBottomBarEdgeEffectFrame(barSize: CGSize, defaultHeight: CGFloat) -> CGRect {
+    if barSize.height <= mediaPanelBottomBarMaximumUnliftedHeight {
+        // Not lifted (every iPhone, an iPad without the assistant bar): the upstream frame.
+        return CGRect(origin: CGPoint(x: 0.0, y: barSize.height - defaultHeight), size: CGSize(width: barSize.width, height: defaultHeight))
+    }
     let minY = min(barSize.height - defaultHeight, -mediaPanelBottomBarEdgeEffectOverhang)
     return CGRect(origin: CGPoint(x: 0.0, y: minY), size: CGSize(width: barSize.width, height: barSize.height - minY))
 }
 
 /// How far above the switch the fade starts at the least: the iPhone value (74pt bar, 80pt fade).
 public let mediaPanelBottomBarEdgeEffectOverhang: CGFloat = 6.0
+
+/// The tallest bar that is not lifted: 34pt switch row, the largest home-indicator inset (34pt, iPhone before
+/// iOS 26) and 20pt below. Bars up to this height keep the upstream fade.
+public let mediaPanelBottomBarMaximumUnliftedHeight: CGFloat = 88.0

@@ -13,8 +13,14 @@ final class TabBarChildBottomInsetTests: XCTestCase {
     func test_usesTheBarsInsetForTheSameLayout() {
         let column = self.layout(size: CGSize(width: 458.0, height: 1032.0), widthClass: .regular, inputHeight: 80.0)
         XCTAssertEqual(tabBarChildBottomInset(layout: column, computedLayout: column, computedBottomInset: 84.0), 84.0)
+    }
+
+    /// iPhone keeps the upstream estimate even when the bar has an inset for this layout: that inset can include
+    /// the previous tab's search-keyboard lift.
+    func test_phone_isTheUpstreamEstimate() {
         let phone = self.layout(size: CGSize(width: 402.0, height: 874.0), widthClass: .compact, inputHeight: nil)
-        XCTAssertEqual(tabBarChildBottomInset(layout: phone, computedLayout: phone, computedBottomInset: 84.0), 84.0)
+        XCTAssertEqual(tabBarChildBottomInset(layout: phone, computedLayout: phone, computedBottomInset: 84.0), 69.0)
+        XCTAssertEqual(tabBarChildBottomInset(layout: phone, computedLayout: phone, computedBottomInset: 400.0), 69.0)
     }
 
     /// Before the bar has been laid out for this layout: the upstream estimate.
