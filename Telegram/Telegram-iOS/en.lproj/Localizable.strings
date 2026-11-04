@@ -2871,6 +2871,8 @@ Unused sets are archived when you add more.";
 
 "Privacy.Calls.Integration" = "iOS Call Integration";
 "Privacy.Calls.IntegrationHelp" = "iOS Call Integration shows Telegram calls on the lock screen and in the system's call history. If iCloud sync is enabled, your call history is shared with Apple.";
+"Privacy.Calls.ShowInRecents" = "Show Calls in Phone Recents";
+"Privacy.Calls.ShowInRecentsHelp" = "When off, calls are not added to the Phone app's Recents, are not synced to iCloud call history through it, and are not suggested by Siri.";
 
 "Call.ReportPlaceholder" = "What went wrong?";
 "Call.ReportIncludeLog" = "Send technical information";

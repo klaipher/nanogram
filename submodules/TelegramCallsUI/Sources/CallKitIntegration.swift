@@ -64,7 +64,7 @@ public final class CallKitIntegration {
     func startCall(context: AccountContext, peerId: EnginePeer.Id, phoneNumber: String?, localContactId: String?, isVideo: Bool, displayTitle: String, completion: ((Error?) -> Void)? = nil) {
         sharedProviderDelegate?.startCall(context: context, peerId: peerId, phoneNumber: phoneNumber, isVideo: isVideo, displayTitle: displayTitle, completion: { [weak self] error in
             if error == nil {
-                self?.donateIntent(accountId: context.account.id, peerId: peerId, isVideo: isVideo, displayTitle: displayTitle, localContactId: localContactId)
+                self?.donateIntent(context: context, peerId: peerId, isVideo: isVideo, displayTitle: displayTitle, localContactId: localContactId)
             }
             completion?(error)
         })
@@ -95,17 +95,35 @@ public final class CallKitIntegration {
         sharedProviderDelegate?.reportOutgoingCallConnected(uuid: uuid, at: date)
     }
     
-    private func donateIntent(accountId: AccountRecordId, peerId: EnginePeer.Id, isVideo: Bool, displayTitle: String, localContactId: String?) {
-        let identifier = CallKitHandle.value(accountId: accountId, peerId: peerId)
-        let handle = INPersonHandle(value: identifier, type: .unknown)
-        let contact = INPerson(personHandle: handle, nameComponents: nil, displayName: displayTitle, image: nil, contactIdentifier: localContactId, customIdentifier: identifier)
+    public func updateShowCallsInRecents(_ value: Bool) {
+        CallKitPrivacy.storeShowCallsInRecents(value)
+        sharedProviderDelegate?.updateShowCallsInRecents(value)
+    }
     
-        let intent = INStartCallIntent(callRecordFilter: nil, callRecordToCallBack: nil, audioRoute: .unknown, destinationType: .normal, contacts: [contact], callCapability: isVideo ? .videoCall : .audioCall)
-        
-        let interaction = INInteraction(intent: intent, response: nil)
-        interaction.direction = .outgoing
-        interaction.donate { _ in
+    private func donateIntent(context: AccountContext, peerId: EnginePeer.Id, isVideo: Bool, displayTitle: String, localContactId: String?) {
+        let accountId = context.account.id
+        let _ = (context.sharedContext.accountManager.transaction { transaction -> Bool in
+            if case .none = transaction.getAccessChallengeData() {
+                return true
+            } else {
+                return false
+            }
         }
+        |> deliverOnMainQueue).start(next: { isUnprotected in
+            guard CallKitPrivacy.shouldDonateOutgoingCall(isUnprotected: isUnprotected, showCallsInRecents: CallKitPrivacy.showCallsInRecents()) else {
+                return
+            }
+            let identifier = CallKitHandle.value(accountId: accountId, peerId: peerId)
+            let handle = INPersonHandle(value: identifier, type: .unknown)
+            let contact = INPerson(personHandle: handle, nameComponents: nil, displayName: displayTitle, image: nil, contactIdentifier: localContactId, customIdentifier: identifier)
+            
+            let intent = INStartCallIntent(callRecordFilter: nil, callRecordToCallBack: nil, audioRoute: .unknown, destinationType: .normal, contacts: [contact], callCapability: isVideo ? .videoCall : .audioCall)
+            
+            let interaction = INInteraction(intent: intent, response: nil)
+            interaction.direction = .outgoing
+            interaction.donate { _ in
+            }
+        })
     }
     
     public func applyVoiceChatOutputMode(outputMode: AudioSessionOutputMode) {
@@ -165,6 +183,14 @@ class CallKitProviderDelegate: NSObject, CXProviderDelegate {
         self.hasActiveCallsValue = hasActiveCallsValue
     }
     
+    func updateShowCallsInRecents(_ value: Bool) {
+        let configuration = self.provider.configuration
+        if configuration.includesCallsInRecents != value {
+            configuration.includesCallsInRecents = value
+            self.provider.configuration = configuration
+        }
+    }
+    
     private static func providerConfiguration() -> CXProviderConfiguration {
         let providerConfiguration = CXProviderConfiguration()
         
@@ -172,6 +198,7 @@ class CallKitProviderDelegate: NSObject, CXProviderDelegate {
         providerConfiguration.maximumCallsPerCallGroup = 1
         providerConfiguration.maximumCallGroups = 1
         providerConfiguration.supportedHandleTypes = [.phoneNumber, .generic]
+        providerConfiguration.includesCallsInRecents = CallKitPrivacy.showCallsInRecents()
         if let image = UIImage(named: "Call/NanogramCallKitLogo", in: getAppBundle(), compatibleWith: nil) {
             providerConfiguration.iconTemplateImageData = image.pngData()
         }
