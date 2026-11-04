@@ -51,6 +51,9 @@ cmd_setup() {
   git config feature.manyFiles true
   git config fetch.parallel 0
   git config submodule.fetchJobs 0
+  # Recorded conflict resolutions (DebugController, branding, ...) are replayed on the next upstream merge.
+  git config rerere.enabled true
+  git config rerere.autoupdate true
   # Built-in FSEvents monitor (git >= 2.37) keeps `git status` fast on ~49k files.
   # (`git help -a` hides double-dash commands, so probe the daemon directly.)
   if ! git fsmonitor--daemon status 2>&1 | grep 'not a git command' >/dev/null; then
@@ -390,6 +393,10 @@ cmd_cache_cleanup() {
     *) python3 "$ROOT/tools/dev/cachegc/cachegc.py" run --repo "$ROOT" "$@" ;;
   esac
 }
+
+# tg upstream-sync --tag <upstream tag> [--offline] [--json]: dry run of an upstream release merge (conflicts by area,
+# bumped pins against our fork branches). Works in a scratch repository; changes and fetches nothing in this repo.
+cmd_upstream_sync() { python3 "$ROOT/tools/dev/upstream-sync/sync.py" --repo "$ROOT" "$@"; }
 
 cache_cleanup_auto() { python3 "$ROOT/tools/dev/cachegc/cachegc.py" auto --repo "$ROOT" || true; }
 
@@ -770,6 +777,7 @@ cmd_help() {
 Usage: tools/dev/tg <command> [options]
 
   setup                 Configure git, fetch submodules shallowly, create local config files
+  upstream-sync --tag T Dry run of merging an upstream release: conflicts by area, bumped pins (changes nothing)
   doctor                Check Xcode version, configuration, submodules and free disk
   build [--release] [--device] [--full] [-- <Make.py build args>]
                         Build the app (default: debug simulator, no app extensions)
@@ -820,6 +828,7 @@ case "$command" in
 esac
 case "$command" in
   setup) cmd_setup "$@" ;;
+  upstream-sync) cmd_upstream_sync "$@" ;;
   doctor) cmd_doctor "$@" ;;
   build) cmd_build "$@" ;;
   run) cmd_run "$@" ;;
