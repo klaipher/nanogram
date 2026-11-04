@@ -293,6 +293,38 @@ final class AccountManagerImpl<Types: AccountManagerTypes> {
         assert(self.queue.isCurrent())
     }
 
+    /// Whether new transactions may begin (queue-confined). Disabled while the app is about to be suspended, so the
+    /// accounts-metadata database in the shared container is never locked by a commit when iOS suspends the app
+    /// (0xdead10cc). Transactions that arrive meanwhile wait in `queuedTransactions`.
+    private var canBeginTransactions = true
+    private var queuedTransactions: [() -> Void] = []
+    
+    fileprivate func setCanBeginTransactions(_ value: Bool, afterTransactionIfRunning: @escaping () -> Void) {
+        assert(self.queue.isCurrent())
+        let previous = self.canBeginTransactions
+        self.canBeginTransactions = value
+        if previous != value && value {
+            let queued = self.queuedTransactions
+            self.queuedTransactions = []
+            for f in queued {
+                f()
+            }
+        }
+        // Runs on the queue, so any transaction that was running has committed by now.
+        afterTransactionIfRunning()
+    }
+    
+    private func beginTransaction(ignoreDisabled: Bool, _ f: @escaping () -> Void) {
+        assert(self.queue.isCurrent())
+        if ignoreDisabled || self.canBeginTransactions {
+            f()
+        } else {
+            self.queuedTransactions.append(f)
+        }
+    }
+
+    /// Runs the transaction right away, whatever the gate says: only for callers that already are on the queue and
+    /// cannot wait (it is not used outside this file). Everything else goes through `transaction`.
     fileprivate func transactionSync<T>(ignoreDisabled: Bool, _ f: (AccountManagerModifier<Types>) -> T) -> T {
         self.valueBox.begin()
 
@@ -415,10 +447,12 @@ final class AccountManagerImpl<Types: AccountManagerTypes> {
     fileprivate func transaction<T>(ignoreDisabled: Bool, _ f: @escaping (AccountManagerModifier<Types>) -> T) -> Signal<T, NoError> {
         return Signal { subscriber in
             self.queue.justDispatch {
-                let result = self.transactionSync(ignoreDisabled: ignoreDisabled, f)
-                
-                subscriber.putNext(result)
-                subscriber.putCompletion()
+                self.beginTransaction(ignoreDisabled: ignoreDisabled, {
+                    let result = self.transactionSync(ignoreDisabled: ignoreDisabled, f)
+                    
+                    subscriber.putNext(result)
+                    subscriber.putCompletion()
+                })
             }
             return EmptyDisposable
         }
@@ -576,7 +610,7 @@ final class AccountManagerImpl<Types: AccountManagerTypes> {
     }
     
     fileprivate func accountRecords() -> Signal<AccountRecordsView<Types>, NoError> {
-        return self.transaction(ignoreDisabled: false, { transaction -> Signal<AccountRecordsView<Types>, NoError> in
+        return self.transaction(ignoreDisabled: true, { transaction -> Signal<AccountRecordsView<Types>, NoError> in
             return self.accountRecordsInternal(transaction: transaction)
         })
         |> switchToLatest
@@ -590,21 +624,21 @@ final class AccountManagerImpl<Types: AccountManagerTypes> {
     }
     
     fileprivate func sharedData(keys: Set<ValueBoxKey>) -> Signal<AccountSharedDataView<Types>, NoError> {
-        return self.transaction(ignoreDisabled: false, { transaction -> Signal<AccountSharedDataView<Types>, NoError> in
+        return self.transaction(ignoreDisabled: true, { transaction -> Signal<AccountSharedDataView<Types>, NoError> in
             return self.sharedDataInternal(transaction: transaction, keys: keys)
         })
         |> switchToLatest
     }
     
     fileprivate func noticeEntry(key: NoticeEntryKey) -> Signal<NoticeEntryView<Types>, NoError> {
-        return self.transaction(ignoreDisabled: false, { transaction -> Signal<NoticeEntryView<Types>, NoError> in
+        return self.transaction(ignoreDisabled: true, { transaction -> Signal<NoticeEntryView<Types>, NoError> in
             return self.noticeEntryInternal(transaction: transaction, key: key)
         })
         |> switchToLatest
     }
     
     fileprivate func accessChallengeData() -> Signal<AccessChallengeDataView, NoError> {
-        return self.transaction(ignoreDisabled: false, { transaction -> Signal<AccessChallengeDataView, NoError> in
+        return self.transaction(ignoreDisabled: true, { transaction -> Signal<AccessChallengeDataView, NoError> in
             return self.accessChallengeDataInternal(transaction: transaction)
         })
         |> switchToLatest
@@ -853,6 +887,16 @@ public final class AccountManager<Types: AccountManagerTypes> {
             return nil
         }
         return AccountManager(queue: queue, basePath: basePath, temporarySessionId: temporarySessionId, impl: impl)
+    }
+    
+    /// Stops new transactions from beginning (they wait) or lets them begin again, and calls
+    /// `afterTransactionIfRunning` on the account manager's queue once a transaction that was running has committed.
+    /// Mirrors `Postbox.setCanBeginTransactions`: the accounts-metadata database is in the shared app group
+    /// container too, and a commit in flight at suspension gets the app killed with 0xdead10cc.
+    public func setCanBeginTransactions(_ value: Bool, afterTransactionIfRunning: @escaping () -> Void = {}) {
+        self.impl.with { impl in
+            impl.setCanBeginTransactions(value, afterTransactionIfRunning: afterTransactionIfRunning)
+        }
     }
     
     public func transaction<T>(ignoreDisabled: Bool = false, _ f: @escaping (AccountManagerModifier<Types>) -> T) -> Signal<T, NoError> {

@@ -99,6 +99,8 @@ public final class SharedWakeupManager {
     private var keepIdleDisposable: Disposable?
     private var silenceAudioRenderer: MediaPlayerAudioRenderer?
     
+    /// Its database is gated like the account ones (see `pauseTransactions`).
+    private let accountManager: AccountManager<TelegramAccountManagerTypes>?
     private var accountsAndTasks: [(Account, Bool, AccountTasks)] = []
     /// What `updateAccounts` last decided: whether database transactions stay enabled.
     private var transactionsEnabled = true
@@ -122,7 +124,7 @@ public final class SharedWakeupManager {
     private var backgroundStoryProcessingTaskCancellationRequestedByApp: Bool = false
     private var pendingBackgroundStoryProcessingTaskTimer: SwiftSignalKit.Timer?
 
-    public init(beginBackgroundTask: @escaping (String, @escaping () -> Void) -> UIBackgroundTaskIdentifier?, endBackgroundTask: @escaping (UIBackgroundTaskIdentifier) -> Void, backgroundTimeRemaining: @escaping () -> Double, acquireIdleExtension: @escaping () -> Disposable?, activeAccounts: Signal<(primary: Account?, accounts: [(AccountRecordId, Account)]), NoError>, liveLocationPolling: Signal<AccountRecordId?, NoError>, watchTasks: Signal<AccountRecordId?, NoError>, inForeground: Signal<Bool, NoError>, hasActiveAudioSession: Signal<Bool, NoError>, notificationManager: SharedNotificationManager?, mediaManager: MediaManager, callManager: PresentationCallManager?, accountUserInterfaceInUse: @escaping (AccountRecordId) -> Signal<Bool, NoError>, presentationData: @escaping () -> PresentationData?) {
+    public init(beginBackgroundTask: @escaping (String, @escaping () -> Void) -> UIBackgroundTaskIdentifier?, endBackgroundTask: @escaping (UIBackgroundTaskIdentifier) -> Void, backgroundTimeRemaining: @escaping () -> Double, acquireIdleExtension: @escaping () -> Disposable?, activeAccounts: Signal<(primary: Account?, accounts: [(AccountRecordId, Account)]), NoError>, accountManager: AccountManager<TelegramAccountManagerTypes>?, liveLocationPolling: Signal<AccountRecordId?, NoError>, watchTasks: Signal<AccountRecordId?, NoError>, inForeground: Signal<Bool, NoError>, hasActiveAudioSession: Signal<Bool, NoError>, notificationManager: SharedNotificationManager?, mediaManager: MediaManager, callManager: PresentationCallManager?, accountUserInterfaceInUse: @escaping (AccountRecordId) -> Signal<Bool, NoError>, presentationData: @escaping () -> PresentationData?) {
         assert(Queue.mainQueue().isCurrent())
         
         self.beginBackgroundTask = beginBackgroundTask
@@ -130,6 +132,7 @@ public final class SharedWakeupManager {
         self.backgroundTimeRemaining = backgroundTimeRemaining
         self.acquireIdleExtension = acquireIdleExtension
         self.presentationData = presentationData
+        self.accountManager = accountManager
         
         self.taskRelease = BackgroundTaskRelease(pauseWrites: { [weak self] paused in
             self?.pauseTransactions(paused)
@@ -1260,18 +1263,27 @@ public final class SharedWakeupManager {
     /// enabled again.
     private func pauseTransactions(_ paused: @escaping () -> Void) {
         let accounts = self.accountsAndTasks.map(\.0)
-        if accounts.isEmpty {
+        let accountManager = self.accountManager
+        let total = accounts.count + (accountManager != nil ? 1 : 0)
+        if total == 0 {
             paused()
             return
         }
-        let remaining = Atomic<Int>(value: accounts.count)
+        let remaining = Atomic<Int>(value: total)
+        let completeOne: () -> Void = {
+            if remaining.modify({ $0 - 1 }) == 0 {
+                Queue.mainQueue().async {
+                    paused()
+                }
+            }
+        }
+        // The accounts-metadata database is in the shared container too (0xdead10cc).
+        accountManager?.setCanBeginTransactions(false, afterTransactionIfRunning: {
+            completeOne()
+        })
         for account in accounts {
             account.postbox.setCanBeginTransactions(false, afterTransactionIfRunning: {
-                if remaining.modify({ $0 - 1 }) == 0 {
-                    Queue.mainQueue().async {
-                        paused()
-                    }
-                }
+                completeOne()
             })
         }
     }
@@ -1297,6 +1309,7 @@ public final class SharedWakeupManager {
         if self.inForeground || self.hasActiveAudioSession || self.isInBackgroundExtension || self.backgroundProcessingTaskId != nil || self.backgroundStoryProcessingTaskId != nil || self.cleanupProcessingTaskActive || hasBackgroundLocationTask || (hasTasks && self.currentExternalCompletion != nil) || self.activeExplicitExtensionTimer != nil || self.silenceAudioRenderer != nil {
             Logger.shared.log("Wakeup", "enableBeginTransactions: true (active)")
             self.transactionsEnabled = true
+            self.accountManager?.setCanBeginTransactions(true)
             
             for (account, primary, tasks) in self.accountsAndTasks {
                 account.postbox.setCanBeginTransactions(true)
@@ -1317,6 +1330,7 @@ public final class SharedWakeupManager {
             }
             Logger.shared.log("Wakeup", "enableBeginTransactions: \(enableBeginTransactions)")
             self.transactionsEnabled = enableBeginTransactions
+            self.accountManager?.setCanBeginTransactions(enableBeginTransactions)
             
             for (account, _, _) in self.accountsAndTasks {
                 account.postbox.setCanBeginTransactions(enableBeginTransactions)
