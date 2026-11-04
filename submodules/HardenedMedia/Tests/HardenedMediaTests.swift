@@ -72,3 +72,41 @@ final class HardenedMediaPolicyTests: XCTestCase {
         XCTAssertEqual(HardenedMediaPolicy(lockdownModeEnabled: false), .inactive)
     }
 }
+
+final class VenueSearchPolicyTests: XCTestCase {
+    func testChatsSearchNearbyPlacesWithMapKitWhetherOrNotTheUserAsked() {
+        for requested in [false, true] {
+            XCTAssertEqual(VenueSearchPolicy.backend(isSecretChat: false, isStory: false, userRequested: requested, latitude: 52.5200, longitude: 13.4050), .mapKit)
+        }
+    }
+
+    func testSecretChatsNeverReachTheBot() {
+        for requested in [false, true] {
+            for story in [false, true] {
+                let backend = VenueSearchPolicy.backend(isSecretChat: true, isStory: story, userRequested: requested, latitude: 52.5200, longitude: 13.4050)
+                XCTAssertFalse(backend.usesBot, "secret chat, story \(story), requested \(requested)")
+            }
+        }
+    }
+
+    func testOpeningTheStoryPickerDoesNotQueryTheBot() {
+        XCTAssertEqual(VenueSearchPolicy.backend(isSecretChat: false, isStory: true, userRequested: false, latitude: 52.5200, longitude: 13.4050), .none)
+    }
+
+    func testAnExplicitStorySearchQueriesTheBotWithCoordinatesRoundedToAboutOneKilometre() {
+        let backend = VenueSearchPolicy.backend(isSecretChat: false, isStory: true, userRequested: true, latitude: 52.52437, longitude: 13.40495)
+        XCTAssertEqual(backend, .bot(latitude: 52.52, longitude: 13.4))
+    }
+
+    func testRoundingSnapsToAHundredthOfADegree() {
+        XCTAssertEqual(VenueSearchPolicy.roundedForBot(52.5251), 52.53, accuracy: 1e-9)
+        XCTAssertEqual(VenueSearchPolicy.roundedForBot(-33.8688), -33.87, accuracy: 1e-9)
+        XCTAssertEqual(VenueSearchPolicy.roundedForBot(0.004), 0.0, accuracy: 1e-9)
+    }
+
+    func testTwoPositionsInTheSameCellSendTheSameBotCoordinates() {
+        let first = VenueSearchPolicy.backend(isSecretChat: false, isStory: true, userRequested: true, latitude: 40.7121, longitude: -74.0062)
+        let second = VenueSearchPolicy.backend(isSecretChat: false, isStory: true, userRequested: true, latitude: 40.7149, longitude: -74.0071)
+        XCTAssertEqual(first, second)
+    }
+}
