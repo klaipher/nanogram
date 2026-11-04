@@ -136,6 +136,7 @@ actor WalletContextImpl {
     var runtimeObservationId = UUID()
     var observationTask: Task<Void, Never>?
     var serverStateRetryTask: Task<Void, Never>?
+    var serverStateRetryPolicy = WalletStateRetryPolicy()
             
     var pollingTask: Task<Void, Never>?
     var pollingTaskId: UUID?
@@ -583,6 +584,7 @@ actor WalletContextImpl {
             }
             self.serverStateRetryTask?.cancel()
             self.serverStateRetryTask = nil
+            self.serverStateRetryPolicy.reset()
             self.applyServerWalletState(value, forceActivation: promotedReplacement, balanceOverlayRevision: balanceOverlayRevision)
         } catch is CancellationError {
         } catch {
@@ -1557,13 +1559,20 @@ actor WalletContextImpl {
               self.needsServerWalletStateRefresh else {
             return
         }
+        var hasWallet = false
+        if case .wallet = self.currentState.phase { hasWallet = true }
+        self.serverStateRetryPolicy.recordFailure()
+        guard self.serverStateRetryPolicy.shouldRetry(hasWallet: hasWallet, hasRefreshDemand: self.hasActiveWalletRefreshDemand) else {
+            return
+        }
+        let delay = self.serverStateRetryPolicy.delay
         self.serverStateRetryTask = Task { [weak self] in
-            await self?.performServerStateRetryDelay()
+            await self?.performServerStateRetryDelay(seconds: delay)
         }
     }
 
-    private func performServerStateRetryDelay() async {
-        try? await Task.sleep(nanoseconds: 5_000_000_000)
+    private func performServerStateRetryDelay(seconds: TimeInterval) async {
+        try? await Task.sleep(nanoseconds: UInt64(seconds * 1_000_000_000))
         guard !Task.isCancelled,
               !self.isShutdown else {
             return
