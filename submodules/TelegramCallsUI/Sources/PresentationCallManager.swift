@@ -144,21 +144,18 @@ public final class PresentationCallManagerImpl: PresentationCallManager {
             let settings = sharedData.entries[ApplicationSpecificSharedDataKeys.experimentalUISettings]?.get(ExperimentalUISettings.self) ?? .defaultSettings
             OngoingCallContext.applyVideoExperiments(
                 livestreamHardwareDecoding: settings.callsLivestreamHardwareDecoding,
-                nativeCapturePath: settings.callsNativeCapturePath,
-                encoderLowLatency: settings.callsEncoderLowLatency
+                nativeCapturePath: settings.callsNativeCapturePath
             )
             OngoingCallContext.applyAudioExperiments(
                 systemNoiseSuppression: settings.callsSystemNoiseSuppression,
                 advancedDucking: settings.callsAdvancedDucking,
-                groupNarrowbandProcessing: settings.callsGroupNarrowbandProcessing,
-                keepSessionMode: settings.callsKeepSessionMode
+                groupNoiseMode: settings.callsGroupNoiseMode
             )
             OngoingCallContext.applyPowerExperiments(
                 threadQoS: settings.callsThreadQoS,
-                thermalVideoLadder: settings.callsThermalVideoLadder,
-                backgroundVideoDrop: settings.callsBackgroundVideoDrop
+                thermalVideoLadder: settings.callsThermalVideoLadder
             )
-            CallBackgroundVideoGate.shared.setEnabled(settings.callsBackgroundVideoDrop)
+            CallBackgroundVideoGate.shared.start()
         })
         
         var startCallImpl: ((AccountContext, UUID, EnginePeer.Id?, String, Bool) -> Signal<Bool, NoError>)?

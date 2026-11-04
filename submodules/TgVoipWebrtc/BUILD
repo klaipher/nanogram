@@ -160,6 +160,9 @@ sources = glob([
     # and TGRTCScreenVideoRange stay in: the merged H.264/H.265 encoders import them unconditionally.
     "tgcalls/tgcalls/platform/darwin/ScreenCaptureKit*",
     "tgcalls/tgcalls/desktop_capturer/**",
+    # Host-test mains: they have a main() and belong to the policy_cc_test targets, never to the app library.
+    "tgcalls/tgcalls/**/*PolicyTest.cpp",
+    "tgcalls/tgcalls/VideoPlaneLayoutTest.cpp",
 ])
 
 sources = glob([
@@ -174,9 +177,6 @@ sources = glob([
     "tgcalls/tgcalls/platform/darwin/**/*.cc",
     "tgcalls/tgcalls/platform/darwin/**/*.c",
     "tgcalls/tgcalls/third-party/**/*.cpp",
-    # Host-test mains (see the policy_cc_test targets below); they must not land in the app library.
-    "tgcalls/tgcalls/**/*PolicyTest.cpp",
-    "tgcalls/tgcalls/VideoPlaneLayoutTest.cpp",
     "tgcalls/tgcalls/utils/**/*.cpp",
 ], allow_empty=True, exclude = [
     "tgcalls/tgcalls/legacy/**",
@@ -202,6 +202,9 @@ sources = glob([
     # and TGRTCScreenVideoRange stay in: the merged H.264/H.265 encoders import them unconditionally.
     "tgcalls/tgcalls/platform/darwin/ScreenCaptureKit*",
     "tgcalls/tgcalls/desktop_capturer/**",
+    # Host-test mains: they have a main() and belong to the policy_cc_test targets, never to the app library.
+    "tgcalls/tgcalls/**/*PolicyTest.cpp",
+    "tgcalls/tgcalls/VideoPlaneLayoutTest.cpp",
 ]) + [
     "tgcalls/tgcalls/Manager.cpp",
     "tgcalls/tgcalls/MediaManager.cpp",
@@ -405,59 +408,67 @@ cc_test(
 
 # Header-only policy tests: no WebRTC, no FFmpeg, no platform code, so they build in seconds.
 # Each covers the decision logic behind one switchable call optimisation; the platform code
-# that applies the decision is only compile-checked.
+# that applies the decision is only compile-checked. The test mains are single-sourced under
+# tgcalls/tests/<name>/ and are the same files the macOS app's tgcalls runs (tests/<name>/run.sh).
 policy_cc_test(
     name = "livestream_decode_policy_test",
-    src = "tgcalls/tgcalls/group/LivestreamDecodePolicyTest.cpp",
+    src = "tgcalls/tests/livestream_decode_policy/LivestreamDecodePolicyTest.cpp",
     headers = ["group/LivestreamDecodePolicy.h", "CallsRuntimeSwitches.h"],
 )
 
 policy_cc_test(
     name = "capture_frame_policy_test",
-    src = "tgcalls/tgcalls/platform/darwin/CaptureFramePolicyTest.cpp",
+    src = "tgcalls/tests/capture_frame_policy/CaptureFramePolicyTest.cpp",
     headers = ["platform/darwin/CaptureFramePolicy.h"],
 )
 
 policy_cc_test(
     name = "encoder_mode_policy_test",
-    src = "tgcalls/tgcalls/platform/darwin/EncoderModePolicyTest.cpp",
+    src = "tgcalls/tests/encoder_mode_policy/EncoderModePolicyTests.cpp",
     headers = ["platform/darwin/EncoderModePolicy.h"],
 )
 
 policy_cc_test(
     name = "video_recovery_policy_test",
-    src = "tgcalls/tgcalls/platform/darwin/TGRTCVideoRecoveryPolicyTest.cpp",
+    src = "tgcalls/tests/video_recovery_policy/TGRTCVideoRecoveryPolicyTest.cpp",
     headers = ["platform/darwin/TGRTCVideoRecovery.h"],
 )
 
 policy_cc_test(
     name = "audio_call_policy_test",
-    src = "tgcalls/tgcalls/AudioCallPolicyTest.cpp",
+    src = "tgcalls/tests/audio_call_policy/AudioCallPolicyTest.cpp",
     headers = ["AudioCallPolicy.h", "CallsRuntimeSwitches.h"],
 )
 
 policy_cc_test(
     name = "stream_render_policy_test",
-    src = "tgcalls/tgcalls/group/StreamRenderPolicyTest.cpp",
+    src = "tgcalls/tests/stream_render_policy/StreamRenderPolicyTests.cpp",
     headers = ["group/StreamRenderPolicy.h"],
 )
 
 policy_cc_test(
-    name = "call_power_policy_test",
-    src = "tgcalls/tgcalls/CallPowerPolicyTest.cpp",
-    headers = ["CallPowerPolicy.h", "CallsRuntimeSwitches.h"],
+    name = "call_system_policy_test",
+    src = "tgcalls/tests/call_system_policy/CallSystemPolicyTests.cpp",
+    headers = ["CallSystemPolicy.h", "CallsRuntimeSwitches.h"],
 )
 
 policy_cc_test(
     name = "bounded_history_test",
-    src = "tgcalls/tgcalls/BoundedHistoryPolicyTest.cpp",
+    src = "tgcalls/tests/bounded_history/BoundedHistoryPolicyTest.cpp",
     headers = ["BoundedHistory.h"],
 )
 
 policy_cc_test(
     name = "video_plane_layout_test",
-    src = "tgcalls/tgcalls/VideoPlaneLayoutTest.cpp",
+    src = "tgcalls/tests/video_plane_layout/VideoPlaneLayoutTest.cpp",
     headers = ["VideoPlaneLayout.h"],
+)
+
+# Which codecs a legacy (v1) call offers on Apple devices (H.264 hardware encoder on arm64).
+policy_cc_test(
+    name = "darwin_codec_support_test",
+    src = "tgcalls/tests/darwin_codec_support/DarwinCodecSupportTests.cpp",
+    headers = ["platform/darwin/DarwinCodecSupport.h"],
 )
 
 # Pure C++ core library for non-iOS targets (e.g. CLI tools).
@@ -469,9 +480,6 @@ cc_library(
         "tgcalls/tgcalls/**/*.hpp",
         "tgcalls/tgcalls/platform/fake/**/*.cpp",
         "tgcalls/tgcalls/third-party/**/*.cpp",
-    # Host-test mains (see the policy_cc_test targets below); they must not land in the app library.
-    "tgcalls/tgcalls/**/*PolicyTest.cpp",
-    "tgcalls/tgcalls/VideoPlaneLayoutTest.cpp",
         "tgcalls/tgcalls/utils/**/*.cpp",
     ], allow_empty=True, exclude = [
         "tgcalls/tgcalls/legacy/**",
@@ -481,6 +489,12 @@ cc_library(
         "tgcalls/tgcalls/platform/uwp/**",
         "tgcalls/tgcalls/platform/darwin/**",
         "tgcalls/tgcalls/desktop_capturer/**",
+        # Host-test mains: they have a main() and belong to the policy_cc_test targets, never to the app library.
+        "tgcalls/tgcalls/**/*PolicyTest.cpp",
+        "tgcalls/tgcalls/VideoPlaneLayoutTest.cpp",
+    # Host-test mains: they have a main() and belong to the policy_cc_test targets, never to the app library.
+    "tgcalls/tgcalls/**/*PolicyTest.cpp",
+    "tgcalls/tgcalls/VideoPlaneLayoutTest.cpp",
     ]) + [
         "tgcalls/tgcalls/Manager.cpp",
         "tgcalls/tgcalls/MediaManager.cpp",

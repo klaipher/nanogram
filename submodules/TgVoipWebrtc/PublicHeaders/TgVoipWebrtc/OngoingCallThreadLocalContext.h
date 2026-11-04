@@ -287,21 +287,19 @@ typedef NS_ENUM(int32_t, OngoingCallDataSavingWebrtc) {
 /// previous path at runtime on any error. Set before a call starts, process-wide.
 + (void)setLivestreamHardwareDecoding:(bool)enabled;
 + (void)setNativeCapturePath:(bool)enabled;
-+ (void)setEncoderLowLatency:(bool)enabled;
 
 /// Local-only power switches (Debug Settings). Same rules.
 + (void)setThreadQoS:(bool)enabled;
 + (void)setThermalVideoLadder:(bool)enabled;
-+ (void)setBackgroundVideoDrop:(bool)enabled;
-/// Runtime state while the background drop switch is on: the app is in the background and Picture in
+/// Runtime state (the drop of background video is always on): the app is in the background and Picture in
 /// Picture is not showing the incoming video.
 + (void)setIncomingVideoDropped:(bool)dropped;
 
 /// Local-only call audio switches (Debug Settings). Same rules: nothing negotiated or sent changes.
 + (void)setSystemNoiseSuppression:(bool)enabled;
 + (void)setAdvancedDucking:(bool)enabled;
-+ (void)setGroupNarrowbandProcessing:(bool)enabled;
-+ (void)setKeepSessionMode:(bool)enabled;
+/// Group calls: 0 both suppressors (default), 1 WebRTC only, 2 RNNoise only. Applies from the next group call.
++ (void)setGroupNoiseMode:(int32_t)mode;
 
 + (int32_t)maxLayer;
 + (NSArray<NSString *> * _Nonnull)versionsWithIncludeReference:(bool)includeReference;

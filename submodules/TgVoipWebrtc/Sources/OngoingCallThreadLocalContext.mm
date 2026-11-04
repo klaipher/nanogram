@@ -1356,7 +1356,7 @@ public:
     void OnFrame(const webrtc::VideoFrame& nativeVideoFrame) override {
         // The app is in the background and Picture in Picture is not showing this video: nothing
         // can display the frame, so it is not mapped or handed on. The decoder keeps running.
-        if (_dropsWhileBackgrounded && tgcalls::CallsRuntimeSwitches::backgroundVideoDrop() && tgcalls::CallsRuntimeSwitches::incomingVideoDropped()) {
+        if (_dropsWhileBackgrounded && tgcalls::CallsRuntimeSwitches::incomingVideoDropped()) {
             return;
         }
         @autoreleasepool {
@@ -1849,20 +1849,14 @@ static void (*InternalVoipLoggingFunction)(NSString *) = NULL;
     tgcalls::CallsRuntimeSwitches::setNativeCapturePath(enabled);
 }
 
-+ (void)setEncoderLowLatency:(bool)enabled {
-    tgcalls::CallsRuntimeSwitches::setEncoderLowLatency(enabled);
-}
-
 + (void)setThreadQoS:(bool)enabled {
     tgcalls::CallsRuntimeSwitches::setThreadQoS(enabled);
+    tgcalls::StaticThreads::applyQoS();
 }
 
 + (void)setThermalVideoLadder:(bool)enabled {
     tgcalls::CallsRuntimeSwitches::setThermalVideoLadder(enabled);
-}
-
-+ (void)setBackgroundVideoDrop:(bool)enabled {
-    tgcalls::CallsRuntimeSwitches::setBackgroundVideoDrop(enabled);
+    tgcalls::VideoCaptureInterfaceImpl::reapplyOutputFormatForAll();
 }
 
 + (void)setIncomingVideoDropped:(bool)dropped {
@@ -1877,12 +1871,8 @@ static void (*InternalVoipLoggingFunction)(NSString *) = NULL;
     tgcalls::CallsRuntimeSwitches::setAdvancedDucking(enabled);
 }
 
-+ (void)setGroupNarrowbandProcessing:(bool)enabled {
-    tgcalls::CallsRuntimeSwitches::setGroupNarrowbandProcessing(enabled);
-}
-
-+ (void)setKeepSessionMode:(bool)enabled {
-    tgcalls::CallsRuntimeSwitches::setKeepSessionMode(enabled);
++ (void)setGroupNoiseMode:(int32_t)mode {
+    tgcalls::CallsRuntimeSwitches::setGroupNoiseMode((int)mode);
 }
 
 + (void)setupSharedAudioSessionConfiguration {

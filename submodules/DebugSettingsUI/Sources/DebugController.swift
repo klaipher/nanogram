@@ -242,6 +242,17 @@ private enum DebugLogAction {
     }
 }
 
+private func debugGroupNoiseModeTitle(_ mode: Int32) -> String {
+    switch mode {
+    case 1:
+        return "WebRTC only"
+    case 2:
+        return "RNNoise only"
+    default:
+        return "Both"
+    }
+}
+
 private enum DebugControllerSection: Int32 {
     case appInfo
     case logs
@@ -249,6 +260,7 @@ private enum DebugControllerSection: Int32 {
     case resetApp
     case sticker
     case experiments
+    case streamsAndCalls
     case translation
     case web
     case videoExperiments2
@@ -298,16 +310,14 @@ enum DebugControllerEntry: ItemListNodeEntry {
     case enableQuickReactionSwitch(Bool)
     case liveStreamV2(Bool)
     case groupCallReferenceEngine(Bool)
+    case callsHeader(PresentationTheme)
     case callsLivestreamHardwareDecoding(Bool)
     case callsNativeCapturePath(Bool)
-    case callsEncoderLowLatency(Bool)
     case callsSystemNoiseSuppression(Bool)
     case callsAdvancedDucking(Bool)
-    case callsGroupNarrowbandProcessing(Bool)
-    case callsKeepSessionMode(Bool)
+    case callsGroupNoiseMode(Int32)
     case callsThreadQoS(Bool)
     case callsThermalVideoLadder(Bool)
-    case callsBackgroundVideoDrop(Bool)
     case enableNetworkFramework(Bool)
     case enableNetworkExperiments(Bool)
     case rustMTProtoEngine(Bool)
@@ -331,8 +341,10 @@ enum DebugControllerEntry: ItemListNodeEntry {
             return DebugControllerSection.web.rawValue
         case .experimentsHeader, .keepChatNavigationStack, .skipReadHistory, .alwaysDisplayTyping, .crashOnSlowQueries, .crashOnMemoryPressure:
             return DebugControllerSection.experiments.rawValue
-        case .compressedEmojiCache, .checkSerializedData, .enableQuickReactionSwitch, .fakeGlass, .inputDecEngineEditor, .forceListViewImplChatBackend, .forceRLottieBackend, .respectSystemMicrophone, .videoMessageCameraMode, .videoMessageCloseFocus, .videoMessageCameraMatrix, .liveStreamV2, .groupCallReferenceEngine, .callsLivestreamHardwareDecoding, .callsNativeCapturePath, .callsEncoderLowLatency, .callsSystemNoiseSuppression, .callsAdvancedDucking, .callsGroupNarrowbandProcessing, .callsKeepSessionMode, .callsThreadQoS, .callsThermalVideoLadder, .callsBackgroundVideoDrop:
+        case .compressedEmojiCache, .checkSerializedData, .enableQuickReactionSwitch, .fakeGlass, .inputDecEngineEditor, .forceListViewImplChatBackend, .forceRLottieBackend, .respectSystemMicrophone, .videoMessageCameraMode, .videoMessageCloseFocus, .videoMessageCameraMatrix, .liveStreamV2, .groupCallReferenceEngine:
             return DebugControllerSection.experiments.rawValue
+        case .callsHeader, .callsLivestreamHardwareDecoding, .callsNativeCapturePath, .callsSystemNoiseSuppression, .callsAdvancedDucking, .callsGroupNoiseMode, .callsThreadQoS, .callsThermalVideoLadder:
+            return DebugControllerSection.streamsAndCalls.rawValue
         case .springSendAnimation, .fakeWalletTransfers, .stickerRendererMode, .disableImageContentAnalysis, .disableLanguageRecognition, .localTranscription, .enableVoipTcp, .tabletDisplayLinkFrameRateCap:
             return DebugControllerSection.experiments.rawValue
         case .enableNetworkFramework, .enableNetworkExperiments, .rustMTProtoEngine, .networkEngineInfo:
@@ -424,13 +436,6 @@ enum DebugControllerEntry: ItemListNodeEntry {
         case .tabletDisplayLinkFrameRateCap:
             // Appended right after `enableVoipTcp`; see the ordering note at `springSendAnimation`.
             return 81
-        case .callsThreadQoS:
-            // Appended right after `tabletDisplayLinkFrameRateCap`; see the ordering note at `springSendAnimation`.
-            return 82
-        case .callsThermalVideoLadder:
-            return 83
-        case .callsBackgroundVideoDrop:
-            return 84
         case .checkSerializedData:
             return 58
         case .enableQuickReactionSwitch:
@@ -439,21 +444,23 @@ enum DebugControllerEntry: ItemListNodeEntry {
             return 60
         case .groupCallReferenceEngine:
             return 62
+        case .callsHeader:
+            // The "Streams & Calls" section is its own section, so these ids only order it inside itself.
+            return 90
         case .callsLivestreamHardwareDecoding:
-            // Appended right after `groupCallReferenceEngine`; see the ordering note at `springSendAnimation`.
-            return 63
+            return 91
         case .callsNativeCapturePath:
-            return 64
-        case .callsEncoderLowLatency:
-            return 65
+            return 92
         case .callsSystemNoiseSuppression:
-            return 66
+            return 93
         case .callsAdvancedDucking:
-            return 67
-        case .callsGroupNarrowbandProcessing:
-            return 68
-        case .callsKeepSessionMode:
-            return 69
+            return 94
+        case .callsGroupNoiseMode:
+            return 95
+        case .callsThreadQoS:
+            return 96
+        case .callsThermalVideoLadder:
+            return 97
         case .springSendAnimation:
             // ItemList asserts its entries are in strictly increasing order (`<`: section, then
             // `sortIndex`, which is the stableId here; ItemListControllerNode.swift), so an id must
@@ -519,6 +526,8 @@ enum DebugControllerEntry: ItemListNodeEntry {
             return ItemListSectionHeaderItem(presentationData: presentationData, text: "RESET APP", sectionId: self.section)
         case .experimentsHeader:
             return ItemListSectionHeaderItem(presentationData: presentationData, text: "EXPERIMENTAL SETTINGS", sectionId: self.section)
+        case .callsHeader:
+            return ItemListSectionHeaderItem(presentationData: presentationData, text: "STREAMS & CALLS", sectionId: self.section)
         case .sendLogs:
             return ItemListActionItem(presentationData: presentationData, systemStyle: .glass, title: "Send Logs", kind: .generic, alignment: .natural, sectionId: self.section, style: .blocks, action: {
                 arguments.openLogs()
@@ -976,103 +985,78 @@ enum DebugControllerEntry: ItemListNodeEntry {
                 }).start()
             })
         case let .callsLivestreamHardwareDecoding(value):
-            return ItemListSwitchItem(presentationData: presentationData, systemStyle: .glass, title: "Calls: livestream hardware decoding", value: value, sectionId: self.section, style: .blocks, updated: { value in
-                let _ = arguments.sharedContext.accountManager.transaction ({ transaction in
-                    transaction.updateSharedData(ApplicationSpecificSharedDataKeys.experimentalUISettings, { settings in
-                        var settings = settings?.get(ExperimentalUISettings.self) ?? ExperimentalUISettings.defaultSettings
-                        settings.callsLivestreamHardwareDecoding = value
-                        return EnginePreferencesEntry(settings)
-                    })
+            return ItemListSwitchItem(presentationData: presentationData, systemStyle: .glass, title: "Livestream hardware decoding", text: "Decodes live stream video with the video chip instead of the CPU. Falls back to the CPU on any error. Default: off. Applies to the next stream.", value: value, maximumNumberOfLines: 0, sectionId: self.section, style: .blocks, updated: { value in
+                let _ = updateExperimentalUISettingsInteractively(accountManager: arguments.sharedContext.accountManager, { settings in
+                    var settings = settings
+                    settings.callsLivestreamHardwareDecoding = value
+                    return settings
                 }).start()
             })
         case let .callsNativeCapturePath(value):
-            return ItemListSwitchItem(presentationData: presentationData, systemStyle: .glass, title: "Calls: native camera frames", value: value, sectionId: self.section, style: .blocks, updated: { value in
-                let _ = arguments.sharedContext.accountManager.transaction ({ transaction in
-                    transaction.updateSharedData(ApplicationSpecificSharedDataKeys.experimentalUISettings, { settings in
-                        var settings = settings?.get(ExperimentalUISettings.self) ?? ExperimentalUISettings.defaultSettings
-                        settings.callsNativeCapturePath = value
-                        return EnginePreferencesEntry(settings)
-                    })
-                }).start()
-            })
-        case let .callsEncoderLowLatency(value):
-            return ItemListSwitchItem(presentationData: presentationData, systemStyle: .glass, title: "Calls: low-latency encoder", value: value, sectionId: self.section, style: .blocks, updated: { value in
-                let _ = arguments.sharedContext.accountManager.transaction ({ transaction in
-                    transaction.updateSharedData(ApplicationSpecificSharedDataKeys.experimentalUISettings, { settings in
-                        var settings = settings?.get(ExperimentalUISettings.self) ?? ExperimentalUISettings.defaultSettings
-                        settings.callsEncoderLowLatency = value
-                        return EnginePreferencesEntry(settings)
-                    })
+            return ItemListSwitchItem(presentationData: presentationData, systemStyle: .glass, title: "Native camera frames", text: "Camera frames go to the encoder without a CPU colour conversion. Default: off. Applies to the next camera start.", value: value, maximumNumberOfLines: 0, sectionId: self.section, style: .blocks, updated: { value in
+                let _ = updateExperimentalUISettingsInteractively(accountManager: arguments.sharedContext.accountManager, { settings in
+                    var settings = settings
+                    settings.callsNativeCapturePath = value
+                    return settings
                 }).start()
             })
         case let .callsSystemNoiseSuppression(value):
-            return ItemListSwitchItem(presentationData: presentationData, systemStyle: .glass, title: "Calls: system noise suppression", value: value, sectionId: self.section, style: .blocks, updated: { value in
-                let _ = arguments.sharedContext.accountManager.transaction ({ transaction in
-                    transaction.updateSharedData(ApplicationSpecificSharedDataKeys.experimentalUISettings, { settings in
-                        var settings = settings?.get(ExperimentalUISettings.self) ?? ExperimentalUISettings.defaultSettings
-                        settings.callsSystemNoiseSuppression = value
-                        return EnginePreferencesEntry(settings)
-                    })
+            return ItemListSwitchItem(presentationData: presentationData, systemStyle: .glass, title: "System noise suppression", text: "Lets the system voice-processing unit do all noise suppression and drops the extra software one. Default: off. Applies to the next call.", value: value, maximumNumberOfLines: 0, sectionId: self.section, style: .blocks, updated: { value in
+                let _ = updateExperimentalUISettingsInteractively(accountManager: arguments.sharedContext.accountManager, { settings in
+                    var settings = settings
+                    settings.callsSystemNoiseSuppression = value
+                    return settings
                 }).start()
             })
         case let .callsAdvancedDucking(value):
-            return ItemListSwitchItem(presentationData: presentationData, systemStyle: .glass, title: "Calls: advanced ducking (iOS 17)", value: value, sectionId: self.section, style: .blocks, updated: { value in
-                let _ = arguments.sharedContext.accountManager.transaction ({ transaction in
-                    transaction.updateSharedData(ApplicationSpecificSharedDataKeys.experimentalUISettings, { settings in
-                        var settings = settings?.get(ExperimentalUISettings.self) ?? ExperimentalUISettings.defaultSettings
-                        settings.callsAdvancedDucking = value
-                        return EnginePreferencesEntry(settings)
-                    })
+            return ItemListSwitchItem(presentationData: presentationData, systemStyle: .glass, title: "Advanced ducking (iOS 17)", text: "Other audio is lowered only while someone speaks, and only a little. Default: off. Applies to the next call.", value: value, maximumNumberOfLines: 0, sectionId: self.section, style: .blocks, updated: { value in
+                let _ = updateExperimentalUISettingsInteractively(accountManager: arguments.sharedContext.accountManager, { settings in
+                    var settings = settings
+                    settings.callsAdvancedDucking = value
+                    return settings
                 }).start()
             })
-        case let .callsGroupNarrowbandProcessing(value):
-            return ItemListSwitchItem(presentationData: presentationData, systemStyle: .glass, title: "Calls: group narrowband processing", value: value, sectionId: self.section, style: .blocks, updated: { value in
-                let _ = arguments.sharedContext.accountManager.transaction ({ transaction in
-                    transaction.updateSharedData(ApplicationSpecificSharedDataKeys.experimentalUISettings, { settings in
-                        var settings = settings?.get(ExperimentalUISettings.self) ?? ExperimentalUISettings.defaultSettings
-                        settings.callsGroupNarrowbandProcessing = value
-                        return EnginePreferencesEntry(settings)
-                    })
-                }).start()
-            })
-        case let .callsKeepSessionMode(value):
-            return ItemListSwitchItem(presentationData: presentationData, systemStyle: .glass, title: "Calls: keep video audio mode", value: value, sectionId: self.section, style: .blocks, updated: { value in
-                let _ = arguments.sharedContext.accountManager.transaction ({ transaction in
-                    transaction.updateSharedData(ApplicationSpecificSharedDataKeys.experimentalUISettings, { settings in
-                        var settings = settings?.get(ExperimentalUISettings.self) ?? ExperimentalUISettings.defaultSettings
-                        settings.callsKeepSessionMode = value
-                        return EnginePreferencesEntry(settings)
-                    })
-                }).start()
+        case let .callsGroupNoiseMode(value):
+            return ItemListDisclosureItem(presentationData: presentationData, systemStyle: .glass, title: "Group noise suppression", label: debugGroupNoiseModeTitle(value), sectionId: self.section, style: .blocks, action: {
+                let presentationData = arguments.sharedContext.currentPresentationData.with { $0 }
+                let actionSheet = ActionSheetController(presentationData: presentationData)
+                var items: [ActionSheetItem] = [
+                    ActionSheetTextItem(title: "Which noise suppressors run in group calls. Default: both. Applies to the next group call.")
+                ]
+                for mode in [Int32(0), Int32(1), Int32(2)] {
+                    items.append(ActionSheetButtonItem(title: debugGroupNoiseModeTitle(mode), color: .accent, action: { [weak actionSheet] in
+                        actionSheet?.dismissAnimated()
+                        let _ = updateExperimentalUISettingsInteractively(accountManager: arguments.sharedContext.accountManager, { settings in
+                            var settings = settings
+                            settings.callsGroupNoiseMode = mode
+                            return settings
+                        }).start()
+                    }))
+                }
+                actionSheet.setItemGroups([
+                    ActionSheetItemGroup(items: items),
+                    ActionSheetItemGroup(items: [
+                        ActionSheetButtonItem(title: presentationData.strings.Common_Cancel, color: .accent, font: .bold, action: { [weak actionSheet] in
+                            actionSheet?.dismissAnimated()
+                        })
+                    ])
+                ])
+                arguments.presentController(actionSheet, nil)
             })
         case let .callsThreadQoS(value):
-            return ItemListSwitchItem(presentationData: presentationData, systemStyle: .glass, title: "Calls: thread QoS [Restart App]", value: value, sectionId: self.section, style: .blocks, updated: { value in
-                let _ = arguments.sharedContext.accountManager.transaction ({ transaction in
-                    transaction.updateSharedData(ApplicationSpecificSharedDataKeys.experimentalUISettings, { settings in
-                        var settings = settings?.get(ExperimentalUISettings.self) ?? ExperimentalUISettings.defaultSettings
-                        settings.callsThreadQoS = value
-                        return EnginePreferencesEntry(settings)
-                    })
+            return ItemListSwitchItem(presentationData: presentationData, systemStyle: .glass, title: "Thread priorities", text: "Call threads get a higher system priority. Judge it by energy use, not by glitches. Default: off. Applies at once.", value: value, maximumNumberOfLines: 0, sectionId: self.section, style: .blocks, updated: { value in
+                let _ = updateExperimentalUISettingsInteractively(accountManager: arguments.sharedContext.accountManager, { settings in
+                    var settings = settings
+                    settings.callsThreadQoS = value
+                    return settings
                 }).start()
             })
         case let .callsThermalVideoLadder(value):
-            return ItemListSwitchItem(presentationData: presentationData, systemStyle: .glass, title: "Calls: thermal video ladder", value: value, sectionId: self.section, style: .blocks, updated: { value in
-                let _ = arguments.sharedContext.accountManager.transaction ({ transaction in
-                    transaction.updateSharedData(ApplicationSpecificSharedDataKeys.experimentalUISettings, { settings in
-                        var settings = settings?.get(ExperimentalUISettings.self) ?? ExperimentalUISettings.defaultSettings
-                        settings.callsThermalVideoLadder = value
-                        return EnginePreferencesEntry(settings)
-                    })
-                }).start()
-            })
-        case let .callsBackgroundVideoDrop(value):
-            return ItemListSwitchItem(presentationData: presentationData, systemStyle: .glass, title: "Calls: drop background video", value: value, sectionId: self.section, style: .blocks, updated: { value in
-                let _ = arguments.sharedContext.accountManager.transaction ({ transaction in
-                    transaction.updateSharedData(ApplicationSpecificSharedDataKeys.experimentalUISettings, { settings in
-                        var settings = settings?.get(ExperimentalUISettings.self) ?? ExperimentalUISettings.defaultSettings
-                        settings.callsBackgroundVideoDrop = value
-                        return EnginePreferencesEntry(settings)
-                    })
+            return ItemListSwitchItem(presentationData: presentationData, systemStyle: .glass, title: "Thermal video limits", text: "When the phone is hot, the outgoing camera video gets smaller and slower. Default: off. Applies at once.", value: value, maximumNumberOfLines: 0, sectionId: self.section, style: .blocks, updated: { value in
+                let _ = updateExperimentalUISettingsInteractively(accountManager: arguments.sharedContext.accountManager, { settings in
+                    var settings = settings
+                    settings.callsThermalVideoLadder = value
+                    return settings
                 }).start()
             })
         case let .enableNetworkFramework(value):
@@ -1236,13 +1220,6 @@ func debugControllerEntries(environment: DebugControllerEntriesEnvironment, them
         entries.append(.enableQuickReactionSwitch(!experimentalSettings.disableQuickReaction))
         entries.append(.liveStreamV2(experimentalSettings.liveStreamV2))
         entries.append(.groupCallReferenceEngine(experimentalSettings.groupCallReferenceEngine))
-        entries.append(.callsLivestreamHardwareDecoding(experimentalSettings.callsLivestreamHardwareDecoding))
-        entries.append(.callsNativeCapturePath(experimentalSettings.callsNativeCapturePath))
-        entries.append(.callsEncoderLowLatency(experimentalSettings.callsEncoderLowLatency))
-        entries.append(.callsSystemNoiseSuppression(experimentalSettings.callsSystemNoiseSuppression))
-        entries.append(.callsAdvancedDucking(experimentalSettings.callsAdvancedDucking))
-        entries.append(.callsGroupNarrowbandProcessing(experimentalSettings.callsGroupNarrowbandProcessing))
-        entries.append(.callsKeepSessionMode(experimentalSettings.callsKeepSessionMode))
         entries.append(.springSendAnimation(experimentalSettings.springSendAnimation))
         if environment.isDevAccount {
             entries.append(.fakeWalletTransfers(experimentalSettings.fakeWalletTransfers))
@@ -1254,9 +1231,18 @@ func debugControllerEntries(environment: DebugControllerEntriesEnvironment, them
         entries.append(.localTranscription(experimentalSettings.localTranscription))
         entries.append(.enableVoipTcp(experimentalSettings.enableVoipTcp))
         entries.append(.tabletDisplayLinkFrameRateCap(experimentalSettings.tabletDisplayLinkFrameRateCap))
+    }
+
+    if isMainApp {
+        // Every switch of calls and live streams, in one section: a description and the default on each row.
+        entries.append(.callsHeader(theme))
+        entries.append(.callsLivestreamHardwareDecoding(experimentalSettings.callsLivestreamHardwareDecoding))
+        entries.append(.callsNativeCapturePath(experimentalSettings.callsNativeCapturePath))
+        entries.append(.callsSystemNoiseSuppression(experimentalSettings.callsSystemNoiseSuppression))
+        entries.append(.callsAdvancedDucking(experimentalSettings.callsAdvancedDucking))
+        entries.append(.callsGroupNoiseMode(experimentalSettings.callsGroupNoiseMode))
         entries.append(.callsThreadQoS(experimentalSettings.callsThreadQoS))
         entries.append(.callsThermalVideoLadder(experimentalSettings.callsThermalVideoLadder))
-        entries.append(.callsBackgroundVideoDrop(experimentalSettings.callsBackgroundVideoDrop))
     }
 
     if isMainApp {

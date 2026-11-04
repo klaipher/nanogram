@@ -887,29 +887,26 @@ public final class OngoingCallContext {
     /// Local-only call video switches from Debug Settings. They change how this device decodes, captures
     /// and encodes; nothing about them is negotiated or sent to the peer. Process-wide, applied when the
     /// setting changes and read by the engine when a call or stream starts.
-    public static func applyVideoExperiments(livestreamHardwareDecoding: Bool, nativeCapturePath: Bool, encoderLowLatency: Bool) {
+    public static func applyVideoExperiments(livestreamHardwareDecoding: Bool, nativeCapturePath: Bool) {
         OngoingCallThreadLocalContextWebrtc.setLivestreamHardwareDecoding(livestreamHardwareDecoding)
         OngoingCallThreadLocalContextWebrtc.setNativeCapturePath(nativeCapturePath)
-        OngoingCallThreadLocalContextWebrtc.setEncoderLowLatency(encoderLowLatency)
     }
 
     /// Local-only call audio switches from Debug Settings (same rules as the video ones): they change how this
     /// device processes and routes its own audio, never what is negotiated or sent.
-    public static func applyAudioExperiments(systemNoiseSuppression: Bool, advancedDucking: Bool, groupNarrowbandProcessing: Bool, keepSessionMode: Bool) {
+    public static func applyAudioExperiments(systemNoiseSuppression: Bool, advancedDucking: Bool, groupNoiseMode: Int32) {
         OngoingCallThreadLocalContextWebrtc.setSystemNoiseSuppression(systemNoiseSuppression)
         OngoingCallThreadLocalContextWebrtc.setAdvancedDucking(advancedDucking)
-        OngoingCallThreadLocalContextWebrtc.setGroupNarrowbandProcessing(groupNarrowbandProcessing)
-        OngoingCallThreadLocalContextWebrtc.setKeepSessionMode(keepSessionMode)
+        OngoingCallThreadLocalContextWebrtc.setGroupNoiseMode(groupNoiseMode)
     }
 
     /// Local-only call power switches from Debug Settings (same rules as the video and audio ones).
-    public static func applyPowerExperiments(threadQoS: Bool, thermalVideoLadder: Bool, backgroundVideoDrop: Bool) {
+    public static func applyPowerExperiments(threadQoS: Bool, thermalVideoLadder: Bool) {
         OngoingCallThreadLocalContextWebrtc.setThreadQoS(threadQoS)
         OngoingCallThreadLocalContextWebrtc.setThermalVideoLadder(thermalVideoLadder)
-        OngoingCallThreadLocalContextWebrtc.setBackgroundVideoDrop(backgroundVideoDrop)
     }
 
-    /// Runtime state for the background video drop: the app is in the background and Picture in Picture is not
+    /// Runtime state for the background video drop (always on): the app is in the background and Picture in Picture is not
     /// showing the incoming 1:1 video.
     public static func setIncomingVideoDropped(_ dropped: Bool) {
         OngoingCallThreadLocalContextWebrtc.setIncomingVideoDropped(dropped)

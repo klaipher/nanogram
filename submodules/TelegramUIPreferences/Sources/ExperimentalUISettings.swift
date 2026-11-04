@@ -78,10 +78,6 @@ public struct ExperimentalUISettings: Codable, Equatable {
     /// Debug Settings ▸ "Calls: native camera frames". Off by default. Camera frames reach the encoder as
     /// NV12 pixel buffers instead of being converted to I420 on the CPU first. Local only.
     public var callsNativeCapturePath: Bool
-    /// Debug Settings ▸ "Calls: low-latency encoder". Off by default. The H.264 VideoToolbox encoder runs in
-    /// real-time low-latency rate-control mode on iOS 14.5+, retrying without it if the session cannot be
-    /// created. Local only.
-    public var callsEncoderLowLatency: Bool
     /// Debug Settings ▸ "Calls: system noise suppression". Off by default. On iOS the call's microphone
     /// signal comes from the system voice-processing unit, which already suppresses noise; with this on,
     /// WebRTC's own noise suppression and high-pass filter are dropped from the outgoing audio instead of
@@ -90,24 +86,17 @@ public struct ExperimentalUISettings: Codable, Equatable {
     /// Debug Settings ▸ "Calls: advanced ducking". Off by default (no device evidence yet). iOS 17+: the voice-processing unit lowers
     /// other audio only while someone speaks and by the smallest amount. Local audio-unit setting.
     public var callsAdvancedDucking: Bool
-    /// Debug Settings ▸ "Calls: group narrowband processing". Off by default. Group calls on 8/16 kHz capture
-    /// (Bluetooth headsets) keep the noise-suppressed signal instead of discarding it. Local only.
-    public var callsOpusFirstLossFloor: Bool
-    /// Debug Settings ▸ "Calls: keep audio mode". Off by default. Starting the call audio no longer replaces
-    /// the videoChat audio-session mode of a video call with voiceChat. Local only.
-    public var callsKeepSessionMode: Bool
     /// Debug Settings ▸ "Calls: thread QoS". Off by default. The call engine's network, media and worker
     /// threads run at user-initiated quality of service. Read when the engine threads are created, so a
     /// change applies from the next app launch. Local only.
     public var callsThreadQoS: Bool
+    /// Debug Settings ▸ "Streams & Calls" ▸ "Group noise suppression". 0 (default) runs WebRTC's suppressor and
+    /// RNNoise, 1 only WebRTC's, 2 only RNNoise. Local only; applies from the next group call.
+    public var callsGroupNoiseMode: Int32
     /// Debug Settings ▸ "Calls: thermal video ladder". Off by default. While the device is hot or in Low Power
     /// Mode the camera picture handed to the encoder gets smaller and slower (a local output-format request;
     /// nothing is negotiated). Applies from the next level change.
     public var callsThermalVideoLadder: Bool
-    /// Debug Settings ▸ "Calls: drop background video". Off by default. While the app is in the background
-    /// and Picture in Picture is not showing the call, incoming 1:1 video frames are dropped before they reach
-    /// the app. The decoder keeps running and nothing is signalled to the peer.
-    public var callsBackgroundVideoDrop: Bool
     public var stickerRendererMode: StickerRendererMode
 
     public static var defaultSettings: ExperimentalUISettings {
@@ -171,14 +160,11 @@ public struct ExperimentalUISettings: Codable, Equatable {
         tabletDisplayLinkFrameRateCap: Bool = false,
         callsLivestreamHardwareDecoding: Bool = false,
         callsNativeCapturePath: Bool = false,
-        callsEncoderLowLatency: Bool = false,
         callsSystemNoiseSuppression: Bool = false,
         callsAdvancedDucking: Bool = false,
-        callsGroupNarrowbandProcessing: Bool = false,
-        callsKeepSessionMode: Bool = false,
+        callsGroupNoiseMode: Int32 = 0,
         callsThreadQoS: Bool = false,
-        callsThermalVideoLadder: Bool = false,
-        callsBackgroundVideoDrop: Bool = false
+        callsThermalVideoLadder: Bool = false
     ) {
         self.keepChatNavigationStack = keepChatNavigationStack
         self.skipReadHistory = skipReadHistory
@@ -211,14 +197,11 @@ public struct ExperimentalUISettings: Codable, Equatable {
         self.tabletDisplayLinkFrameRateCap = tabletDisplayLinkFrameRateCap
         self.callsLivestreamHardwareDecoding = callsLivestreamHardwareDecoding
         self.callsNativeCapturePath = callsNativeCapturePath
-        self.callsEncoderLowLatency = callsEncoderLowLatency
         self.callsSystemNoiseSuppression = callsSystemNoiseSuppression
         self.callsAdvancedDucking = callsAdvancedDucking
-        self.callsGroupNarrowbandProcessing = callsGroupNarrowbandProcessing
-        self.callsKeepSessionMode = callsKeepSessionMode
+        self.callsGroupNoiseMode = callsGroupNoiseMode
         self.callsThreadQoS = callsThreadQoS
         self.callsThermalVideoLadder = callsThermalVideoLadder
-        self.callsBackgroundVideoDrop = callsBackgroundVideoDrop
     }
     
     /// Revision of Nanogram's defaults that a saved blob was written with. Revision 1 turned on large
@@ -265,16 +248,15 @@ public struct ExperimentalUISettings: Codable, Equatable {
 
         self.callsLivestreamHardwareDecoding = try container.decodeIfPresent(Bool.self, forKey: "callsLivestreamHardwareDecoding") ?? false
         self.callsNativeCapturePath = try container.decodeIfPresent(Bool.self, forKey: "callsNativeCapturePath") ?? false
-        self.callsEncoderLowLatency = try container.decodeIfPresent(Bool.self, forKey: "callsEncoderLowLatency") ?? false
         self.callsSystemNoiseSuppression = try container.decodeIfPresent(Bool.self, forKey: "callsSystemNoiseSuppression") ?? false
         // A new key: it defaulted to on at first, so every blob saved under "callsAdvancedDucking" holds `true`
         // whether or not the user touched the switch. That value is ignored; the switch is off until A/B-tested.
         self.callsAdvancedDucking = try container.decodeIfPresent(Bool.self, forKey: "callsAdvancedDuckingOptIn") ?? false
-        self.callsGroupNarrowbandProcessing = try container.decodeIfPresent(Bool.self, forKey: "callsGroupNarrowbandProcessing") ?? false
-        self.callsKeepSessionMode = try container.decodeIfPresent(Bool.self, forKey: "callsKeepSessionMode") ?? false
+        // The keys of the removed switches (low-latency encoder, narrowband processing, keep audio mode, background video drop)
+        // are simply no longer read: those behaviours are always on.
+        self.callsGroupNoiseMode = try container.decodeIfPresent(Int32.self, forKey: "callsGroupNoiseMode") ?? 0
         self.callsThreadQoS = try container.decodeIfPresent(Bool.self, forKey: "callsThreadQoS") ?? false
         self.callsThermalVideoLadder = try container.decodeIfPresent(Bool.self, forKey: "callsThermalVideoLadder") ?? false
-        self.callsBackgroundVideoDrop = try container.decodeIfPresent(Bool.self, forKey: "callsBackgroundVideoDrop") ?? false
 
         if savedDefaultsRevision < 1 {
             // Saved before the GPU renderers became the default: both were the old CPU defaults.
@@ -319,14 +301,11 @@ public struct ExperimentalUISettings: Codable, Equatable {
         try container.encode(self.tabletDisplayLinkFrameRateCap, forKey: "tabletDisplayLinkFrameRateCap")
         try container.encode(self.callsLivestreamHardwareDecoding, forKey: "callsLivestreamHardwareDecoding")
         try container.encode(self.callsNativeCapturePath, forKey: "callsNativeCapturePath")
-        try container.encode(self.callsEncoderLowLatency, forKey: "callsEncoderLowLatency")
         try container.encode(self.callsSystemNoiseSuppression, forKey: "callsSystemNoiseSuppression")
         try container.encode(self.callsAdvancedDucking, forKey: "callsAdvancedDuckingOptIn")
-        try container.encode(self.callsGroupNarrowbandProcessing, forKey: "callsGroupNarrowbandProcessing")
-        try container.encode(self.callsKeepSessionMode, forKey: "callsKeepSessionMode")
+        try container.encode(self.callsGroupNoiseMode, forKey: "callsGroupNoiseMode")
         try container.encode(self.callsThreadQoS, forKey: "callsThreadQoS")
         try container.encode(self.callsThermalVideoLadder, forKey: "callsThermalVideoLadder")
-        try container.encode(self.callsBackgroundVideoDrop, forKey: "callsBackgroundVideoDrop")
         try container.encode(ExperimentalUISettings.nanogramDefaultsRevision, forKey: "nanogramDefaultsRevision")
     }
 }
