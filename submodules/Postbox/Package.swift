@@ -23,7 +23,8 @@ let package = Package(
         .package(name: "RangeSet", path: "../Utils/RangeSet"),
         .package(name: "DarwinDirStat", path: "../Utils/DarwinDirStat"),
         .package(name: "SSignalKit", path: "../SSignalKit"),
-        .package(name: "CryptoUtils", path: "../CryptoUtils")
+        .package(name: "CryptoUtils", path: "../CryptoUtils"),
+        .package(name: "DiskWriteAccounting", path: "../DiskWriteAccounting")
     ],
     targets: [
         // Targets are the basic building blocks of a package. A target can define a module or a test suite.
@@ -38,6 +39,7 @@ let package = Package(
                            .product(name: "StringTransliteration", package: "StringTransliteration", condition: nil),
                            .product(name: "DarwinDirStat", package: "DarwinDirStat", condition: nil),
                            .product(name: "CryptoUtils", package: "CryptoUtils", condition: nil),
+                           .product(name: "DiskWriteAccounting", package: "DiskWriteAccounting", condition: nil),
                            .product(name: "Crc32", package: "Crc32", condition: nil)],
             path: "Sources"),
         .testTarget(
@@ -45,6 +47,7 @@ let package = Package(
             dependencies: [.target(name: "Postbox"),
                            .product(name: "SwiftSignalKit", package: "SSignalKit", condition: nil),
                            .product(name: "RangeSet", package: "RangeSet", condition: nil),
+                           .product(name: "DiskWriteAccounting", package: "DiskWriteAccounting", condition: nil),
                            .product(name: "sqlcipher", package: "sqlcipher", condition: nil)],
             path: "Tests"),
     ]

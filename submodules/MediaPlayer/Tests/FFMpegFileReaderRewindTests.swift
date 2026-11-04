@@ -1,6 +1,10 @@
 import XCTest
 import CoreMedia
+#if canImport(UniversalMediaPlayer)
 @testable import UniversalMediaPlayer
+#else
+@testable import TelegramMediaPlayer
+#endif
 
 // Looping GIF tiles (BatchVideoRenderingContext) rebuilt their FFMpegFileReader at every end of
 // stream: file open, header parse, stream probe and codec setup on each loop. They now rewind the

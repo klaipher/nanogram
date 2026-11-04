@@ -4,7 +4,11 @@ import CoreMedia
 import SwiftSignalKit
 import Postbox
 import DiskWriteAccounting
+#if canImport(UniversalMediaPlayer)
 @testable import UniversalMediaPlayer
+#else
+@testable import TelegramMediaPlayer
+#endif
 
 /// The HLS player writes each streamed byte once (into its MediaBox resource) and a cached segment not at all
 /// (see HLSStreamingStorage). Writes are measured with DiskWriteAccounting, which every writer on these paths reports to.

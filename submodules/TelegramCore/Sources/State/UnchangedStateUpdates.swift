@@ -100,33 +100,3 @@ func applyMessageViewsPollResult(_ result: MessageViewsPollResult, to attributes
     }
     return (changed, foundReplies)
 }
-
-func historyValidationRestoredMessage(_ currentMessage: Message, id: MessageId, channelPts: Int32?) -> StoreMessage? {
-    var attributes = currentMessage.attributes
-    var attributesChanged = false
-    if let channelPts = channelPts {
-        let versionIsCurrent: Bool
-        if let last = attributes.last as? ChannelMessageStateVersionAttribute, last.pts == channelPts, !attributes.dropLast().contains(where: { $0 is ChannelMessageStateVersionAttribute }) {
-            versionIsCurrent = true
-        } else {
-            versionIsCurrent = false
-        }
-        for i in (0 ..< attributes.count).reversed() {
-            if let _ = attributes[i] as? ChannelMessageStateVersionAttribute {
-                attributes.remove(at: i)
-            }
-        }
-        attributes.append(ChannelMessageStateVersionAttribute(pts: channelPts))
-        attributesChanged = !versionIsCurrent
-    }
-    if !attributesChanged && !currentMessage.tags.contains(.unseenReaction) && !currentMessage.tags.contains(.unseenPollVote) {
-        return nil
-    }
-    
-    var storeForwardInfo: StoreMessageForwardInfo?
-    if let forwardInfo = currentMessage.forwardInfo {
-        storeForwardInfo = StoreMessageForwardInfo(authorId: forwardInfo.author?.id, sourceId: forwardInfo.source?.id, sourceMessageId: forwardInfo.sourceMessageId, date: forwardInfo.date, authorSignature: forwardInfo.authorSignature, psaType: forwardInfo.psaType, flags: forwardInfo.flags)
-    }
-    let updatedFlags = StoreMessageFlags(currentMessage.flags)
-    return StoreMessage(id: id, customStableId: nil, globallyUniqueId: currentMessage.globallyUniqueId, groupingKey: currentMessage.groupingKey, threadId: currentMessage.threadId, timestamp: currentMessage.timestamp, flags: updatedFlags, tags: currentMessage.tags, globalTags: currentMessage.globalTags, localTags: currentMessage.localTags, forwardInfo: storeForwardInfo, authorId: currentMessage.author?.id, text: currentMessage.text, attributes: attributes, media: currentMessage.media)
-}

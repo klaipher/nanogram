@@ -15,6 +15,7 @@ let package = Package(
     dependencies: [
         .package(name: "TelegramCore", path: "../TelegramCore"),
         .package(name: "Postbox", path: "../Postbox"),
+        .package(name: "DiskWriteAccounting", path: "../DiskWriteAccounting"),
         .package(name: "FFMpegBinding", path: "../FFMpegBinding"),
         .package(name: "YuvConversion", path: "../YuvConversion"),
         .package(name: "RingBuffer", path: "../../../../packages/RingBuffer"),
@@ -29,6 +30,7 @@ let package = Package(
         .target(
             name: "TelegramMediaPlayer",
             dependencies: [.product(name: "TelegramCore", package: "TelegramCore", condition: nil),
+                           .product(name: "DiskWriteAccounting", package: "DiskWriteAccounting", condition: nil),
                            .product(name: "Postbox", package: "Postbox", condition: nil),
                            .product(name: "FFMpegBinding", package: "FFMpegBinding", condition: nil),
                            .product(name: "YuvConversion", package: "YuvConversion", condition: nil),
@@ -44,15 +46,17 @@ let package = Package(
                       "MediaPlayerFramePreview.swift",
                       "VideoPlayerProxy.swift",
                       "ChunkMediaPlayerV2.swift",
-                      "ChunkMediaPlayerDirectFetchSourceImpl.swift"
+                      "ChunkMediaPlayerDirectFetchSourceImpl.swift",
+                      "MediaPlayerStatusGeneration.swift"
                      ]),
         .testTarget(
             name: "TelegramMediaPlayerTests",
             dependencies: [.target(name: "TelegramMediaPlayer"),
+                           .product(name: "DiskWriteAccounting", package: "DiskWriteAccounting", condition: nil),
                            .product(name: "Postbox", package: "Postbox", condition: nil),
                            .product(name: "FFMpegBinding", package: "FFMpegBinding", condition: nil)],
             path: "Tests",
-            exclude: ["ChunkMediaPlayerV2LoopTests.swift"],
+            exclude: ["ChunkMediaPlayerV2LoopTests.swift", "ChunkMediaPlayerV2BackgroundTests.swift", "FFMpegLookaheadFileAccessTests.swift", "MediaPlayerStatusGenerationTests.swift"],
             resources: [.process("Resources")],
             linkerSettings: [
                 .unsafeFlags([

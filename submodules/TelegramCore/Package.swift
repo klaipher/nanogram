@@ -18,6 +18,7 @@ let package = Package(
         .package(name: "FlatBuffers", path: "./FlatBuffers"),
         .package(name: "FlatSerialization", path: "./FlatSerialization"),
         .package(name: "Postbox", path: "../Postbox"),
+        .package(name: "DiskWriteAccounting", path: "../DiskWriteAccounting"),
         .package(name: "SSignalKit", path: "../SSignalKit"),
         .package(name: "MtProtoKit", path: "../MtProtoKit"),
         .package(name: "WebProxyTransport", path: "../WebProxyTransport"),
@@ -36,6 +37,7 @@ let package = Package(
         .target(
             name: "TelegramCore",
             dependencies: [.product(name: "Postbox", package: "Postbox", condition: nil),
+                           .product(name: "DiskWriteAccounting", package: "DiskWriteAccounting", condition: nil),
                             .product(name: "SwiftSignalKit", package: "SSignalKit", condition: nil),
                             .product(name: "MtProtoKit", package: "MtProtoKit", condition: nil),
                            .product(name: "WebProxyTransport", package: "WebProxyTransport", condition: nil),
