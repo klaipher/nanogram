@@ -106,6 +106,8 @@ public final class SharedWakeupManager {
     private var pendingMediaUploadsByKey: [PendingMediaUploadKey: Float] = [:]
     private var backgroundProcessingTaskProgressByKey: [PendingMediaUploadKey: Float] = [:]
     private var nextBackgroundProcessingTaskId: Int = 0
+    /// True while the nightly cleanup BGProcessingTask runs (see `beginCleanupProcessingTask`).
+    private var cleanupProcessingTaskActive = false
     private var backgroundProcessingTaskId: String?
     private var backgroundProcessingTaskLaunched: Bool = false
     private var backgroundProcessingTaskCancellationRequestedByApp: Bool = false
@@ -1232,6 +1234,27 @@ public final class SharedWakeupManager {
         })
     }
     
+    /// The cleanup BGProcessingTask started: writes stay enabled while it runs, otherwise its first transaction
+    /// would wait in the queue of a database that is paused in the background. Main queue only.
+    func beginCleanupProcessingTask() {
+        assert(Queue.mainQueue().isCurrent())
+        if self.cleanupProcessingTaskActive {
+            return
+        }
+        self.cleanupProcessingTaskActive = true
+        self.checkTasks()
+    }
+    
+    /// The cleanup task finished or expired: stops holding writes open, pauses transactions (unless something else
+    /// keeps the app awake) and calls `end` (which completes the BG task) once the running one has committed.
+    /// Call it for the expiry path as well, after interrupting a running VACUUM. Main queue only.
+    func endCleanupProcessingTask(_ end: @escaping () -> Void) {
+        assert(Queue.mainQueue().isCurrent())
+        self.cleanupProcessingTaskActive = false
+        self.checkTasks()
+        self.releaseBackgroundTime(end)
+    }
+    
     /// Stops new transactions on every account database (Postbox, media storage and cache statistics) and calls
     /// `paused` on the main queue once the running ones have committed. Queued transactions run when writes are
     /// enabled again.
@@ -1271,7 +1294,7 @@ public final class SharedWakeupManager {
     private func updateAccounts(hasTasks: Bool) {
         let hasBackgroundLocationTask = self.accountsAndTasks.contains(where: { $0.2.backgroundLocation })
         
-        if self.inForeground || self.hasActiveAudioSession || self.isInBackgroundExtension || self.backgroundProcessingTaskId != nil || self.backgroundStoryProcessingTaskId != nil || hasBackgroundLocationTask || (hasTasks && self.currentExternalCompletion != nil) || self.activeExplicitExtensionTimer != nil || self.silenceAudioRenderer != nil {
+        if self.inForeground || self.hasActiveAudioSession || self.isInBackgroundExtension || self.backgroundProcessingTaskId != nil || self.backgroundStoryProcessingTaskId != nil || self.cleanupProcessingTaskActive || hasBackgroundLocationTask || (hasTasks && self.currentExternalCompletion != nil) || self.activeExplicitExtensionTimer != nil || self.silenceAudioRenderer != nil {
             Logger.shared.log("Wakeup", "enableBeginTransactions: true (active)")
             self.transactionsEnabled = true
             

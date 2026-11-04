@@ -312,6 +312,39 @@ private struct TablePairKey: Hashable {
     let table2: Int32
 }
 
+/// Thread-safe way to call `sqlite3_interrupt` on a value box's connection while its maintenance (VACUUM) runs.
+/// The connection is confined to its queue, so while maintenance runs nothing else can be executing on it, and an
+/// interrupt never hits an ordinary transaction. A no-op in every other state.
+public final class SqliteInterruptGate {
+    private let lock = NSLock()
+    private var handle: OpaquePointer?
+    private var isMaintenanceRunning = false
+    
+    public init() {
+    }
+    
+    func setHandle(_ handle: OpaquePointer?) {
+        self.lock.lock()
+        self.handle = handle
+        self.lock.unlock()
+    }
+    
+    func setMaintenanceRunning(_ value: Bool) {
+        self.lock.lock()
+        self.isMaintenanceRunning = value
+        self.lock.unlock()
+    }
+    
+    /// Makes the running maintenance statement stop with SQLITE_INTERRUPT (VACUUM rolls back and returns false).
+    public func interrupt() {
+        self.lock.lock()
+        if self.isMaintenanceRunning, let handle = self.handle {
+            sqlite3_interrupt(handle)
+        }
+        self.lock.unlock()
+    }
+}
+
 public final class SqliteValueBox: ValueBox {
     private let lock = NSRecursiveLock()
     
@@ -338,7 +371,19 @@ public final class SqliteValueBox: ValueBox {
     private var mayTrap: Bool {
         return !self.isDisposable
     }
-    private var database: Database!
+    private var database: Database! {
+        willSet {
+            // The old connection may be closed as soon as it is released; nobody may interrupt a closed handle.
+            self.interruptGate.setHandle(nil)
+        }
+        didSet {
+            self.interruptGate.setHandle(self.database?.handle)
+        }
+    }
+    
+    /// Lets another thread stop the maintenance statement that is running on this connection. It holds no
+    /// reference to the value box, which must be released on its own queue.
+    public let interruptGate = SqliteInterruptGate()
     /// The current connection's write counter (also the WAL hook's context); the idle checkpoint reports to it too.
     private var walWriteAccounting: SqliteWalWriteAccounting?
 
@@ -471,6 +516,8 @@ public final class SqliteValueBox: ValueBox {
         self.queue = queue
         if let database = self.openDatabase(encryptionParameters: encryptionParameters, isTemporary: isTemporary, isReadOnly: isReadOnly, upgradeProgress: upgradeProgress) {
             self.database = database
+            // Property observers do not run inside the initializer.
+            self.interruptGate.setHandle(database.handle)
         } else {
             return nil
         }
@@ -2803,6 +2850,10 @@ public final class SqliteValueBox: ValueBox {
     @discardableResult
     public func vacuum() -> Bool {
         precondition(self.queue.isCurrent())
+        self.interruptGate.setMaintenanceRunning(true)
+        defer {
+            self.interruptGate.setMaintenanceRunning(false)
+        }
         let vacuumCode = self.database.executeReturningCode("VACUUM")
         if vacuumCode != SQLITE_OK {
             postboxLog("SqliteValueBox: VACUUM failed: \(SqliteValueBox.describeVacuumFailure(vacuumCode)) (\(self.database.currentError() ?? "no message"))")
@@ -2828,6 +2879,8 @@ public final class SqliteValueBox: ValueBox {
             return "read-only database (\(code))"
         case SQLITE_NOMEM:
             return "out of memory (\(code))"
+        case SQLITE_INTERRUPT:
+            return "interrupted (\(code))"
         default:
             return "error \(code)"
         }

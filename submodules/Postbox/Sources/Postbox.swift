@@ -4613,6 +4613,20 @@ final class PostboxImpl {
         return .checked(result)
     }
     
+    /// Like `optimizeStorageIfNeeded`, but goes through the transaction gate: while transactions are paused (the app
+    /// is about to be suspended) the check waits in the queue, and runs when they are enabled again, so a pause is
+    /// never stuck behind a VACUUM. `isCancelled` is read right before the work starts.
+    func optimizeStorageIfNeededWhenAllowed(minFreeFraction: Double, minInterval: Double, maxLiveBytes: Int64?, shouldProceed: @escaping () -> Bool, isCancelled: @escaping () -> Bool, completion: @escaping (PostboxStorageOptimizationResult?) -> Void) {
+        assert(self.queue.isCurrent())
+        self.beginInternalTransaction(ignoreDisabled: false, { [weak self] in
+            guard let self = self, !isCancelled() else {
+                completion(nil)
+                return
+            }
+            completion(self.optimizeStorageIfNeeded(minFreeFraction: minFreeFraction, minInterval: minInterval, maxLiveBytes: maxLiveBytes, now: Date().timeIntervalSince1970, shouldProceed: shouldProceed))
+        })
+    }
+    
     fileprivate func addHolesEverywhere(peerNamespaces: [PeerId.Namespace], holeNamespace: MessageId.Namespace) {
         for peerId in self.chatListIndexTable.getAllPeerIds() {
             if peerNamespaces.contains(peerId.namespace) && self.messageHistoryMetadataTable.isInitialized(peerId) {
@@ -4707,6 +4721,7 @@ public class Postbox {
     
     let queue: Queue
     private let impl: QueueLocalObject<PostboxImpl>
+    private let interruptGate: SqliteInterruptGate
 
     public let seedConfiguration: SeedConfiguration
     public let mediaBox: MediaBox
@@ -4725,6 +4740,7 @@ public class Postbox {
         useCaches: Bool
     ) {
         self.queue = queue
+        self.interruptGate = valueBox.interruptGate
 
         self.seedConfiguration = seedConfiguration
 
@@ -5356,12 +5372,30 @@ public class Postbox {
     /// call it only from background maintenance (the BGProcessingTask), never from the UI.
     public func optimizeStorageIfNeeded(minFreeFraction: Double = PostboxStorageOptimizationSchedule.defaultMinFreeFraction, minInterval: Double = PostboxStorageOptimizationSchedule.defaultMinInterval, maxLiveBytes: Int64? = nil, shouldProceed: @escaping () -> Bool = { true }) -> Signal<PostboxStorageOptimizationResult, NoError> {
         return Signal { subscriber in
+            let cancelled = Atomic<Bool>(value: false)
             self.impl.with { impl in
-                subscriber.putNext(impl.optimizeStorageIfNeeded(minFreeFraction: minFreeFraction, minInterval: minInterval, maxLiveBytes: maxLiveBytes, now: Date().timeIntervalSince1970, shouldProceed: shouldProceed))
-                subscriber.putCompletion()
+                // Through the transaction gate: while transactions are paused this waits, and a pause never
+                // sits behind a running VACUUM. `shouldProceed` is asked again right before the VACUUM starts.
+                impl.optimizeStorageIfNeededWhenAllowed(minFreeFraction: minFreeFraction, minInterval: minInterval, maxLiveBytes: maxLiveBytes, shouldProceed: shouldProceed, isCancelled: {
+                    return cancelled.with { $0 }
+                }, completion: { result in
+                    if let result = result {
+                        subscriber.putNext(result)
+                    }
+                    subscriber.putCompletion()
+                })
             }
-            return EmptyDisposable
+            return ActionDisposable {
+                let _ = cancelled.swap(true)
+            }
         }
+    }
+
+    /// Stops a VACUUM that is running right now (it rolls back; the database is unchanged). Safe from any
+    /// thread and a no-op when no maintenance runs. Call it when the background time is up or the app comes
+    /// back to the foreground, so the file lock is never held across a suspension.
+    public func interruptMaintenance() {
+        self.interruptGate.interrupt()
     }
 
     public func failedMessageIdsView(peerId: PeerId) -> Signal<FailedMessageIdsView, NoError> {

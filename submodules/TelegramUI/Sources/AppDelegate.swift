@@ -250,6 +250,10 @@ private func extractAccountManagerState(records: AccountRecordsView<TelegramAcco
     private var isInForegroundValue = false
     private let isActivePromise = ValuePromise<Bool>(false, ignoreRepeated: true)
     private var isActiveValue = false
+    /// `isActive` / `isInForeground` as thread-safe flags: the VACUUM gate in the cleanup task asks on the Postbox
+    /// queue, where UIApplication.applicationState must not be read.
+    private let maintenanceIsActive = Atomic<Bool>(value: false)
+    private let maintenanceIsInForeground = Atomic<Bool>(value: false)
     let hasActiveAudioSession = Promise<Bool>(false)
     
     private let sharedContextPromise = Promise<SharedApplicationContext>()
@@ -1628,9 +1632,11 @@ private func extractAccountManagerState(records: AccountRecordsView<TelegramAcco
         
         let _ = self.isInForegroundPromise.get().start(next: { value in
             Logger.shared.log("App \(self.episodeId)", "isInForeground = \(value)")
+            let _ = self.maintenanceIsInForeground.swap(value)
         })
         let _ = self.isActivePromise.get().start(next: { value in
             Logger.shared.log("App \(self.episodeId)", "isActive = \(value)")
+            let _ = self.maintenanceIsActive.swap(value)
         })
         
         if application.applicationState == .active {
@@ -1665,16 +1671,51 @@ private func extractAccountManagerState(records: AccountRecordsView<TelegramAcco
             BGTaskScheduler.shared.register(forTaskWithIdentifier: cleanupTaskId, using: DispatchQueue.main) { task in
                 Logger.shared.log("App \(self.episodeId)", "Executing cleanup task")
                 
-                let disposable = self.runCacheReindexTasks(lowImpact: true, optimizeDatabase: true, completion: {
-                    Logger.shared.log("App \(self.episodeId)", "Completed cleanup task")
-                    
-                    task.setTaskCompleted(success: true)
-                })
+                // Main queue from here on. `expired` is also read on the Postbox queue (VACUUM gate).
+                let expired = Atomic<Bool>(value: false)
+                var isFinished = false
+                var wakeupManager: SharedWakeupManager?
+                let disposable = MetaDisposable()
+                
+                // Ends the task after writes are paused: the running transaction commits first (or the drain
+                // timeout passes), so the app is not suspended with a database file locked.
+                let finish: (Bool) -> Void = { success in
+                    if isFinished {
+                        return
+                    }
+                    isFinished = true
+                    let end = {
+                        task.setTaskCompleted(success: success)
+                    }
+                    if let wakeupManager {
+                        wakeupManager.endCleanupProcessingTask(end)
+                    } else {
+                        end()
+                    }
+                }
                 
                 task.expirationHandler = {
+                    let _ = expired.swap(true)
+                    // A VACUUM that is running rolls back now instead of holding the file lock into suspension.
+                    self.interruptDatabaseMaintenance()
                     disposable.dispose()
-                    task.setTaskCompleted(success: false)
+                    finish(false)
                 }
+                
+                let _ = (self.sharedContextPromise.get()
+                |> take(1)
+                |> deliverOnMainQueue).start(next: { sharedApplicationContext in
+                    if isFinished {
+                        return
+                    }
+                    wakeupManager = sharedApplicationContext.wakeupManager
+                    sharedApplicationContext.wakeupManager.beginCleanupProcessingTask()
+                    disposable.set(self.runCacheReindexTasks(lowImpact: true, optimizeDatabase: true, maintenanceExpired: expired, completion: {
+                        Logger.shared.log("App \(self.episodeId)", "Completed cleanup task")
+                        
+                        finish(true)
+                    }))
+                })
             }
             
             BGTaskScheduler.shared.getPendingTaskRequests(completionHandler: { tasks in
@@ -2016,8 +2057,10 @@ private func extractAccountManagerState(records: AccountRecordsView<TelegramAcco
     /// `optimizeDatabase`: also VACUUM each account's database when it is fragmented (see
     /// `Postbox.optimizeStorageIfNeeded`). Only the background processing task passes true: VACUUM
     /// blocks the account's database queue while it rewrites the file.
-    private func runCacheReindexTasks(lowImpact: Bool, optimizeDatabase: Bool = false, completion: @escaping () -> Void) -> Disposable {
+    private func runCacheReindexTasks(lowImpact: Bool, optimizeDatabase: Bool = false, maintenanceExpired: Atomic<Bool>? = nil, completion: @escaping () -> Void) -> Disposable {
         let disposable = MetaDisposable()
+        let isActive = self.maintenanceIsActive
+        let isInForeground = self.maintenanceIsInForeground
         
         let _ = (self.sharedContextPromise.get()
         |> take(1)
@@ -2038,7 +2081,14 @@ private func extractAccountManagerState(records: AccountRecordsView<TelegramAcco
                                 subscriber.putCompletion()
                                 return EmptyDisposable
                             }
-                            return (postbox.optimizeStorageIfNeeded()
+                            // Right before the VACUUM (on the Postbox queue): not when the time is up or the user is back.
+                            // Databases with more than 256 MB of live data are left alone: they take too long to rewrite.
+                            return (postbox.optimizeStorageIfNeeded(maxLiveBytes: 256 * 1024 * 1024, shouldProceed: {
+                                if let maintenanceExpired, maintenanceExpired.with({ $0 }) {
+                                    return false
+                                }
+                                return !isActive.with({ $0 }) && !isInForeground.with({ $0 })
+                            })
                             |> ignoreValues).start(completed: {
                                 subscriber.putCompletion()
                             })
@@ -2053,6 +2103,22 @@ private func extractAccountManagerState(records: AccountRecordsView<TelegramAcco
         })
         
         return disposable
+    }
+
+    /// Stops a VACUUM that is running on any account database, so no file lock is held when the app is suspended
+    /// (background time is up) or when the user is back.
+    private func interruptDatabaseMaintenance() {
+        let _ = (self.sharedContextPromise.get()
+        |> take(1)
+        |> deliverOnMainQueue).start(next: { sharedApplicationContext in
+            let _ = (sharedApplicationContext.sharedContext.activeAccountContexts
+            |> take(1)
+            |> deliverOnMainQueue).start(next: { activeAccounts in
+                for (_, context, _) in activeAccounts.accounts {
+                    context.account.postbox.interruptMaintenance()
+                }
+            })
+        })
     }
 
     private func resetBadge() {
@@ -2251,6 +2317,7 @@ private func extractAccountManagerState(records: AccountRecordsView<TelegramAcco
     }
 
     func handleWillEnterForeground() {
+        self.interruptDatabaseMaintenance()
         self.backgroundDiagnostics.willEnterForeground()
         // What was written while in the background (background sync, downloads, pushes).
         self.reportDiskWrites(reason: "foreground")

@@ -173,6 +173,46 @@ final class SqliteValueBoxVacuumTests: XCTestCase {
         }
     }
 
+    // Background time is up: another thread interrupts the VACUUM. Whether it lands before the VACUUM finishes
+    // or not, nothing is lost and the box keeps working.
+    func testInterruptDuringVacuumKeepsTheData() throws {
+        try self.onQueue {
+            self.fill(count: 20000, removeEvery: 4)
+        }
+        var expected: [Int64: UInt8] = [:]
+        self.queue.sync {
+            expected = self.remainingValues()
+        }
+        let gate = self.valueBox.interruptGate
+        let stop = Atomic<Bool>(value: false)
+        let interrupter = Thread {
+            while !stop.with({ $0 }) {
+                gate.interrupt()
+                usleep(200)
+            }
+        }
+        interrupter.start()
+        var succeeded = false
+        self.queue.sync {
+            succeeded = self.valueBox.vacuum()
+        }
+        let _ = stop.swap(true)
+        self.queue.sync {
+            XCTAssertEqual(self.remainingValues(), expected)
+            // Not stuck in a half-done state: the next VACUUM works.
+            XCTAssertTrue(self.valueBox.vacuum(), "vacuum works again (first one succeeded: \(succeeded))")
+        }
+    }
+
+    func testInterruptOutsideMaintenanceDoesNothing() throws {
+        let gate = self.valueBox.interruptGate
+        gate.interrupt()
+        try self.onQueue {
+            self.fill(count: 100, removeEvery: nil)
+            XCTAssertEqual(self.remainingValues().count, 100)
+        }
+    }
+
     func testCompactDatabaseDoesNotAskWhetherToProceed() throws {
         try self.onQueue {
             self.fill(count: 2000, removeEvery: nil)
