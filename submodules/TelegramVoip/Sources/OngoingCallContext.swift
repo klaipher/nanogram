@@ -114,7 +114,8 @@ public func callLogNameForId(id: Int64, account: Account) -> String? {
         for url in enumerator {
             if let url = url as? URL {
                 if url.lastPathComponent.hasPrefix(namePrefix) {
-                    if url.lastPathComponent.hasSuffix(".log.json") {
+                    if url.lastPathComponent.hasSuffix(".log.json") || url.lastPathComponent.hasSuffix(".log.1") {
+                        // The stats file and the older half of a rotated call log are not the log itself.
                         continue
                     }
                     return url.lastPathComponent
