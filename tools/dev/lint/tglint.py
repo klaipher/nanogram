@@ -414,6 +414,9 @@ def python_suites(paths):
         suites.append('tools/dev/lint/tests')
     if any(p.startswith('build-system/Make/') for p in paths):
         suites.append('build-system/Make/tests')
+    # Pure-Python source guards (no build): they read the Swift sources, so any Swift change runs them.
+    if any(p.startswith('tools/dev/source-guards/') or (p.endswith('.swift') and p.startswith(('submodules/', 'Telegram/'))) for p in paths):
+        suites.append('tools/dev/source-guards')
     return suites
 
 

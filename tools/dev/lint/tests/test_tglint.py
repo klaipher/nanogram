@@ -207,6 +207,11 @@ class AffectedTestsTests(RepoTestCase):
         self.assertEqual(tglint.python_suites(['tools/dev/lint/tglint.py', 'build-system/Make/Make.py', 'a.swift']),
                          ['tools/dev/lint/tests', 'build-system/Make/tests'])
 
+    def test_python_suites_run_the_source_guards_for_swift_changes(self):
+        self.assertEqual(tglint.python_suites(['submodules/ChatListUI/Sources/ChatListControllerNode.swift']), ['tools/dev/source-guards'])
+        self.assertEqual(tglint.python_suites(['tools/dev/source-guards/test_hardened_media_readers.py']), ['tools/dev/source-guards'])
+        self.assertEqual(tglint.python_suites(['README.md']), [])
+
 
 class PushRangeTests(RepoTestCase):
     def setUp(self):
