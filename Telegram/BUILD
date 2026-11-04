@@ -330,6 +330,7 @@ filegroup(
 # Only Nanogram's icons are bundled. Telegram's .alticon folders stay in the tree for upstream
 # merges but are not shipped.
 alternate_icon_folders = [
+    "NanogramSphere",
     "NanogramComet",
     "NanogramWhite",
     "NanogramGlass",
@@ -346,8 +347,9 @@ alternate_icon_folders = [
     "NanogramStreak",
 ]
 
-# Nanogram's own icon (the Comet: a light-blue comet on a navy tile), an Icon Composer file so iOS draws the glass, dark,
-# tinted and clear styles. Telegram.icon stays in the tree for upstream merges.
+# Nanogram's own icon (the Sphere: a glossy blue sphere with a light beam on a navy night sky), a layered Icon Composer
+# file so iOS draws the glass, dark, tinted and clear styles. For iOS 15-25 actool renders the fallback from the same
+# file (rules_apple refuses an .appiconset next to a .icon). Telegram.icon stays in the tree for upstream merges.
 composer_icon_folders = ["Nanogram"]
 
 [

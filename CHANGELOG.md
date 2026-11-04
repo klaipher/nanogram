@@ -2,6 +2,14 @@
 
 Newest first. Internal notes for each TestFlight build; testers see the What to Test notes instead.
 
+## Unreleased
+
+### App icon
+- New default icon, the Sphere (a glossy blue sphere with a light beam on a night sky), replaces the Comet as the primary icon. `Telegram/Telegram-iOS/Nanogram.icon` is now layered: Background (gradient, vignette, stars; full-bleed, opaque), Light (glow and beam), Sphere (glass layer plus a raster sheen), Sparkle. Dark has a deeper background; tinted swaps the sphere, light and sparkle for grayscale layers. No SVG filters (Icon Composer ignores them; the blurred core and sheen are 1024 px PNG layers).
+- iOS 15-25 get the fallback actool renders from the same `.icon` (rules_apple refuses an `.appiconset` next to a `.icon`, and actool ignores it).
+- Settings > Appearance > App Icon lists Sphere first and selected by default (`NanogramSphere`, previews in `NanogramSphere.alticon` from `AlternateIconSources/NanogramSphere.svg` via `render.swift`); the Comet is a normal alternate now. The watch app icon is re-rendered from the same SVG (`render-app-icon.swift`).
+- Policy test `tools/dev/tests/test_app_icon.py`.
+
 ## 13.1.2 (202611041250) — 2026-11-04 — daac83e2
 
 Uploaded to TestFlight; What to Test notes set by `tg testflight` after processing. dSYMs: ~/Library/Application Support/Nanogram/dsyms/202611041250.

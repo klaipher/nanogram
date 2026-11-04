@@ -1,47 +1,45 @@
-// Renders Telegram/Telegram-iOS/Nanogram.icon (fill + Head.svg + Tail.svg) as a flat,
-// opaque 1024x1024 PNG for the watch app's AppIcon set. Re-run after the iOS icon changes:
+// Renders Telegram/Telegram-iOS/AlternateIconSources/NanogramSphere.svg (the app icon, a full-bleed square) as the flat,
+// opaque 1024x1024 PNG of the watch app's AppIcon set; watchOS applies its own circle mask. Re-run after the iOS icon changes:
 //   swift Assets/AppIcon/render-app-icon.swift "tgwatch Watch App/Assets.xcassets/AppIcon.appiconset/AppIcon.png"
+// QuickLook (WebKit) rasterises the SVG, the same way as AlternateIconSources/render.swift.
 import CoreGraphics
 import Foundation
 import ImageIO
 import UniformTypeIdentifiers
 
 let size = 1024
-let cs = CGColorSpace(name: CGColorSpace.sRGB)!
-let ctx = CGContext(data: nil, width: size, height: size, bitsPerComponent: 8, bytesPerRow: 0,
-                    space: cs, bitmapInfo: CGImageAlphaInfo.noneSkipLast.rawValue)!
-// SVG coordinates: origin top-left, y down.
-ctx.translateBy(x: 0, y: CGFloat(size))
-ctx.scaleBy(x: 1, y: -1)
+let svg = URL(fileURLWithPath: #filePath).deletingLastPathComponent().deletingLastPathComponent().deletingLastPathComponent()
+    .deletingLastPathComponent().appendingPathComponent("Telegram-iOS/AlternateIconSources/NanogramSphere.svg")
+let temp = FileManager.default.temporaryDirectory.appendingPathComponent("watch-icon-\(UUID().uuidString)")
+try FileManager.default.createDirectory(at: temp, withIntermediateDirectories: true)
+defer { try? FileManager.default.removeItem(at: temp) }
 
-func color(_ r: CGFloat, _ g: CGFloat, _ b: CGFloat, _ a: CGFloat) -> CGColor {
-    CGColor(colorSpace: cs, components: [r, g, b, a])!
+let process = Process()
+process.executableURL = URL(fileURLWithPath: "/usr/bin/qlmanage")
+process.arguments = ["-t", "-s", String(size), "-o", temp.path, svg.path]
+process.standardOutput = FileHandle.nullDevice
+process.standardError = FileHandle.nullDevice
+try process.run()
+process.waitUntilExit()
+let rendered = temp.appendingPathComponent(svg.lastPathComponent + ".png")
+guard let source = CGImageSourceCreateWithURL(rendered as CFURL, nil), let artwork = CGImageSourceCreateImageAtIndex(source, 0, nil) else {
+    fatalError("QuickLook did not render \(svg.lastPathComponent)")
 }
-// icon.json fill: navy #111722.
-ctx.setFillColor(color(0.06667, 0.09020, 0.13333, 1))
+
+guard let cs = CGColorSpace(name: CGColorSpace.sRGB),
+      let ctx = CGContext(data: nil, width: size, height: size, bitsPerComponent: 8, bytesPerRow: 0,
+                          space: cs, bitmapInfo: CGImageAlphaInfo.noneSkipLast.rawValue),
+      let white = CGColor(colorSpace: cs, components: [1, 1, 1, 1]) else {
+    fatalError("could not create the bitmap context")
+}
+ctx.setFillColor(white)
 ctx.fill(CGRect(x: 0, y: 0, width: size, height: size))
-// The comet's light blue, #508FFF.
-let blue: (CGFloat, CGFloat, CGFloat) = (0.31373, 0.56078, 1.0)
+ctx.interpolationQuality = .high
+ctx.draw(artwork, in: CGRect(x: 0, y: 0, width: size, height: size))
 
-// Tail.svg: triangle M752 550 L176 848 L474 272 Z, blue 0.95 -> 0 from (613,411) to (176,848).
-ctx.saveGState()
-ctx.move(to: CGPoint(x: 752, y: 550))
-ctx.addLine(to: CGPoint(x: 176, y: 848))
-ctx.addLine(to: CGPoint(x: 474, y: 272))
-ctx.closePath()
-ctx.clip()
-guard let tail = CGGradient(colorsSpace: cs, colors: [color(blue.0, blue.1, blue.2, 0.95), color(blue.0, blue.1, blue.2, 0)] as CFArray, locations: [0, 1]) else {
-    fatalError("could not create the tail gradient")
-}
-ctx.drawLinearGradient(tail, start: CGPoint(x: 613, y: 411), end: CGPoint(x: 176, y: 848), options: [.drawsBeforeStartLocation, .drawsAfterEndLocation])
-ctx.restoreGState()
-
-// Head.svg: blue circle at (613, 411), r 196.
-ctx.setFillColor(color(blue.0, blue.1, blue.2, 1))
-ctx.fillEllipse(in: CGRect(x: 613 - 196, y: 411 - 196, width: 392, height: 392))
-
-let image = ctx.makeImage()!
 let url = URL(fileURLWithPath: CommandLine.arguments[1])
-let dest = CGImageDestinationCreateWithURL(url as CFURL, UTType.png.identifier as CFString, 1, nil)!
+guard let image = ctx.makeImage(), let dest = CGImageDestinationCreateWithURL(url as CFURL, UTType.png.identifier as CFString, 1, nil) else {
+    fatalError("could not create the PNG writer")
+}
 CGImageDestinationAddImage(dest, image, nil)
 precondition(CGImageDestinationFinalize(dest))

@@ -384,6 +384,9 @@ class ThemeSettingsAppIconItemNode: ListViewItemNode, ItemListItemNode {
                             var bordered = true
                             // White-background icons keep the border so they stand out on a light list.
                             switch icon.name {
+                                case "NanogramSphere":
+                                    name = "Sphere"
+                                    bordered = false
                                 case "NanogramComet":
                                     name = "Comet"
                                     bordered = false
