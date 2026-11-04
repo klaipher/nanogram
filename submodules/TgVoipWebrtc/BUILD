@@ -156,11 +156,9 @@ sources = glob([
     "tgcalls/tgcalls/platform/darwin/TGCMIODevice.*",
     "tgcalls/tgcalls/platform/darwin/TGCMIOCapturer.*",
     "tgcalls/tgcalls/platform/darwin/VideoCMIOCapture.*",
-    # Mac-only (arrive with the Mac tgcalls merge): ScreenCaptureKit and macOS 15 / iOS 16+ pixel-transfer code
-    # must never reach the iOS build.
+    # Mac-only (arrives with the Mac tgcalls merge): ScreenCaptureKit does not exist on iOS. TGRTCPixelTransfer
+    # and TGRTCScreenVideoRange stay in: the merged H.264/H.265 encoders import them unconditionally.
     "tgcalls/tgcalls/platform/darwin/ScreenCaptureKit*",
-    "tgcalls/tgcalls/platform/darwin/TGRTCPixelTransfer.*",
-    "tgcalls/tgcalls/platform/darwin/TGRTCScreenVideoRange.*",
     "tgcalls/tgcalls/desktop_capturer/**",
 ])
 
@@ -200,11 +198,9 @@ sources = glob([
     "tgcalls/tgcalls/platform/darwin/TGCMIODevice.*",
     "tgcalls/tgcalls/platform/darwin/TGCMIOCapturer.*",
     "tgcalls/tgcalls/platform/darwin/VideoCMIOCapture.*",
-    # Mac-only (arrive with the Mac tgcalls merge): ScreenCaptureKit and macOS 15 / iOS 16+ pixel-transfer code
-    # must never reach the iOS build.
+    # Mac-only (arrives with the Mac tgcalls merge): ScreenCaptureKit does not exist on iOS. TGRTCPixelTransfer
+    # and TGRTCScreenVideoRange stay in: the merged H.264/H.265 encoders import them unconditionally.
     "tgcalls/tgcalls/platform/darwin/ScreenCaptureKit*",
-    "tgcalls/tgcalls/platform/darwin/TGRTCPixelTransfer.*",
-    "tgcalls/tgcalls/platform/darwin/TGRTCScreenVideoRange.*",
     "tgcalls/tgcalls/desktop_capturer/**",
 ]) + [
     "tgcalls/tgcalls/Manager.cpp",
