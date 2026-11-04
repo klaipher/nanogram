@@ -244,7 +244,6 @@ public final class PresentationCallImpl: PresentationCall {
         self.isVideo = startWithVideo
         if self.isVideo {
             self.videoCapturer = OngoingCallVideoCapturer()
-            self.updateThermalBinding()
             self.statePromise.set(PresentationCallState(state: isOutgoing ? .waiting : .ringing, videoState: .active(isScreencast: self.isScreencastActive, endpointId: ""), remoteVideoState: .inactive, remoteAudioState: .active, remoteBatteryLevel: .normal, supportsConferenceCalls: self.supportsConferenceCalls))
         } else {
             self.statePromise.set(PresentationCallState(state: isOutgoing ? .waiting : .ringing, videoState: self.isVideoPossible ? .inactive : .notAvailable, remoteVideoState: .inactive, remoteAudioState: .active, remoteBatteryLevel: .normal, supportsConferenceCalls: self.supportsConferenceCalls))
@@ -255,6 +254,8 @@ public final class PresentationCallImpl: PresentationCall {
         self.proxyServer = proxyServer
         self.currentNetworkType = currentNetworkType
         self.updatedNetworkType = updatedNetworkType
+        // A property observer does not run inside init, and a method call needs every property set.
+        self.updateThermalBinding()
         
         var didReceiveAudioOutputs = false
         
@@ -462,9 +463,8 @@ public final class PresentationCallImpl: PresentationCall {
             self.thermalLevelDisposable = nil
             return
         }
-        if self.thermalLevelDisposable != nil {
-            return
-        }
+        // A new capturer starts at the engine's default, so it is told the current level straight away.
+        self.thermalLevelDisposable?.dispose()
         CallThermalGovernor.shared.start()
         self.thermalLevelDisposable = (CallThermalGovernor.shared.level
         |> deliverOnMainQueue).startStrict(next: { [weak self] level in

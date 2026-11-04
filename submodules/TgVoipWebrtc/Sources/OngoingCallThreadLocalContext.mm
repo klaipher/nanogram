@@ -1877,8 +1877,8 @@ static void (*InternalVoipLoggingFunction)(NSString *) = NULL;
     tgcalls::CallsRuntimeSwitches::setAdvancedDucking(enabled);
 }
 
-+ (void)setOpusFirstLossFloor:(bool)enabled {
-    tgcalls::CallsRuntimeSwitches::setOpusFirstLossFloor(enabled);
++ (void)setGroupNarrowbandProcessing:(bool)enabled {
+    tgcalls::CallsRuntimeSwitches::setGroupNarrowbandProcessing(enabled);
 }
 
 + (void)setKeepSessionMode:(bool)enabled {

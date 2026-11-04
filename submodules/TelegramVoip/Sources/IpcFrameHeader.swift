@@ -23,22 +23,40 @@ public enum IpcFrameHeader {
     }
 }
 
-/// Reader side: whether the frame in the shared file is one that has not been converted yet.
+public enum IpcFrameAction: Equatable {
+    /// A frame the app has not converted yet: deserialize it and send it.
+    case convert
+    /// The screen has not changed: send the last converted frame again, without converting.
+    case resend
+    case skip
+}
+
+/// Reader side: what the poll should do with the frame in the shared file.
+///
+/// ReplayKit calls the extension only when the screen changes, so a still screen produces no new frames.
+/// The encoder still needs input (a viewer joining, or a peer asking for a keyframe, is served only on the
+/// next input frame), so the last frame is sent again every `resendInterval`. Only the conversion is
+/// skipped, which was the expensive part.
 public struct IpcFrameChangeDetector {
+    public static let resendInterval: Double = 0.1
+
     private var lastCounter: UInt32 = 0
+    private var lastSendTime: Double?
 
     public init() {
     }
 
-    public mutating func shouldDeserialize(counter: UInt32) -> Bool {
-        if counter == 0 {
-            // A writer that does not count: every poll may be a new frame.
-            return true
+    public mutating func action(counter: UInt32, now: Double) -> IpcFrameAction {
+        if counter == 0 || counter != self.lastCounter {
+            // counter 0: a writer that does not count, every poll may be a new frame.
+            self.lastCounter = counter
+            self.lastSendTime = now
+            return .convert
         }
-        if counter == self.lastCounter {
-            return false
+        if let lastSendTime = self.lastSendTime, now - lastSendTime >= IpcFrameChangeDetector.resendInterval {
+            self.lastSendTime = now
+            return .resend
         }
-        self.lastCounter = counter
-        return true
+        return .skip
     }
 }

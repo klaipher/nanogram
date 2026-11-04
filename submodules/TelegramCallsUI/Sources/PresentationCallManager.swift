@@ -150,7 +150,7 @@ public final class PresentationCallManagerImpl: PresentationCallManager {
             OngoingCallContext.applyAudioExperiments(
                 systemNoiseSuppression: settings.callsSystemNoiseSuppression,
                 advancedDucking: settings.callsAdvancedDucking,
-                opusFirstLossFloor: settings.callsOpusFirstLossFloor,
+                groupNarrowbandProcessing: settings.callsGroupNarrowbandProcessing,
                 keepSessionMode: settings.callsKeepSessionMode
             )
             OngoingCallContext.applyPowerExperiments(

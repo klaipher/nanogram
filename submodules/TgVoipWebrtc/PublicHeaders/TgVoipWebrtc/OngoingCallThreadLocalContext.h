@@ -300,7 +300,7 @@ typedef NS_ENUM(int32_t, OngoingCallDataSavingWebrtc) {
 /// Local-only call audio switches (Debug Settings). Same rules: nothing negotiated or sent changes.
 + (void)setSystemNoiseSuppression:(bool)enabled;
 + (void)setAdvancedDucking:(bool)enabled;
-+ (void)setOpusFirstLossFloor:(bool)enabled;
++ (void)setGroupNarrowbandProcessing:(bool)enabled;
 + (void)setKeepSessionMode:(bool)enabled;
 
 + (int32_t)maxLayer;

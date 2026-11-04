@@ -111,7 +111,7 @@ Status values: `todo`, `in progress`, `done (<commit>)`, `dropped (<reason>)`.
 
 ## Medium changes (M)
 
-### R10. Livestream video in group calls is decoded in software — `in progress`: hardware decoding implemented behind Debug Settings "Calls: livestream hardware decoding" (default off, per-stream software fallback, 2-session cap), host-tested and compile-checked, not yet verified on a device
+### R10. Livestream video in group calls is decoded in software — `in progress`: hardware decoding implemented behind Debug Settings "Calls: livestream hardware decoding" (default off, per-stream software fallback, 2-session cap), host-tested and compile-checked, not yet verified on a device. Review 2026-11-04: a tile shown again mid-part decodes at most 6 frames per render tick, and the decoder is flushed once after a skipped part
 
 - **Where**: `tgcalls/tgcalls/platform/darwin/DarwinFFMpeg.mm:21-31` (`setupDarwinVideoDecoding` returns
   immediately; the VideoToolbox code is commented out), called from `group/VideoStreamingPart.cpp:345`; each
@@ -172,7 +172,7 @@ Status values: `todo`, `in progress`, `done (<commit>)`, `dropped (<reason>)`.
 - `PhotoResources/Sources/PhotoResources.swift:893-895`: decode with a maximum pixel size
   (`CGImageSourceCreateThumbnailAtIndex`) and add a small memory-pressure-aware cache.
 
-### R18. RNNoise runs even when noise suppression is off — `done` (tgcalls 67e8982, from Mac a598e27), host-tested, not yet verified on a device
+### R18. RNNoise runs even when noise suppression is off — `done` (tgcalls 67e8982, from Mac a598e27), host-tested, not yet verified on a device. Review 2026-11-04: keeping the processed result at 8/16 kHz (Bluetooth) is a new audio path and now sits behind Debug Settings "Calls: group narrowband processing" (off)
 
 - `tgcalls/group/GroupAudioCapturePostProcessor.cpp:78-99`: `rnnoise_process_frame` runs every 10 ms for
   voice-activity detection even when suppression is off, and a new `webrtc::AudioBuffer` is allocated per

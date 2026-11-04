@@ -47,3 +47,53 @@ final class VideoRequestPolicyTests: XCTestCase {
         XCTAssertEqual(result, Set(6 ... 9))
     }
 }
+
+/// A tile that scrolls out of view is not dropped from the request at once: the engine destroys the receive
+/// stream and decoder of a video that is no longer requested, and building it again waits for a keyframe. A
+/// fling over a big grid used to create and destroy several decoders per second. Tiles are added immediately
+/// and removed only after they have been unwanted for `removalDelay`.
+final class VideoRequestRetentionTests: XCTestCase {
+    func testWantedKeysAreRequestedAtOnce() {
+        var retention = VideoRequestRetention<Int>()
+        XCTAssertEqual(retention.requested(wanted: [1, 2, 3], now: 0.0), [1, 2, 3])
+        XCTAssertEqual(retention.requested(wanted: [1, 2, 3, 4], now: 0.1), [1, 2, 3, 4])
+    }
+
+    func testAKeyThatLeavesIsKeptForTheDelay() {
+        var retention = VideoRequestRetention<Int>()
+        _ = retention.requested(wanted: [1, 2, 3], now: 0.0)
+        XCTAssertEqual(retention.requested(wanted: [2, 3], now: 1.0), [1, 2, 3])
+        XCTAssertEqual(retention.requested(wanted: [2, 3], now: 1.0 + VideoRequestRetention<Int>.removalDelay - 0.01), [1, 2, 3])
+        XCTAssertEqual(retention.requested(wanted: [2, 3], now: 1.0 + VideoRequestRetention<Int>.removalDelay + 0.01), [2, 3])
+    }
+
+    /// Scrolling back before the delay ends keeps the same stream: nothing was ever removed.
+    func testAKeyThatComesBackIsNeverRemoved() {
+        var retention = VideoRequestRetention<Int>()
+        _ = retention.requested(wanted: [1, 2], now: 0.0)
+        _ = retention.requested(wanted: [2], now: 1.0)
+        XCTAssertEqual(retention.requested(wanted: [1, 2], now: 2.0), [1, 2])
+        // Its clock restarted: it leaves again at 3.0 and is kept until 3.0 + delay.
+        XCTAssertEqual(retention.requested(wanted: [2], now: 3.0), [1, 2])
+        XCTAssertEqual(retention.requested(wanted: [2], now: 3.0 + VideoRequestRetention<Int>.removalDelay - 0.01), [1, 2])
+        XCTAssertEqual(retention.requested(wanted: [2], now: 3.0 + VideoRequestRetention<Int>.removalDelay + 0.01), [2])
+    }
+
+    func testNextExpiryTellsWhenToLookAgain() {
+        var retention = VideoRequestRetention<Int>()
+        XCTAssertNil(retention.nextExpiry())
+        _ = retention.requested(wanted: [1, 2], now: 0.0)
+        XCTAssertNil(retention.nextExpiry())
+        _ = retention.requested(wanted: [2], now: 1.0)
+        XCTAssertEqual(retention.nextExpiry()!, 1.0 + VideoRequestRetention<Int>.removalDelay, accuracy: 0.0001)
+        _ = retention.requested(wanted: [2], now: 10.0)
+        XCTAssertNil(retention.nextExpiry())
+    }
+
+    func testResetForgetsEverything() {
+        var retention = VideoRequestRetention<Int>()
+        _ = retention.requested(wanted: [1, 2], now: 0.0)
+        retention.reset()
+        XCTAssertEqual(retention.requested(wanted: [2], now: 0.5), [2])
+    }
+}

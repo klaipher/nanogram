@@ -303,7 +303,7 @@ enum DebugControllerEntry: ItemListNodeEntry {
     case callsEncoderLowLatency(Bool)
     case callsSystemNoiseSuppression(Bool)
     case callsAdvancedDucking(Bool)
-    case callsOpusFirstLossFloor(Bool)
+    case callsGroupNarrowbandProcessing(Bool)
     case callsKeepSessionMode(Bool)
     case callsThreadQoS(Bool)
     case callsThermalVideoLadder(Bool)
@@ -331,7 +331,7 @@ enum DebugControllerEntry: ItemListNodeEntry {
             return DebugControllerSection.web.rawValue
         case .experimentsHeader, .keepChatNavigationStack, .skipReadHistory, .alwaysDisplayTyping, .crashOnSlowQueries, .crashOnMemoryPressure:
             return DebugControllerSection.experiments.rawValue
-        case .compressedEmojiCache, .checkSerializedData, .enableQuickReactionSwitch, .fakeGlass, .inputDecEngineEditor, .forceListViewImplChatBackend, .forceRLottieBackend, .respectSystemMicrophone, .videoMessageCameraMode, .videoMessageCloseFocus, .videoMessageCameraMatrix, .liveStreamV2, .groupCallReferenceEngine, .callsLivestreamHardwareDecoding, .callsNativeCapturePath, .callsEncoderLowLatency, .callsSystemNoiseSuppression, .callsAdvancedDucking, .callsOpusFirstLossFloor, .callsKeepSessionMode, .callsThreadQoS, .callsThermalVideoLadder, .callsBackgroundVideoDrop:
+        case .compressedEmojiCache, .checkSerializedData, .enableQuickReactionSwitch, .fakeGlass, .inputDecEngineEditor, .forceListViewImplChatBackend, .forceRLottieBackend, .respectSystemMicrophone, .videoMessageCameraMode, .videoMessageCloseFocus, .videoMessageCameraMatrix, .liveStreamV2, .groupCallReferenceEngine, .callsLivestreamHardwareDecoding, .callsNativeCapturePath, .callsEncoderLowLatency, .callsSystemNoiseSuppression, .callsAdvancedDucking, .callsGroupNarrowbandProcessing, .callsKeepSessionMode, .callsThreadQoS, .callsThermalVideoLadder, .callsBackgroundVideoDrop:
             return DebugControllerSection.experiments.rawValue
         case .springSendAnimation, .fakeWalletTransfers, .stickerRendererMode, .disableImageContentAnalysis, .disableLanguageRecognition, .localTranscription, .enableVoipTcp, .tabletDisplayLinkFrameRateCap:
             return DebugControllerSection.experiments.rawValue
@@ -450,7 +450,7 @@ enum DebugControllerEntry: ItemListNodeEntry {
             return 66
         case .callsAdvancedDucking:
             return 67
-        case .callsOpusFirstLossFloor:
+        case .callsGroupNarrowbandProcessing:
             return 68
         case .callsKeepSessionMode:
             return 69
@@ -1025,12 +1025,12 @@ enum DebugControllerEntry: ItemListNodeEntry {
                     })
                 }).start()
             })
-        case let .callsOpusFirstLossFloor(value):
-            return ItemListSwitchItem(presentationData: presentationData, systemStyle: .glass, title: "Calls: Opus loss floor", value: value, sectionId: self.section, style: .blocks, updated: { value in
+        case let .callsGroupNarrowbandProcessing(value):
+            return ItemListSwitchItem(presentationData: presentationData, systemStyle: .glass, title: "Calls: group narrowband processing", value: value, sectionId: self.section, style: .blocks, updated: { value in
                 let _ = arguments.sharedContext.accountManager.transaction ({ transaction in
                     transaction.updateSharedData(ApplicationSpecificSharedDataKeys.experimentalUISettings, { settings in
                         var settings = settings?.get(ExperimentalUISettings.self) ?? ExperimentalUISettings.defaultSettings
-                        settings.callsOpusFirstLossFloor = value
+                        settings.callsGroupNarrowbandProcessing = value
                         return EnginePreferencesEntry(settings)
                     })
                 }).start()
@@ -1241,7 +1241,7 @@ func debugControllerEntries(environment: DebugControllerEntriesEnvironment, them
         entries.append(.callsEncoderLowLatency(experimentalSettings.callsEncoderLowLatency))
         entries.append(.callsSystemNoiseSuppression(experimentalSettings.callsSystemNoiseSuppression))
         entries.append(.callsAdvancedDucking(experimentalSettings.callsAdvancedDucking))
-        entries.append(.callsOpusFirstLossFloor(experimentalSettings.callsOpusFirstLossFloor))
+        entries.append(.callsGroupNarrowbandProcessing(experimentalSettings.callsGroupNarrowbandProcessing))
         entries.append(.callsKeepSessionMode(experimentalSettings.callsKeepSessionMode))
         entries.append(.springSendAnimation(experimentalSettings.springSendAnimation))
         if environment.isDevAccount {

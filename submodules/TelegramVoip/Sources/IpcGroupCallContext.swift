@@ -394,6 +394,8 @@ public final class IpcGroupCallBufferAppContext {
     private var framePollTimer: SwiftSignalKit.Timer?
     private var mappedFile: MappedFile?
     private var frameChangeDetector = IpcFrameChangeDetector()
+    private var lastFrame: CVPixelBuffer?
+    private var lastFrameOrientation: CGImagePropertyOrientation = .up
 
     private var callActiveInfoTimer: SwiftSignalKit.Timer?
 
@@ -426,14 +428,23 @@ public final class IpcGroupCallBufferAppContext {
             var headerValue: Int32 = 0
             mappedFile.read(at: 0 ..< 4, to: &headerValue)
             let header = IpcFrameHeader.unpack(headerValue)
-            // The extension counts its frames; the same frame is not converted again.
-            if !strongSelf.frameChangeDetector.shouldDeserialize(counter: header.counter) {
-                return
-            }
+            // The extension counts its frames; the same frame is not converted again, but a still screen
+            // keeps reaching the encoder (see IpcFrameChangeDetector).
             let orientation = CGImagePropertyOrientation(rawValue: header.orientation) ?? .up
-            let data = Data(bytesNoCopy: mappedFile.memory.advanced(by: 4), count: mappedFile.size - 4, deallocator: .none)
-            if let frame = deserializePixelBuffer(data: data) {
-                strongSelf.framesPipe.putNext((frame, orientation))
+            switch strongSelf.frameChangeDetector.action(counter: header.counter, now: CFAbsoluteTimeGetCurrent()) {
+            case .skip:
+                return
+            case .resend:
+                if let frame = strongSelf.lastFrame {
+                    strongSelf.framesPipe.putNext((frame, strongSelf.lastFrameOrientation))
+                }
+            case .convert:
+                let data = Data(bytesNoCopy: mappedFile.memory.advanced(by: 4), count: mappedFile.size - 4, deallocator: .none)
+                if let frame = deserializePixelBuffer(data: data) {
+                    strongSelf.lastFrame = frame
+                    strongSelf.lastFrameOrientation = orientation
+                    strongSelf.framesPipe.putNext((frame, orientation))
+                }
             }
         }, queue: .mainQueue())
         self.framePollTimer = framePollTimer

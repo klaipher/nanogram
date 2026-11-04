@@ -87,12 +87,11 @@ public struct ExperimentalUISettings: Codable, Equatable {
     /// WebRTC's own noise suppression and high-pass filter are dropped from the outgoing audio instead of
     /// running a second time. Kept whenever the system unit is not in use. Local only.
     public var callsSystemNoiseSuppression: Bool
-    /// Debug Settings ▸ "Calls: advanced ducking". On by default. iOS 17+: the voice-processing unit lowers
+    /// Debug Settings ▸ "Calls: advanced ducking". Off by default (no device evidence yet). iOS 17+: the voice-processing unit lowers
     /// other audio only while someone speaks and by the smallest amount. Local audio-unit setting.
     public var callsAdvancedDucking: Bool
-    /// Debug Settings ▸ "Calls: Opus loss floor". On by default. The 1:1 call encoder starts with a 1%
-    /// expected packet loss so the first seconds already carry forward error correction. Encoder-local; the
-    /// negotiated parameters are unchanged. Read when a call starts.
+    /// Debug Settings ▸ "Calls: group narrowband processing". Off by default. Group calls on 8/16 kHz capture
+    /// (Bluetooth headsets) keep the noise-suppressed signal instead of discarding it. Local only.
     public var callsOpusFirstLossFloor: Bool
     /// Debug Settings ▸ "Calls: keep audio mode". Off by default. Starting the call audio no longer replaces
     /// the videoChat audio-session mode of a video call with voiceChat. Local only.
@@ -174,8 +173,8 @@ public struct ExperimentalUISettings: Codable, Equatable {
         callsNativeCapturePath: Bool = false,
         callsEncoderLowLatency: Bool = false,
         callsSystemNoiseSuppression: Bool = false,
-        callsAdvancedDucking: Bool = true,
-        callsOpusFirstLossFloor: Bool = true,
+        callsAdvancedDucking: Bool = false,
+        callsGroupNarrowbandProcessing: Bool = false,
         callsKeepSessionMode: Bool = false,
         callsThreadQoS: Bool = false,
         callsThermalVideoLadder: Bool = false,
@@ -215,7 +214,7 @@ public struct ExperimentalUISettings: Codable, Equatable {
         self.callsEncoderLowLatency = callsEncoderLowLatency
         self.callsSystemNoiseSuppression = callsSystemNoiseSuppression
         self.callsAdvancedDucking = callsAdvancedDucking
-        self.callsOpusFirstLossFloor = callsOpusFirstLossFloor
+        self.callsGroupNarrowbandProcessing = callsGroupNarrowbandProcessing
         self.callsKeepSessionMode = callsKeepSessionMode
         self.callsThreadQoS = callsThreadQoS
         self.callsThermalVideoLadder = callsThermalVideoLadder
@@ -268,8 +267,10 @@ public struct ExperimentalUISettings: Codable, Equatable {
         self.callsNativeCapturePath = try container.decodeIfPresent(Bool.self, forKey: "callsNativeCapturePath") ?? false
         self.callsEncoderLowLatency = try container.decodeIfPresent(Bool.self, forKey: "callsEncoderLowLatency") ?? false
         self.callsSystemNoiseSuppression = try container.decodeIfPresent(Bool.self, forKey: "callsSystemNoiseSuppression") ?? false
-        self.callsAdvancedDucking = try container.decodeIfPresent(Bool.self, forKey: "callsAdvancedDucking") ?? true
-        self.callsOpusFirstLossFloor = try container.decodeIfPresent(Bool.self, forKey: "callsOpusFirstLossFloor") ?? true
+        // A new key: it defaulted to on at first, so every blob saved under "callsAdvancedDucking" holds `true`
+        // whether or not the user touched the switch. That value is ignored; the switch is off until A/B-tested.
+        self.callsAdvancedDucking = try container.decodeIfPresent(Bool.self, forKey: "callsAdvancedDuckingOptIn") ?? false
+        self.callsGroupNarrowbandProcessing = try container.decodeIfPresent(Bool.self, forKey: "callsGroupNarrowbandProcessing") ?? false
         self.callsKeepSessionMode = try container.decodeIfPresent(Bool.self, forKey: "callsKeepSessionMode") ?? false
         self.callsThreadQoS = try container.decodeIfPresent(Bool.self, forKey: "callsThreadQoS") ?? false
         self.callsThermalVideoLadder = try container.decodeIfPresent(Bool.self, forKey: "callsThermalVideoLadder") ?? false
@@ -320,8 +321,8 @@ public struct ExperimentalUISettings: Codable, Equatable {
         try container.encode(self.callsNativeCapturePath, forKey: "callsNativeCapturePath")
         try container.encode(self.callsEncoderLowLatency, forKey: "callsEncoderLowLatency")
         try container.encode(self.callsSystemNoiseSuppression, forKey: "callsSystemNoiseSuppression")
-        try container.encode(self.callsAdvancedDucking, forKey: "callsAdvancedDucking")
-        try container.encode(self.callsOpusFirstLossFloor, forKey: "callsOpusFirstLossFloor")
+        try container.encode(self.callsAdvancedDucking, forKey: "callsAdvancedDuckingOptIn")
+        try container.encode(self.callsGroupNarrowbandProcessing, forKey: "callsGroupNarrowbandProcessing")
         try container.encode(self.callsKeepSessionMode, forKey: "callsKeepSessionMode")
         try container.encode(self.callsThreadQoS, forKey: "callsThreadQoS")
         try container.encode(self.callsThermalVideoLadder, forKey: "callsThermalVideoLadder")

@@ -698,6 +698,8 @@ final class VideoChatParticipantsComponent: Component {
         
         private var stopRequestingNonCentralVideo: Bool = false
         private var lastRequestedVideo: [PresentationGroupCallRequestedVideo] = []
+        private var videoRequestRetention = VideoRequestRetention<VideoParticipantKey>()
+        private var videoRequestRetentionTimer: SwiftSignalKit.Timer?
         private var stopRequestingNonCentralVideoTimer: Foundation.Timer?
         private var currentLoadMoreToken: String?
         
@@ -775,6 +777,7 @@ final class VideoChatParticipantsComponent: Component {
         
         deinit {
             self.stopRequestingNonCentralVideoTimer?.invalidate()
+            self.videoRequestRetentionTimer?.invalidate()
         }
         
         override func hitTest(_ point: CGPoint, with event: UIEvent?) -> UIView? {
@@ -882,6 +885,20 @@ final class VideoChatParticipantsComponent: Component {
         
         /// Tells the call which participants' video to request. `onlyIfChanged` is for scrolling, which
         /// calls this often; a layout update always sends the list, as it always did.
+        private func scheduleVideoRequestRetentionCheck() {
+            self.videoRequestRetentionTimer?.invalidate()
+            self.videoRequestRetentionTimer = nil
+            guard let expiry = self.videoRequestRetention.nextExpiry() else {
+                return
+            }
+            let timer = SwiftSignalKit.Timer(timeout: max(0.05, expiry - CACurrentMediaTime() + 0.05), repeat: false, completion: { [weak self] in
+                self?.videoRequestRetentionTimer = nil
+                self?.updateRequestedVideo(onlyIfChanged: true)
+            }, queue: .mainQueue())
+            self.videoRequestRetentionTimer = timer
+            timer.start()
+        }
+
         private func updateRequestedVideo(onlyIfChanged: Bool) {
             guard let component = self.component, let itemLayout = self.itemLayout else {
                 return
@@ -902,8 +919,12 @@ final class VideoChatParticipantsComponent: Component {
                 forced.insert(index)
             }
             let indices = VideoRequestPolicy.requestedTileIndices(tileCount: gridParticipants.count, visible: visibleRange, forced: forced)
-            allowedKeys = Set(indices.map { gridParticipants[$0].key })
+            // Tiles leaving the screen stay requested for a moment: dropping one destroys its decoder.
+            allowedKeys = self.videoRequestRetention.requested(wanted: Set(indices.map { gridParticipants[$0].key }), now: CACurrentMediaTime())
+        } else {
+            self.videoRequestRetention.reset()
         }
+        self.scheduleVideoRequestRetentionCheck()
         if let participants = component.participants, component.maxVideoQuality != 0 {
             for participant in participants.participants {
                 var maxVideoQuality: PresentationGroupCallRequestedVideo.Quality = .medium

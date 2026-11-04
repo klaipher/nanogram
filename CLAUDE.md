@@ -1793,6 +1793,14 @@ Do **not** add opt-in `EngineMediaResource` overloads alongside raw-`MediaResour
 
 For consumer modules, prefer `EngineMediaResource` as the type in properties, locals, generic arguments and function parameters when the usage is a pure type reference. Do **not** try to use `EngineMediaResource` where a class must conform to `TelegramMediaResource` (Postbox protocol) or override `isEqual(to: MediaResource)` — those remain `import Postbox`.
 
+## Shared tgcalls code: iOS and Mac
+
+The iOS app pins `klaipher/tgcalls` branch `telegram-ios-dev`; the Mac app pins `nanogram-mac-integration` of the same repo. Most of the engine is shared (1:1 and group calls, livestreams, `tgcalls/platform/darwin` capture/encode/decode), so **a fix in shared tgcalls code is not finished until it is on both branches**. Owner's rule (2026-11-04). In practice:
+
+- Keep platform code inside `TARGET_OS_IOS` / `WEBRTC_IOS` (or `WEBRTC_MAC`) guards; new virtuals on `PlatformInterface`, `VideoCaptureInterface`, `VideoCapturerInterface` get a default body so the other platform still compiles.
+- Commit shared fixes as their own tgcalls commits (not mixed with iOS-only work), then run `tools/dev/tgcalls-port --status` to see what the Mac branch lacks and `tools/dev/tgcalls-port <commit>...` to cherry-pick (`-x`) them onto a scratch branch `mac-port/*` of the Mac branch. It reports which commits applied and which conflicted, and never pushes or moves a pin.
+- Still open (2026-11-04): iOS and Mac each built their own livestream hardware decode (`LivestreamDecodePolicy.h` + `CallsRuntimeSwitches` vs `TGLivestreamDecode.h` + `RuntimeOptions`), audio policy (`AudioCallPolicy.h` vs `CallAudioPolicy.h`) and call-power policy (`CallPowerPolicy.h`/`StreamRenderPolicy.h` vs `CallSystemPolicy.h`). A trial merge of the Mac branch into `telegram-ios-dev` conflicts in 10 files (19 hunks: `VideoStreamingPart.cpp`, `DarwinFFMpeg.mm`, `TGRTCVideoEncoderH264.mm`, `StreamingMediaContext.cpp`, `InstanceV2Impl.cpp`, `GroupInstanceCustomImpl.cpp`, `VideoCaptureInterfaceImpl.cpp`, `LogSinkImpl.*`, `tests/log_sink`); resolving them is a design choice per feature (one implementation, one switch name), not a mechanical merge, and needs a Mac build to check. Until that is done, port each shared fix with the script above.
+
 ## tgcalls Testbench
 
 This repo includes a tgcalls testbench (CLI tool, Go/Pion SFU, Docker build) layered on top of the iOS source. All testbench code, build instructions, and architecture docs live inside the tgcalls submodule:

@@ -33,19 +33,38 @@ final class IpcFrameHeaderTests: XCTestCase {
         XCTAssertEqual(IpcFrameHeader.nextCounter(0xFFFFFF), 1)
     }
 
-    func testDetectorSkipsAFrameItAlreadyHas() {
+    func testDetectorConvertsOnlyANewFrame() {
         var detector = IpcFrameChangeDetector()
-        XCTAssertTrue(detector.shouldDeserialize(counter: 5))
-        XCTAssertFalse(detector.shouldDeserialize(counter: 5))
-        XCTAssertFalse(detector.shouldDeserialize(counter: 5))
-        XCTAssertTrue(detector.shouldDeserialize(counter: 6))
+        XCTAssertEqual(detector.action(counter: 5, now: 0.0), .convert)
+        XCTAssertEqual(detector.action(counter: 5, now: 0.01), .skip)
+        XCTAssertEqual(detector.action(counter: 6, now: 0.02), .convert)
         // After a wrap the counter goes down; it is still a new frame.
-        XCTAssertTrue(detector.shouldDeserialize(counter: 1))
+        XCTAssertEqual(detector.action(counter: 1, now: 0.03), .convert)
+    }
+
+    /// ReplayKit delivers a frame only when the screen changes. A still screen must keep reaching the
+    /// encoder, or a viewer who joins (or a peer that asks for a keyframe) gets nothing until the screen moves.
+    func testStillScreenResendsTheLastFrameWithoutConverting() {
+        var detector = IpcFrameChangeDetector()
+        XCTAssertEqual(detector.action(counter: 5, now: 0.0), .convert)
+        XCTAssertEqual(detector.action(counter: 5, now: 0.033), .skip)
+        XCTAssertEqual(detector.action(counter: 5, now: 0.066), .skip)
+        XCTAssertEqual(detector.action(counter: 5, now: IpcFrameChangeDetector.resendInterval + 0.001), .resend)
+        // The resend restarts the interval.
+        XCTAssertEqual(detector.action(counter: 5, now: IpcFrameChangeDetector.resendInterval + 0.034), .skip)
+        XCTAssertEqual(detector.action(counter: 5, now: 2 * IpcFrameChangeDetector.resendInterval + 0.002), .resend)
+    }
+
+    func testNewFrameRestartsTheResendInterval() {
+        var detector = IpcFrameChangeDetector()
+        XCTAssertEqual(detector.action(counter: 5, now: 0.0), .convert)
+        XCTAssertEqual(detector.action(counter: 6, now: 0.09), .convert)
+        XCTAssertEqual(detector.action(counter: 6, now: 0.09 + IpcFrameChangeDetector.resendInterval - 0.01), .skip)
     }
 
     func testDetectorAlwaysConvertsLegacyFrames() {
         var detector = IpcFrameChangeDetector()
-        XCTAssertTrue(detector.shouldDeserialize(counter: 0))
-        XCTAssertTrue(detector.shouldDeserialize(counter: 0))
+        XCTAssertEqual(detector.action(counter: 0, now: 0.0), .convert)
+        XCTAssertEqual(detector.action(counter: 0, now: 0.01), .convert)
     }
 }

@@ -792,7 +792,12 @@ public final class PresentationGroupCallImpl: PresentationGroupCall {
     private var didStartConnectingOnce: Bool = false
     private var didConnectOnce: Bool = false
     
-    private var videoCapturer: OngoingCallVideoCapturer?
+    private var videoCapturer: OngoingCallVideoCapturer? {
+        didSet {
+            self.updateThermalBinding()
+        }
+    }
+    private var thermalLevelDisposable: Disposable?
     private var useFrontCamera: Bool = true
 
     private var peerUpdatesSubscription: Disposable?
@@ -1267,9 +1272,26 @@ public final class PresentationGroupCallImpl: PresentationGroupCall {
         }
     }
     
+    /// Feeds the call thermal level to the camera capturer while there is one. Group video calls (simulcast
+    /// encode plus several decodes) are the hottest case. The engine acts on it only with "Calls: thermal video
+    /// ladder" on; otherwise it just remembers the number.
+    private func updateThermalBinding() {
+        self.thermalLevelDisposable?.dispose()
+        self.thermalLevelDisposable = nil
+        if self.videoCapturer == nil {
+            return
+        }
+        CallThermalGovernor.shared.start()
+        self.thermalLevelDisposable = (CallThermalGovernor.shared.level
+        |> deliverOnMainQueue).startStrict(next: { [weak self] level in
+            self?.videoCapturer?.setThermalLevel(level.rawValue)
+        })
+    }
+    
     deinit {
         assert(Queue.mainQueue().isCurrent())
 
+        self.thermalLevelDisposable?.dispose()
         self.audioSessionShouldBeActiveDisposable?.dispose()
         self.audioSessionActiveDisposable?.dispose()
         self.summaryStateDisposable?.dispose()

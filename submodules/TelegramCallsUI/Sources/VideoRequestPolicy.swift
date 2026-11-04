@@ -41,3 +41,51 @@ enum VideoRequestPolicy {
         return result
     }
 }
+
+/// Keeps a tile requested for a while after it stops being wanted. The engine destroys the receive stream and
+/// decoder of a video that drops out of the request and builds it again (with a wait for a keyframe) when it
+/// returns, so a fast scroll over a big grid must not flip tiles in and out. Additions are immediate.
+struct VideoRequestRetention<Key: Hashable> {
+    static var removalDelay: Double {
+        return 2.5
+    }
+
+    /// Keys that were wanted and are not any more, with the time they were first seen missing.
+    private var absentSince: [Key: Double] = [:]
+    private var known = Set<Key>()
+
+    init() {
+    }
+
+    /// `wanted` is what the policy asks for now; the result is that plus whatever has been missing from
+    /// the policy for less than `removalDelay`.
+    mutating func requested(wanted: Set<Key>, now: Double) -> Set<Key> {
+        var result = wanted
+        for key in wanted {
+            self.absentSince.removeValue(forKey: key)
+            self.known.insert(key)
+        }
+        for key in self.known where !wanted.contains(key) {
+            let since = self.absentSince[key] ?? now
+            if now - since < VideoRequestRetention.removalDelay {
+                self.absentSince[key] = since
+                result.insert(key)
+            } else {
+                self.absentSince.removeValue(forKey: key)
+                self.known.remove(key)
+            }
+        }
+        return result
+    }
+
+    /// When the oldest retained key expires, so the caller can look again without waiting for a scroll.
+    /// `nil` when nothing is only being retained.
+    func nextExpiry() -> Double? {
+        return self.absentSince.values.min().map { $0 + VideoRequestRetention.removalDelay }
+    }
+
+    mutating func reset() {
+        self.absentSince.removeAll()
+        self.known.removeAll()
+    }
+}

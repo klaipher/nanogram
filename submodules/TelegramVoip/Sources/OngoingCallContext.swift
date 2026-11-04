@@ -895,10 +895,10 @@ public final class OngoingCallContext {
 
     /// Local-only call audio switches from Debug Settings (same rules as the video ones): they change how this
     /// device processes and routes its own audio, never what is negotiated or sent.
-    public static func applyAudioExperiments(systemNoiseSuppression: Bool, advancedDucking: Bool, opusFirstLossFloor: Bool, keepSessionMode: Bool) {
+    public static func applyAudioExperiments(systemNoiseSuppression: Bool, advancedDucking: Bool, groupNarrowbandProcessing: Bool, keepSessionMode: Bool) {
         OngoingCallThreadLocalContextWebrtc.setSystemNoiseSuppression(systemNoiseSuppression)
         OngoingCallThreadLocalContextWebrtc.setAdvancedDucking(advancedDucking)
-        OngoingCallThreadLocalContextWebrtc.setOpusFirstLossFloor(opusFirstLossFloor)
+        OngoingCallThreadLocalContextWebrtc.setGroupNarrowbandProcessing(groupNarrowbandProcessing)
         OngoingCallThreadLocalContextWebrtc.setKeepSessionMode(keepSessionMode)
     }
 

@@ -4,9 +4,8 @@ import TelegramPresentationData
 import TelegramUIPreferences
 @testable import DebugSettingsUI
 
-/// The local-only call audio switches. Two change how the system voice-processing unit and the 1:1 encoder are
-/// configured and default to on (they cannot alter what is negotiated or sent); the other two replace parts of
-/// the processing chain and stay off until the owner has compared them on a device.
+/// The local-only call audio switches. Every one of them changes how this device processes or routes audio,
+/// none alters what is negotiated or sent, and all stay off until the owner has compared them on a device.
 final class CallsAudioSwitchesTests: XCTestCase {
     private struct EmptyBlob: Encodable {
         func encode(to encoder: Encoder) throws {
@@ -18,29 +17,42 @@ final class CallsAudioSwitchesTests: XCTestCase {
     func testDefaults() {
         let settings = ExperimentalUISettings.defaultSettings
         XCTAssertFalse(settings.callsSystemNoiseSuppression)
-        XCTAssertTrue(settings.callsAdvancedDucking)
-        XCTAssertTrue(settings.callsOpusFirstLossFloor)
+        XCTAssertFalse(settings.callsAdvancedDucking)
+        XCTAssertFalse(settings.callsGroupNarrowbandProcessing)
         XCTAssertFalse(settings.callsKeepSessionMode)
+    }
+
+    /// Advanced ducking first shipped on by default and every settings blob saved since holds `true` under its
+    /// old key whether or not the user touched the switch. That value must not turn it on.
+    func testDuckingSavedAsOnBeforeItWasMadeOptInStaysOff() throws {
+        struct OldOnBlob: Encodable {
+            func encode(to encoder: Encoder) throws {
+                var container = encoder.container(keyedBy: StringCodingKey.self)
+                try container.encode(true, forKey: "callsAdvancedDucking")
+            }
+        }
+        let settings = try EngineDecoder.decode(ExperimentalUISettings.self, from: try EngineEncoder.encode(OldOnBlob()))
+        XCTAssertFalse(settings.callsAdvancedDucking)
     }
 
     func testSettingsFromBeforeTheSwitchesDecodeAsTheDefaults() throws {
         let settings = try EngineDecoder.decode(ExperimentalUISettings.self, from: try EngineEncoder.encode(EmptyBlob()))
         XCTAssertFalse(settings.callsSystemNoiseSuppression)
-        XCTAssertTrue(settings.callsAdvancedDucking)
-        XCTAssertTrue(settings.callsOpusFirstLossFloor)
+        XCTAssertFalse(settings.callsAdvancedDucking)
+        XCTAssertFalse(settings.callsGroupNarrowbandProcessing)
         XCTAssertFalse(settings.callsKeepSessionMode)
     }
 
-    func testSwitchesRoundTripIncludingAUserTurningADefaultOnSwitchOff() throws {
+    func testSwitchesRoundTrip() throws {
         var settings = ExperimentalUISettings.defaultSettings
         settings.callsSystemNoiseSuppression = true
-        settings.callsAdvancedDucking = false
-        settings.callsOpusFirstLossFloor = false
+        settings.callsAdvancedDucking = true
+        settings.callsGroupNarrowbandProcessing = true
         settings.callsKeepSessionMode = true
         let decoded = try EngineDecoder.decode(ExperimentalUISettings.self, from: try EngineEncoder.encode(settings))
         XCTAssertTrue(decoded.callsSystemNoiseSuppression)
-        XCTAssertFalse(decoded.callsAdvancedDucking)
-        XCTAssertFalse(decoded.callsOpusFirstLossFloor)
+        XCTAssertTrue(decoded.callsAdvancedDucking)
+        XCTAssertTrue(decoded.callsGroupNarrowbandProcessing)
         XCTAssertTrue(decoded.callsKeepSessionMode)
     }
 
@@ -62,8 +74,8 @@ final class CallsAudioSwitchesTests: XCTestCase {
             return
         }
         XCTAssertEqual(entries[index + 1].stableId, DebugControllerEntry.callsSystemNoiseSuppression(false).stableId)
-        XCTAssertEqual(entries[index + 2].stableId, DebugControllerEntry.callsAdvancedDucking(true).stableId)
-        XCTAssertEqual(entries[index + 3].stableId, DebugControllerEntry.callsOpusFirstLossFloor(true).stableId)
+        XCTAssertEqual(entries[index + 2].stableId, DebugControllerEntry.callsAdvancedDucking(false).stableId)
+        XCTAssertEqual(entries[index + 3].stableId, DebugControllerEntry.callsGroupNarrowbandProcessing(false).stableId)
         XCTAssertEqual(entries[index + 4].stableId, DebugControllerEntry.callsKeepSessionMode(false).stableId)
     }
 }
