@@ -363,6 +363,12 @@ actor WalletContextImpl {
         } else if previousWalletCount == 0 && self.walletScreenCount > 0 && self.cardStickerSaveSchedule.pending == nil {
             self.scheduleCardStickerSave(immediate: false)
         }
+        if previousWalletCount == 0 && self.walletScreenCount > 0 {
+            // A visible wallet must not wait out a background backoff.
+            self.serverStateRetryPolicy.reset()
+            self.serverStateRetryTask?.cancel()
+            self.serverStateRetryTask = nil
+        }
         self.pendingScreenSynchronizationScope.formUnion(openedScope)
         self.pendingScreenSynchronizationScope.formIntersection(self.visibleScreenSynchronizationScope)
         if openedScope.contains(.transactions) || hasNewGaslessInfoRequests {
@@ -483,6 +489,7 @@ actor WalletContextImpl {
             self.cancelSynchronization()
             self.serverStateRetryTask?.cancel()
             self.serverStateRetryTask = nil
+            self.serverStateRetryPolicy.reset()
             self.cancelWalletStateFallbackRefresh()
             return
         }
@@ -1559,13 +1566,8 @@ actor WalletContextImpl {
               self.needsServerWalletStateRefresh else {
             return
         }
-        var hasWallet = false
-        if case .wallet = self.currentState.phase { hasWallet = true }
         self.serverStateRetryPolicy.recordFailure()
-        guard self.serverStateRetryPolicy.shouldRetry(hasWallet: hasWallet, hasRefreshDemand: self.hasActiveWalletRefreshDemand) else {
-            return
-        }
-        let delay = self.serverStateRetryPolicy.delay
+        let delay = self.serverStateRetryPolicy.delay(hasRefreshDemand: self.hasActiveWalletRefreshDemand)
         self.serverStateRetryTask = Task { [weak self] in
             await self?.performServerStateRetryDelay(seconds: delay)
         }

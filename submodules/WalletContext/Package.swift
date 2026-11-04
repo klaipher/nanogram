@@ -28,5 +28,10 @@ let package = Package(
                 .product(name: "WalletEngineFFI", package: "WalletEngine", condition: nil),
             ],
             path: "Sources"),
+        .testTarget(
+            name: "WalletContextTests",
+            dependencies: ["WalletContext"],
+            path: "Tests",
+            sources: ["WalletStateRetryPolicyTests.swift"]),
     ]
 )
