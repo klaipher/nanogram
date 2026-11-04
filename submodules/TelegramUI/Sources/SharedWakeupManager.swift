@@ -1225,6 +1225,9 @@ public final class SharedWakeupManager {
             if let reporter = DiskWriteAccountingReporting.current, let line = reporter.reportIfPending(atLeast: 1024 * 1024, reason: "suspend") {
                 Logger.shared.log("Wakeup", line)
             }
+            // The short log is batched for 0.5 s and the batch timer does not run while suspended: write the
+            // last lines now, they usually explain a kill that happens while suspended.
+            Logger.shared.flushPendingShortLog()
             end()
         })
     }

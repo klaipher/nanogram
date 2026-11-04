@@ -150,6 +150,15 @@ public final class Logger {
         }
     }
     
+    /// Writes the batched short log lines now, without waiting for the flush timer (which does not fire while the
+    /// app is suspended) and without the fsync of `sync()`: a plain write survives a kill. Call it before the app
+    /// can be suspended. Does not block the caller.
+    public func flushPendingShortLog() {
+        self.queue.async {
+            self.flushShortLog()
+        }
+    }
+    
     private func flushShortLog() {
         assert(self.queue.isCurrent())
         guard let file = self.pendingShortLogFile, !self.pendingShortLogData.isEmpty else {
