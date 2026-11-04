@@ -1,4 +1,5 @@
 #import <BuildConfig/BuildConfig.h>
+#import <BuildConfig/NanogramKeyVault.h>
 
 #include <errno.h>
 #include <fcntl.h>
@@ -374,7 +375,6 @@ API_AVAILABLE(ios(10))
 + (DeviceSpecificEncryptionParameters * _Nonnull)deviceSpecificEncryptionParameters:(NSString * _Nonnull)rootPath baseAppBundleId:(NSString * _Nonnull)baseAppBundleId {
     CFAbsoluteTime startTime = CFAbsoluteTimeGetCurrent();
     
-    NSString *filePath = [rootPath stringByAppendingPathComponent:@".tempkey"];
     //NSString *encryptedPath = [rootPath stringByAppendingPathComponent:@".tempkeyEncrypted"];
     
     // The app and its extensions (notification service, widget, intents) derive the key
@@ -404,27 +404,9 @@ API_AVAILABLE(ios(10))
         }
     }
     
-    NSData *currentData = [NSData dataWithContentsOfFile:filePath];
-    NSData *resultData = nil;
-    if (currentData != nil && currentData.length == 32 + 16) {
-        resultData = currentData;
-    }
-    if (resultData == nil) {
-        NSMutableData *randomData = [[NSMutableData alloc] initWithLength:32 + 16];
-        if (SecRandomCopyBytes(kSecRandomDefault, randomData.length, randomData.mutableBytes) != errSecSuccess) {
-            // This buffer becomes the database key and is persisted; it must never
-            // be left at the all-zero contents initWithLength: gave it. arc4random_buf
-            // cannot fail.
-            arc4random_buf(randomData.mutableBytes, randomData.length);
-        }
-        if (currentData != nil && currentData.length == 32) { // upgrade key with salt
-            [currentData getBytes:randomData.mutableBytes length:32];
-        }
-        resultData = randomData;
-        // Atomic: a reader that does not take the lock (older builds) must never see a
-        // torn write, which is indistinguishable from "no key yet".
-        [resultData writeToFile:filePath atomically:true];
-    }
+    NSString *keychainGroup = [@"group." stringByAppendingString:baseAppBundleId];
+    NanogramKeychainWrapKeyStore *store = [[NanogramKeychainWrapKeyStore alloc] initWithService:@"org.nanogram.database-key.v1" accessGroup:keychainGroup];
+    NSData *resultData = [NanogramKeyVault deviceKeyPayloadInRootPath:rootPath store:store];
     
     if (lockFd >= 0) {
         if (locked) {
