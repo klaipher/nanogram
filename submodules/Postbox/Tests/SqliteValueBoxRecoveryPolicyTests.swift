@@ -306,6 +306,25 @@ final class SqliteValueBoxRecoveryPolicyTests: XCTestCase {
         XCTAssertNil(rekeyedOwner.flatMap { self.readRow($0, key: 1) }, "the recreated database is empty")
     }
 
+    /// The key vault hands out a random key when the keychain fails: opening with it must not cost the user the
+    /// database (it used to be recreated, and recreated again on the next launch with the real key).
+    func testThrowawayKeyNeverDeletesTheDatabase() {
+        let real = self.makeEncryptionParameters(seed: 7)
+        let writer = self.open(isTemporary: false, isReadOnly: false, removeDatabaseOnError: true, encryptionParameters: real)
+        XCTAssertNotNil(writer)
+        self.writeRow(writer!, key: 1, value: [1, 2, 3])
+        self.close(writer)
+
+        let throwaway = ValueBoxEncryptionParameters(forceEncryptionIfNoSet: true, key: ValueBoxEncryptionParameters.Key(data: Data(repeating: 99, count: 32))!, salt: ValueBoxEncryptionParameters.Salt(data: Data(repeating: 100, count: 16))!, isEphemeral: true)
+        let ephemeralOwner = self.open(isTemporary: false, isReadOnly: false, removeDatabaseOnError: true, encryptionParameters: throwaway)
+        XCTAssertNil(ephemeralOwner, "the owner must fail to open, not recreate the database")
+        XCTAssertTrue(FileManager.default.fileExists(atPath: self.databasePath))
+
+        let reopened = self.open(isTemporary: false, isReadOnly: false, removeDatabaseOnError: true, encryptionParameters: real)
+        XCTAssertEqual(reopened.flatMap { self.readRow($0, key: 1) }, [1, 2, 3], "the real key still opens the untouched database")
+        self.close(reopened)
+    }
+
     func testNonOwnerNeverReencryptsAPlaintextDatabaseInPlace() {
         let plaintextOwner = self.open(isTemporary: false, isReadOnly: false, removeDatabaseOnError: true, encryptionParameters: nil)
         XCTAssertNotNil(plaintextOwner)

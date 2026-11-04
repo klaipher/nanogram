@@ -334,6 +334,64 @@ final class NanogramKeyVaultTests: XCTestCase {
         XCTAssertEqual(devicePayload(store), real)
     }
 
+    private func devicePayloadReportingEphemeral(_ store: NanogramWrapKeyStore, callerHoldsOuterLock: Bool = false) -> (payload: Data, isEphemeral: Bool) {
+        var ephemeral = ObjCBool(false)
+        let payload = NanogramKeyVault.deviceKeyPayload(inRootPath: directory.path, store: store, callerHoldsOuterLock: callerHoldsOuterLock, isEphemeral: &ephemeral)
+        return (payload, ephemeral.boolValue)
+    }
+
+    /// The caller must be able to tell a throwaway key from the real one: a database that does not open with it
+    /// is not deleted (see SqliteValueBox: `isEphemeral` disables the self-heal).
+    func testThrowawayKeyIsReportedAsEphemeral() throws {
+        let real = devicePayloadReportingEphemeral(store)
+        XCTAssertFalse(real.isEphemeral)
+        store.unavailable = true
+        let during = devicePayloadReportingEphemeral(store)
+        XCTAssertTrue(during.isEphemeral)
+        XCTAssertNotEqual(during.payload, real.payload)
+        store.unavailable = false
+        let after = devicePayloadReportingEphemeral(store)
+        XCTAssertFalse(after.isEphemeral)
+        XCTAssertEqual(after.payload, real.payload)
+    }
+
+    func testUnreadableVaultIsReportedAsEphemeral() throws {
+        _ = devicePayload(store)
+        try FileManager.default.setAttributes([.posixPermissions: 0], ofItemAtPath: vaultPath)
+        defer { try? FileManager.default.setAttributes([.posixPermissions: 0o600], ofItemAtPath: vaultPath) }
+        XCTAssertTrue(devicePayloadReportingEphemeral(store).isEphemeral)
+    }
+
+    func testFreshKeyIsNotEphemeral() {
+        XCTAssertFalse(devicePayloadReportingEphemeral(store).isEphemeral)
+    }
+
+    /// `deviceSpecificEncryptionParameters` holds `.tempkey.lock` around the resolution, so the vault must not
+    /// wait for its own lock there: another process holding the vault lock cannot stall the main thread.
+    func testCallerHoldingTheOuterLockDoesNotWaitForTheVaultLock() throws {
+        let real = devicePayload(store)
+        let fd = open(vaultPath + ".lock", O_CREAT | O_RDWR, 0o600)
+        XCTAssertGreaterThanOrEqual(fd, 0)
+        XCTAssertEqual(flock(fd, LOCK_EX | LOCK_NB), 0)
+        defer { flock(fd, LOCK_UN); close(fd) }
+        let start = Date()
+        let result = devicePayloadReportingEphemeral(store, callerHoldsOuterLock: true)
+        XCTAssertLessThan(Date().timeIntervalSince(start), 1.0)
+        XCTAssertEqual(result.payload, real)
+        XCTAssertFalse(result.isEphemeral)
+    }
+
+    /// Without the outer lock the vault waits for its own, but the waits across the retries add up to about 2 s.
+    func testVaultLockWaitIsCappedWhenTheCallerDoesNotHoldTheOuterLock() throws {
+        _ = devicePayload(store)
+        let fd = open(vaultPath + ".lock", O_CREAT | O_RDWR, 0o600)
+        XCTAssertEqual(flock(fd, LOCK_EX | LOCK_NB), 0)
+        defer { flock(fd, LOCK_UN); close(fd) }
+        let start = Date()
+        _ = devicePayloadReportingEphemeral(store, callerHoldsOuterLock: false)
+        XCTAssertLessThan(Date().timeIntervalSince(start), 4.0)
+    }
+
     func testUnreadableVaultFileIsReportedAsUnreadableNotCorrupt() throws {
         let vault = makeVault()
         XCTAssertEqual(vault.writePayload(payload, passcode: nil), .OK)

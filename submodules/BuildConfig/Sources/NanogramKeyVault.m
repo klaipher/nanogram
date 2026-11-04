@@ -310,6 +310,10 @@ static NSData *SubKey(NSData *master, NSString *label) {
 }
 
 - (void)withLock:(void (^)(void))body {
+    if (self.callerHoldsOuterLock) {
+        body();
+        return;
+    }
     int fd = open([[self lockPath] fileSystemRepresentation], O_CREAT | O_RDWR | O_CLOEXEC, S_IRUSR | S_IWUSR);
     BOOL locked = NO;
     if (fd >= 0) {
@@ -319,6 +323,9 @@ static NSData *SubKey(NSData *master, NSString *label) {
                 break;
             }
             if (errno != EWOULDBLOCK) {
+                break;
+            }
+            if (self.lockDeadline > 0.0 && CFAbsoluteTimeGetCurrent() >= self.lockDeadline) {
                 break;
             }
             usleep(20 * 1000);
@@ -564,6 +571,13 @@ static NSData *SubKey(NSData *master, NSString *label) {
 }
 
 + (NSData *)deviceKeyPayloadInRootPath:(NSString *)rootPath store:(id<NanogramWrapKeyStore>)store {
+    return [self deviceKeyPayloadInRootPath:rootPath store:store callerHoldsOuterLock:NO isEphemeral:NULL];
+}
+
++ (NSData *)deviceKeyPayloadInRootPath:(NSString *)rootPath store:(id<NanogramWrapKeyStore>)store callerHoldsOuterLock:(BOOL)callerHoldsOuterLock isEphemeral:(BOOL *)isEphemeral {
+    if (isEphemeral != NULL) {
+        *isEphemeral = NO;
+    }
     NSString *plainPath = [rootPath stringByAppendingPathComponent:@".tempkey"];
     NSString *vaultPath = [rootPath stringByAppendingPathComponent:@".tempkeyVault"];
     NSData *plain = [NSData dataWithContentsOfFile:plainPath];
@@ -571,6 +585,9 @@ static NSData *SubKey(NSData *master, NSString *label) {
 
     if (store != nil) {
         NanogramKeyVault *vault = [[NanogramKeyVault alloc] initWithPath:vaultPath store:store];
+        vault.callerHoldsOuterLock = callerHoldsOuterLock;
+        // Without the outer lock the vault's own lock waits are capped at about 2 s in total across the retries below.
+        vault.lockDeadline = callerHoldsOuterLock ? 0.0 : CFAbsoluteTimeGetCurrent() + 2.0;
         if (plain.length == 32) {
             NSMutableData *upgraded = [plain mutableCopy];
             [upgraded appendData:RandomData(kPayloadLength - 32)];
@@ -592,6 +609,9 @@ static NSData *SubKey(NSData *master, NSString *label) {
         }
         if ([vault fileExists] || result.outcome != NanogramVaultOutcomeKeychainUnavailable) {
             NSLog(@"NanogramKeyVault: key unavailable (%ld), using a throwaway key", (long)result.outcome);
+            if (isEphemeral != NULL) {
+                *isEphemeral = YES;
+            }
             return RandomData(kPayloadLength);
         }
     }

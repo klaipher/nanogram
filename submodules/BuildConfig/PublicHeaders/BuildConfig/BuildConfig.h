@@ -4,6 +4,9 @@
 
 @property (nonatomic, strong) NSData * _Nonnull key;
 @property (nonatomic, strong) NSData * _Nonnull salt;
+/// YES when the real key could not be read and `key` is a throwaway: a database that does not open with it must
+/// not be deleted (the real key opens it later).
+@property (nonatomic) bool isEphemeral;
 
 @end
 

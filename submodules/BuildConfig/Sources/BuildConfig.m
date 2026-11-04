@@ -87,10 +87,15 @@ API_AVAILABLE(ios(10))
 @implementation DeviceSpecificEncryptionParameters
 
 - (instancetype)initWithKey:(NSData * _Nonnull)key salt:(NSData * _Nonnull)salt {
+    return [self initWithKey:key salt:salt isEphemeral:NO];
+}
+
+- (instancetype)initWithKey:(NSData * _Nonnull)key salt:(NSData * _Nonnull)salt isEphemeral:(BOOL)isEphemeral {
     self = [super init];
     if (self != nil) {
         _key = key;
         _salt = salt;
+        _isEphemeral = isEphemeral;
     }
     return self;
 }
@@ -406,7 +411,16 @@ API_AVAILABLE(ios(10))
     
     NSString *keychainGroup = [@"group." stringByAppendingString:baseAppBundleId];
     NanogramKeychainWrapKeyStore *store = [[NanogramKeychainWrapKeyStore alloc] initWithService:@"org.nanogram.database-key.v1" accessGroup:keychainGroup];
-    NSData *resultData = [NanogramKeyVault deviceKeyPayloadInRootPath:rootPath store:store];
+    // `.tempkey.lock` is held (when `locked`) for the whole resolution, so the vault does not take its own lock again.
+    BOOL isEphemeral = NO;
+    NSData *resultData = [NanogramKeyVault deviceKeyPayloadInRootPath:rootPath store:store callerHoldsOuterLock:locked isEphemeral:&isEphemeral];
+    for (int attempt = 0; attempt < 2 && isEphemeral; attempt++) {
+        // The keychain may answer a moment later (a background launch right after unlock). Short, bounded, and
+        // only on this failure path: a throwaway key means the database cannot be opened safely.
+        usleep(300 * 1000);
+        isEphemeral = NO;
+        resultData = [NanogramKeyVault deviceKeyPayloadInRootPath:rootPath store:store callerHoldsOuterLock:locked isEphemeral:&isEphemeral];
+    }
     
     if (lockFd >= 0) {
         if (locked) {
@@ -445,7 +459,7 @@ API_AVAILABLE(ios(10))
     
     NSData *key = [resultData subdataWithRange:NSMakeRange(0, 32)];
     NSData *salt = [resultData subdataWithRange:NSMakeRange(32, 16)];
-    return [[DeviceSpecificEncryptionParameters alloc] initWithKey:key salt:salt];
+    return [[DeviceSpecificEncryptionParameters alloc] initWithKey:key salt:salt isEphemeral:isEphemeral];
 }
 
 + (dispatch_queue_t)encryptionQueue {

@@ -508,7 +508,7 @@ public final class SqliteValueBox: ValueBox {
         self.isTemporary = isTemporary
         self.isReadOnly = isReadOnly
         self.useCaches = useCaches
-        self.removeDatabaseOnError = removeDatabaseOnError && !isReadOnly && !isTemporary
+        self.removeDatabaseOnError = removeDatabaseOnError && !isReadOnly && !isTemporary && !(encryptionParameters?.isEphemeral ?? false)
         self.inMemory = inMemory
         self.encryptionParameters = encryptionParameters
         self.cacheSizePages = cacheSizePages

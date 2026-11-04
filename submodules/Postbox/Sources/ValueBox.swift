@@ -49,11 +49,15 @@ public struct ValueBoxEncryptionParameters {
     public let forceEncryptionIfNoSet: Bool
     public let key: Key
     public let salt: Salt
+    /// The key is a throwaway: the real one could not be read right now (keychain unavailable, vault unreadable).
+    /// A database that does not open with it must never be deleted, the real key still opens it later.
+    public let isEphemeral: Bool
     
-    public init(forceEncryptionIfNoSet: Bool, key: Key, salt: Salt) {
+    public init(forceEncryptionIfNoSet: Bool, key: Key, salt: Salt, isEphemeral: Bool = false) {
         self.forceEncryptionIfNoSet = forceEncryptionIfNoSet
         self.key = key
         self.salt = salt
+        self.isEphemeral = isEphemeral
     }
 }
 
