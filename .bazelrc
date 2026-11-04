@@ -41,6 +41,14 @@ common:macos --watchfs
 common --experimental_disk_cache_gc_max_size=20G
 common --experimental_disk_cache_gc_max_age=14d
 
+# Each worktree has its own Bazel server (8-30 GB of output base behind it). The default keeps an idle server for
+# 3 hours; 30 minutes is still longer than the 5 idle minutes the disk-cache GC above needs, and a server also exits
+# when the machine runs low on memory. Changing a startup option restarts each server once. The shared cache
+# cleanup (tools/dev/cachegc) stops servers whose worktree is gone. Keep in step with cache-policy.json
+# (bazel_max_idle_secs; `tg cache-cleanup verify` checks it).
+startup --max_idle_secs=1800
+startup --shutdown_on_low_sys_mem
+
 # Hardlink downloaded archives (Rust/Go toolchains, CMake, wasi-sdk, crates)
 # from the repository cache into external/ instead of copying them.
 common --experimental_repository_cache_hardlinks

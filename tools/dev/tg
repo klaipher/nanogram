@@ -19,7 +19,7 @@ UPSTREAM_URL="https://github.com/TelegramMessenger/Telegram-iOS.git"
 # Device builds keep every output in bazel-out instead of only the top-level ones
 # (Bazel's default --remote_download_outputs=toplevel also applies to the disk cache).
 # With toplevel, a disk-cache hit leaves e.g. libPostbox.a only as a digest in the
-# output base; device builds are rare, so the disk-cache GC (.bazelrc, 30G) evicts
+# output base; device builds are rare, so the disk-cache GC (.bazelrc, 20G) evicts
 # that blob during simulator work, and the next device build fails to link with
 # "Failed to fetch blobs ... Missing digest" (exit REMOTE_CACHE_EVICTED) instead of
 # rebuilding it. Simulator builds keep the default.
@@ -386,12 +386,25 @@ cmd_clean() {
 # testflight commands. There is no scheduled job.
 cmd_cache_cleanup() {
   case "${1:-}" in
-    verify|report) python3 "$ROOT/tools/dev/cachegc/cachegc.py" "$1" --repo "$ROOT" ;;
+    verify|report|guard) python3 "$ROOT/tools/dev/cachegc/cachegc.py" "$1" --repo "$ROOT" ;;
     *) python3 "$ROOT/tools/dev/cachegc/cachegc.py" run --repo "$ROOT" "$@" ;;
   esac
 }
 
 cache_cleanup_auto() { python3 "$ROOT/tools/dev/cachegc/cachegc.py" auto --repo "$ROOT" || true; }
+
+# Runs before every build command (not throttled): enforces the hard caps, stops Bazel servers of deleted worktrees, and
+# refuses to start a build below the hard free-space floor (cache-policy.json; TG_ALLOW_LOW_DISK=1 overrides).
+# A command that calls another tg command is guarded once.
+cache_guard() {
+  [ -z "${TG_CACHE_GUARDED:-}" ] || return 0
+  export TG_CACHE_GUARDED=1
+  python3 "$ROOT/tools/dev/cachegc/cachegc.py" guard --repo "$ROOT" || exit 1
+}
+
+# tg worktree add <name> [--branch B] [--from REF] | remove <name> [--force] — tools/dev/worktree/worktree.py (the same
+# module in both repos). Nothing is built.
+cmd_worktree() { python3 "$ROOT/tools/dev/worktree/worktree.py" --repo "$ROOT" --flavor ios "$@"; }
 
 # tg native — drift check: native-libs.json and module-settings.json against the build files.
 cmd_native() { python3 "$ROOT/tools/dev/native/check_native_libs.py" "$@" && python3 "$ROOT/tools/dev/native/module_settings.py" --check; }
@@ -794,7 +807,8 @@ Usage: tools/dev/tg <command> [options]
   disk                  Show what is using disk space
   clean                 Remove build outputs, keep downloads and caches
   prune [--yes]         Remove all Bazel outputs, the disk cache and DerivedData
-  cache-cleanup [--dry-run]  Shared cache cleanup (stale output bases, DerivedData, .build, worktrees, ...) | verify | report
+  cache-cleanup [--dry-run]  Shared cache cleanup (stale output bases, DerivedData, .build, worktrees, ...) | verify | report | guard
+  worktree add|remove        New worktree with cheap submodules and linked configuration | remove it with its caches (see docs/cache-cleanup.md)
   native                Drift check: native-libs.json and module-settings.json against the build files
   sync-upstream <tag>   Import an official release tag onto the `upstream` branch
   watch build [-- <xcodebuild args>]  Build the Apple Watch app for the watchOS simulator
@@ -817,6 +831,10 @@ EOF
 command="${1:-help}"; shift || true
 case "$command" in
   build|test|run|device|testflight|watch|project) trap cache_cleanup_auto EXIT ;;
+esac
+case "$command" in
+  build|test|run|device|testflight) cache_guard ;;
+  watch) case "${1:-}" in build|test) cache_guard ;; esac ;;
 esac
 case "$command" in
   setup) cmd_setup "$@" ;;
@@ -842,6 +860,7 @@ case "$command" in
   clean) cmd_clean "$@" ;;
   prune) cmd_prune "$@" ;;
   cache-cleanup) cmd_cache_cleanup "$@" ;;
+  worktree) cmd_worktree "$@" ;;
   native) cmd_native "$@" ;;
   sync-upstream) cmd_sync_upstream "$@" ;;
   watch) cmd_watch "$@" ;;
