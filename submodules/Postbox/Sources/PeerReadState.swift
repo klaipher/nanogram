@@ -52,9 +52,9 @@ public enum PeerReadState: Equatable, CustomStringConvertible {
     func withAddedCount(_ value: Int32) -> PeerReadState {
         switch self {
             case let .idBased(maxIncomingReadId, maxOutgoingReadId, maxKnownId, count, markedUnread):
-                return .idBased(maxIncomingReadId: maxIncomingReadId, maxOutgoingReadId: maxOutgoingReadId, maxKnownId: maxKnownId, count: count + value, markedUnread: markedUnread)
+                return .idBased(maxIncomingReadId: maxIncomingReadId, maxOutgoingReadId: maxOutgoingReadId, maxKnownId: maxKnownId, count: clampedUnreadCountSum(count, value), markedUnread: markedUnread)
             case let .indexBased(maxIncomingReadIndex, maxOutgoingReadIndex, count, markedUnread):
-                return .indexBased(maxIncomingReadIndex: maxIncomingReadIndex, maxOutgoingReadIndex: maxOutgoingReadIndex, count: count + value, markedUnread: markedUnread)
+                return .indexBased(maxIncomingReadIndex: maxIncomingReadIndex, maxOutgoingReadIndex: maxOutgoingReadIndex, count: clampedUnreadCountSum(count, value), markedUnread: markedUnread)
         }
     }
     
@@ -94,11 +94,11 @@ public struct CombinedPeerReadState: Equatable {
     }
     
     public var count: Int32 {
-        var result: Int32 = 0
+        var result: Int64 = 0
         for (_, state) in self.states {
-            result += state.count
+            result += Int64(state.count)
         }
-        return result
+        return Int32(clamping: result)
     }
     
     
@@ -159,5 +159,20 @@ public struct CombinedPeerReadState: Equatable {
             }
         }
         return false
+    }
+}
+
+/// Unread counts are server values: a sum is clamped to Int32 instead of trapping on overflow.
+func clampedUnreadCountSum(_ lhs: Int32, _ rhs: Int32) -> Int32 {
+    return Int32(clamping: Int64(lhs) + Int64(rhs))
+}
+
+func clampedUnreadCountNegation(_ value: Int32) -> Int32 {
+    return Int32(clamping: -Int64(value))
+}
+
+extension PeerGroupUnreadCounters {
+    mutating func addMessageCount(_ value: Int32) {
+        self.messageCount = clampedUnreadCountSum(self.messageCount, value)
     }
 }
