@@ -1,7 +1,11 @@
 import XCTest
 import CoreMedia
 import FFMpegBinding
+#if canImport(UniversalMediaPlayer)
+@testable import UniversalMediaPlayer
+#else
 @testable import TelegramMediaPlayer
+#endif
 
 final class MediaPlayerAudioFormatTests: XCTestCase {
     func testPlaybackRunsAtTheMacOutputRate() {

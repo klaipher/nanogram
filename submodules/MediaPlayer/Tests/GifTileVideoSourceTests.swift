@@ -2,7 +2,11 @@ import XCTest
 import CoreMedia
 import CoreVideo
 import VideoToolbox
+#if canImport(UniversalMediaPlayer)
+@testable import UniversalMediaPlayer
+#else
 @testable import TelegramMediaPlayer
+#endif
 
 // GIF tiles (GIF panel, inline results, shared media) read through GifTileVideoSource. Our FFmpeg
 // has no MPEG-4 Part 2 decoder, so such GIFs used to get no stream at all and kept their

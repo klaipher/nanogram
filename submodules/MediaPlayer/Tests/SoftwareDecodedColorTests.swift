@@ -3,7 +3,11 @@ import AVFoundation
 import CoreMedia
 import CoreVideo
 import VideoToolbox
+#if canImport(UniversalMediaPlayer)
+@testable import UniversalMediaPlayer
+#else
 @testable import TelegramMediaPlayer
+#endif
 
 final class SoftwareDecodedColorTests: XCTestCase {
     private static var clips: [String: String] = [:]

@@ -1,6 +1,10 @@
 import XCTest
 import CoreMedia
+#if canImport(UniversalMediaPlayer)
+@testable import UniversalMediaPlayer
+#else
 @testable import TelegramMediaPlayer
+#endif
 
 final class SoftwareVideoSkipLoopFilterTests: XCTestCase {
     private func readFrames(path: String, skipLoopFilter: Bool) -> [MediaTestSupport.DecodedFrame] {

@@ -1,7 +1,11 @@
 import XCTest
 import CoreMedia
 import CoreVideo
+#if canImport(UniversalMediaPlayer)
+@testable import UniversalMediaPlayer
+#else
 @testable import TelegramMediaPlayer
+#endif
 
 final class SoftwareVideoSourceHardwareFrameTests: XCTestCase {
     private func readFrames(path: String, count: Int) throws -> [MediaTrackFrame] {

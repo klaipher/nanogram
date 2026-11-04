@@ -3,7 +3,11 @@ import AVFoundation
 import CoreMedia
 import CoreVideo
 import XCTest
+#if canImport(UniversalMediaPlayer)
+@testable import UniversalMediaPlayer
+#else
 @testable import TelegramMediaPlayer
+#endif
 
 private func writeSolidColorH264(red: UInt8, green: UInt8, blue: UInt8, width: Int, height: Int) throws -> String {
     let path = NSTemporaryDirectory() + "preview_color_\(UUID().uuidString).mp4"

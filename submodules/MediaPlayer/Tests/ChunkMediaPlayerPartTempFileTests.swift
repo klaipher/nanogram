@@ -1,6 +1,10 @@
 import XCTest
 import Postbox
+#if canImport(UniversalMediaPlayer)
+@testable import UniversalMediaPlayer
+#else
 @testable import TelegramMediaPlayer
+#endif
 
 final class ChunkMediaPlayerPartTempFileTests: XCTestCase {
     private static let initializeTempBox: Void = {

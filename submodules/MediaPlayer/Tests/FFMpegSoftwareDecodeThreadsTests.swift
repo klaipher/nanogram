@@ -1,6 +1,10 @@
 import XCTest
 import FFMpegBinding
+#if canImport(UniversalMediaPlayer)
+@testable import UniversalMediaPlayer
+#else
 @testable import TelegramMediaPlayer
+#endif
 
 final class FFMpegSoftwareDecodeThreadsTests: XCTestCase {
     func testLargeAV1DecodesOnSeveralThreads() {

@@ -2,7 +2,11 @@ import Foundation
 import XCTest
 import CoreMedia
 import Postbox
+#if canImport(UniversalMediaPlayer)
+@testable import UniversalMediaPlayer
+#else
 @testable import TelegramMediaPlayer
+#endif
 
 final class FFMpegFileReaderCompleteResourceTests: XCTestCase {
     private final class TestResource: MediaResource {

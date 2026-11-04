@@ -1,7 +1,11 @@
 import Foundation
 import CoreMedia
 import XCTest
+#if canImport(UniversalMediaPlayer)
+@testable import UniversalMediaPlayer
+#else
 @testable import TelegramMediaPlayer
+#endif
 
 private func writeWav(channels: [Double], sampleRate: Int, seconds: Double) -> String {
     let frameCount = Int(Double(sampleRate) * seconds)
