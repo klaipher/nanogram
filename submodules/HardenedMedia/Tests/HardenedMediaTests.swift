@@ -35,6 +35,16 @@ final class LockdownModeDetectionTests: XCTestCase {
         XCTAssertFalse(LockdownMode.isEnabled(sources: .make(hasStateEntitlement: false, officialAPI: { true }, defaults: defaults(nil))))
     }
 
+    func testOnlyATrueEntitlementValueCountsAsHeld() {
+        XCTAssertTrue(LockdownMode.entitlementValueGrantsAccess(kCFBooleanTrue))
+        XCTAssertTrue(LockdownMode.entitlementValueGrantsAccess(true))
+        XCTAssertFalse(LockdownMode.entitlementValueGrantsAccess(kCFBooleanFalse))
+        XCTAssertFalse(LockdownMode.entitlementValueGrantsAccess(false))
+        XCTAssertFalse(LockdownMode.entitlementValueGrantsAccess(nil))
+        XCTAssertFalse(LockdownMode.entitlementValueGrantsAccess("true"))
+        XCTAssertFalse(LockdownMode.entitlementValueGrantsAccess(["true"]))
+    }
+
     func testMissingEntitlementFallsBackWithoutAborting() {
         XCTAssertFalse(LockdownMode.current && !LockdownMode.isEnabled(sources: .system))
     }

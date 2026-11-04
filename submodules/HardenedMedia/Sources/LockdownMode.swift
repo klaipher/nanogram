@@ -48,10 +48,19 @@ public enum LockdownMode {
         guard let task = SecTaskCreateFromSelf(nil) else {
             return false
         }
-        return SecTaskCopyValueForEntitlement(task, stateEntitlement as CFString, nil) != nil
+        return entitlementValueGrantsAccess(SecTaskCopyValueForEntitlement(task, stateEntitlement as CFString, nil))
         #else
-        return Bundle.main.object(forInfoDictionaryKey: entitlementInfoPlistKey) as? Bool ?? false
+        return entitlementValueGrantsAccess(Bundle.main.object(forInfoDictionaryKey: entitlementInfoPlistKey))
         #endif
+    }
+
+    /// The official call aborts the process unless the entitlement is granted, so only a boolean `true` counts:
+    /// an entitlement present with `false` (or any other value) must fall back to the defaults flag.
+    static func entitlementValueGrantsAccess(_ value: Any?) -> Bool {
+        guard let value = value as? Bool else {
+            return false
+        }
+        return value
     }
 
     static func callOfficialAPI() -> Bool {
