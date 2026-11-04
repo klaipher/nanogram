@@ -2128,6 +2128,10 @@ public final class ContextControllerImpl: ViewController, ContextController, Sta
     }
     
     public func dismissNow() {
+        // A dismissal parked for the keyboard must not fire later on a controller that is already gone.
+        self.dismissOnInputClose = nil
+        self.dismissToReactionOnInputClose = nil
+        self.wasDismissed = true
         self.presentingViewController?.dismiss(animated: false, completion: nil)
         self.dismissed?()
     }
@@ -2137,10 +2141,15 @@ public final class ContextControllerImpl: ViewController, ContextController, Sta
     }
     
     private func dismissWithReactionImpl(value: MessageReaction.Reaction, targetView: UIView, hideNode: Bool, animateTargetContainer: UIView?, addStandaloneReactionAnimation: ((StandaloneReactionAnimation) -> Void)?, reducedCurve: Bool, onHit: (() -> Void)?, completion: (() -> Void)?) {
+        // Never wait for the keyboard to close before playing the reaction. The deferred path only fires
+        // when the input height reaches 0, and with the chat's keyboard up that can be many seconds away
+        // (or never). Meanwhile the chat tears the menu down on its own (the reaction lands, the list
+        // updates, the item's reaction context is dismissed), so the effect never played, and when the
+        // keyboard finally closed the stale deferred dismissal re-animated a dead controller: a ghost
+        // actions-only menu. Resign the first responder and animate right away instead.
+        self.dismissToReactionOnInputClose = nil
         if viewTreeContainsFirstResponder(view: self.view) {
-            self.dismissToReactionOnInputClose = (value, targetView, hideNode, animateTargetContainer, addStandaloneReactionAnimation, completion)
             self.view.endEditing(true)
-            return
         }
         
         if !self.wasDismissed {
