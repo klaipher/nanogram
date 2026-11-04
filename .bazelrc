@@ -57,8 +57,8 @@ build --host_compilation_mode=fastbuild
 # Automatic variables start zeroed instead of holding stale stack bytes; libc++ traps on out-of-bounds container
 # access and invalid ranges in constant time; every function with a local array or address-taken local gets a
 # stack canary. Assembly files are unaffected. The Mac app sets the same three in nanogram/Nanogram.xcconfig.
-# Libraries built by their own scripts (FFmpeg, dav1d, libvpx, opus, libwebp, libjpeg-turbo) take their flags from
-# those scripts, not from here.
+# Libraries built by their own scripts (dav1d, libvpx, opus, libwebp, libjpeg-turbo) take their flags from those
+# scripts, not from here; FFmpeg's script adds the stack protector only.
 build --copt=-ftrivial-auto-var-init=zero
 build --copt=-D_LIBCPP_HARDENING_MODE=_LIBCPP_HARDENING_MODE_FAST
 build --copt=-fstack-protector-strong

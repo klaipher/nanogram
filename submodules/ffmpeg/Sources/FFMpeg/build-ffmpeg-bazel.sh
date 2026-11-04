@@ -57,7 +57,7 @@ CONFIGURE_FLAGS="--enable-cross-compile --disable-programs \
 
 #vorbis
 
-EXTRA_CFLAGS="-DCONFIG_SAFE_BITSTREAM_READER=1"
+EXTRA_CFLAGS="-DCONFIG_SAFE_BITSTREAM_READER=1 -fstack-protector-strong"
 
 if [ "$1" = "debug" ];
 then

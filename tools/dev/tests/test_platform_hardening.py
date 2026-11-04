@@ -147,6 +147,10 @@ class CompilerHardeningTests(unittest.TestCase):
     def test_strong_stack_protector(self):
         self.assertIn('build --copt=-fstack-protector-strong', self.rc)
 
+    def test_ffmpeg_is_built_with_the_strong_stack_protector(self):
+        script = read(os.path.join(ROOT, 'submodules', 'ffmpeg', 'Sources', 'FFMpeg', 'build-ffmpeg-bazel.sh'))
+        self.assertRegex(script, r'EXTRA_CFLAGS="[^"]*-fstack-protector-strong')
+
     def test_build_tools_are_not_hardened(self):
         for line in self.rc:
             self.assertFalse(line.startswith('build --host_copt') and 'ftrivial' in line)
