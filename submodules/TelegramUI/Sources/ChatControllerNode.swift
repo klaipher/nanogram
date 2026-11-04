@@ -1200,6 +1200,17 @@ class ChatControllerNode: ASDisplayNode, ASScrollViewDelegate {
         self.wrappingNode.update(size: layout.size, cornerRadius: layout.deviceMetrics.screenCornerRadius, transition: .immediate)
     }
     
+    /// The height an input node takes at rest. Nanogram: on an iPad the GIF/sticker/emoji panel takes at most 40% of the
+    /// chat's height instead of the whole system keyboard (`tabletMediaPanelHeight`, Display `TabletLayoutRules.swift`);
+    /// every other input node and every iPhone keeps the standard keyboard height.
+    private func restingInputNodeHeight(inputNode: ChatInputNode?, layout: ContainerViewLayout) -> CGFloat {
+        guard inputNode is ChatEntityKeyboardInputNode else {
+            return layout.standardInputHeight
+        }
+        let systemKeyboardHeight: CGFloat? = (layout.inputHeight ?? 0.0) >= 100.0 ? layout.inputHeight : nil
+        return tabletMediaPanelHeight(standardHeight: layout.standardInputHeight, containerHeight: layout.size.height, keyboardHeight: systemKeyboardHeight, deviceType: layout.deviceMetrics.type)
+    }
+    
     func containerLayoutUpdated(_ layout: ContainerViewLayout, navigationBarHeight: CGFloat, transition protoTransition: ContainedViewLayoutTransition, listViewTransaction: (ListViewUpdateSizeAndInsets, CGFloat, Bool, @escaping () -> Void) -> Void, updateExtraNavigationBarBackgroundHeight: (CGFloat, CGFloat, ContainedViewLayoutTransition) -> Void) {
         let transition: ContainedViewLayoutTransition
         if let _ = self.scheduledAnimateInAsOverlayFromNode {
@@ -2053,11 +2064,12 @@ class ChatControllerNode: ASDisplayNode, ASScrollViewDelegate {
                 maximumInputNodeHeight += inputPanelSize.height
             }
             
-            let inputHeight = layout.standardInputHeight + self.inputPanelContainerNode.expansionFraction * (maximumInputNodeHeight - layout.standardInputHeight)
+            let restingInputHeight = self.restingInputNodeHeight(inputNode: inputNode, layout: layout)
+            let inputHeight = restingInputHeight + self.inputPanelContainerNode.expansionFraction * (maximumInputNodeHeight - restingInputHeight)
             
             let heightAndOverflow = inputNode.updateLayout(width: layout.size.width, leftInset: layout.safeInsets.left, rightInset: layout.safeInsets.right, bottomInset: cleanInsets.bottom, standardInputHeight: inputHeight, inputHeight: layout.inputHeight ?? 0.0, maximumHeight: maximumInputNodeHeight, inputPanelHeight: inputPanelNodeBaseHeight, transition: immediatelyLayoutInputNodeAndAnimateAppearance ? .immediate : transition, interfaceState: self.chatPresentationInterfaceState, layoutMetrics: layout.metrics, deviceMetrics: layout.deviceMetrics, isVisible: self.isInFocus, isExpanded: self.inputPanelContainerNode.stableIsExpanded)
             
-            let boundedHeight = inputNode.followsDefaultHeight ? min(heightAndOverflow.0, layout.standardInputHeight) : heightAndOverflow.0
+            let boundedHeight = inputNode.followsDefaultHeight ? min(heightAndOverflow.0, restingInputHeight) : heightAndOverflow.0
             
             inputNodeHeightAndOverflow = (
                 boundedHeight,
@@ -2759,7 +2771,7 @@ class ChatControllerNode: ASDisplayNode, ASScrollViewDelegate {
         
         let previousInputPanelBackgroundFrame = self.inputPanelBackgroundNode.frame
         transition.updateFrame(node: self.inputPanelContainerNode, frame: CGRect(origin: CGPoint(), size: layout.size))
-        self.inputPanelContainerNode.update(size: layout.size, scrollableDistance: max(0.0, maximumInputNodeHeight - layout.standardInputHeight), isExpansionEnabled: isInputExpansionEnabled, transition: transition)
+        self.inputPanelContainerNode.update(size: layout.size, scrollableDistance: max(0.0, maximumInputNodeHeight - self.restingInputNodeHeight(inputNode: self.inputNode, layout: layout)), isExpansionEnabled: isInputExpansionEnabled, transition: transition)
         transition.updatePosition(node: self.inputPanelClippingNode, position: CGRect(origin: apparentInputBackgroundFrame.origin, size: layout.size).center, beginWithCurrentState: true)
         transition.updateBounds(node: self.inputPanelClippingNode, bounds: CGRect(origin: CGPoint(x: 0.0, y: apparentInputBackgroundFrame.origin.y), size: layout.size), beginWithCurrentState: true)
         transition.updatePosition(node: self.inputPanelOverlayNode, position: CGRect(origin: apparentInputBackgroundFrame.origin, size: layout.size).center, beginWithCurrentState: true)
