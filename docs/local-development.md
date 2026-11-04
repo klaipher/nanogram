@@ -278,8 +278,11 @@ take either side and let the next build rewrite it.
 `tools/dev/tg parity` (also run by `tg lint` without arguments) and the pre-push hook run only fast checks: every push
 must be rooted at the import `b46f1ec6`, a pushed tgcalls/rlottie/tlottie pin must be on a `klaipher` remote, and a
 push that touches shared paths prints a reminder to run `tools/dev/tg core-bump` on the Mac. Differences with the Mac
-are warnings here; the Mac side enforces the lag limit, so an iOS hotfix never waits for a Mac build. Skip once with
-`TG_PARITY=0 git push`.
+are warnings here; the Mac side enforces the lag limit, so an iOS hotfix never waits for a Mac build. The hook checks
+only the pins the pushed commits change: a new branch is compared with the commit it leaves the remote's history at,
+so a hotfix branch made from `origin/main` is never stopped by a pin that `origin/main` already carries. Only a
+network URL under `klaipher/` counts as published (a local-path remote such as the Mac checkout does not). Skip once
+with `TG_PARITY=0 git push`.
 
 ## Cache cleanup
 
