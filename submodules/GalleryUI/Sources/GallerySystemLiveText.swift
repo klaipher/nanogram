@@ -6,9 +6,14 @@ import VisionKit
 #endif
 
 /// iPad: the system's Live Text on a photo in the media viewer (VisionKit `ImageAnalysisInteraction`), beside
-/// Telegram's own text-recognition button, which stays. A long press selects text in the photo (copy, look up,
-/// translate, share), and links, phone numbers, dates and addresses in it become tappable. The system's floating
-/// Live Text button is hidden, so nothing new is drawn over the photo or the viewer's footer.
+/// Telegram's own text-recognition button, which stays. Nothing is drawn over the photo until the user asks: the
+/// interaction only does text selection, so a long press on text selects it (copy, look up, translate, share), and no
+/// underline or highlight appears when the photo opens. Data detectors (dates, times, links, phone numbers) are left
+/// off because VisionKit underlines them the moment the analysis arrives; `galleryLiveTextInteractionTypes` turns them
+/// on only for a user's request. The system's floating Live Text button is hidden too.
+///
+/// Text selection needs a ready analysis to work on a long press, so the photo is still analysed in the background
+/// after the dwell below (an analysis is invisible); nothing waits for a tap.
 /// Tablet only, iOS 16+, where VisionKit's analyzer runs, never on copy-protected or secret media, not while the
 /// "Disable Image Content Analysis" Debug switch or Power Saving is on (`galleryAnalyzesSystemLiveText`).
 ///
@@ -76,7 +81,16 @@ final class GallerySystemLiveText {
         // The scheduler calls this on the main thread only.
         let interaction = MainActor.assumeIsolated {
             let interaction = ImageAnalysisInteraction()
-            interaction.preferredInteractionTypes = [.textSelection, .dataDetectors]
+            var types: ImageAnalysisInteraction.InteractionTypes = []
+            let wanted = galleryLiveTextInteractionTypes(userRequestedRecognition: false)
+            if wanted.contains(.textSelection) {
+                types.insert(.textSelection)
+            }
+            if wanted.contains(.dataDetectors) {
+                types.insert(.dataDetectors)
+            }
+            interaction.preferredInteractionTypes = types
+            interaction.selectableItemsHighlighted = false
             interaction.isSupplementaryInterfaceHidden = true
             view.addInteraction(interaction)
             return interaction

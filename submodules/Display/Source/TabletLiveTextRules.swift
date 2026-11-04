@@ -35,6 +35,28 @@ public func galleryAnalyzesSystemLiveText(_ conditions: GalleryLiveTextCondition
     return !conditions.isAnalysisDisabled && !conditions.isPowerSaving
 }
 
+/// What the system Live Text of a gallery photo reacts to. A Display-side mirror of VisionKit's
+/// `ImageAnalysisInteraction.InteractionTypes`, so the decision stays testable without VisionKit.
+public struct GalleryLiveTextInteractionTypes: OptionSet {
+    public let rawValue: Int
+
+    public init(rawValue: Int) {
+        self.rawValue = rawValue
+    }
+
+    /// A long press selects text. Draws nothing until the user presses.
+    public static let textSelection = GalleryLiveTextInteractionTypes(rawValue: 1 << 0)
+    /// Dates, times, links, phone numbers and addresses. VisionKit underlines them as soon as the analysis arrives.
+    public static let dataDetectors = GalleryLiveTextInteractionTypes(rawValue: 1 << 1)
+}
+
+/// Nothing may be drawn over a photo until the user asks. A photo that has just opened gets text selection only (a
+/// long press); data detectors, which highlight what they find at once, only after the user has asked for text
+/// recognition (Telegram's text button in the viewer).
+public func galleryLiveTextInteractionTypes(userRequestedRecognition: Bool) -> GalleryLiveTextInteractionTypes {
+    return userRequestedRecognition ? [.textSelection, .dataDetectors] : [.textSelection]
+}
+
 /// Attaches the system Live Text to one gallery photo and starts its analysis.
 ///
 /// - C1: the gallery reports a ready image from a background queue, and medium then full quality nearly at once.
