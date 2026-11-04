@@ -577,6 +577,8 @@ private struct NotificationContent: CustomStringConvertible {
         var accountId: Int64
         var callId: Int64?
         var isVideo: Bool
+        /// `IncomingCallCommunication.donatesCall`: false while calls are hidden from Phone Recents.
+        var donatesCall: Bool
     }
     var call: Call?
     
@@ -671,9 +673,11 @@ private struct NotificationContent: CustomStringConvertible {
         }
         let date = Date()
         let donatedIntent = IncomingCallCommunication.intent(caller: IncomingCallCommunication.person(caller, name: caller.donatedName, image: self.senderImage), callId: call.callId, isVideo: call.isVideo, date: date)
-        let interaction = INInteraction(intent: donatedIntent, response: nil)
-        interaction.direction = .incoming
-        interaction.donate(completion: nil)
+        if call.donatesCall {
+            let interaction = INInteraction(intent: donatedIntent, response: nil)
+            interaction.direction = .incoming
+            interaction.donate(completion: nil)
+        }
 
         // As for messages, only the drawn copy names the recipient account.
         let displayedIntent: INStartCallIntent
@@ -915,7 +919,7 @@ private func getCurrentRenderedTotalUnreadCount(accountManager: AccountManager<T
 /// caller's photo (see `IncomingCallCommunication`) unless the app is locked or names are hidden on
 /// the lock screen. Made only to be shown (`IncomingCallPushPresentation.present`): the caller's
 /// device contact and photo are looked up then, never before CallKit is offered the call.
-private func makeIncomingCallNotificationContent(postbox: Postbox, accountPeerId: PeerId, callerName: String?, callerPeer: Peer?, incomingCallMessage: String, recipientAccountName: String?, accountId: Int64, fromId: PeerId, isAppLocked: Bool, displayNameOnLockscreen: Bool, isGroupCall: Bool, callId: Int64?, isVideo: Bool, completion: @escaping (NotificationContent) -> Void) {
+private func makeIncomingCallNotificationContent(postbox: Postbox, accountPeerId: PeerId, callerName: String?, callerPeer: Peer?, incomingCallMessage: String, recipientAccountName: String?, accountId: Int64, fromId: PeerId, isAppLocked: Bool, displayNameOnLockscreen: Bool, isGroupCall: Bool, callId: Int64?, isVideo: Bool, showCallsInRecents: Bool, completion: @escaping (NotificationContent) -> Void) {
     let alert = IncomingCallPushPresentation.alert(callerName: callerName, incomingCallMessage: incomingCallMessage)
     var content = NotificationContent(isLockedMessage: nil)
     content.recipientAccountName = recipientAccountName
@@ -931,7 +935,7 @@ private func makeIncomingCallNotificationContent(postbox: Postbox, accountPeerId
                 var content = content
                 content.sender = NotificationContent.Sender(peerId: fromId, name: callerName, contactIdentifier: contactIdentifier)
                 content.senderImage = callerAvatar(mediaBox: postbox.mediaBox, accountPeerId: accountPeerId, callerId: fromId, callerPeer: callerPeer, callerName: callerName, displayNameOnLockscreen: displayNameOnLockscreen)
-                content.call = NotificationContent.Call(accountId: accountId, callId: callId, isVideo: isVideo)
+                content.call = NotificationContent.Call(accountId: accountId, callId: callId, isVideo: isVideo, donatesCall: IncomingCallCommunication.donatesCall(showCallsInRecents: showCallsInRecents))
                 completion(content)
             })
             return
@@ -1677,6 +1681,7 @@ private final class NotificationServiceHandler {
                                                 isGroupCall: false,
                                                 callId: callData.id,
                                                 isVideo: callData.isVideo,
+                                                showCallsInRecents: voiceCallSettings.showCallsInRecents,
                                                 completion: done
                                             )
                                         },
@@ -1748,6 +1753,7 @@ private final class NotificationServiceHandler {
                                                 isGroupCall: true,
                                                 callId: groupCallData.id,
                                                 isVideo: groupCallData.isVideo,
+                                                showCallsInRecents: voiceCallSettings.showCallsInRecents,
                                                 completion: done
                                             )
                                         },

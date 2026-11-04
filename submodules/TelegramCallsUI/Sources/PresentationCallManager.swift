@@ -329,7 +329,9 @@ public final class PresentationCallManagerImpl: PresentationCallManager {
         self.callSettingsDisposable = (accountManager.sharedData(keys: [ApplicationSpecificSharedDataKeys.voiceCallSettings])
         |> deliverOnMainQueue).start(next: { [weak self] sharedData in
             if let strongSelf = self {
-                strongSelf.callSettings = sharedData.entries[ApplicationSpecificSharedDataKeys.voiceCallSettings]?.get(VoiceCallSettings.self) ?? .defaultSettings
+                let settings = sharedData.entries[ApplicationSpecificSharedDataKeys.voiceCallSettings]?.get(VoiceCallSettings.self) ?? .defaultSettings
+                strongSelf.callSettings = settings
+                strongSelf.callKitIntegration?.updateShowCallsInRecents(settings.showCallsInRecents)
             }
         })
     }

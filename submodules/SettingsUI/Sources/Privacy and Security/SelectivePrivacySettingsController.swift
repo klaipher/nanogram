@@ -42,6 +42,7 @@ private final class SelectivePrivacySettingsControllerArguments {
     
     let updateCallP2PMode: ((SelectivePrivacySettingType) -> Void)?
     let updateCallIntegrationEnabled: ((Bool) -> Void)?
+    let updateCallShowInRecents: ((Bool) -> Void)?
     let updatePhoneDiscovery: ((Bool) -> Void)?
     let copyPhoneLink: ((String) -> Void)?
     let setPublicPhoto: (() -> Void)?
@@ -62,6 +63,7 @@ private final class SelectivePrivacySettingsControllerArguments {
         openSelective: @escaping (SelectivePrivacySettingsPeerTarget, Bool) -> Void,
         updateCallP2PMode: ((SelectivePrivacySettingType) -> Void)?,
         updateCallIntegrationEnabled: ((Bool) -> Void)?,
+        updateCallShowInRecents: ((Bool) -> Void)?,
         updatePhoneDiscovery: ((Bool) -> Void)?,
         copyPhoneLink: ((String) -> Void)?,
         setPublicPhoto: (() -> Void)?,
@@ -79,6 +81,7 @@ private final class SelectivePrivacySettingsControllerArguments {
         self.openSelective = openSelective
         self.updateCallP2PMode = updateCallP2PMode
         self.updateCallIntegrationEnabled = updateCallIntegrationEnabled
+        self.updateCallShowInRecents = updateCallShowInRecents
         self.updatePhoneDiscovery = updatePhoneDiscovery
         self.copyPhoneLink = copyPhoneLink
         self.setPublicPhoto = setPublicPhoto
@@ -150,6 +153,7 @@ public enum SelectivePrivacyEntryTag: ItemListItemTag, Equatable {
     case callsP2PAlwaysAllow
     case callsP2P
     case callsIntegration
+    case callsShowInRecents
     
     public func isEqual(to other: ItemListItemTag) -> Bool {
         if let other = other as? SelectivePrivacyEntryTag, self == other {
@@ -183,6 +187,8 @@ private enum SelectivePrivacySettingsEntry: ItemListNodeEntry {
     case callsP2PPeersInfo(PresentationTheme, String)
     case callsIntegrationEnabled(PresentationTheme, String, Bool)
     case callsIntegrationInfo(PresentationTheme, String)
+    case callsShowInRecents(PresentationTheme, String, Bool)
+    case callsShowInRecentsInfo(PresentationTheme, String)
     case phoneDiscoveryHeader(PresentationTheme, String)
     case phoneDiscoveryEverybody(PresentationTheme, String, Bool)
     case phoneDiscoveryMyContacts(PresentationTheme, String, Bool)
@@ -218,7 +224,7 @@ private enum SelectivePrivacySettingsEntry: ItemListNodeEntry {
                 return SelectivePrivacySettingsSection.callsP2P.rawValue
             case .callsP2PDisableFor, .callsP2PEnableFor, .callsP2PPeersInfo:
                 return SelectivePrivacySettingsSection.callsP2PPeers.rawValue
-            case .callsIntegrationEnabled, .callsIntegrationInfo:
+            case .callsIntegrationEnabled, .callsIntegrationInfo, .callsShowInRecents, .callsShowInRecentsInfo:
                 return SelectivePrivacySettingsSection.callsIntegrationEnabled.rawValue
             case .phoneDiscoveryHeader, .phoneDiscoveryEverybody, .phoneDiscoveryMyContacts, .phoneDiscoveryInfo:
                 return SelectivePrivacySettingsSection.phoneDiscovery.rawValue
@@ -293,6 +299,10 @@ private enum SelectivePrivacySettingsEntry: ItemListNodeEntry {
                 return 26
             case .callsIntegrationInfo:
                 return 27
+            case .callsShowInRecents:
+                return 100
+            case .callsShowInRecentsInfo:
+                return 101
             case .setPublicPhoto:
                 return 28
             case .removePublicPhoto:
@@ -454,6 +464,18 @@ private enum SelectivePrivacySettingsEntry: ItemListNodeEntry {
             }
         case let .callsIntegrationInfo(lhsTheme, lhsText):
             if case let .callsIntegrationInfo(rhsTheme, rhsText) = rhs, lhsTheme === rhsTheme, lhsText == rhsText {
+                return true
+            } else {
+                return false
+            }
+        case let .callsShowInRecents(lhsTheme, lhsText, lhsValue):
+            if case let .callsShowInRecents(rhsTheme, rhsText, rhsValue) = rhs, lhsTheme === rhsTheme, lhsText == rhsText, lhsValue == rhsValue {
+                return true
+            } else {
+                return false
+            }
+        case let .callsShowInRecentsInfo(lhsTheme, lhsText):
+            if case let .callsShowInRecentsInfo(rhsTheme, rhsText) = rhs, lhsTheme === rhsTheme, lhsText == rhsText {
                 return true
             } else {
                 return false
@@ -669,6 +691,12 @@ private enum SelectivePrivacySettingsEntry: ItemListNodeEntry {
                 }, tag: SelectivePrivacyEntryTag.callsIntegration)
             case let .callsIntegrationInfo(_, text):
                 return ItemListTextItem(presentationData: presentationData, text: .plain(text), sectionId: self.section)
+            case let .callsShowInRecents(_, text, value):
+                return ItemListSwitchItem(presentationData: presentationData, systemStyle: .glass, title: text, value: value, sectionId: self.section, style: .blocks, updated: { value in
+                    arguments.updateCallShowInRecents?(value)
+                }, tag: SelectivePrivacyEntryTag.callsShowInRecents)
+            case let .callsShowInRecentsInfo(_, text):
+                return ItemListTextItem(presentationData: presentationData, text: .plain(text), sectionId: self.section)
             case let .phoneDiscoveryHeader(_, text):
                 return ItemListSectionHeaderItem(presentationData: presentationData, text: text, sectionId: self.section)
             case let .phoneDiscoveryEverybody(_, text, value):
@@ -807,6 +835,7 @@ private struct SelectivePrivacySettingsControllerState: Equatable {
     let callP2PEnableForCloseFriends: Bool?
     let callIntegrationAvailable: Bool?
     let callIntegrationEnabled: Bool?
+    let callShowInRecents: Bool?
     let phoneDiscoveryEnabled: Bool?
     let hideReadTimeEnabled: Bool?
     
@@ -815,7 +844,7 @@ private struct SelectivePrivacySettingsControllerState: Equatable {
     
     let uploadedPhoto: UIImage?
     
-    init(setting: SelectivePrivacySettingType, enableFor: [EnginePeer.Id: SelectivePrivacyPeer], enableForPremium: Bool, disableFor: [EnginePeer.Id: SelectivePrivacyPeer], enableForCloseFriends: Bool, enableForBots: Bool, saving: Bool, callDataSaving: VoiceCallDataSaving?, callP2PMode: SelectivePrivacySettingType?, callP2PEnableFor: [EnginePeer.Id: SelectivePrivacyPeer]?, callP2PDisableFor: [EnginePeer.Id: SelectivePrivacyPeer]?, callP2PEnableForCloseFriends: Bool?, callIntegrationAvailable: Bool?, callIntegrationEnabled: Bool?, phoneDiscoveryEnabled: Bool?, hideReadTimeEnabled: Bool?, disallowedGifts: TelegramDisallowedGifts?, showGiftButton: Bool?, uploadedPhoto: UIImage?) {
+    init(setting: SelectivePrivacySettingType, enableFor: [EnginePeer.Id: SelectivePrivacyPeer], enableForPremium: Bool, disableFor: [EnginePeer.Id: SelectivePrivacyPeer], enableForCloseFriends: Bool, enableForBots: Bool, saving: Bool, callDataSaving: VoiceCallDataSaving?, callP2PMode: SelectivePrivacySettingType?, callP2PEnableFor: [EnginePeer.Id: SelectivePrivacyPeer]?, callP2PDisableFor: [EnginePeer.Id: SelectivePrivacyPeer]?, callP2PEnableForCloseFriends: Bool?, callIntegrationAvailable: Bool?, callIntegrationEnabled: Bool?, callShowInRecents: Bool?, phoneDiscoveryEnabled: Bool?, hideReadTimeEnabled: Bool?, disallowedGifts: TelegramDisallowedGifts?, showGiftButton: Bool?, uploadedPhoto: UIImage?) {
         self.setting = setting
         self.enableFor = enableFor
         self.enableForPremium = enableForPremium
@@ -830,6 +859,7 @@ private struct SelectivePrivacySettingsControllerState: Equatable {
         self.callP2PEnableForCloseFriends = callP2PEnableForCloseFriends
         self.callIntegrationAvailable = callIntegrationAvailable
         self.callIntegrationEnabled = callIntegrationEnabled
+        self.callShowInRecents = callShowInRecents
         self.phoneDiscoveryEnabled = phoneDiscoveryEnabled
         self.hideReadTimeEnabled = hideReadTimeEnabled
         self.disallowedGifts = disallowedGifts
@@ -880,6 +910,9 @@ private struct SelectivePrivacySettingsControllerState: Equatable {
         if lhs.callIntegrationEnabled != rhs.callIntegrationEnabled {
             return false
         }
+        if lhs.callShowInRecents != rhs.callShowInRecents {
+            return false
+        }
         if lhs.phoneDiscoveryEnabled != rhs.phoneDiscoveryEnabled {
             return false
         }
@@ -900,71 +933,75 @@ private struct SelectivePrivacySettingsControllerState: Equatable {
     }
     
     func withUpdatedSetting(_ setting: SelectivePrivacySettingType) -> SelectivePrivacySettingsControllerState {
-        return SelectivePrivacySettingsControllerState(setting: setting, enableFor: self.enableFor, enableForPremium: self.enableForPremium, disableFor: self.disableFor, enableForCloseFriends: self.enableForCloseFriends, enableForBots: self.enableForBots, saving: self.saving, callDataSaving: self.callDataSaving, callP2PMode: self.callP2PMode, callP2PEnableFor: self.callP2PEnableFor, callP2PDisableFor: self.callP2PDisableFor, callP2PEnableForCloseFriends: self.callP2PEnableForCloseFriends, callIntegrationAvailable: self.callIntegrationAvailable, callIntegrationEnabled: self.callIntegrationEnabled, phoneDiscoveryEnabled: self.phoneDiscoveryEnabled, hideReadTimeEnabled: self.hideReadTimeEnabled, disallowedGifts: self.disallowedGifts, showGiftButton: self.showGiftButton, uploadedPhoto: self.uploadedPhoto)
+        return SelectivePrivacySettingsControllerState(setting: setting, enableFor: self.enableFor, enableForPremium: self.enableForPremium, disableFor: self.disableFor, enableForCloseFriends: self.enableForCloseFriends, enableForBots: self.enableForBots, saving: self.saving, callDataSaving: self.callDataSaving, callP2PMode: self.callP2PMode, callP2PEnableFor: self.callP2PEnableFor, callP2PDisableFor: self.callP2PDisableFor, callP2PEnableForCloseFriends: self.callP2PEnableForCloseFriends, callIntegrationAvailable: self.callIntegrationAvailable, callIntegrationEnabled: self.callIntegrationEnabled, callShowInRecents: self.callShowInRecents, phoneDiscoveryEnabled: self.phoneDiscoveryEnabled, hideReadTimeEnabled: self.hideReadTimeEnabled, disallowedGifts: self.disallowedGifts, showGiftButton: self.showGiftButton, uploadedPhoto: self.uploadedPhoto)
     }
     
     func withUpdatedEnableFor(_ enableFor: [EnginePeer.Id: SelectivePrivacyPeer]) -> SelectivePrivacySettingsControllerState {
-        return SelectivePrivacySettingsControllerState(setting: self.setting, enableFor: enableFor, enableForPremium: self.enableForPremium, disableFor: self.disableFor, enableForCloseFriends: self.enableForCloseFriends, enableForBots: self.enableForBots, saving: self.saving, callDataSaving: self.callDataSaving, callP2PMode: self.callP2PMode, callP2PEnableFor: self.callP2PEnableFor, callP2PDisableFor: self.callP2PDisableFor, callP2PEnableForCloseFriends: self.callP2PEnableForCloseFriends, callIntegrationAvailable: self.callIntegrationAvailable, callIntegrationEnabled: self.callIntegrationEnabled, phoneDiscoveryEnabled: self.phoneDiscoveryEnabled, hideReadTimeEnabled: self.hideReadTimeEnabled, disallowedGifts: self.disallowedGifts, showGiftButton: self.showGiftButton, uploadedPhoto: self.uploadedPhoto)
+        return SelectivePrivacySettingsControllerState(setting: self.setting, enableFor: enableFor, enableForPremium: self.enableForPremium, disableFor: self.disableFor, enableForCloseFriends: self.enableForCloseFriends, enableForBots: self.enableForBots, saving: self.saving, callDataSaving: self.callDataSaving, callP2PMode: self.callP2PMode, callP2PEnableFor: self.callP2PEnableFor, callP2PDisableFor: self.callP2PDisableFor, callP2PEnableForCloseFriends: self.callP2PEnableForCloseFriends, callIntegrationAvailable: self.callIntegrationAvailable, callIntegrationEnabled: self.callIntegrationEnabled, callShowInRecents: self.callShowInRecents, phoneDiscoveryEnabled: self.phoneDiscoveryEnabled, hideReadTimeEnabled: self.hideReadTimeEnabled, disallowedGifts: self.disallowedGifts, showGiftButton: self.showGiftButton, uploadedPhoto: self.uploadedPhoto)
     }
     
     func withUpdatedEnableForPremium(_ value: Bool) -> SelectivePrivacySettingsControllerState {
-        return SelectivePrivacySettingsControllerState(setting: self.setting, enableFor: self.enableFor, enableForPremium: value, disableFor: self.disableFor, enableForCloseFriends: self.enableForCloseFriends, enableForBots: self.enableForBots, saving: self.saving, callDataSaving: self.callDataSaving, callP2PMode: self.callP2PMode, callP2PEnableFor: self.callP2PEnableFor, callP2PDisableFor: self.callP2PDisableFor, callP2PEnableForCloseFriends: self.callP2PEnableForCloseFriends, callIntegrationAvailable: self.callIntegrationAvailable, callIntegrationEnabled: self.callIntegrationEnabled, phoneDiscoveryEnabled: self.phoneDiscoveryEnabled, hideReadTimeEnabled: self.hideReadTimeEnabled, disallowedGifts: self.disallowedGifts, showGiftButton: self.showGiftButton, uploadedPhoto: self.uploadedPhoto)
+        return SelectivePrivacySettingsControllerState(setting: self.setting, enableFor: self.enableFor, enableForPremium: value, disableFor: self.disableFor, enableForCloseFriends: self.enableForCloseFriends, enableForBots: self.enableForBots, saving: self.saving, callDataSaving: self.callDataSaving, callP2PMode: self.callP2PMode, callP2PEnableFor: self.callP2PEnableFor, callP2PDisableFor: self.callP2PDisableFor, callP2PEnableForCloseFriends: self.callP2PEnableForCloseFriends, callIntegrationAvailable: self.callIntegrationAvailable, callIntegrationEnabled: self.callIntegrationEnabled, callShowInRecents: self.callShowInRecents, phoneDiscoveryEnabled: self.phoneDiscoveryEnabled, hideReadTimeEnabled: self.hideReadTimeEnabled, disallowedGifts: self.disallowedGifts, showGiftButton: self.showGiftButton, uploadedPhoto: self.uploadedPhoto)
     }
     
     func withUpdatedDisableFor(_ disableFor: [EnginePeer.Id: SelectivePrivacyPeer]) -> SelectivePrivacySettingsControllerState {
-        return SelectivePrivacySettingsControllerState(setting: self.setting, enableFor: self.enableFor, enableForPremium: self.enableForPremium, disableFor: disableFor, enableForCloseFriends: self.enableForCloseFriends, enableForBots: self.enableForBots, saving: self.saving, callDataSaving: self.callDataSaving, callP2PMode: self.callP2PMode, callP2PEnableFor: self.callP2PEnableFor, callP2PDisableFor: self.callP2PDisableFor, callP2PEnableForCloseFriends: self.callP2PEnableForCloseFriends, callIntegrationAvailable: self.callIntegrationAvailable, callIntegrationEnabled: self.callIntegrationEnabled, phoneDiscoveryEnabled: self.phoneDiscoveryEnabled, hideReadTimeEnabled: self.hideReadTimeEnabled, disallowedGifts: self.disallowedGifts, showGiftButton: self.showGiftButton, uploadedPhoto: self.uploadedPhoto)
+        return SelectivePrivacySettingsControllerState(setting: self.setting, enableFor: self.enableFor, enableForPremium: self.enableForPremium, disableFor: disableFor, enableForCloseFriends: self.enableForCloseFriends, enableForBots: self.enableForBots, saving: self.saving, callDataSaving: self.callDataSaving, callP2PMode: self.callP2PMode, callP2PEnableFor: self.callP2PEnableFor, callP2PDisableFor: self.callP2PDisableFor, callP2PEnableForCloseFriends: self.callP2PEnableForCloseFriends, callIntegrationAvailable: self.callIntegrationAvailable, callIntegrationEnabled: self.callIntegrationEnabled, callShowInRecents: self.callShowInRecents, phoneDiscoveryEnabled: self.phoneDiscoveryEnabled, hideReadTimeEnabled: self.hideReadTimeEnabled, disallowedGifts: self.disallowedGifts, showGiftButton: self.showGiftButton, uploadedPhoto: self.uploadedPhoto)
     }
     
     func withUpdatedEnableForCloseFriends(_ enableForCloseFriends: Bool) -> SelectivePrivacySettingsControllerState {
-        return SelectivePrivacySettingsControllerState(setting: self.setting, enableFor: self.enableFor, enableForPremium: self.enableForPremium, disableFor: self.disableFor, enableForCloseFriends: enableForCloseFriends, enableForBots: self.enableForBots, saving: self.saving, callDataSaving: self.callDataSaving, callP2PMode: self.callP2PMode, callP2PEnableFor: self.callP2PEnableFor, callP2PDisableFor: self.callP2PDisableFor, callP2PEnableForCloseFriends: self.callP2PEnableForCloseFriends, callIntegrationAvailable: self.callIntegrationAvailable, callIntegrationEnabled: self.callIntegrationEnabled, phoneDiscoveryEnabled: self.phoneDiscoveryEnabled, hideReadTimeEnabled: self.hideReadTimeEnabled, disallowedGifts: self.disallowedGifts, showGiftButton: self.showGiftButton, uploadedPhoto: self.uploadedPhoto)
+        return SelectivePrivacySettingsControllerState(setting: self.setting, enableFor: self.enableFor, enableForPremium: self.enableForPremium, disableFor: self.disableFor, enableForCloseFriends: enableForCloseFriends, enableForBots: self.enableForBots, saving: self.saving, callDataSaving: self.callDataSaving, callP2PMode: self.callP2PMode, callP2PEnableFor: self.callP2PEnableFor, callP2PDisableFor: self.callP2PDisableFor, callP2PEnableForCloseFriends: self.callP2PEnableForCloseFriends, callIntegrationAvailable: self.callIntegrationAvailable, callIntegrationEnabled: self.callIntegrationEnabled, callShowInRecents: self.callShowInRecents, phoneDiscoveryEnabled: self.phoneDiscoveryEnabled, hideReadTimeEnabled: self.hideReadTimeEnabled, disallowedGifts: self.disallowedGifts, showGiftButton: self.showGiftButton, uploadedPhoto: self.uploadedPhoto)
     }
     
     func withUpdatedEnableForBots(_ enableForBots: Bool) -> SelectivePrivacySettingsControllerState {
-        return SelectivePrivacySettingsControllerState(setting: self.setting, enableFor: self.enableFor, enableForPremium: self.enableForPremium, disableFor: self.disableFor, enableForCloseFriends: self.enableForCloseFriends, enableForBots: enableForBots, saving: self.saving, callDataSaving: self.callDataSaving, callP2PMode: self.callP2PMode, callP2PEnableFor: self.callP2PEnableFor, callP2PDisableFor: self.callP2PDisableFor, callP2PEnableForCloseFriends: self.callP2PEnableForCloseFriends, callIntegrationAvailable: self.callIntegrationAvailable, callIntegrationEnabled: self.callIntegrationEnabled, phoneDiscoveryEnabled: self.phoneDiscoveryEnabled, hideReadTimeEnabled: self.hideReadTimeEnabled, disallowedGifts: self.disallowedGifts, showGiftButton: self.showGiftButton, uploadedPhoto: self.uploadedPhoto)
+        return SelectivePrivacySettingsControllerState(setting: self.setting, enableFor: self.enableFor, enableForPremium: self.enableForPremium, disableFor: self.disableFor, enableForCloseFriends: self.enableForCloseFriends, enableForBots: enableForBots, saving: self.saving, callDataSaving: self.callDataSaving, callP2PMode: self.callP2PMode, callP2PEnableFor: self.callP2PEnableFor, callP2PDisableFor: self.callP2PDisableFor, callP2PEnableForCloseFriends: self.callP2PEnableForCloseFriends, callIntegrationAvailable: self.callIntegrationAvailable, callIntegrationEnabled: self.callIntegrationEnabled, callShowInRecents: self.callShowInRecents, phoneDiscoveryEnabled: self.phoneDiscoveryEnabled, hideReadTimeEnabled: self.hideReadTimeEnabled, disallowedGifts: self.disallowedGifts, showGiftButton: self.showGiftButton, uploadedPhoto: self.uploadedPhoto)
     }
     
     func withUpdatedSaving(_ saving: Bool) -> SelectivePrivacySettingsControllerState {
-        return SelectivePrivacySettingsControllerState(setting: self.setting, enableFor: self.enableFor, enableForPremium: self.enableForPremium, disableFor: self.disableFor, enableForCloseFriends: self.enableForCloseFriends, enableForBots: self.enableForBots, saving: saving, callDataSaving: self.callDataSaving, callP2PMode: self.callP2PMode, callP2PEnableFor: self.callP2PEnableFor, callP2PDisableFor: self.callP2PDisableFor, callP2PEnableForCloseFriends: self.callP2PEnableForCloseFriends, callIntegrationAvailable: self.callIntegrationAvailable, callIntegrationEnabled: self.callIntegrationEnabled, phoneDiscoveryEnabled: self.phoneDiscoveryEnabled, hideReadTimeEnabled: self.hideReadTimeEnabled, disallowedGifts: self.disallowedGifts, showGiftButton: self.showGiftButton, uploadedPhoto: self.uploadedPhoto)
+        return SelectivePrivacySettingsControllerState(setting: self.setting, enableFor: self.enableFor, enableForPremium: self.enableForPremium, disableFor: self.disableFor, enableForCloseFriends: self.enableForCloseFriends, enableForBots: self.enableForBots, saving: saving, callDataSaving: self.callDataSaving, callP2PMode: self.callP2PMode, callP2PEnableFor: self.callP2PEnableFor, callP2PDisableFor: self.callP2PDisableFor, callP2PEnableForCloseFriends: self.callP2PEnableForCloseFriends, callIntegrationAvailable: self.callIntegrationAvailable, callIntegrationEnabled: self.callIntegrationEnabled, callShowInRecents: self.callShowInRecents, phoneDiscoveryEnabled: self.phoneDiscoveryEnabled, hideReadTimeEnabled: self.hideReadTimeEnabled, disallowedGifts: self.disallowedGifts, showGiftButton: self.showGiftButton, uploadedPhoto: self.uploadedPhoto)
     }
     
     func withUpdatedCallP2PMode(_ mode: SelectivePrivacySettingType) -> SelectivePrivacySettingsControllerState {
-        return SelectivePrivacySettingsControllerState(setting: self.setting, enableFor: self.enableFor, enableForPremium: self.enableForPremium, disableFor: self.disableFor, enableForCloseFriends: self.enableForCloseFriends, enableForBots: self.enableForBots, saving: self.saving, callDataSaving: self.callDataSaving, callP2PMode: mode, callP2PEnableFor: self.callP2PEnableFor, callP2PDisableFor: self.callP2PDisableFor, callP2PEnableForCloseFriends: self.callP2PEnableForCloseFriends, callIntegrationAvailable: self.callIntegrationAvailable, callIntegrationEnabled: self.callIntegrationEnabled, phoneDiscoveryEnabled: self.phoneDiscoveryEnabled, hideReadTimeEnabled: self.hideReadTimeEnabled, disallowedGifts: self.disallowedGifts, showGiftButton: self.showGiftButton, uploadedPhoto: self.uploadedPhoto)
+        return SelectivePrivacySettingsControllerState(setting: self.setting, enableFor: self.enableFor, enableForPremium: self.enableForPremium, disableFor: self.disableFor, enableForCloseFriends: self.enableForCloseFriends, enableForBots: self.enableForBots, saving: self.saving, callDataSaving: self.callDataSaving, callP2PMode: mode, callP2PEnableFor: self.callP2PEnableFor, callP2PDisableFor: self.callP2PDisableFor, callP2PEnableForCloseFriends: self.callP2PEnableForCloseFriends, callIntegrationAvailable: self.callIntegrationAvailable, callIntegrationEnabled: self.callIntegrationEnabled, callShowInRecents: self.callShowInRecents, phoneDiscoveryEnabled: self.phoneDiscoveryEnabled, hideReadTimeEnabled: self.hideReadTimeEnabled, disallowedGifts: self.disallowedGifts, showGiftButton: self.showGiftButton, uploadedPhoto: self.uploadedPhoto)
     }
     
     func withUpdatedCallP2PEnableFor(_ enableFor: [EnginePeer.Id: SelectivePrivacyPeer]) -> SelectivePrivacySettingsControllerState {
-        return SelectivePrivacySettingsControllerState(setting: self.setting, enableFor: self.enableFor, enableForPremium: self.enableForPremium, disableFor: self.disableFor, enableForCloseFriends: self.enableForCloseFriends, enableForBots: self.enableForBots, saving: self.saving, callDataSaving: self.callDataSaving, callP2PMode: self.callP2PMode, callP2PEnableFor: enableFor, callP2PDisableFor: self.callP2PDisableFor, callP2PEnableForCloseFriends: self.callP2PEnableForCloseFriends, callIntegrationAvailable: self.callIntegrationAvailable, callIntegrationEnabled: self.callIntegrationEnabled, phoneDiscoveryEnabled: self.phoneDiscoveryEnabled, hideReadTimeEnabled: self.hideReadTimeEnabled, disallowedGifts: self.disallowedGifts, showGiftButton: self.showGiftButton, uploadedPhoto: self.uploadedPhoto)
+        return SelectivePrivacySettingsControllerState(setting: self.setting, enableFor: self.enableFor, enableForPremium: self.enableForPremium, disableFor: self.disableFor, enableForCloseFriends: self.enableForCloseFriends, enableForBots: self.enableForBots, saving: self.saving, callDataSaving: self.callDataSaving, callP2PMode: self.callP2PMode, callP2PEnableFor: enableFor, callP2PDisableFor: self.callP2PDisableFor, callP2PEnableForCloseFriends: self.callP2PEnableForCloseFriends, callIntegrationAvailable: self.callIntegrationAvailable, callIntegrationEnabled: self.callIntegrationEnabled, callShowInRecents: self.callShowInRecents, phoneDiscoveryEnabled: self.phoneDiscoveryEnabled, hideReadTimeEnabled: self.hideReadTimeEnabled, disallowedGifts: self.disallowedGifts, showGiftButton: self.showGiftButton, uploadedPhoto: self.uploadedPhoto)
     }
     
     func withUpdatedCallP2PDisableFor(_ disableFor: [EnginePeer.Id: SelectivePrivacyPeer]) -> SelectivePrivacySettingsControllerState {
-        return SelectivePrivacySettingsControllerState(setting: self.setting, enableFor: self.enableFor, enableForPremium: self.enableForPremium, disableFor: self.disableFor, enableForCloseFriends: self.enableForCloseFriends, enableForBots: self.enableForBots, saving: self.saving, callDataSaving: self.callDataSaving, callP2PMode: self.callP2PMode, callP2PEnableFor: self.callP2PEnableFor, callP2PDisableFor: disableFor, callP2PEnableForCloseFriends: self.callP2PEnableForCloseFriends, callIntegrationAvailable: self.callIntegrationAvailable, callIntegrationEnabled: self.callIntegrationEnabled, phoneDiscoveryEnabled: self.phoneDiscoveryEnabled, hideReadTimeEnabled: self.hideReadTimeEnabled, disallowedGifts: self.disallowedGifts, showGiftButton: self.showGiftButton, uploadedPhoto: self.uploadedPhoto)
+        return SelectivePrivacySettingsControllerState(setting: self.setting, enableFor: self.enableFor, enableForPremium: self.enableForPremium, disableFor: self.disableFor, enableForCloseFriends: self.enableForCloseFriends, enableForBots: self.enableForBots, saving: self.saving, callDataSaving: self.callDataSaving, callP2PMode: self.callP2PMode, callP2PEnableFor: self.callP2PEnableFor, callP2PDisableFor: disableFor, callP2PEnableForCloseFriends: self.callP2PEnableForCloseFriends, callIntegrationAvailable: self.callIntegrationAvailable, callIntegrationEnabled: self.callIntegrationEnabled, callShowInRecents: self.callShowInRecents, phoneDiscoveryEnabled: self.phoneDiscoveryEnabled, hideReadTimeEnabled: self.hideReadTimeEnabled, disallowedGifts: self.disallowedGifts, showGiftButton: self.showGiftButton, uploadedPhoto: self.uploadedPhoto)
     }
     
     func withUpdatedCallP2PEnableForCloseFriends(_ callP2PEnableForCloseFriends: Bool) -> SelectivePrivacySettingsControllerState {
-        return SelectivePrivacySettingsControllerState(setting: self.setting, enableFor: self.enableFor, enableForPremium: self.enableForPremium, disableFor: self.disableFor, enableForCloseFriends: self.enableForCloseFriends, enableForBots: self.enableForBots, saving: self.saving, callDataSaving: self.callDataSaving, callP2PMode: self.callP2PMode, callP2PEnableFor: self.callP2PEnableFor, callP2PDisableFor: self.callP2PDisableFor, callP2PEnableForCloseFriends: callP2PEnableForCloseFriends, callIntegrationAvailable: self.callIntegrationAvailable, callIntegrationEnabled: self.callIntegrationEnabled, phoneDiscoveryEnabled: self.phoneDiscoveryEnabled, hideReadTimeEnabled: self.hideReadTimeEnabled, disallowedGifts: self.disallowedGifts, showGiftButton: self.showGiftButton, uploadedPhoto: self.uploadedPhoto)
+        return SelectivePrivacySettingsControllerState(setting: self.setting, enableFor: self.enableFor, enableForPremium: self.enableForPremium, disableFor: self.disableFor, enableForCloseFriends: self.enableForCloseFriends, enableForBots: self.enableForBots, saving: self.saving, callDataSaving: self.callDataSaving, callP2PMode: self.callP2PMode, callP2PEnableFor: self.callP2PEnableFor, callP2PDisableFor: self.callP2PDisableFor, callP2PEnableForCloseFriends: callP2PEnableForCloseFriends, callIntegrationAvailable: self.callIntegrationAvailable, callIntegrationEnabled: self.callIntegrationEnabled, callShowInRecents: self.callShowInRecents, phoneDiscoveryEnabled: self.phoneDiscoveryEnabled, hideReadTimeEnabled: self.hideReadTimeEnabled, disallowedGifts: self.disallowedGifts, showGiftButton: self.showGiftButton, uploadedPhoto: self.uploadedPhoto)
     }
     
     func withUpdatedCallsIntegrationEnabled(_ enabled: Bool) -> SelectivePrivacySettingsControllerState {
-        return SelectivePrivacySettingsControllerState(setting: self.setting, enableFor: self.enableFor, enableForPremium: self.enableForPremium, disableFor: self.disableFor, enableForCloseFriends: self.enableForCloseFriends, enableForBots: self.enableForBots, saving: self.saving, callDataSaving: self.callDataSaving, callP2PMode: self.callP2PMode, callP2PEnableFor: self.callP2PEnableFor, callP2PDisableFor: self.callP2PDisableFor, callP2PEnableForCloseFriends: self.callP2PEnableForCloseFriends, callIntegrationAvailable: self.callIntegrationAvailable, callIntegrationEnabled: enabled, phoneDiscoveryEnabled: self.phoneDiscoveryEnabled, hideReadTimeEnabled: self.hideReadTimeEnabled, disallowedGifts: self.disallowedGifts, showGiftButton: self.showGiftButton, uploadedPhoto: self.uploadedPhoto)
+        return SelectivePrivacySettingsControllerState(setting: self.setting, enableFor: self.enableFor, enableForPremium: self.enableForPremium, disableFor: self.disableFor, enableForCloseFriends: self.enableForCloseFriends, enableForBots: self.enableForBots, saving: self.saving, callDataSaving: self.callDataSaving, callP2PMode: self.callP2PMode, callP2PEnableFor: self.callP2PEnableFor, callP2PDisableFor: self.callP2PDisableFor, callP2PEnableForCloseFriends: self.callP2PEnableForCloseFriends, callIntegrationAvailable: self.callIntegrationAvailable, callIntegrationEnabled: enabled, callShowInRecents: self.callShowInRecents, phoneDiscoveryEnabled: self.phoneDiscoveryEnabled, hideReadTimeEnabled: self.hideReadTimeEnabled, disallowedGifts: self.disallowedGifts, showGiftButton: self.showGiftButton, uploadedPhoto: self.uploadedPhoto)
+    }
+    
+    func withUpdatedCallShowInRecents(_ enabled: Bool) -> SelectivePrivacySettingsControllerState {
+        return SelectivePrivacySettingsControllerState(setting: self.setting, enableFor: self.enableFor, enableForPremium: self.enableForPremium, disableFor: self.disableFor, enableForCloseFriends: self.enableForCloseFriends, enableForBots: self.enableForBots, saving: self.saving, callDataSaving: self.callDataSaving, callP2PMode: self.callP2PMode, callP2PEnableFor: self.callP2PEnableFor, callP2PDisableFor: self.callP2PDisableFor, callP2PEnableForCloseFriends: self.callP2PEnableForCloseFriends, callIntegrationAvailable: self.callIntegrationAvailable, callIntegrationEnabled: self.callIntegrationEnabled, callShowInRecents: enabled, phoneDiscoveryEnabled: self.phoneDiscoveryEnabled, hideReadTimeEnabled: self.hideReadTimeEnabled, disallowedGifts: self.disallowedGifts, showGiftButton: self.showGiftButton, uploadedPhoto: self.uploadedPhoto)
     }
     
     func withUpdatedPhoneDiscoveryEnabled(_ phoneDiscoveryEnabled: Bool) -> SelectivePrivacySettingsControllerState {
-        return SelectivePrivacySettingsControllerState(setting: self.setting, enableFor: self.enableFor, enableForPremium: self.enableForPremium, disableFor: self.disableFor, enableForCloseFriends: self.enableForCloseFriends, enableForBots: self.enableForBots, saving: self.saving, callDataSaving: self.callDataSaving, callP2PMode: self.callP2PMode, callP2PEnableFor: self.callP2PEnableFor, callP2PDisableFor: self.callP2PDisableFor, callP2PEnableForCloseFriends: self.callP2PEnableForCloseFriends, callIntegrationAvailable: self.callIntegrationAvailable, callIntegrationEnabled: self.callIntegrationEnabled, phoneDiscoveryEnabled: phoneDiscoveryEnabled, hideReadTimeEnabled: self.hideReadTimeEnabled, disallowedGifts: self.disallowedGifts, showGiftButton: self.showGiftButton, uploadedPhoto: self.uploadedPhoto)
+        return SelectivePrivacySettingsControllerState(setting: self.setting, enableFor: self.enableFor, enableForPremium: self.enableForPremium, disableFor: self.disableFor, enableForCloseFriends: self.enableForCloseFriends, enableForBots: self.enableForBots, saving: self.saving, callDataSaving: self.callDataSaving, callP2PMode: self.callP2PMode, callP2PEnableFor: self.callP2PEnableFor, callP2PDisableFor: self.callP2PDisableFor, callP2PEnableForCloseFriends: self.callP2PEnableForCloseFriends, callIntegrationAvailable: self.callIntegrationAvailable, callIntegrationEnabled: self.callIntegrationEnabled, callShowInRecents: self.callShowInRecents, phoneDiscoveryEnabled: phoneDiscoveryEnabled, hideReadTimeEnabled: self.hideReadTimeEnabled, disallowedGifts: self.disallowedGifts, showGiftButton: self.showGiftButton, uploadedPhoto: self.uploadedPhoto)
     }
     
     func withUpdatedUploadedPhoto(_ uploadedPhoto: UIImage?) -> SelectivePrivacySettingsControllerState {
-        return SelectivePrivacySettingsControllerState(setting: self.setting, enableFor: self.enableFor, enableForPremium: self.enableForPremium, disableFor: self.disableFor, enableForCloseFriends: self.enableForCloseFriends, enableForBots: self.enableForBots, saving: self.saving, callDataSaving: self.callDataSaving, callP2PMode: self.callP2PMode, callP2PEnableFor: self.callP2PEnableFor, callP2PDisableFor: self.callP2PDisableFor, callP2PEnableForCloseFriends: self.callP2PEnableForCloseFriends, callIntegrationAvailable: self.callIntegrationAvailable, callIntegrationEnabled: self.callIntegrationEnabled, phoneDiscoveryEnabled: self.phoneDiscoveryEnabled, hideReadTimeEnabled: self.hideReadTimeEnabled, disallowedGifts: self.disallowedGifts, showGiftButton: self.showGiftButton, uploadedPhoto: uploadedPhoto)
+        return SelectivePrivacySettingsControllerState(setting: self.setting, enableFor: self.enableFor, enableForPremium: self.enableForPremium, disableFor: self.disableFor, enableForCloseFriends: self.enableForCloseFriends, enableForBots: self.enableForBots, saving: self.saving, callDataSaving: self.callDataSaving, callP2PMode: self.callP2PMode, callP2PEnableFor: self.callP2PEnableFor, callP2PDisableFor: self.callP2PDisableFor, callP2PEnableForCloseFriends: self.callP2PEnableForCloseFriends, callIntegrationAvailable: self.callIntegrationAvailable, callIntegrationEnabled: self.callIntegrationEnabled, callShowInRecents: self.callShowInRecents, phoneDiscoveryEnabled: self.phoneDiscoveryEnabled, hideReadTimeEnabled: self.hideReadTimeEnabled, disallowedGifts: self.disallowedGifts, showGiftButton: self.showGiftButton, uploadedPhoto: uploadedPhoto)
     }
     
     func withUpdatedHideReadTimeEnabled(_ hideReadTimeEnabled: Bool) -> SelectivePrivacySettingsControllerState {
-        return SelectivePrivacySettingsControllerState(setting: self.setting, enableFor: self.enableFor, enableForPremium: self.enableForPremium, disableFor: self.disableFor, enableForCloseFriends: self.enableForCloseFriends, enableForBots: self.enableForBots, saving: self.saving, callDataSaving: self.callDataSaving, callP2PMode: self.callP2PMode, callP2PEnableFor: self.callP2PEnableFor, callP2PDisableFor: self.callP2PDisableFor, callP2PEnableForCloseFriends: self.callP2PEnableForCloseFriends, callIntegrationAvailable: self.callIntegrationAvailable, callIntegrationEnabled: self.callIntegrationEnabled, phoneDiscoveryEnabled: self.phoneDiscoveryEnabled, hideReadTimeEnabled: hideReadTimeEnabled, disallowedGifts: self.disallowedGifts, showGiftButton: self.showGiftButton, uploadedPhoto: self.uploadedPhoto)
+        return SelectivePrivacySettingsControllerState(setting: self.setting, enableFor: self.enableFor, enableForPremium: self.enableForPremium, disableFor: self.disableFor, enableForCloseFriends: self.enableForCloseFriends, enableForBots: self.enableForBots, saving: self.saving, callDataSaving: self.callDataSaving, callP2PMode: self.callP2PMode, callP2PEnableFor: self.callP2PEnableFor, callP2PDisableFor: self.callP2PDisableFor, callP2PEnableForCloseFriends: self.callP2PEnableForCloseFriends, callIntegrationAvailable: self.callIntegrationAvailable, callIntegrationEnabled: self.callIntegrationEnabled, callShowInRecents: self.callShowInRecents, phoneDiscoveryEnabled: self.phoneDiscoveryEnabled, hideReadTimeEnabled: hideReadTimeEnabled, disallowedGifts: self.disallowedGifts, showGiftButton: self.showGiftButton, uploadedPhoto: self.uploadedPhoto)
     }
     
     func withUpdatedDisallowedGifts(_ disallowedGifts: TelegramDisallowedGifts) -> SelectivePrivacySettingsControllerState {
-        return SelectivePrivacySettingsControllerState(setting: self.setting, enableFor: self.enableFor, enableForPremium: self.enableForPremium, disableFor: self.disableFor, enableForCloseFriends: self.enableForCloseFriends, enableForBots: self.enableForBots, saving: self.saving, callDataSaving: self.callDataSaving, callP2PMode: self.callP2PMode, callP2PEnableFor: self.callP2PEnableFor, callP2PDisableFor: self.callP2PDisableFor, callP2PEnableForCloseFriends: self.callP2PEnableForCloseFriends, callIntegrationAvailable: self.callIntegrationAvailable, callIntegrationEnabled: self.callIntegrationEnabled, phoneDiscoveryEnabled: self.phoneDiscoveryEnabled, hideReadTimeEnabled: self.hideReadTimeEnabled, disallowedGifts: disallowedGifts, showGiftButton: self.showGiftButton, uploadedPhoto: self.uploadedPhoto)
+        return SelectivePrivacySettingsControllerState(setting: self.setting, enableFor: self.enableFor, enableForPremium: self.enableForPremium, disableFor: self.disableFor, enableForCloseFriends: self.enableForCloseFriends, enableForBots: self.enableForBots, saving: self.saving, callDataSaving: self.callDataSaving, callP2PMode: self.callP2PMode, callP2PEnableFor: self.callP2PEnableFor, callP2PDisableFor: self.callP2PDisableFor, callP2PEnableForCloseFriends: self.callP2PEnableForCloseFriends, callIntegrationAvailable: self.callIntegrationAvailable, callIntegrationEnabled: self.callIntegrationEnabled, callShowInRecents: self.callShowInRecents, phoneDiscoveryEnabled: self.phoneDiscoveryEnabled, hideReadTimeEnabled: self.hideReadTimeEnabled, disallowedGifts: disallowedGifts, showGiftButton: self.showGiftButton, uploadedPhoto: self.uploadedPhoto)
     }
     
     func withUpdatedShowGiftButton(_ showGiftButton: Bool) -> SelectivePrivacySettingsControllerState {
-        return SelectivePrivacySettingsControllerState(setting: self.setting, enableFor: self.enableFor, enableForPremium: self.enableForPremium, disableFor: self.disableFor, enableForCloseFriends: self.enableForCloseFriends, enableForBots: self.enableForBots, saving: self.saving, callDataSaving: self.callDataSaving, callP2PMode: self.callP2PMode, callP2PEnableFor: self.callP2PEnableFor, callP2PDisableFor: self.callP2PDisableFor, callP2PEnableForCloseFriends: self.callP2PEnableForCloseFriends, callIntegrationAvailable: self.callIntegrationAvailable, callIntegrationEnabled: self.callIntegrationEnabled, phoneDiscoveryEnabled: self.phoneDiscoveryEnabled, hideReadTimeEnabled: self.hideReadTimeEnabled, disallowedGifts: self.disallowedGifts, showGiftButton: showGiftButton, uploadedPhoto: self.uploadedPhoto)
+        return SelectivePrivacySettingsControllerState(setting: self.setting, enableFor: self.enableFor, enableForPremium: self.enableForPremium, disableFor: self.disableFor, enableForCloseFriends: self.enableForCloseFriends, enableForBots: self.enableForBots, saving: self.saving, callDataSaving: self.callDataSaving, callP2PMode: self.callP2PMode, callP2PEnableFor: self.callP2PEnableFor, callP2PDisableFor: self.callP2PDisableFor, callP2PEnableForCloseFriends: self.callP2PEnableForCloseFriends, callIntegrationAvailable: self.callIntegrationAvailable, callIntegrationEnabled: self.callIntegrationEnabled, callShowInRecents: self.callShowInRecents, phoneDiscoveryEnabled: self.phoneDiscoveryEnabled, hideReadTimeEnabled: self.hideReadTimeEnabled, disallowedGifts: self.disallowedGifts, showGiftButton: showGiftButton, uploadedPhoto: self.uploadedPhoto)
     }
 }
 
@@ -1156,6 +1193,10 @@ private func selectivePrivacySettingsControllerEntries(presentationData: Present
         if integrationAvailable {
             entries.append(.callsIntegrationEnabled(presentationData.theme, presentationData.strings.Privacy_Calls_Integration, integrationEnabled))
             entries.append(.callsIntegrationInfo(presentationData.theme, presentationData.strings.Privacy_Calls_IntegrationHelp))
+            if integrationEnabled {
+                entries.append(.callsShowInRecents(presentationData.theme, presentationData.strings.Privacy_Calls_ShowInRecents, state.callShowInRecents ?? true))
+                entries.append(.callsShowInRecentsInfo(presentationData.theme, presentationData.strings.Privacy_Calls_ShowInRecentsHelp))
+            }
         }
     }
     
@@ -1282,7 +1323,7 @@ public func selectivePrivacySettingsController(
         }
     }
     
-    let initialState = SelectivePrivacySettingsControllerState(setting: SelectivePrivacySettingType(current), enableFor: initialEnableFor, enableForPremium: initialEnableForPremium, disableFor: initialDisableFor, enableForCloseFriends: initialEnableForCloseFriends, enableForBots: initialEnableForBots, saving: false, callDataSaving: callSettings?.1.dataSaving, callP2PMode: callSettings != nil ? SelectivePrivacySettingType(callSettings!.0) : nil, callP2PEnableFor: initialCallP2PEnableFor, callP2PDisableFor: initialCallP2PDisableFor, callP2PEnableForCloseFriends: initialCallEnableForCloseFriends, callIntegrationAvailable: callIntegrationAvailable, callIntegrationEnabled: callSettings?.1.enableSystemIntegration, phoneDiscoveryEnabled: phoneDiscoveryEnabled, hideReadTimeEnabled: globalSettings?.hideReadTime, disallowedGifts: globalSettings?.disallowedGifts, showGiftButton: globalSettings?.displayGiftButton, uploadedPhoto: nil)
+    let initialState = SelectivePrivacySettingsControllerState(setting: SelectivePrivacySettingType(current), enableFor: initialEnableFor, enableForPremium: initialEnableForPremium, disableFor: initialDisableFor, enableForCloseFriends: initialEnableForCloseFriends, enableForBots: initialEnableForBots, saving: false, callDataSaving: callSettings?.1.dataSaving, callP2PMode: callSettings != nil ? SelectivePrivacySettingType(callSettings!.0) : nil, callP2PEnableFor: initialCallP2PEnableFor, callP2PDisableFor: initialCallP2PDisableFor, callP2PEnableForCloseFriends: initialCallEnableForCloseFriends, callIntegrationAvailable: callIntegrationAvailable, callIntegrationEnabled: callSettings?.1.enableSystemIntegration, callShowInRecents: callSettings?.1.showCallsInRecents, phoneDiscoveryEnabled: phoneDiscoveryEnabled, hideReadTimeEnabled: globalSettings?.hideReadTime, disallowedGifts: globalSettings?.disallowedGifts, showGiftButton: globalSettings?.displayGiftButton, uploadedPhoto: nil)
     
     let statePromise = ValuePromise(initialState, ignoreRepeated: true)
     let stateValue = Atomic(value: initialState)
@@ -1590,6 +1631,15 @@ public func selectivePrivacySettingsController(
             settings.enableSystemIntegration = enabled
             return settings
         }).start()
+    }, updateCallShowInRecents: { enabled in
+        updateState { state in
+            return state.withUpdatedCallShowInRecents(enabled)
+        }
+        let _ = updateVoiceCallSettingsSettingsInteractively(accountManager: context.sharedContext.accountManager, { settings in
+            var settings = settings
+            settings.showCallsInRecents = enabled
+            return settings
+        }).start()
     }, updatePhoneDiscovery: { value in
         updateState { state in
             return state.withUpdatedPhoneDiscoveryEnabled(value)
@@ -1762,6 +1812,7 @@ public func selectivePrivacySettingsController(
         let callP2PSettings: SelectivePrivacySettings?
         let callDataSaving: VoiceCallDataSaving?
         let callIntegrationEnabled: Bool?
+        let callShowInRecents: Bool?
         let phoneDiscoveryEnabled: Bool?
         let hideReadTimeEnabled: Bool?
         let disallowedGifts: TelegramDisallowedGifts?
@@ -1777,6 +1828,7 @@ public func selectivePrivacySettingsController(
         var phoneDiscoveryEnabled: Bool?
         var callDataSaving: VoiceCallDataSaving?
         var callIntegrationEnabled: Bool?
+        var callShowInRecents: Bool?
         var hideReadTimeEnabled: Bool?
         var disallowedGifts: TelegramDisallowedGifts?
         var showGiftButton: Bool?
@@ -1785,6 +1837,7 @@ public func selectivePrivacySettingsController(
             wasSaving = state.saving
             callDataSaving = state.callDataSaving
             callIntegrationEnabled = state.callIntegrationEnabled
+            callShowInRecents = state.callShowInRecents
             switch state.setting {
                 case .everybody:
                     settings = SelectivePrivacySettings.enableEveryone(disableFor: state.disableFor)
@@ -1830,7 +1883,7 @@ public func selectivePrivacySettingsController(
         }
         
         if let settings = settings, !wasSaving {
-            let settingsToApply = AppliedSettings(settings: settings, callP2PSettings: callP2PSettings, callDataSaving: callDataSaving, callIntegrationEnabled: callIntegrationEnabled, phoneDiscoveryEnabled: phoneDiscoveryEnabled, hideReadTimeEnabled: hideReadTimeEnabled, disallowedGifts: disallowedGifts, showGiftButton: showGiftButton)
+            let settingsToApply = AppliedSettings(settings: settings, callP2PSettings: callP2PSettings, callDataSaving: callDataSaving, callIntegrationEnabled: callIntegrationEnabled, callShowInRecents: callShowInRecents, phoneDiscoveryEnabled: phoneDiscoveryEnabled, hideReadTimeEnabled: hideReadTimeEnabled, disallowedGifts: disallowedGifts, showGiftButton: showGiftButton)
             if appliedSettings == settingsToApply {
                 return
             }
@@ -1893,7 +1946,7 @@ public func selectivePrivacySettingsController(
             } else if case .presence = kind {
                 updated(settings, nil, phoneDiscoveryEnabled, updatedGlobalSettings)
             } else if case .voiceCalls = kind, let dataSaving = callDataSaving, let callP2PSettings = callP2PSettings, let systemIntegrationEnabled = callIntegrationEnabled {
-                updated(settings, (callP2PSettings, VoiceCallSettings(dataSaving: dataSaving, enableSystemIntegration: systemIntegrationEnabled)), phoneDiscoveryEnabled, nil)
+                updated(settings, (callP2PSettings, VoiceCallSettings(dataSaving: dataSaving, enableSystemIntegration: systemIntegrationEnabled, showCallsInRecents: callShowInRecents ?? true)), phoneDiscoveryEnabled, nil)
             } else {
                 updated(settings, nil, phoneDiscoveryEnabled, nil)
             }

@@ -49,6 +49,12 @@ load("//build-system/bazel-utils:plist_fragment.bzl",
     "plist_fragment",
 )
 
+load("//Telegram:entitlements.bzl",
+    "enhanced_security_fragment",
+    "enhanced_security_restrictions_fragment",
+    "extension_entitlements",
+)
+
 load(
     "@build_configuration//:variables.bzl",
     "telegram_bazel_path",
@@ -101,6 +107,32 @@ config_setting(
     name = "disableProvisioningProfilesSetting",
     flag_values = {
         ":disableProvisioningProfiles": "True",
+    },
+)
+
+bool_flag(
+    name = "enhancedSecurity",
+    build_setting_default = False,
+    visibility = ["//visibility:public"],
+)
+
+bool_flag(
+    name = "enhancedSecurityRestrictions",
+    build_setting_default = False,
+    visibility = ["//visibility:public"],
+)
+
+config_setting(
+    name = "enhancedSecuritySetting",
+    flag_values = {
+        ":enhancedSecurity": "True",
+    },
+)
+
+config_setting(
+    name = "enhancedSecurityRestrictionsSetting",
+    flag_values = {
+        ":enhancedSecurityRestrictions": "True",
     },
 )
 
@@ -603,6 +635,18 @@ official_background_gpu_fragment = """
 """
 background_gpu_fragment = official_background_gpu_fragment if telegram_bundle_id == "ph.telegra.Telegraph" else ""
 
+# Apple's Enhanced Security entitlements (memory tagging in soft mode, i.e. simulated crashes instead of kills).
+# Off by default: the App ID needs the Enhanced Security capability and a regenerated provisioning profile first,
+# otherwise signing fails. Enable with --//Telegram:enhancedSecurity; the dyld-ro and platform-restrictions pair
+# has no soft mode and is a separate opt-in, --//Telegram:enhancedSecurityRestrictions.
+enhanced_security_select = select({
+    ":enhancedSecuritySetting": enhanced_security_fragment(),
+    "//conditions:default": "",
+}) + select({
+    ":enhancedSecurityRestrictionsSetting": enhanced_security_restrictions_fragment(),
+    "//conditions:default": "",
+})
+
 plist_fragment(
     name = "TelegramEntitlements",
     extension = "entitlements",
@@ -619,7 +663,7 @@ plist_fragment(
         notification_filtering_fragment,
         signin_fragment,
         background_gpu_fragment,
-    ])
+    ]) + enhanced_security_select,
 )
 
 genrule(
@@ -1158,12 +1202,7 @@ swift_library(
 plist_fragment(
     name = "ShareExtensionEntitlements",
     extension = "entitlements",
-    template = """
-<key>com.apple.security.application-groups</key>
-<array>
-    <string>group.{telegram_bundle_id}</string>
-</array>
-""".format(telegram_bundle_id = telegram_bundle_id),
+    template = extension_entitlements(telegram_team_id, telegram_bundle_id, "Share") + enhanced_security_select,
 )
 
 ios_extension(
@@ -1271,8 +1310,15 @@ genrule(
     ]
 )
 
+plist_fragment(
+    name = "WidgetEntitlements",
+    extension = "entitlements",
+    template = extension_entitlements(telegram_team_id, telegram_bundle_id, "Widget"),
+)
+
 ios_extension(
     name = "WidgetExtension",
+    entitlements = ":WidgetEntitlements.entitlements",
     bundle_id = "{telegram_bundle_id}.Widget".format(
         telegram_bundle_id = telegram_bundle_id,
     ),
@@ -1450,8 +1496,15 @@ ios_unit_test(
     ]
 )'''
 
+plist_fragment(
+    name = "IntentsEntitlements",
+    extension = "entitlements",
+    template = extension_entitlements(telegram_team_id, telegram_bundle_id, "SiriIntents"),
+)
+
 ios_extension(
     name = "IntentsExtension",
+    entitlements = ":IntentsEntitlements.entitlements",
     bundle_id = "{telegram_bundle_id}.SiriIntents".format(
         telegram_bundle_id = telegram_bundle_id,
     ),
@@ -1545,8 +1598,15 @@ swift_library(
     ]
 )'''
 
+plist_fragment(
+    name = "BroadcastUploadEntitlements",
+    extension = "entitlements",
+    template = extension_entitlements(telegram_team_id, telegram_bundle_id, "BroadcastUpload"),
+)
+
 ios_extension(
     name = "BroadcastUploadExtension",
+    entitlements = ":BroadcastUploadEntitlements.entitlements",
     bundle_id = "{telegram_bundle_id}.BroadcastUpload".format(
         telegram_bundle_id = telegram_bundle_id,
     ),
@@ -1610,8 +1670,20 @@ plist_fragment(
     )
 )
 
+plist_fragment(
+    name = "NotificationServiceEntitlements",
+    extension = "entitlements",
+    template = extension_entitlements(
+        telegram_team_id,
+        telegram_bundle_id,
+        "NotificationService",
+        extras = [notification_filtering_fragment],
+    ) + enhanced_security_select,
+)
+
 ios_extension(
     name = "NotificationServiceExtension" + notificationServiceExtensionVersion,
+    entitlements = ":NotificationServiceEntitlements.entitlements",
     bundle_id = "{telegram_bundle_id}.NotificationService".format(
         telegram_bundle_id = telegram_bundle_id,
     ),
