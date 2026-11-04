@@ -53,6 +53,16 @@ common --experimental_repository_cache_hardlinks
 # the critical path, ahead of every Swift module that depends on WalletContext.
 build --host_compilation_mode=fastbuild
 
+# --- Memory-safety hardening for the C, C++ and Objective-C we compile (target configuration only) ----------------
+# Automatic variables start zeroed instead of holding stale stack bytes; libc++ traps on out-of-bounds container
+# access and invalid ranges in constant time; every function with a local array or address-taken local gets a
+# stack canary. Assembly files are unaffected. The Mac app sets the same three in nanogram/Nanogram.xcconfig.
+# Libraries built by their own scripts (FFmpeg, dav1d, libvpx, opus, libwebp, libjpeg-turbo) take their flags from
+# those scripts, not from here.
+build --copt=-ftrivial-auto-var-init=zero
+build --copt=-D_LIBCPP_HARDENING_MODE=_LIBCPP_HARDENING_MODE_FAST
+build --copt=-fstack-protector-strong
+
 # apple_support's layering check is a beta lint that is on by default. It does not
 # change any output, and generating its module maps took ~30 s at the very start
 # of every cold build (on the critical path).
