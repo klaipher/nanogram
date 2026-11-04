@@ -20,6 +20,13 @@
 
 @end
 
+NSTimeInterval MTTimerLeewaySeconds(NSTimeInterval timeout) {
+    if (!(timeout >= 1.0)) {
+        return 0.0;
+    }
+    return MIN(timeout * 0.1, 1.0);
+}
+
 @implementation MTTimer
 
 - (id)initWithTimeout:(NSTimeInterval)timeout repeat:(bool)repeat completion:(dispatch_block_t)completion queue:(dispatch_queue_t)queue
@@ -65,7 +72,7 @@
     _timeoutDate = CFAbsoluteTimeGetCurrent() + kCFAbsoluteTimeIntervalSince1970 + _timeout;
     
     _timer = dispatch_source_create(DISPATCH_SOURCE_TYPE_TIMER, 0, 0, _queue);
-    dispatch_source_set_timer(_timer, dispatch_time(DISPATCH_TIME_NOW, (int64_t)(_timeout * NSEC_PER_SEC)), _repeat ? (int64_t)(_timeout * NSEC_PER_SEC) : DISPATCH_TIME_FOREVER, 0);
+    dispatch_source_set_timer(_timer, dispatch_time(DISPATCH_TIME_NOW, (int64_t)(_timeout * NSEC_PER_SEC)), _repeat ? (int64_t)(_timeout * NSEC_PER_SEC) : DISPATCH_TIME_FOREVER, (uint64_t)(MTTimerLeewaySeconds(_timeout) * NSEC_PER_SEC));
     
     dispatch_source_set_event_handler(_timer, ^
     {
