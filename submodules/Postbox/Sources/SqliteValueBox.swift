@@ -1967,7 +1967,7 @@ public final class SqliteValueBox: ValueBox {
         precondition(self.queue.isCurrent())
         var result = false
         if let _ = self.tables[table.id], let statement = self.existsStatement(table, key: key) {
-            result = statement.step(handle: self.database.handle, pathToRemoveOnError: self.pathToRemoveOnError)
+            result = statement.step(handle: self.database.handle, pathToRemoveOnError: self.pathToRemoveOnError, mayTrap: self.mayTrap)
             statement.reset()
         }
         withExtendedLifetime(key, {})
