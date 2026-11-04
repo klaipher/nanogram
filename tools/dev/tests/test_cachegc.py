@@ -245,8 +245,8 @@ class Execute(unittest.TestCase):
 class PolicyFile(unittest.TestCase):
     def test_policy_is_consistent(self):
         data = json.loads(gc.POLICY_FILE.read_text())
-        self.assertEqual(data["caps_gb"]["bazel_disk_cache"], 30)
-        self.assertEqual(data["bazel_disk_cache_gc"]["max_size"], "30G")
+        self.assertEqual(data["caps_gb"]["bazel_disk_cache"], 20)
+        self.assertEqual(data["bazel_disk_cache_gc"]["max_size"], "20G")
         self.assertIn("launch-home", data["protected_names"])
         self.assertGreaterEqual(data["keep_unreleased_builds"], 1)
         self.assertNotIn("schedule", json.dumps(data).replace("schedule, the", ""))
