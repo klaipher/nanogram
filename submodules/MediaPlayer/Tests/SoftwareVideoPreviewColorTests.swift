@@ -79,6 +79,7 @@ private func centerPixelInSRGB(_ image: CGImage) -> (Int, Int, Int) {
 }
 
 final class SoftwareVideoPreviewColorTests: XCTestCase {
+#if os(macOS)
     func testRenderedPreviewIsTaggedSRGBAndKeepsItsColour() throws {
         let path = try writeSolidColorH264(red: 191, green: 0, blue: 0, width: 320, height: 240)
         defer {
@@ -93,6 +94,7 @@ final class SoftwareVideoPreviewColorTests: XCTestCase {
         XCTAssertEqual(g, 0, accuracy: 8)
         XCTAssertEqual(b, 0, accuracy: 8)
     }
+#endif
 
     private func formatDescription(extensions: [CFString: Any]) throws -> CMVideoFormatDescription {
         var description: CMVideoFormatDescription?
