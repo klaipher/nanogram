@@ -1,6 +1,7 @@
 import Foundation
 import UIKit
 import SwiftSignalKit
+import GameController
 
 // iPad system-API decisions from the iPadOS 27 audit (2026-11-03). Like `TabletLayoutRules.swift`, they are pure
 // functions so that the upstream call sites change by a call each and the decisions are unit-tested
@@ -232,4 +233,43 @@ public func wallpaperPatternKeepsStretchedImage(isLiveResizing: Bool, hasImage: 
 /// runs, and never on copy-protected media (no-forwards chats, secret chats), whose text must not be copyable.
 public func galleryUsesSystemLiveText(deviceType: DeviceType, isSupported: Bool, isContentProtected: Bool) -> Bool {
     return deviceType == .tablet && isSupported && !isContentProtected
+}
+
+// MARK: - iPad keyboard (2026-11-04)
+
+/// Whether a physical keyboard is connected (Smart Keyboard, Magic Keyboard, Bluetooth). With one, the iPad shows
+/// no on-screen keyboard, only the shortcuts bar.
+public func hardwareKeyboardIsConnected() -> Bool {
+    return GCKeyboard.coalesced != nil
+}
+
+/// Whether opening a chat from the chat list may put the cursor in the message field. Upstream asks for it on
+/// every row tap; on an iPhone that is invisible, but on an iPad the chat is already laid out beside the list,
+/// the field takes focus at once and the on-screen keyboard fills the lower half of the screen. On an iPad it is
+/// allowed only with a hardware keyboard (typing starts straight away, nothing is covered). Phones are upstream.
+public func shouldActivateInputOnChatOpen(requested: Bool, deviceType: DeviceType, hasHardwareKeyboard: Bool) -> Bool {
+    guard requested else {
+        return false
+    }
+    switch deviceType {
+    case .tablet:
+        return hasHardwareKeyboard
+    case .phone:
+        return true
+    }
+}
+
+/// Whether the user's finger dragging the message history dismisses the keyboard. The window's interactive
+/// keyboard gesture is a phone-only gesture (`Window1`), so on an iPad the drag itself dismisses the on-screen
+/// keyboard. Not with a hardware keyboard (the field stays ready for typing) and not when nothing is focused.
+public func shouldDismissKeyboardOnHistoryDrag(deviceType: DeviceType, textInputIsFocused: Bool, hasHardwareKeyboard: Bool) -> Bool {
+    guard textInputIsFocused else {
+        return false
+    }
+    switch deviceType {
+    case .tablet:
+        return !hasHardwareKeyboard
+    case .phone:
+        return false
+    }
 }

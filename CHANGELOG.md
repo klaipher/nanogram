@@ -10,6 +10,11 @@ Newest first. Internal notes for each TestFlight build; testers see the What to 
 - Settings > Appearance > App Icon lists Sphere first and selected by default (`NanogramSphere`, previews in `NanogramSphere.alticon` from `AlternateIconSources/NanogramSphere.svg` via `render.swift`); the Comet is a normal alternate now. The watch app icon is re-rendered from the same SVG (`render-app-icon.swift`).
 - Policy test `tools/dev/tests/test_app_icon.py`.
 
+### iPad keyboard
+- **Opening a chat on iPad no longer raises the on-screen keyboard.** Every row tap in the chat list asks the chat to focus its input (`peerSelected(..., activateInput: true)` in ChatListNode, upstream behaviour). On iPhone that is invisible; on iPad the chat is already laid out beside the list, so the field took focus at once. `shouldActivateInputOnChatOpen` (Display `TabletSystemRules.swift`) now lets an iPad focus only with a hardware keyboard (`GCKeyboard.coalesced`); iPhone stays upstream. Wired in `ChatListController` where the row tap navigates.
+- **Dragging the message history dismisses the iPad keyboard** (`shouldDismissKeyboardOnHistoryDrag`, new `ChatHistoryListNode.beganUserDragging`): the window's interactive keyboard gesture is phone-only (`Window1`, `recognizer.isEnabled = type == .phone`), so on iPad only the tap dismissed it. Not with a hardware keyboard. Tap on the history and the keyboard's dismiss key already worked (end of editing resets the input mode to `.none`).
+- Unit tests in `TabletSystemRulesTests`. Not verified in an iPad simulator (none installed) or with a Bazel run (no signing password in the worktree).
+
 ## 13.1.2 (202611041250) — 2026-11-04 — daac83e2
 
 Uploaded to TestFlight; What to Test notes set by `tg testflight` after processing. dSYMs: ~/Library/Application Support/Nanogram/dsyms/202611041250.

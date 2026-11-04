@@ -5589,6 +5589,18 @@ extension ChatControllerImpl {
             }
         }
         
+        // Nanogram: the iPad's window-level interactive keyboard gesture is off (Window1), so a drag on the history
+        // dismisses the on-screen keyboard instead (TabletSystemRules.swift).
+        historyNode.beganUserDragging = { [weak self] in
+            guard let self, self.isNodeLoaded else {
+                return
+            }
+            let deviceType = self.validLayout?.deviceMetrics.type ?? (UIDevice.current.userInterfaceIdiom == .pad ? .tablet : .phone)
+            if shouldDismissKeyboardOnHistoryDrag(deviceType: deviceType, textInputIsFocused: self.chatDisplayNode.isInputViewFocused, hasHardwareKeyboard: hardwareKeyboardIsConnected()) {
+                self.chatDisplayNode.dismissInput()
+            }
+        }
+        
         historyNode.beganDragging = { [weak self] in
             guard let self else {
                 return

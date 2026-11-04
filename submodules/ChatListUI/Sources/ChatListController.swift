@@ -1505,7 +1505,7 @@ public class ChatListControllerImpl: TelegramBaseController, ChatListController 
                             context: self.context,
                             chatLocation: chatLocation,
                             subject: subject,
-                            activateInput: (activateInput && !peer.isDeleted) ? .text : nil,
+                            activateInput: shouldActivateInputOnChatOpen(requested: activateInput && !peer.isDeleted, deviceType: self.validLayout?.deviceMetrics.type ?? (UIDevice.current.userInterfaceIdiom == .pad ? .tablet : .phone), hasHardwareKeyboard: hardwareKeyboardIsConnected()) ? .text : nil, // Nanogram: no on-screen keyboard on iPad (TabletSystemRules.swift)
                             scrollToEndIfExists: scrollToEndIfExists,
                             animated: !scrollToEndIfExists,
                             options: navigationAnimationOptions,

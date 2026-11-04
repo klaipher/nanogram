@@ -678,6 +678,8 @@ public final class ChatHistoryListNodeImpl: ASDisplayNode, ChatHistoryNode, Chat
     var scrolledToIndex: ((MessageHistoryScrollToSubject, Bool) -> Void)?
     var scrolledToSomeIndex: (() -> Void)?
     var beganDragging: (() -> Void)?
+    /// The user's finger started dragging the history (not a programmatic scroll). Nanogram: iPad keyboard dismissal.
+    var beganUserDragging: (() -> Void)?
     
     private let hasVisiblePlayableItemNodesPromise = ValuePromise<Bool>(false, ignoreRepeated: true)
     var hasVisiblePlayableItemNodes: Signal<Bool, NoError> {
@@ -1263,6 +1265,7 @@ public final class ChatHistoryListNodeImpl: ASDisplayNode, ChatHistoryNode, Chat
             self.isInteractivelyScrollingPromise.set(true)
             //self.pinToTopStableId = nil
             self.beganDragging?()
+            self.beganUserDragging?()
         }
 
         self.endedInteractiveDragging = { [weak self] _ in

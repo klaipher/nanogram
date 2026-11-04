@@ -198,4 +198,40 @@ final class TabletSystemRulesTests: XCTestCase {
         // Copy-protected media (no forwards, secret chats) must not offer copying its text.
         XCTAssertFalse(galleryUsesSystemLiveText(deviceType: .tablet, isSupported: true, isContentProtected: true))
     }
+
+    // MARK: iPad keyboard
+
+    func test_openChat_tablet_noHardwareKeyboard_doesNotFocus() {
+        XCTAssertFalse(shouldActivateInputOnChatOpen(requested: true, deviceType: .tablet, hasHardwareKeyboard: false))
+    }
+
+    func test_openChat_tablet_hardwareKeyboard_focuses() {
+        XCTAssertTrue(shouldActivateInputOnChatOpen(requested: true, deviceType: .tablet, hasHardwareKeyboard: true))
+    }
+
+    func test_openChat_notRequested_neverFocuses() {
+        XCTAssertFalse(shouldActivateInputOnChatOpen(requested: false, deviceType: .tablet, hasHardwareKeyboard: true))
+        XCTAssertFalse(shouldActivateInputOnChatOpen(requested: false, deviceType: .phone, hasHardwareKeyboard: false))
+    }
+
+    func test_openChat_phone_isUpstream() {
+        XCTAssertTrue(shouldActivateInputOnChatOpen(requested: true, deviceType: .phone, hasHardwareKeyboard: false))
+        XCTAssertTrue(shouldActivateInputOnChatOpen(requested: true, deviceType: .phone, hasHardwareKeyboard: true))
+    }
+
+    func test_historyDrag_tablet_softwareKeyboard_dismisses() {
+        XCTAssertTrue(shouldDismissKeyboardOnHistoryDrag(deviceType: .tablet, textInputIsFocused: true, hasHardwareKeyboard: false))
+    }
+
+    func test_historyDrag_tablet_hardwareKeyboard_keepsFocus() {
+        XCTAssertFalse(shouldDismissKeyboardOnHistoryDrag(deviceType: .tablet, textInputIsFocused: true, hasHardwareKeyboard: true))
+    }
+
+    func test_historyDrag_nothingFocused_doesNothing() {
+        XCTAssertFalse(shouldDismissKeyboardOnHistoryDrag(deviceType: .tablet, textInputIsFocused: false, hasHardwareKeyboard: false))
+    }
+
+    func test_historyDrag_phone_leavesItToTheWindowGesture() {
+        XCTAssertFalse(shouldDismissKeyboardOnHistoryDrag(deviceType: .phone, textInputIsFocused: true, hasHardwareKeyboard: false))
+    }
 }
