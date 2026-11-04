@@ -3,6 +3,8 @@
 Guidance for coding agents working in this repository. The project guide is [`CLAUDE.md`](CLAUDE.md): how to build,
 which simulators to use, how to drive them (XcodeBuildMCP) and the invariants of each subsystem. Read it first.
 
+Which features exist on iOS, on the Mac and in official Telegram, and what is still open, is in [`docs/feature-parity.md`](docs/feature-parity.md) (identical in both repos; update the matching row when a feature lands).
+
 ## Visual features and animations: judge them from recorded frames
 
 A green build and passing unit tests say nothing about how a change looks or moves. For any visual change, and always
