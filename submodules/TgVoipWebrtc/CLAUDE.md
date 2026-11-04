@@ -724,9 +724,10 @@ rules: local only, nothing on the wire. Decisions are in `tgcalls/AudioCallPolic
 - The former **`callsOpusFirstLossFloor`** switch was removed: `WebRTC-Audio-OpusMinPacketLossRate` is read nowhere in
   `third-party/webrtc` (the same string in `GroupInstanceCustomImpl.cpp` and `MediaManager.cpp` is upstream and equally dead),
   so the switch changed nothing. Do not re-add it without a real encoder-side floor (`SetProjectedPacketLossRate`).
-- **`callsKeepSessionMode`** (OFF): `RTCAudioSession+Configuration.mm` no longer replaces the videoChat mode that
-  `ManagedAudioSession` set for a video call with the engine's default voiceChat (`chooseAudioSessionMode`). The
-  preferred-channel-count step also runs for videoChat in that case.
+- The former **`callsKeepSessionMode`** switch was removed with its code (owner decision, 2026-11-04):
+  `RTCAudioSession+Configuration.mm` is upstream again, so the engine's voiceChat mode is applied as before. Thread
+  priorities (QoS), the 32 kHz processing rate, the Opus complexity and the Mac audio workgroup were removed the same
+  way. Do not re-add them as switches.
 
 **A voice-processing failure after the options were chosen** (`SoftwareNoiseSuppressionFallback.h`): the channel drops
 the software stage before the audio unit starts, so a unit that then fails would leave that call with no noise suppression
@@ -756,5 +757,5 @@ comes from a peak detector and RNNoise does not run; `tests/group_audio/run.sh` 
 - **Thermal ladder reaches the camera** (`CallPowerPolicy.h`, `thermalCameraFpsCap`; `VideoCapturerInterface::setMaximumFrameRate`):
   from level 2 the camera runs at the ladder's 20/15 fps instead of only the adapter dropping frames (uneven at 30 to 20).
   Group video calls bind the governor too (`PresentationGroupCall`). Low Power Mode alone is level 1 and changes nothing.
-- **Thread QoS** is a latency experiment, not a power one: user-initiated QoS biases the threads toward performance cores. Judge
-  it by energy in the Power Profiler, not by glitches alone.
+- **Thread QoS** was removed (owner decision, 2026-11-04): the engine threads keep the system default class
+  (`StaticThreads.cpp` is upstream).

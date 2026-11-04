@@ -901,8 +901,7 @@ public final class OngoingCallContext {
     }
 
     /// Local-only call power switches from Debug Settings (same rules as the video and audio ones).
-    public static func applyPowerExperiments(threadQoS: Bool, thermalVideoLadder: Bool) {
-        OngoingCallThreadLocalContextWebrtc.setThreadQoS(threadQoS)
+    public static func applyPowerExperiments(thermalVideoLadder: Bool) {
         OngoingCallThreadLocalContextWebrtc.setThermalVideoLadder(thermalVideoLadder)
     }
 

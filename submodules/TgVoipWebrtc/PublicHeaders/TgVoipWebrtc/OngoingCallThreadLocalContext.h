@@ -289,7 +289,6 @@ typedef NS_ENUM(int32_t, OngoingCallDataSavingWebrtc) {
 + (void)setNativeCapturePath:(bool)enabled;
 
 /// Local-only power switches (Debug Settings). Same rules.
-+ (void)setThreadQoS:(bool)enabled;
 + (void)setThermalVideoLadder:(bool)enabled;
 /// Runtime state (the drop of background video is always on): the app is in the background and Picture in
 /// Picture is not showing the incoming video.

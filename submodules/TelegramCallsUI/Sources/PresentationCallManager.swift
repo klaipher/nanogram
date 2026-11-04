@@ -152,7 +152,6 @@ public final class PresentationCallManagerImpl: PresentationCallManager {
                 groupNoiseMode: settings.callsGroupNoiseMode
             )
             OngoingCallContext.applyPowerExperiments(
-                threadQoS: settings.callsThreadQoS,
                 thermalVideoLadder: settings.callsThermalVideoLadder
             )
             CallBackgroundVideoGate.shared.start()

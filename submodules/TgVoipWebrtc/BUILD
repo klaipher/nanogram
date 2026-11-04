@@ -464,7 +464,7 @@ policy_cc_test(
     headers = ["VideoPlaneLayout.h"],
 )
 
-# Which codecs a legacy (v1) call offers on Apple devices (H.264 hardware encoder on arm64).
+# Which codecs a legacy (v1) call offers on Apple devices (the upstream rule: H.264 only on x86_64).
 policy_cc_test(
     name = "darwin_codec_support_test",
     src = "tgcalls/tests/darwin_codec_support/DarwinCodecSupportTests.cpp",

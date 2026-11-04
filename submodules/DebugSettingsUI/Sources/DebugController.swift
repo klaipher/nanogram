@@ -316,7 +316,6 @@ enum DebugControllerEntry: ItemListNodeEntry {
     case callsSystemNoiseSuppression(Bool)
     case callsAdvancedDucking(Bool)
     case callsGroupNoiseMode(Int32)
-    case callsThreadQoS(Bool)
     case callsThermalVideoLadder(Bool)
     case enableNetworkFramework(Bool)
     case enableNetworkExperiments(Bool)
@@ -343,7 +342,7 @@ enum DebugControllerEntry: ItemListNodeEntry {
             return DebugControllerSection.experiments.rawValue
         case .compressedEmojiCache, .checkSerializedData, .enableQuickReactionSwitch, .fakeGlass, .inputDecEngineEditor, .forceListViewImplChatBackend, .forceRLottieBackend, .respectSystemMicrophone, .videoMessageCameraMode, .videoMessageCloseFocus, .videoMessageCameraMatrix, .liveStreamV2, .groupCallReferenceEngine:
             return DebugControllerSection.experiments.rawValue
-        case .callsHeader, .callsLivestreamHardwareDecoding, .callsNativeCapturePath, .callsSystemNoiseSuppression, .callsAdvancedDucking, .callsGroupNoiseMode, .callsThreadQoS, .callsThermalVideoLadder:
+        case .callsHeader, .callsLivestreamHardwareDecoding, .callsNativeCapturePath, .callsSystemNoiseSuppression, .callsAdvancedDucking, .callsGroupNoiseMode, .callsThermalVideoLadder:
             return DebugControllerSection.streamsAndCalls.rawValue
         case .springSendAnimation, .fakeWalletTransfers, .stickerRendererMode, .disableImageContentAnalysis, .disableLanguageRecognition, .localTranscription, .enableVoipTcp, .tabletDisplayLinkFrameRateCap:
             return DebugControllerSection.experiments.rawValue
@@ -457,8 +456,6 @@ enum DebugControllerEntry: ItemListNodeEntry {
             return 94
         case .callsGroupNoiseMode:
             return 95
-        case .callsThreadQoS:
-            return 96
         case .callsThermalVideoLadder:
             return 97
         case .springSendAnimation:
@@ -1043,14 +1040,6 @@ enum DebugControllerEntry: ItemListNodeEntry {
                 ])
                 arguments.presentController(actionSheet, nil)
             })
-        case let .callsThreadQoS(value):
-            return ItemListSwitchItem(presentationData: presentationData, systemStyle: .glass, title: "Thread priorities", text: "Call threads get a higher system priority. Judge it by energy use, not by glitches. Default: off. Applies at once.", value: value, maximumNumberOfLines: 0, sectionId: self.section, style: .blocks, updated: { value in
-                let _ = updateExperimentalUISettingsInteractively(accountManager: arguments.sharedContext.accountManager, { settings in
-                    var settings = settings
-                    settings.callsThreadQoS = value
-                    return settings
-                }).start()
-            })
         case let .callsThermalVideoLadder(value):
             return ItemListSwitchItem(presentationData: presentationData, systemStyle: .glass, title: "Thermal video limits", text: "When the phone is hot, the outgoing camera video gets smaller and slower. Default: off. Applies at once.", value: value, maximumNumberOfLines: 0, sectionId: self.section, style: .blocks, updated: { value in
                 let _ = updateExperimentalUISettingsInteractively(accountManager: arguments.sharedContext.accountManager, { settings in
@@ -1241,7 +1230,6 @@ func debugControllerEntries(environment: DebugControllerEntriesEnvironment, them
         entries.append(.callsSystemNoiseSuppression(experimentalSettings.callsSystemNoiseSuppression))
         entries.append(.callsAdvancedDucking(experimentalSettings.callsAdvancedDucking))
         entries.append(.callsGroupNoiseMode(experimentalSettings.callsGroupNoiseMode))
-        entries.append(.callsThreadQoS(experimentalSettings.callsThreadQoS))
         entries.append(.callsThermalVideoLadder(experimentalSettings.callsThermalVideoLadder))
     }
 

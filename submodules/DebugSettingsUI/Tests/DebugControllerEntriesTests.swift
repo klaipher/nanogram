@@ -156,10 +156,31 @@ final class ExperimentalUISettingsCompatibilityTests: XCTestCase {
         XCTAssertFalse(settings.forceListViewImplChatBackend)
     }
 
-    func testCircleCloseFocusIsOffByDefaultAndInOldBlobs() throws {
-        XCTAssertFalse(ExperimentalUISettings.defaultSettings.videoMessageCloseFocus)
+    func testCircleCloseFocusIsOnByDefaultAndInOldBlobs() throws {
+        XCTAssertTrue(ExperimentalUISettings.defaultSettings.videoMessageCloseFocus)
         let settings = try EngineDecoder.decode(ExperimentalUISettings.self, from: try EngineEncoder.encode(OldSettings()))
-        XCTAssertFalse(settings.videoMessageCloseFocus)
+        XCTAssertTrue(settings.videoMessageCloseFocus)
+    }
+
+    private struct CloseFocusOffUnderOldKey: Encodable {
+        func encode(to encoder: Encoder) throws {
+            var container = encoder.container(keyedBy: StringCodingKey.self)
+            try container.encode(false, forKey: "videoMessageCloseFocus")
+        }
+    }
+
+    // Every saved blob from before the default flipped stores `false` under the old key, whether or not the
+    // user ever touched the switch, so that value is ignored and the switch turns on once for everyone.
+    func testCircleCloseFocusTurnsOnOnceForSettingsSavedWhileItWasOffByDefault() throws {
+        let settings = try EngineDecoder.decode(ExperimentalUISettings.self, from: try EngineEncoder.encode(CloseFocusOffUnderOldKey()))
+        XCTAssertTrue(settings.videoMessageCloseFocus)
+    }
+
+    func testCircleCloseFocusTurnedOffAfterTheFlipStaysOff() throws {
+        var settings = ExperimentalUISettings.defaultSettings
+        settings.videoMessageCloseFocus = false
+        let decoded = try EngineDecoder.decode(ExperimentalUISettings.self, from: try EngineEncoder.encode(settings))
+        XCTAssertFalse(decoded.videoMessageCloseFocus)
     }
 
     func testCircleColourDecodeDefaultsToBT709AndInOldBlobs() throws {
@@ -172,7 +193,7 @@ final class ExperimentalUISettingsCompatibilityTests: XCTestCase {
         var settings = ExperimentalUISettings.defaultSettings
         settings.forceListViewImplChatBackend = true
         settings.enableVoipTcp = true
-        settings.videoMessageCloseFocus = true
+        settings.videoMessageCloseFocus = false
         settings.videoMessageCameraMatrix = .cameraTag
         let decoded = try EngineDecoder.decode(ExperimentalUISettings.self, from: try EngineEncoder.encode(settings))
         XCTAssertEqual(decoded, settings)

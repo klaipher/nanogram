@@ -63,7 +63,7 @@ public struct ExperimentalUISettings: Codable, Equatable {
     public var showCrashReportAlerts: Bool?
     public var useModernVideoMessagePipeline: Bool?
     public var videoMessageCameraMode: VideoMessageCameraMode
-    /// Debug Settings ▸ "Circle Close Focus (Macro)". Off by default. The round-video camera (CameraNeo) opens
+    /// Debug Settings ▸ "Circle Close Focus (Macro)". On by default. The round-video camera (CameraNeo) opens
     /// the back camera as a virtual device with the ultra-wide, so iOS can switch to it for close subjects,
     /// with the 1x framing kept (`Camera.RoundVideoCloseFocus`). Read when the camera screen opens.
     public var videoMessageCloseFocus: Bool
@@ -86,10 +86,6 @@ public struct ExperimentalUISettings: Codable, Equatable {
     /// Debug Settings ▸ "Calls: advanced ducking". Off by default (no device evidence yet). iOS 17+: the voice-processing unit lowers
     /// other audio only while someone speaks and by the smallest amount. Local audio-unit setting.
     public var callsAdvancedDucking: Bool
-    /// Debug Settings ▸ "Calls: thread QoS". Off by default. The call engine's network, media and worker
-    /// threads run at user-initiated quality of service. Read when the engine threads are created, so a
-    /// change applies from the next app launch. Local only.
-    public var callsThreadQoS: Bool
     /// Debug Settings ▸ "Streams & Calls" ▸ "Group noise suppression". 0 (default) runs WebRTC's suppressor and
     /// RNNoise, 1 only WebRTC's, 2 only RNNoise. Local only; applies from the next group call.
     public var callsGroupNoiseMode: Int32
@@ -155,7 +151,7 @@ public struct ExperimentalUISettings: Codable, Equatable {
         videoMessageCameraMode: VideoMessageCameraMode = .hdBilinear,
         stickerRendererMode: StickerRendererMode = .gpuLarge,
         showCrashReportAlerts: Bool? = nil,
-        videoMessageCloseFocus: Bool = false,
+        videoMessageCloseFocus: Bool = true,
         videoMessageCameraMatrix: RoundVideoCameraMatrix = .bt709,
         tabletDisplayLinkFrameRateCap: Bool = false,
         callsLivestreamHardwareDecoding: Bool = false,
@@ -163,7 +159,6 @@ public struct ExperimentalUISettings: Codable, Equatable {
         callsSystemNoiseSuppression: Bool = false,
         callsAdvancedDucking: Bool = false,
         callsGroupNoiseMode: Int32 = 0,
-        callsThreadQoS: Bool = false,
         callsThermalVideoLadder: Bool = false
     ) {
         self.keepChatNavigationStack = keepChatNavigationStack
@@ -200,7 +195,6 @@ public struct ExperimentalUISettings: Codable, Equatable {
         self.callsSystemNoiseSuppression = callsSystemNoiseSuppression
         self.callsAdvancedDucking = callsAdvancedDucking
         self.callsGroupNoiseMode = callsGroupNoiseMode
-        self.callsThreadQoS = callsThreadQoS
         self.callsThermalVideoLadder = callsThermalVideoLadder
     }
     
@@ -241,11 +235,12 @@ public struct ExperimentalUISettings: Codable, Equatable {
         self.useModernVideoMessagePipeline = try container.decodeIfPresent(Bool.self, forKey: "useModernVideoMessagePipeline")
         self.videoMessageCameraMode = (try container.decodeIfPresent(String.self, forKey: "videoMessageCameraMode")).flatMap(VideoMessageCameraMode.init(rawValue:)) ?? .hdBilinear
         self.stickerRendererMode = (try container.decodeIfPresent(String.self, forKey: "stickerRendererMode")).flatMap(StickerRendererMode.init(rawValue:)) ?? .gpuLarge
-        self.videoMessageCloseFocus = try container.decodeIfPresent(Bool.self, forKey: "videoMessageCloseFocus") ?? false
+        // Stored under a new key since the default became on: every blob saved before that holds `false` under
+        // the old "videoMessageCloseFocus" key whether or not the user touched the switch, so it is ignored.
+        self.videoMessageCloseFocus = try container.decodeIfPresent(Bool.self, forKey: "videoMessageCloseFocusOn") ?? true
         // A new key: blobs saved before it existed (and unknown values) get the BT.709 default.
         self.videoMessageCameraMatrix = (try container.decodeIfPresent(String.self, forKey: "videoMessageCameraMatrix")).flatMap(RoundVideoCameraMatrix.init(rawValue:)) ?? .bt709
         self.tabletDisplayLinkFrameRateCap = try container.decodeIfPresent(Bool.self, forKey: "tabletDisplayLinkFrameRateCap") ?? false
-
         self.callsLivestreamHardwareDecoding = try container.decodeIfPresent(Bool.self, forKey: "callsLivestreamHardwareDecoding") ?? false
         self.callsNativeCapturePath = try container.decodeIfPresent(Bool.self, forKey: "callsNativeCapturePath") ?? false
         self.callsSystemNoiseSuppression = try container.decodeIfPresent(Bool.self, forKey: "callsSystemNoiseSuppression") ?? false
@@ -255,7 +250,6 @@ public struct ExperimentalUISettings: Codable, Equatable {
         // The keys of the removed switches (low-latency encoder, narrowband processing, keep audio mode, background video drop)
         // are simply no longer read: those behaviours are always on.
         self.callsGroupNoiseMode = try container.decodeIfPresent(Int32.self, forKey: "callsGroupNoiseMode") ?? 0
-        self.callsThreadQoS = try container.decodeIfPresent(Bool.self, forKey: "callsThreadQoS") ?? false
         self.callsThermalVideoLadder = try container.decodeIfPresent(Bool.self, forKey: "callsThermalVideoLadder") ?? false
 
         if savedDefaultsRevision < 1 {
@@ -296,7 +290,7 @@ public struct ExperimentalUISettings: Codable, Equatable {
         try container.encodeIfPresent(self.useModernVideoMessagePipeline, forKey: "useModernVideoMessagePipeline")
         try container.encode(self.videoMessageCameraMode.rawValue, forKey: "videoMessageCameraMode")
         try container.encode(self.stickerRendererMode.rawValue, forKey: "stickerRendererMode")
-        try container.encode(self.videoMessageCloseFocus, forKey: "videoMessageCloseFocus")
+        try container.encode(self.videoMessageCloseFocus, forKey: "videoMessageCloseFocusOn")
         try container.encode(self.videoMessageCameraMatrix.rawValue, forKey: "videoMessageCameraMatrix")
         try container.encode(self.tabletDisplayLinkFrameRateCap, forKey: "tabletDisplayLinkFrameRateCap")
         try container.encode(self.callsLivestreamHardwareDecoding, forKey: "callsLivestreamHardwareDecoding")
@@ -304,7 +298,6 @@ public struct ExperimentalUISettings: Codable, Equatable {
         try container.encode(self.callsSystemNoiseSuppression, forKey: "callsSystemNoiseSuppression")
         try container.encode(self.callsAdvancedDucking, forKey: "callsAdvancedDuckingOptIn")
         try container.encode(self.callsGroupNoiseMode, forKey: "callsGroupNoiseMode")
-        try container.encode(self.callsThreadQoS, forKey: "callsThreadQoS")
         try container.encode(self.callsThermalVideoLadder, forKey: "callsThermalVideoLadder")
         try container.encode(ExperimentalUISettings.nanogramDefaultsRevision, forKey: "nanogramDefaultsRevision")
     }

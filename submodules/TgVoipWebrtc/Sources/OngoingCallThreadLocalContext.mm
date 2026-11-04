@@ -1849,11 +1849,6 @@ static void (*InternalVoipLoggingFunction)(NSString *) = NULL;
     tgcalls::CallsRuntimeSwitches::setNativeCapturePath(enabled);
 }
 
-+ (void)setThreadQoS:(bool)enabled {
-    tgcalls::CallsRuntimeSwitches::setThreadQoS(enabled);
-    tgcalls::StaticThreads::applyQoS();
-}
-
 + (void)setThermalVideoLadder:(bool)enabled {
     tgcalls::CallsRuntimeSwitches::setThermalVideoLadder(enabled);
     tgcalls::VideoCaptureInterfaceImpl::reapplyOutputFormatForAll();
