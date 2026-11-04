@@ -2,6 +2,42 @@
 
 Newest first. Internal notes for each TestFlight build; testers see the What to Test notes instead.
 
+## 13.1.2 (202611041227) — 2026-11-04 — cc0f711f
+
+Uploaded to TestFlight (delivery 73d0861b-05a0-4cf4-849c-4630f2a25a22); What to Test notes set by `tg testflight` after processing. dSYMs: ~/Library/Application Support/Nanogram/dsyms/202611041227. The first attempt (202611041214) was built but not uploaded: the export is named Nanogram.ipa since the branding change, and the upload looked for Telegram.ipa (fixed in cc0f711f).
+Built from cc0f711f; the behaviour-neutral lint fixes in 57a3839a (no force unwraps in Postbox key compare and hex dump, NAL header length in UInt8, a named CF cast) came after and are not in this build.
+
+Changes since build 202611031553 (a449bd87): `git log a449bd87..cc0f711f` (169 commits). Private notes; not shown to testers.
+
+### Shared core with the Mac (core merge)
+- The Mac core (`mac/core`) is merged into `main`; Mac-only behaviour stays behind `#if os(macOS)` (48 kHz audio, AV1 decode threads, untagged frames, `nw_path_monitor`, ThreadPool QoS — the QoS mapping was briefly on iOS and is Mac-only again, 0e6cf57d). Ports that now run on iOS too: SQLite connections opened `NOMUTEX` (single-queue), share-extension 256-page cache, VACUUM never crashes and skips huge databases, FTS self-heal, cheap `exists()` (R2-38..43); 10-bit/HDR decode, passthrough colour from the stream's VUI (895eaaef), scrub and cached previews tagged sRGB instead of Display P3 (86064f5e via the merge); Ogg Opus resume continues the stream; local translation falls back to the server; history preload stops replaying once a chat has no hole.
+- WebRTC: 12 tg_owt security and crash fixes on `third-party/webrtc` (`klaipher/webrtc` branch `nanogram-security-fixes`, 2c6b83a); allow-list of the 7 differing seam files.
+- Parity gate (`tools/dev/parity`, `docs/mac-core-paths.txt`), shared native-library versions (`native-libs.json`), module settings table, shared cache cleanup (`tools/dev/cachegc`, Bazel disk cache cap 30 GB), pre-push hook; the hook now drops inherited `GIT_*` variables (3534f52c) after a push from a worktree turned the main checkout bare.
+- `.gitmodules`: webrtc from `klaipher/webrtc`, tgcalls tracks `nanogram-shared` (afdc8092).
+
+### Calls
+- tgcalls pinned to the merged `nanogram-shared` branch (54220d6c): one switch class `CallsRuntimeSwitches`, one Streams & Calls Debug Settings section, low-risk fixes always on; batch C (call screen stops drawing at rest, livestream render loop follows what plays, thermal video ladder, background video), group video frames outlive their command buffer and only visible tiles are requested, screen-share frames copied per plane; H.265 start bitrate and decoder/pool reset caps; legacy H.264 check fixed; review fixes (still screen keeps reaching the encoder, ducking off by default, request hysteresis).
+- Incoming call notifications: caller photo from `INStartCallIntent`, none while locked or with names hidden, call back from the right account and on the main queue; Phone Recents and Siri call back 64-bit ids as video when it was.
+
+### Sending, media and storage
+- Pending sends never wait forever on a missing thumbnail, transform or lost answer; failures go to the critical log.
+- HLS video writes each byte once; MediaBox and SQLite count their writes (`DiskWriteAccounting`, hourly and background reports); database writes stop before a background task ends (0xdead10cc).
+- GIFs: MPEG-4 Part 2 GIFs play instead of freezing; GIF tiles cover video stickers on the reused pixel-buffer path.
+- MultipartUpload 128 KB parts for small files and six in flight; FetchV2 adaptive window; TCP keepalive 30 s idle.
+- Wallet state requests back off and retry until the server answers.
+
+### iPad
+- Resizable chat-list column, window controls, minimum size, accent tint, text size, Live Text, translation and share anchors; in-app cameras keep running in Split View and Stage Manager; Power Saving follows the system (also on iPhone: heat, Low Power Mode, iOS 27 reduced resource usage); keyboard band and sticker panel fixes.
+
+### Extensions, privacy, branding
+- Share extension: attachments load as files, large videos no longer freeze share-to-story, failed sends reported, Send in HD.
+- Widgets hide text and counts while passcode-locked; Spotlight indexes no contacts while a passcode is set; Proxy no longer reads the clipboard; Location asks for Always only for live location.
+- Branding: Nanogram in Siri phrases, bundle names, language packs, QR login, welcome screen and calls; a lint keeps Telegram's name and logo out.
+- Voice messages: correct progress on the first play.
+
+### Tooling
+- `tg testflight` uploads the exported `.ipa` whatever its name (cc0f711f); Postbox TimeBasedCleanupTests wait for the database to open (bca4f362).
+
 ## 13.1.2 (202611031553) — 2026-11-03 — a449bd87
 
 Uploaded to TestFlight; App Store Connect processing: VALID; What to Test notes set. dSYMs: ~/Library/Application Support/Nanogram/dsyms/202611031553.
