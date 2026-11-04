@@ -22,6 +22,10 @@ let package = Package(
         .target(
             name: "RangeSet",
             dependencies: [],
-            path: "Sources")
+            path: "Sources"),
+        .testTarget(
+            name: "RangeSetTests",
+            dependencies: ["RangeSet"],
+            path: "Tests")
     ]
 )

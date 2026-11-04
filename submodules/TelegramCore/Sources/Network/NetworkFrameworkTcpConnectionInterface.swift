@@ -43,6 +43,16 @@ func configureNetworkFrameworkTcpOptions(_ tcpOptions: NWProtocolTCP.Options) {
 }
 
 @available(iOS 12.0, macOS 14.0, *)
+func configureNetworkFrameworkTcpOptions(_ tcpOptions: NWProtocolTCP.Options) {
+    tcpOptions.noDelay = true
+    tcpOptions.enableKeepalive = true
+    tcpOptions.keepaliveIdle = 30
+    tcpOptions.keepaliveCount = 3
+    tcpOptions.keepaliveInterval = 10
+    tcpOptions.enableFastOpen = true
+}
+
+@available(iOS 12.0, macOS 14.0, *)
 final class NetworkFrameworkTcpConnectionInterface: NSObject, MTTcpConnectionInterface {
     private struct ReadRequest {
         let length: Int

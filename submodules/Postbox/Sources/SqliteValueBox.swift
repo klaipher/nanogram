@@ -1564,7 +1564,7 @@ public final class SqliteValueBox: ValueBox {
         if let statement = self.existsStatements[table.id] {
             resultStatement = statement
         } else {
-            guard let preparedStatement = self.prepareStatement("SELECT rowid FROM t\(table.id) WHERE key=?") else {
+            guard let preparedStatement = self.prepareStatement("SELECT 1 FROM t\(table.id) WHERE key=?") else {
                 return nil
             }
             self.existsStatements[table.id] = preparedStatement
@@ -1992,6 +1992,7 @@ public final class SqliteValueBox: ValueBox {
     }
     
     public func readWrite(_ table: ValueBoxTable, key: ValueBoxKey, _ process: (Int, (UnsafeMutableRawPointer, Int, Int) -> Void, (UnsafeRawPointer, Int, Int) -> Void) -> Void) {
+        precondition(self.queue.isCurrent())
         if let _ = self.tables[table.id], let statement = self.getRowIdStatement(table, key: key) {
             
             if statement.step(handle: self.database.handle, pathToRemoveOnError: self.pathToRemoveOnError, mayTrap: self.mayTrap) {
@@ -2014,10 +2015,13 @@ public final class SqliteValueBox: ValueBox {
     
     public func exists(_ table: ValueBoxTable, key: ValueBoxKey) -> Bool {
         precondition(self.queue.isCurrent())
-        if let _ = self.get(table, key: key) {
-            return true
+        var result = false
+        if let _ = self.tables[table.id], let statement = self.existsStatement(table, key: key) {
+            result = statement.step(handle: self.database.handle, pathToRemoveOnError: self.pathToRemoveOnError, mayTrap: self.mayTrap)
+            statement.reset()
         }
-        return false
+        withExtendedLifetime(key, {})
+        return result
     }
     
     public func range(_ table: ValueBoxTable, start: ValueBoxKey, end: ValueBoxKey, values: (ValueBoxKey, ReadBuffer) -> Bool, limit: Int) {
@@ -2098,6 +2102,7 @@ public final class SqliteValueBox: ValueBox {
     // One query without LIMIT: rows are read lazily in key order, so returning false from the
     // callback ends the scan. A LIMIT query restarted from the last key seeked once per batch.
     public func filteredRange(_ table: ValueBoxTable, start: ValueBoxKey, end: ValueBoxKey, values: (ValueBoxKey, ReadBuffer) -> ValueBoxFilterResult, limit: Int) {
+        precondition(self.queue.isCurrent())
         var acceptedCount = 0
         self.range(table, start: start, end: end, values: { key, value in
             switch values(key, value) {
@@ -2113,6 +2118,7 @@ public final class SqliteValueBox: ValueBox {
     }
     
     public func filteredRange(_ table: ValueBoxTable, start: ValueBoxKey, end: ValueBoxKey, keys: (ValueBoxKey) -> ValueBoxFilterResult, limit: Int) {
+        precondition(self.queue.isCurrent())
         var acceptedCount = 0
         self.range(table, start: start, end: end, keys: { key in
             switch keys(key) {
@@ -2363,6 +2369,7 @@ public final class SqliteValueBox: ValueBox {
     }
     
     public func renameTable(_ table: ValueBoxTable, to toTable: ValueBoxTable) {
+        precondition(self.queue.isCurrent())
         guard let sqliteTable = self.checkTable(table) else {
             return
         }
@@ -2376,6 +2383,7 @@ public final class SqliteValueBox: ValueBox {
     }
     
     public func fullTextMatch(_ table: ValueBoxFullTextTable, collectionId: String?, query: String, tags: String?, values: (String, String) -> Bool) {
+        precondition(self.queue.isCurrent())
         if let _ = self.fullTextTables[table.id] {
             guard let queryData = query.data(using: .utf8) else {
                 return
@@ -2472,6 +2480,7 @@ public final class SqliteValueBox: ValueBox {
     }
     
     public func fullTextSet(_ table: ValueBoxFullTextTable, collectionId: String, itemId: String, contents: String, tags: String) {
+        precondition(self.queue.isCurrent())
         self.checkFullTextTable(table)
         
         guard let collectionIdData = collectionId.data(using: .utf8), let itemIdData = itemId.data(using: .utf8), let contentsData = contents.data(using: .utf8), let tagsData = tags.data(using: .utf8) else {
@@ -2484,6 +2493,7 @@ public final class SqliteValueBox: ValueBox {
     }
     
     public func fullTextRemove(_ table: ValueBoxFullTextTable, itemId: String, secure: Bool) {
+        precondition(self.queue.isCurrent())
         if let _ = self.fullTextTables[table.id] {
             if secure != self.secureDeleteEnabled {
                 self.secureDeleteEnabled = secure
@@ -2502,6 +2512,7 @@ public final class SqliteValueBox: ValueBox {
     }
     
     public func count(_ table: ValueBoxTable, start: ValueBoxKey, end: ValueBoxKey) -> Int {
+        precondition(self.queue.isCurrent())
         guard let _ = self.checkTable(table), let statement = self.prepareStatement("SELECT COUNT(*) FROM t\(table.id) WHERE key > ? AND key < ?", persistent: false) else {
             return 0
         }
@@ -2529,6 +2540,7 @@ public final class SqliteValueBox: ValueBox {
     }
     
     public func count(_ table: ValueBoxTable) -> Int {
+        precondition(self.queue.isCurrent())
         guard let _ = self.checkTable(table), let statement = self.prepareStatement("SELECT COUNT(*) FROM t\(table.id)", persistent: false) else {
             return 0
         }
@@ -2690,10 +2702,12 @@ public final class SqliteValueBox: ValueBox {
     }
     
     public func removeAllFromTable(_ table: ValueBoxTable) {
+        precondition(self.queue.isCurrent())
         let _ = self.database.execute("DELETE FROM t\(table.id)")
     }
     
     public func removeTable(_ table: ValueBoxTable) {
+        precondition(self.queue.isCurrent())
         let _ = self.database.execute("DROP TABLE t\(table.id)")
         self.tables.removeValue(forKey: table.id)
     }
@@ -2727,6 +2741,7 @@ public final class SqliteValueBox: ValueBox {
     }
     
     public func exportEncrypted(to exportBasePath: String, encryptionParameters: ValueBoxEncryptionParameters) {
+        precondition(self.queue.isCurrent())
         self.exportEncrypted(database: self.database, to: exportBasePath, encryptionParameters: encryptionParameters)
     }
         
@@ -2854,12 +2869,14 @@ public final class SqliteValueBox: ValueBox {
         case vacuumed(before: PageStats, after: PageStats?)
         case notFragmented(PageStats)
         case insufficientDiskSpace(needed: Int64, available: Int64)
+        case tooLarge(liveBytes: Int64, limit: Int64)
+        case deferred
         case failed
     }
     
     /// VACUUMs only when at least `minFreeFraction` of the file is free pages, and only when the
     /// disk has room for the copy VACUUM writes (about the size of the live data, plus the WAL).
-    public func vacuumIfFragmented(minFreeFraction: Double, availableDiskSpace: Int64?) -> ConditionalVacuumResult {
+    public func vacuumIfFragmented(minFreeFraction: Double, availableDiskSpace: Int64?, maxLiveBytes: Int64? = nil, shouldProceed: () -> Bool = { true }) -> ConditionalVacuumResult {
         precondition(self.queue.isCurrent())
         guard let before = self.pageStats() else {
             postboxLog("SqliteValueBox: cannot read page counts")
@@ -2873,45 +2890,20 @@ public final class SqliteValueBox: ValueBox {
             postboxLog("SqliteValueBox: skipping VACUUM, \(availableDiskSpace) bytes free, \(needed) needed")
             return .insufficientDiskSpace(needed: needed, available: availableDiskSpace)
         }
+        let liveBytes = (before.pageCount - before.freePageCount) * before.pageSize
+        if let maxLiveBytes = maxLiveBytes, liveBytes > maxLiveBytes {
+            postboxLog("SqliteValueBox: skipping VACUUM, \(liveBytes) live bytes above the \(maxLiveBytes) cap")
+            return .tooLarge(liveBytes: liveBytes, limit: maxLiveBytes)
+        }
+        if !shouldProceed() {
+            return .deferred
+        }
         if !self.vacuum() {
             return .failed
         }
         let after = self.pageStats()
         postboxLog("SqliteValueBox: VACUUM \(before.pageCount) -> \(after?.pageCount ?? -1) pages (\(before.freePageCount) free before)")
         return .vacuumed(before: before, after: after)
-    }
-}
-
-// Test support.
-extension SqliteValueBox {
-    /// Sum of one `sqlite3_stmt_status` counter over this connection's live statements.
-    func statementStatusTotal(_ counter: Int32) -> Int {
-        precondition(self.queue.isCurrent())
-        var total = 0
-        var statement = sqlite3_next_stmt(self.database.handle, nil)
-        while let current = statement {
-            total += Int(sqlite3_stmt_status(current, counter, 0))
-            statement = sqlite3_next_stmt(self.database.handle, current)
-        }
-        return total
-    }
-
-    /// SQL text of this connection's live (prepared, not finalized) statements.
-    func liveStatementSQL() -> [String] {
-        precondition(self.queue.isCurrent())
-        var result: [String] = []
-        var statement = sqlite3_next_stmt(self.database.handle, nil)
-        while let current = statement {
-            if let sql = sqlite3_sql(current) {
-                result.append(String(cString: sql))
-            }
-            statement = sqlite3_next_stmt(self.database.handle, current)
-        }
-        return result
-    }
-
-    func pragmaValue(_ name: String) -> String {
-        return self.runPragma(self.database, name) ?? ""
     }
 }
 
@@ -2925,4 +2917,40 @@ private func hexString(_ data: Data) -> String {
     }
     
     return hexString as String
+}
+
+extension SqliteValueBox {
+    /// Sum of one `sqlite3_stmt_status` counter over this connection's live statements (tests).
+    func statementStatusTotal(_ counter: Int32) -> Int {
+        precondition(self.queue.isCurrent())
+        var total = 0
+        var statement = sqlite3_next_stmt(self.database.handle, nil)
+        while let current = statement {
+            total += Int(sqlite3_stmt_status(current, counter, 0))
+            statement = sqlite3_next_stmt(self.database.handle, current)
+        }
+        return total
+    }
+    
+    func liveStatementSQL() -> [String] {
+        precondition(self.queue.isCurrent())
+        var result: [String] = []
+        var statement = sqlite3_next_stmt(self.database.handle, nil)
+        while let current = statement {
+            if let sql = sqlite3_sql(current) {
+                result.append(String(cString: sql))
+            }
+            statement = sqlite3_next_stmt(self.database.handle, current)
+        }
+        return result
+    }
+    
+    func connectionIsSerialized() -> Bool {
+        precondition(self.queue.isCurrent())
+        return sqlite3_db_mutex(self.database.handle) != nil
+    }
+
+    func pragmaValue(_ name: String) -> String {
+        return self.runPragma(self.database, name) ?? ""
+    }
 }

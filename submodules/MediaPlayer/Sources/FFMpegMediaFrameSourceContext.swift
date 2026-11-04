@@ -493,6 +493,7 @@ final class FFMpegMediaFrameSourceContext: NSObject {
                 if let codec = FFMpegAVCodec.find(forId: codecId, preferHardwareAccelerationCapable: false) {
                     let codecContext = FFMpegAVCodecContext(codec: codec)
                     if avFormatContext.codecParams(atStreamIndex: streamIndex, to: codecContext) {
+                        FFMpegSoftwareDecodeThreads.apply(to: codecContext, codecId: codecId, width: metrics.width, height: metrics.height)
                         if codecContext.open() {
                             videoStream = StreamContext(index: Int(streamIndex), codecContext: codecContext, fps: fps, timebase: timebase, startTime: startTime, duration: duration, decoder: FFMpegMediaVideoFrameDecoder(codecContext: codecContext), rotationAngle: rotationAngle, aspect: aspect)
                             break
@@ -546,7 +547,7 @@ final class FFMpegMediaFrameSourceContext: NSObject {
                             startTime = CMTimeMake(value: rawStartTime, timescale: timebase.timescale)
                         }
                         
-                        audioStream = StreamContext(index: Int(streamIndex), codecContext: codecContext, fps: fps, timebase: timebase, startTime: startTime, duration: duration, decoder: FFMpegAudioFrameDecoder(codecContext: codecContext), rotationAngle: 0.0, aspect: 1.0)
+                        audioStream = StreamContext(index: Int(streamIndex), codecContext: codecContext, fps: fps, timebase: timebase, startTime: startTime, duration: duration, decoder: FFMpegMediaFrameSourceContextHelpers.makeAudioDecoder(codecContext: codecContext), rotationAngle: 0.0, aspect: 1.0)
                         break
                     }
                 }

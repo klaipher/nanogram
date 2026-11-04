@@ -95,11 +95,11 @@ enum WalletVault {
 
     static let unscopedServicePrefix = "org.telegram.ton-wallet."
 
-    static func servicePrefix(environment: PasscodeEnvironment) -> String {
+    static func ownItems(_ items: [(service: String, account: String)], environment: PasscodeEnvironment) -> [(service: String, account: String)] {
         #if os(macOS)
-        return PasscodeKeychainScope.service(self.unscopedServicePrefix, environment: environment)
+        return PasscodeKeychainScope.scopedItems(items, servicePrefix: self.unscopedServicePrefix, environment: environment)
         #else
-        return self.unscopedServicePrefix
+        return items.filter { $0.service.hasPrefix(self.unscopedServicePrefix) }
         #endif
     }
 
@@ -122,11 +122,12 @@ enum WalletVault {
         let (status, result) = readAttributes(query)
         if status == errSecItemNotFound { return }
         guard status == errSecSuccess, let items = result as? [[String: Any]] else { throw PasscodeError.keychain(status) }
-        let servicePrefix = self.servicePrefix(environment: environment)
-        for item in items {
+        let listed = items.compactMap { item -> (service: String, account: String)? in
             guard let service = item[kSecAttrService as String] as? String,
-                  service.hasPrefix(servicePrefix),
-                  let account = item[kSecAttrAccount as String] as? String else { continue }
+                  let account = item[kSecAttrAccount as String] as? String else { return nil }
+            return (service, account)
+        }
+        for (service, account) in self.ownItems(listed, environment: environment) {
             var deletion: [String: Any] = [kSecClass as String: kSecClassGenericPassword,
                 kSecAttrService as String: service, kSecAttrAccount as String: account,
                 kSecAttrSynchronizable as String: false]
@@ -395,10 +396,10 @@ public func authenticateWalletBiometrics(namespace: String, lifetime: PasscodeSe
 
 #if os(macOS)
 /// Copies this build's wallets and wallet passcode items into its keychain scope, each wallet's descriptor last;
-/// see `PasscodeKeychainScope`.
+/// see `PasscodeKeychainScope`. Unless `legacyItemsBelongToThisApp`, nothing is read or copied.
 @available(macOS 10.15, *)
-public func migrateWalletKeychainScope(environment: PasscodeEnvironment = .shared) -> PasscodeKeychainScope.Migration {
-    return PasscodeKeychainScope.migrateLegacyItems(walletServicePrefixes: [WalletVault.envelopeServicePrefix, WalletEngineStorage.journalServicePrefix, WalletEngineStorage.descriptorServicePrefix], environment: environment)
+public func migrateWalletKeychainScope(legacyItemsBelongToThisApp: Bool, environment: PasscodeEnvironment = .shared) -> PasscodeKeychainScope.Migration {
+    return PasscodeKeychainScope.migrateLegacyItems(walletServicePrefixes: [WalletVault.envelopeServicePrefix, WalletEngineStorage.journalServicePrefix, WalletEngineStorage.descriptorServicePrefix], legacyItemsBelongToThisApp: legacyItemsBelongToThisApp, environment: environment)
 }
 #endif
 

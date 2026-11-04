@@ -1,5 +1,5 @@
 //
-// Copyright Aliaksei Levin (levlam@telegram.org), Arseny Smirnov (arseny30@gmail.com) 2014-2025
+// Copyright Aliaksei Levin (levlam@telegram.org), Arseny Smirnov (arseny30@gmail.com) 2014-2026
 //
 // Distributed under the Boost Software License, Version 1.0. (See accompanying
 // file LICENSE_1_0.txt or copy at http://www.boost.org/LICENSE_1_0.txt)
@@ -8,8 +8,9 @@
 
 #include "td/telegram/DialogId.h"
 #include "td/telegram/files/FileSourceId.h"
-#include "td/telegram/MessageId.h"
 #include "td/telegram/MessageInputReplyTo.h"
+#include "td/telegram/MessageTopic.h"
+#include "td/telegram/SavedMessagesTopicId.h"
 #include "td/telegram/td_api.h"
 #include "td/telegram/telegram_api.h"
 #include "td/telegram/UserId.h"
@@ -41,18 +42,19 @@ class WebAppManager final : public Actor {
 
   void request_app_web_view(DialogId dialog_id, UserId bot_user_id, string &&web_app_short_name,
                             string &&start_parameter, const WebAppOpenParameters &parameters, bool allow_write_access,
-                            Promise<string> &&promise);
+                            Promise<td_api::object_ptr<td_api::webAppUrl>> &&promise);
 
   void request_main_web_view(DialogId dialog_id, UserId bot_user_id, string &&start_parameter,
                              const WebAppOpenParameters &parameters,
                              Promise<td_api::object_ptr<td_api::mainWebApp>> &&promise);
 
-  void request_web_view(DialogId dialog_id, UserId bot_user_id, MessageId top_thread_message_id,
+  void request_web_view(DialogId dialog_id, UserId bot_user_id,
+                        const td_api::object_ptr<td_api::MessageTopic> &topic_id,
                         td_api::object_ptr<td_api::InputMessageReplyTo> &&reply_to, string &&url,
                         const WebAppOpenParameters &parameters,
                         Promise<td_api::object_ptr<td_api::webAppInfo>> &&promise);
 
-  void open_web_view(int64 query_id, DialogId dialog_id, UserId bot_user_id, MessageId top_thread_message_id,
+  void open_web_view(int64 query_id, DialogId dialog_id, UserId bot_user_id, MessageTopic &&message_topic,
                      MessageInputReplyTo &&input_reply_to, DialogId as_dialog_id);
 
   void close_web_view(int64 query_id, Promise<Unit> &&promise);
@@ -92,7 +94,7 @@ class WebAppManager final : public Actor {
   struct OpenedWebView {
     DialogId dialog_id_;
     UserId bot_user_id_;
-    MessageId top_thread_message_id_;
+    MessageTopic message_topic_;
     MessageInputReplyTo input_reply_to_;
     DialogId as_dialog_id_;
   };

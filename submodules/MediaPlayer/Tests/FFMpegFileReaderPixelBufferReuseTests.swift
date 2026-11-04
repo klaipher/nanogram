@@ -3,7 +3,11 @@ import AVFoundation
 import CoreMedia
 import CoreVideo
 import IOSurface
+#if canImport(UniversalMediaPlayer)
 @testable import UniversalMediaPlayer
+#else
+@testable import TelegramMediaPlayer
+#endif
 
 // FFMpegFileReader (GIF grid, video stickers, frame previews, software HLS) used to create a new
 // IOSurface-backed CVPixelBuffer and a new CMVideoFormatDescription for every decoded frame. It now
@@ -22,7 +26,7 @@ final class FFMpegFileReaderPixelBufferReuseTests: XCTestCase {
     // MARK: Fixtures
 
     private func stickerPath() throws -> String {
-        let bundles = [Bundle(for: FFMpegFileReaderPixelBufferReuseTests.self), Bundle.main] + Bundle.allBundles
+        let bundles = packageResourceBundles + [Bundle(for: FFMpegFileReaderPixelBufferReuseTests.self), Bundle.main] + Bundle.allBundles
         for bundle in bundles {
             if let path = bundle.path(forResource: "sticker_vp9", ofType: "webm") {
                 return path

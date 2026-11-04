@@ -1,5 +1,5 @@
 //
-// Copyright Aliaksei Levin (levlam@telegram.org), Arseny Smirnov (arseny30@gmail.com) 2014-2025
+// Copyright Aliaksei Levin (levlam@telegram.org), Arseny Smirnov (arseny30@gmail.com) 2014-2026
 //
 // Distributed under the Boost Software License, Version 1.0. (See accompanying
 // file LICENSE_1_0.txt or copy at http://www.boost.org/LICENSE_1_0.txt)
@@ -8,6 +8,7 @@
 
 #include "td/telegram/CustomEmojiId.h"
 #include "td/telegram/DialogBoostLinkInfo.h"
+#include "td/telegram/FormattedDate.h"
 #include "td/telegram/MessageFullId.h"
 #include "td/telegram/MessageLinkInfo.h"
 #include "td/telegram/td_api.h"
@@ -49,7 +50,7 @@ class LinkManager final : public Actor {
     virtual td_api::object_ptr<td_api::InternalLinkType> get_internal_link_type_object() const = 0;
   };
 
-  // checks whether the link is a valid tg, ton or HTTP(S) URL and returns it in a canonical form
+  // checks whether the link is a valid supported URL and returns it in a canonical form
   static Result<string> check_link(CSlice link, bool http_only = false, bool https_only = false);
 
   // same as check_link, but returns an empty string instead of an error
@@ -78,15 +79,28 @@ class LinkManager final : public Actor {
                           Promise<td_api::object_ptr<td_api::LoginUrlInfo>> &&promise);
 
   void get_login_url(MessageFullId message_full_id, int64 button_id, bool allow_write_access,
-                     Promise<td_api::object_ptr<td_api::httpUrl>> &&promise);
+                     Promise<string> &&promise);
 
-  void get_link_login_url(const string &url, bool allow_write_access,
-                          Promise<td_api::object_ptr<td_api::httpUrl>> &&promise);
+  void get_link_login_url(const string &url, bool allow_write_access, Promise<string> &&promise);
+
+  void get_oauth_link_info(string &&link, const string &in_app_origin,
+                           Promise<td_api::object_ptr<td_api::oauthLinkInfo>> &&promise);
+
+  void check_oauth_request_match_code(const string &url, const string &match_code, Promise<Unit> &&promise);
+
+  void accept_oauth_request(const string &url, const string &match_code, bool allow_write_access,
+                            bool allow_phone_number_access,
+                            td_api::object_ptr<td_api::tonConnectConnectData> &&connect_data,
+                            Promise<string> &&promise);
+
+  void decline_oauth_request(const string &url, Promise<Unit> &&promise);
 
   static Result<string> get_background_url(const string &name,
                                            td_api::object_ptr<td_api::BackgroundType> background_type);
 
   static td_api::object_ptr<td_api::BackgroundType> get_background_type_object(const string &link, bool is_pattern);
+
+  static bool has_video_chat_invite_hash(Slice link);
 
   static string get_dialog_filter_invite_link_slug(Slice invite_link);
 
@@ -106,15 +120,16 @@ class LinkManager final : public Actor {
 
   static string get_instant_view_link(Slice url, Slice rhash);
 
-  static string get_public_dialog_link(Slice username, Slice draft_text, bool open_profile, bool is_internal);
-
-  static Result<string> get_proxy_link(const Proxy &proxy, bool is_internal);
+  static string get_public_dialog_link(Slice username, Slice draft_text, bool open_profile, Slice unpaid_messages_token,
+                                       bool is_internal);
 
   static UserId get_link_user_id(Slice url);
 
   static string get_t_me_url();
 
   static Result<CustomEmojiId> get_link_custom_emoji_id(Slice url);
+
+  static Result<FormattedDate> get_link_formatted_date(Slice url);
 
   static Result<DialogBoostLinkInfo> get_dialog_boost_link_info(Slice url);
 
@@ -125,7 +140,6 @@ class LinkManager final : public Actor {
 
   void tear_down() final;
 
-  class InternalLinkActiveSessions;
   class InternalLinkAttachMenuBot;
   class InternalLinkAuthenticationCode;
   class InternalLinkBackground;
@@ -134,48 +148,59 @@ class LinkManager final : public Actor {
   class InternalLinkBotStartInGroup;
   class InternalLinkBusinessChat;
   class InternalLinkBuyStars;
-  class InternalLinkChangePhoneNumber;
+  class InternalLinkCalls;
   class InternalLinkConfirmPhone;
-  class InternalLinkDefaultMessageAutoDeleteTimerSettings;
+  class InternalLinkContacts;
   class InternalLinkDialogBoost;
   class InternalLinkDialogFolderInvite;
-  class InternalLinkDialogFolderSettings;
   class InternalLinkDialogInvite;
   class InternalLinkDialogReferralProgram;
-  class InternalLinkEditProfileSettings;
+  class InternalLinkDialogSelection;
   class InternalLinkGame;
+  class InternalLinkGiftAuction;
   class InternalLinkGroupCall;
   class InternalLinkInstantView;
   class InternalLinkInvoice;
   class InternalLinkLanguage;
-  class InternalLinkLanguageSettings;
+  class InternalLinkLiveStory;
   class InternalLinkMainWebApp;
   class InternalLinkMessage;
   class InternalLinkMessageDraft;
-  class InternalLinkMyStars;
+  class InternalLinkMonoforum;
+  class InternalLinkMyProfile;
+  class InternalLinkNewChannelChat;
+  class InternalLinkNewGroupChat;
+  class InternalLinkNewPrivateChat;
+  class InternalLinkOauth;
   class InternalLinkPassportDataRequest;
+  class InternalLinkPostStory;
   class InternalLinkPremiumFeatures;
   class InternalLinkPremiumGift;
   class InternalLinkPremiumGiftCode;
-  class InternalLinkPrivacyAndSecuritySettings;
   class InternalLinkProxy;
   class InternalLinkPublicDialog;
   class InternalLinkQrCodeAuthentication;
+  class InternalLinkRequestManagedBot;
   class InternalLinkRestorePurchases;
+  class InternalLinkSavedMessages;
+  class InternalLinkSearch;
+  class InternalLinkSendGrams;
   class InternalLinkSettings;
   class InternalLinkStickerSet;
+  class InternalLinkStarGiftCollection;
   class InternalLinkStory;
+  class InternalLinkStoryAlbum;
+  class InternalLinkTextCompositionStyle;
   class InternalLinkTheme;
-  class InternalLinkThemeSettings;
+  class InternalLinkTonConnect;
   class InternalLinkUnknownDeepLink;
-  class InternalLinkUnsupportedProxy;
   class InternalLinkUpgradedGift;
   class InternalLinkUserPhoneNumber;
   class InternalLinkUserToken;
   class InternalLinkVideoChat;
   class InternalLinkWebApp;
 
-  enum class LinkType : int32 { External, TMe, Tg, Telegraph };
+  enum class LinkType : int32 { External, TMe, Tg, Telegraph, TonConnect };
 
   struct LinkInfo {
     LinkType type_ = LinkType::External;
@@ -186,6 +211,8 @@ class LinkManager final : public Actor {
 
   static unique_ptr<InternalLink> parse_tg_link_query(Slice query, bool is_trusted);
 
+  static unique_ptr<InternalLink> parse_ton_connect_link_query(Slice query);
+
   static unique_ptr<InternalLink> parse_t_me_link_query(Slice query, bool is_trusted);
 
   static unique_ptr<InternalLink> get_internal_link_passport(Slice query, const vector<std::pair<string, string>> &args,
@@ -193,9 +220,17 @@ class LinkManager final : public Actor {
 
   static unique_ptr<InternalLink> get_internal_link_message_draft(Slice url, Slice text);
 
+  static unique_ptr<InternalLink> get_internal_link_ton_connect(Slice query, bool check_path);
+
+  static unique_ptr<InternalLink> get_internal_link_web_proxy(Slice address, Slice secret);
+
   static Result<string> get_internal_link_impl(const td_api::InternalLinkType *type_ptr, bool is_internal);
 
   static Result<string> check_link_impl(Slice link, bool http_only, bool https_only);
+
+  static Result<string> get_proxy_link(const Proxy &proxy, bool is_internal);
+
+  static Result<Slice> check_tg_url_host(Slice url, Slice host);
 
   Td *td_;
   ActorShared<> parent_;

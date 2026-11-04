@@ -3,9 +3,6 @@ import XCTest
 import SwiftSignalKit
 @testable import Postbox
 
-/// When the app goes to the background, `Postbox.clearCaches()` also returns SQLite's page cache
-/// (up to 2 MB per connection by default) to the system. Pages are read back on demand, so the
-/// data must stay readable afterwards.
 final class SqliteValueBoxReleaseMemoryTests: XCTestCase {
     private let table = ValueBoxTable(id: 1001, keyType: .int64, compactValuesOnCreation: true)
 
@@ -74,5 +71,33 @@ final class SqliteValueBoxReleaseMemoryTests: XCTestCase {
                 }
             }
         }
+    }
+
+    func testClearingPostboxCachesReleasesThePageCache() {
+        let fixture = PostboxFixture(name: "SqliteValueBoxReleaseMemoryTests-postbox", inMemory: false)
+        defer { fixture.close() }
+        fixture.transaction { transaction in
+            var peers: [Peer] = []
+            for i in 1 ... 5000 {
+                peers.append(FixturePeer(id: MessageHistoryTableFixture.peerId(Int64(i)), title: String(repeating: "p", count: 200)))
+            }
+            transaction.updatePeersInternal(peers, update: { _, updated in updated })
+        }
+        fixture.postbox.clearCaches()
+        fixture.transaction { transaction in
+            for i in 1 ... 5000 {
+                let _ = transaction.getPeer(MessageHistoryTableFixture.peerId(Int64(i)))
+            }
+        }
+        let before = fixture.pageCacheMemoryUsed()
+        XCTAssertGreaterThan(before, 512 * 1024)
+        fixture.postbox.clearCaches()
+        fixture.transaction { _ in }
+        let after = fixture.pageCacheMemoryUsed()
+        XCTAssertLessThan(after, before / 4, "page cache \(before) -> \(after) bytes")
+        let peer = fixture.transaction { transaction in
+            return transaction.getPeer(MessageHistoryTableFixture.peerId(1234)) as? FixturePeer
+        }
+        XCTAssertEqual(peer??.title.count, 200)
     }
 }

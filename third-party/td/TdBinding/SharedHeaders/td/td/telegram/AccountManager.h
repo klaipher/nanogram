@@ -1,17 +1,20 @@
 //
-// Copyright Aliaksei Levin (levlam@telegram.org), Arseny Smirnov (arseny30@gmail.com) 2014-2025
+// Copyright Aliaksei Levin (levlam@telegram.org), Arseny Smirnov (arseny30@gmail.com) 2014-2026
 //
 // Distributed under the Boost Software License, Version 1.0. (See accompanying
 // file LICENSE_1_0.txt or copy at http://www.boost.org/LICENSE_1_0.txt)
 //
 #pragma once
 
+#include "td/telegram/AgeVerificationParameters.h"
 #include "td/telegram/td_api.h"
+#include "td/telegram/UserId.h"
 
 #include "td/actor/actor.h"
 
 #include "td/utils/common.h"
 #include "td/utils/Promise.h"
+#include "td/utils/Status.h"
 
 namespace td {
 
@@ -27,6 +30,8 @@ class AccountManager final : public Actor {
   AccountManager(AccountManager &&) = delete;
   AccountManager &operator=(AccountManager &&) = delete;
   ~AccountManager() final;
+
+  void on_update_age_verification_parameters(AgeVerificationParameters &&age_verification_parameters);
 
   void set_default_message_ttl(int32 message_ttl, Promise<Unit> &&promise);
 
@@ -58,17 +63,23 @@ class AccountManager final : public Actor {
 
   void disconnect_all_websites(Promise<Unit> &&promise);
 
-  void get_user_link(Promise<td_api::object_ptr<td_api::userLink>> &&promise);
+  void cancel_web_token(const string &token, Promise<Unit> &&promise);
+
+  void get_user_link(bool remove_messages_fee, bool is_permanent, bool revoke_previous_links,
+                     Promise<td_api::object_ptr<td_api::userLink>> &&promise);
 
   void import_contact_token(const string &token, Promise<td_api::object_ptr<td_api::user>> &&promise);
+
+  void apply_unpaid_messages_token(UserId user_id, const string &token, Promise<Unit> &&promise);
 
   void invalidate_authentication_codes(vector<string> &&authentication_codes);
 
   void update_unconfirmed_authorization_timeout(bool is_external);
 
-  void on_new_unconfirmed_authorization(int64 hash, int32 date, string &&device, string &&location);
+  void on_new_unconfirmed_authorization(bool is_bot, int64 hash, UserId bot_user_id, int32 date, string &&device,
+                                        string &&location);
 
-  bool on_confirm_authorization(int64 hash);
+  bool on_confirm_authorization(bool is_bot, int64 hash, UserId bot_user_id);
 
   void on_binlog_events(vector<BinlogEvent> &&events);
 
@@ -94,7 +105,21 @@ class AccountManager final : public Actor {
 
   void tear_down() final;
 
-  void get_user_link_impl(Promise<td_api::object_ptr<td_api::userLink>> &&promise);
+  void get_user_link_impl(bool remove_messages_fee, bool is_permanent, bool revoke_previous_links,
+                          Promise<td_api::object_ptr<td_api::userLink>> &&promise);
+
+  void create_user_link(string unpaid_messages_token, int32 unpaid_messages_token_expire_date,
+                        Promise<td_api::object_ptr<td_api::userLink>> &&promise);
+
+  void on_get_find_by_phone_number_privacy(Result<td_api::object_ptr<td_api::userPrivacySettingRules>> r_rules,
+                                           string unpaid_messages_token, int32 unpaid_messages_token_expire_date,
+                                           Promise<td_api::object_ptr<td_api::userLink>> &&promise);
+
+  static string get_age_verification_parameters_key();
+
+  td_api::object_ptr<td_api::updateAgeVerificationParameters> get_update_age_verification_parameters() const;
+
+  void send_update_age_verification_parameters() const;
 
   static string get_unconfirmed_authorizations_key();
 
@@ -131,6 +156,8 @@ class AccountManager final : public Actor {
   ActorShared<> parent_;
 
   unique_ptr<UnconfirmedAuthorizations> unconfirmed_authorizations_;
+
+  AgeVerificationParameters age_verification_parameters_;
 };
 
 }  // namespace td

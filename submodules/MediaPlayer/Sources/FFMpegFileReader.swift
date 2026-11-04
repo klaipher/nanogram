@@ -394,6 +394,7 @@ public final class FFMpegFileReader {
                         if let codec = FFMpegAVCodec.find(forId: codecId, preferHardwareAccelerationCapable: useHardware) {
                             let codecContext = FFMpegAVCodecContext(codec: codec)
                             if avFormatContext.codecParams(atStreamIndex: Int32(streamIndex), to: codecContext) {
+                                FFMpegSoftwareDecodeThreads.apply(to: codecContext, codecId: codecId, width: metrics.width, height: metrics.height)
                                 if useHardware {
                                     if forceHardwareSetupFailure {
                                         codecContext.setupHardwareAccelerationForcingSetupFailureForTesting()

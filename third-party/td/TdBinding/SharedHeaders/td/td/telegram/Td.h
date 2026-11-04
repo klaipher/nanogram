@@ -1,5 +1,5 @@
 //
-// Copyright Aliaksei Levin (levlam@telegram.org), Arseny Smirnov (arseny30@gmail.com) 2014-2025
+// Copyright Aliaksei Levin (levlam@telegram.org), Arseny Smirnov (arseny30@gmail.com) 2014-2026
 //
 // Distributed under the Boost Software License, Version 1.0. (See accompanying
 // file LICENSE_1_0.txt or copy at http://www.boost.org/LICENSE_1_0.txt)
@@ -49,6 +49,7 @@ class CallbackQueriesManager;
 class ChannelRecommendationManager;
 class ChatManager;
 class CommonDialogManager;
+class CommunityManager;
 class ConfigManager;
 class ConnectionStateManager;
 class CountryInfoManager;
@@ -60,6 +61,7 @@ class DialogManager;
 class DialogParticipantManager;
 class DocumentsManager;
 class DownloadManager;
+class DraftMessageManager;
 class FileManager;
 class FileReferenceManager;
 class ForumTopicManager;
@@ -84,6 +86,7 @@ class PhoneNumberManager;
 class PollManager;
 class PrivacyManager;
 class PromoDataManager;
+class ProxyChecker;
 class QuickReplyManager;
 class ReactionManager;
 class ReferralProgramManager;
@@ -103,6 +106,7 @@ class SuggestedActionManager;
 class TermsOfServiceManager;
 class ThemeManager;
 class TimeZoneManager;
+class TonWalletManager;
 class TopDialogManager;
 class TranscriptionManager;
 class TranslationManager;
@@ -112,7 +116,10 @@ class VideoNotesManager;
 class VideosManager;
 class VoiceNotesManager;
 class WebAppManager;
+class WebBrowserManager;
 class WebPagesManager;
+class WebProxyManager;
+class WelcomeMessageManager;
 
 extern int VERBOSITY_NAME(td_init);
 extern int VERBOSITY_NAME(td_requests);
@@ -190,6 +197,8 @@ class Td final : public Actor {
   ActorOwn<ChatManager> chat_manager_actor_;
   unique_ptr<CommonDialogManager> common_dialog_manager_;
   ActorOwn<CommonDialogManager> common_dialog_manager_actor_;
+  unique_ptr<CommunityManager> community_manager_;
+  ActorOwn<CommunityManager> community_manager_actor_;
   unique_ptr<ConnectionStateManager> connection_state_manager_;
   ActorOwn<ConnectionStateManager> connection_state_manager_actor_;
   unique_ptr<CountryInfoManager> country_info_manager_;
@@ -204,6 +213,8 @@ class Td final : public Actor {
   ActorOwn<DialogManager> dialog_manager_actor_;
   unique_ptr<DialogParticipantManager> dialog_participant_manager_;
   ActorOwn<DialogParticipantManager> dialog_participant_manager_actor_;
+  unique_ptr<DraftMessageManager> draft_message_manager_;
+  ActorOwn<DraftMessageManager> draft_message_manager_actor_;
   unique_ptr<DownloadManager> download_manager_;
   ActorOwn<DownloadManager> download_manager_actor_;
   unique_ptr<FileManager> file_manager_;
@@ -272,6 +283,8 @@ class Td final : public Actor {
   ActorOwn<ThemeManager> theme_manager_actor_;
   unique_ptr<TimeZoneManager> time_zone_manager_;
   ActorOwn<TimeZoneManager> time_zone_manager_actor_;
+  unique_ptr<TonWalletManager> ton_wallet_manager_;
+  ActorOwn<TonWalletManager> ton_wallet_manager_actor_;
   unique_ptr<TopDialogManager> top_dialog_manager_;
   ActorOwn<TopDialogManager> top_dialog_manager_actor_;
   unique_ptr<TranscriptionManager> transcription_manager_;
@@ -288,8 +301,12 @@ class Td final : public Actor {
   ActorOwn<VoiceNotesManager> voice_notes_manager_actor_;
   unique_ptr<WebAppManager> web_app_manager_;
   ActorOwn<WebAppManager> web_app_manager_actor_;
+  unique_ptr<WebBrowserManager> web_browser_manager_;
+  ActorOwn<WebBrowserManager> web_browser_manager_actor_;
   unique_ptr<WebPagesManager> web_pages_manager_;
   ActorOwn<WebPagesManager> web_pages_manager_actor_;
+  unique_ptr<WelcomeMessageManager> welcome_message_manager_;
+  ActorOwn<WelcomeMessageManager> welcome_message_manager_actor_;
 
   ActorOwn<AlarmManager> alarm_manager_;
   ActorOwn<HashtagHints> cashtag_search_hints_;
@@ -300,10 +317,12 @@ class Td final : public Actor {
   ActorOwn<LanguagePackManager> language_pack_manager_;
   ActorOwn<NetStatsManager> net_stats_manager_;
   ActorOwn<PasswordManager> password_manager_;
+  ActorOwn<ProxyChecker> proxy_checker_;
   ActorOwn<SecretChatsManager> secret_chats_manager_;
   ActorOwn<SecureManager> secure_manager_;
   ActorOwn<StateManager> state_manager_;
   ActorOwn<StorageManager> storage_manager_;
+  ActorOwn<WebProxyManager> web_proxy_manager_;
 
   class ResultHandler : public std::enable_shared_from_this<ResultHandler> {
    public:
@@ -441,7 +460,7 @@ class Td final : public Actor {
 
   void init_managers();
 
-  void init_pure_actor_managers();
+  void init_pure_actor_managers(const Parameters &parameters);
 
   void process_binlog_events(TdDb::OpenedDatabase &&events);
 

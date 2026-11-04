@@ -17,7 +17,7 @@ let package = Package(
         .package(name: "Postbox", path: "../Postbox"),
         .package(name: "FFMpegBinding", path: "../FFMpegBinding"),
         .package(name: "YuvConversion", path: "../YuvConversion"),
-        .package(name: "RingBuffer", path: "../RingBuffer"),
+        .package(name: "RingBuffer", path: "../../../../packages/RingBuffer"),
         .package(name: "TGUIKit", path: "../../../../packages/TGUIKit"),
 
         // Dependencies declare other packages that this package depends on.
@@ -46,5 +46,29 @@ let package = Package(
                       "ChunkMediaPlayerV2.swift",
                       "ChunkMediaPlayerDirectFetchSourceImpl.swift"
                      ]),
+        .testTarget(
+            name: "TelegramMediaPlayerTests",
+            dependencies: [.target(name: "TelegramMediaPlayer"),
+                           .product(name: "Postbox", package: "Postbox", condition: nil),
+                           .product(name: "FFMpegBinding", package: "FFMpegBinding", condition: nil)],
+            path: "Tests",
+            exclude: ["ChunkMediaPlayerV2LoopTests.swift"],
+            resources: [.process("Resources")],
+            linkerSettings: [
+                .unsafeFlags([
+                    "-L../../../../core-xprojects/ffmpeg/build/ffmpeg/lib",
+                    "-L../../../../core-xprojects/libvpx/build/libvpx/lib",
+                    "-L../../../../core-xprojects/libopus/build/libopus/lib",
+                    "-L../../../../core-xprojects/dav1d/build/dav1d/lib",
+                    "-lavformat", "-lavcodec", "-lswresample", "-lavutil", "-lvpx", "-lopus", "-ldav1d",
+                    "-lz", "-lbz2", "-liconv",
+                ]),
+                .linkedFramework("VideoToolbox"),
+                .linkedFramework("AudioToolbox"),
+                .linkedFramework("CoreMedia"),
+                .linkedFramework("CoreVideo"),
+                .linkedFramework("Accelerate"),
+                .linkedFramework("AVFoundation"),
+            ]),
     ]
 )

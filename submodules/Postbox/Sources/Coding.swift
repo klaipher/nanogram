@@ -357,11 +357,13 @@ public final class PostboxEncoder {
     }
     
     public func encodeKey(_ key: String) {
-        let data = key.data(using: .utf8)!
-        var length: Int8 = Int8(data.count)
-        self.buffer.write(&length, offset: 0, length: 1)
-        data.withUnsafeBytes { bytes in
-            self.buffer.write(bytes.baseAddress!, offset: 0, length: Int(length))
+        var key = key
+        key.withUTF8 { keyBytes in
+            var length: Int8 = Int8(keyBytes.count)
+            self.buffer.write(&length, offset: 0, length: 1)
+            if let baseAddress = keyBytes.baseAddress {
+                self.buffer.write(baseAddress, offset: 0, length: Int(length))
+            }
         }
     }
     
@@ -944,13 +946,19 @@ public final class PostboxDecoder {
 
     private class func positionOnKey(_ rawBytes: UnsafeRawPointer, offset: inout Int, maxOffset: Int, length: Int, key: String, valueType: ValueType?, actualValueType: inout ValueType, consumeKey: Bool) -> Bool
     {
+        var key = key
+        return key.withUTF8 { keyBytes -> Bool in
+            return positionOnKey(rawBytes, offset: &offset, maxOffset: maxOffset, length: length, keyBytes: keyBytes, valueType: valueType, actualValueType: &actualValueType, consumeKey: consumeKey)
+        }
+    }
+
+    private class func positionOnKey(_ rawBytes: UnsafeRawPointer, offset: inout Int, maxOffset: Int, length: Int, keyBytes: UnsafeBufferPointer<UInt8>, valueType: ValueType?, actualValueType: inout ValueType, consumeKey: Bool) -> Bool
+    {
         let bytes = rawBytes.assumingMemoryBound(to: Int8.self)
 
         let startOffset = offset
 
-        let keyData = key.data(using: .utf8)!
-
-        let keyLength: Int = keyData.count
+        let keyLength: Int = keyBytes.count
         while (offset < maxOffset) {
             let keyOffset = offset
             let readKeyLength = bytes[offset]
@@ -970,9 +978,7 @@ public final class PostboxDecoder {
                 continue
             }
 
-            if keyData.withUnsafeBytes({ keyBytes -> Bool in
-                return memcmp(bytes + (offset - Int(readKeyLength) - 1), keyBytes.baseAddress!, keyLength) == 0
-            }) {
+            if keyLength == 0 || memcmp(bytes + (offset - Int(readKeyLength) - 1), keyBytes.baseAddress!, keyLength) == 0 {
                 if let valueType = valueType {
                     if readValueType == valueType.rawValue {
                         actualValueType = valueType
@@ -1000,7 +1006,7 @@ public final class PostboxDecoder {
 
         if (startOffset != 0) {
             offset = 0
-            return positionOnKey(bytes, offset: &offset, maxOffset: startOffset, length: length, key: key, valueType: valueType, actualValueType: &actualValueType, consumeKey: consumeKey)
+            return positionOnKey(bytes, offset: &offset, maxOffset: startOffset, length: length, keyBytes: keyBytes, valueType: valueType, actualValueType: &actualValueType, consumeKey: consumeKey)
         }
 
         return false
@@ -1190,13 +1196,22 @@ public final class PostboxDecoder {
         }
     }
     
+    private static func decodeUtf8String(_ bytes: UnsafePointer<UInt8>, count: Int) -> String? {
+        if #available(macOS 15.0, iOS 18.0, *) {
+            if count < 3 || bytes[0] != 0xEF || bytes[1] != 0xBB || bytes[2] != 0xBF {
+                return String(validating: UnsafeBufferPointer(start: bytes, count: count), as: UTF8.self)
+            }
+        }
+        return String(data: Data(bytes: bytes, count: count), encoding: .utf8)
+    }
+    
     public func decodeStringForKey(_ key: String, orElse: String) -> String {
         if PostboxDecoder.positionOnKey(self.buffer.memory, offset: &self.offset, maxOffset: self.buffer.length, length: self.buffer.length, key: key, valueType: .String) {
             var length: Int32 = 0
             memcpy(&length, self.buffer.memory + self.offset, 4)
-            let data = Data(bytes: self.buffer.memory.assumingMemoryBound(to: UInt8.self).advanced(by: self.offset + 4), count: Int(length))
+            let string = PostboxDecoder.decodeUtf8String(self.buffer.memory.assumingMemoryBound(to: UInt8.self).advanced(by: self.offset + 4), count: Int(length))
             self.offset += 4 + Int(length)
-            return String(data: data, encoding: .utf8) ?? orElse
+            return string ?? orElse
         } else {
             return orElse
         }
@@ -1206,9 +1221,9 @@ public final class PostboxDecoder {
         if PostboxDecoder.positionOnKey(self.buffer.memory, offset: &self.offset, maxOffset: self.buffer.length, length: self.buffer.length, key: key, valueType: .String) {
             var length: Int32 = 0
             memcpy(&length, self.buffer.memory + self.offset, 4)
-            let data = Data(bytes: self.buffer.memory.assumingMemoryBound(to: UInt8.self).advanced(by: self.offset + 4), count: Int(length))
+            let string = PostboxDecoder.decodeUtf8String(self.buffer.memory.assumingMemoryBound(to: UInt8.self).advanced(by: self.offset + 4), count: Int(length))
             self.offset += 4 + Int(length)
-            return String(data: data, encoding: .utf8)
+            return string
         } else {
             return nil
         }

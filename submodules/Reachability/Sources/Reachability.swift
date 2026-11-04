@@ -91,6 +91,7 @@ private final class PathMonitor {
     
     let networkType = Promise<Reachability.NetworkType>()
     let isConstrained = Promise<Bool>()
+    let isExpensive = Promise<Bool>()
     
     init(queue: Queue) {
         self.queue = queue
@@ -114,6 +115,7 @@ private final class PathMonitor {
                 
                 strongSelf.networkType.set(.single(networkType))
                 strongSelf.isConstrained.set(.single(pathIsConstrained(path)))
+                strongSelf.isExpensive.set(.single(path.isExpensive))
             }
         }
         
@@ -133,6 +135,7 @@ private final class PathMonitor {
         
         self.networkType.set(.single(networkType))
         self.isConstrained.set(.single(pathIsConstrained(path)))
+        self.isExpensive.set(.single(path.isExpensive))
     }
 }
 
@@ -199,6 +202,25 @@ public enum Reachability {
 
                 SharedPathMonitor.impl.with { impl in
                     disposable.set(impl.isConstrained.get().start(next: { value in
+                        subscriber.putNext(value)
+                    }))
+                }
+
+                return disposable
+            }
+            |> distinctUntilChanged
+        } else {
+            return .single(false)
+        }
+    }
+    
+    public static var isExpensive: Signal<Bool, NoError> {
+        if #available(iOSApplicationExtension 12.0, iOS 12.0, macOS 14.0, *) {
+            return Signal { subscriber in
+                let disposable = MetaDisposable()
+
+                SharedPathMonitor.impl.with { impl in
+                    disposable.set(impl.isExpensive.get().start(next: { value in
                         subscriber.putNext(value)
                     }))
                 }

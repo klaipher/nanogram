@@ -34,6 +34,8 @@ typedef NS_ENUM(NSUInteger, FFMpegAVCodecContextReceiveResult)
 // reconstruction until the next IDR, on top of the visible blocking. Only appropriate
 // for small, short-looping thumbnails. Must be called before `open`.
 - (void)setSkipLoopFilterToAll;
+- (void)setThreadCount:(int32_t)threadCount;
+- (int32_t)threadCount;
 - (FFMpegAVCodecContextReceiveResult)receiveIntoFrame:(FFMpegAVFrame *)frame;
 - (void)flushBuffers;
 

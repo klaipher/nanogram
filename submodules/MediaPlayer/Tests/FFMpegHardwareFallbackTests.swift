@@ -1,6 +1,10 @@
 import XCTest
 import CoreMedia
+#if canImport(UniversalMediaPlayer)
 @testable import UniversalMediaPlayer
+#else
+@testable import TelegramMediaPlayer
+#endif
 
 // FFmpeg calls the get_format callback again, without the VideoToolbox format, when the hwaccel
 // setup fails (no device, session limit, a profile VideoToolbox cannot decode). The callback used

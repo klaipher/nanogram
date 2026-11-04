@@ -120,6 +120,10 @@ private final class TempBoxContexts {
         return TempBoxDirectory(key: key, id: id, path: context.path)
     }
     
+    var count: Int {
+        return self.contexts.count
+    }
+    
     func dispose(_ file: TempBoxFile) -> [String] {
         if let context = self.contexts[file.key] {
             context.subscribers.remove(file.id)
@@ -198,6 +202,12 @@ public final class TempBox {
     public func tempDirectory() -> TempBoxDirectory {
         return self.contexts.with { contexts in
             return contexts.tempDirectory(basePath: self.currentBasePath)
+        }
+    }
+    
+    public var activeContextCount: Int {
+        return self.contexts.with { contexts in
+            return contexts.count
         }
     }
     

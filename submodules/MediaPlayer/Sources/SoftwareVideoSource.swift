@@ -74,11 +74,17 @@ public final class SoftwareVideoSource {
     
     public private(set) var reportedDuration: CMTime = .invalid
     
+    private(set) var streamInfoProbeSkippedStreamCount: Int = 0
+    
     public var hasStream: Bool {
         return self.videoStream != nil
     }
     
-    public init(path: String, hintVP9: Bool, unpremultiplyAlpha: Bool, passthroughDecoder: Bool = false, useHardwareAcceleration: Bool = false, reusePixelBuffers: Bool = false) {
+    var reusesPixelBuffers: Bool {
+        return (self.videoStream?.decoder as? FFMpegMediaVideoFrameDecoder)?.reusesPixelBuffers ?? false
+    }
+    
+    public init(path: String, hintVP9: Bool, unpremultiplyAlpha: Bool, passthroughDecoder: Bool = false, useHardwareAcceleration: Bool = false, skipLoopFilter: Bool = false, reusePixelBuffers: Bool = false) {
         let _ = FFMpegMediaFrameSourceContextHelpers.registerFFMpegGlobals
         
         self.hintVP9 = hintVP9
@@ -118,6 +124,7 @@ public final class SoftwareVideoSource {
             self.readingError = true
             return
         }
+        self.streamInfoProbeSkippedStreamCount = Int(avFormatContext.streamInfoProbeSkippedStreamCount)
         
         self.avFormatContext = avFormatContext
         
@@ -171,9 +178,15 @@ public final class SoftwareVideoSource {
                         if useHardwareAcceleration {
                             codecContext.setupHardwareAccelerationIfPossible()
                         }
+                        if skipLoopFilter {
+                            codecContext.setSkipLoopFilterToAll()
+                        }
                         if codecContext.open() {
                             let decoder = FFMpegMediaVideoFrameDecoder(codecContext: codecContext)
                             decoder.reusesPixelBuffers = reusePixelBuffers
+                            #if os(macOS)
+                            decoder.presentsUntaggedFrames = true
+                            #endif
                             videoStream = SoftwareVideoStream(index: Int(streamIndex), fps: fps, timebase: timebase, startTime: startTime, duration: duration, decoder: decoder, rotationAngle: rotationAngle, aspect: aspect)
                             break
                         }
@@ -274,7 +287,7 @@ public final class SoftwareVideoSource {
         
         if !self.enqueuedFrames.isEmpty {
             let value = self.enqueuedFrames.removeFirst()
-            return (self.presentableFrame(value.0), value.1, value.2, value.3)
+            return (value.0, value.1, value.2, value.3)
         }
         
         let (decodableFrame, loop) = self.readDecodableFrame()
@@ -288,7 +301,7 @@ public final class SoftwareVideoSource {
                 if let decoder = videoStream.decoder as? FFMpegMediaVideoFrameDecoder {
                     result = (decoder.decode(ptsOffset: ptsOffset, forceARGB: self.hintVP9, unpremultiplyAlpha: self.unpremultiplyAlpha), CGFloat(videoStream.rotationAngle), CGFloat(videoStream.aspect), loop)
                 } else {
-                    result = (videoStream.decoder.decode(), CGFloat(videoStream.rotationAngle), CGFloat(videoStream.aspect), loop)
+                    result = (SoftwareVideoSource.presentablePassthroughFrame(videoStream.decoder.decode(), ptsOffset: ptsOffset), CGFloat(videoStream.rotationAngle), CGFloat(videoStream.aspect), loop)
                 }
             } else {
                 result = (nil, CGFloat(videoStream.rotationAngle), CGFloat(videoStream.aspect), loop)
@@ -315,60 +328,37 @@ public final class SoftwareVideoSource {
                 result = self.enqueuedFrames.removeFirst()
             }
         }
-        result.0 = self.presentableFrame(result.0)
         return result
     }
     
-    private func presentableFrame(_ frame: MediaTrackFrame?) -> MediaTrackFrame? {
-        guard self.useHardwareAcceleration, let frame else {
-            return frame
+    private static func presentablePassthroughFrame(_ frame: MediaTrackFrame?, ptsOffset: CMTime?) -> MediaTrackFrame? {
+        guard let frame else {
+            return nil
         }
-        #if os(macOS)
-        return SoftwareVideoSource.frameWithoutColorTags(frame)
-        #else
-        return frame
-        #endif
-    }
-    
-    #if os(macOS)
-    private static let surfaceColorKeys: [CFString] = [
-        "IOSurfaceYCbCrMatrix" as CFString,
-        "IOSurfaceColorPrimaries" as CFString,
-        "IOSurfaceTransferFunction" as CFString,
-        "IOSurfaceColorSpace" as CFString,
-        "IOSurfaceColorSpaceID" as CFString,
-        "IOSurfaceICCProfile" as CFString,
-        "IOSurfaceChromaLocationTopField" as CFString
-    ]
-    
-    private static func frameWithoutColorTags(_ frame: MediaTrackFrame) -> MediaTrackFrame {
-        guard let pixelBuffer = CMSampleBufferGetImageBuffer(frame.sampleBuffer) else {
-            return frame
-        }
-        if let surface = CVPixelBufferGetIOSurface(pixelBuffer)?.takeUnretainedValue() {
-            for key in SoftwareVideoSource.surfaceColorKeys {
-                IOSurfaceRemoveValue(surface, key)
+        var sampleBuffer = frame.sampleBuffer
+        if let ptsOffset {
+            var timing = CMSampleTimingInfo()
+            guard CMSampleBufferGetSampleTimingInfo(sampleBuffer, at: 0, timingInfoOut: &timing) == noErr else {
+                return nil
             }
+            timing.presentationTimeStamp = CMTimeAdd(timing.presentationTimeStamp, ptsOffset)
+            if timing.decodeTimeStamp.isValid {
+                timing.decodeTimeStamp = CMTimeAdd(timing.decodeTimeStamp, ptsOffset)
+            }
+            var retimed: CMSampleBuffer?
+            guard CMSampleBufferCreateCopyWithNewTiming(allocator: kCFAllocatorDefault, sampleBuffer: sampleBuffer, sampleTimingEntryCount: 1, sampleTimingArray: &timing, sampleBufferOut: &retimed) == noErr, let retimed else {
+                return nil
+            }
+            sampleBuffer = retimed
         }
-        CVBufferRemoveAllAttachments(pixelBuffer)
-        
-        var formatRef: CMVideoFormatDescription?
-        guard CMVideoFormatDescriptionCreateForImageBuffer(allocator: kCFAllocatorDefault, imageBuffer: pixelBuffer, formatDescriptionOut: &formatRef) == noErr, let format = formatRef else {
-            return frame
-        }
-        var timingInfo = CMSampleTimingInfo(duration: CMSampleBufferGetDuration(frame.sampleBuffer), presentationTimeStamp: CMSampleBufferGetPresentationTimeStamp(frame.sampleBuffer), decodeTimeStamp: CMSampleBufferGetDecodeTimeStamp(frame.sampleBuffer))
-        var sampleBufferRef: CMSampleBuffer?
-        guard CMSampleBufferCreateReadyWithImageBuffer(allocator: kCFAllocatorDefault, imageBuffer: pixelBuffer, formatDescription: format, sampleTiming: &timingInfo, sampleBufferOut: &sampleBufferRef) == noErr, let sampleBuffer = sampleBufferRef else {
-            return frame
-        }
-        if let sourceAttachments = CMSampleBufferGetSampleAttachmentsArray(frame.sampleBuffer, createIfNecessary: false) as? [NSDictionary], let source = sourceAttachments.first, let targetAttachments = CMSampleBufferGetSampleAttachmentsArray(sampleBuffer, createIfNecessary: true) as NSArray?, let target = targetAttachments.firstObject as? NSMutableDictionary {
-            for (key, value) in source {
-                target[key] = value
+        if let attachments = CMSampleBufferGetSampleAttachmentsArray(sampleBuffer, createIfNecessary: true) as NSArray?, let dict = attachments.firstObject as? NSMutableDictionary {
+            dict[kCMSampleAttachmentKey_DisplayImmediately as NSString] = true as NSNumber
+            if frame.resetDecoder {
+                dict[kCMSampleBufferAttachmentKey_ResetDecoderBeforeDecoding as NSString] = true as NSNumber
             }
         }
         return MediaTrackFrame(type: frame.type, sampleBuffer: sampleBuffer, resetDecoder: frame.resetDecoder, decoded: frame.decoded, rotationAngle: frame.rotationAngle)
     }
-    #endif
     
     public func readImage() -> (UIImage?, CGFloat, CGFloat, Bool) {
         if let videoStream = self.videoStream {

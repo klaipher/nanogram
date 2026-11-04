@@ -18,6 +18,7 @@ typedef NS_ENUM(NSUInteger, FFMpegAVFramePixelFormat) {
     FFMpegAVFramePixelFormatYUVA422,
     FFMpegAVFramePixelFormatYUV444,
     FFMpegAVFramePixelFormatYUVA444,
+    FFMpegAVFramePixelFormatYUV10,
     FFMpegAVFramePixelFormatUnsupported
 };
 
@@ -36,6 +37,9 @@ typedef NS_ENUM(NSUInteger, FFMpegAVFrameNativePixelFormat) {
 @property (nonatomic, readonly) int64_t duration;
 @property (nonatomic, readonly) FFMpegAVFrameColorRange colorRange;
 @property (nonatomic, readonly) FFMpegAVFramePixelFormat pixelFormat;
+@property (nonatomic, readonly) int32_t colorPrimaries;
+@property (nonatomic, readonly) int32_t colorTransfer;
+@property (nonatomic, readonly) int32_t colorMatrix;
 
 - (instancetype)init;
 - (instancetype _Nullable)initWithPixelFormat:(FFMpegAVFramePixelFormat)pixelFormat width:(int32_t)width height:(int32_t)height;

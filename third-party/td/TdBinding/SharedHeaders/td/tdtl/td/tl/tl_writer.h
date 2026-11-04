@@ -1,5 +1,5 @@
 //
-// Copyright Aliaksei Levin (levlam@telegram.org), Arseny Smirnov (arseny30@gmail.com) 2014-2025
+// Copyright Aliaksei Levin (levlam@telegram.org), Arseny Smirnov (arseny30@gmail.com) 2014-2026
 //
 // Distributed under the Boost Software License, Version 1.0. (See accompanying
 // file LICENSE_1_0.txt or copy at http://www.boost.org/LICENSE_1_0.txt)
@@ -100,7 +100,7 @@ class TL_writer {
 
   virtual std::string gen_field_definition(const std::string &class_name, const std::string &type_name,
                                            const std::string &field_name) const = 0;
-  virtual std::string gen_flags_definitions(const tl_combinator *t, bool can_be_stored) const {
+  virtual std::string gen_flags_definitions(const tl_combinator *t) const {
     return "";
   }
 

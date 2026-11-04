@@ -1,5 +1,5 @@
 //
-// Copyright Aliaksei Levin (levlam@telegram.org), Arseny Smirnov (arseny30@gmail.com) 2014-2025
+// Copyright Aliaksei Levin (levlam@telegram.org), Arseny Smirnov (arseny30@gmail.com) 2014-2026
 //
 // Distributed under the Boost Software License, Version 1.0. (See accompanying
 // file LICENSE_1_0.txt or copy at http://www.boost.org/LICENSE_1_0.txt)
@@ -19,6 +19,7 @@
 #include "td/actor/MultiTimeout.h"
 
 #include "td/utils/common.h"
+#include "td/utils/ExpiringFlatHashMap.h"
 #include "td/utils/FlatHashMap.h"
 #include "td/utils/FlatHashSet.h"
 #include "td/utils/Promise.h"
@@ -40,7 +41,8 @@ class DialogInviteLinkManager final : public Actor {
 
   void check_dialog_invite_link(const string &invite_link, bool force, Promise<Unit> &&promise);
 
-  void import_dialog_invite_link(const string &invite_link, Promise<DialogId> &&promise);
+  void import_dialog_invite_link(const string &invite_link,
+                                 Promise<td_api::object_ptr<td_api::ChatJoinResult>> &&promise);
 
   void on_get_dialog_invite_link_info(const string &invite_link,
                                       telegram_api::object_ptr<telegram_api::ChatInvite> &&chat_invite_ptr,
@@ -88,6 +90,7 @@ class DialogInviteLinkManager final : public Actor {
 
  private:
   static constexpr size_t MAX_INVITE_LINK_TITLE_LENGTH = 32;  // server-side limit
+  static constexpr int32 INVITE_LINK_INFO_CACHE_TIME = 300;   // some reasonable value
 
   void tear_down() final;
 
@@ -129,7 +132,7 @@ class DialogInviteLinkManager final : public Actor {
     bool is_scam = false;
     bool is_fake = false;
   };
-  FlatHashMap<string, unique_ptr<InviteLinkInfo>> invite_link_infos_;
+  ExpiringFlatHashMap<string, InviteLinkInfo> invite_link_infos_{INVITE_LINK_INFO_CACHE_TIME};
 
   struct DialogAccessByInviteLink {
     FlatHashSet<string> invite_links;

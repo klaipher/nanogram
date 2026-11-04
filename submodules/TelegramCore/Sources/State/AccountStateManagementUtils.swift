@@ -4941,16 +4941,10 @@ func replayFinalState(
                 transaction.setState(currentState.changedState(updatedInnerState))
                 Logger.shared.log("State", "apply state \(updatedInnerState)")
             case let .UpdateChannelState(peerId, pts):
-                let currentState = transaction.getPeerChatState(peerId) as? ChannelState
-                // An empty channel poll repeats the stored pts; writing it anyway makes the transaction
-                // non-empty and runs every live view.
-                if let currentState, currentState.pts == pts {
-                    break
+                if let state = channelStateUpdatedByPoll(transaction.getPeerChatState(peerId) as? ChannelState, pts: pts) {
+                    transaction.setPeerChatState(peerId, state: state)
+                    Logger.shared.log("State", "apply channel state \(peerId): \(state)")
                 }
-                var state = currentState ?? ChannelState(pts: pts, invalidatedPts: nil, synchronizedUntilMessageId: nil)
-                state = state.withUpdatedPts(pts)
-                transaction.setPeerChatState(peerId, state: state)
-                Logger.shared.log("State", "apply channel state \(peerId): \(state)")
             case let .UpdateChannelInvalidationPts(peerId, pts):
                 var state = (transaction.getPeerChatState(peerId) as? ChannelState) ?? ChannelState(pts: 0, invalidatedPts: pts, synchronizedUntilMessageId: nil)
                 state = state.withUpdatedInvalidatedPts(pts)
@@ -5256,18 +5250,7 @@ func replayFinalState(
                     if let forwardInfo = currentMessage.forwardInfo {
                         storeForwardInfo = StoreMessageForwardInfo(authorId: forwardInfo.author?.id, sourceId: forwardInfo.source?.id, sourceMessageId: forwardInfo.sourceMessageId, date: forwardInfo.date, authorSignature: forwardInfo.authorSignature, psaType: forwardInfo.psaType, flags: forwardInfo.flags)
                     }
-                    var attributes = currentMessage.attributes
-                    var changed = false
-                    loop: for j in 0 ..< attributes.count {
-                        if let attribute = attributes[j] as? ViewCountMessageAttribute {
-                            if Int(count) > attribute.count {
-                                attributes[j] = ViewCountMessageAttribute(count: Int(count))
-                                changed = true
-                            }
-                            break loop
-                        }
-                    }
-                    if !changed {
+                    guard let attributes = messageAttributesWithIncreasedViewCount(currentMessage.attributes, count: Int(count)) else {
                         return .skip
                     }
                     return .update(StoreMessage(id: currentMessage.id, customStableId: nil, globallyUniqueId: currentMessage.globallyUniqueId, groupingKey: currentMessage.groupingKey, threadId: currentMessage.threadId, timestamp: currentMessage.timestamp, flags: StoreMessageFlags(currentMessage.flags), tags: currentMessage.tags, globalTags: currentMessage.globalTags, localTags: currentMessage.localTags, forwardInfo: storeForwardInfo, authorId: currentMessage.author?.id, text: currentMessage.text, attributes: attributes, media: currentMessage.media))
@@ -5278,18 +5261,7 @@ func replayFinalState(
                     if let forwardInfo = currentMessage.forwardInfo {
                         storeForwardInfo = StoreMessageForwardInfo(authorId: forwardInfo.author?.id, sourceId: forwardInfo.source?.id, sourceMessageId: forwardInfo.sourceMessageId, date: forwardInfo.date, authorSignature: forwardInfo.authorSignature, psaType: forwardInfo.psaType, flags: forwardInfo.flags)
                     }
-                    var attributes = currentMessage.attributes
-                    var changed = false
-                    loop: for j in 0 ..< attributes.count {
-                        if let attribute = attributes[j] as? ForwardCountMessageAttribute {
-                            if Int(count) > attribute.count {
-                                attributes[j] = ForwardCountMessageAttribute(count: Int(count))
-                                changed = true
-                            }
-                            break loop
-                        }
-                    }
-                    if !changed {
+                    guard let attributes = messageAttributesWithIncreasedForwardCount(currentMessage.attributes, count: Int(count)) else {
                         return .skip
                     }
                     return .update(StoreMessage(id: currentMessage.id, customStableId: nil, globallyUniqueId: currentMessage.globallyUniqueId, groupingKey: currentMessage.groupingKey, threadId: currentMessage.threadId, timestamp: currentMessage.timestamp, flags: StoreMessageFlags(currentMessage.flags), tags: currentMessage.tags, globalTags: currentMessage.globalTags, localTags: currentMessage.localTags, forwardInfo: storeForwardInfo, authorId: currentMessage.author?.id, text: currentMessage.text, attributes: attributes, media: currentMessage.media))

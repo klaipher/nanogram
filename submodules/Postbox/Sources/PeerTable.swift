@@ -39,6 +39,9 @@ final class PeerTable: Table {
     /// True when both peers encode to the same bytes, i.e. storing `updated` would change nothing.
     /// Unequal bytes (including a different field order) only mean the peer is written as before.
     func encodesIdentically(_ current: Peer, _ updated: Peer) -> Bool {
+        if current === updated {
+            return true
+        }
         self.sharedEncoder.reset()
         self.sharedEncoder.encodeRootObject(current)
         self.comparisonEncoder.reset()

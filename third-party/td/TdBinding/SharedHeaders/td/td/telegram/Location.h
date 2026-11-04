@@ -1,5 +1,5 @@
 //
-// Copyright Aliaksei Levin (levlam@telegram.org), Arseny Smirnov (arseny30@gmail.com) 2014-2025
+// Copyright Aliaksei Levin (levlam@telegram.org), Arseny Smirnov (arseny30@gmail.com) 2014-2026
 //
 // Distributed under the Boost Software License, Version 1.0. (See accompanying
 // file LICENSE_1_0.txt or copy at http://www.boost.org/LICENSE_1_0.txt)
@@ -29,7 +29,6 @@ class Location {
   mutable int64 access_hash_ = 0;
 
   friend bool operator==(const Location &lhs, const Location &rhs);
-  friend bool operator!=(const Location &lhs, const Location &rhs);
 
   friend StringBuilder &operator<<(StringBuilder &string_builder, const Location &location);
 
@@ -137,8 +136,13 @@ struct InputMessageLocation {
       , heading(heading)
       , proximity_alert_radius(proximity_alert_radius) {
   }
+
+  telegram_api::object_ptr<telegram_api::InputMedia> get_input_media_geo_live() const;
 };
+
 Result<InputMessageLocation> process_input_message_location(
-    td_api::object_ptr<td_api::InputMessageContent> &&input_message_content) TD_WARN_UNUSED_RESULT;
+    td_api::object_ptr<td_api::InputMessageContent> &&input_message_content);
+
+Result<InputMessageLocation> process_live_location(td_api::object_ptr<td_api::liveLocation> &&location, bool for_edit);
 
 }  // namespace td

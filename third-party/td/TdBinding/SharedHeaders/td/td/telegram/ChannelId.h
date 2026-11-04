@@ -1,5 +1,5 @@
 //
-// Copyright Aliaksei Levin (levlam@telegram.org), Arseny Smirnov (arseny30@gmail.com) 2014-2025
+// Copyright Aliaksei Levin (levlam@telegram.org), Arseny Smirnov (arseny30@gmail.com) 2014-2026
 //
 // Distributed under the Boost Software License, Version 1.0. (See accompanying
 // file LICENSE_1_0.txt or copy at http://www.boost.org/LICENSE_1_0.txt)
@@ -22,6 +22,8 @@ class ChannelId {
  public:
   // the last (1 << 31) - 1 identifiers will be used for secret chat dialog identifiers
   static constexpr int64 MAX_CHANNEL_ID = 1000000000000ll - (1ll << 31);
+  static constexpr int64 MIN_MONOFORUM_CHANNEL_ID = 1000000000000ll + (1ll << 31) + 1;
+  static constexpr int64 MAX_MONOFORUM_CHANNEL_ID = 3000000000000ll;
 
   ChannelId() = default;
 
@@ -31,6 +33,10 @@ class ChannelId {
   ChannelId(T channel_id) = delete;
 
   bool is_valid() const {
+    return is_regular_channel() || (MIN_MONOFORUM_CHANNEL_ID <= id && id < MAX_MONOFORUM_CHANNEL_ID);
+  }
+
+  bool is_regular_channel() const {
     return 0 < id && id < MAX_CHANNEL_ID;
   }
 

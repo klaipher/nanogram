@@ -439,21 +439,19 @@ public final class AccountViewTracker {
         }
     }
     
-    /// Drops request-throttle records older than every throttle window (the longest is 10 h).
-    /// They gain one entry per message or peer seen and were never removed; dropping a record
-    /// past its window cannot change a throttle decision.
     public func pruneThrottleState() {
         self.queue.async {
-            let cutoff = Int32(CFAbsoluteTimeGetCurrent()) - 11 * 60 * 60
+            let now = Int32(CFAbsoluteTimeGetCurrent())
+            let cutoff = now - accountViewTrackerThrottleRetention
             self.updatedViewCountMessageIdsAndTimestamps = self.updatedViewCountMessageIdsAndTimestamps.filter { $0.value.timestamp >= cutoff }
-            self.updatedReactionsMessageIdsAndTimestamps = self.updatedReactionsMessageIdsAndTimestamps.filter { $0.value >= cutoff }
-            self.updatedSeenLiveLocationMessageIdsAndTimestamps = self.updatedSeenLiveLocationMessageIdsAndTimestamps.filter { $0.value >= cutoff }
-            self.updatedExtendedMediaMessageIdsAndTimestamps = self.updatedExtendedMediaMessageIdsAndTimestamps.filter { $0.value >= cutoff }
-            self.updatedUnsupportedMediaMessageIdsAndTimestamps = self.updatedUnsupportedMediaMessageIdsAndTimestamps.filter { $0.value >= cutoff }
-            self.refreshSecretChatMediaMessageIdsAndTimestamps = self.refreshSecretChatMediaMessageIdsAndTimestamps.filter { $0.value >= cutoff }
-            self.refreshStoriesForMessageIdsAndTimestamps = self.refreshStoriesForMessageIdsAndTimestamps.filter { $0.value >= cutoff }
-            self.refreshStoriesForPeerIdsAndTimestamps = self.refreshStoriesForPeerIdsAndTimestamps.filter { $0.value >= cutoff }
-            self.refreshCanSendMessagesForPeerIdsAndTimestamps = self.refreshCanSendMessagesForPeerIdsAndTimestamps.filter { $0.value >= cutoff }
+            self.updatedReactionsMessageIdsAndTimestamps = prunedAccountViewTrackerThrottleRecords(self.updatedReactionsMessageIdsAndTimestamps, now: now)
+            self.updatedSeenLiveLocationMessageIdsAndTimestamps = prunedAccountViewTrackerThrottleRecords(self.updatedSeenLiveLocationMessageIdsAndTimestamps, now: now)
+            self.updatedExtendedMediaMessageIdsAndTimestamps = prunedAccountViewTrackerThrottleRecords(self.updatedExtendedMediaMessageIdsAndTimestamps, now: now)
+            self.updatedUnsupportedMediaMessageIdsAndTimestamps = prunedAccountViewTrackerThrottleRecords(self.updatedUnsupportedMediaMessageIdsAndTimestamps, now: now)
+            self.refreshSecretChatMediaMessageIdsAndTimestamps = prunedAccountViewTrackerThrottleRecords(self.refreshSecretChatMediaMessageIdsAndTimestamps, now: now)
+            self.refreshStoriesForMessageIdsAndTimestamps = prunedAccountViewTrackerThrottleRecords(self.refreshStoriesForMessageIdsAndTimestamps, now: now)
+            self.refreshStoriesForPeerIdsAndTimestamps = prunedAccountViewTrackerThrottleRecords(self.refreshStoriesForPeerIdsAndTimestamps, now: now)
+            self.refreshCanSendMessagesForPeerIdsAndTimestamps = prunedAccountViewTrackerThrottleRecords(self.refreshCanSendMessagesForPeerIdsAndTimestamps, now: now)
         }
     }
     
@@ -597,18 +595,17 @@ public final class AccountViewTracker {
                         if let message = messages[messageId] {
                             for media in message.media {
                                 if let poll = media as? TelegramMediaPoll {
-                                    if !poll.isClosed, poll.deadlineTimeout != nil || poll.deadlineDate != nil, message.id.namespace == Namespaces.Message.Cloud {
+                                    if !poll.isClosed, message.id.namespace == Namespaces.Message.Cloud {
                                         let startDate: Int32
                                         if let forwardInfo = message.forwardInfo {
                                             startDate = forwardInfo.date
                                         } else {
                                             startDate = message.timestamp
                                         }
-                                        let timestamp = Int32(CFAbsoluteTimeGetCurrent() + NSTimeIntervalSince1970)
-                                        // Time left until the poll closes. This used to be the time since it
-                                        // was posted, so any visible deadline poll was refetched every 0.5 s.
-                                        let deadline = poll.deadlineDate ?? (startDate + (poll.deadlineTimeout ?? 0))
-                                        let remainingTime = deadline - timestamp
+                                        let timestamp = Int32(CFAbsoluteTimeGetCurrent() + NSTimeIntervalSince1970 + account.network.globalTimeDifference)
+                                        guard let remainingTime = pollRefreshRemainingTime(startDate: startDate, deadlineTimeout: poll.deadlineTimeout, deadlineDate: poll.deadlineDate, now: timestamp) else {
+                                            continue
+                                        }
                                         
                                         if remainingTime > 0 {
                                             deadlineTimer = .single(false)
@@ -627,31 +624,7 @@ public final class AccountViewTracker {
                         let pollSignal: Signal<Never, NoError> = deadlineTimer
                         |> distinctUntilChanged
                         |> mapToSignal { reachedDeadline -> Signal<Never, NoError> in
-                            if reachedDeadline {
-                                // Refresh quickly for ~5 s so the closed results show promptly, then
-                                // fall back to the regular 30 s refresh.
-                                let fetchOnce: Signal<Never, NoError> = fetchPoll(account: account, messageId: messageId)
-                                |> ignoreValues
-                                |> then(.complete() |> delay(0.5, queue: Queue.concurrentDefaultQueue()))
-                                var burst: Signal<Never, NoError> = .complete()
-                                for _ in 0 ..< 10 {
-                                    burst = burst |> then(fetchOnce)
-                                }
-                                let regular: Signal<Never, NoError> = (fetchPoll(account: account, messageId: messageId)
-                                |> ignoreValues
-                                |> then(.complete() |> delay(30.0, queue: Queue.concurrentDefaultQueue())))
-                                |> restart
-                                return burst |> then(regular)
-                            } else {
-                                var signal = fetchPoll(account: account, messageId: messageId)
-                                |> ignoreValues
-                                signal = (signal |> then(
-                                    .complete()
-                                    |> delay(30.0, queue: Queue.concurrentDefaultQueue())
-                                ))
-                                |> restart
-                                return signal
-                            }
+                            return pollRefreshSignal(fetch: fetchPoll(account: account, messageId: messageId) |> ignoreValues, reachedDeadline: reachedDeadline, burstInterval: 0.5, regularInterval: 30.0)
                         }
                         self.pollDisposables[messageId] = pollSignal.start()
                     } else {
@@ -813,7 +786,6 @@ public final class AccountViewTracker {
                                                 transaction.updateMessage(messageIds[i], update: { currentMessage in
                                                     let storeForwardInfo = currentMessage.forwardInfo.flatMap(StoreMessageForwardInfo.init)
                                                     var attributes = currentMessage.attributes
-                                                    var foundReplies = false
                                                     var commentsChannelId: PeerId?
                                                     var recentRepliersPeerIds: [PeerId]?
                                                     var repliesCount: Int32?
@@ -842,41 +814,7 @@ public final class AccountViewTracker {
                                                             maxMessageId = MessageId(peerId: commentsChannelId, namespace: Namespaces.Message.Cloud, id: repliesMaxId)
                                                         }
                                                     }
-                                                    // This poll repeats every 30 s for every visible post. Rewriting an
-                                                    // unchanged message costs a database write and a bubble re-layout.
-                                                    var changed = false
-                                                    loop: for j in 0 ..< attributes.count {
-                                                        if let attribute = attributes[j] as? ViewCountMessageAttribute {
-                                                            if let views = views, Int(views) > attribute.count {
-                                                                attributes[j] = ViewCountMessageAttribute(count: Int(views))
-                                                                changed = true
-                                                            }
-                                                        } else if let attribute = attributes[j] as? ForwardCountMessageAttribute {
-                                                            if let forwards = forwards, Int(forwards) != attribute.count {
-                                                                attributes[j] = ForwardCountMessageAttribute(count: Int(forwards))
-                                                                changed = true
-                                                            }
-                                                        } else if let attribute = attributes[j] as? ReplyThreadMessageAttribute {
-                                                            foundReplies = true
-                                                            if let repliesCount = repliesCount {
-                                                                var resolvedMaxReadMessageId: MessageId.Id?
-                                                                if let previousMaxReadMessageId = attribute.maxReadMessageId, let repliesReadMaxIdValue = repliesReadMaxId {
-                                                                    resolvedMaxReadMessageId = max(previousMaxReadMessageId, repliesReadMaxIdValue)
-                                                                    repliesReadMaxId = resolvedMaxReadMessageId
-                                                                } else if let repliesReadMaxIdValue = repliesReadMaxId {
-                                                                    resolvedMaxReadMessageId = repliesReadMaxIdValue
-                                                                    repliesReadMaxId = resolvedMaxReadMessageId
-                                                                } else {
-                                                                    resolvedMaxReadMessageId = attribute.maxReadMessageId
-                                                                }
-                                                                let updatedAttribute = ReplyThreadMessageAttribute(count: repliesCount, latestUsers: recentRepliersPeerIds ?? [], commentsPeerId: commentsChannelId, maxMessageId: repliesMaxId, maxReadMessageId: resolvedMaxReadMessageId)
-                                                                if updatedAttribute.count != attribute.count || updatedAttribute.latestUsers != attribute.latestUsers || updatedAttribute.commentsPeerId != attribute.commentsPeerId || updatedAttribute.maxMessageId != attribute.maxMessageId || updatedAttribute.maxReadMessageId != attribute.maxReadMessageId {
-                                                                    attributes[j] = updatedAttribute
-                                                                    changed = true
-                                                                }
-                                                            }
-                                                        }
-                                                    }
+                                                    let (changed, _) = applyMessageViewsPollResult(MessageViewsPollResult(views: views, forwards: forwards, repliesCount: repliesCount, recentRepliersPeerIds: recentRepliersPeerIds, commentsChannelId: commentsChannelId, repliesMaxId: repliesMaxId), to: &attributes, repliesReadMaxId: &repliesReadMaxId)
                                                     var maxReadIncomingMessageId: MessageId?
                                                     if let commentsChannelId = commentsChannelId {
                                                         if let repliesReadMaxId = repliesReadMaxId {
@@ -884,10 +822,6 @@ public final class AccountViewTracker {
                                                         }
                                                     }
                                                     resultStates[messageIds[i]] = ViewCountContextState(timestamp: Int32(CFAbsoluteTimeGetCurrent()), clientId: clientId, result: ViewCountContextState.ReplyInfo(commentsPeerId: commentsChannelId, maxReadIncomingMessageId: maxReadIncomingMessageId, maxMessageId: maxMessageId))
-                                                    if !foundReplies, let repliesCount = repliesCount {
-                                                        attributes.append(ReplyThreadMessageAttribute(count: repliesCount, latestUsers: recentRepliersPeerIds ?? [], commentsPeerId: commentsChannelId, maxMessageId: repliesMaxId, maxReadMessageId: repliesReadMaxId))
-                                                        changed = true
-                                                    }
                                                     if !changed {
                                                         return .skip
                                                     }

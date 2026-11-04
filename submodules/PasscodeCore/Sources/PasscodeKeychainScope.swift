@@ -2,11 +2,19 @@
 import Foundation
 import Security
 
-/// Keeps a channel's keychain items apart from the other channels' on macOS. Release channels share the
-/// unscoped names; a scoped channel (Debug builds) stores its passcode, biometric and wallet items under
-/// `org.telegram.scoped.<scope>/<name>`, which no unscoped name filter matches, so it neither prompts for nor
-/// resets the other channels' items. `migrateLegacyItems` copies the items the scoped build can read without a
-/// prompt from the unscoped names once, before anything reads the scope.
+/// Keeps a channel's keychain items apart from other apps' and other channels' on macOS. The unscoped names
+/// belong to the official Telegram app, which shares the login keychain with Nanogram; every Nanogram channel
+/// therefore takes a scope from `channelScope(prefix:isAppStoreEdition:)` and stores its passcode, biometric and
+/// wallet items under `org.telegram.scoped.<scope>/<name>`, which no unscoped name filter matches, so it neither
+/// prompts for nor resets anyone else's items. The direct and App Store editions are signed differently, so each
+/// has its own scope: an item one of them creates is readable by the other only after a prompt.
+///
+/// `migrateOnce` copies the items 13.1.x left under the unscoped names into the scope once per scope, before
+/// anything reads the scope. Whether those items are this app's is decided from this app's own data only (the
+/// managed-credential flag in its own defaults, see `legacyItemsBelongToThisApp`), never from an item's access
+/// list, which cannot be read without a possible prompt. Every read runs with keychain user interaction
+/// disabled, so an item whose access list does not trust this app is skipped instead of prompting. The
+/// unscoped items are never changed or deleted.
 @available(macOS 10.15, *)
 public enum PasscodeKeychainScope {
     public enum Migration: Equatable {
@@ -14,6 +22,30 @@ public enum PasscodeKeychainScope {
         case nothingToMigrate
         case keychainLocked
         case failed(OSStatus)
+    }
+
+    /// What one launch did about the copy. `finished` writes the scope's marker, so the copy never runs again
+    /// for that scope; `retryNextLaunch` leaves it unwritten.
+    public enum MigrationStep: Equatable {
+        case notNeeded
+        case finished(Migration?)
+        case retryNextLaunch(Migration)
+
+        /// The scoped credential may be missing until a later launch copies it, so it must not be created anew.
+        public var requiresExistingCredential: Bool {
+            if case .retryNextLaunch = self {
+                return true
+            }
+            return false
+        }
+
+        /// The managed-credential flag describes the copied credential only after a copy.
+        public var carriesManagedFlagOver: Bool {
+            if case .finished(.migrated?) = self {
+                return true
+            }
+            return false
+        }
     }
 
     enum Read: Equatable {
@@ -34,10 +66,42 @@ public enum PasscodeKeychainScope {
     public static let legacyPasscodeService = "org.telegram.passcode.v1"
 
     private static let root = "org.telegram.scoped."
+    private static let debugScope = "debug"
+    private static let legacyMarkerName = "keychain-scope-v1"
     private static let interactionLock = NSLock()
 
     static var system: Keychain {
         return Keychain(isUnlocked: isDefaultKeychainUnlocked, read: readWithoutInteraction, listGenericPasswords: listGenericPasswords, add: addIfMissing)
+    }
+
+    /// The scope of the channel whose data folder is named `prefix`: Debug keeps its existing `debug` scope, every
+    /// other channel gets `nanogram.<prefix>`, and the App Store edition, which shares the direct edition's data
+    /// folder but not its signature, gets `nanogram.<prefix>.mas`. An empty prefix has no scope.
+    public static func channelScope(prefix: String, isAppStoreEdition: Bool) -> String? {
+        if prefix.isEmpty {
+            return nil
+        }
+        if prefix == Self.debugScope {
+            return prefix
+        }
+        return "nanogram." + prefix + (isAppStoreEdition ? ".mas" : "")
+    }
+
+    /// The file in the data folder that records a finished copy into `scope`. Debug keeps the name it has used
+    /// since its scope was introduced; every other scope has its own, because both editions share a data folder.
+    public static func migrationMarkerName(scope: String) -> String {
+        if scope == Self.debugScope {
+            return Self.legacyMarkerName
+        }
+        return Self.legacyMarkerName + "." + scope
+    }
+
+    /// Whether the unscoped items are this app's, decided from this app's own data: Debug always copied whatever
+    /// it could read, and a release channel only when its own defaults record that it set up or adopted the
+    /// passcode credential under the unscoped names (`unscopedCredentialManaged`). Official Telegram never writes
+    /// this app's defaults.
+    public static func legacyItemsBelongToThisApp(scope: String, unscopedCredentialManaged: Bool) -> Bool {
+        return scope == Self.debugScope || unscopedCredentialManaged
     }
 
     public static func service(_ service: String, environment: PasscodeEnvironment = .shared) -> String {
@@ -47,22 +111,56 @@ public enum PasscodeKeychainScope {
         return Self.root + scope + "/" + service
     }
 
-    /// Copies the passcode credential, the device secret and the wallet items that this build can read without
-    /// user interaction from the unscoped names into the scope. The unscoped items are never changed or deleted:
-    /// other channels may still use them. Wallet items are grouped by the name that follows their service prefix.
-    /// A group is copied only when all of its items are readable and the scope holds nothing under that name but
-    /// identical copies, so a wallet is copied whole or not at all and is never mixed with the scope's own items;
-    /// within a group, items are copied in the order of `walletServicePrefixes`. Wallet items are copied first and
-    /// the credential last, and only together with the device secret that protects them, so an interrupted copy
-    /// resumes on the next run; a scope whose credential differs from the unscoped one is left as it is. Existing
-    /// scoped items are never replaced, and the attempts counter is not copied. Keychain user interaction is
-    /// disabled for the whole process during each read.
-    public static func migrateLegacyItems(passcodeService: String = Self.legacyPasscodeService, walletServicePrefixes: [String], environment: PasscodeEnvironment = .shared) -> Migration {
-        return Self.migrateLegacyItems(passcodeService: passcodeService, walletServicePrefixes: walletServicePrefixes, environment: environment, keychain: Self.system)
+    /// The items among `items` whose service starts with `servicePrefix` in this build's scope: the only ones a
+    /// bulk removal of that prefix may delete.
+    public static func scopedItems(_ items: [(service: String, account: String)], servicePrefix: String, environment: PasscodeEnvironment = .shared) -> [(service: String, account: String)] {
+        let prefix = Self.service(servicePrefix, environment: environment)
+        return items.filter { $0.service.hasPrefix(prefix) }
     }
 
-    static func migrateLegacyItems(passcodeService: String, walletServicePrefixes: [String], environment: PasscodeEnvironment, keychain: Keychain) -> Migration {
-        guard environment.keychainScope != nil else {
+    /// Runs the copy into this build's scope once per scope. Without a scope, or once the scope's marker exists in
+    /// `dataDirectory`, nothing runs. A fresh installation has nothing to copy and only writes the marker. A copy
+    /// that finds the keychain locked or fails leaves the marker unwritten, so the next launch tries again; any
+    /// other outcome writes it.
+    public static func migrateOnce(environment: PasscodeEnvironment = .shared, dataDirectory: String, isFreshInstallation: Bool, markerExists: (String) -> Bool, writeMarker: (String) -> Void, migrate: (_ legacyItemsBelongToThisApp: Bool) -> Migration, unscopedCredentialManaged: () -> Bool) -> MigrationStep {
+        guard let scope = environment.keychainScope else {
+            return .notNeeded
+        }
+        let marker = (dataDirectory as NSString).appendingPathComponent(Self.migrationMarkerName(scope: scope))
+        if markerExists(marker) {
+            return .notNeeded
+        }
+        var migration: Migration?
+        if !isFreshInstallation {
+            let result = migrate(Self.legacyItemsBelongToThisApp(scope: scope, unscopedCredentialManaged: unscopedCredentialManaged()))
+            switch result {
+            case .keychainLocked, .failed:
+                return .retryNextLaunch(result)
+            case .migrated, .nothingToMigrate:
+                migration = result
+            }
+        }
+        writeMarker(marker)
+        return .finished(migration)
+    }
+
+    /// Copies the passcode credential, the device secret and the wallet items from the unscoped names into the
+    /// scope. Unless `legacyItemsBelongToThisApp`, nothing is read and nothing is copied. Otherwise only items this
+    /// build can read without user interaction are copied, so an item whose access list does not trust this app
+    /// is skipped and never prompts. The unscoped items are never changed or deleted. Wallet items are grouped by
+    /// the name that follows their service prefix. A group is copied only when all of its items are readable and
+    /// the scope holds nothing under that name but identical copies, so a wallet is copied whole or not at all and
+    /// is never mixed with the scope's own items; within a group, items are copied in the order of
+    /// `walletServicePrefixes`. Wallet items are copied first and the credential last, and only together with the
+    /// device secret that protects them, so an interrupted copy resumes on the next run; a scope whose credential
+    /// differs from the unscoped one is left as it is. Existing scoped items are never replaced, and the attempts
+    /// counter is not copied. Keychain user interaction is disabled for the whole process during each read.
+    public static func migrateLegacyItems(passcodeService: String = Self.legacyPasscodeService, walletServicePrefixes: [String], legacyItemsBelongToThisApp: Bool, environment: PasscodeEnvironment = .shared) -> Migration {
+        return Self.migrateLegacyItems(passcodeService: passcodeService, walletServicePrefixes: walletServicePrefixes, legacyItemsBelongToThisApp: legacyItemsBelongToThisApp, environment: environment, keychain: Self.system)
+    }
+
+    static func migrateLegacyItems(passcodeService: String, walletServicePrefixes: [String], legacyItemsBelongToThisApp: Bool, environment: PasscodeEnvironment, keychain: Keychain) -> Migration {
+        guard environment.keychainScope != nil, legacyItemsBelongToThisApp else {
             return .nothingToMigrate
         }
         guard keychain.isUnlocked() else {

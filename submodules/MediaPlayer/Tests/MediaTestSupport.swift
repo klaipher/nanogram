@@ -2,12 +2,25 @@ import XCTest
 import AVFoundation
 import CoreMedia
 import CoreVideo
+#if canImport(UniversalMediaPlayer)
 @testable import UniversalMediaPlayer
+#else
+@testable import TelegramMediaPlayer
+#endif
+
+// SwiftPM test targets carry their resources in Bundle.module; the Bazel unit test bundles them in the test bundle.
+let packageResourceBundles: [Bundle] = {
+    #if SWIFT_PACKAGE
+    return [Bundle.module]
+    #else
+    return []
+    #endif
+}()
 
 // Shared helpers for the FFmpeg reader tests.
 enum MediaTestSupport {
     static func resourcePath(_ name: String, _ ext: String) throws -> String {
-        let bundles = [Bundle(for: MediaTestSupportAnchor.self), Bundle.main] + Bundle.allBundles
+        let bundles = packageResourceBundles + [Bundle(for: MediaTestSupportAnchor.self), Bundle.main] + Bundle.allBundles
         for bundle in bundles {
             if let path = bundle.path(forResource: name, ofType: ext) {
                 return path

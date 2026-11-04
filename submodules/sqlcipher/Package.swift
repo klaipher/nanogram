@@ -43,8 +43,13 @@ let package = Package(
                 .define("SQLITE_OMIT_DEPRECATED", to: "1"),
                 .define("NDEBUG", to: "1"),
                 .define("SQLITE_MAX_MMAP_SIZE", to: "0"),
-                // Keep in sync with BUILD.
+                // Keep in sync with BUILD (QPSG). The three defines after it are Mac-only so far and
+                // not yet in BUILD (iOS has not verified them); drift-check allow-list.
                 .define("SQLITE_ENABLE_QPSG", to: "1"),
+                .define("SQLITE_OMIT_SHARED_CACHE", to: "1"),
+                .define("SQLITE_MAX_EXPR_DEPTH", to: "0"),
+                .define("SQLITE_LIKE_DOESNT_MATCH_BLOBS", to: "1"),
+                .define("SQLITE_USE_ALLOCA", to: "1"),
             ]),
     ]
 )

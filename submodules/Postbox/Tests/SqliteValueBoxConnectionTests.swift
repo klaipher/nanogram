@@ -4,9 +4,6 @@ import SwiftSignalKit
 import sqlcipher
 @testable import Postbox
 
-/// The SQLite connection layer under `SqliteValueBox`: statement reuse (QPSG, prepared
-/// BEGIN/COMMIT), `filteredRange`, the WAL checkpoint policy and the per-connection page cache.
-/// Benchmarks print `BENCH` lines; they use synthetic data only.
 final class SqliteValueBoxConnectionTests: XCTestCase {
     private let binaryTable = ValueBoxTable(id: 2000, keyType: .binary, compactValuesOnCreation: true)
     private let int64Table = ValueBoxTable(id: 2001, keyType: .int64, compactValuesOnCreation: false)
@@ -271,20 +268,6 @@ final class SqliteValueBoxConnectionTests: XCTestCase {
         }
     }
 
-    // MARK: - Page cache size
-
-    func testCacheSizeIsOnlyChangedWhenAsked() {
-        // Three connections to one file; all are closed on the queue in tearDown.
-        let defaultBox = self.open(useCaches: true)
-        let extensionBox = self.open(useCaches: false)
-        let notificationServiceBox = self.open(useCaches: false, cacheSizePages: 256)
-        self.queue.sync {
-            XCTAssertEqual(defaultBox.pragmaValue("cache_size"), "-2000")
-            XCTAssertEqual(extensionBox.pragmaValue("cache_size"), "32")
-            XCTAssertEqual(notificationServiceBox.pragmaValue("cache_size"), "256")
-        }
-    }
-
     // MARK: - Checkpoint policy
 
     func testWalPolicyIsSetOnEveryConnection() {
@@ -327,12 +310,24 @@ final class SqliteValueBoxConnectionTests: XCTestCase {
         XCTAssertLessThanOrEqual(walSize, SqliteValueBox.walJournalSizeLimit, "wal is \(walSize) bytes")
     }
 
+    // MARK: - Page cache size
+
+    func testCacheSizeIsOnlyChangedWhenAsked() {
+        let defaultBox = self.open(useCaches: true)
+        let extensionBox = self.open(useCaches: false)
+        let shareExtensionBox = self.open(useCaches: false, cacheSizePages: 256)
+        self.queue.sync {
+            XCTAssertEqual(defaultBox.pragmaValue("cache_size"), "-2000")
+            XCTAssertEqual(extensionBox.pragmaValue("cache_size"), "32")
+            XCTAssertEqual(shareExtensionBox.pragmaValue("cache_size"), "256")
+        }
+    }
+
     // MARK: - FTS5 index corruption
 
     func testOnlyCorruptVirtualTableIsRebuildable() {
         let corruptVirtualTable = SQLITE_CORRUPT | (1 << 8)
         XCTAssertTrue(isRebuildableFullTextCorruption(resultCode: SQLITE_CORRUPT, extendedResultCode: corruptVirtualTable))
-        // Plain corruption, even inside an FTS shadow table's B-tree, keeps today's policy.
         XCTAssertFalse(isRebuildableFullTextCorruption(resultCode: SQLITE_CORRUPT, extendedResultCode: SQLITE_CORRUPT))
         XCTAssertFalse(isRebuildableFullTextCorruption(resultCode: SQLITE_CORRUPT, extendedResultCode: SQLITE_CORRUPT | (2 << 8)))
         XCTAssertFalse(isRebuildableFullTextCorruption(resultCode: SQLITE_CORRUPT, extendedResultCode: SQLITE_CORRUPT | (3 << 8)))
@@ -342,8 +337,6 @@ final class SqliteValueBoxConnectionTests: XCTestCase {
 
     private let fullTextTable = ValueBoxFullTextTable(id: 7)
 
-    /// Indexes `count` items, then zeroes the FTS5 index's segment blocks through a second
-    /// connection. The content table is left intact, so the index can be rebuilt from it.
     private func makeCorruptFullTextIndex(_ box: SqliteValueBox, count: Int) {
         self.queue.sync {
             box.begin()
@@ -378,7 +371,6 @@ final class SqliteValueBoxConnectionTests: XCTestCase {
         self.fill(owner, table: self.int64Table, count: 10)
         self.makeCorruptFullTextIndex(owner, count: 3000)
 
-        // Before: SQLITE_CORRUPT deleted the whole database set and crashed.
         XCTAssertEqual(self.matchCount(owner, query: "hello"), 3000)
         XCTAssertTrue(FileManager.default.fileExists(atPath: self.databasePath))
         self.queue.sync {
@@ -401,5 +393,88 @@ final class SqliteValueBoxConnectionTests: XCTestCase {
         XCTAssertTrue(FileManager.default.fileExists(atPath: self.databasePath))
         let check = Database(self.databasePath, readOnly: false)
         XCTAssertEqual(check?.execute("INSERT INTO ft7(ft7) VALUES('integrity-check')"), false, "a non-owner must not rewrite the index")
+    }
+
+    // MARK: - exists() reads no value
+
+    private let withoutRowIdTable = ValueBoxTable(id: 2002, keyType: .binary, compactValuesOnCreation: true)
+    private let rowIdBinaryTable = ValueBoxTable(id: 2003, keyType: .binary, compactValuesOnCreation: false)
+
+    private func queryPlan(_ sql: String) -> String {
+        guard let database = Database(self.databasePath, readOnly: true) else {
+            XCTFail("could not open a second connection")
+            return ""
+        }
+        var statement: OpaquePointer?
+        XCTAssertEqual(sqlite3_prepare_v2(database.handle, "EXPLAIN QUERY PLAN " + sql, -1, &statement, nil), SQLITE_OK)
+        var details: [String] = []
+        while sqlite3_step(statement) == SQLITE_ROW {
+            if let text = sqlite3_column_text(statement, 3) {
+                details.append(String(cString: text))
+            }
+        }
+        sqlite3_finalize(statement)
+        return details.joined(separator: "; ")
+    }
+
+    func testExistsIsCorrectOnEveryTableKindAndReadsNoValue() {
+        let box = self.open(isTemporary: false)
+        let tables = [self.int64Table, self.rowIdBinaryTable, self.withoutRowIdTable]
+        for table in tables {
+            self.fill(box, table: table, count: 50, valueSize: 3000)
+        }
+        self.queue.sync {
+            for table in tables {
+                XCTAssertTrue(box.exists(table, key: self.key(SqliteValueBoxConnectionTests.rowKeyOffset)), "t\(table.id)")
+                XCTAssertTrue(box.exists(table, key: self.key(SqliteValueBoxConnectionTests.rowKeyOffset + 49)), "t\(table.id)")
+                XCTAssertFalse(box.exists(table, key: self.key(0)), "t\(table.id)")
+                XCTAssertFalse(box.exists(table, key: self.key(1000)), "t\(table.id)")
+            }
+            XCTAssertFalse(box.exists(ValueBoxTable(id: 2999, keyType: .int64, compactValuesOnCreation: false), key: self.key(10)))
+            let statements = box.liveStatementSQL()
+            for table in tables {
+                XCTAssertTrue(statements.contains("SELECT 1 FROM t\(table.id) WHERE key=?"), "t\(table.id): \(statements)")
+                XCTAssertFalse(statements.contains("SELECT value FROM t\(table.id) WHERE key=?"), "t\(table.id): \(statements)")
+            }
+        }
+        XCTAssertTrue(self.queryPlan("SELECT 1 FROM t\(self.rowIdBinaryTable.id) WHERE key=?").contains("COVERING INDEX"))
+        XCTAssertTrue(self.queryPlan("SELECT 1 FROM t\(self.withoutRowIdTable.id) WHERE key=?").contains("PRIMARY KEY"))
+        XCTAssertTrue(self.queryPlan("SELECT 1 FROM t\(self.int64Table.id) WHERE key=?").contains("PRIMARY KEY"))
+    }
+
+    // MARK: - Threading mode and compile options
+
+    func testConnectionsAreOpenedWithoutTheConnectionMutex() {
+        let box = self.open()
+        self.queue.sync {
+            XCTAssertFalse(box.connectionIsSerialized())
+        }
+        guard let readOnly = Database(self.databasePath, readOnly: true) else {
+            XCTFail("could not open a read-only connection")
+            return
+        }
+        XCTAssertNil(sqlite3_db_mutex(readOnly.handle))
+    }
+
+    func testDebugSwitchRestoresSerializedConnections() {
+        Database.debugSerializedConnections = true
+        defer {
+            Database.debugSerializedConnections = false
+        }
+        let box = self.open()
+        self.queue.sync {
+            XCTAssertTrue(box.connectionIsSerialized())
+        }
+    }
+
+    func testRecommendedCompileOptionsAreSet() {
+        var options = ["ENABLE_QPSG", "THREADSAFE=1"]
+        #if SWIFT_PACKAGE
+        // Mac-only until iOS has verified them (sqlcipher Package.swift; not in the iOS BUILD).
+        options += ["OMIT_SHARED_CACHE", "MAX_EXPR_DEPTH=0", "LIKE_DOESNT_MATCH_BLOBS", "USE_ALLOCA"]
+        #endif
+        for option in options {
+            XCTAssertEqual(sqlite3_compileoption_used(option), 1, option)
+        }
     }
 }

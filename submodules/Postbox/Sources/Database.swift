@@ -65,6 +65,12 @@ public final class Database {
         }
     }
 
+    #if DEBUG
+    nonisolated(unsafe) static var debugSerializedConnections: Bool = ProcessInfo.processInfo.environment["NANOGRAM_SQLITE_FULLMUTEX"] == "1"
+    #else
+    nonisolated(unsafe) static var debugSerializedConnections: Bool = false
+    #endif
+
     private static func openHandle(_ location: String, readOnly: Bool) -> Result<OpaquePointer?, OpenError> {
         let _ = ensureInitialized
         
@@ -74,11 +80,12 @@ public final class Database {
                 close(guardFd)
             }
         }
+        let threadingMode = Database.debugSerializedConnections ? SQLITE_OPEN_FULLMUTEX : SQLITE_OPEN_NOMUTEX
         let flags: Int32
         if readOnly {
-            flags = SQLITE_OPEN_READONLY
+            flags = SQLITE_OPEN_READONLY | threadingMode
         } else {
-            flags = SQLITE_OPEN_CREATE | SQLITE_OPEN_READWRITE | SQLITE_OPEN_FULLMUTEX
+            flags = SQLITE_OPEN_CREATE | SQLITE_OPEN_READWRITE | threadingMode
         }
         var handle: OpaquePointer? = nil
         let res = sqlite3_open_v2(location, &handle, flags, nil)

@@ -102,7 +102,7 @@ final class PasscodeKeychainScopeTests: XCTestCase {
     }
 
     private func migrate(environment: PasscodeEnvironment? = nil) -> PasscodeKeychainScope.Migration {
-        return PasscodeKeychainScope.migrateLegacyItems(passcodeService: self.passcodeService, walletServicePrefixes: [self.walletPrefix + "descriptor.", self.walletPrefix + "vault."], environment: environment ?? self.environment)
+        return PasscodeKeychainScope.migrateLegacyItems(passcodeService: self.passcodeService, walletServicePrefixes: [self.walletPrefix + "descriptor.", self.walletPrefix + "vault."], legacyItemsBelongToThisApp: true, environment: environment ?? self.environment)
     }
 
     func testServicesCarryTheScope() throws {

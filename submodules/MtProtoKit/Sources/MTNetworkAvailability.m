@@ -6,9 +6,13 @@
 #import <sys/socket.h>
 #import <netinet/in.h>
 #import <SystemConfiguration/SystemConfiguration.h>
+#if TARGET_OS_OSX
+#import <Network/Network.h>
+#endif
 
 #import <objc/message.h>
 
+#if !TARGET_OS_OSX
 static void MTAvailabilityCallback(SCNetworkReachabilityRef target, SCNetworkReachabilityFlags flags, void *info);
 
 @class MTNetworkAvailability;
@@ -34,10 +38,15 @@ static void MTNetworkAvailabilityContextRelease(const void *info)
     __unused id unretainedThing = (__bridge_transfer id)retainedThing;
     unretainedThing = nil;
 }
+#endif
 
 @interface MTNetworkAvailability ()
 {
+#if TARGET_OS_OSX
+    nw_path_monitor_t _pathMonitor;
+#else
     SCNetworkReachabilityRef _reachability;
+#endif
     
     NSString *_lastReachabilityState;
 }
@@ -46,8 +55,10 @@ static void MTNetworkAvailabilityContextRelease(const void *info)
 
 // One 5 s poll for all instances (one per transport) instead of a timer each.
 // Accessed on networkAvailabilityQueue only.
+#if !TARGET_OS_OSX
 static NSHashTable<MTNetworkAvailability *> *MTNetworkAvailabilityPollingInstances = nil;
 static dispatch_source_t MTNetworkAvailabilityPollTimer = nil;
+#endif
 
 @implementation MTNetworkAvailability
 
@@ -58,6 +69,24 @@ static dispatch_source_t MTNetworkAvailabilityPollTimer = nil;
     {
         _delegate = delegate;
         
+#if TARGET_OS_OSX
+        [[MTNetworkAvailability networkAvailabilityQueue] dispatchOnQueue:^
+         {
+             _lastReachabilityState = @"+";
+             
+             __weak MTNetworkAvailability *weakSelf = self;
+             nw_path_monitor_t pathMonitor = nw_path_monitor_create();
+             nw_path_monitor_set_queue(pathMonitor, [MTNetworkAvailability networkAvailabilityQueue].nativeQueue);
+             nw_path_monitor_set_update_handler(pathMonitor, ^(nw_path_t path) {
+                 __strong MTNetworkAvailability *strongSelf = weakSelf;
+                 if (strongSelf != nil) {
+                     [strongSelf updateNetworkIsAvailable:nw_path_get_status(path) == nw_path_status_satisfied];
+                 }
+             });
+             nw_path_monitor_start(pathMonitor);
+             _pathMonitor = pathMonitor;
+         }];
+#else
         [[MTNetworkAvailability networkAvailabilityQueue] dispatchOnQueue:^
          {
              struct sockaddr_in zeroAddress;
@@ -81,12 +110,23 @@ static dispatch_source_t MTNetworkAvailabilityPollTimer = nil;
                      SCNetworkReachabilitySetDispatchQueue(_reachability, [MTNetworkAvailability networkAvailabilityQueue].nativeQueue);
              }
          }];
+#endif
     }
     return self;
 }
 
 - (void)dealloc
 {
+#if TARGET_OS_OSX
+    nw_path_monitor_t pathMonitor = _pathMonitor;
+    _pathMonitor = nil;
+    
+    [[MTNetworkAvailability networkAvailabilityQueue] dispatchOnQueue:^{
+        if (pathMonitor != nil) {
+            nw_path_monitor_cancel(pathMonitor);
+        }
+    }];
+#else
     SCNetworkReachabilityRef reachability = _reachability;
     _reachability = nil;
     
@@ -95,6 +135,7 @@ static dispatch_source_t MTNetworkAvailabilityPollTimer = nil;
         SCNetworkReachabilitySetDispatchQueue(reachability, NULL);
         CFRelease(reachability);
     }];
+#endif
 }
 
 + (MTQueue *)networkAvailabilityQueue
@@ -108,6 +149,7 @@ static dispatch_source_t MTNetworkAvailabilityPollTimer = nil;
     return queue;
 }
 
+#if !TARGET_OS_OSX
 + (void)addPollingInstance:(MTNetworkAvailability *)instance
 {
     if (MTNetworkAvailabilityPollingInstances == nil) {
@@ -133,7 +175,25 @@ static dispatch_source_t MTNetworkAvailabilityPollTimer = nil;
         dispatch_resume(timer);
     }
 }
+#endif
 
+#if TARGET_OS_OSX
+- (void)updateNetworkIsAvailable:(bool)isNetworkAvailable
+{
+    NSString *currentReachabilityState = isNetworkAvailable ? @"+" : @"-";
+    if (![currentReachabilityState isEqualToString:_lastReachabilityState])
+    {
+        _lastReachabilityState = currentReachabilityState;
+        if (MTLogEnabled()) {
+            MTLog(@"[MTNetworkAvailability#%p state: %@]", self, _lastReachabilityState);
+        }
+        
+        id<MTNetworkAvailabilityDelegate> delegate = _delegate;
+        if ([delegate respondsToSelector:@selector(networkAvailabilityChanged:networkIsAvailable:)])
+            [delegate networkAvailabilityChanged:self networkIsAvailable:isNetworkAvailable];
+    }
+}
+#else
 - (void)updateFlags:(bool)notify
 {
     [[MTNetworkAvailability networkAvailabilityQueue] dispatchOnQueue:^
@@ -180,12 +240,15 @@ static dispatch_source_t MTNetworkAvailabilityPollTimer = nil;
          }
      }];
 }
+#endif
 
 @end
 
+#if !TARGET_OS_OSX
 static void MTAvailabilityCallback(__unused SCNetworkReachabilityRef target, SCNetworkReachabilityFlags flags, void *info)
 {
     MTNetworkAvailabilityContext *availabilityContext = ((__bridge MTNetworkAvailabilityContext *)info);
     MTNetworkAvailability *availability = availabilityContext.context;
     [availability updateReachability:flags notify:true];
 }
+#endif

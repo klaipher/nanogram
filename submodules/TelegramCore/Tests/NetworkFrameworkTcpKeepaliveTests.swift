@@ -6,7 +6,10 @@ final class NetworkFrameworkTcpKeepaliveTests: XCTestCase {
     // An idle MTProto connection sent a TCP keepalive every 5 s, which keeps the cellular
     // radio from dropping to idle. The connection's viability handler and MTProto's own
     // pings notice a dead connection, so the probes only need to catch silent NAT drops.
-    func testIdleConnectionsProbeEvery30sThen10sThreeTimes() {
+    func testIdleConnectionsProbeEvery30sThen10sThreeTimes() throws {
+        guard #available(macOS 14.0, *) else {
+            throw XCTSkip("Network.framework transport needs macOS 14")
+        }
         let options = NWProtocolTCP.Options()
         configureNetworkFrameworkTcpOptions(options)
         XCTAssertTrue(options.noDelay)

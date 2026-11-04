@@ -331,6 +331,47 @@ final class TimeBasedCleanupTests: XCTestCase {
         withExtendedLifetime(cleanup) {}
     }
 
+    private func rescan(_ cleanup: TimeBasedCleanup, timeout: Double = 120.0) {
+        let semaphore = DispatchSemaphore(value: 0)
+        let disposable = cleanup.rescan().start(completed: {
+            semaphore.signal()
+        })
+        XCTAssertEqual(semaphore.wait(timeout: .now() + timeout), .success)
+        disposable.dispose()
+    }
+
+    func testARescanEnforcesTheStoredLimitsOnFilesThatAgedAfterTheFirstScan() {
+        let cleanup = self.makeCleanup(scanDelay: 0.0)
+        cleanup.setMaxStoreTimes(general: 7 * 86_400, shortLived: 60 * 60, gigabytesLimit: 1)
+        self.waitForScan()
+
+        let oldCache = self.writeFile("cache/aged-after-launch", bytes: 10)
+        self.setAge(oldCache, seconds: 10 * 86_400)
+        let oldShortLived = self.writeFile("short-cache/aged-after-launch", bytes: 10)
+        self.setAge(oldShortLived, seconds: 2 * 60 * 60)
+        let freshCache = self.writeFile("cache/fresh", bytes: 10)
+        Thread.sleep(forTimeInterval: 0.5)
+        XCTAssertTrue(self.exists(oldCache))
+
+        self.rescan(cleanup)
+
+        XCTAssertFalse(self.exists(oldCache))
+        XCTAssertFalse(self.exists(oldShortLived))
+        XCTAssertTrue(self.exists(freshCache))
+        XCTAssertEqual(self.scanEvents().filter({ $0.finished }).count, 2)
+        withExtendedLifetime(cleanup) {}
+    }
+
+    func testARescanBeforeAnyLimitsAreKnownDoesNothing() {
+        let oldCache = self.writeFile("cache/old", bytes: 10)
+        self.setAge(oldCache, seconds: 400 * 86_400)
+        let cleanup = self.makeCleanup(scanDelay: 0.0)
+        self.rescan(cleanup, timeout: 10.0)
+        XCTAssertTrue(self.exists(oldCache))
+        XCTAssertTrue(self.scanEvents().isEmpty)
+        withExtendedLifetime(cleanup) {}
+    }
+
     func testTheSizeLimitEvictsOldestFirstUntilTheCacheFits() {
         let oldest = self.writeSparseFile("oldest", megabytes: 600)
         self.setAge(oldest, seconds: 3 * 86_400)

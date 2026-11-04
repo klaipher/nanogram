@@ -4599,19 +4599,15 @@ final class PostboxImpl {
         }
     }
     
-    func optimizeStorageIfNeeded(minFreeFraction: Double, minInterval: Double, now: Double) -> PostboxStorageOptimizationResult {
+    func optimizeStorageIfNeeded(minFreeFraction: Double, minInterval: Double, maxLiveBytes: Int64?, now: Double, shouldProceed: () -> Bool) -> PostboxStorageOptimizationResult {
         assert(self.queue.isCurrent())
         let markerPath = self.basePath + "/" + PostboxStorageOptimizationSchedule.markerFileName
         if !PostboxStorageOptimizationSchedule.isDue(lastRun: PostboxStorageOptimizationSchedule.lastRun(markerPath: markerPath), now: now, minInterval: minInterval) {
             return .skippedRecentlyChecked
         }
         let availableDiskSpace = (try? URL(fileURLWithPath: self.basePath).resourceValues(forKeys: [.volumeAvailableCapacityForImportantUsageKey]))?.volumeAvailableCapacityForImportantUsage
-        let result = self.valueBox.vacuumIfFragmented(minFreeFraction: minFreeFraction, availableDiskSpace: availableDiskSpace)
-        switch result {
-        case .failed, .insufficientDiskSpace:
-            // Try again at the next maintenance run.
-            break
-        case .vacuumed, .notFragmented:
+        let result = self.valueBox.vacuumIfFragmented(minFreeFraction: minFreeFraction, availableDiskSpace: availableDiskSpace, maxLiveBytes: maxLiveBytes, shouldProceed: shouldProceed)
+        if PostboxStorageOptimizationSchedule.recordsRun(result) {
             PostboxStorageOptimizationSchedule.setLastRun(markerPath: markerPath, timestamp: now)
         }
         return .checked(result)
@@ -5358,10 +5354,10 @@ public class Postbox {
     /// once per `minInterval` seconds. Nothing else ever shrinks it: Postbox does not use
     /// auto_vacuum. VACUUM rewrites the whole file and blocks the Postbox queue while it runs, so
     /// call it only from background maintenance (the BGProcessingTask), never from the UI.
-    public func optimizeStorageIfNeeded(minFreeFraction: Double = PostboxStorageOptimizationSchedule.defaultMinFreeFraction, minInterval: Double = PostboxStorageOptimizationSchedule.defaultMinInterval) -> Signal<PostboxStorageOptimizationResult, NoError> {
+    public func optimizeStorageIfNeeded(minFreeFraction: Double = PostboxStorageOptimizationSchedule.defaultMinFreeFraction, minInterval: Double = PostboxStorageOptimizationSchedule.defaultMinInterval, maxLiveBytes: Int64? = nil, shouldProceed: @escaping () -> Bool = { true }) -> Signal<PostboxStorageOptimizationResult, NoError> {
         return Signal { subscriber in
             self.impl.with { impl in
-                subscriber.putNext(impl.optimizeStorageIfNeeded(minFreeFraction: minFreeFraction, minInterval: minInterval, now: Date().timeIntervalSince1970))
+                subscriber.putNext(impl.optimizeStorageIfNeeded(minFreeFraction: minFreeFraction, minInterval: minInterval, maxLiveBytes: maxLiveBytes, now: Date().timeIntervalSince1970, shouldProceed: shouldProceed))
                 subscriber.putCompletion()
             }
             return EmptyDisposable
@@ -5398,6 +5394,15 @@ public enum PostboxStorageOptimizationSchedule {
         }
         // A clock that went backwards (or a marker from the future) does not block forever.
         return now - lastRun >= minInterval || now < lastRun
+    }
+    
+    static func recordsRun(_ result: SqliteValueBox.ConditionalVacuumResult) -> Bool {
+        switch result {
+        case .vacuumed, .notFragmented:
+            return true
+        case .failed, .insufficientDiskSpace, .tooLarge, .deferred:
+            return false
+        }
     }
     
     static func lastRun(markerPath: String) -> Double? {

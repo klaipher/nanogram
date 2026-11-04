@@ -313,7 +313,8 @@ public func accountWithId(accountManager: AccountManager<TelegramAccountManagerT
         isReadOnly: false,
         useCopy: false,
         useCaches: !supplementary,
-        removeDatabaseOnError: !supplementary
+        removeDatabaseOnError: !supplementary,
+        cacheSizePages: supplementary ? 256 : nil
     )
     
     return postbox
@@ -1713,6 +1714,11 @@ public class Account {
                 })
             }
         )
+    }
+    
+    public func rescanCaches() -> Signal<Never, NoError> {
+        self.automaticCacheEvictionContext?.rerun()
+        return self.postbox.mediaBox.rescanCache()
     }
     
     public func restartContactManagement() {

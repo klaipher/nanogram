@@ -22,8 +22,8 @@ final class FFMpegAudioFrameDecoder: MediaTrackFrameDecoder {
     
     init(codecContext: FFMpegAVCodecContext, sampleRate: Int = 44100, channelCount: Int = 2) {
         self.codecContext = codecContext
-        self.audioFrame = FFMpegAVFrame()
         self.channelCount = channelCount
+        self.audioFrame = FFMpegAVFrame()
         
         self.swrContext = FFMpegSWResample(sourceChannelCount: Int(codecContext.channels()), sourceSampleRate: Int(codecContext.sampleRate()), sourceSampleFormat: codecContext.sampleFormat(), destinationChannelCount: channelCount, destinationSampleRate: sampleRate, destinationSampleFormat: FFMPEG_AV_SAMPLE_FMT_S16)
         

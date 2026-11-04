@@ -4,7 +4,11 @@ import CoreImage
 import CoreMedia
 import VideoToolbox
 import XCTest
+#if canImport(UniversalMediaPlayer)
 @testable import UniversalMediaPlayer
+#else
+@testable import TelegramMediaPlayer
+#endif
 
 private struct ClipColor {
     let primaries: String

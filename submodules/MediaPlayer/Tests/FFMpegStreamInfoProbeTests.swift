@@ -1,7 +1,11 @@
 import XCTest
 import CoreMedia
 import FFMpegBinding
+#if canImport(UniversalMediaPlayer)
 @testable import UniversalMediaPlayer
+#else
+@testable import TelegramMediaPlayer
+#endif
 
 // avformat_find_stream_info used to decode frames of every opened file in software: up to 7 H.264
 // frames to guess the reorder delay, one VP9/HEVC frame to learn the pixel format. The players
@@ -166,5 +170,23 @@ final class FFMpegStreamInfoProbeTests: XCTestCase {
             let now = (best[false] ?? 0.0) * 1000.0
             print("FFMpegStreamInfoProbe open \(name): \(String(format: "%.3f", full)) ms with the full probe, \(String(format: "%.3f", now)) ms now (skipped \(skipped))")
         }
+    }
+
+    func testStickerSourceSkipsTheProbeDecode() throws {
+        let path = try MediaTestSupport.resourcePath("sticker_vp9", "webm")
+        let source = SoftwareVideoSource(path: path, hintVP9: true, unpremultiplyAlpha: true)
+        XCTAssertTrue(source.hasStream)
+        XCTAssertEqual(source.streamInfoProbeSkippedStreamCount, 1)
+        var frames = 0
+        for _ in 0 ..< 200 {
+            let (frame, _, _, loop) = source.readFrame(maxPts: nil)
+            if frame != nil {
+                frames += 1
+            }
+            if loop {
+                break
+            }
+        }
+        XCTAssertGreaterThan(frames, 10)
     }
 }

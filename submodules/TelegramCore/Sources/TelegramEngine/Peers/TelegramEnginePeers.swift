@@ -1562,22 +1562,7 @@ public extension TelegramEngine {
         }
         
         public func pollChatFolderUpdates(folderId: Int32) -> Signal<Never, NoError> {
-            let signal = _internal_pollChatFolderUpdatesOnce(account: self.account, folderId: folderId)
-            // Each check only asks the server when `chatlist_update_period` (1 h by default) has
-            // passed, so checking every 60 s (was 10 s: a database read each time) changes nothing visible.
-            #if DEBUG
-            let checkInterval: Double = 10.0
-            #else
-            let checkInterval: Double = 60.0
-            #endif
-            return (
-                signal
-                |> then(
-                    Signal<Never, NoError>.complete()
-                    |> delay(checkInterval, queue: .concurrentDefaultQueue())
-                )
-            )
-            |> restart
+            return repeatedChatFolderUpdatesCheck(_internal_pollChatFolderUpdatesOnce(account: self.account, folderId: folderId), interval: chatFolderUpdatesCheckInterval)
         }
         
         public func subscribedChatFolderUpdates(folderId: Int32) -> Signal<ChatFolderUpdates?, NoError> {

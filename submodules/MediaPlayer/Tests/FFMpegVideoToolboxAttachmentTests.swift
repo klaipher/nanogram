@@ -1,7 +1,11 @@
 import XCTest
 import CoreMedia
 import CoreVideo
+#if canImport(UniversalMediaPlayer)
 @testable import UniversalMediaPlayer
+#else
+@testable import TelegramMediaPlayer
+#endif
 
 // FFmpeg's VideoToolbox hwaccel (ChunkMediaPlayerV2 on device) rewrote the colour attachments of
 // every decoded frame and read all of them back through IOSurface IPC (0.74 s in a device session).

@@ -72,6 +72,22 @@ private let maxCdnFailuresBeforeFallback = 4
 private let maxCdnReuploadsPerBlock = 3
 private let maxCdnTokenRefreshes = 3
 
+struct FetchDownloadMode: Equatable {
+    let fastDownloads: Bool
+    let requestsCdn: Bool
+    let masterPendingParts: Int
+    let cdnPendingParts: Int
+}
+
+func fetchDownloadMode(engineKind: NetworkEngineKind) -> FetchDownloadMode {
+    return FetchDownloadMode(
+        fastDownloads: true,
+        requestsCdn: engineKind == .rust,
+        masterPendingParts: fastDownloadMasterPendingParts,
+        cdnPendingParts: fastDownloadCdnPendingParts
+    )
+}
+
 func cdnRedirectKeyMaterialIsValid(encryptionKey: Data, encryptionIv: Data) -> Bool {
     return encryptionKey.count == 32 && encryptionIv.count == 16
 }
@@ -460,19 +476,17 @@ private final class FetchImpl {
                 }
             }
             
-            // The adaptive window and larger parts help MtProtoKit as much as Rust (measured: a 4.8 MB video
-            // in 3.0 -> 1.4 s with 200 ms of added latency, unchanged without it). Asking for CDN downloads
-            // stays with Rust, as before.
-            self.fastDownloads = true
-            self.requestsCdn = network.engineKind == .rust
+            let downloadMode = fetchDownloadMode(engineKind: network.engineKind)
+            self.fastDownloads = downloadMode.fastDownloads
+            self.requestsCdn = downloadMode.requestsCdn
             if isStory {
                 self.defaultPartSize = 512 * 1024
             } else {
                 self.defaultPartSize = 128 * 1024
             }
             self.cdnPartSize = 128 * 1024
-            self.masterPendingParts = self.fastDownloads ? fastDownloadMasterPendingParts : 6
-            self.cdnPendingParts = self.fastDownloads ? fastDownloadCdnPendingParts : 6
+            self.masterPendingParts = downloadMode.masterPendingParts
+            self.cdnPendingParts = downloadMode.cdnPendingParts
             
             // The resource id tells concurrent downloads apart; an Api value prints only its constructor name.
             self.loggingIdentifier = resource.id.stringRepresentation

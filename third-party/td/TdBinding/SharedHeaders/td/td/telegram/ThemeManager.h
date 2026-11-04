@@ -1,5 +1,5 @@
 //
-// Copyright Aliaksei Levin (levlam@telegram.org), Arseny Smirnov (arseny30@gmail.com) 2014-2025
+// Copyright Aliaksei Levin (levlam@telegram.org), Arseny Smirnov (arseny30@gmail.com) 2014-2026
 //
 // Distributed under the Boost Software License, Version 1.0. (See accompanying
 // file LICENSE_1_0.txt or copy at http://www.boost.org/LICENSE_1_0.txt)
@@ -7,6 +7,7 @@
 #pragma once
 
 #include "td/telegram/AccentColorId.h"
+#include "td/telegram/DialogId.h"
 #include "td/telegram/td_api.h"
 #include "td/telegram/telegram_api.h"
 #include "td/telegram/ThemeSettings.h"
@@ -24,6 +25,8 @@ class Td;
 
 class ThemeManager final : public Actor {
  public:
+  static constexpr size_t MAX_SHARE_THEME_EMOJI_COUNT = 6u;
+
   ThemeManager(Td *td, ActorShared<> parent);
 
   void init();
@@ -51,10 +54,18 @@ class ThemeManager final : public Actor {
   };
   DialogBoostAvailableCounts get_dialog_boost_available_count(int32 level, bool for_megagroup);
 
+  void get_unique_gift_chat_themes(const string &offset, int32 limit,
+                                   Promise<td_api::object_ptr<td_api::giftChatThemes>> &&promise);
+
+  void get_profile_share_theme_backdrops(Promise<td_api::object_ptr<td_api::profileShareThemeBackdrops>> &&promise);
+
+  void set_profile_share_theme(DialogId dialog_id, td_api::object_ptr<td_api::InputProfileShareTheme> &&theme,
+                               Promise<Unit> &&promise);
+
   void get_current_state(vector<td_api::object_ptr<td_api::Update>> &updates) const;
 
  private:
-  struct ChatTheme {
+  struct EmojiChatTheme {
     string emoji;
     int64 id = 0;
     ThemeSettings light_theme;
@@ -67,9 +78,9 @@ class ThemeManager final : public Actor {
     void parse(ParserT &parser);
   };
 
-  struct ChatThemes {
+  struct EmojiChatThemes {
     int64 hash = 0;
-    vector<ChatTheme> themes;
+    vector<EmojiChatTheme> themes;
 
     template <class StorerT>
     void store(StorerT &storer) const;
@@ -112,7 +123,6 @@ class ThemeManager final : public Actor {
   };
 
   friend bool operator==(const ProfileAccentColor &lhs, const ProfileAccentColor &rhs);
-
   friend bool operator!=(const ProfileAccentColor &lhs, const ProfileAccentColor &rhs);
 
   struct ProfileAccentColors {
@@ -132,6 +142,39 @@ class ThemeManager final : public Actor {
     void parse(ParserT &parser);
   };
 
+  class ShareThemeBackdrop {
+    int32 id_ = 0;
+    string name_;
+    int32 center_color_ = 0;
+    int32 edge_color_ = 0;
+    int32 pattern_color_ = 0;
+    int32 text_color_ = 0;
+
+   public:
+    ShareThemeBackdrop() = default;
+
+    explicit ShareThemeBackdrop(telegram_api::object_ptr<telegram_api::shareThemeBackdropOption> &&backdrop);
+
+    td_api::object_ptr<td_api::profileShareThemeBackdrop> get_profile_share_theme_backdrop_object() const;
+
+    template <class StorerT>
+    void store(StorerT &storer) const;
+
+    template <class ParserT>
+    void parse(ParserT &parser);
+  };
+
+  struct ShareThemeBackdrops {
+    vector<ShareThemeBackdrop> backdrops_;
+    int32 hash_ = 0;
+
+    template <class StorerT>
+    void store(StorerT &storer) const;
+
+    template <class ParserT>
+    void parse(ParserT &parser);
+  };
+
   void start_up() final;
 
   void tear_down() final;
@@ -141,6 +184,8 @@ class ThemeManager final : public Actor {
   void load_accent_colors();
 
   void load_profile_accent_colors();
+
+  void load_share_theme_backdrops();
 
   void on_get_chat_themes(Result<telegram_api::object_ptr<telegram_api::account_Themes>> result);
 
@@ -161,9 +206,15 @@ class ThemeManager final : public Actor {
 
   void on_get_profile_accent_colors(Result<telegram_api::object_ptr<telegram_api::help_PeerColors>> result);
 
-  td_api::object_ptr<td_api::chatTheme> get_chat_theme_object(const ChatTheme &theme) const;
+  void reload_share_theme_backdrops();
 
-  td_api::object_ptr<td_api::updateChatThemes> get_update_chat_themes_object() const;
+  void on_get_share_theme_backdrops(Result<telegram_api::object_ptr<telegram_api::ShareThemeBackdrops>> result);
+
+  td_api::object_ptr<td_api::profileShareThemeBackdrops> get_profile_share_theme_backdrops_object() const;
+
+  td_api::object_ptr<td_api::emojiChatTheme> get_emoji_chat_theme_object(const EmojiChatTheme &theme) const;
+
+  td_api::object_ptr<td_api::updateEmojiChatThemes> get_update_emoji_chat_themes_object() const;
 
   static string get_chat_themes_database_key();
 
@@ -171,11 +222,15 @@ class ThemeManager final : public Actor {
 
   string get_profile_accent_colors_database_key();
 
+  static string get_share_theme_backdrops_database_key();
+
   void save_chat_themes();
 
   void save_accent_colors();
 
   void save_profile_accent_colors();
+
+  void save_share_theme_backdrops();
 
   void send_update_chat_themes() const;
 
@@ -187,11 +242,16 @@ class ThemeManager final : public Actor {
 
   void send_update_profile_accent_colors() const;
 
-  ChatThemes chat_themes_;
+  EmojiChatThemes chat_themes_;
 
   AccentColors accent_colors_;
 
   ProfileAccentColors profile_accent_colors_;
+
+  ShareThemeBackdrops share_theme_backdrops_;
+  double next_share_theme_backdrops_reload_time_ = 0.0;
+  bool is_share_theme_backdrops_being_reloaded_ = false;
+  vector<Promise<td_api::object_ptr<td_api::profileShareThemeBackdrops>>> get_share_theme_backdrops_queries_;
 
   Td *td_;
   ActorShared<> parent_;

@@ -1483,7 +1483,13 @@ public final class StorageBox {
             impl.valueBox.releaseMemory()
         }
     }
-    
+
+    func pageCacheMemoryUsed() -> Int {
+        return self.impl.holder.syncWith { holder in
+            return holder.openedImpl?.valueBox.pageCacheMemoryUsed() ?? 0
+        }
+    }
+
     public func reset() {
         self.impl.with { impl in
             impl.reset()

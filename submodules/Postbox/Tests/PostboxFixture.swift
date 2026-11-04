@@ -103,6 +103,14 @@ final class PostboxFixture {
         return result
     }
 
+    func pageCacheMemoryUsed() -> Int {
+        var result = 0
+        self.queue.sync {
+            result = self.storage?.valueBox.pageCacheMemoryUsed() ?? 0
+        }
+        return result
+    }
+
     // MARK: - Views
 
     /// Every value a signal has produced so far, oldest first.
