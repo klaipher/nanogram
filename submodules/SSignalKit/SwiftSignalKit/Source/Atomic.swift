@@ -4,7 +4,7 @@ public enum AtomicLockError: Error {
     case isLocked
 }
 
-public final class Atomic<T> {
+public final class Atomic<T>: @unchecked Sendable {
     private var lock: pthread_mutex_t
     private var value: T
     

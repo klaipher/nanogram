@@ -235,6 +235,40 @@ public final class FFMpegMediaDataReaderV1: MediaDataReader {
     }
 }
 
+private final class LoadedVideoTrackResult: @unchecked Sendable {
+    var value: LoadedVideoTrack?
+}
+
+private final class LoadedVideoTrack: @unchecked Sendable {
+    let track: AVAssetTrack
+    let preferredTransform: CGAffineTransform
+    let formatDescriptions: [CMFormatDescription]
+
+    private init(track: AVAssetTrack, preferredTransform: CGAffineTransform, formatDescriptions: [CMFormatDescription]) {
+        self.track = track
+        self.preferredTransform = preferredTransform
+        self.formatDescriptions = formatDescriptions
+    }
+
+    static func load(from asset: AVAsset) -> LoadedVideoTrack? {
+        let semaphore = DispatchSemaphore(value: 0)
+        let result = LoadedVideoTrackResult()
+        Task.detached {
+            defer {
+                semaphore.signal()
+            }
+            guard let track = try? await asset.loadTracks(withMediaType: .video).first,
+                  let preferredTransform = try? await track.load(.preferredTransform),
+                  let formatDescriptions = try? await track.load(.formatDescriptions) else {
+                return
+            }
+            result.value = LoadedVideoTrack(track: track, preferredTransform: preferredTransform, formatDescriptions: formatDescriptions)
+        }
+        semaphore.wait()
+        return result.value
+    }
+}
+
 public final class AVAssetVideoDataReader: MediaDataReader {
     public private(set) var videoRotationAngle: Double = 0.0
 
@@ -264,14 +298,13 @@ public final class AVAssetVideoDataReader: MediaDataReader {
             guard let assetReader = try? AVAssetReader(asset: asset) else {
                 return
             }
-            guard let videoTrack = asset.tracks(withMediaType: .video).first else {
+            guard let loadedTrack = LoadedVideoTrack.load(from: asset) else {
                 return
             }
-            let transform = videoTrack.preferredTransform
+            let videoTrack = loadedTrack.track
+            let transform = loadedTrack.preferredTransform
             self.videoRotationAngle = atan2(Double(transform.b), Double(transform.a))
-            // formatDescriptions holds CMFormatDescription values only, so the CF cast cannot fail.
-            let videoTrackFormatDescription = videoTrack.formatDescriptions.first.map { $0 as! CMFormatDescription } // swiftlint:disable:this force_cast
-            let videoOutput = AVAssetReaderTrackOutput(track: videoTrack, outputSettings: [String(kCVPixelBufferPixelFormatTypeKey): AVAssetVideoDataReader.outputPixelFormat(formatDescription: videoTrackFormatDescription)])
+            let videoOutput = AVAssetReaderTrackOutput(track: videoTrack, outputSettings: [String(kCVPixelBufferPixelFormatTypeKey): AVAssetVideoDataReader.outputPixelFormat(formatDescription: loadedTrack.formatDescriptions.first)])
             assetReader.add(videoOutput)
             if assetReader.startReading() {
                 self.assetReader = assetReader

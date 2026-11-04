@@ -357,7 +357,7 @@ public final class SqliteValueBox: ValueBox {
 
     /// How long a statement waits for another connection's lock before it fails with
     /// SQLITE_BUSY. Tests shorten it to simulate a database that stays locked.
-    static var busyTimeoutMilliseconds: Int32 = 5 * 1000
+    nonisolated(unsafe) static var busyTimeoutMilliseconds: Int32 = 5 * 1000
 
     /// WAL frames after which a commit checkpoints (SQLite's default). The app and its extensions
     /// share the WAL and all use this value: an extension with a lower one would take over the

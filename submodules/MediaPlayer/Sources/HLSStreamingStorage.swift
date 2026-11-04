@@ -74,7 +74,7 @@ public enum HLSStreamingStorage {
 /// The byte ranges the HLS server source recently handed to hls.js, so an appended segment can be traced back to the
 /// MediaBox bytes it came from. A match is confirmed by comparing every byte with the cache, so a segment hls.js
 /// rewrote, or a range the cache no longer holds, never matches.
-public final class HLSServedSegments {
+public final class HLSServedSegments: @unchecked Sendable {
     public static let shared = HLSServedSegments()
 
     public struct Match {
