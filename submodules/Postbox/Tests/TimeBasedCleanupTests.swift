@@ -15,6 +15,7 @@ final class TimeBasedCleanupTests: XCTestCase {
     private var logLines: Atomic<[String]>!
     private var scanQueue: Queue!
     private var database: TempScanDatabase!
+    private var openedStorageBoxes: [StorageBox] = []
 
     private static let megabyte: Int64 = 1024 * 1024
 
@@ -41,6 +42,17 @@ final class TimeBasedCleanupTests: XCTestCase {
     }
 
     override func tearDown() {
+        // A StorageBox opens its database asynchronously. A test that returns at once would
+        // otherwise delete the directory under that open (journal_mode=WAL then fails its assert).
+        for box in self.openedStorageBoxes {
+            let semaphore = DispatchSemaphore(value: 0)
+            let disposable = box.all().start(next: { _ in
+                semaphore.signal()
+            })
+            _ = semaphore.wait(timeout: .now() + 30.0)
+            disposable.dispose()
+        }
+        self.openedStorageBoxes.removeAll()
         self.scanQueue.sync {
             self.database?.dispose()
             self.database = nil
@@ -122,6 +134,7 @@ final class TimeBasedCleanupTests: XCTestCase {
     private func makeCleanupWithStorage(scanDelay: Double = 10.0) -> (cleanup: TimeBasedCleanup, storageBox: StorageBox, cacheStorageBox: StorageBox) {
         let storageBox = StorageBox(logger: StorageBox.Logger(impl: { _ in }), basePath: self.basePath + "/storage", isMainProcess: true)
         let cacheStorageBox = StorageBox(logger: StorageBox.Logger(impl: { _ in }), basePath: self.basePath + "/cache-storage", isMainProcess: true)
+        self.openedStorageBoxes.append(contentsOf: [storageBox, cacheStorageBox])
         let cleanup = TimeBasedCleanup(storageBox: storageBox, cacheStorageBox: cacheStorageBox, generalPaths: [
             self.mediaPath + "/cache",
             self.mediaPath + "/animation-cache"
