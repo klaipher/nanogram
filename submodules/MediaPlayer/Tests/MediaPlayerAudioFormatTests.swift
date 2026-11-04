@@ -8,11 +8,14 @@ import FFMpegBinding
 #endif
 
 final class MediaPlayerAudioFormatTests: XCTestCase {
+#if os(macOS)
     func testPlaybackRunsAtTheMacOutputRate() {
         XCTAssertEqual(MediaPlayerAudioFormat.sampleRate, 48000)
         XCTAssertEqual(MediaPlayerAudioFormat.channelCount, 2)
     }
+#endif
 
+#if os(macOS)
     func testDecoderYieldsPlaybackRateSamplesPerMediaSecond() throws {
         let path = try MediaTestSupport.resourcePath("aac_h264_bframes", "mp4")
         let context = FFMpegAVFormatContext()
@@ -50,4 +53,5 @@ final class MediaPlayerAudioFormatTests: XCTestCase {
         XCTAssertGreaterThan(seconds, 0.5)
         XCTAssertEqual(Double(samples) / seconds, 48000, accuracy: 48000 * 0.02)
     }
+#endif
 }

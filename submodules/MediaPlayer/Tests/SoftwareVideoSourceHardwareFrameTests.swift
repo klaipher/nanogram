@@ -22,6 +22,7 @@ final class SoftwareVideoSourceHardwareFrameTests: XCTestCase {
         return frames
     }
 
+#if os(macOS)
     func testHardwareFramesAreShownUntagged() throws {
         let path = try MediaTestSupport.resourcePath("h264_709", "mp4")
         let frames = try readFrames(path: path, count: 20)
@@ -38,6 +39,7 @@ final class SoftwareVideoSourceHardwareFrameTests: XCTestCase {
             XCTAssertTrue(CMVideoFormatDescriptionMatchesImageBuffer(format, imageBuffer: buffer))
         }
     }
+#endif
 
     func testHardwareFramesShareOneFormatDescription() throws {
         let path = try MediaTestSupport.resourcePath("h264_709", "mp4")

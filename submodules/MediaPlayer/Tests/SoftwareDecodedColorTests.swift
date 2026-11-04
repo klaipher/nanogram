@@ -184,6 +184,7 @@ final class SoftwareDecodedColorTests: XCTestCase {
         }
     }
 
+#if os(macOS)
     func testUntaggedPresentationDropsTheStreamColours() throws {
         let path = try MediaTestSupport.resourcePath("h264_709", "mp4")
         let source = SoftwareVideoSource(path: path, hintVP9: false, unpremultiplyAlpha: true, useHardwareAcceleration: false)
@@ -199,4 +200,5 @@ final class SoftwareDecodedColorTests: XCTestCase {
             XCTAssertNil(attachment(buffer, kCVImageBufferYCbCrMatrixKey))
         }
     }
+#endif
 }

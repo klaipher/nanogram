@@ -20,6 +20,7 @@ final class FFMpegSoftwareDecodeThreadsTests: XCTestCase {
         XCTAssertEqual(FFMpegSoftwareDecodeThreads.threadCount(codecId: FFMpegCodecIdVP9, width: 512, height: 512, processorCount: 10), 1)
     }
 
+#if os(macOS)
     func testCodecContextTakesTheThreadCount() throws {
         let codec = try XCTUnwrap(FFMpegAVCodec.find(forId: FFMpegCodecIdAV1, preferHardwareAccelerationCapable: false))
         let context = FFMpegAVCodecContext(codec: codec)
@@ -28,4 +29,5 @@ final class FFMpegSoftwareDecodeThreadsTests: XCTestCase {
         XCTAssertEqual(context.threadCount(), 6)
         XCTAssertTrue(context.open())
     }
+#endif
 }
