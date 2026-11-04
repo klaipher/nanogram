@@ -905,9 +905,11 @@ final class VideoChatParticipantsComponent: Component {
             }
         var requestedVideo: [PresentationGroupCallRequestedVideo] = []
         let gridParticipants = self.gridParticipants
-        // Above a handful of tiles only the tiles on screen (and the expanded one) are asked for.
+        // Above a handful of tiles only the tiles on screen (and the expanded one) are asked for. While a tile is
+        // expanded the thumbnail strip shows every participant with video and scrolling it does not come here, so
+        // every one of them is requested (at thumbnail quality, set below), as before the limit existed.
         var allowedKeys: Set<VideoParticipantKey>?
-        if gridParticipants.count > VideoRequestPolicy.unlimitedTileCount {
+        if VideoRequestPolicy.limitsRequestedTiles(tileCount: gridParticipants.count, hasExpandedTile: component.expandedVideoState != nil) {
             let visibleRange: (minIndex: Int, maxIndex: Int)
             if itemLayout.layout.videoColumn == nil {
                 visibleRange = itemLayout.visibleGridItemRange(for: self.scrollView.bounds)

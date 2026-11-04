@@ -41,32 +41,48 @@ public enum CallThermalMapping {
     }
 }
 
-/// Raises the level at once and lowers it only after the cooler reading has held for `releaseDelay` seconds.
+/// Raises the level at once and lowers it only after the cooler reading has held for a release delay: 5 s for
+/// changes that only affect the UI, 30 s when the outgoing video grows back (every resolution change reconfigures
+/// the encoder and forces a keyframe, so a phone that moves between fair and serious every few seconds must not
+/// make the camera size flip each time). Same as the Mac's CallPowerHysteresis.
 public struct CallThermalHysteresis {
     public static let releaseDelay: Double = 5.0
+    public static let videoReleaseDelay: Double = 30.0
 
     public private(set) var current: CallThermalLevel = .nominal
     private var lowerSince: Double?
+    private var lowerTarget: CallThermalLevel?
 
     public init() {
     }
 
+    /// How long a cooler reading `target` must hold before it replaces `current`.
+    public static func delay(from current: CallThermalLevel, to target: CallThermalLevel) -> Double {
+        return current.shrinksVideo && !target.shrinksVideo ? self.videoReleaseDelay : self.releaseDelay
+    }
+
     /// The time at which a pending lowering takes effect, if one is pending.
     public var releaseTime: Double? {
-        return self.lowerSince.flatMap { $0 + CallThermalHysteresis.releaseDelay }
+        guard let lowerSince = self.lowerSince, let lowerTarget = self.lowerTarget else {
+            return nil
+        }
+        return lowerSince + CallThermalHysteresis.delay(from: self.current, to: lowerTarget)
     }
 
     public mutating func update(raw: CallThermalLevel, now: Double) -> CallThermalLevel {
         if raw >= self.current {
             self.lowerSince = nil
+            self.lowerTarget = nil
             self.current = raw
         } else {
             if self.lowerSince == nil {
                 self.lowerSince = now
             }
-            if let lowerSince = self.lowerSince, now - lowerSince >= CallThermalHysteresis.releaseDelay {
+            self.lowerTarget = raw
+            if let lowerSince = self.lowerSince, now - lowerSince >= CallThermalHysteresis.delay(from: self.current, to: raw) {
                 self.current = raw
                 self.lowerSince = nil
+                self.lowerTarget = nil
             }
         }
         return self.current

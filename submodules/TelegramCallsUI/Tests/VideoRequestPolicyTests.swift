@@ -7,6 +7,13 @@ import XCTest
 /// `prefetchTiles` around them, and the expanded tile are asked for, so a large video chat does
 /// not decode (and download) dozens of streams nobody sees.
 final class VideoRequestPolicyTests: XCTestCase {
+    /// With a tile expanded the strip of thumbnails shows everyone, so nobody may be left out of the request.
+    func testNothingIsLimitedWhileATileIsExpanded() {
+        XCTAssertTrue(VideoRequestPolicy.limitsRequestedTiles(tileCount: 40, hasExpandedTile: false))
+        XCTAssertFalse(VideoRequestPolicy.limitsRequestedTiles(tileCount: 40, hasExpandedTile: true))
+        XCTAssertFalse(VideoRequestPolicy.limitsRequestedTiles(tileCount: VideoRequestPolicy.unlimitedTileCount, hasExpandedTile: false))
+    }
+
     func testSmallGridsRequestEveryTile() {
         for count in 0 ... VideoRequestPolicy.unlimitedTileCount {
             XCTAssertEqual(VideoRequestPolicy.requestedTileIndices(tileCount: count, visible: nil, forced: []), Set(0 ..< count))

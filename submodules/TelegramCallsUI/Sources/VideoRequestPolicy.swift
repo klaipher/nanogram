@@ -9,6 +9,12 @@ enum VideoRequestPolicy {
     static let unlimitedTileCount = 6
     static let prefetchTiles = 2
 
+    /// Whether only the visible tiles are requested. Not while a tile is expanded: the thumbnail strip then shows
+    /// every participant with video, scrolling it does not update the request, and its range is not known here.
+    static func limitsRequestedTiles(tileCount: Int, hasExpandedTile: Bool) -> Bool {
+        return tileCount > self.unlimitedTileCount && !hasExpandedTile
+    }
+
     /// `visible` is the grid's visible index range; `maxIndex < minIndex` means nothing is on
     /// screen, `nil` that the layout is not known yet. Either asks for the leading tiles, which is
     /// where a grid starts out.
