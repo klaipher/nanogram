@@ -1,0 +1,32 @@
+import XCTest
+@testable import TelegramCallsUI
+
+// CallKit hands the app end and answer actions by call UUID. A stale or placeholder call (a VoIP push the
+// app could not use, a call-back placeholder, an earlier call) must never act on the call that is current.
+final class CallKitActionTargetTests: XCTestCase {
+    func testActionForTheCurrentCallActsOnIt() {
+        let current = UUID()
+        XCTAssertEqual(callKitActionTarget(uuid: current, personalCallId: current, hasGroupCall: false), .personalCall)
+    }
+
+    func testEndActionForAnotherUUIDDoesNotTouchThePersonalCall() {
+        XCTAssertEqual(callKitActionTarget(uuid: UUID(), personalCallId: UUID(), hasGroupCall: false), .none)
+    }
+
+    func testActionWithoutACurrentCallActsOnNothing() {
+        XCTAssertEqual(callKitActionTarget(uuid: UUID(), personalCallId: nil, hasGroupCall: false), .none)
+    }
+
+    func testGroupCallKeepsTakingActionsThatAreNotForThePersonalCall() {
+        XCTAssertEqual(callKitActionTarget(uuid: UUID(), personalCallId: nil, hasGroupCall: true), .groupCall)
+        let personal = UUID()
+        XCTAssertEqual(callKitActionTarget(uuid: personal, personalCallId: personal, hasGroupCall: true), .personalCall)
+    }
+
+    func testOnlyThePersonalCallAnswers() {
+        let current = UUID()
+        XCTAssertTrue(callKitActionAnswersPersonalCall(uuid: current, personalCallId: current))
+        XCTAssertFalse(callKitActionAnswersPersonalCall(uuid: UUID(), personalCallId: current))
+        XCTAssertFalse(callKitActionAnswersPersonalCall(uuid: current, personalCallId: nil))
+    }
+}

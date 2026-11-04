@@ -268,8 +268,11 @@ public final class PresentationCallManagerImpl: PresentationCallManager {
         
         answerCallImpl = { [weak self] uuid in
             if let strongSelf = self {
-                CallDiagnostics.log("CXAnswerCallAction \(uuid), current call \(strongSelf.currentCall?.internalId.description ?? "none")")
-                strongSelf.currentCall?.answer(fromCallKitAction: true)
+                let matches = callKitActionAnswersPersonalCall(uuid: uuid, personalCallId: strongSelf.currentCall?.internalId)
+                CallDiagnostics.log("CXAnswerCallAction \(uuid), current call \(strongSelf.currentCall?.internalId.description ?? "none"), \(matches ? "answering it" : "ignored: another call")")
+                if matches {
+                    strongSelf.currentCall?.answer(fromCallKitAction: true)
+                }
             }
         }
         
@@ -278,24 +281,28 @@ public final class PresentationCallManagerImpl: PresentationCallManager {
                 return .single(false)
             }
             
-            if let currentGroupCall = self.currentGroupCall {
-                switch currentGroupCall {
+            let target = callKitActionTarget(uuid: uuid, personalCallId: self.currentCall?.internalId, hasGroupCall: self.currentGroupCall != nil)
+            CallDiagnostics.log("CXEndCallAction \(uuid), current call \(self.currentCall?.internalId.description ?? "none"), group call \(self.currentGroupCall == nil ? "no" : "yes"), \(target)")
+            switch target {
+            case .personalCall:
+                return self.currentCall?.hangUp() ?? .single(true)
+            case .groupCall:
+                switch self.currentGroupCall {
                 case let .conferenceSource(conferenceSource):
                     return conferenceSource.hangUp()
                 case let .group(groupCall):
                     return groupCall.leave(terminateIfPossible: false)
+                case .none:
+                    return .single(true)
                 }
-            }
-            CallDiagnostics.log("CXEndCallAction \(uuid), current call \(self.currentCall?.internalId.description ?? "none"), group call \(self.currentGroupCall == nil ? "no" : "yes")")
-            if let currentCall = self.currentCall {
-                return currentCall.hangUp()
-            } else {
-                return .single(false)
+            case .none:
+                // A CallKit call the app does not hold (stale or placeholder): there is nothing to hang up.
+                return .single(true)
             }
         }
         
         setCallMutedImpl = { [weak self] uuid, isMuted in
-            if let strongSelf = self, let currentCall = strongSelf.currentCall {
+            if let strongSelf = self, let currentCall = strongSelf.currentCall, currentCall.internalId == uuid {
                 currentCall.setIsMuted(isMuted)
             }
         }
