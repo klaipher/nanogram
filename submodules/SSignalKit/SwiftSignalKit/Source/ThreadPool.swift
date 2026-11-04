@@ -138,10 +138,19 @@ public func ==(lhs: ThreadPoolQueue, rhs: ThreadPoolQueue) -> Bool {
     }
     
     public convenience init(threadCount: Int, threadPriority: Double) {
-        self.init(threadCount: threadCount, qos: ThreadPool.qualityOfService(forThreadPriority: threadPriority))
+        #if os(macOS)
+        self.init(threadCount: threadCount, configureThread: { $0.qualityOfService = ThreadPool.qualityOfService(forThreadPriority: threadPriority) })
+        #else
+        // QoS workers are Mac-only until iOS has measured them (shared-core plan 2.3): iOS keeps the thread priority.
+        self.init(threadCount: threadCount, configureThread: { $0.threadPriority = threadPriority })
+        #endif
     }
     
-    public init(threadCount: Int, qos: QualityOfService) {
+    public convenience init(threadCount: Int, qos: QualityOfService) {
+        self.init(threadCount: threadCount, configureThread: { $0.qualityOfService = qos })
+    }
+    
+    private init(threadCount: Int, configureThread: (Thread) -> Void) {
         assert(threadCount > 0, "threadCount < 0")
         
         self.mutex = pthread_mutex_t()
@@ -153,7 +162,7 @@ public func ==(lhs: ThreadPoolQueue, rhs: ThreadPoolQueue) -> Bool {
         
         for _ in 0 ..< threadCount {
             let thread = Thread(target: ThreadPool.self, selector: #selector(ThreadPool.threadEntryPoint(_:)), object: self)
-            thread.qualityOfService = qos
+            configureThread(thread)
             self.threads.append(thread)
             thread.start()
         }
