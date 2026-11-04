@@ -142,3 +142,25 @@ other device stays byte-identical; the band helpers above are built that way.
   stripped before committing).
 - Pure placement helpers have tests: `//submodules/TelegramUI/Components/TabBarLayout:TabBarLayoutTests`
   (side tab bar and its edit toolbar per posture).
+
+
+## Invariants moved from CLAUDE.md
+
+## iPhone Duo layout (reserved corners)
+
+`ContainerViewLayout.reservedCorners` carries iPhone Duo's corner blocks (the status corner: clock, camera) from a
+per-posture table, because the system's own regions are transitional for up to 0.6s after every rotation and fold;
+`safeInsets` stay exactly the system's. The rules, the layout API and how to check a screen are in
+[`docs/iphone-duo-layout.md`](docs/iphone-duo-layout.md); the all-screens audit is
+[`docs/superpowers/duo-screen-audit-2026-10.md`](docs/superpowers/duo-screen-audit-2026-10.md). None of this shows up
+as a build error:
+
+- **Folded portrait has a side inset** (right 84, the camera block only at the top). Code that assumes "portrait has
+  no side insets" is the main hazard. `UIScreen.main` is the cover screen while unfolded (use
+  `mainWindowScreenBounds`), and unfolded landscape is a regular-width phone, not an iPad.
+- **Content keeps to the band; bottom buttons and panels span the strip** with `bottomEdgeSideInsets()`, keeping
+  clear only of folded landscape-left's bottom block. Exceptions keep the band: small centred controls on the axis of
+  band-centred content, tall sheets that scroll up to the top, panels that grow upward, draggable captions.
+- **Every Duo fix must reduce to the old expression** with equal side insets and no reserved corners, which is also
+  why every bug shape is invisible on other devices. Verify on the Duo simulator (deep links + lldb rotation), not by
+  build and review alone: a fix once changed a legacy node while the visible button was another.
