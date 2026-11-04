@@ -2,12 +2,12 @@
 
 Newest first. Internal notes for each TestFlight build; testers see the What to Test notes instead.
 
-## 13.1.2 (202611041227) — 2026-11-04 — cc0f711f
+## 13.1.2 (202611041250) — 2026-11-04 — daac83e2
 
-Uploaded to TestFlight (delivery 73d0861b-05a0-4cf4-849c-4630f2a25a22); What to Test notes set by `tg testflight` after processing. dSYMs: ~/Library/Application Support/Nanogram/dsyms/202611041227. The first attempt (202611041214) was built but not uploaded: the export is named Nanogram.ipa since the branding change, and the upload looked for Telegram.ipa (fixed in cc0f711f).
-Built from cc0f711f; the behaviour-neutral lint fixes in 57a3839a (no force unwraps in Postbox key compare and hex dump, NAL header length in UInt8, a named CF cast) came after and are not in this build.
+Uploaded to TestFlight; What to Test notes set by `tg testflight` after processing. dSYMs: ~/Library/Application Support/Nanogram/dsyms/202611041250.
+Two earlier attempts the same day did not reach testers: 202611041214 was built but not uploaded (the export is named Nanogram.ipa since the branding change; the upload looked for Telegram.ipa, fixed in cc0f711f), and 202611041227 was uploaded and rejected by App Store Connect with ITMS-90626 (Siri vocabulary phrases still named INStartAudioCallIntent after the extension moved to INStartCallIntent; fixed in b923700d).
 
-Changes since build 202611031553 (a449bd87): `git log a449bd87..cc0f711f` (169 commits). Private notes; not shown to testers.
+Changes since build 202611031553 (a449bd87): `git log a449bd87..daac83e2`. Private notes; not shown to testers.
 
 ### Shared core with the Mac (core merge)
 - The Mac core (`mac/core`) is merged into `main`; Mac-only behaviour stays behind `#if os(macOS)` (48 kHz audio, AV1 decode threads, untagged frames, `nw_path_monitor`, ThreadPool QoS — the QoS mapping was briefly on iOS and is Mac-only again, 0e6cf57d). Ports that now run on iOS too: SQLite connections opened `NOMUTEX` (single-queue), share-extension 256-page cache, VACUUM never crashes and skips huge databases, FTS self-heal, cheap `exists()` (R2-38..43); 10-bit/HDR decode, passthrough colour from the stream's VUI (895eaaef), scrub and cached previews tagged sRGB instead of Display P3 (86064f5e via the merge); Ogg Opus resume continues the stream; local translation falls back to the server; history preload stops replaying once a chat has no hole.
@@ -35,8 +35,11 @@ Changes since build 202611031553 (a449bd87): `git log a449bd87..cc0f711f` (169 c
 - Branding: Nanogram in Siri phrases, bundle names, language packs, QR login, welcome screen and calls; a lint keeps Telegram's name and logo out.
 - Voice messages: correct progress on the first play.
 
+### Siri
+- Vocabulary phrases name INStartCallIntent in all 20 languages, matching the extension (b923700d); `test_siri_vocabulary.py` keeps every phrase within the extension's IntentsSupported.
+
 ### Tooling
-- `tg testflight` uploads the exported `.ipa` whatever its name (cc0f711f); Postbox TimeBasedCleanupTests wait for the database to open (bca4f362).
+- `tg testflight` uploads the exported `.ipa` whatever its name (cc0f711f); Postbox TimeBasedCleanupTests wait for the database to open (bca4f362); lint fixes for the merged Mac core code (57a3839a); TgVoipWebrtc host tests take NDEBUG from the library's flags (daac83e2).
 
 ## 13.1.2 (202611031553) — 2026-11-03 — a449bd87
 
