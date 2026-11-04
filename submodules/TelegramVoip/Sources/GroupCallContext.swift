@@ -947,19 +947,7 @@ public final class OngoingGroupCallContext {
                         let _ = try? FileManager.default.moveItem(atPath: tempStatsLogPath, toPath: statsLogPath)
                     }
                     
-                    if let callId = reportCallId, !statsLogPath.isEmpty, let data = try? Data(contentsOf: URL(fileURLWithPath: statsLogPath)), let dataString = String(data: data, encoding: .utf8), let account {
-                        let engine = TelegramEngine(account: account)
-                        let _ = engine.calls.saveCallDebugLog(callId: callId, log: dataString).start(next: { result in
-                            switch result {
-                            case .sendFullLog:
-                                if !logPath.isEmpty {
-                                    let _ = engine.calls.saveCompleteCallDebugLog(callId: callId, logPath: logPath).start()
-                                }
-                            case .done:
-                                break
-                            }
-                        })
-                    }
+                    // The call log stays on this device; it is never uploaded.
                 }
             })
         }

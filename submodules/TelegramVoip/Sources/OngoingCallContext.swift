@@ -1338,17 +1338,7 @@ public final class OngoingCallContext {
                 
                 if !statsLogPath.isEmpty, let data = try? Data(contentsOf: URL(fileURLWithPath: statsLogPath)), let dataString = String(data: data, encoding: .utf8) {
                     debugLogValue.set(.single(dataString))
-                    let engine = TelegramEngine(account: self.account)
-                    let _ = engine.calls.saveCallDebugLog(callId: callId, log: dataString).start(next: { result in
-                        switch result {
-                        case .sendFullLog:
-                            if !logPath.isEmpty {
-                                let _ = engine.calls.saveCompleteCallDebugLog(callId: callId, logPath: logPath).start()
-                            }
-                        case .done:
-                            break
-                        }
-                    })
+                    // The call log stays on this device; it is never uploaded.
                 }
                 
                 queue.async {
