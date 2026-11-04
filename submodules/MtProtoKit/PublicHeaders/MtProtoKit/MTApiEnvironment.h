@@ -55,6 +55,11 @@
 
 @interface MTApiEnvironment : NSObject
 
+/// Privacy-trimmed values sent in initConnection. Exposed so they can be unit tested.
++ (NSString * _Nullable)deviceFamilyNameForHardwareIdentifier:(NSString * _Nullable)hardwareIdentifier;
++ (NSString * _Nonnull)majorSystemVersion:(NSString * _Nullable)systemVersion;
++ (NSString * _Nonnull)languageCodeWithoutRegion:(NSString * _Nullable)identifier;
+
 @property (nonatomic) int32_t apiId;
 @property (nonatomic, strong, readonly) NSString * _Nullable deviceModel;
 @property (nonatomic, strong, readonly) NSString * _Nullable deviceModelName;

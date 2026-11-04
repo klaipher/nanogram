@@ -157,8 +157,7 @@ API_AVAILABLE(ios(10))
             dataDict[@"device_token_environment"] = tokenEnvironment;
         }
     }
-    float tzOffset = [[NSTimeZone systemTimeZone] secondsFromGMT];
-    dataDict[@"tz_offset"] = @((int)tzOffset);
+    // The time zone offset is not sent: it would tell Telegram roughly where the user is.
     if (signatureDict != nil) {
         for (id<NSCopying> key in signatureDict.allKeys) {
             dataDict[key] = signatureDict[key];
