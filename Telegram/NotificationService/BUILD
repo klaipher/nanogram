@@ -28,6 +28,7 @@ swift_library(
         "//submodules/Utils/RangeSet",
         "//submodules/Media/ConvertOpusToAAC",
         "//submodules/PasscodeCore",
+        "//submodules/HardenedMedia",
     ],
     visibility = [
         "//visibility:public",

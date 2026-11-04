@@ -22,6 +22,7 @@ import ConvertOpusToAAC
 import CoreServices
 import ImageIO
 import UniformTypeIdentifiers
+import HardenedMedia
 
 private let queue = Queue()
 
@@ -1806,7 +1807,9 @@ private final class NotificationServiceHandler {
                                             return
                                         }
                                         
-                                        let mediaAttachment = mediaAttachment ?? customMedia
+                                        // Lockdown Mode: no automatic download of a stranger's photo, sticker, video preview or voice
+                                        // for the notification (the extension runs with no user action). Text only.
+                                        let mediaAttachment: Media? = HardenedMediaPolicy.current.allowsNotificationMedia(fromContact: false) ? (mediaAttachment ?? customMedia) : nil
 
                                         var fetchMediaSignal: Signal<Data?, NoError> = .single(nil)
                                         if let mediaAttachment {

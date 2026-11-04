@@ -120,3 +120,16 @@ final class VenueSearchPolicyTests: XCTestCase {
         XCTAssertEqual(first, second)
     }
 }
+
+
+final class NotificationMediaPolicyTests: XCTestCase {
+    func testLockdownKeepsMediaOutOfNotificationsFromNonContacts() {
+        XCTAssertFalse(HardenedMediaPolicy.lockdown.allowsNotificationMedia(fromContact: false))
+        XCTAssertTrue(HardenedMediaPolicy.lockdown.allowsNotificationMedia(fromContact: true))
+    }
+
+    func testNormalModeAttachesMediaAsBefore() {
+        XCTAssertTrue(HardenedMediaPolicy.inactive.allowsNotificationMedia(fromContact: false))
+        XCTAssertTrue(HardenedMediaPolicy.inactive.allowsNotificationMedia(fromContact: true))
+    }
+}

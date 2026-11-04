@@ -137,19 +137,27 @@ private func cleanupCallLogs(account: Account) {
     }
     
     var oldest: [(URL, Date)] = []
-    var count = 0
     if let enumerator = FileManager.default.enumerator(at: URL(fileURLWithPath: path), includingPropertiesForKeys: [.contentModificationDateKey], options: [.skipsHiddenFiles, .skipsSubdirectoryDescendants], errorHandler: nil) {
         for url in enumerator {
             if let url = url as? URL {
                 if let date = (try? url.resourceValues(forKeys: Set([.contentModificationDateKey])))?.contentModificationDate {
                     oldest.append((url, date))
-                    count += 1
                 }
             }
         }
     }
+    // Full call logs list every gathered ICE candidate: keep them for a week at most.
+    let maxAge: TimeInterval = 7.0 * 24.0 * 60.0 * 60.0
+    let expiry = Date().addingTimeInterval(-maxAge)
+    oldest = oldest.filter { entry in
+        if entry.1 < expiry {
+            try? fileManager.removeItem(atPath: entry.0.path)
+            return false
+        }
+        return true
+    }
     let callLogsLimit = 40
-    if count > callLogsLimit {
+    if oldest.count > callLogsLimit {
         oldest.sort(by: { $0.1 > $1.1 })
         while oldest.count > callLogsLimit {
             try? fileManager.removeItem(atPath: oldest[oldest.count - 1].0.path)
@@ -1309,7 +1317,6 @@ public final class OngoingCallContext {
     }
     
     public func stop(sendDebugLogs: Bool = false, debugLogValue: Promise<String?>) {
-        let callId = self.callId
         let account = self.account
         let logPath = self.logPath
         var statsLogPath = ""
@@ -1336,19 +1343,11 @@ public final class OngoingCallContext {
                     let _ = try? FileManager.default.moveItem(atPath: tempStatsLogPath, toPath: statsLogPath)
                 }
                 
+                // The stats JSON (it carries the IP:port of the selected ICE candidates) and the full call log stay on the
+                // device: they are shown in the user's own "send logs" screen, and never uploaded to the server on
+                // their own after a call (security review H2; the Mac does the same).
                 if !statsLogPath.isEmpty, let data = try? Data(contentsOf: URL(fileURLWithPath: statsLogPath)), let dataString = String(data: data, encoding: .utf8) {
                     debugLogValue.set(.single(dataString))
-                    let engine = TelegramEngine(account: self.account)
-                    let _ = engine.calls.saveCallDebugLog(callId: callId, log: dataString).start(next: { result in
-                        switch result {
-                        case .sendFullLog:
-                            if !logPath.isEmpty {
-                                let _ = engine.calls.saveCompleteCallDebugLog(callId: callId, logPath: logPath).start()
-                            }
-                        case .done:
-                            break
-                        }
-                    })
                 }
                 
                 queue.async {
