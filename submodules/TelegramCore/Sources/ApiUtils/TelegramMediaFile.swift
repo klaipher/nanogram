@@ -16,6 +16,15 @@ func dimensionsForFileAttributes(_ attributes: [TelegramMediaFileAttribute]) -> 
     return nil
 }
 
+// A video's duration is a double the sender chose. The UI converts it with Int32(duration), which
+// traps on NaN, infinity and anything outside Int32, so it is kept finite and in 0...Int32.max.
+func sanitizedVideoDuration(_ value: Double) -> Double {
+    if !value.isFinite || value < 0.0 {
+        return 0.0
+    }
+    return min(value, Double(Int32.max))
+}
+
 func durationForFileAttributes(_ attributes: [TelegramMediaFileAttribute]) -> Double? {
     for attribute in attributes {
         switch attribute {
@@ -137,7 +146,7 @@ func telegramMediaFileAttributesFromApiAttributes(_ attributes: [Api.DocumentAtt
                 if (flags & (1 << 3)) != 0 {
                     videoFlags.insert(.isSilent)
                 }
-                result.append(.Video(duration: Double(duration), size: PixelDimensions(width: w, height: h), flags: videoFlags, preloadSize: preloadSize, coverTime: videoStart, videoCodec: videoCodec))
+                result.append(.Video(duration: sanitizedVideoDuration(duration), size: PixelDimensions(width: w, height: h), flags: videoFlags, preloadSize: preloadSize, coverTime: videoStart, videoCodec: videoCodec))
             case let .documentAttributeAudio(documentAttributeAudioData):
                 let (flags, duration, title, performer, waveform) = (documentAttributeAudioData.flags, documentAttributeAudioData.duration, documentAttributeAudioData.title, documentAttributeAudioData.performer, documentAttributeAudioData.waveform)
                 let isVoice = (flags & (1 << 10)) != 0
