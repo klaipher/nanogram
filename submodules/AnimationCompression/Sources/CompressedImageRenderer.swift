@@ -384,6 +384,7 @@ public final class CompressedImageRenderer {
         var storedDrawable: MetalImageLayer.Drawable? = drawable
         commandBuffer.addCompletedHandler { commandBuffer in
             release()
+            CompressedImageRendererGPUStats.shared.record(gpuStart: commandBuffer.gpuStartTime, gpuEnd: commandBuffer.gpuEndTime)
             let succeeded = commandBuffer.status == .completed && commandBuffer.error == nil
             DispatchQueue.main.async {
                 autoreleasepool {
@@ -567,4 +568,56 @@ public final class CompressedImageRenderer {
             yuvaTexturePool.put(yuvaTextures)
         })
     }
+}
+
+
+/// Adds up the GPU time of every command buffer the sticker and emoji renderers commit, and logs a one-line
+/// summary every 30 s while there is activity. It is how the next A/B day (CPU vs Metal renderers) is judged.
+public final class CompressedImageRendererGPUStats {
+    public struct Snapshot: Equatable {
+        public var commandBuffers: Int
+        public var gpuSeconds: Double
+    }
+
+    private let lock = NSLock()
+    private var commandBuffers: Int = 0
+    private var gpuSeconds: Double = 0.0
+    private var windowStart: CFAbsoluteTime = CFAbsoluteTimeGetCurrent()
+    private var windowCommandBuffers: Int = 0
+    private var windowGpuSeconds: Double = 0.0
+
+    static let reportInterval: Double = 30.0
+
+    public init() {
+    }
+
+    /// `gpuStart` / `gpuEnd` are MTLCommandBuffer.gpuStartTime / gpuEndTime (0 when the buffer never ran).
+    func record(gpuStart: CFTimeInterval, gpuEnd: CFTimeInterval, now: CFAbsoluteTime = CFAbsoluteTimeGetCurrent()) {
+        let duration = gpuEnd > gpuStart && gpuStart > 0.0 ? gpuEnd - gpuStart : 0.0
+        var message: String?
+        self.lock.lock()
+        self.commandBuffers += 1
+        self.gpuSeconds += duration
+        self.windowCommandBuffers += 1
+        self.windowGpuSeconds += duration
+        let elapsed = now - self.windowStart
+        if elapsed >= CompressedImageRendererGPUStats.reportInterval {
+            message = "[GPUStats] stickers/emoji: \(self.windowCommandBuffers) command buffers, \(String(format: "%.3f", self.windowGpuSeconds)) GPU-s in \(String(format: "%.0f", elapsed)) s"
+            self.windowStart = now
+            self.windowCommandBuffers = 0
+            self.windowGpuSeconds = 0.0
+        }
+        self.lock.unlock()
+        if let message = message {
+            NSLog("%@", message)
+        }
+    }
+
+    public var snapshot: Snapshot {
+        self.lock.lock()
+        defer { self.lock.unlock() }
+        return Snapshot(commandBuffers: self.commandBuffers, gpuSeconds: self.gpuSeconds)
+    }
+
+    public static let shared = CompressedImageRendererGPUStats()
 }

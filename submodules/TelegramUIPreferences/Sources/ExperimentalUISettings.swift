@@ -103,7 +103,7 @@ public struct ExperimentalUISettings: Codable, Equatable {
             crashOnLongQueries: false,
             enableVoipTcp: false,
             fakeGlass: false,
-            compressedEmojiCache: true,
+            compressedEmojiCache: false,
             localTranscription: false,
             disableQuickReaction: false,
             disableLanguageRecognition: false,
@@ -149,7 +149,7 @@ public struct ExperimentalUISettings: Codable, Equatable {
         fakeWalletTransfers: Bool,
         useModernVideoMessagePipeline: Bool? = nil,
         videoMessageCameraMode: VideoMessageCameraMode = .hdBilinear,
-        stickerRendererMode: StickerRendererMode = .gpuLarge,
+        stickerRendererMode: StickerRendererMode = .cpu,
         showCrashReportAlerts: Bool? = nil,
         videoMessageCloseFocus: Bool = true,
         videoMessageCameraMatrix: RoundVideoCameraMatrix = .bt709,
@@ -199,9 +199,10 @@ public struct ExperimentalUISettings: Codable, Equatable {
     }
     
     /// Revision of Nanogram's defaults that a saved blob was written with. Revision 1 turned on large
-    /// stickers on the Metal renderer and custom emoji on the YUVA path. Every save writes the current
+    /// stickers on the Metal renderer and custom emoji on the YUVA path. Revision 2 turned both back off
+    /// (MetricKit showed 17x the GPU time on the third phone). Every save writes the current
     /// revision, so an older blob is upgraded once and a later choice is kept.
-    static let nanogramDefaultsRevision: Int32 = 1
+    static let nanogramDefaultsRevision: Int32 = 2
 
     public init(from decoder: Decoder) throws {
         let container = try decoder.container(keyedBy: StringCodingKey.self)
@@ -213,7 +214,7 @@ public struct ExperimentalUISettings: Codable, Equatable {
         self.crashOnLongQueries = (try container.decodeIfPresent(Int32.self, forKey: "crashOnLongQueries") ?? 0) != 0
         self.enableVoipTcp = (try container.decodeIfPresent(Int32.self, forKey: "enableVoipTcp") ?? 0) != 0
         self.fakeGlass = (try container.decodeIfPresent(Int32.self, forKey: "fakeGlass") ?? 0) != 0
-        self.compressedEmojiCache = (try container.decodeIfPresent(Int32.self, forKey: "compressedEmojiCache") ?? 1) != 0
+        self.compressedEmojiCache = (try container.decodeIfPresent(Int32.self, forKey: "compressedEmojiCache") ?? 0) != 0
         self.localTranscription = (try container.decodeIfPresent(Int32.self, forKey: "localTranscription") ?? 0) != 0
         self.disableQuickReaction = try container.decodeIfPresent(Bool.self, forKey: "disableQuickReaction") ?? false
         self.disableLanguageRecognition = try container.decodeIfPresent(Bool.self, forKey: "disableLanguageRecognition") ?? false
@@ -234,7 +235,7 @@ public struct ExperimentalUISettings: Codable, Equatable {
         self.showCrashReportAlerts = try container.decodeIfPresent(Bool.self, forKey: "showCrashReportAlerts")
         self.useModernVideoMessagePipeline = try container.decodeIfPresent(Bool.self, forKey: "useModernVideoMessagePipeline")
         self.videoMessageCameraMode = (try container.decodeIfPresent(String.self, forKey: "videoMessageCameraMode")).flatMap(VideoMessageCameraMode.init(rawValue:)) ?? .hdBilinear
-        self.stickerRendererMode = (try container.decodeIfPresent(String.self, forKey: "stickerRendererMode")).flatMap(StickerRendererMode.init(rawValue:)) ?? .gpuLarge
+        self.stickerRendererMode = (try container.decodeIfPresent(String.self, forKey: "stickerRendererMode")).flatMap(StickerRendererMode.init(rawValue:)) ?? .cpu
         // Stored under a new key since the default became on: every blob saved before that holds `false` under
         // the old "videoMessageCloseFocus" key whether or not the user touched the switch, so it is ignored.
         self.videoMessageCloseFocus = try container.decodeIfPresent(Bool.self, forKey: "videoMessageCloseFocusOn") ?? true
@@ -252,15 +253,22 @@ public struct ExperimentalUISettings: Codable, Equatable {
         self.callsGroupNoiseMode = try container.decodeIfPresent(Int32.self, forKey: "callsGroupNoiseMode") ?? 0
         self.callsThermalVideoLadder = try container.decodeIfPresent(Bool.self, forKey: "callsThermalVideoLadder") ?? false
 
-        if savedDefaultsRevision < 1 {
-            // Saved before the GPU renderers became the default: both were the old CPU defaults.
-            if self.stickerRendererMode == .cpu {
-                self.stickerRendererMode = .gpuLarge
-            }
-            self.compressedEmojiCache = true
+        if savedDefaultsRevision == 1 {
+            // Blobs older than revision 1 hold real choices (the old defaults were off), so they are kept.
+            // Revision 1 forced these two values on every older blob, and a user who left them on cannot be told
+            // apart from it. Put back the CPU renderer and the plain emoji cache; a later choice is kept.
+            Self.applyRevision2Migration(stickerRendererMode: &self.stickerRendererMode, compressedEmojiCache: &self.compressedEmojiCache)
         }
     }
-    
+
+    /// Revision 2 migration, separate so it can be tested without a coder.
+    static func applyRevision2Migration(stickerRendererMode: inout StickerRendererMode, compressedEmojiCache: inout Bool) {
+        if stickerRendererMode == .gpuLarge {
+            stickerRendererMode = .cpu
+        }
+        compressedEmojiCache = false
+    }
+
     public func encode(to encoder: Encoder) throws {
         var container = encoder.container(keyedBy: StringCodingKey.self)
 
