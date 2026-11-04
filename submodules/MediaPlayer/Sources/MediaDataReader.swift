@@ -269,7 +269,7 @@ public final class AVAssetVideoDataReader: MediaDataReader {
             }
             let transform = videoTrack.preferredTransform
             self.videoRotationAngle = atan2(Double(transform.b), Double(transform.a))
-            let videoOutput = AVAssetReaderTrackOutput(track: videoTrack, outputSettings: [String(kCVPixelBufferPixelFormatTypeKey): AVAssetVideoDataReader.outputPixelFormat(formatDescription: videoTrack.formatDescriptions.first.flatMap { $0 as! CMFormatDescription })])
+            let videoOutput = AVAssetReaderTrackOutput(track: videoTrack, outputSettings: [String(kCVPixelBufferPixelFormatTypeKey): AVAssetVideoDataReader.outputPixelFormat(formatDescription: videoTrack.formatDescriptions.first.map { $0 as! CMFormatDescription })])
             assetReader.add(videoOutput)
             if assetReader.startReading() {
                 self.assetReader = assetReader
