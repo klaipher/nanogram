@@ -4,6 +4,14 @@ Newest first. Internal notes for each TestFlight build; testers see the What to 
 
 ## Unreleased
 
+### Networking and crypto review (2026-11-05, night/net-crypto)
+Not yet built into a TestFlight build. Private notes. Shared core: reaches the Mac with the next core bump.
+- **MtProtoKit timers share wake-ups** (029d7df3): `MTTimer` used zero leeway for every network timeout, retry and back-off; it now follows SwiftSignalKit's `.automatic` rule (`MTTimerLeewaySeconds`: min(10%, 1 s) for timeouts of 1 s or more, none below).
+- **Bounded per-session message-id tracking** (2459826e): `MTSessionInfo` kept every processed incoming id, every sent-once outgoing id and every container mapping for the life of a session. Processed and sent-once ids are now a sorted window of the newest 2000 (an older id counts as seen once the window is full, as in tdlib's `MessageIdDuplicateChecker` and the Rust engine's `DuplicateChecker`, so replays are still ignored; security review L-1). Container mappings an hour older than the newest container are dropped, checked when the map doubles.
+- **DH prime check order** (6829b30f, 744572cb): `MTCheckIsSafePrime` checks the 2048-bit length and top bit before it reads the keychain's cached verdict (security review L-2).
+- **tde2e hardened** (1a420298): `third-party/td/build-td-bazel.sh` adds the `.bazelrc` hardening (zero-init, strong stack protector, libc++ fast hardening) to the CMake target build of tde2e/tdutils, which never saw Bazel's copts. Host TL generators stay plain.
+- Tests: `MtProtoKitTests` gains `MTTimerLeewayTests`, `MTSessionInfoWindowTests`, `MTSafePrimeCacheTests` (not run: they need the simulator test build); `tools/dev/tests/test_net_crypto_builds.py` (3 pass).
+
 ### Security review follow-up (2026-11-04, merged from sec/hardening, sec/platform, sec/db-keys)
 Not yet built into a TestFlight build. Private notes.
 - **Lockdown Mode and code highlighting** (7002c268, 41799c70, a1ab87c9, 19defdcb, a31481dc, 7250fa8e): one shared libprisma engine (upstream 94640c6 plus stats/limits hooks) with a depth cap of 32 and a per-block search budget; worst adversarial block 649 ms. New `submodules/HardenedMedia` (policy: no auto-download from non-contacts, no autoplay or looping, no link previews or highlighting under Lockdown). `SharedAccountContext` rebuilt the live auto-download settings without the policy, which undid the launch hardening at the first emission; `effectiveMediaAutoDownloadSettings(stored:autodownload:policy:)` in TelegramUIPreferences now applies the policy after the server presets. `LockdownMode` counts `com.apple.developer.lockdown-mode.state` only when it is boolean true (a false value led to `os_lockdown_mode_enabled()`, which aborts). Attach > Location no longer sends the position to a venue bot (MapKit venues, `VenueSearchPolicy`; secret chats and stories never query bots).
