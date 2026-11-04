@@ -107,7 +107,7 @@ a few rough edges for a fork.
 | Change | Where | Effect |
 | --- | --- | --- |
 | Bazel 9.3: copy-on-write disk cache | `versions.json` | Disk cache entries are APFS clones of the build outputs instead of second copies: ~8 GB saved on a debug build. |
-| Disk cache garbage collection: 40 GB cap, 14-day max age | `.bazelrc` | Upstream passes `--disk_cache` with no limit, so it grows forever. Bazel now trims it in the background when idle. Change the limits in `user.bazelrc`. |
+| Disk cache garbage collection: 30 GB cap, 14-day max age | `.bazelrc` | Upstream passes `--disk_cache` with no limit, so it grows forever. Bazel now trims it in the background when idle. Change the limits in `user.bazelrc`. |
 | `--experimental_repository_cache_hardlinks` | `.bazelrc` | Downloaded archives are hardlinked into `external/` instead of copied. |
 | rules_xcodeproj with the clonetool-based copy tool | `MODULE.bazel` | Xcode builds copy outputs into DerivedData as APFS clones instead of with rsync. |
 | Shallow submodules (`shallow = true`) | `.gitmodules` | `git submodule update` fetches one commit per submodule instead of its whole history (~400 MB more for webrtc, libvpx and td alone). |
@@ -280,3 +280,7 @@ must be rooted at the import `b46f1ec6`, a pushed tgcalls/rlottie/tlottie pin mu
 push that touches shared paths prints a reminder to run `tools/dev/tg core-bump` on the Mac. Differences with the Mac
 are warnings here; the Mac side enforces the lag limit, so an iOS hotfix never waits for a Mac build. Skip once with
 `TG_PARITY=0 git push`.
+
+## Cache cleanup
+
+Stale build caches clean themselves up after every build and test command, with no scheduled job: output bases of deleted worktrees, DerivedData, `.build` folders, merged worktrees, Instruments leftovers. See [cache-cleanup.md](cache-cleanup.md); `tools/dev/tg cache-cleanup --dry-run` shows what would go.

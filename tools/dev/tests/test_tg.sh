@@ -178,7 +178,7 @@ test_archive_dsyms() {
   mkdir -p "$TMP/archive/not-a-build"
   touch -t 202601010000 "$TMP/archive/not-a-build"
 
-  run_archive_dsyms "$build"
+  TG_DSYM_KEEP=20 run_archive_dsyms "$build"
   check "archive_dsyms succeeds" [ "$STATUS" -eq 0 ]
   check "the app's dSYM is archived" archived Telegram.app.dSYM
   check "the extension's dSYM is archived" archived Share.appex.dSYM
@@ -207,7 +207,7 @@ test_archive_dsyms() {
   # A newer build number than this one (built earlier on another branch) and a folder with no uuids.txt.
   mkdir -p "$TMP/archive/202612010000" "$TMP/archive/202612020000"
   echo uuids > "$TMP/archive/202612010000/uuids.txt"
-  run_archive_dsyms "$build"
+  TG_DSYM_KEEP=20 run_archive_dsyms "$build"
   check "archive_dsyms succeeds again" [ "$STATUS" -eq 0 ]
   check "the builds with the highest numbers are kept" [ -d "$TMP/archive/202610010034" ]
   check "the lowest build numbers are removed, however recently touched" [ ! -e "$TMP/archive/202610010015" ]
@@ -216,11 +216,13 @@ test_archive_dsyms() {
   builds="$(cd "$TMP/archive" && ls -d 2*/ | wc -l | tr -d ' ')"
   check "20 builds plus the ignored folder remain (found $builds)" [ "$builds" -eq 21 ]
 
-  # TG_DSYM_KEEP below 1 still keeps the build just archived, even below a higher build number.
+  # The default and TG_DSYM_KEEP=0 keep every build's dSYMs forever.
+  run_archive_dsyms "$build"
+  check "archive_dsyms with the default keep succeeds" [ "$STATUS" -eq 0 ]
+  check "the default keeps the build just archived" [ -d "$TMP/archive/202611031200" ]
+  check "the default removes nothing" [ -d "$TMP/archive/202612010000" ]
   TG_DSYM_KEEP=0 run_archive_dsyms "$build"
-  check "archive_dsyms with TG_DSYM_KEEP=0 succeeds" [ "$STATUS" -eq 0 ]
-  check "TG_DSYM_KEEP=0 keeps the build just archived" [ -d "$TMP/archive/202611031200" ]
-  check "TG_DSYM_KEEP=0 keeps nothing else" [ ! -e "$TMP/archive/202612010000" ]
+  check "TG_DSYM_KEEP=0 removes nothing" [ -d "$TMP/archive/202610010034" ]
 
   # The app's dSYM from another build: refuse, and still clean up.
   rm -rf "$build/Telegram.app.dSYM"; cp -R "$build/Stale.appex.dSYM" "$build/Telegram.app.dSYM"
