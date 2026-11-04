@@ -67,6 +67,11 @@ extensions in the App Group. Wallet ciphertext and biometric access-key copies
 remain in the private group. These are distinct boundaries: sharing the credential
 does not mean sharing the wallet's secret records.
 
+The operating system enforces this boundary: every `ios_extension` in `Telegram/BUILD` signs with explicit
+entitlements (`Telegram/entitlements.bzl`) holding only the App Group and the extension's own application
+identifier. No extension inherits the provisioning profile's `TEAM.*` keychain group, so the main app's private
+group is unreachable from extension processes even if their code asked for it.
+
 ## Credential format and key hierarchy
 
 The credential JSON schema remains version **1**. Renaming the generic Swift
