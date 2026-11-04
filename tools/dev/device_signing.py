@@ -38,6 +38,14 @@ XCODE_PROFILES = os.path.expanduser('~/Library/Developer/Xcode/UserData/Provisio
 EXTENSIONS = ['.Share', '.NotificationService', '.NotificationContent', '.Widget', '.SiriIntents', '.BroadcastUpload']
 
 
+def exported_ipa(out_dir):
+    """The one .ipa xcodebuild exported; its name follows the app's CFBundleName (Nanogram.ipa), not Bazel's target."""
+    ipas = sorted(glob.glob(os.path.join(out_dir, '*.ipa')))
+    if len(ipas) != 1:
+        sys.exit('Expected one exported .ipa in %s, found %s' % (out_dir, [os.path.basename(p) for p in ipas] or 'none'))
+    return ipas[0]
+
+
 def load_config():
     with open(CONFIG) as f:
         return json.load(f)
@@ -320,7 +328,7 @@ def cmd_testflight(args):
         sys.exit('Export failed; logs are in ' + work)
     if not args.export_only and not xcodebuild_uploads:
         env = dict(os.environ, API_PRIVATE_KEYS_DIR=ASC_DIR)
-        result = subprocess.run(['xcrun', 'altool', '--upload-app', '-f', os.path.join(work, 'out', 'Telegram.ipa'),
+        result = subprocess.run(['xcrun', 'altool', '--upload-app', '-f', exported_ipa(os.path.join(work, 'out')),
                                  '-t', 'ios', '--apiKey', key['id'], '--apiIssuer', key['issuer']], env=env)
         if result.returncode != 0:
             sys.exit('Upload failed; logs are in ' + work)
