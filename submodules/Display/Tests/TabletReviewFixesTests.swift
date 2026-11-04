@@ -192,6 +192,22 @@ final class TabletReviewFixesTests: XCTestCase {
         XCTAssertEqual(events, ["attach", "analyze", "detach", "attach", "analyze"])
     }
 
+    // MARK: - Live Text draws nothing until the user asks
+
+    /// Opening a photo must not underline dates, times or links: data detectors highlight what they find at once.
+    /// By default only text selection (a long press) is on, which draws nothing until the user presses.
+    func test_liveText_interactionTypes_defaultDrawsNothing() {
+        let types = galleryLiveTextInteractionTypes(userRequestedRecognition: false)
+        XCTAssertEqual(types, [.textSelection])
+        XCTAssertFalse(types.contains(.dataDetectors))
+    }
+
+    func test_liveText_interactionTypes_dataDetectorsOnlyWhenRequested() {
+        let types = galleryLiveTextInteractionTypes(userRequestedRecognition: true)
+        XCTAssertTrue(types.contains(.textSelection))
+        XCTAssertTrue(types.contains(.dataDetectors))
+    }
+
     // MARK: - I1 Orientation lock: single-axis masks only
 
     func test_orientationLock_onlySingleAxisMasksLock() {
