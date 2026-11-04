@@ -101,6 +101,14 @@ class ExtensionEntitlementTests(unittest.TestCase):
             extras = 'extras' in fragments[target]
             self.assertEqual(extras, suffix == 'NotificationService', name)
 
+    def test_notification_service_asks_only_for_what_its_profile_grants(self):
+        # The extension's profile carries filtering (official Telegram's does) but not communication notifications,
+        # which only the main app's App ID has; asking for it would make the signed extension fail to install or upload.
+        # The sender avatars come from the main app's entitlement.
+        fragment = re.sub(r'\s+', ' ', blocks(read(BUILD), 'plist_fragment')['NotificationServiceEntitlements'])
+        extras = re.search(r'extras = \[([^\]]*)\]', fragment).group(1)
+        self.assertEqual([item.strip() for item in extras.split(',') if item.strip()], ['notification_filtering_fragment'])
+
 
 class EnhancedSecurityTests(unittest.TestCase):
     def setUp(self):

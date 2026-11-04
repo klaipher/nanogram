@@ -1675,7 +1675,7 @@ plist_fragment(
         telegram_team_id,
         telegram_bundle_id,
         "NotificationService",
-        extras = [communication_notifications_fragment, notification_filtering_fragment],
+        extras = [notification_filtering_fragment],
     ) + enhanced_security_select,
 )
 
