@@ -344,13 +344,12 @@ cc_test(
         "-Ithird-party/webrtc/absl",
         "-Ithird-party/libyuv",
         "-DRTC_ENABLE_VP9",
-        "-DNDEBUG",
         "-std=c++17",
         "-w",
     ] + select({
         "@platforms//os:linux": ["-DWEBRTC_LINUX", "-DWEBRTC_POSIX"],
         "//conditions:default": ["-DWEBRTC_MAC", "-DWEBRTC_POSIX"],
-    }),
+    }) + optimization_flags,
     linkopts = select({
         "@platforms//os:linux": ["-lpthread", "-lm", "-ldl"],
         "//conditions:default": ["-framework", "CoreFoundation", "-framework", "Security"],
@@ -368,13 +367,12 @@ cc_test(
         "-Ithird-party/webrtc/absl",
         "-Ithird-party/libyuv",
         "-DRTC_ENABLE_VP9",
-        "-DNDEBUG",
         "-std=c++17",
         "-w",
     ] + select({
         "@platforms//os:linux": ["-DWEBRTC_LINUX", "-DWEBRTC_POSIX"],
         "//conditions:default": ["-DWEBRTC_MAC", "-DWEBRTC_POSIX"],
-    }),
+    }) + optimization_flags,
     linkopts = select({
         "@platforms//os:linux": ["-lpthread", "-lm", "-ldl"],
         "//conditions:default": ["-framework", "CoreFoundation", "-framework", "Security"],
@@ -392,13 +390,12 @@ cc_test(
         "-Ithird-party/webrtc/absl",
         "-Ithird-party/libyuv",
         "-DRTC_ENABLE_VP9",
-        "-DNDEBUG",
         "-std=c++17",
         "-w",
     ] + select({
         "@platforms//os:linux": ["-DWEBRTC_LINUX", "-DWEBRTC_POSIX"],
         "//conditions:default": ["-DWEBRTC_MAC", "-DWEBRTC_POSIX"],
-    }),
+    }) + optimization_flags,
     linkopts = select({
         "@platforms//os:linux": ["-lpthread", "-lm", "-ldl"],
         "//conditions:default": ["-framework", "CoreFoundation", "-framework", "Security"],
