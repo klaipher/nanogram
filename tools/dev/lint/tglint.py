@@ -479,7 +479,12 @@ def run_python_suites(suites):
 def cmd_pre_push(args):
     if os.environ.get('TG_PRE_PUSH') == '0':
         return 0
-    refs = parse_push_refs(sys.stdin.read())
+    pushed = sys.stdin.read()
+    refs = parse_push_refs(pushed)
+    parity_script = os.path.join(ROOT, 'tools', 'dev', 'parity', 'parity.py')
+    if os.path.exists(parity_script) and subprocess.run([sys.executable, parity_script, 'push', '--root', ROOT, args.remote],
+                                                        input=pushed, text=True).returncode != 0:
+        return 1
     all_paths = []
     blocking = 0
     for local_ref, local_sha, remote_ref, remote_sha in refs:
