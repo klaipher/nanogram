@@ -19,7 +19,7 @@ UPSTREAM_URL="https://github.com/TelegramMessenger/Telegram-iOS.git"
 # Device builds keep every output in bazel-out instead of only the top-level ones
 # (Bazel's default --remote_download_outputs=toplevel also applies to the disk cache).
 # With toplevel, a disk-cache hit leaves e.g. libPostbox.a only as a digest in the
-# output base; device builds are rare, so the disk-cache GC (.bazelrc, 40G) evicts
+# output base; device builds are rare, so the disk-cache GC (.bazelrc, 30G) evicts
 # that blob during simulator work, and the next device build fails to link with
 # "Failed to fetch blobs ... Missing digest" (exit REMOTE_CACHE_EVICTED) instead of
 # rebuilding it. Simulator builds keep the default.
@@ -381,6 +381,21 @@ cmd_clean() {
   "$bazel" clean
 }
 
+# tg cache-cleanup [--dry-run] [--only A,B] | verify | report — the shared cache cleanup (tools/dev/cachegc, one policy
+# for the iOS and the Mac app). It also runs by itself, throttled and time-boxed, after build, test, run, device and
+# testflight commands. There is no scheduled job.
+cmd_cache_cleanup() {
+  case "${1:-}" in
+    verify|report) python3 "$ROOT/tools/dev/cachegc/cachegc.py" "$1" --repo "$ROOT" ;;
+    *) python3 "$ROOT/tools/dev/cachegc/cachegc.py" run --repo "$ROOT" "$@" ;;
+  esac
+}
+
+cache_cleanup_auto() { python3 "$ROOT/tools/dev/cachegc/cachegc.py" auto --repo "$ROOT" || true; }
+
+# tg native — drift check: native-libs.json and module-settings.json against the build files.
+cmd_native() { python3 "$ROOT/tools/dev/native/check_native_libs.py" "$@" && python3 "$ROOT/tools/dev/native/module_settings.py" --check; }
+
 # tg prune [--yes] — reclaim everything Bazel and Xcode keep for this checkout.
 cmd_prune() {
   if [ "${1:-}" != "--yes" ]; then
@@ -517,9 +532,10 @@ cmd_device() {
 # Every TestFlight build's dSYMs, one directory per CFBundleVersion. Outside the repository and
 # every cache, so `tg clean`/`tg prune`, Bazel's disk-cache GC and cache cleanups never delete them;
 # a crash report from a tester (MetricKit, Xcode Organizer) can only be symbolicated with them.
-# The TG_DSYM_KEEP builds with the highest build numbers (default 20, at least 1) are kept.
+# Every build is kept (TG_DSYM_KEEP=0, the default): a TestFlight build's dSYMs live forever. Set TG_DSYM_KEEP=N to keep
+# only the N highest build numbers.
 DSYM_ARCHIVE="${TG_DSYM_DIR:-$HOME/Library/Application Support/Nanogram/dsyms}"
-DSYM_KEEP="${TG_DSYM_KEEP:-20}"
+DSYM_KEEP="${TG_DSYM_KEEP:-0}"
 
 # ipa_binary_uuids <ipa> <work dir> — "<path in ipa> <UUID>" for every slice of every bundle
 # executable in <ipa> (the app, its extensions, frameworks and watch app), extracting only the
@@ -552,9 +568,9 @@ ipa_binary_uuids() {
 prune_dsym_archive() {
   local current="$1" keep="$DSYM_KEEP" dir count=1
   case "$keep" in
-    ""|*[!0-9]*) warn "TG_DSYM_KEEP='$keep' is not a number; keeping 20 builds"; keep=20 ;;
+    ""|*[!0-9]*) warn "TG_DSYM_KEEP='$keep' is not a number; keeping every build"; keep=0 ;;
   esac
-  [ "$keep" -ge 1 ] || keep=1
+  [ "$keep" -ge 1 ] || return 0
   while IFS= read -r dir; do
     [ "$dir" != "$current" ] || continue
     case "$dir" in ""|.*|*[!0-9.]*) continue ;; esac
@@ -778,6 +794,8 @@ Usage: tools/dev/tg <command> [options]
   disk                  Show what is using disk space
   clean                 Remove build outputs, keep downloads and caches
   prune [--yes]         Remove all Bazel outputs, the disk cache and DerivedData
+  cache-cleanup [--dry-run]  Shared cache cleanup (stale output bases, DerivedData, .build, worktrees, ...) | verify | report
+  native                Drift check: native-libs.json and module-settings.json against the build files
   sync-upstream <tag>   Import an official release tag onto the `upstream` branch
   watch build [-- <xcodebuild args>]  Build the Apple Watch app for the watchOS simulator
   watch test [-- <xcodebuild args>]   Run the watch app's unit tests
@@ -788,7 +806,7 @@ Usage: tools/dev/tg <command> [options]
 Environment: TG_CACHE_DIR, TG_CONFIG, TG_CODESIGNING, TG_BUILD_NUMBER,
              TG_WATCH_SIM, TG_WATCH_CACHE_DIR,
              TG_DSYM_DIR (default: ~/Library/Application Support/Nanogram/dsyms),
-             TG_DSYM_KEEP (builds whose dSYMs are kept, highest build numbers, default 20, min 1),
+             TG_DSYM_KEEP (0 = keep every build's dSYMs, the default; N = keep the N highest build numbers),
              TG_TF_NOTES_WAIT (minutes tg testflight waits for processing, default 45)
 EOF
 }
@@ -797,6 +815,9 @@ EOF
 [ "${BASH_SOURCE[0]}" = "$0" ] || return 0
 
 command="${1:-help}"; shift || true
+case "$command" in
+  build|test|run|device|testflight|watch|project) trap cache_cleanup_auto EXIT ;;
+esac
 case "$command" in
   setup) cmd_setup "$@" ;;
   doctor) cmd_doctor "$@" ;;
@@ -820,6 +841,8 @@ case "$command" in
   disk) cmd_disk "$@" ;;
   clean) cmd_clean "$@" ;;
   prune) cmd_prune "$@" ;;
+  cache-cleanup) cmd_cache_cleanup "$@" ;;
+  native) cmd_native "$@" ;;
   sync-upstream) cmd_sync_upstream "$@" ;;
   watch) cmd_watch "$@" ;;
   help|-h|--help) cmd_help ;;
