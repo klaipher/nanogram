@@ -45,3 +45,17 @@ ios_unit_test(
     runner = ":WalletCardStickersTestRunner",
     deps = [":WalletCardStickersTestsLib"],
 )
+
+swift_library(
+    name = "WalletStateRetryPolicyTestsLib",
+    testonly = True,
+    srcs = ["Tests/WalletStateRetryPolicyTests.swift"],
+    deps = [":WalletContext"],
+)
+
+ios_unit_test(
+    name = "WalletStateRetryPolicyTests",
+    minimum_os_version = "15.0",
+    runner = ":WalletCardStickersTestRunner",
+    deps = [":WalletStateRetryPolicyTestsLib"],
+)
