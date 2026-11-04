@@ -5,8 +5,7 @@ public extension EngineMessageReplyQuote {
     /// A quote of a rich message: `richText` is what travels as `quote_rich`, `text` and
     /// `entities` its flat form, which every display and search path reads.
     init(richText: [RichText], offset: Int?, media: Media?) {
-        let flat = richReplyQuoteTextAndEntities(richText)
-        self.init(text: flat.text, offset: offset, entities: flat.entities, media: media, richText: richText)
+        self.init(text: "", offset: offset, entities: [], media: media, richText: richText)
     }
 }
 

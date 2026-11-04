@@ -56,3 +56,37 @@ final class EngineMessageReplyQuoteTests: XCTestCase {
     }
 
 }
+
+/// A rich quote's `text` and `entities` are always the flat form of its fragments, however it
+/// was built or stored: display and search read `text`.
+final class EngineMessageReplyQuoteFlatFormTests: XCTestCase {
+    private let richText: [RichText] = [.bold(.plain("Hello")), .textCustomEmoji(fileId: 5, alt: "👍")]
+
+    func testDesignatedInitDerivesFlatForm() {
+        let flat = richReplyQuoteTextAndEntities(self.richText)
+        let quote = EngineMessageReplyQuote(text: "stale", offset: 3, entities: [], media: nil, richText: self.richText)
+        XCTAssertEqual(quote.text, flat.text)
+        XCTAssertEqual(quote.entities, flat.entities)
+        XCTAssertEqual(quote.offset, 3)
+        XCTAssertEqual(quote, EngineMessageReplyQuote(richText: self.richText, offset: 3, media: nil))
+    }
+
+    func testStoredQuoteWithMismatchedTextDecodesToFlatForm() throws {
+        // Stored with an empty flat text next to its fragments.
+        var stored = EngineMessageReplyQuote(text: "", offset: nil, entities: [], media: nil, richText: self.richText)
+        stored.text = ""
+        stored.entities = []
+        let decoded = try JSONDecoder().decode(EngineMessageReplyQuote.self, from: JSONEncoder().encode(stored))
+        XCTAssertEqual(decoded.text, "Hello\n👍")
+        XCTAssertEqual(decoded.richText, self.richText)
+        XCTAssertFalse(decoded.entities.isEmpty)
+    }
+
+    func testPlainQuoteKeepsItsText() throws {
+        let quote = EngineMessageReplyQuote(text: "plain", offset: 1, entities: [MessageTextEntity(range: 0 ..< 5, type: .Bold)], media: nil)
+        let decoded = try JSONDecoder().decode(EngineMessageReplyQuote.self, from: JSONEncoder().encode(quote))
+        XCTAssertEqual(decoded, quote)
+        XCTAssertEqual(decoded.text, "plain")
+        XCTAssertNil(decoded.richText)
+    }
+}
