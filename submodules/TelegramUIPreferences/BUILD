@@ -30,6 +30,7 @@ swift_library(
     ]),
     deps = [
         ":TelegramUIPreferences",
+        "//submodules/HardenedMedia",
     ],
 )
 

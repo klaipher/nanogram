@@ -3,7 +3,7 @@ import PackageDescription
 
 let package = Package(
     name: "HardenedMedia",
-    platforms: [.macOS(.v14)],
+    platforms: [.macOS(.v10_15)],
     products: [
         .library(name: "HardenedMedia", targets: ["HardenedMedia"]),
     ],
