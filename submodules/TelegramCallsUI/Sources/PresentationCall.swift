@@ -803,6 +803,7 @@ public final class PresentationCallImpl: PresentationCall {
                                         }
                                     } else {
                                         Logger.shared.log("PresentationCall", "reportIncomingCall error \(error)")
+                                        CallDiagnostics.log("call \(self?.internalId.description ?? "-") reportIncomingCall failed: \(error.domain) \(error.code), hanging up")
                                         Queue.mainQueue().async {
                                             if let strongSelf = self {
                                                 strongSelf.callSessionManager.drop(internalId: strongSelf.internalId, reason: .hangUp, debugLog: .single(nil))
@@ -839,6 +840,7 @@ public final class PresentationCallImpl: PresentationCall {
                     case .initializing:
                         presentationState = PresentationCallState(state: .connecting(keyVisualHash), videoState: mappedVideoState, remoteVideoState: mappedRemoteVideoState, remoteAudioState: mappedRemoteAudioState, remoteBatteryLevel: mappedRemoteBatteryLevel, supportsConferenceCalls: self.supportsConferenceCalls)
                     case .failed:
+                        CallDiagnostics.log("call \(self.internalId) the call context failed to start or lost its connection, dropping as disconnect")
                         presentationState = PresentationCallState(state: .terminating(.error(.disconnected)), videoState: mappedVideoState, remoteVideoState: mappedRemoteVideoState, remoteAudioState: mappedRemoteAudioState, remoteBatteryLevel: mappedRemoteBatteryLevel, supportsConferenceCalls: self.supportsConferenceCalls)
                         self.callSessionManager.drop(internalId: self.internalId, reason: .disconnect, debugLog: .single(nil))
                     case .connected:
@@ -1481,6 +1483,7 @@ public final class PresentationCallImpl: PresentationCall {
         if self.isMovedToConference {
             return
         }
+        CallDiagnostics.log("call \(self.internalId) answer requested, \(fromCallKitAction ? "from CallKit" : "from the app")")
         let (presentationData, present, openSettings) = self.getDeviceAccessData()
         
         DeviceAccess.authorizeAccess(to: .microphone(.voiceCall), presentationData: presentationData, present: { c, a in
@@ -1523,6 +1526,7 @@ public final class PresentationCallImpl: PresentationCall {
                                 strongSelf.callKitIntegration?.answerCall(uuid: strongSelf.internalId)
                             }
                         } else {
+                            CallDiagnostics.log("call \(strongSelf.internalId) answer: camera access denied")
                             let _ = strongSelf.hangUp().start()
                         }
                     })
@@ -1549,6 +1553,7 @@ public final class PresentationCallImpl: PresentationCall {
                     }
                 }
             } else {
+                CallDiagnostics.log("call \(strongSelf.internalId) answer: microphone access denied")
                 let _ = strongSelf.hangUp().start()
             }
         })
@@ -1558,6 +1563,7 @@ public final class PresentationCallImpl: PresentationCall {
         if self.isMovedToConference {
             return .single(true)
         }
+        CallDiagnostics.log("call \(self.internalId) hangUp requested")
         let debugLogValue = Promise<String?>()
 
         self.callSessionManager.drop(internalId: self.internalId, reason: .hangUp, debugLog: debugLogValue.get())
@@ -1575,6 +1581,7 @@ public final class PresentationCallImpl: PresentationCall {
         if self.isMovedToConference {
             return
         }
+        CallDiagnostics.log("call \(self.internalId) rejectBusy requested")
         self.callSessionManager.drop(internalId: self.internalId, reason: .busy, debugLog: .single(nil))
         let debugLog = Promise<String?>()
         if let conferenceCallContext = self.conferenceCallContext {

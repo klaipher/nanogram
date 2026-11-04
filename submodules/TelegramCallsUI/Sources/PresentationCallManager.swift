@@ -268,6 +268,7 @@ public final class PresentationCallManagerImpl: PresentationCallManager {
         
         answerCallImpl = { [weak self] uuid in
             if let strongSelf = self {
+                CallDiagnostics.log("CXAnswerCallAction \(uuid), current call \(strongSelf.currentCall?.internalId.description ?? "none")")
                 strongSelf.currentCall?.answer(fromCallKitAction: true)
             }
         }
@@ -285,6 +286,7 @@ public final class PresentationCallManagerImpl: PresentationCallManager {
                     return groupCall.leave(terminateIfPossible: false)
                 }
             }
+            CallDiagnostics.log("CXEndCallAction \(uuid), current call \(self.currentCall?.internalId.description ?? "none"), group call \(self.currentGroupCall == nil ? "no" : "yes")")
             if let currentCall = self.currentCall {
                 return currentCall.hangUp()
             } else {
