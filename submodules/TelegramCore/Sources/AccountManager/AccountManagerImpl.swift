@@ -60,6 +60,19 @@ public struct AccountManagerModifier<Types: AccountManagerTypes> {
     public let setStoredLoginTokens: ([Data]) -> Void
 }
 
+/// Whether reading a file failed because it does not exist (as opposed to permissions, data
+/// protection or I/O).
+private func isFileNotFoundError(_ error: Error) -> Bool {
+    let error = error as NSError
+    if error.domain == NSCocoaErrorDomain && (error.code == NSFileReadNoSuchFileError || error.code == NSFileNoSuchFileError) {
+        return true
+    }
+    if error.domain == NSPOSIXErrorDomain && error.code == Int(ENOENT) {
+        return true
+    }
+    return false
+}
+
 final class AccountManagerImpl<Types: AccountManagerTypes> {
     private let queue: Queue
     private let basePath: String
@@ -75,6 +88,11 @@ final class AccountManagerImpl<Types: AccountManagerTypes> {
     
     private var currentAtomicState: AccountManagerAtomicState<Types>
     private var currentAtomicStateUpdated = false
+    /// An extension that found no usable atomic state holds one built in memory. That session never
+    /// writes the atomic state or the legacy tables: the app's first launch decides from both whether
+    /// it is a fresh installation, and resets the keychain's local secrets (an old passcode lock,
+    /// wallet secrets) only then. Writing either would make it keep those secrets.
+    private var isStateInMemoryOnly = false
     
     private let legacyMetadataTable: AccountManagerMetadataTable<Types.Attribute>
     private let legacyRecordTable: AccountManagerRecordTable<Types.Attribute>
@@ -95,6 +113,12 @@ final class AccountManagerImpl<Types: AccountManagerTypes> {
     private var noticeEntryViews = Bag<(MutableNoticeEntryView<Types>, ValuePipe<NoticeEntryView<Types>>)>()
     private var accessChallengeDataViews = Bag<(MutableAccessChallengeDataView, ValuePipe<AccessChallengeDataView>)>()
     
+    /// The account records in `basePath`'s atomic state, read without opening the account manager.
+    /// Its one caller is the Intents extension's widget handler, which may run before the app has
+    /// ever written that state (installed but not opened, nobody signed in) or while the file
+    /// cannot be read. Every such case reads as no accounts: the widget then lists no chats, which
+    /// is all it could show. This used to `preconditionFailure()`, crashing the extension
+    /// (Nanogram 13.1.1 (202611020509), MetricKit SIGTRAP in `WidgetIntentHandler.init`).
     static func getCurrentRecords(basePath: String) -> (records: [AccountRecord<Types.Attribute>], currentId: AccountRecordId?) {
         let atomicStatePath = "\(basePath)/atomic-state"
         do {
@@ -102,9 +126,8 @@ final class AccountManagerImpl<Types: AccountManagerTypes> {
             let atomicState = try JSONDecoder().decode(AccountManagerAtomicState<Types>.self, from: data)
             return (atomicState.records.sorted(by: { $0.key.int64 < $1.key.int64 }).map({ $1 }), atomicState.currentRecordId)
         } catch let e {
-            postboxLog("decode atomic state error: \(e)")
-            postboxLogSync()
-            preconditionFailure()
+            postboxLog("getCurrentRecords: no readable atomic state, reporting no accounts: \(e)")
+            return ([], nil)
         }
     }
     
@@ -122,7 +145,10 @@ final class AccountManagerImpl<Types: AccountManagerTypes> {
         guard let guardValueBox = SqliteValueBox(basePath: basePath + "/guard_db", queue: queue, isTemporary: isTemporary, isReadOnly: false, useCaches: useCaches, removeDatabaseOnError: removeDatabaseOnError, encryptionParameters: nil, upgradeProgress: { _ in }) else {
             postboxLog("Could not open guard value box at \(basePath + "/guard_db")")
             postboxLogSync()
-            preconditionFailure()
+            // The app crashes and relaunches; an extension (`AccountManager.openForExtension`) answers without accounts.
+            if removeDatabaseOnError {
+                preconditionFailure()
+            }
             return nil
         }
         self.guardValueBox = guardValueBox
@@ -142,7 +168,10 @@ final class AccountManagerImpl<Types: AccountManagerTypes> {
         guard let valueBox = valueBox else {
             postboxLog("Giving up on opening value box at \(basePath + "/db")")
             postboxLogSync()
-            preconditionFailure()
+            if removeDatabaseOnError {
+                preconditionFailure()
+            }
+            return nil
         }
         self.valueBox = valueBox
         
@@ -160,6 +189,29 @@ final class AccountManagerImpl<Types: AccountManagerTypes> {
             postboxLog("Access challenge installation initialization deferred")
         }
         
+        // The app (`removeDatabaseOnError`) owns the atomic state: it builds it from the legacy tables
+        // when the file cannot be read, and crashes after removing a file it cannot decode, so that the
+        // next launch rebuilds it. The extensions (Notification Service, Siri, Share, Notification
+        // Content) open with `removeDatabaseOnError: false` and used to `preconditionFailure()` in
+        // both cases, which in the Notification Service drops the push: an app installed but never
+        // opened, or a file unreadable at that moment. They now open read-only (`isStateInMemoryOnly`),
+        // never writing or removing the app's file. Only a missing file means the app has not built
+        // the state yet, so only then do they read what the app would build from the legacy tables
+        // (no accounts on a fresh install). A file that exists but cannot be read or decoded is the
+        // app's, and the legacy tables may hold accounts long since removed from it: no accounts.
+        let legacyRecordTable = self.legacyRecordTable
+        let legacyMetadataTable = self.legacyMetadataTable
+        let noAccountsState: () -> AccountManagerAtomicState<Types> = {
+            // The legacy passcode still locks the extension.
+            return AccountManagerAtomicState(accessChallengeData: legacyMetadataTable.getAccessChallengeData())
+        }
+        let legacyAtomicState: () -> AccountManagerAtomicState<Types> = {
+            var legacyRecordDict: [AccountRecordId: AccountRecord<Types.Attribute>] = [:]
+            for record in legacyRecordTable.getRecords() {
+                legacyRecordDict[record.id] = record
+            }
+            return AccountManagerAtomicState(records: legacyRecordDict, currentRecordId: legacyMetadataTable.getCurrentAccountId(), currentAuthRecord: legacyMetadataTable.getCurrentAuthAccount(), accessChallengeData: legacyMetadataTable.getAccessChallengeData())
+        }
         do {
             let data = try Data(contentsOf: URL(fileURLWithPath: self.atomicStatePath))
             do {
@@ -168,31 +220,39 @@ final class AccountManagerImpl<Types: AccountManagerTypes> {
             } catch let e {
                 postboxLog("decode atomic state error: \(e)")
                 postboxLogSync()
-                
+
                 if removeDatabaseOnError {
                     let _ = try? FileManager.default.removeItem(atPath: self.atomicStatePath)
+                    preconditionFailure()
+                } else {
+                    postboxLog("AccountManager: undecodable atomic state in an extension, opening with no accounts, read-only")
+                    postboxLogSync()
+                    self.currentAtomicState = noAccountsState()
+                    self.isStateInMemoryOnly = true
                 }
-                preconditionFailure()
             }
         } catch let e {
             postboxLog("load atomic state error: \(e)")
             postboxLogSync()
-            
+
             if removeDatabaseOnError {
-                var legacyRecordDict: [AccountRecordId: AccountRecord<Types.Attribute>] = [:]
-                for record in self.legacyRecordTable.getRecords() {
-                    legacyRecordDict[record.id] = record
-                }
-                self.currentAtomicState = AccountManagerAtomicState(records: legacyRecordDict, currentRecordId: self.legacyMetadataTable.getCurrentAccountId(), currentAuthRecord: self.legacyMetadataTable.getCurrentAuthAccount(), accessChallengeData: self.legacyMetadataTable.getAccessChallengeData())
+                self.currentAtomicState = legacyAtomicState()
                 self.syncAtomicStateToFile()
+            } else if isFileNotFoundError(e) {
+                postboxLog("AccountManager: no atomic state in an extension, using the legacy records in memory, read-only")
+                self.currentAtomicState = legacyAtomicState()
+                self.isStateInMemoryOnly = true
             } else {
-                preconditionFailure()
+                postboxLog("AccountManager: atomic state exists but cannot be read in an extension (\(e)), opening with no accounts, read-only")
+                postboxLogSync()
+                self.currentAtomicState = noAccountsState()
+                self.isStateInMemoryOnly = true
             }
         }
         
         let tableAccessChallengeData = self.legacyMetadataTable.getAccessChallengeData()
         if self.currentAtomicState.accessChallengeData != .none {
-            if tableAccessChallengeData == .none {
+            if tableAccessChallengeData == .none && !self.isStateInMemoryOnly {
                 self.legacyMetadataTable.setAccessChallengeData(self.currentAtomicState.accessChallengeData)
             }
         } else if tableAccessChallengeData != .none {
@@ -201,7 +261,7 @@ final class AccountManagerImpl<Types: AccountManagerTypes> {
         }
         
         do {
-            let allowMigration = !isReadOnly && !isTemporary
+            let allowMigration = !isReadOnly && !isTemporary && !self.isStateInMemoryOnly
             let migrated = try self.resolveAccessChallenge(self.currentAtomicState.accessChallengeData, allowMigration)
             if allowMigration {
                 if let migrated, migrated != self.currentAtomicState.accessChallengeData || migrated != self.legacyMetadataTable.getAccessChallengeData() {
@@ -289,6 +349,17 @@ final class AccountManagerImpl<Types: AccountManagerTypes> {
             let updated = f(self.sharedDataTable.get(key: key))
             self.sharedDataTable.set(key: key, value: updated, updatedKeys: &self.currentUpdatedSharedDataKeys)
         }, getAccessChallengeData: {
+            if self.isStateInMemoryOnly {
+                // Resolved without migration and kept in memory: the extension still locks with the
+                // keychain's passcode, and the app's state stays as the app left it.
+                let current = self.currentAtomicState.accessChallengeData
+                if let resolved = try? self.resolveAccessChallenge(current, false), resolved != current {
+                    self.currentAtomicState.accessChallengeData = resolved
+                    self.currentUpdatedAccessChallengeData = resolved
+                    return resolved
+                }
+                return current
+            }
             let current = self.legacyMetadataTable.getAccessChallengeData()
             if let migrated = try? self.resolveAccessChallenge(current, true), migrated != current {
                 self.legacyMetadataTable.setAccessChallengeData(migrated)
@@ -307,11 +378,17 @@ final class AccountManagerImpl<Types: AccountManagerTypes> {
             }
             self.currentUpdatedAccessChallengeData = data
             self.currentAtomicStateUpdated = true
-            self.legacyMetadataTable.setAccessChallengeData(data)
+            if !self.isStateInMemoryOnly {
+                self.legacyMetadataTable.setAccessChallengeData(data)
+            }
             self.currentAtomicState.accessChallengeData = data
         }, getVersion: {
             return self.legacyMetadataTable.getVersion()
         }, setVersion: { version in
+            if self.isStateInMemoryOnly {
+                postboxLog("AccountManager: setVersion ignored, the state is in memory only")
+                return
+            }
             self.legacyMetadataTable.setVersion(version)
         }, getNotice: { key in
             self.noticeTable.get(key: key)
@@ -353,7 +430,7 @@ final class AccountManagerImpl<Types: AccountManagerTypes> {
         crash: @escaping () throws -> Never
     ) throws -> Never {
         assert(self.queue.isCurrent())
-        guard self.canCleanPasscodeMetadata else {
+        guard self.canCleanPasscodeMetadata, !self.isStateInMemoryOnly else {
             throw AccountManagerPasscodeMigrationTestError.unsupportedAccountManager
         }
         switch legacy {
@@ -417,6 +494,9 @@ final class AccountManagerImpl<Types: AccountManagerTypes> {
     }
 
     private func syncAtomicStateToFile() {
+        if self.isStateInMemoryOnly {
+            return
+        }
         if let data = try? JSONEncoder().encode(self.currentAtomicState) {
             if let _ = try? data.write(to: URL(fileURLWithPath: self.atomicStatePath), options: [.atomic]) {
             } else {
@@ -740,6 +820,39 @@ public final class AccountManager<Types: AccountManagerTypes> {
             }
         })
         self.mediaBox = MediaBox(basePath: basePath + "/media", isMainProcess: removeDatabaseOnError)
+    }
+
+    private init(queue: Queue, basePath: String, temporarySessionId: Int64, impl: AccountManagerImpl<Types>) {
+        self.queue = queue
+        self.basePath = basePath
+        self.temporarySessionId = temporarySessionId
+        self.impl = QueueLocalObject(queue: queue, generate: {
+            return impl
+        })
+        self.mediaBox = MediaBox(basePath: basePath + "/media", isMainProcess: false)
+    }
+
+    /// The app extensions' open (`removeDatabaseOnError: false`): nil instead of a crash when the databases cannot be
+    /// opened (the app holds a lock, protected data is unavailable, an I/O error), so the extension can answer as
+    /// with no account ("open the app"). Opens synchronously on the account manager's queue.
+    public static func openForExtension(basePath: String, isTemporary: Bool, isReadOnly: Bool, useCaches: Bool, accessChallenge: AccountManagerAccessChallenge) -> AccountManager<Types>? {
+        let queue = sharedQueue
+        var temporarySessionId: Int64 = 0
+        arc4random_buf(&temporarySessionId, 8)
+        var impl: AccountManagerImpl<Types>?
+        let open: () -> Void = {
+            impl = AccountManagerImpl<Types>(queue: queue, basePath: basePath, isTemporary: isTemporary, isReadOnly: isReadOnly, useCaches: useCaches, removeDatabaseOnError: false, temporarySessionId: temporarySessionId, accessChallenge: accessChallenge)
+        }
+        if queue.isCurrent() {
+            open()
+        } else {
+            queue.sync(open)
+        }
+        guard let impl else {
+            postboxLog("AccountManager: extension could not open \(basePath)")
+            return nil
+        }
+        return AccountManager(queue: queue, basePath: basePath, temporarySessionId: temporarySessionId, impl: impl)
     }
     
     public func transaction<T>(ignoreDisabled: Bool = false, _ f: @escaping (AccountManagerModifier<Types>) -> T) -> Signal<T, NoError> {

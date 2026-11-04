@@ -254,6 +254,17 @@ final class SqliteValueBoxRecoveryPolicyTests: XCTestCase {
         }
     }
 
+    /// An extension (a non-owner) that cannot open the file at all (the app holds it, protected data is unavailable)
+    /// reports no database, as for every other failure a non-owner sees; only the owner crashes and relaunches.
+    func testNonOwnerThatCannotOpenTheFileReportsNoDatabase() {
+        XCTAssertTrue((try? FileManager.default.createDirectory(atPath: self.databasePath, withIntermediateDirectories: true)) != nil)
+
+        XCTAssertNil(self.open(isTemporary: true, isReadOnly: false, removeDatabaseOnError: false))
+        XCTAssertNil(self.open(isTemporary: false, isReadOnly: false, removeDatabaseOnError: false))
+        var isDirectory: ObjCBool = false
+        XCTAssertTrue(FileManager.default.fileExists(atPath: self.databasePath, isDirectory: &isDirectory) && isDirectory.boolValue, "a non-owner leaves the path alone")
+    }
+
     // MARK: - Encrypted databases (SQLCipher upgrade regression guards)
 
     func testEncryptedDatabaseRoundTripsThroughCloseAndReopen() {
