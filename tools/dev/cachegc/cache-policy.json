@@ -14,14 +14,14 @@
  "repos": ["~/Projects/nanogram-ios", "~/Projects/nanogram-macos"],
  "base_branches": ["main", "nanogram/integration", "nanogram"],
  "caps_gb": {
-  "bazel_disk_cache": 30,
+  "bazel_disk_cache": 20,
   "compilation_cache": 10,
   "xcode_module_cache": 3,
   "spm_scratch_total": 20,
   "cache_root_total": 40
  },
  "bazel_disk_cache_gc": {
-  "max_size": "30G",
+  "max_size": "20G",
   "max_age": "14d"
  },
  "max_age_days": {
