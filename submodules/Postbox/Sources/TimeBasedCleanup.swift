@@ -66,7 +66,7 @@ final class TempScanDatabase {
     
     init?(queue: Queue, basePath: String) {
         self.queue = queue
-        guard let valueBox = SqliteValueBox(basePath: basePath, queue: queue, isTemporary: true, isReadOnly: false, useCaches: true, removeDatabaseOnError: true, encryptionParameters: nil, upgradeProgress: { _ in }, inMemory: true) else {
+        guard let valueBox = SqliteValueBox(basePath: basePath, queue: queue, isTemporary: true, isReadOnly: false, useCaches: true, removeDatabaseOnError: true, encryptionParameters: nil, upgradeProgress: { _ in }, inMemory: true, isDisposable: true) else {
             return nil
         }
         self.valueBox = valueBox

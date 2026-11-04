@@ -267,29 +267,33 @@ public final class StorageBox {
             let databasePath = self.basePath + "/db"
             let _ = try? FileManager.default.createDirectory(atPath: databasePath, withIntermediateDirectories: true)
             
+            // The index is disposable: the database never traps (`isDisposable`). A file that
+            // cannot be opened is not deleted here, since locked or protected-data-unavailable
+            // files fail too; SqliteValueBox replaces a corrupt or repeatedly unopenable one
+            // itself. Without the file, this launch keeps the index in memory and the next open
+            // tries the file again.
             var valueBox: SqliteValueBox?
             for i in 0 ..< 3 {
-                if let valueBoxValue = SqliteValueBox(basePath: basePath + "/db", queue: queue, isTemporary: false, isReadOnly: false, useCaches: isMainProcess, removeDatabaseOnError: isMainProcess, encryptionParameters: nil, upgradeProgress: { _ in }) {
+                if let valueBoxValue = SqliteValueBox(basePath: databasePath, queue: queue, isTemporary: false, isReadOnly: false, useCaches: isMainProcess, removeDatabaseOnError: isMainProcess, encryptionParameters: nil, upgradeProgress: { _ in }, isDisposable: true) {
                     valueBox = valueBoxValue
                     break
                 } else {
-                    postboxLog("Could not open value box at \(basePath + "/db") (try \(i))")
-                    postboxLogSync()
+                    postboxLog("Could not open value box at \(databasePath) (try \(i))")
                     
                     Thread.sleep(forTimeInterval: 0.1 + 0.5 * Double(i))
                 }
             }
             
-            if valueBox == nil, isMainProcess {
-                postboxLog("Removing value box at \(basePath + "/db")")
-                let _ = try? FileManager.default.removeItem(atPath: databasePath)
-                valueBox = SqliteValueBox(basePath: databasePath, queue: queue, isTemporary: false, isReadOnly: false, useCaches: isMainProcess, removeDatabaseOnError: isMainProcess, encryptionParameters: nil, upgradeProgress: { _ in })
+            if valueBox == nil {
+                postboxLog("Could not open value box at \(databasePath), keeping the index in memory until the next launch")
+                valueBox = SqliteValueBox(basePath: databasePath, queue: queue, isTemporary: true, isReadOnly: false, useCaches: isMainProcess, removeDatabaseOnError: false, encryptionParameters: nil, upgradeProgress: { _ in }, inMemory: true, isDisposable: true)
             }
             
             guard let valueBox = valueBox else {
-                postboxLog("Giving up on opening value box at \(basePath + "/db")")
+                // Only when SQLite cannot even allocate an in-memory database.
+                postboxLog("Giving up on opening value box at \(databasePath)")
                 postboxLogSync()
-                preconditionFailure()
+                preconditionFailure("StorageBox: no database, not even in memory")
             }
             self.valueBox = valueBox
             
@@ -307,7 +311,12 @@ public final class StorageBox {
         
         private func performUpdatesIfNeeded() {
             self.beginInternalTransaction {
-                self.valueBox.begin()
+                // Without a transaction a reindex could stop half way; the version stays old, so
+                // the next open reindexes.
+                if !self.valueBox.tryBegin() {
+                    self.logger.log("StorageBox: could not begin the reindex transaction, retrying on the next open")
+                    return
+                }
                 
                 let mainMetadataKey = ValueBoxKey(length: 2)
                 mainMetadataKey.setUInt8(0, value: 0)
