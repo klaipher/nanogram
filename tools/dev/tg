@@ -773,7 +773,8 @@ Usage: tools/dev/tg <command> [options]
   strict-report         Count Swift 6 concurrency problems per module (~15 min)
   refresh-fake-profiles Re-date and re-sign the fake provisioning profiles (device builds)
   fake-signing [--remove]  Install (or remove) the fake signing identity for device builds
-  lint [args]           Lint changed Swift lines (tools/dev/lint/tglint.py; default: lint)
+  lint [args]           Lint changed Swift lines (tools/dev/lint/tglint.py; default: lint, then parity)
+  parity                Fast parity checks against the macOS app: history root, submodule pins pushed (docs/mac-core-paths.txt)
   disk                  Show what is using disk space
   clean                 Remove build outputs, keep downloads and caches
   prune [--yes]         Remove all Bazel outputs, the disk cache and DerivedData
@@ -809,7 +810,13 @@ case "$command" in
   new-module) cmd_new_module "$@" ;;
   strict-report) cmd_strict_report "$@" ;;
   refresh-fake-profiles) python3 "$ROOT/build-system/Make/RefreshFakeProfiles.py" "$@" ;;
-  lint) if [ $# -eq 0 ]; then set -- lint; fi; python3 "$ROOT/tools/dev/lint/tglint.py" "$@" ;;
+  lint)
+    if [ $# -eq 0 ]; then
+      python3 "$ROOT/tools/dev/lint/tglint.py" lint && python3 "$ROOT/tools/dev/parity/parity.py" fast --root "$ROOT"
+    else
+      python3 "$ROOT/tools/dev/lint/tglint.py" "$@"
+    fi ;;
+  parity) python3 "$ROOT/tools/dev/parity/parity.py" fast --root "$ROOT" "$@" ;;
   disk) cmd_disk "$@" ;;
   clean) cmd_clean "$@" ;;
   prune) cmd_prune "$@" ;;

@@ -271,3 +271,12 @@ take either side and let the next build rewrite it.
   10 cores are busy during the last ~5 minutes of a cold build (the Swift module chain).
 - **What is left on the critical path** is the chain of Swift modules from `AccountContext` to `TelegramUI`
   (~400 s cold, 36 s for `TelegramUI` alone). Shortening it means splitting modules, which is a code change.
+
+## Parity with the macOS app
+
+`docs/mac-core-paths.txt` lists what the Mac shares; `tools/dev/parity/parity.py` (identical in both repos) checks it.
+`tools/dev/tg parity` (also run by `tg lint` without arguments) and the pre-push hook run only fast checks: every push
+must be rooted at the import `b46f1ec6`, a pushed tgcalls/rlottie/tlottie pin must be on a `klaipher` remote, and a
+push that touches shared paths prints a reminder to run `tools/dev/tg core-bump` on the Mac. Differences with the Mac
+are warnings here; the Mac side enforces the lag limit, so an iOS hotfix never waits for a Mac build. Skip once with
+`TG_PARITY=0 git push`.
