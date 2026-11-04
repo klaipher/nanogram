@@ -32,11 +32,16 @@
 
 @implementation MTSafePrimeCacheTests
 
+// The shape checks and the cached verdict never touch the provider.
+static id<EncryptionProvider> MTSafePrimeCacheTestsNoProvider(void) {
+    return nil;
+}
+
 - (void)testACachedVerdictCannotVouchForAShortNumber {
     MTSafePrimeCacheTestsKeychain *keychain = [[MTSafePrimeCacheTestsKeychain alloc] init];
     NSMutableData *number = [[NSMutableData alloc] initWithLength:255];
     ((uint8_t *)number.mutableBytes)[0] = 0xff;
-    XCTAssertFalse(MTCheckIsSafePrime(nil, number, keychain));
+    XCTAssertFalse(MTCheckIsSafePrime(MTSafePrimeCacheTestsNoProvider(), number, keychain));
     XCTAssertEqual(keychain.numberReads, 0);
 }
 
@@ -45,7 +50,7 @@
     NSMutableData *number = [[NSMutableData alloc] initWithLength:256];
     ((uint8_t *)number.mutableBytes)[0] = 0x7f;
     ((uint8_t *)number.mutableBytes)[255] = 0x01;
-    XCTAssertFalse(MTCheckIsSafePrime(nil, number, keychain));
+    XCTAssertFalse(MTCheckIsSafePrime(MTSafePrimeCacheTestsNoProvider(), number, keychain));
     XCTAssertEqual(keychain.numberReads, 0);
 }
 
@@ -54,7 +59,7 @@
     NSMutableData *number = [[NSMutableData alloc] initWithLength:256];
     ((uint8_t *)number.mutableBytes)[0] = 0x80;
     ((uint8_t *)number.mutableBytes)[255] = 0x01;
-    XCTAssertTrue(MTCheckIsSafePrime(nil, number, keychain));
+    XCTAssertTrue(MTCheckIsSafePrime(MTSafePrimeCacheTestsNoProvider(), number, keychain));
     XCTAssertEqual(keychain.numberReads, 1);
 }
 
