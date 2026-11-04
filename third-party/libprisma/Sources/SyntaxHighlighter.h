@@ -7,7 +7,17 @@
 #include <optional>
 
 class LanguageTree;
+class Pattern;
 struct Grammar;
+
+// A language and the other names it goes by. An alias with a display name of its own (html,
+// under markup) is a language of its own here, as it is in the list a user picks from.
+struct LanguageGroup
+{
+    std::string id;
+    std::string name;
+    std::vector<std::string> aliases;
+};
 
 struct RematchOptions
 {
@@ -16,30 +26,83 @@ struct RematchOptions
     int j;
 };
 
+struct TokenizeStats
+{
+    size_t searches = 0;
+    size_t maxDepth = 0;
+    bool depthLimited = false;
+    bool budgetExhausted = false;
+};
+
+struct TokenizeLimits
+{
+    size_t searchesPerByte;
+    size_t searchesAtLeast;
+};
+
 class SyntaxHighlighter
 {
 public:
+    static constexpr size_t kMaxTokenizeDepth = 32;
+    static constexpr size_t kSearchesPerByte = 64;
+    static constexpr size_t kSearchesAtLeast = 1024;
+
     SyntaxHighlighter(const std::string& languages);
 
-    TokenList tokenize(const std::string& text, const std::string& language);
+    // Safe to call from several threads at once.
+    TokenList tokenize(const std::string& text, const std::string& language, TokenizeStats* stats = nullptr, const TokenizeLimits* limits = nullptr) const;
 
     std::map<std::string, std::string> languages() const;
 
-private:
-    // Upper bound on grammar recursion depth. tokenize() re-enters itself for
-    // every matched token that has an `inside` grammar; some grammars generated
-    // from Prism.js contain token cycles (e.g. brightscript's
-    // directive-statement <-> expression), which without a bound recurse until
-    // the thread stack is exhausted and the process is killed. At ~1.1 KiB of
-    // stack per level this cap keeps the worst case well under a small
-    // secondary-thread stack, while being far deeper than any legitimate
-    // grammar's nesting, so real code is highlighted unchanged. Reaching the
-    // cap degrades gracefully: the deepest match is kept as plain text instead
-    // of being subdivided further.
-    static constexpr size_t kMaxTokenizeDepth = 128;
+    std::string languageName(const std::string& language) const;
 
-    TokenList tokenize(std::string_view text, const Grammar* grammar, size_t depth);
-    void matchGrammar(std::string_view text, TokenList& tokenList, const Grammar* grammar, TokenListPtr startNode, size_t startPos, RematchOptions* rematch, size_t depth);
+    std::vector<LanguageGroup> languageGroups() const;
+
+private:
+    // An embedded-language token, where it is in the text and where its code starts once it is
+    // joined with the others of its run.
+    struct EmbeddedPart
+    {
+        TokenListPtr node;
+        size_t offset;
+        size_t start;
+    };
+
+    // The last search of a greedy pattern over the text being tokenized. The text does not
+    // change and a search sees the text before its start, so one that found nothing from `from`
+    // finds nothing further on, and one that found a match at `start` finds it again from
+    // anywhere up to there.
+    struct GreedySearch
+    {
+        const Pattern* pattern;
+        size_t from = 0;
+        bool found = false;
+        size_t start = 0;
+        size_t length = 0;
+        size_t lookbehind = 0;
+    };
+
+    // What one call to the public tokenize keeps while it runs. It lives on that call's stack,
+    // never in the highlighter, which threads share.
+    struct State
+    {
+        int depth = 0;
+        size_t searchesLeft = 0;
+        size_t searchesBudget = 0;
+        size_t maxDepth = 0;
+        bool depthLimited = false;
+
+        // Those of the text being tokenized are the ones from searchesFrom on. A nested
+        // tokenize, of another text, stacks its own above them and drops them when it returns.
+        std::vector<GreedySearch> searches;
+        size_t searchesFrom = 0;
+    };
+
+    TokenList tokenize(State& state, std::string_view text, const Grammar* grammar) const;
+    std::string_view matchGreedy(State& state, const Pattern& pattern, bool& success, size_t& pos, std::string_view text) const;
+    void highlightEmbedded(State& state, TokenList& tokenList, size_t pos, std::string_view text, const Grammar* fixed, const Grammar*& named) const;
+    void highlightParts(State& state, std::vector<EmbeddedPart>& parts, std::string& content, std::string_view text, const Grammar* language) const;
+    void matchGrammar(State& state, std::string_view text, TokenList& tokenList, const Grammar* grammar, TokenListPtr startNode, size_t startPos, RematchOptions* rematch) const;
 
     std::shared_ptr<LanguageTree> m_tree;
 };

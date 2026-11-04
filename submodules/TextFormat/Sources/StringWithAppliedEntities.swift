@@ -3,6 +3,7 @@ import UIKit
 import TelegramCore
 import Display
 import libprisma
+import HardenedMedia
 import SwiftSignalKit
 import TelegramPresentationData
 
@@ -528,7 +529,7 @@ public func stringWithAppliedEntities(_ text: String, entities: [MessageTextEnti
         }
         
         let codeText = (string.string as NSString).substring(with: range)
-        if let cachedMessageSyntaxHighlight, let entry = cachedMessageSyntaxHighlight.values[CachedMessageSyntaxHighlight.Spec(language: language, text: codeText)] {
+        if HardenedMediaPolicy.current.allowsCodeHighlighting, let cachedMessageSyntaxHighlight, let entry = cachedMessageSyntaxHighlight.values[CachedMessageSyntaxHighlight.Spec(language: language, text: codeText)] {
             if let validatedEntry = validatedCachedMessageSyntaxHighlight(entry, expectedLength: range.length, language: language) {
                 for entity in validatedEntry.entities {
                     string.addAttribute(.foregroundColor, value: UIColor(rgb: UInt32(bitPattern: entity.color)), range: NSRange(location: range.location + entity.range.lowerBound, length: entity.range.upperBound - entity.range.lowerBound))
@@ -694,7 +695,7 @@ public final class CachedMessageSyntaxHighlight: Codable, Equatable {
 private let messageSyntaxHighlightQueue = Queue(name: "MessageSyntaxHighlight")
 
 public func extractMessageSyntaxHighlightSpecs(text: String, entities: [MessageTextEntity]) -> [CachedMessageSyntaxHighlight.Spec] {
-    if entities.isEmpty {
+    if entities.isEmpty || !HardenedMediaPolicy.current.allowsCodeHighlighting {
         return []
     }
     var result: [CachedMessageSyntaxHighlight.Spec] = []
@@ -720,6 +721,9 @@ public func extractMessageSyntaxHighlightSpecs(text: String, entities: [MessageT
 private let internalFixedCodeFont = Font.regular(17.0)
 
 public func asyncUpdateMessageSyntaxHighlight(engine: TelegramEngine, messageId: EngineMessage.Id, current: CachedMessageSyntaxHighlight?, specs: [CachedMessageSyntaxHighlight.Spec]) -> Signal<Never, NoError> {
+    if !HardenedMediaPolicy.current.allowsCodeHighlighting {
+        return .complete()
+    }
     if let current {
         var hasMissingOrInvalidSpec = false
         for spec in specs {
@@ -760,6 +764,9 @@ public func asyncUpdateMessageSyntaxHighlight(engine: TelegramEngine, messageId:
 }
 
 public func asyncStanaloneSyntaxHighlight(current: CachedMessageSyntaxHighlight?, specs: [CachedMessageSyntaxHighlight.Spec]) -> Signal<CachedMessageSyntaxHighlight, NoError> {
+    if !HardenedMediaPolicy.current.allowsCodeHighlighting {
+        return .single(CachedMessageSyntaxHighlight(values: [:]))
+    }
     if let current {
         var hasMissingOrInvalidSpec = false
         for spec in specs {

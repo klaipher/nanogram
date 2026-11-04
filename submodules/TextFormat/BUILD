@@ -20,6 +20,7 @@ swift_library(
         "//submodules/Markdown:Markdown",
         "//submodules/Emoji:Emoji",
         "//third-party/libprisma",
+        "//submodules/HardenedMedia",
     ],
     visibility = [
         "//visibility:public",

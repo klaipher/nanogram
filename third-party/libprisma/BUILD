@@ -93,9 +93,11 @@ cc_test(
         "Sources/TokenList.h",
         "Sources/Highlight.cpp",
         "Sources/Highlight.h",
+        "Sources/UnicodeEscapes.h",
     ],
     copts = [
         "-std=c++17",
+        "-O2",
         "-Ithird-party/libprisma/Sources",
     ],
     data = [

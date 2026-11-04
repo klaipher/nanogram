@@ -1,4 +1,5 @@
 import Foundation
+import HardenedMedia
 import LottieSettings
 import UIKit
 import AsyncDisplayKit
@@ -393,6 +394,9 @@ private func contentNodeMessagesAndClassesForItem(_ item: ChatMessageItem) -> ([
         
         inner: for media in message.media {
             if let webpage = media as? TelegramMediaWebpage {
+                if message.flags.contains(.Incoming) && !HardenedMediaPolicy.current.generatesLinkPreviewsForReceivedLinks {
+                    break inner
+                }
                 if case let .Loaded(content) = webpage.content {
                     if let story = content.story {
                         if let storyItem = message.associatedStories[story.storyId], !storyItem.data.isEmpty {

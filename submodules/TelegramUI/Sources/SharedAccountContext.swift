@@ -1,4 +1,5 @@
 import Foundation
+import HardenedMedia
 import UIKit
 import AsyncDisplayKit
 import TelegramCore
@@ -396,9 +397,10 @@ public final class SharedAccountContextImpl: SharedAccountContext {
         self._automaticMediaDownloadSettings.set(.single(initialPresentationDataAndSettings.automaticMediaDownloadSettings)
         |> then(accountManager.sharedData(keys: [SharedDataKeys.autodownloadSettings, ApplicationSpecificSharedDataKeys.automaticMediaDownloadSettings])
             |> map { sharedData in
-                let autodownloadSettings: AutodownloadSettings = sharedData.entries[SharedDataKeys.autodownloadSettings]?.get(AutodownloadSettings.self) ?? .defaultSettings
-                let automaticDownloadSettings: MediaAutoDownloadSettings = sharedData.entries[ApplicationSpecificSharedDataKeys.automaticMediaDownloadSettings]?.get(MediaAutoDownloadSettings.self) ?? .defaultSettings
-                return automaticDownloadSettings.updatedWithAutodownloadSettings(autodownloadSettings)
+                return effectiveMediaAutoDownloadSettings(
+                    stored: sharedData.entries[ApplicationSpecificSharedDataKeys.automaticMediaDownloadSettings]?.get(MediaAutoDownloadSettings.self),
+                    autodownload: sharedData.entries[SharedDataKeys.autodownloadSettings]?.get(AutodownloadSettings.self)
+                )
             }
         ))
         
@@ -4938,7 +4940,7 @@ public final class SharedAccountContextImpl: SharedAccountContext {
             parentBot: parentBot,
             initialUsername: initialUsername,
             initialTitle: initialTitle,
-            openAutomatically: openAutomatically,
+            openAutomatically: openAutomatically && HardenedMediaPolicy.current.allowsMiniAppAutoOpen,
             viaDeeplink: viaDeeplink,
             completion: completion
         )

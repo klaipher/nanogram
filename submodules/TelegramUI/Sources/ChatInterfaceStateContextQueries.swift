@@ -1,4 +1,5 @@
 import Foundation
+import HardenedMedia
 import UIKit
 import SwiftSignalKit
 import TelegramCore
@@ -538,6 +539,13 @@ struct UrlPreviewState {
 
 func urlPreviewStateForInputText(_ inputText: NSAttributedString?, context: AccountContext, currentQuery: UrlPreviewState?, forPeerId: EnginePeer.Id?) -> (UrlPreviewState?, Signal<(TelegramMediaWebpage?) -> (TelegramMediaWebpage, String)?, NoError>)? {
     guard let _ = inputText else {
+        if currentQuery != nil {
+            return (nil, .single({ _ in return nil }))
+        } else {
+            return nil
+        }
+    }
+    if HardenedMediaPolicy.current.confirmsOutgoingLinkPreviews {
         if currentQuery != nil {
             return (nil, .single({ _ in return nil }))
         } else {

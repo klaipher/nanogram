@@ -15,6 +15,7 @@ swift_library(
     deps = [
         "//submodules/TelegramCore:TelegramCore",
         "//submodules/SSignalKit/SwiftSignalKit:SwiftSignalKit",
+        "//submodules/HardenedMedia",
     ],
     visibility = [
         "//visibility:public",
@@ -29,6 +30,7 @@ swift_library(
     ]),
     deps = [
         ":TelegramUIPreferences",
+        "//submodules/HardenedMedia",
     ],
 )
 
