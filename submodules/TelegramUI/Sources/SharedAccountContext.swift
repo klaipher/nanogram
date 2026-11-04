@@ -1,4 +1,5 @@
 import Foundation
+import HardenedMedia
 import UIKit
 import AsyncDisplayKit
 import TelegramCore
@@ -4938,7 +4939,7 @@ public final class SharedAccountContextImpl: SharedAccountContext {
             parentBot: parentBot,
             initialUsername: initialUsername,
             initialTitle: initialTitle,
-            openAutomatically: openAutomatically,
+            openAutomatically: openAutomatically && HardenedMediaPolicy.current.allowsMiniAppAutoOpen,
             viaDeeplink: viaDeeplink,
             completion: completion
         )

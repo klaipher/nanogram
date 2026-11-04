@@ -6,6 +6,7 @@ import TelegramCore
 import Contacts
 import Display
 import TelegramUIPreferences
+import HardenedMedia
 import AppBundle
 import Sunrise
 import PresentationStrings
@@ -327,9 +328,9 @@ public func currentPresentationDataAndSettings(accountManager: AccountManager<Te
         
         let automaticMediaDownloadSettings: MediaAutoDownloadSettings
         if let value = internalData.automaticMediaDownloadSettings?.get(MediaAutoDownloadSettings.self) {
-            automaticMediaDownloadSettings = value
+            automaticMediaDownloadSettings = value.hardened(by: .current)
         } else {
-            automaticMediaDownloadSettings = MediaAutoDownloadSettings.defaultSettings
+            automaticMediaDownloadSettings = MediaAutoDownloadSettings.defaultSettings.hardened(by: .current)
         }
         
         let autodownloadSettings: AutodownloadSettings

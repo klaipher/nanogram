@@ -1,4 +1,5 @@
 import Foundation
+import HardenedMedia
 import UIKit
 import SwiftSignalKit
 import TelegramCore
@@ -500,6 +501,47 @@ public struct InstantPageSourceLocation {
     }
 }
 
+public extension MediaAutoDownloadSettings {
+    func hardened(by policy: HardenedMediaPolicy) -> MediaAutoDownloadSettings {
+        if !policy.isActive {
+            return self
+        }
+        var result = self
+        result.presets.low = result.presets.low.hardened(by: policy)
+        result.presets.medium = result.presets.medium.hardened(by: policy)
+        result.presets.high = result.presets.high.hardened(by: policy)
+        result.cellular.custom = result.cellular.custom?.hardened(by: policy)
+        result.wifi.custom = result.wifi.custom?.hardened(by: policy)
+        result.energyUsageSettings.autoplayVideo = result.energyUsageSettings.autoplayVideo && policy.allowsAutoplay(fromContact: false)
+        result.energyUsageSettings.autoplayGif = result.energyUsageSettings.autoplayGif && policy.allowsAutoplay(fromContact: false)
+        result.energyUsageSettings.loopStickers = result.energyUsageSettings.loopStickers && policy.allowsAutoplay(fromContact: false)
+        result.energyUsageSettings.loopEmoji = result.energyUsageSettings.loopEmoji && policy.allowsAutoplay(fromContact: false)
+        return result
+    }
+}
+
+public extension MediaAutoDownloadCategories {
+    func hardened(by policy: HardenedMediaPolicy) -> MediaAutoDownloadCategories {
+        var result = self
+        result.photo = result.photo.hardened(by: policy)
+        result.video = result.video.hardened(by: policy)
+        result.file = result.file.hardened(by: policy)
+        result.stories = result.stories.hardened(by: policy)
+        return result
+    }
+}
+
+public extension MediaAutoDownloadCategory {
+    func hardened(by policy: HardenedMediaPolicy) -> MediaAutoDownloadCategory {
+        var result = self
+        let othersAllowed = policy.allowsAutomaticDownload(fromContact: false)
+        result.otherPrivate = result.otherPrivate && othersAllowed
+        result.groups = result.groups && othersAllowed
+        result.channels = result.channels && othersAllowed
+        return result
+    }
+}
+
 public func effectiveAutodownloadCategories(settings: MediaAutoDownloadSettings, networkType: MediaAutoDownloadNetworkType) -> MediaAutoDownloadCategories {
     let connection = settings.connectionSettings(for: networkType)
     switch connection.preset {
@@ -564,7 +606,18 @@ public func isAutodownloadEnabledForAnyPeerType(category: MediaAutoDownloadCateg
     return category.contacts || category.otherPrivate || category.groups || category.channels
 }
 
-public func shouldDownloadMediaAutomatically(settings: MediaAutoDownloadSettings, peerType: MediaAutoDownloadPeerType, networkType: MediaAutoDownloadNetworkType, authorPeerId: EnginePeer.Id? = nil, contactsPeerIds: Set<EnginePeer.Id> = Set(), media: EngineMedia?, isStory: Bool = false, isAd: Bool = false) -> Bool {
+public func shouldDownloadMediaAutomatically(settings: MediaAutoDownloadSettings, peerType: MediaAutoDownloadPeerType, networkType: MediaAutoDownloadNetworkType, authorPeerId: EnginePeer.Id? = nil, contactsPeerIds: Set<EnginePeer.Id> = Set(), media: EngineMedia?, isStory: Bool = false, isAd: Bool = false, hardenedPolicy: HardenedMediaPolicy = .current) -> Bool {
+    let isFromContact: Bool
+    if case .contact = peerType {
+        isFromContact = true
+    } else if let authorPeerId = authorPeerId, contactsPeerIds.contains(authorPeerId) {
+        isFromContact = true
+    } else {
+        isFromContact = false
+    }
+    if !hardenedPolicy.allowsAutomaticDownload(fromContact: isFromContact) {
+        return false
+    }
     if isAd {
         return true
     }
@@ -601,7 +654,10 @@ public func shouldDownloadMediaAutomatically(settings: MediaAutoDownloadSettings
     }
 }
 
-public func shouldPredownloadMedia(settings: MediaAutoDownloadSettings, peerType: MediaAutoDownloadPeerType, networkType: MediaAutoDownloadNetworkType, media: EngineMedia) -> Bool {
+public func shouldPredownloadMedia(settings: MediaAutoDownloadSettings, peerType: MediaAutoDownloadPeerType, networkType: MediaAutoDownloadNetworkType, media: EngineMedia, hardenedPolicy: HardenedMediaPolicy = .current) -> Bool {
+    if !hardenedPolicy.allowsAutomaticDownload(fromContact: peerType == .contact) {
+        return false
+    }
     if #available(iOSApplicationExtension 10.3, *) {
         if (networkType == .cellular && !settings.cellular.enabled) || (networkType == .wifi && !settings.wifi.enabled) {
             return false
