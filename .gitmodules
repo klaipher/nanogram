@@ -10,15 +10,16 @@
 	path = submodules/TgVoipWebrtc/tgcalls
 	url = https://github.com/klaipher/tgcalls.git
 	shallow = true
-	branch = telegram-ios-dev
+	branch = nanogram-shared
 [submodule "third-party/libvpx/libvpx"]
 	path = third-party/libvpx/libvpx
 	url = https://github.com/webmproject/libvpx.git
 	shallow = true
 [submodule "third-party/webrtc/webrtc"]
 	path = third-party/webrtc/webrtc
-	url = https://github.com/ali-fareed/webrtc.git
+	url = https://github.com/klaipher/webrtc.git
 	shallow = true
+	branch = nanogram-security-fixes
 [submodule "third-party/dav1d/dav1d"]
 	path = third-party/dav1d/dav1d
 	url = https://code.videolan.org/videolan/dav1d.git
