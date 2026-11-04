@@ -39,6 +39,73 @@
 
 @end
 
+// The newest message ids of one kind in a session, kept sorted. An id older than every kept one
+// counts as seen once the window is full: like tdlib's MessageIdDuplicateChecker and the Rust
+// engine's DuplicateChecker, replays of old packets are still ignored, and the session no longer
+// keeps every id it ever saw (a long session grew by one boxed number per message).
+static const NSUInteger MTSessionInfoMessageIdWindowCapacity = 2000;
+
+typedef struct {
+    int64_t *ids;
+    NSUInteger count;
+} MTSessionInfoMessageIdWindow;
+
+static NSUInteger MTSessionInfoMessageIdWindowLowerBound(MTSessionInfoMessageIdWindow const *window, int64_t messageId) {
+    NSUInteger low = 0;
+    NSUInteger high = window->count;
+    while (low < high) {
+        NSUInteger middle = low + (high - low) / 2;
+        if (window->ids[middle] < messageId) {
+            low = middle + 1;
+        } else {
+            high = middle;
+        }
+    }
+    return low;
+}
+
+static bool MTSessionInfoMessageIdWindowContains(MTSessionInfoMessageIdWindow const *window, int64_t messageId) {
+    if (window->count == 0) {
+        return false;
+    }
+    if (window->count >= MTSessionInfoMessageIdWindowCapacity && messageId < window->ids[0]) {
+        return true;
+    }
+    NSUInteger index = MTSessionInfoMessageIdWindowLowerBound(window, messageId);
+    return index < window->count && window->ids[index] == messageId;
+}
+
+static void MTSessionInfoMessageIdWindowAdd(MTSessionInfoMessageIdWindow *window, int64_t messageId) {
+    if (window->ids == NULL) {
+        window->ids = malloc(sizeof(int64_t) * MTSessionInfoMessageIdWindowCapacity);
+        if (window->ids == NULL) {
+            return;
+        }
+    }
+    NSUInteger index = MTSessionInfoMessageIdWindowLowerBound(window, messageId);
+    if (index < window->count && window->ids[index] == messageId) {
+        return;
+    }
+    if (window->count >= MTSessionInfoMessageIdWindowCapacity) {
+        if (index == 0) {
+            return;
+        }
+        // Drop the oldest id to make room.
+        memmove(window->ids, window->ids + 1, sizeof(int64_t) * (index - 1));
+        window->ids[index - 1] = messageId;
+        return;
+    }
+    memmove(window->ids + index + 1, window->ids + index, sizeof(int64_t) * (window->count - index));
+    window->ids[index] = messageId;
+    window->count += 1;
+}
+
+// Container mappings answer bad_msg_notification and new_session_created, which name messages of the
+// last few minutes; mappings older than this behind the newest container are dropped.
+static const int64_t MTSessionInfoContainerMappingLifetime = 60 * 60;
+static const NSUInteger MTSessionInfoContainerMappingPruneMinimum = 256;
+
+
 @interface MTSessionInfo ()
 {
     int64_t _sessionId;
@@ -49,10 +116,11 @@
     
     int64_t _lastServerMessageId;
     
-    NSMutableSet *_processedMessageIdsSet;
+    MTSessionInfoMessageIdWindow _processedMessageIds;
     NSMutableArray *_scheduledMessageConfirmations;
     NSMutableDictionary *_containerMessagesMappingDict;
-    NSMutableSet *_sentMessageIdsSet;
+    NSUInteger _containerMappingPruneThreshold;
+    MTSessionInfoMessageIdWindow _sentMessageIds;
 }
 
 @end
@@ -76,11 +144,16 @@
         
         _scheduledMessageConfirmations = [[NSMutableArray alloc] init];
         
-        _processedMessageIdsSet = [[NSMutableSet alloc] init];
-        _sentMessageIdsSet = [[NSMutableSet alloc] init];
         _containerMessagesMappingDict = [[NSMutableDictionary alloc] init];
+        _containerMappingPruneThreshold = MTSessionInfoContainerMappingPruneMinimum;
     }
     return self;
+}
+
+- (void)dealloc
+{
+    free(_processedMessageIds.ids);
+    free(_sentMessageIds.ids);
 }
 
 - (int64_t)sessionId
@@ -132,20 +205,20 @@
 
 - (bool)messageProcessed:(int64_t)messageId
 {
-    return [_processedMessageIdsSet containsObject:@(messageId)];
+    return MTSessionInfoMessageIdWindowContains(&_processedMessageIds, messageId);
 }
 
 - (void)setMessageProcessed:(int64_t)messageId
 {
-    [_processedMessageIdsSet addObject:@(messageId)];
+    MTSessionInfoMessageIdWindowAdd(&_processedMessageIds, messageId);
 }
 
 - (bool)wasMessageSentOnce:(int64_t)messageId {
-    return [_sentMessageIdsSet containsObject:@(messageId)];
+    return MTSessionInfoMessageIdWindowContains(&_sentMessageIds, messageId);
 }
 
 - (void)setMessageWasSentOnce:(int64_t)messageId {
-    [_sentMessageIdsSet addObject:@(messageId)];
+    MTSessionInfoMessageIdWindowAdd(&_sentMessageIds, messageId);
 }
 
 - (void)scheduleMessageConfirmation:(int64_t)messageId size:(NSInteger)size
@@ -249,6 +322,27 @@
 - (void)addContainerMessageIdMapping:(int64_t)containerMessageId childMessageIds:(NSArray *)childMessageIds
 {
     _containerMessagesMappingDict[@(containerMessageId)] = childMessageIds;
+    if (_containerMessagesMappingDict.count >= _containerMappingPruneThreshold) {
+        [self pruneContainerMappingsOlderThan:containerMessageId - (MTSessionInfoContainerMappingLifetime << 32)];
+        // Prune again only after the map has doubled, so a busy session does not scan it on every send.
+        _containerMappingPruneThreshold = MAX(MTSessionInfoContainerMappingPruneMinimum, _containerMessagesMappingDict.count * 2);
+    }
+}
+
+- (void)pruneContainerMappingsOlderThan:(int64_t)oldestKeptMessageId
+{
+    NSMutableArray<NSNumber *> *expired = [[NSMutableArray alloc] init];
+    for (NSNumber *nContainerMessageId in _containerMessagesMappingDict) {
+        if ((int64_t)[nContainerMessageId longLongValue] < oldestKeptMessageId) {
+            [expired addObject:nContainerMessageId];
+        }
+    }
+    [_containerMessagesMappingDict removeObjectsForKeys:expired];
+}
+
+- (NSUInteger)containerMessageIdMappingCount
+{
+    return _containerMessagesMappingDict.count;
 }
 
 - (NSArray *)messageIdsInContainer:(int64_t)containerMessageId
