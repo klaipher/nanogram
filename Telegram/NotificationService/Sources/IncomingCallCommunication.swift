@@ -61,6 +61,13 @@ enum IncomingCallCommunication {
         return !isAppLocked && displayNameOnLockscreen && !isGroupCall
     }
 
+    /// Whether a drawn call is also donated as an interaction (Siri and Focus suggestions). Not when
+    /// the user hid calls from Phone Recents (`VoiceCallSettings.showCallsInRecents`), whose setting
+    /// promises Siri does not suggest them either; the notification is still drawn as the caller's.
+    static func donatesCall(showCallsInRecents: Bool) -> Bool {
+        return showCallsInRecents
+    }
+
     enum AvatarSource: Equatable {
         /// No picture.
         case none

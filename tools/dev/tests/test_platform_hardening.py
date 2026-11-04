@@ -110,6 +110,16 @@ class ExtensionEntitlementTests(unittest.TestCase):
         self.assertEqual([item.strip() for item in extras.split(',') if item.strip()], ['notification_filtering_fragment'])
 
 
+class CallDonationWiringTests(unittest.TestCase):
+    # The Swift units are not built here; this pins that the extension's ringing call reads the Recents switch.
+    def test_notification_service_donates_a_ringing_call_only_while_calls_show_in_recents(self):
+        source = read(os.path.join(ROOT, 'Telegram', 'NotificationService', 'Sources', 'NotificationService.swift'))
+        self.assertEqual(source.count('showCallsInRecents: voiceCallSettings.showCallsInRecents,'), 2)
+        self.assertIn('donatesCall: IncomingCallCommunication.donatesCall(showCallsInRecents: showCallsInRecents)', source)
+        self.assertRegex(source, r'if call\.donatesCall \{\n\s+let interaction = INInteraction\(intent: donatedIntent')
+        self.assertEqual(source.count('interaction.donate(completion: nil)'), 2)
+
+
 class EnhancedSecurityTests(unittest.TestCase):
     def setUp(self):
         self.bzl = entitlements_module()

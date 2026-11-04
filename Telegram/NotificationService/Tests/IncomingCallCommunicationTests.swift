@@ -88,6 +88,14 @@ final class IncomingCallCommunicationTests: XCTestCase {
         XCTAssertFalse(IncomingCallCommunication.drawsCaller(isAppLocked: false, displayNameOnLockscreen: true, isGroupCall: true))
     }
 
+    // Privacy and Security ▸ Voice Calls ▸ Show Calls in Phone Recents, off: the call is still drawn
+    // as the caller's, but nothing is donated, so Siri does not suggest it.
+    @available(iOS 15.0, *)
+    func testCallsHiddenFromRecentsAreNotDonated() {
+        XCTAssertTrue(IncomingCallCommunication.donatesCall(showCallsInRecents: true))
+        XCTAssertFalse(IncomingCallCommunication.donatesCall(showCallsInRecents: false))
+    }
+
     // MARK: - Which picture
 
     @available(iOS 15.0, *)
