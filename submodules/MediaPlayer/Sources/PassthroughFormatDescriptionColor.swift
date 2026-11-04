@@ -18,7 +18,7 @@ enum PassthroughFormatDescriptionColor {
         guard bytes.count >= 7, bytes[0] == 1 else {
             return nil
         }
-        let nalUnitHeaderLength = Int32(bytes[4] & 0x03) + 1
+        let nalUnitHeaderLength = Int32((bytes[4] & 0x03) + 1)
         var offset = 5
         var sets: [Data] = []
         func readSets(count: Int) -> Bool {
@@ -54,7 +54,7 @@ enum PassthroughFormatDescriptionColor {
         guard bytes.count >= 23, bytes[0] == 1 else {
             return nil
         }
-        let nalUnitHeaderLength = Int32(bytes[21] & 0x03) + 1
+        let nalUnitHeaderLength = Int32((bytes[21] & 0x03) + 1)
         var offset = 22
         let arrayCount = Int(bytes[offset])
         offset += 1

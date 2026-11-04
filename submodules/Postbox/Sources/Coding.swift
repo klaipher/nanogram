@@ -978,7 +978,7 @@ public final class PostboxDecoder {
                 continue
             }
 
-            if keyLength == 0 || memcmp(bytes + (offset - Int(readKeyLength) - 1), keyBytes.baseAddress!, keyLength) == 0 {
+            if keyLength == 0 || keyBytes.baseAddress.map({ memcmp(bytes + (offset - Int(readKeyLength) - 1), $0, keyLength) == 0 }) == true {
                 if let valueType = valueType {
                     if readValueType == valueType.rawValue {
                         actualValueType = valueType

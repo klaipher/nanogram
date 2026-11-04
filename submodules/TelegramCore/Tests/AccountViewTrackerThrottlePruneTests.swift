@@ -8,7 +8,7 @@ final class AccountViewTrackerThrottlePruneTests: XCTestCase {
         var records: [MessageId: Int32] = [:]
         let peerId = PeerId(namespace: Namespaces.Peer.CloudChannel, id: PeerId.Id._internalFromInt64Value(1))
         for i in 0 ..< 100_000 {
-            let age = Int32(i % 24) * 60 * 60
+            let age = Int32((i % 24) * 60 * 60)
             records[MessageId(peerId: peerId, namespace: Namespaces.Message.Cloud, id: Int32(i))] = now - age
         }
         let pruned = prunedAccountViewTrackerThrottleRecords(records, now: now)

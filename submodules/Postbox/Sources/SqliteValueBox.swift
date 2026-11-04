@@ -2910,7 +2910,10 @@ public final class SqliteValueBox: ValueBox {
 private func hexString(_ data: Data) -> String {
     let hexString = NSMutableString()
     data.withUnsafeBytes { rawBytes -> Void in
-        let bytes = rawBytes.baseAddress!.assumingMemoryBound(to: UInt8.self)
+        guard let baseAddress = rawBytes.baseAddress else {
+            return
+        }
+        let bytes = baseAddress.assumingMemoryBound(to: UInt8.self)
         for i in 0 ..< data.count {
             hexString.appendFormat("%02x", UInt(bytes.advanced(by: i).pointee))
         }

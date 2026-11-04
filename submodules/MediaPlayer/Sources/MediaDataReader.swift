@@ -269,7 +269,9 @@ public final class AVAssetVideoDataReader: MediaDataReader {
             }
             let transform = videoTrack.preferredTransform
             self.videoRotationAngle = atan2(Double(transform.b), Double(transform.a))
-            let videoOutput = AVAssetReaderTrackOutput(track: videoTrack, outputSettings: [String(kCVPixelBufferPixelFormatTypeKey): AVAssetVideoDataReader.outputPixelFormat(formatDescription: videoTrack.formatDescriptions.first.map { $0 as! CMFormatDescription })])
+            // formatDescriptions holds CMFormatDescription values only, so the CF cast cannot fail.
+            let videoTrackFormatDescription = videoTrack.formatDescriptions.first.map { $0 as! CMFormatDescription } // swiftlint:disable:this force_cast
+            let videoOutput = AVAssetReaderTrackOutput(track: videoTrack, outputSettings: [String(kCVPixelBufferPixelFormatTypeKey): AVAssetVideoDataReader.outputPixelFormat(formatDescription: videoTrackFormatDescription)])
             assetReader.add(videoOutput)
             if assetReader.startReading() {
                 self.assetReader = assetReader
