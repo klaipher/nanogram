@@ -1309,7 +1309,6 @@ public final class OngoingCallContext {
     }
     
     public func stop(sendDebugLogs: Bool = false, debugLogValue: Promise<String?>) {
-        let callId = self.callId
         let account = self.account
         let logPath = self.logPath
         var statsLogPath = ""

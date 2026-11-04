@@ -12,6 +12,7 @@ Not yet built. Private notes. Evidence: `secreview-A-privacy.md`.
 - **Smaller connection fingerprint** (`MTApiEnvironment.m`, `BuildConfig.m`): `tz_offset` is no longer in the push registration data; `langCode` is the language without region ("en", "zh-Hans"); `systemVersion` is the major number ("18"); `deviceModel` is the family ("iPhone"/"iPad"/"Mac") instead of the exact model. The signing certificate data (`signatureDict`) and device token fields are untouched.
 - **No analytics events** (`help.saveAppLog`): `appLogEventMayLeaveDevice(type:)` is the only gate, backed by `appLogEventTypesAllowedToLeaveDevice`, which is empty. Events are not queued and anything already queued is removed unsent in `sendAppLogEventsBatch`. `networkTelemetryShouldRecord` is false in release regardless of the server flag and the telemetry reporter does not start.
 - Tests (run at the combined build): `AppLogPrivacyTests` (TelegramCore), `MTApiEnvironmentPrivacyTests` (MtProtoKit); `tools/dev/tests/test_privacy.py` checks the sources and runs without a build.
+- Review fix: `OngoingCallContext.stop` no longer keeps `let callId = self.callId`, which the removed upload left unused; TelegramVoip builds with `-warnings-as-errors`, so it would have failed the build. `test_privacy.py` (`test_call_stop_leaves_no_unused_locals`) checks both call contexts' `stop`.
 
 ### Security review follow-up (2026-11-04, merged from sec/hardening, sec/platform, sec/db-keys)
 Not yet built into a TestFlight build. Private notes.

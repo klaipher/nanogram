@@ -82,6 +82,21 @@ class PrivacyTests(unittest.TestCase):
     def test_call_contexts_do_not_upload_logs(self):
         self.assertEqual(uses(r'\.saveCallDebugLog\(|\.saveCompleteCallDebugLog\('), [])
 
+    def test_call_stop_leaves_no_unused_locals(self):
+        # TelegramVoip and TelegramCore build with -warnings-as-errors: a local left behind by the removed
+        # upload (e.g. `let callId = self.callId`) is an "initialization was never used" error.
+        checks = [
+            ('submodules/TelegramVoip/Sources/OngoingCallContext.swift', 'public func stop(sendDebugLogs: Bool = false, debugLogValue: Promise<String?>)'),
+            ('submodules/TelegramVoip/Sources/GroupCallContext.swift', 'func stop(account: Account?, reportCallId: CallId?, debugLog: Promise<String?>)'),
+        ]
+        for path, signature in checks:
+            body = function_body(read(path), signature)
+            for declaration in re.finditer(r'\b(?:let|var) (\w+) = ', body):
+                name = declaration.group(1)
+                rest = body[:declaration.start()] + body[declaration.end():]
+                # A use is the bare name, not a member access such as `self.callId`.
+                self.assertRegex(rest, r'(?<![.\w])%s\b' % re.escape(name), '%s: `%s` is never used' % (path, name))
+
     def test_call_log_functions_never_touch_the_network(self):
         source = read('submodules/TelegramCore/Sources/TelegramEngine/Calls/RateCall.swift')
         self.assertNotIn('network.request', function_body(source, 'func _internal_saveCallDebugLog'))
