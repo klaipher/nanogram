@@ -1,5 +1,6 @@
 import XCTest
 import HardenedMedia
+import TelegramCore
 @testable import TelegramUIPreferences
 
 final class MediaAutoDownloadHardeningTests: XCTestCase {
@@ -52,5 +53,26 @@ final class MediaAutoDownloadHardeningTests: XCTestCase {
     func testAutomaticDownloadFromAContactStillWorksUnderLockdown() {
         let settings = MediaAutoDownloadSettings.defaultSettings
         XCTAssertTrue(shouldDownloadMediaAutomatically(settings: settings, peerType: .contact, networkType: .wifi, media: nil, hardenedPolicy: .lockdown))
+    }
+
+    func testServerPresetsCannotReopenNonContactDownloadsUnderLockdown() {
+        var stored = MediaAutoDownloadSettings.defaultSettings
+        stored.energyUsageSettings.autoplayVideo = true
+        stored.energyUsageSettings.loopStickers = true
+        let effective = effectiveMediaAutoDownloadSettings(stored: stored, autodownload: .defaultSettings, policy: .lockdown)
+        for categories in [effective.presets.low, effective.presets.medium, effective.presets.high] {
+            XCTAssertFalse(categories.photo.groups)
+            XCTAssertFalse(categories.photo.channels)
+            XCTAssertFalse(categories.photo.otherPrivate)
+            XCTAssertTrue(categories.photo.contacts)
+        }
+        XCTAssertFalse(effective.energyUsageSettings.autoplayVideo)
+        XCTAssertFalse(effective.energyUsageSettings.loopStickers)
+    }
+
+    func testWithoutLockdownTheServerPresetsApplyUnchanged() {
+        let stored = MediaAutoDownloadSettings.defaultSettings
+        XCTAssertEqual(effectiveMediaAutoDownloadSettings(stored: stored, autodownload: .defaultSettings, policy: .inactive), stored.updatedWithAutodownloadSettings(.defaultSettings))
+        XCTAssertEqual(effectiveMediaAutoDownloadSettings(stored: nil, autodownload: nil, policy: .inactive), MediaAutoDownloadSettings.defaultSettings.updatedWithAutodownloadSettings(.defaultSettings))
     }
 }

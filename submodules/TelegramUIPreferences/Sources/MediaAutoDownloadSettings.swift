@@ -520,6 +520,12 @@ public extension MediaAutoDownloadSettings {
     }
 }
 
+/// The settings every live consumer reads: the stored choice, the server's presets, then the Lockdown policy.
+/// The policy goes last so that nothing merged afterwards (the server presets re-enable every peer type) can undo it.
+public func effectiveMediaAutoDownloadSettings(stored: MediaAutoDownloadSettings?, autodownload: AutodownloadSettings?, policy: HardenedMediaPolicy = .current) -> MediaAutoDownloadSettings {
+    return (stored ?? .defaultSettings).updatedWithAutodownloadSettings(autodownload ?? .defaultSettings).hardened(by: policy)
+}
+
 public extension MediaAutoDownloadCategories {
     func hardened(by policy: HardenedMediaPolicy) -> MediaAutoDownloadCategories {
         var result = self
