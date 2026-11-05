@@ -388,6 +388,8 @@ public final class MediaPickerScreenImpl: ViewController, MediaPickerScreen, Att
         private var preloadPromise = ValuePromise<Bool>(true)
         
         private var itemsDisposable: Disposable?
+        private var thumbnailPrefetcher: (stories: Bool, prefetcher: AssetThumbnailPrefetcher)?
+        private var memoryWarningObserver: NSObjectProtocol?
         private var selectionChangedDisposable: Disposable?
         private var itemsDimensionsUpdatedDisposable: Disposable?
         private var hiddenMediaDisposable: Disposable?
@@ -661,12 +663,39 @@ public final class MediaPickerScreenImpl: ViewController, MediaPickerScreen, Att
         }
         
         deinit {
+            if let memoryWarningObserver = self.memoryWarningObserver {
+                NotificationCenter.default.removeObserver(memoryWarningObserver)
+            }
+            self.thumbnailPrefetcher?.prefetcher.stop()
             self.itemsDisposable?.dispose()
             self.hiddenMediaDisposable?.dispose()
             self.selectionChangedDisposable?.dispose()
             self.itemsDimensionsUpdatedDisposable?.dispose()
             self.fastScrollDisposable?.dispose()
             self.currentAssetDownloadDisposable.dispose()
+        }
+        
+        // Asks Photos for the thumbnails of the visible cells and one screen around them, at the size the cells request.
+        private func updateThumbnailPrefetching(_ visibleItems: GridNodeVisibleItems) {
+            var fetchResult: PHFetchResult<PHAsset>?
+            var stories = false
+            var indices: [Int] = []
+            for visible in [visibleItems.topVisible, visibleItems.bottomVisible] {
+                if let item = visible?.1 as? MediaPickerGridItem, case let .asset(itemFetchResult, index) = item.content {
+                    fetchResult = itemFetchResult
+                    stories = item.stories
+                    indices.append(index)
+                }
+            }
+            guard let fetchResult, let lower = indices.min(), let upper = indices.max() else {
+                self.thumbnailPrefetcher?.prefetcher.stop()
+                return
+            }
+            if self.thumbnailPrefetcher?.stories != stories {
+                self.thumbnailPrefetcher?.prefetcher.stop()
+                self.thumbnailPrefetcher = (stories, AssetThumbnailPrefetcher(targetSize: MediaPickerGridItemNode.thumbnailTargetSize(stories: stories)))
+            }
+            self.thumbnailPrefetcher?.prefetcher.update(fetchResult: fetchResult, visible: lower ... upper)
         }
         
         override func didLoad() {
@@ -711,7 +740,11 @@ public final class MediaPickerScreenImpl: ViewController, MediaPickerScreen, Att
                     strongSelf.fastScrollContentOffset.set(offset)
                 }
             }
-            self.gridNode.visibleItemsUpdated = { [weak self] _ in
+            self.memoryWarningObserver = NotificationCenter.default.addObserver(forName: UIApplication.didReceiveMemoryWarningNotification, object: nil, queue: .main, using: { [weak self] _ in
+                self?.thumbnailPrefetcher?.prefetcher.stop()
+            })
+            self.gridNode.visibleItemsUpdated = { [weak self] visibleItems in
+                self?.updateThumbnailPrefetching(visibleItems)
                 self?.updateScrollingArea()
                 
                 if let self {
