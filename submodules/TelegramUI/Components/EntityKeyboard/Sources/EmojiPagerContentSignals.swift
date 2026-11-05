@@ -204,22 +204,28 @@ public extension EmojiPagerContentComponent {
         let hasPremiumSignal: Signal<Bool, NoError> = forceHasPremium ? .single(true) : hasPremium(context: context, chatPeerId: chatPeerId, premiumIfSavedMessages: premiumIfSavedMessages)
         let itemReuseCache = EmojiItemReuseCache<EmojiPanelItemKey, EmojiPanelItemFingerprint, EmojiPagerContentComponent.Item>()
         
-        let emojiItems: Signal<EmojiPagerContentComponent, NoError> = combineLatest(
-            context.account.postbox.itemCollectionsView(orderedItemListCollectionIds: orderedItemListCollectionIds, namespaces: [Namespaces.ItemCollection.CloudEmojiPacks], aroundIndex: nil, count: 10000000)
-            |> distinctUntilChanged(isEqual: emojiPanelItemCollectionsViewsAreEqual),
-            hasPremiumSignal
-            |> distinctUntilChanged,
-            context.account.viewTracker.featuredEmojiPacks()
-            |> distinctUntilChanged(isEqual: emojiPanelFeaturedPacksAreEqual),
-            availableReactions
-            |> distinctUntilChanged,
-            searchCategories
-            |> distinctUntilChanged,
-            iconStatusEmoji
-            |> distinctUntilChanged,
-            peerSpecificPack,
-            ApplicationSpecificNotice.dismissedTrendingEmojiPacks(accountManager: context.sharedContext.accountManager)
+        // Typed one by one: inline, the overloads of distinctUntilChanged inside the eight-way combineLatest and its
+        // long map closure are more than the type checker finishes in time.
+        let distinctItemCollectionsView: Signal<ItemCollectionsView, NoError> = context.account.postbox.itemCollectionsView(orderedItemListCollectionIds: orderedItemListCollectionIds, namespaces: [Namespaces.ItemCollection.CloudEmojiPacks], aroundIndex: nil, count: 10000000)
+            |> distinctUntilChanged(isEqual: emojiPanelItemCollectionsViewsAreEqual)
+        let distinctHasPremium: Signal<Bool, NoError> = hasPremiumSignal |> distinctUntilChanged
+        let distinctFeaturedEmojiPacks: Signal<[FeaturedStickerPackItem], NoError> = context.account.viewTracker.featuredEmojiPacks()
+            |> distinctUntilChanged(isEqual: emojiPanelFeaturedPacksAreEqual)
+        let distinctAvailableReactions: Signal<AvailableReactions?, NoError> = availableReactions |> distinctUntilChanged
+        let distinctSearchCategories: Signal<EmojiSearchCategories?, NoError> = searchCategories |> distinctUntilChanged
+        let distinctIconStatusEmoji: Signal<[TelegramMediaFile], NoError> = iconStatusEmoji |> distinctUntilChanged
+        let distinctDismissedTrendingEmojiPacks: Signal<[Int64]?, NoError> = ApplicationSpecificNotice.dismissedTrendingEmojiPacks(accountManager: context.sharedContext.accountManager)
             |> distinctUntilChanged
+        
+        let emojiItems: Signal<EmojiPagerContentComponent, NoError> = combineLatest(
+            distinctItemCollectionsView,
+            distinctHasPremium,
+            distinctFeaturedEmojiPacks,
+            distinctAvailableReactions,
+            distinctSearchCategories,
+            distinctIconStatusEmoji,
+            peerSpecificPack,
+            distinctDismissedTrendingEmojiPacks
         )
         |> map { view, hasPremium, featuredEmojiPacks, availableReactions, searchCategories, iconStatusEmoji, peerSpecificPack, dismissedTrendingEmojiPacks -> EmojiPagerContentComponent in
             var itemReusePass = itemReuseCache.beginPass()
