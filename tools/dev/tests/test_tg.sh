@@ -34,7 +34,7 @@ run_testflight() {
     python3() {
       case "$*" in
         *tf_notes.py\ --check*) return 0 ;;
-        *device_signing.py\ testflight*) echo upload >> "$TMP/calls"; return "$upload_status" ;;
+        *device_signing.py\ testflight*) echo upload >> "$TMP/calls"; echo "$*" > "$TMP/upload_args"; return "$upload_status" ;;
         *tf_notes.py\ IOS*) echo notes >> "$TMP/calls"; return "$notes_status" ;;
         *) echo "unexpected python3 $*" >&2; return 99 ;;
       esac
@@ -72,6 +72,9 @@ test_success() {
   check "the TestFlight build is marked for the App Store" grep -q -- "--app-store" "$TMP/device_args"
   check "the build's commit is recorded next to its dSYMs" grep -q "^commit [0-9a-f]\{40\}$" "$TMP/dsyms/202611031200/BUILD-INFO.txt"
   check "the build number is recorded" grep -q "^build 202611031200$" "$TMP/dsyms/202611031200/BUILD-INFO.txt"
+  check "the upload requires Enhanced Security by default" not grep -q -- "--enhanced-security" "$TMP/upload_args"
+  TG_TF_ENHANCED_SECURITY=0 run_testflight 0 0
+  check "the opt-out reaches the re-sign and upload step" grep -q -- "--enhanced-security off" "$TMP/upload_args"
 }
 
 # run_device <aps-environment of the app's profile> [tg device options]: tg device --no-install with

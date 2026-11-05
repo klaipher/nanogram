@@ -708,17 +708,8 @@ archive_dsyms() {
   prune_dsym_archive "$version"
 }
 
-# tg testflight --notes <file> [--export-only] — release build for the App Store with a new build
-# number, uploaded to TestFlight through the Apple ID signed in to Xcode (see device_signing.py
-# testflight). The build's dSYMs are kept in $DSYM_ARCHIVE/<build number>/ before the upload.
-# Every upload gets What to Test notes: <file> is checked before the build, copied next to the
-# dSYMs, and set with tools/dev/tf_notes.py once App Store Connect has processed the build
-# (waiting at most TG_TF_NOTES_WAIT minutes, default 45). If only that step fails, tg prints
-# "UPLOADED; notes not set; run: <command>" and exits 3: the build is uploaded, run the command.
-# If App Store Connect rejects the build while processing it, tg prints "build rejected by Apple;
-# upload a new build" and exits 4.
 # record_build_info <dir> <build> — what the TestFlight changelog needs next time (git log <previous
-# build's commit>..<this one>): the commit, branch and version of this build go next to its dSYMs.
+# build's commit>..<this one>): the build number, commit, branch and dirty/pushed state go next to its dSYMs.
 # Warns about a dirty tree, an unpushed commit and unreleased CHANGELOG.md entries (this build's
 # entry is then still missing); none of these stops the upload.
 record_build_info() {
@@ -740,6 +731,19 @@ record_build_info() {
   [ -z "$unreleased" ] || warn "CHANGELOG.md still has Unreleased entries: add this build's entry (build $build, commit ${commit:0:8})"
 }
 
+# tg testflight --notes <file> [--export-only] — release build for the App Store with a new build
+# number, uploaded to TestFlight through the Apple ID signed in to Xcode (see device_signing.py
+# testflight). The build's dSYMs are kept in $DSYM_ARCHIVE/<build number>/ before the upload.
+# Every upload gets What to Test notes: <file> is checked before the build, copied next to the
+# dSYMs, and set with tools/dev/tf_notes.py once App Store Connect has processed the build
+# (waiting at most TG_TF_NOTES_WAIT minutes, default 45). If only that step fails, tg prints
+# "UPLOADED; notes not set; run: <command>" and exits 3: the build is uploaded, run the command.
+# If App Store Connect rejects the build while processing it, tg prints "build rejected by Apple;
+# upload a new build" and exits 4.
+# The build carries Enhanced Security (soft mode) on the app, NotificationService and Share: the
+# development profiles must grant it (else tg stops before building), and device_signing.py checks
+# the exported App Store build and its distribution profiles before the upload, which therefore
+# needs the App Store Connect API key (asc/asc.json). TG_TF_ENHANCED_SECURITY=0 ships without it.
 cmd_testflight() {
   local notes="" export_only=0 upload_args=()
   while [ $# -gt 0 ]; do
