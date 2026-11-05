@@ -35,3 +35,16 @@ class ExportedIpaTests(unittest.TestCase):
 
 if __name__ == '__main__':
     unittest.main()
+
+
+class GeneratedEntitlementsTests(unittest.TestCase):
+    # The main app is signed with com.apple.developer.usernotifications.communication (Telegram/BUILD), so its
+    # development profile must grant it or the phone refuses the install (0xe8008015). Xcode only adds a
+    # capability to the team profile when the generated project asks for it.
+    def test_the_main_app_asks_for_communication_notifications(self):
+        plist = device_signing.entitlements_plist(['group.org.klaipher.Nanogram'], push=True, communication=True)
+        self.assertIn('com.apple.developer.usernotifications.communication', plist)
+
+    def test_extensions_do_not_ask_for_communication_notifications(self):
+        plist = device_signing.entitlements_plist(['group.org.klaipher.Nanogram'], push=False)
+        self.assertNotIn('com.apple.developer.usernotifications.communication', plist)
