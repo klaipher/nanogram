@@ -70,7 +70,7 @@ private final class CountingTarget: MultiAnimationRenderTarget {
 // Ticks only when the test fires it, so frame counts do not depend on wall-clock time or CPU load.
 private final class ManualTicker {
     private(set) var interval: Double?
-    private var tick: (() -> Void)?
+    private var tick: ((Double) -> Void)?
     private(set) var startCount = 0
 
     func makeScheduler() -> DCTAnimationTickScheduler {
@@ -88,8 +88,9 @@ private final class ManualTicker {
         })
     }
 
-    func fire() {
-        self.tick?()
+    // The elapsed time the link reports; by default one tick interval.
+    func fire(elapsed: Double? = nil) {
+        self.tick?(elapsed ?? self.interval ?? 0.0)
     }
 }
 
@@ -102,8 +103,8 @@ final class DCTMultiAnimationRendererTickTests: XCTestCase {
     }
 
     // Fires one tick and waits until the frames it requested have been delivered.
-    private func tick(_ renderer: DCTMultiAnimationRendererImpl, _ ticker: ManualTicker) {
-        ticker.fire()
+    private func tick(_ renderer: DCTMultiAnimationRendererImpl, _ ticker: ManualTicker, elapsed: Double? = nil) {
+        ticker.fire(elapsed: elapsed)
         self.spin(until: { renderer.pendingFrameLoadsForTesting == 0 })
         XCTAssertEqual(renderer.pendingFrameLoadsForTesting, 0)
     }
@@ -143,6 +144,22 @@ final class DCTMultiAnimationRendererTickTests: XCTestCase {
         XCTAssertEqual(targets[0].transitions - before[0], 30)
         XCTAssertEqual(targets[1].transitions - before[1], 15)
         XCTAssertLessThanOrEqual(targets[2].transitions - before[2], 1)
+        disposables.forEach { $0.dispose() }
+    }
+
+    // The link can run slower than its nominal rate (Low Power Mode, thermal pressure): the items advance by the
+    // elapsed time the scheduler reports, not by the nominal interval.
+    func testItemsAdvanceByTheElapsedTimeTheSchedulerReports() {
+        let ticker = ManualTicker()
+        // One 1 s frame: the nominal 1/30 s tick would need 30 ticks; four 0.25 s ticks are enough.
+        let (renderer, targets, disposables) = self.play(frameDurations: [1.0], ticker: ticker)
+        let before = targets[0].transitions
+        for _ in 0 ..< 3 {
+            self.tick(renderer, ticker, elapsed: 0.25)
+        }
+        XCTAssertEqual(targets[0].transitions - before, 0)
+        self.tick(renderer, ticker, elapsed: 0.25)
+        XCTAssertEqual(targets[0].transitions - before, 1)
         disposables.forEach { $0.dispose() }
     }
 

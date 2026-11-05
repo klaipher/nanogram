@@ -36,14 +36,35 @@ enum DCTAnimationTickPolicy {
     }
 }
 
+extension DCTAnimationTickPolicy {
+    // The time a tick advances the animations. A link at a fixed rate can fire later than its nominal interval
+    // (Low Power Mode and thermal pressure lower the display rate, a 40 Hz tick on a 60 Hz display fires every
+    // 25 ms but the link would report 1/40 s), so the elapsed time is the distance between the target timestamps of
+    // two callbacks (Apple, WWDC21 10147: progress += targetTimestamp - previousTargetTimestamp). Never below one
+    // interval, and at most four after a stall (the app was suspended or busy), so a long gap does not skip
+    // a whole animation.
+    static func elapsed(target: Double, previousTarget: Double?, interval: Double) -> Double {
+        guard let previousTarget, target.isFinite, previousTarget.isFinite else {
+            return interval
+        }
+        return min(max(target - previousTarget, interval), 4.0 * interval)
+    }
+}
+
 extension DCTAnimationTickScheduler {
     // Ticks from the app's shared display link instead of a run loop timer: the system matches the display's
     // refresh rate to the tick rate (a 30 Hz tick lets a 120 Hz screen idle at lower cost), and the link stops
     // while the app is in the background. Ticks come on the main thread, like the timer's.
     static let sharedDisplayLink = DCTAnimationTickScheduler(start: { interval, tick in
         let fps = DCTAnimationTickPolicy.framesPerSecond(forTickInterval: interval)
+        // The callback argument is a fixed 1/fps for .fps links, so the elapsed time comes from the driver's
+        // last target timestamp.
+        var previousTarget: Double?
         let link = SharedDisplayLinkDriver.shared.add(framesPerSecond: .fps(fps), { _ in
-            tick()
+            let target = SharedDisplayLinkDriver.shared.lastTargetTimestamp
+            let elapsed = target.map { DCTAnimationTickPolicy.elapsed(target: $0, previousTarget: previousTarget, interval: interval) } ?? interval
+            previousTarget = target ?? previousTarget
+            tick(elapsed)
         })
         link.isPaused = false
         return {

@@ -85,7 +85,7 @@ private final class RecordingTarget: MultiAnimationRenderTarget {
 
 private final class FillTestTicker {
     private(set) var interval: Double?
-    private var tick: (() -> Void)?
+    private var tick: ((Double) -> Void)?
 
     func makeScheduler() -> DCTAnimationTickScheduler {
         return DCTAnimationTickScheduler(start: { [weak self] interval, tick in
@@ -102,7 +102,7 @@ private final class FillTestTicker {
     }
 
     func fire() {
-        self.tick?()
+        self.tick?(self.interval ?? 0.0)
     }
 }
 
