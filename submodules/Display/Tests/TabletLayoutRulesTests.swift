@@ -196,4 +196,76 @@ final class TabletLayoutRulesTests: XCTestCase {
         XCTAssertEqual(frame.maxY, 149.0)
         XCTAssertEqual(frame.width, 918.0)
     }
+
+    // MARK: Media panel height
+
+    private func standard(_ metrics: DeviceMetrics, landscape: Bool) -> CGFloat {
+        return metrics.standardInputHeight(inLandscape: landscape)
+    }
+
+    /// The owner's case: 13" iPad landscape, 1032pt tall, standard 491pt (48%): now 40%.
+    func test_mediaPanel_ipad13Landscape_takesFortyPercent() {
+        let height = tabletMediaPanelHeight(standardHeight: self.standard(.iPadPro13InchM4, landscape: true), containerHeight: 1032.0, keyboardHeight: nil, deviceType: .tablet)
+        XCTAssertEqual(height, 412.8, accuracy: 0.001)
+        XCTAssertLessThan(height, 491.0)
+    }
+
+    /// Portrait: 40% of 1376pt is 550pt, more than the standard 398pt, so the standard stays.
+    func test_mediaPanel_ipad13Portrait_keepsStandard() {
+        let std = self.standard(.iPadPro13InchM4, landscape: false)
+        XCTAssertEqual(tabletMediaPanelHeight(standardHeight: std, containerHeight: 1376.0, keyboardHeight: nil, deviceType: .tablet), std)
+    }
+
+    /// A known keyboard height is a ceiling.
+    func test_mediaPanel_keyboardHeightIsACeiling() {
+        XCTAssertEqual(tabletMediaPanelHeight(standardHeight: 491.0, containerHeight: 1032.0, keyboardHeight: 350.0, deviceType: .tablet), 350.0)
+        // A taller keyboard does not raise the panel past 40%.
+        XCTAssertEqual(tabletMediaPanelHeight(standardHeight: 491.0, containerHeight: 1032.0, keyboardHeight: 460.0, deviceType: .tablet), 412.8, accuracy: 0.001)
+    }
+
+    /// An unknown (nil) or zero keyboard height is ignored.
+    func test_mediaPanel_unknownKeyboardIsIgnored() {
+        XCTAssertEqual(tabletMediaPanelHeight(standardHeight: 491.0, containerHeight: 1032.0, keyboardHeight: 0.0, deviceType: .tablet), 412.8, accuracy: 0.001)
+    }
+
+    /// A short Split View or Stage Manager window: the minimum keeps the grid usable.
+    func test_mediaPanel_shortWindow_keepsMinimum() {
+        XCTAssertEqual(tabletMediaPanelHeight(standardHeight: 418.0, containerHeight: 520.0, keyboardHeight: nil, deviceType: .tablet), 280.0)
+        // Even a small keyboard height does not push it under the minimum.
+        XCTAssertEqual(tabletMediaPanelHeight(standardHeight: 418.0, containerHeight: 1032.0, keyboardHeight: 200.0, deviceType: .tablet), 280.0)
+    }
+
+    /// The minimum never exceeds the standard height (and so never grows the panel).
+    func test_mediaPanel_neverTallerThanStandard() {
+        XCTAssertEqual(tabletMediaPanelHeight(standardHeight: 250.0, containerHeight: 500.0, keyboardHeight: nil, deviceType: .tablet), 250.0)
+        XCTAssertEqual(tabletMediaPanelHeight(standardHeight: 300.0, containerHeight: 2000.0, keyboardHeight: nil, deviceType: .tablet), 300.0)
+    }
+
+    /// Degenerate container: upstream.
+    func test_mediaPanel_zeroContainer_isUpstream() {
+        XCTAssertEqual(tabletMediaPanelHeight(standardHeight: 400.0, containerHeight: 0.0, keyboardHeight: nil, deviceType: .tablet), 400.0)
+    }
+
+    /// iPhone is untouched, in portrait and landscape, whatever the arguments.
+    func test_mediaPanel_phone_isUpstream() {
+        XCTAssertEqual(tabletMediaPanelHeight(standardHeight: 336.0, containerHeight: 874.0, keyboardHeight: nil, deviceType: .phone), 336.0)
+        XCTAssertEqual(tabletMediaPanelHeight(standardHeight: 209.0, containerHeight: 402.0, keyboardHeight: 100.0, deviceType: .phone), 209.0)
+    }
+
+    // MARK: Media panel switcher
+
+    func test_switcher_tablet_isLargerThanPhone() {
+        let tablet = mediaPanelSwitcherMetrics(deviceType: .tablet)
+        let phone = mediaPanelSwitcherMetrics(deviceType: .phone)
+        XCTAssertEqual(tablet.fontSize, 17.0)
+        XCTAssertGreaterThan(tablet.itemHeight, phone.itemHeight)
+        XCTAssertGreaterThan(tablet.textInset, phone.textInset)
+        XCTAssertGreaterThan(tablet.rowHeight, tablet.itemHeight)
+        // Touch targets: at least 44pt tall row on iPad.
+        XCTAssertGreaterThanOrEqual(tablet.rowHeight, 44.0)
+    }
+
+    func test_switcher_phone_isUpstream() {
+        XCTAssertEqual(mediaPanelSwitcherMetrics(deviceType: .phone), MediaPanelSwitcherMetrics(fontSize: 14.0, itemHeight: 28.0, textInset: 12.0, rowHeight: 40.0, barIntrinsicHeight: 34.0))
+    }
 }

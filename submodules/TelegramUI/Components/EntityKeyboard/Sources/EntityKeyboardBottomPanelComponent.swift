@@ -14,17 +14,20 @@ import TabSelectionRecognizer
 
 private final class BottomPanelIconComponent: Component {
     let title: String
+    let metrics: MediaPanelSwitcherMetrics
     let isHighlighted: Bool
     let theme: PresentationTheme
     let action: () -> Void
     
     init(
         title: String,
+        metrics: MediaPanelSwitcherMetrics,
         isHighlighted: Bool,
         theme: PresentationTheme,
         action: @escaping () -> Void
     ) {
         self.title = title
+        self.metrics = metrics
         self.isHighlighted = isHighlighted
         self.theme = theme
         self.action = action
@@ -32,6 +35,9 @@ private final class BottomPanelIconComponent: Component {
     
     static func ==(lhs: BottomPanelIconComponent, rhs: BottomPanelIconComponent) -> Bool {
         if lhs.title != rhs.title {
+            return false
+        }
+        if lhs.metrics != rhs.metrics {
             return false
         }
         if lhs.isHighlighted != rhs.isHighlighted {
@@ -67,9 +73,9 @@ private final class BottomPanelIconComponent: Component {
         }
         
         func update(component: BottomPanelIconComponent, availableSize: CGSize, state: EmptyComponentState, environment: Environment<Empty>, transition: ComponentTransition) -> CGSize {
-            if self.component?.title != component.title {
-                let text = NSAttributedString(string: component.title, font: Font.medium(14.0), textColor: .white)
-                let textBounds = text.boundingRect(with: CGSize(width: 120.0, height: 100.0), options: .usesLineFragmentOrigin, context: nil)
+            if self.component?.title != component.title || self.component?.metrics != component.metrics {
+                let text = NSAttributedString(string: component.title, font: Font.medium(component.metrics.fontSize), textColor: .white)
+                let textBounds = text.boundingRect(with: CGSize(width: 200.0, height: 100.0), options: .usesLineFragmentOrigin, context: nil)
                 self.contentView.image = generateImage(CGSize(width: ceil(textBounds.width), height: ceil(textBounds.height)), rotatedContext: { size, context in
                     context.clear(CGRect(origin: CGPoint(), size: size))
                     UIGraphicsPushContext(context)
@@ -80,10 +86,10 @@ private final class BottomPanelIconComponent: Component {
             
             self.component = component
             
-            let textInset: CGFloat = 12.0
+            let textInset: CGFloat = component.metrics.textInset
             
             let textSize = self.contentView.image?.size ?? CGSize()
-            let size = CGSize(width: textSize.width + textInset * 2.0, height: 28.0)
+            let size = CGSize(width: textSize.width + textInset * 2.0, height: component.metrics.itemHeight)
             
             self.contentView.tintColor = component.theme.chat.inputPanel.panelControlColor
             
@@ -106,21 +112,27 @@ final class EntityKeyboardBottomPanelComponent: Component {
     typealias EnvironmentType = PagerComponentPanelEnvironment<EntityKeyboardTopContainerPanelEnvironment>
     
     let theme: PresentationTheme
+    let deviceType: DeviceType
     let containerInsets: UIEdgeInsets
     let deleteBackwards: () -> Void
     
     init(
         theme: PresentationTheme,
+        deviceType: DeviceType,
         containerInsets: UIEdgeInsets,
         deleteBackwards: @escaping () -> Void
     ) {
         self.theme = theme
+        self.deviceType = deviceType
         self.containerInsets = containerInsets
         self.deleteBackwards = deleteBackwards
     }
     
     static func ==(lhs: EntityKeyboardBottomPanelComponent, rhs: EntityKeyboardBottomPanelComponent) -> Bool {
         if lhs.theme !== rhs.theme {
+            return false
+        }
+        if lhs.deviceType != rhs.deviceType {
             return false
         }
         if lhs.containerInsets != rhs.containerInsets {
@@ -260,7 +272,9 @@ final class EntityKeyboardBottomPanelComponent: Component {
                 self.backgroundView.updateColor(color: component.theme.chat.inputPanel.panelBackgroundColor.withMultipliedAlpha(1.0), transition: .immediate)
             }
             
-            let intrinsicHeight: CGFloat = 34.0
+            // Nanogram: a larger switcher on iPad (TabletLayoutRules.swift); iPhone keeps the upstream sizes.
+            let switcherMetrics = mediaPanelSwitcherMetrics(deviceType: component.deviceType)
+            let intrinsicHeight: CGFloat = switcherMetrics.barIntrinsicHeight
             let height = intrinsicHeight + component.containerInsets.bottom + 20.0
             
             let accessoryButtonOffset: CGFloat
@@ -453,6 +467,7 @@ final class EntityKeyboardBottomPanelComponent: Component {
                         transition: iconTransition,
                         component: AnyComponent(BottomPanelIconComponent(
                             title: icon.title,
+                            metrics: switcherMetrics,
                             isHighlighted: icon.id == activeContentId,
                             theme: component.theme,
                             action: {
@@ -460,13 +475,14 @@ final class EntityKeyboardBottomPanelComponent: Component {
                             }
                         )),
                         environment: {},
-                        containerSize: CGSize(width: 28.0, height: 28.0)
+                        containerSize: CGSize(width: switcherMetrics.itemHeight, height: switcherMetrics.itemHeight)
                     )
                     
                     let _ = selectedIconView.update(
                         transition: iconTransition,
                         component: AnyComponent(BottomPanelIconComponent(
                             title: icon.title,
+                            metrics: switcherMetrics,
                             isHighlighted: icon.id == activeContentId,
                             theme: component.theme,
                             action: {
@@ -474,7 +490,7 @@ final class EntityKeyboardBottomPanelComponent: Component {
                             }
                         )),
                         environment: {},
-                        containerSize: CGSize(width: 28.0, height: 28.0)
+                        containerSize: CGSize(width: switcherMetrics.itemHeight, height: switcherMetrics.itemHeight)
                     )
                     
                     iconInfos[icon.id] = (size: iconSize, transition: iconTransition)
@@ -487,7 +503,7 @@ final class EntityKeyboardBottomPanelComponent: Component {
                 }
             }
              
-            let tabsSize = CGSize(width: iconTotalSize.width, height: 40.0)
+            let tabsSize = CGSize(width: iconTotalSize.width, height: switcherMetrics.rowHeight)
             var nextIconOrigin = CGPoint(x: floor((tabsSize.width - iconTotalSize.width) / 2.0), y: floor((tabsSize.height - iconTotalSize.height) / 2.0))
         
             transition.setFrame(view: self.backgroundContainer, frame: CGRect(origin: .zero, size: availableSize))

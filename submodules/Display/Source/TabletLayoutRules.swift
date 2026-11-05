@@ -112,3 +112,59 @@ public let mediaPanelBottomBarEdgeEffectOverhang: CGFloat = 6.0
 /// The tallest bar that is not lifted: 34pt switch row, the largest home-indicator inset (34pt, iPhone before
 /// iOS 26) and 20pt below. Bars up to this height keep the upstream fade.
 public let mediaPanelBottomBarMaximumUnliftedHeight: CGFloat = 88.0
+
+// MARK: - Media panel (GIFs, stickers, emoji) height on iPad
+
+/// The share of the container's height the GIF/sticker/emoji panel may take on an iPad.
+public let tabletMediaPanelHeightFraction: CGFloat = 0.4
+
+/// The shortest the panel gets on an iPad (the search field, the pack strip and a row or two of the grid still fit),
+/// even in a short Split View or Stage Manager window. It never exceeds `standardHeight`.
+public let tabletMediaPanelMinimumHeight: CGFloat = 280.0
+
+/// The height of the media panel at rest. Upstream makes it as tall as the system keyboard plus its suggestions bar
+/// (`standardHeight`, from the device profile): 491pt of a 13" iPad's 1032pt landscape screen, leaving one message
+/// visible, and more than the keyboard the user just had because the profile counts the suggestions bar that the
+/// iPad often hides. On an iPad the panel takes at most 40% of `containerHeight` and no more than the system keyboard
+/// when its height is known (`keyboardHeight`, nil or zero when unknown), but not less than
+/// `tabletMediaPanelMinimumHeight`, and never more than `standardHeight`. A phone keeps `standardHeight`. Dragging the
+/// panel up still expands it to the full height (that path does not use this function).
+public func tabletMediaPanelHeight(standardHeight: CGFloat, containerHeight: CGFloat, keyboardHeight: CGFloat?, deviceType: DeviceType) -> CGFloat {
+    guard deviceType == .tablet, containerHeight > 0.0 else {
+        return standardHeight
+    }
+    var cap = containerHeight * tabletMediaPanelHeightFraction
+    if let keyboardHeight = keyboardHeight, keyboardHeight > 0.0 {
+        cap = min(cap, keyboardHeight)
+    }
+    let floorHeight = min(tabletMediaPanelMinimumHeight, standardHeight)
+    return min(standardHeight, max(cap, floorHeight))
+}
+
+// MARK: - Media panel switcher (GIFs / Stickers / Emoji) on iPad
+
+/// Sizes of the GIFs / Stickers / Emoji switcher at the bottom of the media panel.
+public struct MediaPanelSwitcherMetrics: Equatable {
+    /// Text size of the three titles.
+    public let fontSize: CGFloat
+    /// Height of one title's cell (the selection lens is as tall).
+    public let itemHeight: CGFloat
+    /// Space left and right of a title.
+    public let textInset: CGFloat
+    /// Height of the lens row, which is also the height the bar reserves above its bottom inset.
+    public let rowHeight: CGFloat
+    /// Height of the bar above the bottom inset and the 20pt margin.
+    public let barIntrinsicHeight: CGFloat
+}
+
+/// Upstream's switcher is a 14pt-text pill meant for a phone; at the bottom of an iPad panel it was a small speck.
+/// On an iPad it keeps the same floating glass lens (Apple's iPadOS 26 floating tab bar and Telegram's own switcher),
+/// with the text at the system body size (17pt) and larger cells. A phone keeps the upstream numbers.
+public func mediaPanelSwitcherMetrics(deviceType: DeviceType) -> MediaPanelSwitcherMetrics {
+    switch deviceType {
+    case .tablet:
+        return MediaPanelSwitcherMetrics(fontSize: 17.0, itemHeight: 36.0, textInset: 20.0, rowHeight: 48.0, barIntrinsicHeight: 42.0)
+    case .phone:
+        return MediaPanelSwitcherMetrics(fontSize: 14.0, itemHeight: 28.0, textInset: 12.0, rowHeight: 40.0, barIntrinsicHeight: 34.0)
+    }
+}

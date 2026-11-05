@@ -745,6 +745,7 @@ public final class EntityKeyboardComponent: Component {
                     externalTopPanelContainer: component.externalTopPanelContainer,
                     bottomPanel: component.displayBottomPanel ? AnyComponent(EntityKeyboardBottomPanelComponent(
                         theme: component.theme,
+                        deviceType: component.deviceMetrics.type,
                         containerInsets: bottomPanelContainerInsets,
                         deleteBackwards: { [weak self] in
                             self?.component?.emojiContent?.inputInteractionHolder.inputInteraction?.deleteBackwards?()
