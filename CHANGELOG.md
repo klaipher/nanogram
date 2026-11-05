@@ -21,6 +21,16 @@ Newest first. Internal notes for each TestFlight build; testers see the What to 
   - **S10 `debug_measureTimeToFirstEvent`**: wraps and prints only under `#if DEBUG` in both SwiftSignalKit trees (10 wrapped signals per chat open in release before).
   - **S10 `.atomic`**: the sticker representation in `FetchCachedRepresentations` (`fetchCachedStickerRepresentation`, temp path that `MediaBox` renames) is written plainly; a failed write removes the partial file.
   - Tests: `CacheWalkerPolicyTests`, `CacheWalkerRecordStoreTests`, `TimeBasedCleanupGateTests` and a new touch test in `TimeBasedCleanupTests` (Postbox), `AutomaticCacheEvictionFingerprintTests` (TelegramCore), `ChunkMediaPlayerUpdateScheduleTests` (MediaPlayer), `VP9HardwareStatsTests` and extra `testSessionLimit` assertions (VP9Hardware), two suspend/resume tests in `VideoStickerHardwareSelectionTests`. Ran in scratch packages: policy 16/16, update schedule 6/6, VP9 stats 5/5 (Swift 6, warnings as errors). The rest need the Bazel test run of the combined build.
+- Emoji and sticker animation tick (profiling plan item 10, S6): the renderer's tick ran on a `Foundation.Timer` on the
+  main run loop, with no display-rate hint and Low Power Mode read once at creation. It now ticks from the shared
+  `SharedDisplayLinkDriver` (`DCTAnimationTickScheduler.sharedDisplayLink`, new `DCTAnimationTickPolicy.swift`), at the
+  same 60 or 30 Hz as before, so the system matches the screen's refresh rate to it and stops it in the background.
+  Low Power Mode and the thermal state are now watched while the app runs: 30 Hz on Low Power Mode, on a serious or
+  critical thermal state and on two-core devices; back to 60 Hz when they clear. Frame timing per tick is unchanged.
+  Tests: `DCTAnimationTickPolicyTests`, power-state cases in `DCTMultiAnimationRendererTickTests`.
+- `tools/dev/tg device` archives the build's dSYMs to `~/Library/Application Support/Nanogram/dsyms/<build>/` like
+  `tg testflight` (UUID file included, TelegramUI UUID printed), so a device build recording can be symbolicated. A
+  failed archive warns and does not stop the install.
 
 ## 13.1.2 (202611051247) — 2026-11-05 — fb1b8101
 

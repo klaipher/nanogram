@@ -84,6 +84,7 @@ run_device() {
     # shellcheck source=../tg
     source "$TG"
     make_py() { :; }
+    archive_dsyms() { echo "$1" >> "$TMP/archived_ipa"; return "${ARCHIVE_STATUS:-0}"; }
     profile_aps_environment() { echo "$profile_aps"; }
     cmd_device --no-install ${@+"$@"}
   ) > "$TMP/out" 2> "$TMP/err"
@@ -233,12 +234,39 @@ test_archive_dsyms() {
 
 not() { ! "$@"; }
 
+# Every tg device build keeps its dSYMs, keyed by build number, like tg testflight does: a Time
+# Profiler recording of a device build is anonymous without them. tg testflight archives them itself.
+test_device_archives_dsyms() {
+  rm -f "$TMP/archived_ipa"
+  run_device production
+  check "a device build archives its dSYMs" grep -q "bazel-bin/Telegram/Telegram.ipa$" "$TMP/archived_ipa"
+  rm -f "$TMP/archived_ipa"
+  run_device production --app-store
+  check "an App Store build leaves the archiving to tg testflight" [ ! -e "$TMP/archived_ipa" ]
+  # A device build without dSYMs is still a usable build: warn, do not fail, and install.
+  ARCHIVE_STATUS=1 run_device production
+  check "a failed dSYM archive does not fail the device build" [ "$STATUS" -eq 0 ]
+  check "it warns that the build has no archived dSYMs" grep -q "dSYMs were not archived" "$TMP/err"
+}
+
+# archive_dsyms names the TelegramUI UUID, the one a trace needs to match.
+test_archive_prints_telegramui_uuid() {
+  local build="$TMP/build-uuid" uuid
+  make_build "$build" > "$TMP/fixture.log" 2>&1 || return 0
+  rm -rf "$TMP/archive"
+  run_archive_dsyms "$build"
+  uuid="$(dwarfdump --uuid "$build/TelegramUIFramework.framework.dSYM" | awk '{ print $2 }')"
+  check "archive_dsyms prints the TelegramUI UUID" grep -q "TelegramUI UUID $uuid" "$TMP/out"
+}
+
 test_notes_failure_after_upload
 test_build_rejected_after_upload
 test_upload_failure
 test_success
 test_device_push_environment
 test_archive_dsyms
+test_device_archives_dsyms
+test_archive_prints_telegramui_uuid
 
 if [ "$failures" -ne 0 ]; then
   echo "$failures failed"
