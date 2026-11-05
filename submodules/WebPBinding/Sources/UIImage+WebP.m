@@ -5,68 +5,91 @@
 
 @implementation WebP
 
+/// Largest canvas side that is decoded at all. A WebP header can declare up to 16383 x 16383, which is a gigabyte of
+/// pixels (and the same again for a mask) from a few dozen bytes of received content.
+static const int WebPDecodeMaxSide = 4096;
+
+static void WebPDecodedPixelsRelease(void *info, const void *data, size_t size) {
+    free(info);
+}
+
+/// Decodes a still WebP to a premultiplied BGRA image of at most `maxPixelSize` (aspect fitted, never enlarged;
+/// a zero size means the stored size), straight from the decoder with its own scaler: no UIGraphics context and no
+/// second pass over the pixels. Everything allocated is released on every exit path.
+static CGImageRef _Nullable WebPCreateImageFittingPixelSize(NSData * _Nonnull data, CGSize maxPixelSize) CF_RETURNS_RETAINED {
+    if (data.length == 0) {
+        return NULL;
+    }
+    WebPDecoderConfig config;
+    if (!WebPInitDecoderConfig(&config)) {
+        return NULL;
+    }
+    if (WebPGetFeatures(data.bytes, data.length, &config.input) != VP8_STATUS_OK) {
+        return NULL;
+    }
+    if (config.input.has_animation || config.input.width < 1 || config.input.height < 1) {
+        return NULL;
+    }
+    int sourceWidth = config.input.width;
+    int sourceHeight = config.input.height;
+    if (sourceWidth > WebPDecodeMaxSide || sourceHeight > WebPDecodeMaxSide) {
+        return NULL;
+    }
+    double scale = 1.0;
+    if (maxPixelSize.width >= 1.0 && maxPixelSize.height >= 1.0) {
+        scale = MIN(1.0, MIN(maxPixelSize.width / sourceWidth, maxPixelSize.height / sourceHeight));
+    }
+    int width = MAX(1, (int)lround(sourceWidth * scale));
+    int height = MAX(1, (int)lround(sourceHeight * scale));
+    size_t bytesPerRow = (((size_t)width * 4) + 31) & ~(size_t)31;
+    size_t length = bytesPerRow * (size_t)height;
+    void *pixels = calloc(1, length);
+    if (pixels == NULL) {
+        return NULL;
+    }
+    if (width != sourceWidth || height != sourceHeight) {
+        config.options.use_scaling = 1;
+        config.options.scaled_width = width;
+        config.options.scaled_height = height;
+    }
+    // Capital A: the decoder premultiplies the colors itself.
+    config.output.colorspace = MODE_bgrA;
+    config.output.is_external_memory = 1;
+    config.output.u.RGBA.rgba = pixels;
+    config.output.u.RGBA.stride = (int)bytesPerRow;
+    config.output.u.RGBA.size = length;
+    VP8StatusCode status = WebPDecode(data.bytes, data.length, &config);
+    WebPFreeDecBuffer(&config.output);
+    if (status != VP8_STATUS_OK) {
+        free(pixels);
+        return NULL;
+    }
+    CGDataProviderRef provider = CGDataProviderCreateWithData(pixels, pixels, length, WebPDecodedPixelsRelease);
+    if (provider == NULL) {
+        free(pixels);
+        return NULL;
+    }
+    CGColorSpaceRef colorSpace = CGColorSpaceCreateDeviceRGB();
+    CGImageRef image = CGImageCreate(width, height, 8, 32, bytesPerRow, colorSpace, kCGBitmapByteOrder32Host | kCGImageAlphaPremultipliedFirst, provider, NULL, false, kCGRenderingIntentDefault);
+    CGColorSpaceRelease(colorSpace);
+    CGDataProviderRelease(provider);
+    return image;
+}
+
 + (UIImage * _Nullable)convertFromWebP:(NSData * _Nonnull)imgData {
+    return [self convertFromWebP:imgData fittingPixelSize:CGSizeZero];
+}
+
++ (UIImage * _Nullable)convertFromWebP:(NSData * _Nonnull)imgData fittingPixelSize:(CGSize)maxPixelSize {
     if (imgData == nil) {
         return nil;
     }
-    
-    int width = 0, height = 0;
-    if (!WebPGetInfo([imgData bytes], [imgData length], &width, &height)) {
-        NSMutableDictionary *errorDetail = [NSMutableDictionary dictionary];
-        [errorDetail setValue:@"Header formatting error." forKey:NSLocalizedDescriptionKey];
+    CGImageRef bitmapImage = WebPCreateImageFittingPixelSize(imgData, maxPixelSize);
+    if (bitmapImage == NULL) {
         return nil;
     }
-    
-    const struct { int width, height; } targetContextSize = { width, height};
-    
-    size_t targetBytesPerRow = ((4 * (int)targetContextSize.width) + 31) & (~31);
-    
-    void *targetMemory = malloc((int)(targetBytesPerRow * targetContextSize.height));
-    
-    CGColorSpaceRef colorSpace = CGColorSpaceCreateDeviceRGB();
-    CGBitmapInfo bitmapInfo = ((uint32_t)kCGImageAlphaPremultipliedFirst) | ((uint32_t)kCGBitmapByteOrder32Host);
-    
-    CGContextRef targetContext = CGBitmapContextCreate(targetMemory, (int)targetContextSize.width, (int)targetContextSize.height, 8, targetBytesPerRow, colorSpace, bitmapInfo);
-    
-    UIGraphicsPushContext(targetContext);
-    
-    CGColorSpaceRelease(colorSpace);
-    
-    if (WebPDecodeBGRAInto(imgData.bytes, imgData.length, targetMemory, targetBytesPerRow * targetContextSize.height, (int)targetBytesPerRow) == NULL) {
-        //[BridgingTrace objc_trace:@"WebP" what:@"error decoding webp"];
-        return nil;
-    }
-    
-    for (int y = 0; y < targetContextSize.height; y++) {
-        for (int x = 0; x < targetContextSize.width; x++) {
-            uint32_t *color = ((uint32_t *)&targetMemory[y * targetBytesPerRow + x * 4]);
-            
-            uint32_t a = (*color >> 24) & 0xff;
-            uint32_t r = ((*color >> 16) & 0xff) * a;
-            uint32_t g = ((*color >> 8) & 0xff) * a;
-            uint32_t b = (*color & 0xff) * a;
-            
-            r = (r + 1 + (r >> 8)) >> 8;
-            g = (g + 1 + (g >> 8)) >> 8;
-            b = (b + 1 + (b >> 8)) >> 8;
-            
-            *color = (a << 24) | (r << 16) | (g << 8) | b;
-        }
-        
-        for (size_t i = y * targetBytesPerRow + targetContextSize.width * 4; i < (targetBytesPerRow >> 2); i++) {
-            *((uint32_t *)&targetMemory[i]) = 0;
-        }
-    }
-    
-    UIGraphicsPopContext();
-    
-    CGImageRef bitmapImage = CGBitmapContextCreateImage(targetContext);
     UIImage *image = [[UIImage alloc] initWithCGImage:bitmapImage scale:1.0f orientation:UIImageOrientationUp];
     CGImageRelease(bitmapImage);
-    
-    CGContextRelease(targetContext);
-    free(targetMemory);
-    
     return image;
 }
     

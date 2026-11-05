@@ -330,9 +330,18 @@ private func videoFirstFrameData(account: Account, resource: MediaResource, chun
 
 private func fetchCachedStickerAJpegRepresentation(resource: MediaResource, resourceData: MediaResourceData, representation: CachedStickerAJpegRepresentation) -> Signal<CachedMediaResourceRepresentationResult, NoError> {
     return Signal({ subscriber in
+        // Set once the result is delivered; any other way out completes the signal, so a sticker that cannot be
+        // converted is not retried (and decoded again) on every display.
+        var delivered = false
+        defer {
+            if !delivered {
+                subscriber.putCompletion()
+            }
+        }
         if let data = try? Data(contentsOf: URL(fileURLWithPath: resourceData.path), options: [.mappedIfSafe]) {
             var image: UIImage?
-            if let webpImage = WebP.convert(fromWebP: data) {
+            // Decoded straight to the size it is used at; a sticker never needs more than 512 pixels.
+            if let webpImage = WebP.convert(fromWebP: data, fittingPixelSize: representation.size ?? CGSize(width: 512.0, height: 512.0)) {
                 image = webpImage
             } else if let pngImage = UIImage(data: data) {
                 image = pngImage
@@ -399,10 +408,11 @@ private func fetchCachedStickerAJpegRepresentation(resource: MediaResource, reso
                         finalData.append(&alphaSize, length: 4)
                         finalData.append(alphaData as Data)
                         
-                        let _ = try? finalData.write(to: url, options: [.atomic])
-                        
-                        subscriber.putNext(.temporaryPath(path))
-                        subscriber.putCompletion()
+                        if (try? finalData.write(to: url, options: [.atomic])) != nil {
+                            delivered = true
+                            subscriber.putNext(.temporaryPath(path))
+                            subscriber.putCompletion()
+                        }
                     }
                 }
             }

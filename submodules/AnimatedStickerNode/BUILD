@@ -57,6 +57,7 @@ swift_library(
     deps = [
         ":AnimatedStickerNode",
         "//submodules/SSignalKit/SwiftSignalKit:SwiftSignalKit",
+        "//submodules/WebPBinding:WebPBinding",
         "//submodules/YuvConversion:YuvConversion",
         "//submodules/AsyncDisplayKit:AsyncDisplayKit",
         "//submodules/Display:Display",
