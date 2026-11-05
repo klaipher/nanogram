@@ -48,3 +48,21 @@ class GeneratedEntitlementsTests(unittest.TestCase):
     def test_extensions_do_not_ask_for_communication_notifications(self):
         plist = device_signing.entitlements_plist(['group.org.klaipher.Nanogram'], push=False)
         self.assertNotIn('com.apple.developer.usernotifications.communication', plist)
+
+
+class EnhancedSecurityEntitlementsTests(unittest.TestCase):
+    # Enhanced Security (soft mode) is on the App IDs of the app, NotificationService and Share since 2026-11-05;
+    # Telegram/entitlements.bzl signs those three with it, so their development profiles must grant it.
+    KEYS = ['com.apple.security.hardened-process', 'com.apple.security.hardened-process.checked-allocations']
+
+    def test_hardened_targets_ask_for_enhanced_security(self):
+        for suffix in ['', '.NotificationService', '.Share']:
+            self.assertTrue(device_signing.wants_enhanced_security('org.klaipher.Nanogram' + suffix, 'org.klaipher.Nanogram'))
+        plist = device_signing.entitlements_plist(['group.org.klaipher.Nanogram'], push=False, enhanced_security=True)
+        for key in self.KEYS:
+            self.assertIn(key, plist)
+
+    def test_other_extensions_do_not(self):
+        for suffix in ['.Widget', '.SiriIntents', '.BroadcastUpload', '.NotificationContent']:
+            self.assertFalse(device_signing.wants_enhanced_security('org.klaipher.Nanogram' + suffix, 'org.klaipher.Nanogram'))
+        self.assertNotIn(self.KEYS[0], device_signing.entitlements_plist(['g'], push=False))
