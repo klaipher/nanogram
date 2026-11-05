@@ -168,42 +168,25 @@ void decodeYUVAToRGBA(uint8_t const *yuva, uint8_t *argb, int width, int height,
         return;
     }
     
-    // 4-bit alpha, two pixels per byte.
+    // 4-bit alpha, two pixels per byte, each row starting on a new packed byte. Written straight into the alpha byte
+    // of every BGRA pixel: no scratch plane is allocated per frame (this runs for every displayed frame of every CPU
+    // sticker, emoji and reaction).
     uint8_t const *alpha = yuva + (width * height * 1 + width * height * 1);
-    uint8_t *alphaPlane = NULL;
-    if (width % 2 == 0) {
-        alphaPlane = malloc((size_t)width * (size_t)height);
-    }
-    if (alphaPlane != NULL) {
-        size_t packedCount = (size_t)(width / 2) * (size_t)height;
-        for (size_t i = 0; i < packedCount; i += 1) {
-            uint8_t a = alpha[i];
-            alphaPlane[i * 2 + 0] = (a & 0xf0U) | (a >> 4);
-            alphaPlane[i * 2 + 1] = (a & 0x0fU) | (uint8_t)(a << 4);
+    size_t alphaRowBytes = ((size_t)width + 1) / 2;
+    for (int y = 0; y < height; y += 1) {
+        uint8_t const *alphaRow = alpha + (size_t)y * alphaRowBytes;
+        uint8_t *argbRow = argb + (size_t)y * (size_t)bytesPerRow + 3;
+        int x = 0;
+        for (; x + 1 < width; x += 2) {
+            uint8_t a = alphaRow[x / 2];
+            uint8_t a1 = (a & (0xf0U));
+            uint8_t a2 = ((a & (0x0fU)) << 4);
+            argbRow[x * 4] = a1 | (a1 >> 4);
+            argbRow[(x + 1) * 4] = a2 | (a2 >> 4);
         }
-        vImage_Buffer alphaBuffer;
-        alphaBuffer.data = alphaPlane;
-        alphaBuffer.width = width;
-        alphaBuffer.height = height;
-        alphaBuffer.rowBytes = width;
-        // Copy mask 0x1 is the last byte of each pixel, the alpha of BGRA.
-        error = vImageOverwriteChannels_ARGB8888(&alphaBuffer, &dest, &dest, 0x1, kvImageDoNotTile);
-        free(alphaPlane);
-    } else {
-        // Odd widths: each row starts on a new packed byte. Pixel `width` is not written.
-        int i = 0;
-        for (int y = 0; y < height; y += 1) {
-            uint8_t *argbRow = argb + y * bytesPerRow;
-            for (int x = 0; x < width; x += 2) {
-                uint8_t a = alpha[i / 2];
-                uint8_t a1 = (a & (0xf0U));
-                uint8_t a2 = ((a & (0x0fU)) << 4);
-                argbRow[x * 4 + 3] = a1 | (a1 >> 4);
-                if (x + 1 < width) {
-                    argbRow[(x + 1) * 4 + 3] = a2 | (a2 >> 4);
-                }
-                i += 2;
-            }
+        if (x < width) {
+            uint8_t a1 = (alphaRow[x / 2] & (0xf0U));
+            argbRow[x * 4] = a1 | (a1 >> 4);
         }
     }
     
