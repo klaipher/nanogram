@@ -407,8 +407,7 @@ extension ChatControllerImpl {
                                         }
                                         let targetView = itemNode?.targetReactionView(value: chosenReaction)
                                         let reactionItem = self.contextMenuReactionItem(reaction: chosenReaction, customFile: nil, availableReactions: item.associatedData.availableReactions)
-                                        let route = contextReactionLandingRoute(hasTargetView: targetView != nil, menuWindow: controller.view.window.map(ObjectIdentifier.init), targetWindow: targetView?.window.map(ObjectIdentifier.init), hasStandaloneItem: reactionItem != nil)
-                                        Logger.shared.shortLog("ReactionKB", "applied target=\(targetView != nil ? "found" : "missing") route=\(route) menuWin=\(controller.view.window.map { String(describing: type(of: $0)) } ?? "none") sameWin=\(controller.view.window != nil && controller.view.window === targetView?.window ? "Y" : "N") inputHeight=\(Int(self.validLayout?.inputHeight ?? 0))")
+                                        let route = self.contextMenuReactionRoute(contextController: controller, targetView: targetView, reactionItem: reactionItem)
                                         if route == .standaloneInChat, let targetView, let reactionItem {
                                             // Do not register the menu with the transition node: registering the standalone animation for
                                             // the same row would dismiss it again and cut the fade short.
@@ -571,8 +570,7 @@ extension ChatControllerImpl {
                                                 chosenCustomFile = file
                                             }
                                             let reactionItem = self.contextMenuReactionItem(reaction: chosenReaction, customFile: chosenCustomFile, availableReactions: item.associatedData.availableReactions)
-                                            let route = contextReactionLandingRoute(hasTargetView: targetView != nil, menuWindow: controller.view.window.map(ObjectIdentifier.init), targetWindow: targetView?.window.map(ObjectIdentifier.init), hasStandaloneItem: reactionItem != nil)
-                                            Logger.shared.shortLog("ReactionKB", "applied target=\(targetView != nil ? "found" : "missing") route=\(route) menuWin=\(controller.view.window.map { String(describing: type(of: $0)) } ?? "none") sameWin=\(controller.view.window != nil && controller.view.window === targetView?.window ? "Y" : "N") inputHeight=\(Int(self.validLayout?.inputHeight ?? 0))")
+                                            let route = self.contextMenuReactionRoute(contextController: controller, targetView: targetView, reactionItem: reactionItem)
                                             if route == .standaloneInChat, let targetView, let reactionItem {
                                                 // Do not register the menu with the transition node: registering the standalone animation for
                                                 // the same row would dismiss it again and cut the fade short.

@@ -5,6 +5,7 @@ import Display
 import TelegramCore
 import AccountContext
 import ReactionSelectionNode
+import ContextUI
 
 // Nanogram: a reaction chosen in the context menu while the keyboard is up. The menu is then in the keyboard
 // window, where its flight and effect never show, so the chat plays the effect itself, the way a double tap does.
@@ -55,10 +56,31 @@ extension ChatControllerImpl {
         }
     }
 
+    /// Picks how a reaction chosen in `contextController` lands, and logs the decision (no message or peer data).
+    func contextMenuReactionRoute(contextController: ContextController, targetView: UIView?, reactionItem: ReactionItem?) -> ContextReactionLandingRoute {
+        let menuWindow = contextController.view.window
+        let chatWindow = self.chatDisplayNode.view.window
+        let route = contextReactionLandingRoute(
+            hasTargetView: targetView != nil,
+            menuWindow: menuWindow.map { ObjectIdentifier($0) },
+            chatWindow: chatWindow.map { ObjectIdentifier($0) },
+            hasStandaloneItem: reactionItem != nil
+        )
+        let menuWindowName = menuWindow.map { String(describing: type(of: $0)) } ?? "none"
+        let sameWindow = menuWindow != nil && menuWindow === chatWindow
+        let targetInMenu = targetView != nil && targetView?.window === menuWindow
+        let inputHeight = Int(self.validLayout?.inputHeight ?? 0.0)
+        Logger.shared.shortLog("ReactionKB", "applied target=\(targetView != nil ? "found" : "missing") route=\(route) menuWin=\(menuWindowName) sameWin=\(sameWindow ? "Y" : "N") targetInMenu=\(targetInMenu ? "Y" : "N") inputHeight=\(inputHeight)")
+        return route
+    }
+
+    /// Call after the menu's `dismiss()`: the dismissal moves the extracted bubble back into the chat's tree
+    /// (portal staging), so the effect is measured against the bubble's place in the chat.
     func playContextReactionInChat(messageId: EngineMessage.Id, reactionItem: ReactionItem, targetView: UIView) {
         guard let animationCache = self.controllerInteraction?.presentationContext.animationCache else {
             return
         }
+        Logger.shared.shortLog("ReactionKB", "standalone targetInChatWin=\(targetView.window != nil && targetView.window === self.chatDisplayNode.view.window ? "Y" : "N")")
         let standaloneReactionAnimation = StandaloneReactionAnimation(genericReactionEffect: self.chatDisplayNode.historyNode.takeGenericReactionEffect())
         
         self.chatDisplayNode.messageTransitionNode.addMessageStandaloneReactionAnimation(messageId: messageId, standaloneReactionAnimation: standaloneReactionAnimation)
