@@ -1134,10 +1134,6 @@ public func chatMessagePhotoThumbnail(account: Account, userLocation: MediaResou
         let fullSizeData = value._1
         let fullSizeComplete = value._2
         return { arguments in
-            guard let context = DrawingContext(size: arguments.drawingSize, scale: arguments.scale ?? 0.0, clear: true) else {
-                return nil
-            }
-            
             let drawingRect = arguments.drawingRect
             var fittedSize = arguments.imageSize
             if abs(fittedSize.width - arguments.boundingSize.width).isLessThanOrEqualTo(CGFloat(1.0)) {
@@ -1205,6 +1201,10 @@ public func chatMessagePhotoThumbnail(account: Account, userLocation: MediaResou
                 }
             }
             
+            guard let context = DrawingContext(size: arguments.drawingSize, scale: arguments.scale ?? 0.0, clear: true, colorSpace: drawingColorSpace(forSourceImage: fullSizeImage)) else {
+                return nil
+            }
+
             context.withFlippedContext { c in
                 c.setBlendMode(.copy)
                 if arguments.imageSize.width < arguments.boundingSize.width || arguments.imageSize.height < arguments.boundingSize.height {
@@ -1241,10 +1241,6 @@ public func chatMessageVideoThumbnail(account: Account, userLocation: MediaResou
         let fullSizeData = value._1
         let fullSizeComplete = value._2
         return { arguments in
-            guard let context = DrawingContext(size: arguments.drawingSize, scale: arguments.scale ?? 0.0, clear: true) else {
-                return nil
-            }
-            
             let drawingRect = arguments.drawingRect
             var fittedSize = arguments.imageSize
             if abs(fittedSize.width - arguments.boundingSize.width).isLessThanOrEqualTo(CGFloat(1.0)) {
@@ -1313,6 +1309,10 @@ public func chatMessageVideoThumbnail(account: Account, userLocation: MediaResou
                 }
             }
             
+            guard let context = DrawingContext(size: arguments.drawingSize, scale: arguments.scale ?? 0.0, clear: true, colorSpace: drawingColorSpace(forSourceImage: fullSizeImage)) else {
+                return nil
+            }
+
             context.withFlippedContext { c in
                 c.setBlendMode(.copy)
                 if arguments.imageSize.width < arguments.boundingSize.width || arguments.imageSize.height < arguments.boundingSize.height {
