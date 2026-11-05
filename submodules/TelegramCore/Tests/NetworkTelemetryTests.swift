@@ -1161,7 +1161,7 @@ final class NetworkTelemetryTests: XCTestCase {
         let enabled = NetworkTelemetryConfiguration(isEnabled: true, variant: nil, reportInterval: 86400.0)
         XCTAssertFalse(networkTelemetryShouldRecord(supplementary: true, isAppExtension: false, configuration: enabled))
         XCTAssertFalse(networkTelemetryShouldRecord(supplementary: false, isAppExtension: true, configuration: enabled))
-        XCTAssertEqual(networkTelemetryShouldRecord(supplementary: false, isAppExtension: false, configuration: enabled), networkTelemetryAlwaysRecords)
+        XCTAssertTrue(networkTelemetryShouldRecord(supplementary: false, isAppExtension: false, configuration: enabled))
         XCTAssertEqual(networkTelemetryShouldRecord(supplementary: false, isAppExtension: false, configuration: .disabled), networkTelemetryAlwaysRecords)
 
         networkTelemetryOverrides.recording = true

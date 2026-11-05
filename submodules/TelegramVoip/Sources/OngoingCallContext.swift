@@ -1318,6 +1318,7 @@ public final class OngoingCallContext {
     }
     
     public func stop(sendDebugLogs: Bool = false, debugLogValue: Promise<String?>) {
+        let callId = self.callId
         let account = self.account
         let logPath = self.logPath
         var statsLogPath = ""
@@ -1344,11 +1345,21 @@ public final class OngoingCallContext {
                     let _ = try? FileManager.default.moveItem(atPath: tempStatsLogPath, toPath: statsLogPath)
                 }
                 
-                // The stats JSON (it carries the IP:port of the selected ICE candidates) and the full call log stay on the
-                // device: they are shown in the user's own "send logs" screen, and never uploaded to the server on
-                // their own after a call (security review H2; the Mac does the same).
+                // As upstream: the stats JSON goes to the server after the call (phone.saveCallDebug), and the full log
+                // when the server asks for it (owner's choice, 2026-11-05).
                 if !statsLogPath.isEmpty, let data = try? Data(contentsOf: URL(fileURLWithPath: statsLogPath)), let dataString = String(data: data, encoding: .utf8) {
                     debugLogValue.set(.single(dataString))
+                    let engine = TelegramEngine(account: self.account)
+                    let _ = engine.calls.saveCallDebugLog(callId: callId, log: dataString).start(next: { result in
+                        switch result {
+                        case .sendFullLog:
+                            if !logPath.isEmpty {
+                                let _ = engine.calls.saveCompleteCallDebugLog(callId: callId, logPath: logPath).start()
+                            }
+                        case .done:
+                            break
+                        }
+                    })
                 }
                 
                 queue.async {

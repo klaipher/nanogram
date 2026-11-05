@@ -56,11 +56,7 @@ private func sendAppLogEventsBatch(postbox: Postbox, network: Network, tag: Peer
             if !events.isEmpty && totalBytes + bytes > appLogEventsBatchMaxBytes {
                 break
             }
-            // Dropped events are still removed from the queue (they are in `entries`), but never sent.
             entries.append(entry)
-            if !appLogEventMayLeaveDevice(type: type) {
-                continue
-            }
             if let data = apiJson(data) {
                 totalBytes += bytes
                 events.append(.inputAppEvent(.init(time: time, type: type, peer: peerId?.toInt64() ?? 0, data: data)))

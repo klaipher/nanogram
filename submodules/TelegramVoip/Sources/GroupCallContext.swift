@@ -947,7 +947,19 @@ public final class OngoingGroupCallContext {
                         let _ = try? FileManager.default.moveItem(atPath: tempStatsLogPath, toPath: statsLogPath)
                     }
                     
-                    // The stats JSON and the full log stay on the device (they hold ICE candidate addresses): no upload.
+                    if let callId = reportCallId, !statsLogPath.isEmpty, let data = try? Data(contentsOf: URL(fileURLWithPath: statsLogPath)), let dataString = String(data: data, encoding: .utf8), let account {
+                        let engine = TelegramEngine(account: account)
+                        let _ = engine.calls.saveCallDebugLog(callId: callId, log: dataString).start(next: { result in
+                            switch result {
+                            case .sendFullLog:
+                                if !logPath.isEmpty {
+                                    let _ = engine.calls.saveCompleteCallDebugLog(callId: callId, logPath: logPath).start()
+                                }
+                            case .done:
+                                break
+                            }
+                        })
+                    }
                 }
             })
         }
