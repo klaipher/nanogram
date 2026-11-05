@@ -646,10 +646,21 @@ public func createGroupControllerImpl(context: AccountContext, peerIds: [PeerId]
             })
         }
         
-        venuesPromise.set(nearbyVenues(context: context, isSecretChat: false, userRequested: false, latitude: latitude, longitude: longitude)
+        venuesPromise.set(nearbyVenues(context: context, latitude: latitude, longitude: longitude)
         |> map { contextResult -> [TelegramMediaMap]? in
             if let contextResult {
-                return contextResult.venues.map { $0.media }
+                var resultVenues: [TelegramMediaMap] = []
+                for result in contextResult.results {
+                    switch result.message {
+                        case let .mapLocation(mapMedia, _):
+                            if let _ = mapMedia.venue {
+                                resultVenues.append(mapMedia)
+                            }
+                        default:
+                            break
+                    }
+                }
+                return resultVenues
             } else {
                 return nil
             }

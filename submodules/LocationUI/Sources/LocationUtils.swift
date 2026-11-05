@@ -5,7 +5,6 @@ import TelegramPresentationData
 import TelegramStringFormatting
 import MapKit
 import AccountContext
-import HardenedMedia
 
 extension TelegramMediaMap {
     convenience init(coordinate: CLLocationCoordinate2D, liveBroadcastingTimeout: Int32? = nil, proximityNotificationRadius: Int32? = nil) {
@@ -41,67 +40,7 @@ extension CLLocationCoordinate2D {
     }
 }
 
-public struct NearbyVenue {
-    public let media: TelegramMediaMap
-    public let resultId: String
-}
-
-public struct NearbyVenuesResult {
-    public let venues: [NearbyVenue]
-    public let queryId: Int64
-}
-
-public func nearbyVenues(context: AccountContext, story: Bool = false, isSecretChat: Bool, userRequested: Bool, latitude: Double, longitude: Double, query: String? = nil) -> Signal<NearbyVenuesResult?, NoError> {
-    switch VenueSearchPolicy.backend(isSecretChat: isSecretChat, isStory: story, userRequested: userRequested, latitude: latitude, longitude: longitude) {
-    case .none:
-        return .single(nil)
-    case .mapKit:
-        return mapKitNearbyVenues(latitude: latitude, longitude: longitude, query: query)
-    case let .bot(roundedLatitude, roundedLongitude):
-        return botNearbyVenues(context: context, story: story, latitude: roundedLatitude, longitude: roundedLongitude, query: query)
-    }
-}
-
-private func mapKitNearbyVenues(latitude: Double, longitude: Double, query: String?) -> Signal<NearbyVenuesResult?, NoError> {
-    return Signal { subscriber in
-        let center = CLLocationCoordinate2D(latitude: latitude, longitude: longitude)
-        let search: MKLocalSearch
-        if let query, !query.isEmpty {
-            let request = MKLocalSearch.Request()
-            request.naturalLanguageQuery = query
-            request.region = MKCoordinateRegion(center: center, latitudinalMeters: 2000.0, longitudinalMeters: 2000.0)
-            request.resultTypes = [.pointOfInterest, .address]
-            search = MKLocalSearch(request: request)
-        } else {
-            search = MKLocalSearch(request: MKLocalPointsOfInterestRequest(center: center, radius: 1000.0))
-        }
-        search.start(completionHandler: { response, _ in
-            guard let response else {
-                subscriber.putNext(nil)
-                subscriber.putCompletion()
-                return
-            }
-            var venues: [NearbyVenue] = []
-            for item in response.mapItems {
-                guard let title = item.name, !title.isEmpty else {
-                    continue
-                }
-                let placemark = item.placemark
-                let street = [placemark.subThoroughfare, placemark.thoroughfare].compactMap { $0 }.joined(separator: " ")
-                let address = [street, placemark.locality ?? ""].filter { !$0.isEmpty }.joined(separator: ", ")
-                let media = TelegramMediaMap(latitude: placemark.coordinate.latitude, longitude: placemark.coordinate.longitude, heading: nil, accuracyRadius: nil, venue: MapVenue(title: title, address: address, provider: nil, id: nil, type: nil), liveBroadcastingTimeout: nil, liveProximityNotificationRadius: nil)
-                venues.append(NearbyVenue(media: media, resultId: ""))
-            }
-            subscriber.putNext(NearbyVenuesResult(venues: venues, queryId: 0))
-            subscriber.putCompletion()
-        })
-        return ActionDisposable {
-            search.cancel()
-        }
-    }
-}
-
-private func botNearbyVenues(context: AccountContext, story: Bool, latitude: Double, longitude: Double, query: String?) -> Signal<NearbyVenuesResult?, NoError> {
+public func nearbyVenues(context: AccountContext, story: Bool = false, latitude: Double, longitude: Double, query: String? = nil) -> Signal<ChatContextResultCollection?, NoError> {
     let botUsername: Signal<String, NoError>
     if story {
         botUsername = context.engine.data.get(TelegramEngine.EngineData.Item.Configuration.App())
@@ -136,17 +75,11 @@ private func botNearbyVenues(context: AccountContext, story: Bool, latitude: Dou
                 return .single(nil)
             }
         }
-        |> map { contextResult -> NearbyVenuesResult? in
+        |> map { contextResult -> ChatContextResultCollection? in
             guard let contextResult else {
                 return nil
             }
-            var venues: [NearbyVenue] = []
-            for result in contextResult.results {
-                if case let .mapLocation(mapMedia, _) = result.message, mapMedia.venue != nil {
-                    venues.append(NearbyVenue(media: mapMedia, resultId: result.id))
-                }
-            }
-            return NearbyVenuesResult(venues: venues, queryId: contextResult.queryId)
+            return contextResult
         }
     }
 }

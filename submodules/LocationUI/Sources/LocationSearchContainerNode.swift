@@ -106,7 +106,6 @@ final class LocationSearchContainerNode: ASDisplayNode {
     private let context: AccountContext
     private let interaction: LocationPickerInteraction
     private let story: Bool
-    private let isSecretChat: Bool
     
     private let dimNode: ASDisplayNode
     public let listNode: ListView
@@ -127,9 +126,8 @@ final class LocationSearchContainerNode: ASDisplayNode {
         return self._isSearching.get()
     }
     
-    public init(context: AccountContext, updatedPresentationData: (initial: PresentationData, signal: Signal<PresentationData, NoError>)? = nil, coordinate: CLLocationCoordinate2D, interaction: LocationPickerInteraction, story: Bool, isSecretChat: Bool) {
+    public init(context: AccountContext, updatedPresentationData: (initial: PresentationData, signal: Signal<PresentationData, NoError>)? = nil, coordinate: CLLocationCoordinate2D, interaction: LocationPickerInteraction, story: Bool) {
         self.context = context
-        self.isSecretChat = isSecretChat
         self.interaction = interaction
         self.story = story
                 
@@ -185,7 +183,7 @@ final class LocationSearchContainerNode: ASDisplayNode {
         }
         |> mapToSignal { query -> Signal<([LocationSearchEntry], String)?, NoError> in
             if let query, !query.isEmpty {
-                let foundVenues = nearbyVenues(context: context, story: story, isSecretChat: isSecretChat, userRequested: true, latitude: coordinate.latitude, longitude: coordinate.longitude, query: query)
+                let foundVenues = nearbyVenues(context: context, story: story, latitude: coordinate.latitude, longitude: coordinate.longitude, query: query)
                 |> afterCompleted {
                     isSearching.set(false)
                 }
@@ -217,9 +215,16 @@ final class LocationSearchContainerNode: ASDisplayNode {
                     }
                     
                     if let contextResult {
-                        for venue in contextResult.venues {
-                            entries.append(LocationSearchEntry(index: index, theme: themeAndStrings.0, location: venue.media, queryId: contextResult.queryId, resultId: venue.resultId, title: nil, distance: 0.0, story: story))
-                            index += 1
+                        for result in contextResult.results {
+                            switch result.message {
+                                case let .mapLocation(mapMedia, _):
+                                    if let _ = mapMedia.venue {
+                                        entries.append(LocationSearchEntry(index: index, theme: themeAndStrings.0, location: mapMedia, queryId: contextResult.queryId, resultId: result.id, title: nil, distance: 0.0, story: story))
+                                        index += 1
+                                    }
+                                default:
+                                    break
+                            }
                         }
                     }
                     return (entries, query)

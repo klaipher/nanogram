@@ -336,12 +336,6 @@ final class LocationPickerControllerNode: ViewControllerTracingNode, CLLocationM
     private var presentationData: PresentationData
     private let presentationDataPromise: Promise<PresentationData>
     private let mode: LocationPickerMode
-    private var isSecretChat: Bool {
-        if case let .share(peer, _, _) = self.mode, let peer, peer.id.namespace == Namespaces.Peer.SecretChat {
-            return true
-        }
-        return false
-    }
     private let source: LocationPickerController.Source
     private let interaction: LocationPickerInteraction
     private let locationManager: LocationManager
@@ -533,12 +527,6 @@ final class LocationPickerControllerNode: ViewControllerTracingNode, CLLocationM
         // Read once: the subscription below lives as long as this node, and capturing `controller`
         // there would make the controller (which owns this node) never deallocate.
         let initialLocation = controller.initialLocation
-        let isSecretChat: Bool
-        if case let .share(peer, _, _) = mode, let peer, peer.id.namespace == Namespaces.Peer.SecretChat {
-            isSecretChat = true
-        } else {
-            isSecretChat = false
-        }
         let venuesLocation: Signal<CLLocation?, NoError>
         if let initialLocation {
             venuesLocation = .single(CLLocation(coordinate: initialLocation, altitude: 0.0, horizontalAccuracy: 1.0, verticalAccuracy: 1.0, timestamp: Date()))
@@ -551,7 +539,7 @@ final class LocationPickerControllerNode: ViewControllerTracingNode, CLLocationM
             venuesLocation
             |> mapToSignal { location -> Signal<([(TelegramMediaMap, String)], Int64)?, NoError> in
                 if let location = location, location.horizontalAccuracy > 0 {
-                    return combineLatest(nearbyVenues(context: context, story: source == .story, isSecretChat: isSecretChat, userRequested: false, latitude: location.coordinate.latitude, longitude: location.coordinate.longitude), personalVenues)
+                    return combineLatest(nearbyVenues(context: context, story: source == .story, latitude: location.coordinate.latitude, longitude: location.coordinate.longitude), personalVenues)
                     |> map { contextResult, personalVenues -> ([(TelegramMediaMap, String)], Int64)? in
                         var resultVenues: [(TelegramMediaMap, String)] = []
                         if let personalVenues = personalVenues {
@@ -563,8 +551,15 @@ final class LocationPickerControllerNode: ViewControllerTracingNode, CLLocationM
                             }
                         }
                         if let contextResult {
-                            for venue in contextResult.venues {
-                                resultVenues.append((venue.media, venue.resultId))
+                            for result in contextResult.results {
+                                switch result.message {
+                                    case let .mapLocation(mapMedia, _):
+                                        if let _ = mapMedia.venue {
+                                            resultVenues.append((mapMedia, result.id))
+                                        }
+                                    default:
+                                        break
+                                }
                             }
                             return (resultVenues, contextResult.queryId)
                         } else {
@@ -587,12 +582,19 @@ final class LocationPickerControllerNode: ViewControllerTracingNode, CLLocationM
                 if let coordinate = coordinate {
                     return (.single(nil)
                     |> then(
-                        nearbyVenues(context: context, story: source == .story, isSecretChat: isSecretChat, userRequested: true, latitude: coordinate.latitude, longitude: coordinate.longitude)
+                        nearbyVenues(context: context, story: source == .story, latitude: coordinate.latitude, longitude: coordinate.longitude)
                         |> map { contextResult -> ([(TelegramMediaMap, String)], Int64, CLLocation)? in
                             if let contextResult {
                                 var resultVenues: [(TelegramMediaMap, String)] = []
-                                for venue in contextResult.venues {
-                                    resultVenues.append((venue.media, venue.resultId))
+                                for result in contextResult.results {
+                                    switch result.message {
+                                        case let .mapLocation(mapMedia, _):
+                                            if let _ = mapMedia.venue {
+                                                resultVenues.append((mapMedia, result.id))
+                                            }
+                                        default:
+                                            break
+                                    }
                                 }
                                 return (resultVenues, contextResult.queryId, CLLocation(latitude: coordinate.latitude, longitude: coordinate.longitude))
                             } else {
@@ -1141,7 +1143,7 @@ final class LocationPickerControllerNode: ViewControllerTracingNode, CLLocationM
             return .complete()
         }
                 
-        let searchContainerNode = LocationSearchContainerNode(context: self.context, updatedPresentationData: self.controller?.updatedPresentationData, coordinate: coordinate, interaction: self.interaction, story: self.source == .story, isSecretChat: self.isSecretChat)
+        let searchContainerNode = LocationSearchContainerNode(context: self.context, updatedPresentationData: self.controller?.updatedPresentationData, coordinate: coordinate, interaction: self.interaction, story: self.source == .story)
         self.insertSubnode(searchContainerNode, belowSubnode: navigationBar)
         self.searchContainerNode = searchContainerNode
                 

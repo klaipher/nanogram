@@ -32,7 +32,6 @@ swift_library(
         "//submodules/ItemListVenueItem:ItemListVenueItem",
         "//submodules/MergeLists:MergeLists",
         "//submodules/TelegramUIPreferences:TelegramUIPreferences",
-        "//submodules/HardenedMedia",
         "//submodules/SearchBarNode:SearchBarNode",
         "//submodules/PresentationDataUtils:PresentationDataUtils",
         "//submodules/DeviceAccess:DeviceAccess",
