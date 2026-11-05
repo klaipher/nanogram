@@ -2648,6 +2648,21 @@ public final class ReactionContextNode: ASDisplayNode, ASScrollViewDelegate {
         }
     }
     
+    // A window move during the flight (the keyboard-window overlay is re-parented) would explain a flight that never shows.
+    override public func didEnterHierarchy() {
+        super.didEnterHierarchy()
+        if self.isAnimatingOutToReaction {
+            Logger.shared.shortLog("ReactionKB", "picker entered window during flight")
+        }
+    }
+    
+    override public func didExitHierarchy() {
+        super.didExitHierarchy()
+        if self.isAnimatingOutToReaction {
+            Logger.shared.shortLog("ReactionKB", "picker left window during flight")
+        }
+    }
+    
     public func animateOutToReaction(value: MessageReaction.Reaction, targetView: UIView, hideNode: Bool, forceSwitchToInlineImmediately: Bool = false, animateTargetContainer: UIView?, addStandaloneReactionAnimation: ((StandaloneReactionAnimation) -> Void)?, onHit: (() -> Void)?, completion: @escaping () -> Void) {
         self.isAnimatingOutToReaction = true
         
@@ -2674,6 +2689,7 @@ public final class ReactionContextNode: ASDisplayNode, ASScrollViewDelegate {
         }
         
         guard let itemNode = foundItemNode else {
+            Logger.shared.shortLog("ReactionKB", "flight start item=missing")
             completion()
             return
         }
@@ -2727,6 +2743,11 @@ public final class ReactionContextNode: ASDisplayNode, ASScrollViewDelegate {
         }
         
         let expandedFrame = CGRect(origin: CGPoint(x: selfTargetRect.midX - expandedSize.width / 2.0, y: selfTargetRect.midY - expandedSize.height / 2.0), size: expandedSize)
+        
+        // Tells a flight inside the keyboard window (other scene than the message) from a normal one.
+        let flightStartTime = CFAbsoluteTimeGetCurrent()
+        var flightEnded = false
+        Logger.shared.shortLog("ReactionKB", "flight start src=\(NSCoder.string(for: selfSourceRect.integral)) dst=\(NSCoder.string(for: expandedFrame.integral)) bounds=\(NSCoder.string(for: self.bounds.size)) dstOnScreen=\(self.bounds.intersects(expandedFrame)) sameWin=\(self.view.window != nil && self.view.window === targetView.window)")
         
         var effectFrame: CGRect
         let incomingMessage: Bool = expandedFrame.midX < self.bounds.width / 2.0
@@ -2798,12 +2819,12 @@ public final class ReactionContextNode: ASDisplayNode, ASScrollViewDelegate {
             }
             
             let effectLog = ReactionAnimationFirstFrameLog(kind: .effect, reaction: "\(itemNode.item.reaction.rawValue)", fileIsLocal: effectAvailability == .local, requestTime: CFAbsoluteTimeGetCurrent())
-            Logger.shared.log("ReactionContextNode", effectLog.requestedLine)
+            Logger.shared.shortLog("ReactionContextNode", effectLog.requestedLine)
             var didLogEffectStart = false
             additionalAnimationNodeValue.started = {
                 if !didLogEffectStart {
                     didLogEffectStart = true
-                    Logger.shared.log("ReactionContextNode", effectLog.firstFrameLine(now: CFAbsoluteTimeGetCurrent()))
+                    Logger.shared.shortLog("ReactionContextNode", effectLog.firstFrameLine(now: CFAbsoluteTimeGetCurrent()))
                 }
             }
 
@@ -2904,7 +2925,9 @@ public final class ReactionContextNode: ASDisplayNode, ASScrollViewDelegate {
             additionalAnimationCompleted = true
         }
         
-        transition.animatePositionWithKeyframes(node: itemNode, keyframes: generateParabollicMotionKeyframes(from: selfSourceRect.center, to: expandedFrame.center, elevation: 30.0), completion: { [weak self, weak itemNode, weak targetView, weak animateTargetContainer] _ in
+        transition.animatePositionWithKeyframes(node: itemNode, keyframes: generateParabollicMotionKeyframes(from: selfSourceRect.center, to: expandedFrame.center, elevation: 30.0), completion: { [weak self, weak itemNode, weak targetView, weak animateTargetContainer] finished in
+            flightEnded = true
+            Logger.shared.shortLog("ReactionKB", "flight end finished=\(finished ? 1 : 0) ms=\(Int((CFAbsoluteTimeGetCurrent() - flightStartTime) * 1000.0))")
             let afterCompletion: () -> Void = {
                 guard let strongSelf = self else {
                     return
@@ -2983,6 +3006,7 @@ public final class ReactionContextNode: ASDisplayNode, ASScrollViewDelegate {
             }
             
             DispatchQueue.main.asyncAfter(deadline: DispatchTime.now() + min(5.0, maxDuration * UIView.animationDurationFactor()), execute: { [self] in
+                Logger.shared.shortLog("ReactionKB", "timer reveal flightEnded=\(flightEnded ? 1 : 0)")
                 if self.didTriggerExpandedReaction {
                     self.animateFromItemNodeToReaction(itemNode: itemNode, targetView: targetView, hideNode: hideNode, completion: { [weak self] in
                         if let strongSelf = self, strongSelf.didTriggerExpandedReaction, let addStandaloneReactionAnimation = addStandaloneReactionAnimation {
@@ -3370,6 +3394,7 @@ public final class ReactionContextNode: ASDisplayNode, ASScrollViewDelegate {
     }
     
     public func cancelReactionAnimation() {
+        Logger.shared.shortLog("ReactionKB", "cancel during flight=\(self.isAnimatingOutToReaction ? 1 : 0)")
         self.standaloneReactionAnimation?.cancel()
         
         if let animationTargetView = self.animationTargetView, self.animationHideNode {

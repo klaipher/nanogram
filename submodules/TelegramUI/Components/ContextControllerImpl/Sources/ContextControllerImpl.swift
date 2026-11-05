@@ -2148,6 +2148,7 @@ public final class ContextControllerImpl: ViewController, ContextController, Sta
         // keyboard finally closed the stale deferred dismissal re-animated a dead controller: a ghost
         // actions-only menu. Resign the first responder and animate right away instead.
         self.dismissToReactionOnInputClose = nil
+        Logger.shared.shortLog("ReactionKB", "dismissWithReaction wasDismissed=\(self.wasDismissed ? 1 : 0) frInTree=\(viewTreeContainsFirstResponder(view: self.view) ? 1 : 0) win=\(self.view.window.map { String(describing: type(of: $0)) } ?? "none")")
         if viewTreeContainsFirstResponder(view: self.view) {
             self.view.endEditing(true)
         }

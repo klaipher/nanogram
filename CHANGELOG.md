@@ -4,7 +4,7 @@ Newest first. Internal notes for each TestFlight build; testers see the What to 
 
 ## Unreleased
 
-(none)
+- Reactions chosen in the context menu with the keyboard open now play their effect (build 202611051247 showed the badge only). The menu is then hosted in the keyboard window, another scene than the message, where the picker's flight and effect never showed and the message's reaction stayed hidden until the 2 s timer. When the menu and the message are in different windows the menu just fades and the chat plays the effect itself through `StandaloneReactionAnimation` (as for a double tap): `contextReactionLandingRoute` (ReactionSelectionNode), `ChatContextReactionStandaloneLanding.swift`, both `awaitingAppliedReaction` closures in `ChatControllerOpenMessageContextMenu.swift`. Keyboard closed: the flight is unchanged. The saved-messages tag tooltip is skipped on this route. Cause (a) cross-window geometry vs (b) overlay not drawing is still open; `ReactionKB` lines in the short log (menu callback, `dismissWithReaction`, flight start/end, timer reveal, cancel, picker window moves) tell them apart. Test: `ContextReactionLandingRouteTests`.
 
 ## 13.1.2 (202611051247) — 2026-11-05 — fb1b8101
 
