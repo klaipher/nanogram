@@ -371,17 +371,29 @@ extension CoreListChatHistoryBackend {
     // therefore ticks through momentum as well as dragging, so "no content movement for 0.3s" is the
     // same predicate ListViewImpl's timer expresses with the drag and deceleration terms folded in.
     func noteHeaderFlashingActivity() {
+        let now = CACurrentMediaTime()
+        let wasIdle = self.headerFlashDebounce.note(at: now)
+        if wasIdle || self.headerFlashTimer == nil {
+            self.armHeaderFlashTimer(after: self.headerFlashDebounce.timeout)
+        }
+        self.setHeadersFlashing(true, animated: true)
+    }
+
+    private func armHeaderFlashTimer(after timeout: Double) {
         self.headerFlashTimer?.invalidate()
-        let timer = SwiftSignalKit.Timer(timeout: 0.3, repeat: false, completion: { [weak self] in
+        let timer = SwiftSignalKit.Timer(timeout: timeout, repeat: false, completion: { [weak self] in
             guard let self else {
                 return
             }
             self.headerFlashTimer = nil
+            if let remaining = self.headerFlashDebounce.expire(at: CACurrentMediaTime()) {
+                self.armHeaderFlashTimer(after: remaining)
+                return
+            }
             self.setHeadersFlashing(false, animated: true)
         }, queue: Queue.mainQueue())
         self.headerFlashTimer = timer
         timer.start()
-        self.setHeadersFlashing(true, animated: true)
     }
 
     func setHeadersFlashing(_ flashing: Bool, animated: Bool) {

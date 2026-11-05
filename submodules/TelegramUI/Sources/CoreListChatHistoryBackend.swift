@@ -336,6 +336,7 @@ final class CoreListChatHistoryBackend: ASDisplayNode, ChatHistoryListViewBacken
     // `SwiftSignalKit.Timer` explicitly: `Timer` alone is ambiguous here, since Foundation's is in
     // scope too.
     var headerFlashTimer: SwiftSignalKit.Timer?
+    var headerFlashDebounce = ScrollActivityDebounce(timeout: 0.3)
     var isFlashingHeaders = false
 
     // MARK: - Callbacks the controller installs
@@ -699,6 +700,8 @@ final class CoreListChatHistoryBackend: ASDisplayNode, ChatHistoryListViewBacken
     override init() {
         self.coreList = CoreVirtualListView(forEmbedding: .zero)
         super.init()
+        self.coreList.rebalancePreloadMargin = 480.0
+        self.coreList.maxSpeculativeRowsPerTick = 1
         // Force the ASDisplayNode's view to load eagerly. The composed ChatHistoryListNode wrapper
         // gates its history dequeue on isNodeLoaded, mirroring ListViewImpl's eager view load.
         let _ = self.view
