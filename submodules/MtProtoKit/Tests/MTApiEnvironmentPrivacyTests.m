@@ -37,7 +37,8 @@
 
 - (void)testEnvironmentCarriesNoExactDeviceDetails {
     MTApiEnvironment *environment = [[MTApiEnvironment alloc] init];
-    XCTAssertTrue([@[@"iPhone", @"iPad", @"Mac"] containsObject:environment.deviceModel]);
+    NSArray<NSString *> *knownModels = @[@"iPhone", @"iPad", @"Mac"];
+    XCTAssertTrue([knownModels containsObject:environment.deviceModel]);
     XCTAssertFalse([environment.systemVersion containsString:@"."]);
     XCTAssertFalse([environment.systemLangCode containsString:@"_"]);
     XCTAssertTrue([environment.systemLangCode componentsSeparatedByString:@"-"].count <= 2);
