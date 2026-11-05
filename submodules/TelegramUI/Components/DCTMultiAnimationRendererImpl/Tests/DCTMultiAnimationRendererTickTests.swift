@@ -230,7 +230,7 @@ final class DCTMultiAnimationRendererTickTests: XCTestCase {
     func testPowerStateChangesMoveTheTickRate() throws {
         try XCTSkipUnless(self.highRateAvailable, "needs a device with the full rate available")
         let ticker = ManualTicker()
-        let (renderer, _, disposables) = self.play(frameDurations: [1.0 / 24.0], ticker: ticker)
+        let (renderer, targets, disposables) = self.play(frameDurations: [1.0 / 24.0], ticker: ticker)
         XCTAssertEqual(renderer.currentTickIntervalForTesting ?? 0.0, 1.0 / 60.0, accuracy: 0.0001)
         renderer.updatePowerState(isLowPowerMode: true, thermalState: .nominal)
         XCTAssertEqual(renderer.currentTickIntervalForTesting ?? 0.0, 2.0 / 60.0, accuracy: 0.0001)
@@ -243,19 +243,21 @@ final class DCTMultiAnimationRendererTickTests: XCTestCase {
         for disposable in disposables {
             disposable.dispose()
         }
+        withExtendedLifetime(targets) {}
     }
 
     // An unchanged power state must not restart the tick.
     func testUnchangedPowerStateKeepsTheTick() throws {
         try XCTSkipUnless(self.highRateAvailable, "needs a device with the full rate available")
         let ticker = ManualTicker()
-        let (renderer, _, disposables) = self.play(frameDurations: [1.0 / 24.0], ticker: ticker)
+        let (renderer, targets, disposables) = self.play(frameDurations: [1.0 / 24.0], ticker: ticker)
         let starts = ticker.startCount
         renderer.updatePowerState(isLowPowerMode: false, thermalState: .nominal)
         XCTAssertEqual(ticker.startCount, starts)
         for disposable in disposables {
             disposable.dispose()
         }
+        withExtendedLifetime(targets) {}
     }
 
     func testDurationClassification() {
