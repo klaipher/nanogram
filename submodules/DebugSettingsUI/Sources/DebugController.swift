@@ -982,7 +982,7 @@ enum DebugControllerEntry: ItemListNodeEntry {
                 }).start()
             })
         case let .callsLivestreamHardwareDecoding(value):
-            return ItemListSwitchItem(presentationData: presentationData, systemStyle: .glass, title: "Livestream hardware decoding", text: "Decodes live stream video with the video chip instead of the CPU. Falls back to the CPU on any error. Default: off. Applies to the next stream.", value: value, maximumNumberOfLines: 0, sectionId: self.section, style: .blocks, updated: { value in
+            return ItemListSwitchItem(presentationData: presentationData, systemStyle: .glass, title: "Livestream hardware decoding", text: "Decodes live stream video with the video chip instead of the CPU. Falls back to the CPU on any error. Default: on. Applies to the next stream.", value: value, maximumNumberOfLines: 0, sectionId: self.section, style: .blocks, updated: { value in
                 let _ = updateExperimentalUISettingsInteractively(accountManager: arguments.sharedContext.accountManager, { settings in
                     var settings = settings
                     settings.callsLivestreamHardwareDecoding = value
@@ -990,7 +990,7 @@ enum DebugControllerEntry: ItemListNodeEntry {
                 }).start()
             })
         case let .callsNativeCapturePath(value):
-            return ItemListSwitchItem(presentationData: presentationData, systemStyle: .glass, title: "Native camera frames", text: "Camera frames go to the encoder without a CPU colour conversion. Default: off. Applies to the next camera start.", value: value, maximumNumberOfLines: 0, sectionId: self.section, style: .blocks, updated: { value in
+            return ItemListSwitchItem(presentationData: presentationData, systemStyle: .glass, title: "Native camera frames", text: "Camera frames go to the encoder without a CPU colour conversion. Default: on. Applies to the next camera start.", value: value, maximumNumberOfLines: 0, sectionId: self.section, style: .blocks, updated: { value in
                 let _ = updateExperimentalUISettingsInteractively(accountManager: arguments.sharedContext.accountManager, { settings in
                     var settings = settings
                     settings.callsNativeCapturePath = value
@@ -998,7 +998,7 @@ enum DebugControllerEntry: ItemListNodeEntry {
                 }).start()
             })
         case let .callsSystemNoiseSuppression(value):
-            return ItemListSwitchItem(presentationData: presentationData, systemStyle: .glass, title: "System noise suppression", text: "Lets the system voice-processing unit do all noise suppression and drops the extra software one. Default: off. Applies to the next call.", value: value, maximumNumberOfLines: 0, sectionId: self.section, style: .blocks, updated: { value in
+            return ItemListSwitchItem(presentationData: presentationData, systemStyle: .glass, title: "System noise suppression", text: "Lets the system voice-processing unit do all noise suppression and drops the extra software one. Default: on. Applies to the next call.", value: value, maximumNumberOfLines: 0, sectionId: self.section, style: .blocks, updated: { value in
                 let _ = updateExperimentalUISettingsInteractively(accountManager: arguments.sharedContext.accountManager, { settings in
                     var settings = settings
                     settings.callsSystemNoiseSuppression = value
@@ -1018,7 +1018,7 @@ enum DebugControllerEntry: ItemListNodeEntry {
                 let presentationData = arguments.sharedContext.currentPresentationData.with { $0 }
                 let actionSheet = ActionSheetController(presentationData: presentationData)
                 var items: [ActionSheetItem] = [
-                    ActionSheetTextItem(title: "Which noise suppressors run in group calls. Default: both. Applies to the next group call.")
+                    ActionSheetTextItem(title: "Which noise suppressors run in group calls. Default: RNNoise only. Applies to the next group call.")
                 ]
                 for mode in [Int32(0), Int32(1), Int32(2)] {
                     items.append(ActionSheetButtonItem(title: debugGroupNoiseModeTitle(mode), color: .accent, action: { [weak actionSheet] in
@@ -1041,7 +1041,7 @@ enum DebugControllerEntry: ItemListNodeEntry {
                 arguments.presentController(actionSheet, nil)
             })
         case let .callsThermalVideoLadder(value):
-            return ItemListSwitchItem(presentationData: presentationData, systemStyle: .glass, title: "Thermal video limits", text: "When the phone is hot, the outgoing camera video gets smaller and slower. Default: off. Applies at once.", value: value, maximumNumberOfLines: 0, sectionId: self.section, style: .blocks, updated: { value in
+            return ItemListSwitchItem(presentationData: presentationData, systemStyle: .glass, title: "Thermal video limits", text: "When the phone is hot, the outgoing camera video gets smaller and slower. Default: on. Applies at once.", value: value, maximumNumberOfLines: 0, sectionId: self.section, style: .blocks, updated: { value in
                 let _ = updateExperimentalUISettingsInteractively(accountManager: arguments.sharedContext.accountManager, { settings in
                     var settings = settings
                     settings.callsThermalVideoLadder = value

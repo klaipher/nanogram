@@ -71,14 +71,14 @@ public struct ExperimentalUISettings: Codable, Equatable {
     /// Debug Settings ▸ "iPad: Display Link 120 Hz Cap" (audit B-1, off by default): an iPad's shared display link
     /// follows the rate its animations ask for instead of always 120 Hz; toggling it starts a frame-pacing log.
     public var tabletDisplayLinkFrameRateCap: Bool
-    /// Debug Settings ▸ "Calls: livestream hardware decoding". Off by default. Live stream video is decoded
+    /// Debug Settings ▸ "Calls: livestream hardware decoding". On by default (owner decision, 2026-11). Live stream video is decoded
     /// with VideoToolbox instead of FFmpeg's software decoders (at most 2 sessions, per-stream fallback to
     /// software on any error). Local only: nothing is negotiated or sent. Read when a call starts.
     public var callsLivestreamHardwareDecoding: Bool
-    /// Debug Settings ▸ "Calls: native camera frames". Off by default. Camera frames reach the encoder as
+    /// Debug Settings ▸ "Calls: native camera frames". On by default (owner decision, 2026-11). Camera frames reach the encoder as
     /// NV12 pixel buffers instead of being converted to I420 on the CPU first. Local only.
     public var callsNativeCapturePath: Bool
-    /// Debug Settings ▸ "Calls: system noise suppression". Off by default. On iOS the call's microphone
+    /// Debug Settings ▸ "Calls: system noise suppression". On by default (owner decision, 2026-11). On iOS the call's microphone
     /// signal comes from the system voice-processing unit, which already suppresses noise; with this on,
     /// WebRTC's own noise suppression and high-pass filter are dropped from the outgoing audio instead of
     /// running a second time. Kept whenever the system unit is not in use. Local only.
@@ -86,10 +86,10 @@ public struct ExperimentalUISettings: Codable, Equatable {
     /// Debug Settings ▸ "Calls: advanced ducking". Off by default (no device evidence yet). iOS 17+: the voice-processing unit lowers
     /// other audio only while someone speaks and by the smallest amount. Local audio-unit setting.
     public var callsAdvancedDucking: Bool
-    /// Debug Settings ▸ "Streams & Calls" ▸ "Group noise suppression". 0 (default) runs WebRTC's suppressor and
-    /// RNNoise, 1 only WebRTC's, 2 only RNNoise. Local only; applies from the next group call.
+    /// Debug Settings ▸ "Streams & Calls" ▸ "Group noise suppression". 0 runs WebRTC's suppressor and
+    /// RNNoise, 1 only WebRTC's, 2 (default, owner decision 2026-11) only RNNoise. Local only; applies from the next group call.
     public var callsGroupNoiseMode: Int32
-    /// Debug Settings ▸ "Calls: thermal video ladder". Off by default. While the device is hot or in Low Power
+    /// Debug Settings ▸ "Calls: thermal video ladder". On by default (owner decision, 2026-11). While the device is hot or in Low Power
     /// Mode the camera picture handed to the encoder gets smaller and slower (a local output-format request;
     /// nothing is negotiated). Applies from the next level change.
     public var callsThermalVideoLadder: Bool
@@ -154,12 +154,12 @@ public struct ExperimentalUISettings: Codable, Equatable {
         videoMessageCloseFocus: Bool = true,
         videoMessageCameraMatrix: RoundVideoCameraMatrix = .bt709,
         tabletDisplayLinkFrameRateCap: Bool = false,
-        callsLivestreamHardwareDecoding: Bool = false,
-        callsNativeCapturePath: Bool = false,
-        callsSystemNoiseSuppression: Bool = false,
+        callsLivestreamHardwareDecoding: Bool = true,
+        callsNativeCapturePath: Bool = true,
+        callsSystemNoiseSuppression: Bool = true,
         callsAdvancedDucking: Bool = false,
-        callsGroupNoiseMode: Int32 = 0,
-        callsThermalVideoLadder: Bool = false
+        callsGroupNoiseMode: Int32 = 2,
+        callsThermalVideoLadder: Bool = true
     ) {
         self.keepChatNavigationStack = keepChatNavigationStack
         self.skipReadHistory = skipReadHistory
@@ -241,16 +241,20 @@ public struct ExperimentalUISettings: Codable, Equatable {
         // A new key: blobs saved before it existed (and unknown values) get the BT.709 default.
         self.videoMessageCameraMatrix = (try container.decodeIfPresent(String.self, forKey: "videoMessageCameraMatrix")).flatMap(RoundVideoCameraMatrix.init(rawValue:)) ?? .bt709
         self.tabletDisplayLinkFrameRateCap = try container.decodeIfPresent(Bool.self, forKey: "tabletDisplayLinkFrameRateCap") ?? false
-        self.callsLivestreamHardwareDecoding = try container.decodeIfPresent(Bool.self, forKey: "callsLivestreamHardwareDecoding") ?? false
-        self.callsNativeCapturePath = try container.decodeIfPresent(Bool.self, forKey: "callsNativeCapturePath") ?? false
-        self.callsSystemNoiseSuppression = try container.decodeIfPresent(Bool.self, forKey: "callsSystemNoiseSuppression") ?? false
+        // These four defaulted to off and became on (owner decision, 2026-11). The whole struct is saved on every change, so
+        // an install that ever opened Debug Settings holds an explicit `false` under the old keys that the user never
+        // chose. They are read from new keys (as with advanced ducking): only a choice made after the change counts.
+        self.callsLivestreamHardwareDecoding = try container.decodeIfPresent(Bool.self, forKey: "callsLivestreamHardwareDecodingDefaultOn") ?? true
+        self.callsNativeCapturePath = try container.decodeIfPresent(Bool.self, forKey: "callsNativeCapturePathDefaultOn") ?? true
+        self.callsSystemNoiseSuppression = try container.decodeIfPresent(Bool.self, forKey: "callsSystemNoiseSuppressionDefaultOn") ?? true
         // A new key: it defaulted to on at first, so every blob saved under "callsAdvancedDucking" holds `true`
         // whether or not the user touched the switch. That value is ignored; the switch is off until A/B-tested.
         self.callsAdvancedDucking = try container.decodeIfPresent(Bool.self, forKey: "callsAdvancedDuckingOptIn") ?? false
         // The keys of the removed switches (low-latency encoder, narrowband processing, keep audio mode, background video drop)
         // are simply no longer read: those behaviours are always on.
-        self.callsGroupNoiseMode = try container.decodeIfPresent(Int32.self, forKey: "callsGroupNoiseMode") ?? 0
-        self.callsThermalVideoLadder = try container.decodeIfPresent(Bool.self, forKey: "callsThermalVideoLadder") ?? false
+        // Same for the group noise mode (it was 0, "both", unless chosen) and the thermal ladder.
+        self.callsGroupNoiseMode = try container.decodeIfPresent(Int32.self, forKey: "callsGroupNoiseModeRNNoiseDefault") ?? 2
+        self.callsThermalVideoLadder = try container.decodeIfPresent(Bool.self, forKey: "callsThermalVideoLadderDefaultOn") ?? true
 
         if savedDefaultsRevision < 1 {
             // Saved before the GPU renderers became the default: both were the old CPU defaults.
@@ -293,12 +297,12 @@ public struct ExperimentalUISettings: Codable, Equatable {
         try container.encode(self.videoMessageCloseFocus, forKey: "videoMessageCloseFocusOn")
         try container.encode(self.videoMessageCameraMatrix.rawValue, forKey: "videoMessageCameraMatrix")
         try container.encode(self.tabletDisplayLinkFrameRateCap, forKey: "tabletDisplayLinkFrameRateCap")
-        try container.encode(self.callsLivestreamHardwareDecoding, forKey: "callsLivestreamHardwareDecoding")
-        try container.encode(self.callsNativeCapturePath, forKey: "callsNativeCapturePath")
-        try container.encode(self.callsSystemNoiseSuppression, forKey: "callsSystemNoiseSuppression")
+        try container.encode(self.callsLivestreamHardwareDecoding, forKey: "callsLivestreamHardwareDecodingDefaultOn")
+        try container.encode(self.callsNativeCapturePath, forKey: "callsNativeCapturePathDefaultOn")
+        try container.encode(self.callsSystemNoiseSuppression, forKey: "callsSystemNoiseSuppressionDefaultOn")
         try container.encode(self.callsAdvancedDucking, forKey: "callsAdvancedDuckingOptIn")
-        try container.encode(self.callsGroupNoiseMode, forKey: "callsGroupNoiseMode")
-        try container.encode(self.callsThermalVideoLadder, forKey: "callsThermalVideoLadder")
+        try container.encode(self.callsGroupNoiseMode, forKey: "callsGroupNoiseModeRNNoiseDefault")
+        try container.encode(self.callsThermalVideoLadder, forKey: "callsThermalVideoLadderDefaultOn")
         try container.encode(ExperimentalUISettings.nanogramDefaultsRevision, forKey: "nanogramDefaultsRevision")
     }
 }

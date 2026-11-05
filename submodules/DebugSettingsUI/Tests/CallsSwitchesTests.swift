@@ -5,8 +5,8 @@ import TelegramUIPreferences
 @testable import DebugSettingsUI
 
 /// The local-only call and live stream switches. All of them live in the one Debug Settings section
-/// "Streams & Calls", all start off (group noise suppression starts as "both"), and none changes what is
-/// negotiated or sent. Bug fixes and low-risk wins have no switch any more, and the experiments the owner removed
+/// "Streams & Calls", and none changes what is negotiated or sent. Four start on and group noise suppression
+/// starts as "RNNoise only" (owner decision, 2026-11); advanced ducking stays off. Bug fixes and low-risk wins have no switch any more, and the experiments the owner removed
 /// (thread priorities, keeping the videoChat audio session mode) are gone with their old behaviour: their old keys
 /// are just ignored.
 final class CallsSwitchesTests: XCTestCase {
@@ -34,20 +34,61 @@ final class CallsSwitchesTests: XCTestCase {
         return debugControllerEntries(environment: environment, theme: defaultPresentationTheme, loggingSettings: LoggingSettings.defaultSettings, experimentalSettings: .defaultSettings, networkSettings: nil, networkEngineSettings: NetworkEngineSettings.defaultSettings)
     }
 
-    func testSwitchesAreOffByDefault() {
+    func testDefaultsAreTheOwnersChoice() {
         let settings = ExperimentalUISettings.defaultSettings
-        XCTAssertFalse(settings.callsLivestreamHardwareDecoding)
-        XCTAssertFalse(settings.callsNativeCapturePath)
-        XCTAssertFalse(settings.callsSystemNoiseSuppression)
+        XCTAssertTrue(settings.callsLivestreamHardwareDecoding)
+        XCTAssertTrue(settings.callsNativeCapturePath)
+        XCTAssertTrue(settings.callsSystemNoiseSuppression)
+        XCTAssertTrue(settings.callsThermalVideoLadder)
+        XCTAssertEqual(settings.callsGroupNoiseMode, 2)
         XCTAssertFalse(settings.callsAdvancedDucking)
-        XCTAssertFalse(settings.callsThermalVideoLadder)
-        XCTAssertEqual(settings.callsGroupNoiseMode, 0)
     }
 
     func testSettingsFromBeforeTheSwitchesDecodeAsTheDefaults() throws {
         let settings = try EngineDecoder.decode(ExperimentalUISettings.self, from: try EngineEncoder.encode(EmptyBlob()))
-        XCTAssertFalse(settings.callsLivestreamHardwareDecoding)
-        XCTAssertEqual(settings.callsGroupNoiseMode, 0)
+        XCTAssertTrue(settings.callsLivestreamHardwareDecoding)
+        XCTAssertTrue(settings.callsNativeCapturePath)
+        XCTAssertTrue(settings.callsSystemNoiseSuppression)
+        XCTAssertTrue(settings.callsThermalVideoLadder)
+        XCTAssertEqual(settings.callsGroupNoiseMode, 2)
+        XCTAssertFalse(settings.callsAdvancedDucking)
+    }
+
+    /// The whole struct is saved on every change, so an install that ever touched Debug Settings holds `false` (and
+    /// group noise mode 0) under the old keys without having chosen them. Those values must not win over the new defaults.
+    func testExplicitOldValuesFromBeforeTheDefaultsChangedAreIgnored() throws {
+        struct OldOffBlob: Encodable {
+            func encode(to encoder: Encoder) throws {
+                var container = encoder.container(keyedBy: StringCodingKey.self)
+                try container.encode(false, forKey: "callsLivestreamHardwareDecoding")
+                try container.encode(false, forKey: "callsNativeCapturePath")
+                try container.encode(false, forKey: "callsSystemNoiseSuppression")
+                try container.encode(false, forKey: "callsThermalVideoLadder")
+                try container.encode(0 as Int32, forKey: "callsGroupNoiseMode")
+            }
+        }
+        let settings = try EngineDecoder.decode(ExperimentalUISettings.self, from: try EngineEncoder.encode(OldOffBlob()))
+        XCTAssertTrue(settings.callsLivestreamHardwareDecoding)
+        XCTAssertTrue(settings.callsNativeCapturePath)
+        XCTAssertTrue(settings.callsSystemNoiseSuppression)
+        XCTAssertTrue(settings.callsThermalVideoLadder)
+        XCTAssertEqual(settings.callsGroupNoiseMode, 2)
+    }
+
+    /// A choice made after the change is stored under the new keys and survives a save and a load, off included.
+    func testAChoiceMadeAfterTheChangeIsKept() throws {
+        var settings = ExperimentalUISettings.defaultSettings
+        settings.callsLivestreamHardwareDecoding = false
+        settings.callsNativeCapturePath = false
+        settings.callsSystemNoiseSuppression = false
+        settings.callsThermalVideoLadder = false
+        settings.callsGroupNoiseMode = 0
+        let decoded = try EngineDecoder.decode(ExperimentalUISettings.self, from: try EngineEncoder.encode(settings))
+        XCTAssertFalse(decoded.callsLivestreamHardwareDecoding)
+        XCTAssertFalse(decoded.callsNativeCapturePath)
+        XCTAssertFalse(decoded.callsSystemNoiseSuppression)
+        XCTAssertFalse(decoded.callsThermalVideoLadder)
+        XCTAssertEqual(decoded.callsGroupNoiseMode, 0)
     }
 
     /// Advanced ducking first shipped on by default and every settings blob saved since holds `true` under its
@@ -68,28 +109,26 @@ final class CallsSwitchesTests: XCTestCase {
     func testBlobsWithTheKeysOfRemovedSwitchesStillDecode() throws {
         let settings = try EngineDecoder.decode(ExperimentalUISettings.self, from: try EngineEncoder.encode(BlobWithRemovedSwitches()))
         XCTAssertTrue(settings.callsLivestreamHardwareDecoding)
+        XCTAssertEqual(settings.callsGroupNoiseMode, 2)
     }
 
     func testSwitchesRoundTripAndDoNotDisturbEachOther() throws {
         var settings = ExperimentalUISettings.defaultSettings
-        settings.callsLivestreamHardwareDecoding = true
-        settings.callsNativeCapturePath = true
-        settings.callsSystemNoiseSuppression = true
         settings.callsAdvancedDucking = true
-        settings.callsThermalVideoLadder = true
-        settings.callsGroupNoiseMode = 2
+        settings.callsGroupNoiseMode = 1
         let decoded = try EngineDecoder.decode(ExperimentalUISettings.self, from: try EngineEncoder.encode(settings))
+        XCTAssertTrue(decoded.callsAdvancedDucking)
+        XCTAssertEqual(decoded.callsGroupNoiseMode, 1)
         XCTAssertTrue(decoded.callsLivestreamHardwareDecoding)
         XCTAssertTrue(decoded.callsNativeCapturePath)
         XCTAssertTrue(decoded.callsSystemNoiseSuppression)
-        XCTAssertTrue(decoded.callsAdvancedDucking)
         XCTAssertTrue(decoded.callsThermalVideoLadder)
-        XCTAssertEqual(decoded.callsGroupNoiseMode, 2)
         var onlyOne = ExperimentalUISettings.defaultSettings
-        onlyOne.callsGroupNoiseMode = 1
+        onlyOne.callsLivestreamHardwareDecoding = false
         let decodedOne = try EngineDecoder.decode(ExperimentalUISettings.self, from: try EngineEncoder.encode(onlyOne))
         XCTAssertFalse(decodedOne.callsLivestreamHardwareDecoding)
-        XCTAssertEqual(decodedOne.callsGroupNoiseMode, 1)
+        XCTAssertTrue(decodedOne.callsNativeCapturePath)
+        XCTAssertEqual(decodedOne.callsGroupNoiseMode, 2)
     }
 
     /// Every call and stream switch sits in its own section, behind its header, in this order, and none is left in
