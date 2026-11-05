@@ -751,10 +751,6 @@ public final class ChatHistoryListNodeImpl: ASDisplayNode, ChatHistoryNode, Chat
     public private(set) var loadStateUpdated: ((ChatHistoryNodeLoadState, Bool) -> Void)?
     private var additionalLoadStateUpdated: [(ChatHistoryNodeLoadState, Bool) -> Void] = []
     
-    private var messageReadMetricsTracker: MessageReadMetricsTracker?
-    private var messageReadMetricsTrackerDisposable: Disposable?
-    private var messageReadMetricsTrackerPendingMetrics: [TelegramMessageReadMetric] = []
-    private var messageReadMetricsTrackerPendingMetricTimer: Foundation.Timer?
     
     public private(set) var hasAnyMessages: Bool = false
     public var hasAnyMessagesUpdated: ((Bool) -> Void)?
@@ -1236,8 +1232,6 @@ public final class ChatHistoryListNodeImpl: ASDisplayNode, ChatHistoryNode, Chat
                     strongSelf.updateMaxVisibleReadIncomingMessageIndex(maxMessage)
                 }
                 
-                strongSelf.messageReadMetricsTracker?.reportUserActivity()
-                strongSelf.updateMessageReadTracker()
             }
         }
         
@@ -1379,16 +1373,6 @@ public final class ChatHistoryListNodeImpl: ASDisplayNode, ChatHistoryNode, Chat
         self.genericReactionEffectDisposable?.dispose()
         self.adMessagesDisposable?.dispose()
         self.presentationDataDisposable?.dispose()
-        self.messageReadMetricsTrackerPendingMetricTimer?.invalidate()
-        self.messageReadMetricsTrackerDisposable?.dispose()
-        self.messageReadMetricsTracker = nil
-        if !self.messageReadMetricsTrackerPendingMetrics.isEmpty {
-            let metrics = self.messageReadMetricsTrackerPendingMetrics
-            self.messageReadMetricsTrackerPendingMetrics.removeAll()
-            if !metrics.isEmpty, let peerId = self.chatLocation.peerId {
-                let _ = self.context.engine.messages.reportPeerReadMetrics(peerId: peerId, metrics: metrics).startStandalone()
-            }
-        }
     }
     
     public func updateTag(tag: HistoryViewInputTag?) {
@@ -2694,7 +2678,6 @@ public final class ChatHistoryListNodeImpl: ASDisplayNode, ChatHistoryNode, Chat
                     strongSelf.canReadHistoryValue = value
                     strongSelf.controllerInteraction.canReadHistory = value
                     strongSelf.updateReadHistoryActions()
-                    strongSelf.messageReadMetricsTracker?.setIsActive(strongSelf.canReadHistoryValue)
                     // Chat hidden, covered or in background: stop the periodic paid-media refresh; it refreshes again on return.
                     strongSelf.extendedMediaProcessingManager.setPaused(!value)
 
@@ -3733,87 +3716,6 @@ public final class ChatHistoryListNodeImpl: ASDisplayNode, ChatHistoryNode, Chat
             self.isInteractivelyScrollingPromise.set(true)
             self.isInteractivelyScrollingPromise.set(false)
         }
-        
-        self.updateMessageReadTracker()
-    }
-    
-    private func updateMessageReadTracker() {
-        guard let historyView = self.historyView?.originalView else {
-            return
-        }
-        var channelPeer: TelegramChannel?
-        for entry in historyView.additionalData {
-            if case let .peer(_, value) = entry {
-                if let channel = value as? TelegramChannel, case .broadcast = channel.info {
-                    channelPeer = channel
-                }
-            }
-        }
-        guard let channelPeer else {
-            return
-        }
-        
-        let messageReadMetricsTracker: MessageReadMetricsTracker
-        if let current = self.messageReadMetricsTracker {
-            messageReadMetricsTracker = current
-        } else {
-            messageReadMetricsTracker = MessageReadMetricsTracker()
-            self.messageReadMetricsTracker = messageReadMetricsTracker
-            
-            self.messageReadMetricsTrackerDisposable = (messageReadMetricsTracker.completedMetrics |> deliverOnMainQueue).startStrict(next: { [weak self] metric in
-                guard let self else {
-                    return
-                }
-                self.messageReadMetricsTrackerPendingMetrics.append(metric)
-                
-                if self.messageReadMetricsTrackerPendingMetricTimer == nil {
-                    self.messageReadMetricsTrackerPendingMetricTimer = Foundation.Timer.scheduledTimer(withTimeInterval: 1.0, repeats: false, block: { [weak self] timer in
-                        guard let self else {
-                            return
-                        }
-                        if self.messageReadMetricsTrackerPendingMetricTimer === timer {
-                            self.messageReadMetricsTrackerPendingMetricTimer = nil
-                        }
-                        let metrics = self.messageReadMetricsTrackerPendingMetrics
-                        self.messageReadMetricsTrackerPendingMetrics.removeAll()
-                        
-                        if !metrics.isEmpty {
-                            let _ = self.context.engine.messages.reportPeerReadMetrics(peerId: channelPeer.id, metrics: metrics).startStandalone()
-                        }
-                    })
-                }
-            })
-        }
-        
-        messageReadMetricsTracker.setIsActive(self.canReadHistoryValue)
-        
-        var visibleMessages: [MessageReadMetricsTracker.VisibleMessageEntry] = []
-        let viewportMinY = self.insets.top
-        let viewportMaxY = max(1.0, self.listView.visibleSize.height - self.insets.bottom)
-        let viewportHeight = viewportMaxY - viewportMinY
-        self.forEachVisibleMessageItemNode { itemView in
-            guard let item = itemView.item else {
-                return
-            }
-            let messageId = item.message.id
-            if messageId.namespace != Namespaces.Message.Cloud {
-                return
-            }
-            let frame = itemView.frame
-            let visibleStart = max(frame.minY, viewportMinY)
-            let visibleEnd = min(frame.maxY, viewportMaxY)
-            if visibleStart >= visibleEnd {
-                return
-            }
-            visibleMessages.append(MessageReadMetricsTracker.VisibleMessageEntry(
-                messageId: messageId,
-                visibleTopPx: visibleStart - frame.minY,
-                visibleBottomPx: visibleEnd - frame.minY,
-                postHeightPx: frame.height,
-                viewportHeightPx: viewportHeight
-            ))
-        }
-        messageReadMetricsTracker.updateVisibleMessages(visibleMessages)
     }
     
     public func scrollScreenToTop() {
