@@ -64,7 +64,7 @@ marked (check) were not re-verified against the code; correct them on the next c
   Cache walkers (time-based cleanup scan, automatic cache eviction) run at most once a day, not in the first minute
   after launch, with the last run kept in the StorageBox metadata; cache touches `stat` before `utime`;
   `debug_measureTimeToFirstEvent` is DEBUG-only; the media player timer has a tolerance and stops when paused;
-  hardware VP9 sticker counters and session release when hidden.
+  hardware VP9 sticker counters and session release when hidden or once the frame cache is complete.
 - Where: docs/subsystems/media-io.md, docs/subsystems/media-decode-and-voice.md, docs/performance/.
 
 ### Chat features

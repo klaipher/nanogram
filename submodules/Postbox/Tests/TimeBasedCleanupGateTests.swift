@@ -158,6 +158,22 @@ final class TimeBasedCleanupGateTests: XCTestCase {
         withExtendedLifetime(cleanup) {}
     }
 
+    // The default "no size limit" keeps short-lived files as long as the others; the record the scan writes must
+    // still match what the gate compares on the next launch.
+    func testARelaunchWithinADayDoesNotScanAgainWithoutASizeLimit() {
+        let first = self.makeCleanup()
+        first.setMaxStoreTimes(general: self.limits.general, shortLived: self.limits.shortLived, gigabytesLimit: Int32.max)
+        XCTAssertTrue(self.waitUntil({ self.finishedScanCount() == 1 && self.record() != nil }))
+        withExtendedLifetime(first) {}
+
+        let second = self.makeCleanup()
+        second.setMaxStoreTimes(general: self.limits.general, shortLived: self.limits.shortLived, gigabytesLimit: Int32.max)
+        XCTAssertTrue(self.waitUntil({ self.skippedScanCount() == 1 }))
+        Thread.sleep(forTimeInterval: 1.0)
+        XCTAssertEqual(self.finishedScanCount(), 1)
+        withExtendedLifetime(second) {}
+    }
+
     func testTheScanWaitsForTheFirstMinuteAfterLaunch() {
         let cleanup = self.makeCleanup(processStartTime: Date().timeIntervalSince1970)
         cleanup.setMaxStoreTimes(general: self.limits.general, shortLived: self.limits.shortLived, gigabytesLimit: self.limits.gigabytes)

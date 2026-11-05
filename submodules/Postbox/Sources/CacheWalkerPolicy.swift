@@ -60,6 +60,14 @@ public enum CacheWalkerGate {
         return elapsed >= CacheWalkerGate.minimumInterval
     }
 
+    /// The limits a time-based cleanup scan enforces, as the scan applies them: without a size limit short-lived
+    /// files are kept as long as the others (`TimeBasedCleanupImpl.makeScan`). The gate and the record it is compared
+    /// with both use this, so the same settings always give the same text.
+    public static func timeBasedCleanupFingerprint(general: Int32, shortLived: Int32, gigabytesLimit: Int32) -> String {
+        let effectiveShortLived = gigabytesLimit == Int32.max ? Int32.max : shortLived
+        return "\(general),\(effectiveShortLived),\(gigabytesLimit)"
+    }
+
     /// The delay before a due walker starts: the configured one, and at least until a minute after launch.
     public static func delay(configured: Double, processStartTime: Double = CacheWalkerGate.processStartTime, now: Double = Date().timeIntervalSince1970) -> Double {
         let untilLaunchWindowEnds = processStartTime + CacheWalkerGate.minimumDelayAfterLaunch - now
@@ -73,12 +81,18 @@ public enum CacheWalkerGate {
 /// Decides which cache files need their modification time set to now. A file is touched when it is used so the
 /// size-limit cleanup removes the least recently used first. The first touch of a file after launch used to always
 /// write (the in-memory dedupe starts empty): hundreds of `utime` metadata writes in the seconds a sticker panel
-/// opens. A `stat` is a read, and a file touched in a recent session already has a fresh time.
+/// opens. A `stat` is a read, and a file touched in a recent session already has a fresh enough time.
 public enum CacheTouchPolicy {
-    /// Must stay well below the one-hour store time of short-lived files (see `RecentFileTouches`).
-    public static let skipInterval: Double = 5.0 * 60.0
+    /// Short-lived files (`short-cache`) are removed one hour after their last use (see `RecentFileTouches`), so
+    /// their time may only be minutes stale.
+    public static let shortLivedSkipInterval: Double = 5.0 * 60.0
+    /// Every other cache file is removed a day after its last use at the earliest (the shortest "keep media"
+    /// choice, and the automatic cache eviction reads the same time), and the size limit removes the least
+    /// recently used first. A time up to an hour stale moves either by under 5 %, and an hour covers the usual
+    /// relaunch (the system ends the app in the background and the person opens it again).
+    public static let skipInterval: Double = 60.0 * 60.0
 
-    public static func needsTouch(modificationTime: Double?, now: Double, interval: Double = CacheTouchPolicy.skipInterval) -> Bool {
+    public static func needsTouch(modificationTime: Double?, now: Double, interval: Double) -> Bool {
         guard let modificationTime, modificationTime.isFinite, now.isFinite else {
             return true
         }
@@ -86,8 +100,18 @@ public enum CacheTouchPolicy {
         return age < 0.0 || age >= interval
     }
 
+    /// How stale the time of the file at `path` may be: the short interval inside a short-lived folder.
+    public static func interval(forPath path: String, shortLivedPaths: [String]) -> Double {
+        for directory in shortLivedPaths {
+            if path.hasPrefix(directory.hasSuffix("/") ? directory : directory + "/") {
+                return CacheTouchPolicy.shortLivedSkipInterval
+            }
+        }
+        return CacheTouchPolicy.skipInterval
+    }
+
     /// The subset of `paths` (in order) whose modification time is stale. A path that does not exist is dropped.
-    public static func touchNeeded(paths: [String], now: Double, interval: Double = CacheTouchPolicy.skipInterval) -> [String] {
+    public static func touchNeeded(paths: [String], shortLivedPaths: [String], now: Double) -> [String] {
         var result: [String] = []
         result.reserveCapacity(paths.count)
         for path in paths {
@@ -100,6 +124,7 @@ public enum CacheTouchPolicy {
                 continue
             }
             let modificationTime = Double(value.st_mtimespec.tv_sec) + Double(value.st_mtimespec.tv_nsec) / 1_000_000_000.0
+            let interval = CacheTouchPolicy.interval(forPath: path, shortLivedPaths: shortLivedPaths)
             if CacheTouchPolicy.needsTouch(modificationTime: modificationTime, now: now, interval: interval) {
                 result.append(path)
             }

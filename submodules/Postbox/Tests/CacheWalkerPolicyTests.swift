@@ -71,6 +71,25 @@ final class CacheWalkerPolicyTests: XCTestCase {
         XCTAssertGreaterThan(start, now - 7.0 * self.day)
     }
 
+    // MARK: - Time-based cleanup fingerprint
+
+    func testTheCleanupFingerprintMatchesWhetherTheShortLivedTimeWasNormalisedOrNot() {
+        // Without a size limit the scan treats short-lived files like all others (`makeScan`). The gate and the
+        // record it compares against must agree, or the gate never skips for a person with no size limit.
+        XCTAssertEqual(
+            CacheWalkerGate.timeBasedCleanupFingerprint(general: 7 * 86_400, shortLived: 3_600, gigabytesLimit: Int32.max),
+            CacheWalkerGate.timeBasedCleanupFingerprint(general: 7 * 86_400, shortLived: Int32.max, gigabytesLimit: Int32.max)
+        )
+    }
+
+    func testTheCleanupFingerprintFollowsEveryLimit() {
+        let base = CacheWalkerGate.timeBasedCleanupFingerprint(general: 7 * 86_400, shortLived: 3_600, gigabytesLimit: 5)
+        XCTAssertNotEqual(base, CacheWalkerGate.timeBasedCleanupFingerprint(general: 8 * 86_400, shortLived: 3_600, gigabytesLimit: 5))
+        XCTAssertNotEqual(base, CacheWalkerGate.timeBasedCleanupFingerprint(general: 7 * 86_400, shortLived: 1_800, gigabytesLimit: 5))
+        XCTAssertNotEqual(base, CacheWalkerGate.timeBasedCleanupFingerprint(general: 7 * 86_400, shortLived: 3_600, gigabytesLimit: 6))
+        XCTAssertNotEqual(base, CacheWalkerGate.timeBasedCleanupFingerprint(general: 7 * 86_400, shortLived: 3_600, gigabytesLimit: Int32.max))
+    }
+
     // MARK: - Touch
 
     func testAFileTouchedRecentlyIsNotTouchedAgain() {
@@ -90,9 +109,25 @@ final class CacheWalkerPolicyTests: XCTestCase {
         XCTAssertTrue(CacheTouchPolicy.needsTouch(modificationTime: 1_000.0, now: .nan, interval: 300.0))
     }
 
-    func testTheTouchSkipStaysWellBelowTheShortLivedStoreTime() {
+    func testTheShortLivedTouchSkipStaysWellBelowTheShortLivedStoreTime() {
         // Short-lived files are removed one hour after their last use, so an mtime up to the interval stale is safe.
-        XCTAssertLessThanOrEqual(CacheTouchPolicy.skipInterval, 60.0 * 60.0 / 10.0)
+        XCTAssertLessThanOrEqual(CacheTouchPolicy.shortLivedSkipInterval, 60.0 * 60.0 / 10.0)
+    }
+
+    func testTheGeneralTouchSkipCoversARelaunchAndStaysWellBelowTheShortestKeepTime() {
+        // The first touch after a launch is the burst: a skip that only lasts minutes misses nearly every relaunch.
+        XCTAssertGreaterThanOrEqual(CacheTouchPolicy.skipInterval, 30.0 * 60.0)
+        // The shortest "keep media" choice is one day: an mtime up to the interval stale moves removal by under 5 %.
+        XCTAssertLessThanOrEqual(CacheTouchPolicy.skipInterval, self.day / 20.0)
+    }
+
+    func testShortLivedFilesUseTheShortSkipInterval() {
+        let shortLived = ["/media/short-cache"]
+        XCTAssertEqual(CacheTouchPolicy.interval(forPath: "/media/short-cache/a", shortLivedPaths: shortLived), CacheTouchPolicy.shortLivedSkipInterval)
+        XCTAssertEqual(CacheTouchPolicy.interval(forPath: "/media/cache/a", shortLivedPaths: shortLived), CacheTouchPolicy.skipInterval)
+        XCTAssertEqual(CacheTouchPolicy.interval(forPath: "/media/resource", shortLivedPaths: shortLived), CacheTouchPolicy.skipInterval)
+        // A sibling folder whose name only starts the same is not short-lived.
+        XCTAssertEqual(CacheTouchPolicy.interval(forPath: "/media/short-cache-2/a", shortLivedPaths: shortLived), CacheTouchPolicy.skipInterval)
     }
 
     func testTouchesAreCountedByTheFileSystemNotTheMemory() throws {
@@ -102,8 +137,23 @@ final class CacheWalkerPolicyTests: XCTestCase {
             let _ = try? FileManager.default.removeItem(atPath: path)
         }
         let now = Date().timeIntervalSince1970
-        XCTAssertEqual(CacheTouchPolicy.touchNeeded(paths: [path], now: now), [])
+        XCTAssertEqual(CacheTouchPolicy.touchNeeded(paths: [path], shortLivedPaths: [], now: now), [])
         // A path that no longer exists has nothing to touch.
-        XCTAssertEqual(CacheTouchPolicy.touchNeeded(paths: [path, path + ".missing"], now: now + 3600.0), [path])
+        XCTAssertEqual(CacheTouchPolicy.touchNeeded(paths: [path, path + ".missing"], shortLivedPaths: [], now: now + 2.0 * 3600.0), [path])
+    }
+
+    func testAFileUsedHalfAnHourAgoIsWrittenOnlyWhenShortLived() throws {
+        let directory = NSTemporaryDirectory() + "CacheTouchPolicy-" + UUID().uuidString
+        let shortLivedDirectory = directory + "/short-cache"
+        try FileManager.default.createDirectory(atPath: shortLivedDirectory, withIntermediateDirectories: true)
+        defer {
+            let _ = try? FileManager.default.removeItem(atPath: directory)
+        }
+        let general = directory + "/resource"
+        let shortLived = shortLivedDirectory + "/part"
+        XCTAssertTrue(FileManager.default.createFile(atPath: general, contents: Data([1])))
+        XCTAssertTrue(FileManager.default.createFile(atPath: shortLived, contents: Data([1])))
+        let now = Date().timeIntervalSince1970 + 30.0 * 60.0
+        XCTAssertEqual(CacheTouchPolicy.touchNeeded(paths: [general, shortLived], shortLivedPaths: [shortLivedDirectory], now: now), [shortLived])
     }
 }

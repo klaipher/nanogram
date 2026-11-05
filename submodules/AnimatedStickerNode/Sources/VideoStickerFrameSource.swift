@@ -400,7 +400,9 @@ public final class VideoStickerDirectFrameSource: AnimatedStickerFrameSource {
                     case let .frame(frame):
                         return frame
                     case .endOfStream:
-                        return self.endOfStream(frameIndex: frameIndex)
+                        let frame = self.endOfStream(frameIndex: frameIndex)
+                        self.releaseHardwareDecodingIfCacheIsComplete()
+                        return frame
                     case .failed:
                         self.fallBackToSoftwareDecoding(hardwareStream)
                         return self.takeSoftwareFrame(frameIndex: frameIndex)
@@ -529,6 +531,18 @@ public final class VideoStickerDirectFrameSource: AnimatedStickerFrameSource {
         self.suspendedHardwarePosition = stream.nextFrameIndex
         stream.decoder.invalidate()
         self.hardwareStream = nil
+    }
+
+    // At the end of the first loop the frame cache holds every frame, and all later frames come from it: the
+    // decoder would only keep its sessions from other stickers. If the cache cannot give a frame later, a decoder
+    // is set up again from the first frame, where this one would have restarted.
+    private func releaseHardwareDecodingIfCacheIsComplete() {
+        guard self.cache != nil, self.frameCount > 0, let stream = self.hardwareStream else {
+            return
+        }
+        stream.decoder.invalidate()
+        self.hardwareStream = nil
+        self.suspendedHardwarePosition = 0
     }
 
     private func resumeHardwareDecodingIfSuspended() {
