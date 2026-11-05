@@ -2,6 +2,7 @@ import Foundation
 import UIKit
 import SwiftSignalKit
 import Display
+import CrashReporting
 import AnimationCache
 import MultiAnimationRenderer
 import Accelerate
@@ -1158,6 +1159,8 @@ public final class DCTMultiAnimationRendererImpl: MultiAnimationRenderer {
     private var applicationStateObservers: [NSObjectProtocol] = []
 
     private(set) var isPlaying: Bool = false
+    // Open while any animation plays: the MetricKit report splits its CPU and GPU by this activity.
+    private var playbackActivity: ActivityIntervalCounter.Token?
     private var needsHighTickRate: Bool = false
     private var displayTimerInterval: Double?
 
@@ -1346,6 +1349,7 @@ public final class DCTMultiAnimationRendererImpl: MultiAnimationRenderer {
         }
 
         self.isPlaying = isPlaying && !self.isInBackground
+        self.playbackActivity = MetricActivityIntervals.update(self.playbackActivity, .stickerPlayback, active: self.isPlaying)
         self.needsHighTickRate = needsHighTickRate
         self.updateDisplayTimer()
     }

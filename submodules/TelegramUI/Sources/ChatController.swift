@@ -1,6 +1,7 @@
 import Foundation
 import UIKit
 import Postbox
+import CrashReporting
 import SwiftSignalKit
 import Display
 import AsyncDisplayKit
@@ -399,6 +400,7 @@ public final class ChatControllerImpl: TelegramBaseController, ChatController, G
     var videoRecorderValue: VideoMessageCameraScreen?
     var videoRecorder = Promise<VideoMessageCameraScreen?>()
     var videoRecorderDisposable: Disposable?
+    private var videoRecorderActivity: ActivityIntervalCounter.Token?
     
     var recorderDataDisposable = MetaDisposable()
     
@@ -6614,6 +6616,7 @@ public final class ChatControllerImpl: TelegramBaseController, ChatController, G
                 if strongSelf.videoRecorderValue !== videoRecorder {
                     let previousVideoRecorderValue = strongSelf.videoRecorderValue
                     strongSelf.videoRecorderValue = videoRecorder
+                    strongSelf.videoRecorderActivity = MetricActivityIntervals.update(strongSelf.videoRecorderActivity, .roundVideoRecording, active: videoRecorder != nil)
                     
                     strongSelf.updateChatPresentationInterfaceState(animated: true, interactive: true, {
                         $0.updatedInputTextPanelState { panelState in

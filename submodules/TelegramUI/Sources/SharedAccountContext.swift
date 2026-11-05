@@ -1,5 +1,6 @@
 import Foundation
 import HardenedMedia
+import CrashReporting
 import UIKit
 import AsyncDisplayKit
 import TelegramCore
@@ -1079,8 +1080,11 @@ public final class SharedAccountContextImpl: SharedAccountContext {
         }
         
         let immediateHasOngoingCallValue = self.immediateHasOngoingCallValue
+        let callActivity = Atomic<ActivityIntervalCounter.Token?>(value: nil)
         self.hasOngoingCallDisposable = self.hasOngoingCall.get().start(next: { value in
             let _ = immediateHasOngoingCallValue.swap(value)
+            // The MetricKit report splits its cost by activity: a call is one.
+            let _ = callActivity.modify { MetricActivityIntervals.update($0, .call, active: value) }
         })
         
         self.enablePreloads.set(combineLatest(
