@@ -477,6 +477,13 @@ profile_aps_environment() {
 # APNs hands the app a sandbox token that Telegram's production pushes never reach: no messages,
 # no calls. Apple issues development profiles with development push only, so the mismatch cannot
 # be signed away here; TestFlight builds are re-signed for distribution (production) and match.
+# profile_has_enhanced_security <profile> — the App ID has the Enhanced Security capability and the
+# profile grants it (device_signing.py profiles asks for it). Signing hardened-process entitlements
+# the profile does not grant fails the build, so tg device only adds them when this holds.
+profile_has_enhanced_security() {
+  [ "$(security cms -D -i "$1" 2>/dev/null | plutil -extract Entitlements.com\\.apple\\.security\\.hardened-process raw -o - - 2>/dev/null)" = "true" ]
+}
+
 warn_device_push_environment() {
   local aps
   aps="$(profile_aps_environment "$1")"
@@ -513,6 +520,13 @@ cmd_device() {
     warn "using free Xcode signing: no push notifications, no app extensions"
     signing_args=(--xcodeManagedCodesigning)
     bazel_args+=("--//Telegram:disableExtensions")
+  fi
+  # Enhanced Security (soft mode) for device installs whose profiles grant it. TestFlight builds
+  # (--app-store) stay without it until the distribution profiles are checked for the capability.
+  if [ $app_store -eq 0 ] && [ -f "$signing/profiles/Telegram.mobileprovision" ] \
+    && profile_has_enhanced_security "$signing/profiles/Telegram.mobileprovision"; then
+    bazel_args+=("--//Telegram:enhancedSecurity")
+    say "Enhanced Security (soft mode) on: the profiles grant it"
   fi
   local make_args=("--bazelArguments=${bazel_args[*]}")
   local watch_args=()
