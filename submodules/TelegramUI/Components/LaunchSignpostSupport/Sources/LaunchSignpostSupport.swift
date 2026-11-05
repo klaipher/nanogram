@@ -3,6 +3,11 @@ import UIKit
 import SwiftSignalKit
 
 public enum LaunchSignpostPolicy {
+    // How long after `didFinishLaunching` the app state is checked. With scenes the state can read background until
+    // the scene connects and enters the foreground, so it is not read in `didFinishLaunching`; a user launch is
+    // active long before this, a background launch is not (it has about 30 s before it is suspended).
+    public static let backgroundLaunchCheckDelay: Double = 5.0
+
     // A launch in the background (a push, a VoIP push, a background fetch) never shows a first frame. The MetricKit
     // extended launch measurement finishes when all its tasks finish (Apple, MXMetricManager.extendLaunchMeasurement),
     // so every phase is ended at once and the measurement does not stay open until the user opens the app.

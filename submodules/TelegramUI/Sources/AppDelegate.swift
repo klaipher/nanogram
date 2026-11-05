@@ -64,9 +64,10 @@ import DiskWriteAccounting
 import AlertComponent
 #endif
 
+import LaunchSignpostSupport
+
 #if canImport(AppCenter)
 import AppCenter
-import LaunchSignpostSupport
 import AppCenterCrashes
 #endif
 
@@ -368,9 +369,14 @@ private func extractAccountManagerState(records: AccountRecordsView<TelegramAcco
         precondition(!testIsLaunched)
         testIsLaunched = true
         LaunchTrace.begin()
-        // A launch in the background never shows a first frame: close the launch measurement now.
-        for phase in LaunchSignpostPolicy.phasesToEnd(atLaunchInBackground: application.applicationState == .background) {
-            LaunchTrace.end(phase)
+        // A launch in the background (a push, a VoIP push, a background fetch) never shows a first frame, so the
+        // launch measurement is closed when the app is still in the background a few seconds later. Not decided
+        // here: this app uses scenes, and before its scene connects the app state can read background on a normal
+        // launch too.
+        DispatchQueue.main.asyncAfter(deadline: .now() + LaunchSignpostPolicy.backgroundLaunchCheckDelay) {
+            for phase in LaunchSignpostPolicy.phasesToEnd(atLaunchInBackground: application.applicationState == .background) {
+                LaunchTrace.end(phase)
+            }
         }
         CrashReportCollector.shared.start()
         
