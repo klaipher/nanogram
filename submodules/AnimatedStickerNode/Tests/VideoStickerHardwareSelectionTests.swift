@@ -296,6 +296,86 @@ final class VideoStickerHardwareSelectionTests: XCTestCase {
         XCTAssertEqual(firstDifference(actual, expected), "none", "frames after the fallback differ from libvpx frames")
     }
 
+    // A sticker that is hidden gives its hardware sessions back (they are a small, shared resource) and
+    // continues from the same frame when it is shown again.
+    func testSuspendedHardwareDecodingReleasesTheDecoderAndResumesAtTheSameFrame() throws {
+        let path = try XCTUnwrap(fixturePath("sticker_vp9", "webm"))
+        let expected = self.libvpxFrames(path: path, loops: 2)
+
+        let sticker = try XCTUnwrap(WebMStickerDemuxer.parse(try Data(contentsOf: URL(fileURLWithPath: path))))
+        var decoders: [LibvpxBackedDecoder] = []
+        makeVideoStickerHardwareStream = { path in
+            let instance = LibvpxBackedDecoder(path: path, failAt: nil)
+            decoders.append(instance)
+            return VideoStickerHardwareStream(frames: sticker.frames, decoder: instance)
+        }
+        let actual: [[Data]] = self.onQueue {
+            guard let source = VideoStickerDirectFrameSource(queue: self.queue, path: path, width: 160, height: 160, cachePathPrefix: nil, unpremultiplyAlpha: false) else {
+                return []
+            }
+            var first: [Data] = []
+            for _ in 0 ..< 10 {
+                if let frame = source.takeFrame(draw: true) {
+                    first.append(frame.data)
+                }
+            }
+            source.suspendHardwareDecoding()
+            XCTAssertFalse(source.usesHardwareDecoderForTesting)
+            XCTAssertEqual(decoders.count, 1)
+            XCTAssertEqual(decoders.first?.invalidated, true)
+            // Suspending again, or without a hardware decoder, does nothing.
+            source.suspendHardwareDecoding()
+
+            var rest: [Data] = []
+            while rest.count < 1000, let frame = source.takeFrame(draw: true) {
+                rest.append(frame.data)
+            }
+            XCTAssertTrue(source.usesHardwareDecoderForTesting)
+            XCTAssertEqual(decoders.count, 2)
+            let second = self.readLoops(source, loops: 1)
+            return [first + rest] + second
+        }
+        XCTAssertEqual(actual.map(\.count), expected.map(\.count))
+        XCTAssertEqual(firstDifference(actual, expected), "none", "frames after resuming differ from libvpx frames")
+    }
+
+    // When no hardware slot is free on resume, libvpx continues from the same frame.
+    func testResumingWithoutAFreeHardwareSlotContinuesWithLibvpx() throws {
+        let path = try XCTUnwrap(fixturePath("sticker_vp9", "webm"))
+        let expected = self.libvpxFrames(path: path, loops: 2)
+
+        let sticker = try XCTUnwrap(WebMStickerDemuxer.parse(try Data(contentsOf: URL(fileURLWithPath: path))))
+        var created = 0
+        makeVideoStickerHardwareStream = { path in
+            created += 1
+            if created > 1 {
+                return nil
+            }
+            return VideoStickerHardwareStream(frames: sticker.frames, decoder: LibvpxBackedDecoder(path: path, failAt: nil))
+        }
+        let actual: [[Data]] = self.onQueue {
+            guard let source = VideoStickerDirectFrameSource(queue: self.queue, path: path, width: 160, height: 160, cachePathPrefix: nil, unpremultiplyAlpha: false) else {
+                return []
+            }
+            var first: [Data] = []
+            for _ in 0 ..< 10 {
+                if let frame = source.takeFrame(draw: true) {
+                    first.append(frame.data)
+                }
+            }
+            source.suspendHardwareDecoding()
+            var rest: [Data] = []
+            while rest.count < 1000, let frame = source.takeFrame(draw: true) {
+                rest.append(frame.data)
+            }
+            XCTAssertFalse(source.usesHardwareDecoderForTesting)
+            let second = self.readLoops(source, loops: 1)
+            return [first + rest] + second
+        }
+        XCTAssertEqual(actual.map(\.count), expected.map(\.count))
+        XCTAssertEqual(firstDifference(actual, expected), "none", "frames after resuming without hardware differ from libvpx frames")
+    }
+
     // A file the WebM reader rejects stays on libvpx.
     func testUnparsableFileStaysOnLibvpx() throws {
         let path = NSTemporaryDirectory() + "/not-webm-\(UUID().uuidString).webm"

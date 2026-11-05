@@ -393,18 +393,21 @@ public final class VideoStickerDirectFrameSource: AnimatedStickerFrameSource {
                 return AnimatedStickerFrame(data: frameData, type: .argb, width: self.width, height: self.height, bytesPerRow: self.bytesPerRow, index: frameIndex, isLastFrame: frameIndex == self.frameCount - 1, totalFrames: self.frameCount, multiplyAlpha: true)
             } else if useCache, let cache = self.cache, let yuvData = cache.readUncompressedYuvaFrame(index: frameIndex) {
                 return AnimatedStickerFrame(data: yuvData, type: .yuva, width: self.width, height: self.height, bytesPerRow: self.width * 2, index: frameIndex, isLastFrame: frameIndex == self.frameCount - 1, totalFrames: self.frameCount)
-            } else if let hardwareStream = self.hardwareStream {
-                switch self.takeHardwareFrame(hardwareStream, frameIndex: frameIndex) {
-                case let .frame(frame):
-                    return frame
-                case .endOfStream:
-                    return self.endOfStream(frameIndex: frameIndex)
-                case .failed:
-                    self.fallBackToSoftwareDecoding(hardwareStream)
+            } else {
+                self.resumeHardwareDecodingIfSuspended()
+                if let hardwareStream = self.hardwareStream {
+                    switch self.takeHardwareFrame(hardwareStream, frameIndex: frameIndex) {
+                    case let .frame(frame):
+                        return frame
+                    case .endOfStream:
+                        return self.endOfStream(frameIndex: frameIndex)
+                    case .failed:
+                        self.fallBackToSoftwareDecoding(hardwareStream)
+                        return self.takeSoftwareFrame(frameIndex: frameIndex)
+                    }
+                } else {
                     return self.takeSoftwareFrame(frameIndex: frameIndex)
                 }
-            } else {
-                return self.takeSoftwareFrame(frameIndex: frameIndex)
             }
         } else {
             return nil
@@ -513,12 +516,55 @@ public final class VideoStickerDirectFrameSource: AnimatedStickerFrameSource {
         return .frame(result)
     }
 
+    // The frame the hardware decoder had reached when `suspendHardwareDecoding` released it.
+    private var suspendedHardwarePosition: Int?
+
+    // Gives the hardware decoder sessions back while the sticker is not shown: they are a small, shared resource
+    // (a sticker with alpha takes two of eight), and a hidden sticker that keeps them leaves another one on libvpx.
+    // The next frame that is taken sets a decoder up again at the same frame. Call it on the frame source's queue.
+    func suspendHardwareDecoding() {
+        guard let stream = self.hardwareStream else {
+            return
+        }
+        self.suspendedHardwarePosition = stream.nextFrameIndex
+        stream.decoder.invalidate()
+        self.hardwareStream = nil
+    }
+
+    private func resumeHardwareDecodingIfSuspended() {
+        guard let position = self.suspendedHardwarePosition else {
+            return
+        }
+        self.suspendedHardwarePosition = nil
+        // A new decoder can only start from the first frame (a key frame): the frames before the position are
+        // decoded and dropped. At the end of the stream the next frame starts over anyway.
+        guard let stream = makeVideoStickerHardwareStream(self.path) else {
+            self.continueWithSoftwareDecoding(from: position)
+            return
+        }
+        if position < stream.frames.count {
+            for index in 0 ..< position {
+                if stream.decoder.decode(stream.frames[index]) == nil {
+                    stream.decoder.invalidate()
+                    self.continueWithSoftwareDecoding(from: position)
+                    return
+                }
+            }
+        }
+        stream.nextFrameIndex = position
+        self.hardwareStream = stream
+    }
+
     // Continues with libvpx from the frame the hardware decoder could not decode.
     private func fallBackToSoftwareDecoding(_ stream: VideoStickerHardwareStream) {
         let position = stream.nextFrameIndex
         stream.decoder.invalidate()
         self.hardwareStream = nil
         Logger.shared.log("VideoSticker", "Hardware VP9 decoding stopped at frame \(position), continuing with libvpx")
+        self.continueWithSoftwareDecoding(from: position)
+    }
+
+    private func continueWithSoftwareDecoding(from position: Int) {
         guard let source = self.rewoundSource() else {
             return
         }
