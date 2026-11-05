@@ -756,64 +756,26 @@ UIImage * _Nullable decompressImage(NSData * _Nonnull sourceData) {
         return nil;
     }
 
-    size_t sourceBytesPerRow = ((size_t)3 * (size_t)width + 31) & ~(size_t)0x1F;
     size_t targetBytesPerRow = ((size_t)4 * (size_t)width + 31) & ~(size_t)0x1F;
 
-    unsigned char *buffer = (uint8_t *)malloc(sourceBytesPerRow * (size_t)height);
-    if (buffer == NULL) {
+    // One buffer, decoded straight to the layout the image is drawn from (B, G, R, then 0xff): no RGB buffer and no
+    // conversion or permute passes.
+    unsigned char *targetBuffer = (uint8_t *)malloc(targetBytesPerRow * (size_t)height);
+    if (targetBuffer == NULL) {
         tjDestroy(_jpegDecompressor);
         return nil;
     }
 
-    if (tjDecompress2(_jpegDecompressor, _compressedImage, jpegSize, buffer, width, (int)sourceBytesPerRow, height, TJPF_RGB, TJFLAG_FASTDCT | TJFLAG_FASTUPSAMPLE) != 0 && tjGetErrorCode(_jpegDecompressor) != TJERR_WARNING) {
+    if (tjDecompress2(_jpegDecompressor, _compressedImage, jpegSize, targetBuffer, width, (int)targetBytesPerRow, height, TJPF_BGRA, TJFLAG_FASTDCT | TJFLAG_FASTUPSAMPLE) != 0 && tjGetErrorCode(_jpegDecompressor) != TJERR_WARNING) {
         // A fatal error (an unsupported colour space such as CMYK, a damaged header): the buffer holds nothing decoded.
         tjDestroy(_jpegDecompressor);
-        free(buffer);
+        free(targetBuffer);
         return nil;
     }
 
     tjDestroy(_jpegDecompressor);
 
-    vImage_Buffer source;
-    source.width = width;
-    source.height = height;
-    source.rowBytes = sourceBytesPerRow;
-    source.data = buffer;
-
-    vImage_Buffer target;
-    target.width = width;
-    target.height = height;
-    target.rowBytes = targetBytesPerRow;
-
-    unsigned char *targetBuffer = (uint8_t *)malloc(targetBytesPerRow * (size_t)height);
-    if (targetBuffer == NULL) {
-        free(buffer);
-        return nil;
-    }
-    target.data = targetBuffer;
-
-    vImageConvert_RGB888toARGB8888(&source, nil, 0xff, &target, false, kvImageDoNotTile);
-
-    free(buffer);
-
-    vImage_Buffer permuteTarget;
-    permuteTarget.width = width;
-    permuteTarget.height = height;
-    permuteTarget.rowBytes = targetBytesPerRow;
-
-    unsigned char *permuteTargetBuffer = (uint8_t *)malloc(targetBytesPerRow * (size_t)height);
-    if (permuteTargetBuffer == NULL) {
-        free(targetBuffer);
-        return nil;
-    }
-    permuteTarget.data = permuteTargetBuffer;
-
-    const uint8_t permuteMap[4] = {3,2,1,0};
-    vImagePermuteChannels_ARGB8888(&target, &permuteTarget, permuteMap, kvImageDoNotTile);
-
-    free(targetBuffer);
-
-    NSData *resultData = [[NSData alloc] initWithBytesNoCopy:permuteTargetBuffer length:targetBytesPerRow * height deallocator:^(void * _Nonnull bytes, __unused NSUInteger length) {
+    NSData *resultData = [[NSData alloc] initWithBytesNoCopy:targetBuffer length:targetBytesPerRow * height deallocator:^(void * _Nonnull bytes, __unused NSUInteger length) {
         free(bytes);
     }];
 
