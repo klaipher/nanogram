@@ -79,6 +79,81 @@ def wants_enhanced_security(bundle_id, app_bundle_id):
     return any(bundle_id == app_bundle_id + suffix for suffix in ENHANCED_SECURITY_SUFFIXES)
 
 
+HARDENED_PROCESS_KEY = 'com.apple.security.hardened-process'
+ENHANCED_SECURITY_REQUIRED = {
+    HARDENED_PROCESS_KEY: True,
+    'com.apple.security.hardened-process.enhanced-security-version-string': '1',
+    'com.apple.security.hardened-process.checked-allocations': True,
+    'com.apple.security.hardened-process.checked-allocations.soft-mode': True,
+}
+
+
+def enhanced_security_problems(label, signed, profile=None):
+    """What is missing for one bundle: its signed entitlements, and (when given) what its profile grants."""
+    problems = []
+    for key, value in ENHANCED_SECURITY_REQUIRED.items():
+        if signed.get(key) != value:
+            problems.append('{}: signed without {} = {}'.format(label, key, value))
+    if profile is not None and profile.get(HARDENED_PROCESS_KEY) is not True:
+        problems.append('{}: its provisioning profile does not grant {}'.format(label, HARDENED_PROCESS_KEY))
+    return problems
+
+
+def codesign_entitlements(bundle):
+    result = subprocess.run(['codesign', '-d', '--entitlements', ':-', bundle], capture_output=True)
+    if result.returncode != 0 or not result.stdout.strip():
+        return {}
+    try:
+        return plistlib.loads(result.stdout)
+    except Exception:
+        return {}
+
+
+def embedded_profile_entitlements(bundle):
+    path = os.path.join(bundle, 'embedded.mobileprovision')
+    if not os.path.exists(path):
+        return None
+    return read_profile(path).get('Entitlements', {})
+
+
+def app_enhanced_security_problems(app, check_profiles, entitlements_of=codesign_entitlements,
+                                   profile_of=embedded_profile_entitlements):
+    """Problems of the three hardened bundles (app, NotificationService, Share) inside an .app."""
+    with open(os.path.join(app, 'Info.plist'), 'rb') as f:
+        app_id = plistlib.load(f)['CFBundleIdentifier']
+    found = {app_id: app}
+    for appex in sorted(glob.glob(os.path.join(app, 'PlugIns', '*.appex'))):
+        with open(os.path.join(appex, 'Info.plist'), 'rb') as f:
+            found[plistlib.load(f)['CFBundleIdentifier']] = appex
+    problems = []
+    for suffix in ENHANCED_SECURITY_SUFFIXES:
+        bundle_id = app_id + suffix
+        if bundle_id not in found:
+            problems.append('{}: the bundle is not in the app'.format(bundle_id))
+            continue
+        profile = None
+        if check_profiles:
+            profile = profile_of(found[bundle_id])
+            if profile is None:
+                problems.append('{}: no embedded provisioning profile to check'.format(bundle_id))
+        problems += enhanced_security_problems(bundle_id, entitlements_of(found[bundle_id]), profile)
+    return problems
+
+
+def require_enhanced_security(app, check_profiles, stage, entitlements_of=codesign_entitlements,
+                              profile_of=embedded_profile_entitlements):
+    problems = app_enhanced_security_problems(app, check_profiles, entitlements_of, profile_of)
+    if not problems:
+        print('Enhanced Security (soft mode) present on the app, NotificationService and Share ({}).'.format(stage), flush=True)
+        return
+    sys.exit('Enhanced Security is missing {}:\n  {}\n'
+             'Nothing was uploaded. The three App IDs (app, .NotificationService, .Share) need the Enhanced Security '
+             'capability in the developer portal and the profiles regenerated '
+             '(tools/dev/device_signing.py profiles, then let Xcode create the distribution profiles). '
+             'To ship without it on purpose: TG_TF_ENHANCED_SECURITY=0 tools/dev/tg testflight ...'.format(
+                 stage, '\n  '.join(problems)))
+
+
 def entitlements_plist(groups, push, communication=False, enhanced_security=False):
     entries = ['<key>com.apple.security.application-groups</key><array><string>{}</string></array>'.format(g) for g in groups]
     if communication:
@@ -302,6 +377,8 @@ def cmd_testflight(args):
     app = os.path.join(apps_dir, 'Telegram.app')
     subprocess.run(['ditto', os.path.join(unpacked, 'Payload', 'Telegram.app'), app], check=True)
     adhoc_sign_unsigned_watch_code(app)
+    if args.enhanced_security == 'require':
+        require_enhanced_security(app, False, 'in the built app, before export')
     for dsym in glob.glob(os.path.join(os.path.dirname(os.path.realpath(args.ipa)), '*.dSYM')):
         subprocess.run(['ditto', dsym, os.path.join(archive, 'dSYMs', os.path.basename(dsym))], check=True)
     with open(os.path.join(app, 'Info.plist'), 'rb') as f:
@@ -327,6 +404,10 @@ def cmd_testflight(args):
     # With an API key xcodebuild can sign but its upload is refused ("Cannot verify client's JWT headers"),
     # so it only exports and altool uploads the signed package with the same key.
     xcodebuild_uploads = not args.export_only and key is None
+    if xcodebuild_uploads and args.enhanced_security == 'require':
+        sys.exit('The Enhanced Security check must run between export and upload, which needs the App Store Connect '
+                 'API key (asc/asc.json); without one xcodebuild uploads by itself. Add the key, use --export-only, '
+                 'or pass --enhanced-security off.')
     options = os.path.join(work, 'ExportOptions.plist')
     with open(options, 'wb') as f:
         plistlib.dump({
@@ -347,6 +428,12 @@ def cmd_testflight(args):
     result = subprocess.run(command)
     if result.returncode != 0:
         sys.exit('Export failed; logs are in ' + work)
+    if args.enhanced_security == 'require':
+        exported = exported_ipa(os.path.join(work, 'out'))
+        check_dir = os.path.join(work, 'exported')
+        subprocess.run(['ditto', '-x', '-k', exported, check_dir], check=True)
+        require_enhanced_security(os.path.join(check_dir, 'Payload', 'Telegram.app'), True,
+                                  'in the exported App Store build')
     if not args.export_only and not xcodebuild_uploads:
         env = dict(os.environ, API_PRIVATE_KEYS_DIR=ASC_DIR)
         result = subprocess.run(['xcrun', 'altool', '--upload-app', '-f', exported_ipa(os.path.join(work, 'out')),
@@ -376,6 +463,9 @@ def main():
     p = sub.add_parser('testflight')
     p.add_argument('ipa', nargs='?', default='bazel-bin/Telegram/Telegram.ipa')
     p.add_argument('--export-only', action='store_true', help='sign for the App Store but do not upload')
+    p.add_argument('--enhanced-security', choices=['require', 'off'], default='require',
+                   help='require (default): fail unless the app, NotificationService and Share keep the hardened-process '
+                        'entitlements and their distribution profiles grant them')
     p.set_defaults(func=cmd_testflight)
     args = parser.parse_args()
     args.func(args)

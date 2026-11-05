@@ -25,7 +25,7 @@ marked (check) were not re-verified against the code; correct them on the next c
 - Sync: none; tests in `tools/dev/lint/tests`, `tools/dev/tests`.
 
 ### Security hardening
-- What: minimal entitlements per extension, optional Enhanced Security entitlements (off), hardened C-family flags,
+- What: minimal entitlements per extension, optional Enhanced Security entitlements (on for TestFlight builds since the three App IDs have the capability; verified before each upload), hardened C-family flags,
   Lockdown Mode policy (`submodules/HardenedMedia`), code-block highlighter recursion bound (`third-party/libprisma`),
   external-link login-part check (`UrlWhitelist`), WebRTC/tg_owt CVE fixes.
 - Why: owner's security review (2026-11-04); remote DoS and key-handling findings.

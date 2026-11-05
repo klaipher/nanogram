@@ -521,12 +521,28 @@ cmd_device() {
     signing_args=(--xcodeManagedCodesigning)
     bazel_args+=("--//Telegram:disableExtensions")
   fi
-  # Enhanced Security (soft mode) for device installs whose profiles grant it. TestFlight builds
-  # (--app-store) stay without it until the distribution profiles are checked for the capability.
-  if [ $app_store -eq 0 ] && [ -f "$signing/profiles/Telegram.mobileprovision" ] \
-    && profile_has_enhanced_security "$signing/profiles/Telegram.mobileprovision"; then
+  # Enhanced Security (soft mode) when the profiles of the app, NotificationService and Share grant it.
+  # A TestFlight build (--app-store) is signed with the development profiles first and re-signed for
+  # distribution by device_signing.py testflight, which keeps the entitlements and fails before the
+  # upload if the distribution profiles do not grant them. TG_TF_ENHANCED_SECURITY=0 ships without.
+  local es_missing=""
+  if [ -f "$signing/profiles/Telegram.mobileprovision" ]; then
+    local es_name
+    for es_name in Telegram NotificationService Share; do
+      profile_has_enhanced_security "$signing/profiles/$es_name.mobileprovision" || es_missing="$es_missing $es_name"
+    done
+  else
+    es_missing=" Telegram"
+  fi
+  if [ $app_store -eq 1 ] && [ "${TG_TF_ENHANCED_SECURITY:-1}" = "0" ]; then
+    warn "Enhanced Security is OFF for this TestFlight build (TG_TF_ENHANCED_SECURITY=0)"
+  elif [ -z "$es_missing" ]; then
     bazel_args+=("--//Telegram:enhancedSecurity")
     say "Enhanced Security (soft mode) on: the profiles grant it"
+  elif [ $app_store -eq 1 ]; then
+    die "TestFlight builds ship with Enhanced Security, but the profiles of$es_missing do not grant it. Enable the capability on the App IDs, regenerate (python3 tools/dev/device_signing.py profiles), or TG_TF_ENHANCED_SECURITY=0 to ship without."
+  else
+    warn "Enhanced Security stays off: the profiles of$es_missing do not grant it"
   fi
   local make_args=("--bazelArguments=${bazel_args[*]}")
   local watch_args=()
@@ -692,6 +708,29 @@ archive_dsyms() {
   prune_dsym_archive "$version"
 }
 
+# record_build_info <dir> <build> — what the TestFlight changelog needs next time (git log <previous
+# build's commit>..<this one>): the build number, commit, branch and dirty/pushed state go next to its dSYMs.
+# Warns about a dirty tree, an unpushed commit and unreleased CHANGELOG.md entries (this build's
+# entry is then still missing); none of these stops the upload.
+record_build_info() {
+  local dir="$1" build="$2" commit branch dirty="no" pushed="yes" unreleased
+  commit="$(git -C "$ROOT" rev-parse HEAD 2>/dev/null)" || commit="unknown"
+  branch="$(git -C "$ROOT" rev-parse --abbrev-ref HEAD 2>/dev/null)" || branch="unknown"
+  [ -z "$(git -C "$ROOT" status --porcelain --untracked-files=no 2>/dev/null)" ] || dirty="yes"
+  git -C "$ROOT" branch -r --contains "$commit" 2>/dev/null | grep -q . || pushed="no"
+  {
+    echo "build $build"
+    echo "commit $commit"
+    echo "branch $branch"
+    echo "dirty $dirty"
+    echo "pushed $pushed"
+  } > "$dir/BUILD-INFO.txt"
+  [ "$dirty" = "no" ] || warn "the working tree has uncommitted changes: build $build is not exactly commit ${commit:0:8}"
+  [ "$pushed" = "yes" ] || warn "commit ${commit:0:8} is not on any remote branch: the changelog for the next build cannot start from it"
+  unreleased="$(awk '/^## Unreleased/ { on = 1; next } /^## / { on = 0 } on && NF' "$ROOT/CHANGELOG.md" 2>/dev/null | head -1)"
+  [ -z "$unreleased" ] || warn "CHANGELOG.md still has Unreleased entries: add this build's entry (build $build, commit ${commit:0:8})"
+}
+
 # tg testflight --notes <file> [--export-only] — release build for the App Store with a new build
 # number, uploaded to TestFlight through the Apple ID signed in to Xcode (see device_signing.py
 # testflight). The build's dSYMs are kept in $DSYM_ARCHIVE/<build number>/ before the upload.
@@ -701,6 +740,10 @@ archive_dsyms() {
 # "UPLOADED; notes not set; run: <command>" and exits 3: the build is uploaded, run the command.
 # If App Store Connect rejects the build while processing it, tg prints "build rejected by Apple;
 # upload a new build" and exits 4.
+# The build carries Enhanced Security (soft mode) on the app, NotificationService and Share: the
+# development profiles must grant it (else tg stops before building), and device_signing.py checks
+# the exported App Store build and its distribution profiles before the upload, which therefore
+# needs the App Store Connect API key (asc/asc.json). TG_TF_ENHANCED_SECURITY=0 ships without it.
 cmd_testflight() {
   local notes="" export_only=0 upload_args=()
   while [ $# -gt 0 ]; do
@@ -721,6 +764,9 @@ cmd_testflight() {
 
   # Every upload needs a higher build number than the last one.
   export TG_BUILD_NUMBER="${TG_BUILD_NUMBER:-$(date +%Y%m%d%H%M)}"
+  if [ "${TG_TF_ENHANCED_SECURITY:-1}" = "0" ]; then
+    upload_args+=(--enhanced-security off)
+  fi
   cmd_device --no-install --watch --app-store
   archive_dsyms "$ROOT/bazel-bin/Telegram/Telegram.ipa"
   local build="${ARCHIVED_DSYM_DIR##*/}"
@@ -729,6 +775,7 @@ cmd_testflight() {
     cp "$notes" "$ARCHIVED_DSYM_DIR/WhatToTest.txt"
     notes="$ARCHIVED_DSYM_DIR/WhatToTest.txt"
   fi
+  record_build_info "$ARCHIVED_DSYM_DIR" "$build"
   python3 "$ROOT/tools/dev/device_signing.py" testflight "$ROOT/bazel-bin/Telegram/Telegram.ipa" \
     ${upload_args[@]+"${upload_args[@]}"}
   [ $export_only -eq 0 ] || return 0

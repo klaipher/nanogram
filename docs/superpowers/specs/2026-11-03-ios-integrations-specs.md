@@ -583,7 +583,7 @@ Status values: `todo`, `in progress`, `done (<commit>)`, `dropped (<reason>)`.
 
 ### I-26. Extensions can still trap when the account-manager databases cannot be opened — `partial (6a3af308, 268c99ed, d5e15bcc)`
 
-- **Status**: `AccountManager.openForExtension` / `setupExtensionAccountManager` return nil instead of trapping (non-owner SqliteValueBox open failures return nil; PostboxTests, TelegramCoreTests); Siri adopts it; message, call and search intents restricted while protected data is unavailable. Left: the Share extension, NotificationService and NotificationContent still call `setupAccountManager` (files owned by the share/notification work); switching them is a one-line change each.
+- **Status**: `AccountManager.openForExtension` / `setupExtensionAccountManager` return nil instead of trapping (non-owner SqliteValueBox open failures return nil; PostboxTests, TelegramCoreTests); Siri adopts it; message, call and search intents restricted while protected data is unavailable. Share (alert on nil) and NotificationService (plain alert delivered at once) now use `setupExtensionAccountManager` too (87ddfeb4, `tools/dev/tests/test_extension_database_open.py`); there is no NotificationContent extension in this tree. Device check (hold a lock on `accounts-metadata/db`) still pending.
 
 - **Severity**: medium (**Corrected**: frequency unproven, but it hits every extension). **Category**: bug.
 - **Evidence**: `submodules/TelegramCore/Sources/AccountManager/AccountManagerImpl.swift` (**Corrected** path):

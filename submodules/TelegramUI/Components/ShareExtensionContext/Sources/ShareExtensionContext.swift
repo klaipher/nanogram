@@ -267,8 +267,18 @@ public class ShareRootControllerImpl {
             }, forceOrientation: { _ in
             })
             
-            let accountManager: AccountManager<TelegramAccountManagerTypes> = setupAccountManager(basePath: rootPath + "/accounts-metadata", isTemporary: true, isReadOnly: false, useCaches: false, removeDatabaseOnError: false)
             initializeAccountManagement()
+            guard let accountManager: AccountManager<TelegramAccountManagerTypes> = setupExtensionAccountManager(basePath: rootPath + "/accounts-metadata", isTemporary: true, isReadOnly: false, useCaches: false) else {
+                // The app holds the databases, or protected data is unavailable: the same alert as without an
+                // account (I-5) instead of a crash. The presentation data cannot be read without them.
+                Logger.shared.log("ShareExtension", "The account databases cannot be opened")
+                let presentationData = defaultPresentationData()
+                let controller = standardTextAlertController(theme: AlertControllerTheme(presentationData: presentationData), title: presentationData.strings.Share_AuthTitle, text: presentationData.strings.Share_AuthDescription, actions: [TextAlertAction(type: .defaultAction, title: presentationData.strings.Common_OK, action: { [weak self] in
+                    self?.getExtensionContext()?.completeRequest(returningItems: nil, completionHandler: nil)
+                })])
+                self.mainWindow?.present(controller, on: .root)
+                return
+            }
             
             do {
                 let semaphore = DispatchSemaphore(value: 0)

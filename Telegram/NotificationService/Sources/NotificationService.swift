@@ -1002,7 +1002,16 @@ private final class NotificationServiceHandler {
 
         let appVersion = (Bundle.main.infoDictionary?["CFBundleShortVersionString"] as? String) ?? "unknown"
 
-        self.accountManager = setupAccountManager(basePath: rootPath + "/accounts-metadata", isTemporary: true, isReadOnly: false, useCaches: false, removeDatabaseOnError: false)
+        guard let accountManager: AccountManager<TelegramAccountManagerTypes> = setupExtensionAccountManager(basePath: rootPath + "/accounts-metadata", isTemporary: true, isReadOnly: false, useCaches: false) else {
+            // The app holds the databases, or protected data is unavailable: hand back the server's own alert now
+            // instead of waiting for the system to expire the request.
+            Logger.shared.log("NotificationService \(episode)", "The account databases cannot be opened")
+            queue.async {
+                completed()
+            }
+            return nil
+        }
+        self.accountManager = accountManager
 
         let deviceSpecificEncryptionParameters = BuildConfig.deviceSpecificEncryptionParameters(rootPath, baseAppBundleId: baseAppBundleId)
         self.encryptionParameters = ValueBoxEncryptionParameters(forceEncryptionIfNoSet: false, key: ValueBoxEncryptionParameters.Key(data: deviceSpecificEncryptionParameters.key)!, salt: ValueBoxEncryptionParameters.Salt(data: deviceSpecificEncryptionParameters.salt)!)
