@@ -43,7 +43,7 @@ public enum CallSessionTerminationReason: Equatable {
     }
 }
 
-public struct CallId: Equatable  {
+public struct CallId: Equatable, Sendable {
     public let id: Int64
     public let accessHash: Int64
     

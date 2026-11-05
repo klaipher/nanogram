@@ -1321,10 +1321,7 @@ public final class OngoingCallContext {
         let callId = self.callId
         let account = self.account
         let logPath = self.logPath
-        var statsLogPath = ""
-        if !logPath.isEmpty {
-            statsLogPath = logPath + ".json"
-        }
+        let statsLogPath = logPath.isEmpty ? "" : logPath + ".json"
         let tempStatsLogPath = self.tempStatsLogFile.path
         
         let queue = self.queue
