@@ -65,6 +65,12 @@ public enum PerformanceSignpostName {
     public static let vp9ResumeCatchUp: StaticString = "vp9ResumeCatchUp"
     /// A media box file had to be opened again after its handle was evicted. Event.
     public static let mediaBoxReopen: StaticString = "mediaBoxReopen"
+    /// A chat list row is tapped, before the open is dispatched (iOS). Event.
+    public static let chatListRowTap: StaticString = "chatListRowTap"
+    /// A view controller push starts (iOS and macOS, `NavigationController.pushViewController`). Event.
+    public static let navigationPush: StaticString = "navigationPush"
+    /// The first history transition with messages is applied in a chat. Event.
+    public static let historyFirstContent: StaticString = "historyFirstContent"
 }
 
 /// Signposts shared by the iOS and macOS apps: subsystem = the bundle id, category `Performance`, plus a

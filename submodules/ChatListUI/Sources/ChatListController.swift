@@ -1398,6 +1398,7 @@ public class ChatListControllerImpl: TelegramBaseController, ChatListController 
         }
         
         self.chatListDisplayNode.mainContainerNode.peerSelected = { [weak self] peer, threadId, animated, activateInput, promoInfo in
+            PerformanceSignposts.event(PerformanceSignpostName.chatListRowTap)
             Task { @MainActor [weak self] in
                 guard let self else {
                     return

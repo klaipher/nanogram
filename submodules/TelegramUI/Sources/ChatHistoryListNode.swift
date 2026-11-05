@@ -868,6 +868,7 @@ public final class ChatHistoryListNodeImpl: ASDisplayNode, ChatHistoryNode, Chat
         return self._isReady.get()
     }
     private var didSetReady: Bool = false
+    private var didSignpostFirstContent: Bool = false
     
     private let initTimestamp: Double
     
@@ -4740,6 +4741,11 @@ public final class ChatHistoryListNodeImpl: ASDisplayNode, ChatHistoryNode, Chat
                 }
                 
                 strongSelf.dequeueHistoryViewTransitions()
+                
+                if !strongSelf.didSignpostFirstContent && !transition.historyView.filteredEntries.isEmpty {
+                    strongSelf.didSignpostFirstContent = true
+                    PerformanceSignposts.event(PerformanceSignpostName.historyFirstContent)
+                }
                 
                 strongSelf._isReady.set(true)
                 
