@@ -1,27 +1,15 @@
-"""Calls never upload their stats JSON or full log on their own (security review H2, 2026-11-04).
+"""Call logs kept on the device are removed after a week at most.
 
-The stats JSON holds the IP:port of the selected ICE candidates and the full log every gathered candidate. They stay
-on the device for the user's own "send logs" screen. The Mac disabled the automatic upload; the iOS call code must not
-bring it back.
+The automatic upload of the call stats JSON and full log (phone.saveCallDebug) is back as in official Telegram (owner
+decision, 2026-11-05), so the former guard against it is gone. Only the retention of local logs is still checked.
 """
-import re
 import unittest
 from pathlib import Path
 
 ROOT = Path(__file__).resolve().parents[3]
-UPLOAD = re.compile(r"saveCallDebugLog|saveCompleteCallDebugLog")
 
 
 class CallLogPrivacyTests(unittest.TestCase):
-    def test_the_call_contexts_do_not_upload_logs(self):
-        offenders = []
-        for relative in ("submodules/TelegramVoip/Sources", "submodules/TelegramCallsUI/Sources"):
-            for path in (ROOT / relative).rglob("*.swift"):
-                for number, line in enumerate(path.read_text(errors="replace").splitlines(), 1):
-                    if UPLOAD.search(line) and not line.lstrip().startswith("//"):
-                        offenders.append(f"{path.relative_to(ROOT).as_posix()}:{number}")
-        self.assertEqual(offenders, [])
-
     def test_call_logs_are_not_kept_longer_than_a_week(self):
         text = (ROOT / "submodules/TelegramVoip/Sources/OngoingCallContext.swift").read_text()
         self.assertIn("7.0 * 24.0 * 60.0 * 60.0", text)
