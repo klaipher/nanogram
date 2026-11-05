@@ -116,14 +116,24 @@ Report: on one iPhone 14 the speaker button did nothing. No log, so the cause is
 - **The request was dropped when it equalled the stored value** (`PresentationCall.setCurrentAudioOutput`,
   `SharedCallAudioContext.setCurrentAudioOutput`, the non-shared `PresentationGroupCall` path). The stored value is set the
   moment the user taps, before the session has done anything, and `ManagedAudioSession` reports a route only when it
-  changed. A first request that had no effect (session not active yet, the audio device module reset the category, an
-  interruption cleared the override) therefore left the receiver as the route, no report followed, and every later tap for
-  the speaker was swallowed for the rest of the call, while the screen flipped back to the receiver one second after each tap.
+  changed. How long that blocks depends on the path (review correction):
+  - Default path (`SharedCallAudioContext`, used by 1:1 and group calls unless a killswitch is set): the optimistic value
+    is followed one second later by the last reported route, and `audioOutputStateDisposable` copies it back into the
+    stored value. So a request that had no effect blocks only a second tap within that second; the next tap is sent again.
+    On this path "the button does nothing" means the requests reach the session and the session does not honour them,
+    which is what the new `MISSED` line shows.
+  - Non-shared paths (`ios_killswitch_disable_call_device` for 1:1, `ios_killswitch_group_shared_audio` for group calls):
+    the stored value changes only on a route report, so one ineffective request blocked every later tap for the same route
+    for the rest of the call.
   Now `audioOutputRequestDecision` (`AudioOutputRequestPolicy.swift`) skips a request only when the session itself reports
-  that route.
+  that route, on all three paths.
 - **CallKit gave the session back without the override** after an interruption (`didDeactivate`, `didActivate`); only a
-  request that arrived while the session was inactive was applied again. `CallKitProviderDelegate` now also re-applies the
-  last requested mode on `didActivate` while a call is active.
+  request that arrived while the session was inactive was applied again. `CallKitProviderDelegate` now puts the
+  loudspeaker back on `didActivate` when the last request was the loudspeaker and the route is still the phone's own
+  (`loudspeakerShouldBeReappliedOnActivation`). Review correction: the first version re-applied any last mode, which would
+  have pinned the built-in microphone or a stale port over AirPods or a car that connected after the request.
+- A request made while CallKit has not activated the session waits for `didActivate`; that is now logged
+  (`audio output request waits for CallKit to activate the session`), so a `didActivate` that never comes shows in the log.
 - **The built-in-microphone test hid a loudspeaker route** (`ManagedAudioSession.updateCurrentAudioRouteInfo`): the speaker
   was reported only when the built-in microphone was the active input. The route outputs now decide.
 - The video call screen forces the speaker every second while the route is the receiver (upstream). It now gives up after
@@ -132,6 +142,14 @@ Report: on one iPhone 14 the speaker button did nothing. No log, so the cause is
   CallKit|direct): applying|skipped`, and after every apply `ManagedAudioSession output request ... -> route <headset|loudspeaker|receiver|other>
   outputs=[...]`, with `MISSED` when the loudspeaker was asked for and the route is not on it. `audioInputStateDescription` now also
   lists the route outputs, category, mode and options.
+
+Hypotheses for that iPhone 14, most likely first (none proven): (1) the session does not honour
+`overrideOutputAudioPort(.speaker)` because the category or mode was changed under the call (the audio device module's own
+configuration; `scheduleSpeakerReapply` exists for the same race at call start); (2) with CallKit, the request waits for a
+`didActivate` that came late or never; (3) an interruption (GSM call, Siri, alarm) cleared the override (now re-applied);
+(4) the button is disabled because `availableInputs` was nil, so `availableOutputs` had one entry and `canSwitchAudioOutput`
+is false (`CallControllerNodeV2.updateAudioOutputs`); (5) a car, AirPlay or unknown Bluetooth route owns the output;
+(6) the stored-value latch, only if a killswitch put the call on a non-shared path.
 
 Open without a recording from the phone: why the first request failed on that iPhone 14. The `MISSED` line plus the category, mode and
 options in the line before it will say whether the category was changed under the call, the session was inactive, or a
@@ -143,18 +161,19 @@ Read from the action to the session, the engine call and back to the screen. Not
 
 | Control | Result |
 |---|---|
-| Speaker / route, 1:1 and group (`setCurrentAudioOutput`) | Fixed: a request was dropped when equal to the stored value (see above). Group calls through `SharedCallAudioContext` get the same fix. |
+| Speaker / route, 1:1 and group (`setCurrentAudioOutput`) | Fixed: a request was dropped when equal to the stored value (see above; for a second on the default path, for the rest of the call on the killswitch paths). Group calls through `SharedCallAudioContext` get the same fix. |
 | Route with Bluetooth, AirPods, wired, CarPlay | Read: more than two outputs open the route sheet, two outputs toggle. A headset in the route is never overridden by the speaker default (`resolveInitialOutput`, tests exist). CarPlay and AirPlay are not distinguished (they show as `.port` / headphones); not changed. Needs a device to judge. |
 | Mute: button | OK. 1:1 `setIsMuted` reaches the engine or the conference; group `setIsMuted` also persists the choice and the server mute state. |
 | Mute: CallKit (lock screen, Dynamic Island, system call UI, AirPods gesture, Siri) | Fixed: the handler passed `CXAction.uuid` (the action's id) instead of `callUUID`, so it matched no call. |
-| Mute: app to CallKit | Fixed: an in-app mute was never reported, so the system UI showed the wrong state (`CallKitMuteSync`). |
-| Camera on/off, 1:1 | Fixed: cancelling the camera preview left the capturer (and the camera) held by the call until it ended. |
+| Mute: app to CallKit | Fixed: an in-app mute was never reported, so the system UI showed the wrong state (`CallKitMuteSync`). The app's own action comes back to the provider; it is recognised by its action id and not applied a second time, so a quick mute-unmute is not undone by the late echo. A refused transaction restores what CallKit shows. |
+| Mute: CallKit after 1:1 to conference | Fixed (review): the CallKit call stays under the 1:1 call's id, but the lock-screen mute went only to `currentCall`, which is nil after the upgrade, and the conference never reported its mute. `callKitMuteRecipient` routes the action to the 1:1 call object while it hands over and then to the conference (`conferenceSource`); `PresentationGroupCallImpl` reports its mute state for that id. A mute the server forbids (`canUnmute == false`) is not forced; the lock screen then shows unmuted until the next change. |
+| Camera on/off, 1:1 | Fixed: cancelling the camera preview left the capturer (and the camera) held by the call until it ended. Every dismissal that is not a share counts, including the app going to the background, which dismisses the preview on its own (review). |
 | Camera flip, 1:1 and group | Fixed: the flip belief was not reset when the camera went off and on, and not set when a capturer arrived on the back camera (video chat screen, 1:1 upgraded to a conference). The first flip did nothing (`CameraFacingTracker`). |
 | Video pause | `setOutgoingVideoIsPaused` has no caller; a camera interrupted by the system is reported by the capturer's `isActive` and shown as paused. OK. |
 | Screen broadcast start/stop | Start and stop are detected through the extension's keepalive file (`IpcGroupCallBufferAppContext`), so a stop from Control Center or the status bar pill is noticed after the keepalive timeout, not at once. Starting a broadcast turns the camera off and it is not restored when the broadcast ends (by design, unchanged). |
 | PiP | The gate follows PiP activation and is reset in `deinit` of the call screen. OK. |
 | Raise hand | `raiseHand` / `lowerHand` read the own participant's state first and are idempotent. OK. |
-| Interruptions (GSM call, Siri) | `ManagedAudioSession` keeps the call holder on an interruption; resuming the audio unit is done by the engine (`AudioDeviceIOS::OnInterruptionEnd`). The route override is lost on a CallKit reactivation: fixed (re-applied). |
+| Interruptions (GSM call, Siri) | `ManagedAudioSession` keeps the call holder on an interruption; resuming the audio unit is done by the engine (`AudioDeviceIOS::OnInterruptionEnd`). The loudspeaker override is lost on a CallKit reactivation: fixed (put back only on the phone's own route). |
 | Call end cleanup | The audio holder is released with the context (`markCallFinished`, `retire`); the camera capturer is released with the call object, at least 2 s after the end. Not changed. |
 | 1:1 to conference | Mute and video carry over; the camera side now carries over too (see the flip row). The speaker is switched on for the conference. |
 | Reconnect | Engine state only (`.reconnecting` mapped to the screen); no control state is kept in the UI. OK. |

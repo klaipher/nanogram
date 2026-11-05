@@ -40,4 +40,19 @@ final class CallKitActionTargetTests: XCTestCase {
         XCTAssertTrue(target.isMuted)
         XCTAssertFalse(callKitMuteTarget(CXSetMutedCallAction(call: call, muted: false)).isMuted)
     }
+
+    /// After a 1:1 call turned into a conference the CallKit call stays, under the 1:1 call's id, but the app's current
+    /// call is the conference. A mute from the lock screen must reach it.
+    func testMuteReachesTheCallThatHoldsTheCallKitId() {
+        let callKitCall = UUID()
+        XCTAssertEqual(callKitMuteRecipient(uuid: callKitCall, personalCallId: callKitCall, conferenceSourceCallId: nil, groupCallConferenceSourceId: nil), .personalCall)
+        XCTAssertEqual(callKitMuteRecipient(uuid: callKitCall, personalCallId: nil, conferenceSourceCallId: callKitCall, groupCallConferenceSourceId: nil), .conferenceSource)
+        XCTAssertEqual(callKitMuteRecipient(uuid: callKitCall, personalCallId: nil, conferenceSourceCallId: nil, groupCallConferenceSourceId: callKitCall), .conference)
+    }
+
+    func testMuteForAnotherCallKitIdReachesNoCall() {
+        let other = UUID()
+        XCTAssertEqual(callKitMuteRecipient(uuid: UUID(), personalCallId: other, conferenceSourceCallId: other, groupCallConferenceSourceId: other), .none)
+        XCTAssertEqual(callKitMuteRecipient(uuid: UUID(), personalCallId: nil, conferenceSourceCallId: nil, groupCallConferenceSourceId: nil), .none)
+    }
 }

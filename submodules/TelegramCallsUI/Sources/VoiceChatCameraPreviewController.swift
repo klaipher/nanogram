@@ -34,7 +34,8 @@ final class VoiceChatCameraPreviewController: ViewController {
     private let cameraNode: PreviewVideoNode
     private let shareCamera: (ASDisplayNode, Bool) -> Void
     private let switchCamera: () -> Void
-    private let cancelled: (() -> Void)?
+    private var cancelled: (() -> Void)?
+    private var didShare = false
     
     private var presentationDataDisposable: Disposable?
     
@@ -73,6 +74,7 @@ final class VoiceChatCameraPreviewController: ViewController {
         self.displayNode = VoiceChatCameraPreviewControllerNode(controller: self, sharedContext: self.sharedContext, cameraNode: self.cameraNode)
         self.controllerNode.shareCamera = { [weak self] unmuted in
             if let strongSelf = self {
+                strongSelf.didShare = true
                 strongSelf.shareCamera(strongSelf.cameraNode, unmuted)
                 strongSelf.dismiss()
             }
@@ -85,7 +87,6 @@ final class VoiceChatCameraPreviewController: ViewController {
             self?.presentingViewController?.dismiss(animated: false, completion: nil)
         }
         self.controllerNode.cancel = { [weak self] in
-            self?.cancelled?()
             self?.dismiss()
         }
     }
@@ -104,6 +105,12 @@ final class VoiceChatCameraPreviewController: ViewController {
     }
     
     override public func dismiss(completion: (() -> Void)? = nil) {
+        // Every way out that is not a share counts as a cancel: the Cancel button, a tap outside, a swipe down and the
+        // app going to the background, which dismisses the preview on its own.
+        if !self.didShare, let cancelled = self.cancelled {
+            self.cancelled = nil
+            cancelled()
+        }
         self.controllerNode.animateOut(completion: completion)
     }
     

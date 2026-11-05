@@ -22,6 +22,29 @@ func callKitActionAnswersPersonalCall(uuid: UUID, personalCallId: UUID?) -> Bool
     return personalCallId == uuid
 }
 
+enum CallKitMuteRecipient: Equatable {
+    case personalCall
+    case conferenceSource
+    case conference
+    case none
+}
+
+/// Which call a CallKit mute action is for. A 1:1 call that turned into a conference keeps its CallKit call under the 1:1
+/// call's id: first the 1:1 call object carries it (`conferenceSource`), then the conference group call names it as its
+/// source. A mute from the lock screen used to reach only the 1:1 call and did nothing once the call was a conference.
+func callKitMuteRecipient(uuid: UUID, personalCallId: UUID?, conferenceSourceCallId: UUID?, groupCallConferenceSourceId: UUID?) -> CallKitMuteRecipient {
+    if personalCallId == uuid {
+        return .personalCall
+    }
+    if conferenceSourceCallId == uuid {
+        return .conferenceSource
+    }
+    if groupCallConferenceSourceId == uuid {
+        return .conference
+    }
+    return .none
+}
+
 /// The call and the state a CallKit mute action is for. `CXAction.uuid` is the id of the action itself; the call it acts on
 /// is `callUUID`. The mute handler used to pass `uuid`, which never named a call, so a mute from the lock screen, the
 /// system call UI, an AirPods gesture or Siri matched no call and did nothing.

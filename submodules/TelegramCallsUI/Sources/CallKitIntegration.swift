@@ -196,11 +196,19 @@ class CallKitProviderDelegate: NSObject, CXProviderDelegate {
     
     /// The user muted or unmuted in the app: the lock screen, the Dynamic Island and the system call UI follow it.
     func reportMuted(uuid: UUID, isMuted: Bool) {
+        let previous = self.muteSync.isMuted(uuid: uuid)
         guard self.activeCalls.contains(uuid), self.muteSync.shouldReport(uuid: uuid, isMuted: isMuted) else {
             return
         }
+        let action = CXSetMutedCallAction(call: uuid, muted: isMuted)
+        self.muteSync.appRequested(actionId: action.uuid)
         Logger.shared.log("CallKitIntegration", "report mute \(isMuted) for \(uuid)")
-        self.requestTransaction(CXTransaction(action: CXSetMutedCallAction(call: uuid, muted: isMuted)))
+        self.requestTransaction(CXTransaction(action: action), completion: { [weak self] error in
+            guard let self, error != nil else {
+                return
+            }
+            self.muteSync.appRequestFailed(actionId: action.uuid, uuid: uuid, previous: previous)
+        })
     }
     
     func updateShowCallsInRecents(_ value: Bool) {
@@ -452,6 +460,10 @@ class CallKitProviderDelegate: NSObject, CXProviderDelegate {
             action.fail()
             return
         }
+        if self.muteSync.isAppRequested(actionId: action.uuid) {
+            action.fulfill()
+            return
+        }
         let target = callKitMuteTarget(action)
         self.muteSync.systemSet(uuid: target.callUUID, isMuted: target.isMuted)
         setCallMuted(target.callUUID, target.isMuted)
@@ -464,11 +476,20 @@ class CallKitProviderDelegate: NSObject, CXProviderDelegate {
         self.audioSessionActivationChanged?(true)
         self.audioSessionActivePromise?.set(true)
         
-        // CallKit hands the session back after an interruption (a phone call, Siri, an alarm) with the route override
-        // cleared, so the route the user chose has to be applied again, not only one that was waiting.
-        if let outputMode = self.pendingVoiceChatOutputMode ?? self.lastVoiceChatOutputMode {
+        if let outputMode = self.pendingVoiceChatOutputMode {
             self.pendingVoiceChatOutputMode = nil
+            CallDiagnostics.log("CallKit session active, applying the waiting audio output request")
             sharedManagedAudioSession?.applyVoiceChatOutputModeInCurrentAudioSession(outputMode: outputMode)
+        } else if case .custom(.speaker)? = self.lastVoiceChatOutputMode {
+            // CallKit hands the session back after an interruption (a phone call, Siri, an alarm) without the loudspeaker
+            // override. Only the loudspeaker is put back, and only while no headset, car or AirPlay took the route
+            // meanwhile; re-applying the receiver or a port would pin the built-in microphone or a stale port.
+            let outputTypes = audioSession.currentRoute.outputs.map { $0.portType.rawValue }
+            let reapply = loudspeakerShouldBeReappliedOnActivation(outputPortTypes: outputTypes)
+            CallDiagnostics.log("CallKit session active again, speaker was requested, route \(audioRouteDestination(outputPortTypes: outputTypes)): \(reapply ? "re-applying the speaker" : "left on the new route")")
+            if reapply {
+                sharedManagedAudioSession?.applyVoiceChatOutputModeInCurrentAudioSession(outputMode: .custom(.speaker))
+            }
         }
     }
     
@@ -484,6 +505,7 @@ class CallKitProviderDelegate: NSObject, CXProviderDelegate {
         if self.isAudioSessionActive {
             sharedManagedAudioSession?.applyVoiceChatOutputModeInCurrentAudioSession(outputMode: outputMode)
         } else {
+            CallDiagnostics.log("audio output request waits for CallKit to activate the session")
             self.pendingVoiceChatOutputMode = outputMode
         }
     }

@@ -14,11 +14,13 @@ Newest first. Internal notes for each TestFlight build; testers see the What to 
   `callsNativeCapturePathDefaultOn`, `callsSystemNoiseSuppressionDefaultOn`, `callsThermalVideoLadderDefaultOn`,
   `callsGroupNoiseModeRNNoiseDefault`), the old keys are neither read nor written. Tests: `CallsSwitchesTests`.
 - **Speaker button went dead after one ineffective request** (7aa6153d, iPhone 14 report): the request was dropped when it
-  equalled the stored value, which is set at the tap; the session reports only changes, so after one request that had no
-  effect every later tap for the speaker was swallowed and the screen flipped back after 1 s. Now
+  equalled the stored value, which is set at the tap; the session reports only changes. On the killswitch (non-shared) paths
+  every later tap for the speaker was then swallowed for the rest of the call; on the default `SharedCallAudioContext` path
+  only for one second (the stored value falls back to the reported route), so there the fix only covers a quick second tap. Now
   `audioOutputRequestDecision` (`AudioOutputRequestPolicy.swift`) skips a request only when the session itself reports that route
-  (`PresentationCall`, `SharedCallAudioContext`, the non-shared `PresentationGroupCall` path). Also: CallKit re-applies the last
-  requested route on `didActivate` after an interruption; `updateCurrentAudioRouteInfo` reads the loudspeaker from the route
+  (`PresentationCall`, `SharedCallAudioContext`, the non-shared `PresentationGroupCall` path). Also: CallKit puts the loudspeaker
+  back on `didActivate` after an interruption, only while the route is the phone's own (`loudspeakerShouldBeReappliedOnActivation`;
+  review fix: re-applying any last mode would have pulled the call off AirPods or a car that connected later); `updateCurrentAudioRouteInfo` reads the loudspeaker from the route
   outputs (`AudioRouteClassification.swift`) and not only from the built-in microphone input; the video call screen stops forcing
   the speaker after three attempts (`AutomaticSpeakerEnforcement`). Diagnostics in the short log: `audio output request ...` per
   request and `ManagedAudioSession output request ... -> route ... MISSED` after an apply; `audioInputStateDescription` lists route
@@ -27,6 +29,14 @@ Newest first. Internal notes for each TestFlight build; testers see the What to 
 - **CallKit mute from the system UI did nothing** (7aa6153d): the handler passed `CXAction.uuid` instead of `callUUID`
   (`callKitMuteTarget`). An in-app mute is now reported to CallKit (`CallKitMuteSync`, `reportMuted`), so the lock screen and the
   Dynamic Island show the real state.
+- **Review fixes (lane ios-calls)**: the app's own CallKit mute action is recognised by its action id when CallKit performs it
+  and is not applied a second time (a quick mute-unmute was undone by the late echo), and a refused transaction restores what
+  CallKit shows (`CallKitMuteSync.appRequested/isAppRequested/appRequestFailed`). After a 1:1 call turned into a conference
+  the CallKit call stays under the 1:1 id: the lock-screen mute now reaches the conference (`callKitMuteRecipient`,
+  `PresentationCallManager`) and the conference reports its mute to CallKit (`PresentationGroupCallImpl.reportMuteToCallKit`).
+  A request that waits for CallKit's `didActivate` is logged. The 1:1 camera preview releases the camera on every dismissal
+  that is not a share, including the automatic one when the app goes to the background. Tests: `CallKitMuteSyncTests`,
+  `CallKitActionTargetTests`, `AudioRouteClassificationTests`.
 - **1:1 camera**: the flip belief is a `CameraFacingTracker` that follows the capturer (new capturer = front, off = reset, handed
   over on the back camera = back); the first flip after camera off/on or after a hand-over no longer does nothing. Cancelling the camera
   preview releases the capturer instead of keeping the camera on for the rest of the call (7aa6153d).

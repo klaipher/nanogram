@@ -302,8 +302,30 @@ public final class PresentationCallManagerImpl: PresentationCallManager {
         }
         
         setCallMutedImpl = { [weak self] uuid, isMuted in
-            if let strongSelf = self, let currentCall = strongSelf.currentCall, currentCall.internalId == uuid {
-                currentCall.setIsMuted(isMuted)
+            guard let self else {
+                return
+            }
+            var conferenceSourceCall: PresentationCall?
+            var groupCall: PresentationGroupCall?
+            switch self.currentGroupCall {
+            case let .conferenceSource(call):
+                conferenceSourceCall = call
+            case let .group(call):
+                groupCall = call
+            case .none:
+                break
+            }
+            let recipient = callKitMuteRecipient(uuid: uuid, personalCallId: self.currentCall?.internalId, conferenceSourceCallId: conferenceSourceCall?.internalId, groupCallConferenceSourceId: groupCall?.conferenceSource)
+            CallDiagnostics.log("CXSetMutedCallAction \(isMuted ? "mute" : "unmute") \(uuid): \(recipient)")
+            switch recipient {
+            case .personalCall:
+                self.currentCall?.setIsMuted(isMuted)
+            case .conferenceSource:
+                conferenceSourceCall?.setIsMuted(isMuted)
+            case .conference:
+                groupCall?.setIsMuted(action: isMuted ? .muted(isPushToTalkActive: false) : .unmuted)
+            case .none:
+                break
             }
         }
         

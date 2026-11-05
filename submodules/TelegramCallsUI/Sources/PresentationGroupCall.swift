@@ -594,6 +594,7 @@ public final class PresentationGroupCallImpl: PresentationGroupCall {
         didSet {
             if self.isMutedValue != oldValue {
                 self.updateProximityMonitoring()
+                self.reportMuteToCallKit()
             }
         }
     }
@@ -3115,6 +3116,22 @@ public final class PresentationGroupCallImpl: PresentationGroupCall {
         case .unmuted:
             self.setIsMuted(action: .muted(isPushToTalkActive: false))
         }
+    }
+    
+    /// A conference that a 1:1 call turned into keeps the 1:1 call's CallKit call, so the lock screen and the Dynamic
+    /// Island show its microphone state. Push-to-talk counts as muted there, as on the mute button.
+    private func reportMuteToCallKit() {
+        guard let callKitIntegration = self.callKitIntegration, let conferenceSourceId = self.conferenceSourceId else {
+            return
+        }
+        let isMuted: Bool
+        switch self.isMutedValue {
+        case .muted:
+            isMuted = true
+        case .unmuted:
+            isMuted = false
+        }
+        callKitIntegration.reportMuted(uuid: conferenceSourceId, isMuted: isMuted)
     }
     
     public func setIsMuted(action: PresentationGroupCallMuteAction) {

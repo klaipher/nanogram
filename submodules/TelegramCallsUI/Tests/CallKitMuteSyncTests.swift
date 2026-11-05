@@ -43,4 +43,34 @@ final class CallKitMuteSyncTests: XCTestCase {
         sync.forgetAll()
         XCTAssertFalse(sync.shouldReport(uuid: second, isMuted: false))
     }
+
+    /// The app's own mute transaction comes back as a CallKit action. It is already applied, and applying it again could
+    /// undo a newer tap that came in between.
+    func testAnActionTheAppRequestedIsRecognisedOnce() {
+        var sync = CallKitMuteSync()
+        let action = UUID()
+        sync.appRequested(actionId: action)
+        XCTAssertTrue(sync.isAppRequested(actionId: action))
+        XCTAssertFalse(sync.isAppRequested(actionId: action))
+        XCTAssertFalse(sync.isAppRequested(actionId: UUID()))
+    }
+
+    func testAFailedReportRestoresWhatCallKitShows() {
+        var sync = CallKitMuteSync()
+        let call = UUID()
+        let action = UUID()
+        XCTAssertTrue(sync.shouldReport(uuid: call, isMuted: true))
+        sync.appRequested(actionId: action)
+        sync.appRequestFailed(actionId: action, uuid: call, previous: false)
+        XCTAssertFalse(sync.isAppRequested(actionId: action))
+        XCTAssertTrue(sync.shouldReport(uuid: call, isMuted: true), "CallKit still shows unmuted, so muting is reported again")
+    }
+
+    func testForgettingAllDropsPendingAppActions() {
+        var sync = CallKitMuteSync()
+        let action = UUID()
+        sync.appRequested(actionId: action)
+        sync.forgetAll()
+        XCTAssertFalse(sync.isAppRequested(actionId: action))
+    }
 }

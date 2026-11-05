@@ -37,3 +37,17 @@ public func loudspeakerRequestMissedRoute(outputPortTypes: [String]) -> Bool {
         return true
     }
 }
+
+/// Whether the loudspeaker the user chose is put back when CallKit hands the session back after an interruption (a phone
+/// call, Siri, an alarm), which clears the override. Only while the audio is on the phone itself: a headset, a car or
+/// AirPlay that took the route in the meantime keeps it. A route with no outputs yet is the phone's own.
+public func loudspeakerShouldBeReappliedOnActivation(outputPortTypes: [String]) -> Bool {
+    switch audioRouteDestination(outputPortTypes: outputPortTypes) {
+    case .receiver, .loudspeaker:
+        return true
+    case .headset:
+        return false
+    case .other:
+        return outputPortTypes.isEmpty
+    }
+}
