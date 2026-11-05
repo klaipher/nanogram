@@ -4,6 +4,9 @@ Newest first. Internal notes for each TestFlight build; testers see the What to 
 
 ## Unreleased
 
+- **Channel statistics as usual** (owner, 2026-11-05): channel read metrics (`messages.reportReadMetrics`, `MessageReadMetricsTracker`, the `ChatHistoryListNode` hook) are restored from eeb3f4c7^ so channel owners see our readers in their stats. Music listening reports and call-log uploads stay off.
+- **Exact device back in the session list** (owner, 2026-11-05): `MTApiEnvironment` again sends the device model ("iPhone 17 Pro Max"), the full system version and the language with its region, as upstream; the 5f0c8451 trimming of these three is reverted and `MTApiEnvironmentPrivacyTests` removed. The time zone offset stays off. `test_privacy.py` checks the new state.
+
 ### Night review fixes (2026-11-05, branch night/review-fixes; nothing built yet)
 Private notes. Every item has tests that run at the combined build; none were compiled or run overnight.
 - **Nightly cleanup (ios-core-1)**: the BGProcessingTask now passes a 256 MB live-data cap and a `shouldProceed` (not expired, app neither active nor in foreground; read from `Atomic` flags because it runs on the Postbox queue) to `Postbox.optimizeStorageIfNeeded`, which now goes through `beginInternalTransaction` (a paused database delays the check instead of a pause queueing behind a VACUUM). `Postbox.interruptMaintenance()` calls `sqlite3_interrupt` through `SqliteInterruptGate` (only while `vacuum()` runs, so it never hits an ordinary transaction) from the expiration handler and `handleWillEnterForeground`. `SharedWakeupManager.beginCleanupProcessingTask/endCleanupProcessingTask` keep writes enabled while the task runs and end it through `releaseBackgroundTime`. Tests: `SqliteValueBoxVacuumTests` (interrupt), `PostboxStorageOptimizationGateTests`.

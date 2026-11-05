@@ -52,17 +52,10 @@ def function_body(source, signature):
 
 
 class PrivacyTests(unittest.TestCase):
-    def test_no_request_sends_channel_read_metrics(self):
-        self.assertEqual(uses(r'functions\.messages\.reportReadMetrics'), [])
-
-    def test_report_peer_read_metrics_sends_nothing(self):
-        source = read('submodules/TelegramCore/Sources/TelegramEngine/Messages/TelegramEngineMessages.swift')
-        body = function_body(source, 'public func reportPeerReadMetrics(')
-        self.assertEqual(body.strip(), 'return .complete()')
-
-    def test_read_metrics_trackers_are_gone(self):
-        self.assertEqual(uses(r'\bMessageReadMetricsTracker\b'), [])
-        self.assertFalse(os.path.exists(os.path.join(ROOT, 'submodules/TelegramCore/Sources/Utils/MessageReadMetricsTracker.swift')))
+    def test_channel_read_metrics_are_reported_as_upstream(self):
+        # Channel owners see their statistics as usual (owner, 2026-11-05).
+        self.assertNotEqual(uses(r'functions\.messages\.reportReadMetrics'), [])
+        self.assertTrue(os.path.exists(os.path.join(ROOT, 'submodules/TelegramCore/Sources/Utils/MessageReadMetricsTracker.swift')))
 
     def test_no_request_sends_music_listening(self):
         self.assertEqual(uses(r'functions\.messages\.reportMusicListen'), [])
@@ -105,13 +98,14 @@ class PrivacyTests(unittest.TestCase):
     def test_time_zone_is_not_sent(self):
         self.assertNotIn('tz_offset', read('submodules/BuildConfig/Sources/BuildConfig.m'))
 
-    def test_connection_fingerprint_is_trimmed(self):
+    def test_connection_reports_the_real_device(self):
+        # The owner wants the exact model, system version and language with region in the session list
+        # (2026-11-05). Only the time zone offset stays off (test above).
         source = read('submodules/MtProtoKit/Sources/MTApiEnvironment.m')
-        self.assertIn('majorSystemVersion:', source)
-        self.assertIn('languageCodeWithoutRegion:', source)
-        self.assertNotIn('[[NSLocale preferredLanguages] objectAtIndex:0]', source)
-        self.assertNotIn('hw.model', source)
-        self.assertNotRegex(source, r'return @"iPhone \d')
+        self.assertNotIn('majorSystemVersion:', source)
+        self.assertNotIn('languageCodeWithoutRegion:', source)
+        self.assertIn('[[NSLocale preferredLanguages] objectAtIndex:0]', source)
+        self.assertRegex(source, r'return @"iPhone \d')
 
     def test_app_log_events_are_filtered_where_they_are_sent(self):
         sender = read('submodules/TelegramCore/Sources/State/ManagedSynchronizeAppLogEventsOperations.swift')
