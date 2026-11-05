@@ -1904,9 +1904,19 @@ public extension TelegramEngine {
             }
         }
         
-        /// Music listening time is never sent: this does nothing.
         public func reportMusicListened(file: FileMediaReference, duration: Int) -> Signal<Never, NoError> {
-            return .complete()
+            guard let resource = file.media.resource as? CloudDocumentMediaResource, let reference = file.resourceReference(file.media.resource) as? TelegramCloudMediaResourceWithFileReference else {
+                return .complete()
+            }
+            return self.account.network.request(Api.functions.messages.reportMusicListen(id: .inputDocument(Api.InputDocument.Cons_inputDocument(
+                id: resource.fileId,
+                accessHash: resource.accessHash,
+                fileReference: Buffer(data: reference.fileReference ?? Data())
+            )), listenedDuration: Int32(clamping: duration)))
+            |> `catch` { _ -> Signal<Api.Bool, NoError> in
+                return .single(.boolFalse)
+            }
+            |> ignoreValues
         }
         
         public func composeAIMessageStyles() -> Signal<[TelegramComposeAIMessageMode.CloudStyle], NoError> {

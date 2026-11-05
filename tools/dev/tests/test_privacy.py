@@ -57,16 +57,10 @@ class PrivacyTests(unittest.TestCase):
         self.assertNotEqual(uses(r'functions\.messages\.reportReadMetrics'), [])
         self.assertTrue(os.path.exists(os.path.join(ROOT, 'submodules/TelegramCore/Sources/Utils/MessageReadMetricsTracker.swift')))
 
-    def test_no_request_sends_music_listening(self):
-        self.assertEqual(uses(r'functions\.messages\.reportMusicListen'), [])
-
-    def test_report_music_listened_sends_nothing(self):
-        source = read('submodules/TelegramCore/Sources/TelegramEngine/Messages/TelegramEngineMessages.swift')
-        body = function_body(source, 'public func reportMusicListened(')
-        self.assertEqual(body.strip(), 'return .complete()')
-
-    def test_music_listen_tracker_is_gone(self):
-        self.assertEqual(uses(r'\bMusicListenTracker\b'), [])
+    def test_music_listening_is_reported_as_upstream(self):
+        # Play statistics as usual (owner, 2026-11-05).
+        self.assertNotEqual(uses(r'functions\.messages\.reportMusicListen\b'), [])
+        self.assertTrue(os.path.exists(os.path.join(ROOT, 'submodules/TelegramUI/Sources/MusicListenTracker.swift')))
 
     def test_no_request_uploads_call_debug_or_logs(self):
         self.assertEqual(uses(r'functions\.phone\.saveCallDebug'), [])

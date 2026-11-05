@@ -130,6 +130,7 @@ public final class MediaManagerImpl: NSObject, MediaManager {
                     } |> deliverOnMainQueue)
                 } else {
                     self.musicMediaPlayerStateValue.set(.single(nil))
+                    self.musicListenTracker?.playerClosed()
                 }
             }
         }
@@ -185,6 +186,9 @@ public final class MediaManagerImpl: NSObject, MediaManager {
     private let globalControlsArtwork = Promise<(Account, SharedMediaPlaybackAlbumArt)?>(nil)
     private let globalControlsStatusDisposable = MetaDisposable()
     private let globalAudioSessionForegroundDisposable = MetaDisposable()
+
+    private var musicListenTracker: MusicListenTracker?
+    private let musicListenTrackingDisposable = MetaDisposable()
 
     public let universalVideoManager: UniversalVideoManager = UniversalVideoManagerImpl()
     
@@ -429,6 +433,11 @@ public final class MediaManagerImpl: NSObject, MediaManager {
             }
         }))
 
+        self.musicListenTrackingDisposable.set((self.musicMediaPlayerState
+        |> deliverOnMainQueue).startStrict(next: { [weak self] stateAndType in
+            self?.musicListenTracker?.update(with: stateAndType)
+        }))
+
         self.globalAudioSessionForegroundDisposable.set((shouldKeepAudioSession |> deliverOnMainQueue).startStrict(next: { [weak self] value in
             guard let strongSelf = self else {
                 return
@@ -445,6 +454,7 @@ public final class MediaManagerImpl: NSObject, MediaManager {
         self.globalControlsStatusDisposable.dispose()
         self.setPlaylistByTypeDisposables.dispose()
         self.mediaPlaybackStateDisposable.dispose()
+        self.musicListenTrackingDisposable.dispose()
         self.globalAudioSessionForegroundDisposable.dispose()
         self.voiceMediaPlayerStateDisposable.dispose()
     }
@@ -550,6 +560,7 @@ public final class MediaManagerImpl: NSObject, MediaManager {
                                 strongSelf.musicMediaPlayer?.stop()
                                 let musicMediaPlayer = SharedMediaPlayer(context: context, mediaManager: strongSelf, inForeground: strongSelf.inForeground, engine: context.engine, audioSession: strongSelf.audioSession, overlayMediaManager: strongSelf.overlayMediaManager, playlist: playlist, initialOrder: settings.order, initialLooping: settings.looping, initialPlaybackRate: storedState?.playbackRate ?? .x1, playerIndex: nextPlayerIndex, controlPlaybackWithProximity: false, type: type, continueInstantVideoLoopAfterFinish: true)
                                 strongSelf.musicMediaPlayer = musicMediaPlayer
+                                strongSelf.musicListenTracker = MusicListenTracker(engine: context.engine)
                                 musicMediaPlayer.cancelled = { [weak musicMediaPlayer] in
                                     if let strongSelf = self, let musicMediaPlayer = musicMediaPlayer, musicMediaPlayer === strongSelf.musicMediaPlayer {
                                         musicMediaPlayer.stop()
