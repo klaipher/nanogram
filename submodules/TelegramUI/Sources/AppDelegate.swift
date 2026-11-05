@@ -761,13 +761,7 @@ private func extractAccountManagerState(records: AccountRecordsView<TelegramAcco
         guard let encryptionKey = ValueBoxEncryptionParameters.Key(data: deviceSpecificEncryptionParameters.key), let encryptionSalt = ValueBoxEncryptionParameters.Salt(data: deviceSpecificEncryptionParameters.salt) else {
             preconditionFailure("The device database key or salt has the wrong length")
         }
-        let encryptionParameters = ValueBoxEncryptionParameters(forceEncryptionIfNoSet: false, key: encryptionKey, salt: encryptionSalt, isEphemeral: deviceSpecificEncryptionParameters.isEphemeral)
-        if deviceSpecificEncryptionParameters.isEphemeral {
-            // The real database key could not be read (keychain unavailable). A database that does not open with this
-            // throwaway key is left alone instead of being recreated; the accounts show the loading state until the
-            // next launch, which reads the real key.
-            NSLog("App: database key unavailable, using a throwaway key; existing databases are not touched")
-        }
+        let encryptionParameters = ValueBoxEncryptionParameters(forceEncryptionIfNoSet: false, key: encryptionKey, salt: encryptionSalt)
         
         TempBox.initializeShared(basePath: rootPath, processType: "app", launchSpecificId: Int64.random(in: Int64.min ... Int64.max))
         // Attachment copies a killed share extension left behind (up to a whole video each), on a

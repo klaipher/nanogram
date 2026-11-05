@@ -1,5 +1,4 @@
 #import <BuildConfig/BuildConfig.h>
-#import <BuildConfig/NanogramKeyVault.h>
 
 #include <errno.h>
 #include <fcntl.h>
@@ -87,15 +86,10 @@ API_AVAILABLE(ios(10))
 @implementation DeviceSpecificEncryptionParameters
 
 - (instancetype)initWithKey:(NSData * _Nonnull)key salt:(NSData * _Nonnull)salt {
-    return [self initWithKey:key salt:salt isEphemeral:NO];
-}
-
-- (instancetype)initWithKey:(NSData * _Nonnull)key salt:(NSData * _Nonnull)salt isEphemeral:(BOOL)isEphemeral {
     self = [super init];
     if (self != nil) {
         _key = key;
         _salt = salt;
-        _isEphemeral = isEphemeral;
     }
     return self;
 }
@@ -380,6 +374,7 @@ API_AVAILABLE(ios(10))
 + (DeviceSpecificEncryptionParameters * _Nonnull)deviceSpecificEncryptionParameters:(NSString * _Nonnull)rootPath baseAppBundleId:(NSString * _Nonnull)baseAppBundleId {
     CFAbsoluteTime startTime = CFAbsoluteTimeGetCurrent();
     
+    NSString *filePath = [rootPath stringByAppendingPathComponent:@".tempkey"];
     //NSString *encryptedPath = [rootPath stringByAppendingPathComponent:@".tempkeyEncrypted"];
     
     // The app and its extensions (notification service, widget, intents) derive the key
@@ -409,17 +404,26 @@ API_AVAILABLE(ios(10))
         }
     }
     
-    NSString *keychainGroup = [@"group." stringByAppendingString:baseAppBundleId];
-    NanogramKeychainWrapKeyStore *store = [[NanogramKeychainWrapKeyStore alloc] initWithService:@"org.nanogram.database-key.v1" accessGroup:keychainGroup];
-    // `.tempkey.lock` is held (when `locked`) for the whole resolution, so the vault does not take its own lock again.
-    BOOL isEphemeral = NO;
-    NSData *resultData = [NanogramKeyVault deviceKeyPayloadInRootPath:rootPath store:store callerHoldsOuterLock:locked isEphemeral:&isEphemeral];
-    for (int attempt = 0; attempt < 2 && isEphemeral; attempt++) {
-        // The keychain may answer a moment later (a background launch right after unlock). Short, bounded, and
-        // only on this failure path: a throwaway key means the database cannot be opened safely.
-        usleep(300 * 1000);
-        isEphemeral = NO;
-        resultData = [NanogramKeyVault deviceKeyPayloadInRootPath:rootPath store:store callerHoldsOuterLock:locked isEphemeral:&isEphemeral];
+    NSData *currentData = [NSData dataWithContentsOfFile:filePath];
+    NSData *resultData = nil;
+    if (currentData != nil && currentData.length == 32 + 16) {
+        resultData = currentData;
+    }
+    if (resultData == nil) {
+        NSMutableData *randomData = [[NSMutableData alloc] initWithLength:32 + 16];
+        if (SecRandomCopyBytes(kSecRandomDefault, randomData.length, randomData.mutableBytes) != errSecSuccess) {
+            // This buffer becomes the database key and is persisted; it must never
+            // be left at the all-zero contents initWithLength: gave it. arc4random_buf
+            // cannot fail.
+            arc4random_buf(randomData.mutableBytes, randomData.length);
+        }
+        if (currentData != nil && currentData.length == 32) { // upgrade key with salt
+            [currentData getBytes:randomData.mutableBytes length:32];
+        }
+        resultData = randomData;
+        // Atomic: a reader that does not take the lock (older builds) must never see a
+        // torn write, which is indistinguishable from "no key yet".
+        [resultData writeToFile:filePath atomically:true];
     }
     
     if (lockFd >= 0) {
@@ -459,7 +463,7 @@ API_AVAILABLE(ios(10))
     
     NSData *key = [resultData subdataWithRange:NSMakeRange(0, 32)];
     NSData *salt = [resultData subdataWithRange:NSMakeRange(32, 16)];
-    return [[DeviceSpecificEncryptionParameters alloc] initWithKey:key salt:salt isEphemeral:isEphemeral];
+    return [[DeviceSpecificEncryptionParameters alloc] initWithKey:key salt:salt];
 }
 
 + (dispatch_queue_t)encryptionQueue {

@@ -27,7 +27,7 @@ marked (check) were not re-verified against the code; correct them on the next c
 ### Security hardening
 - What: minimal entitlements per extension, optional Enhanced Security entitlements (off), hardened C-family flags,
   Lockdown Mode policy (`submodules/HardenedMedia`), code-block highlighter recursion bound (`third-party/libprisma`),
-  external-link login-part check (`UrlWhitelist`), database key vault (`.tempkeyVault`, NGKV v1), WebRTC/tg_owt CVE fixes.
+  external-link login-part check (`UrlWhitelist`), WebRTC/tg_owt CVE fixes.
 - Why: owner's security review (2026-11-04); remote DoS and key-handling findings.
 - Where: `Telegram/entitlements.bzl`, `submodules/BuildConfig`, `submodules/HardenedMedia`, `third-party/libprisma`, `submodules/UrlWhitelist`, `.bazelrc`, `third-party/webrtc` (fork).
 - Upstream: partly (libprisma and WebRTC fixes yes).
