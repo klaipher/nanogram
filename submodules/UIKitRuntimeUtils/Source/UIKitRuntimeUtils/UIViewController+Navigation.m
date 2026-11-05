@@ -497,33 +497,25 @@ static void registerEffectViewOverrides(void) {
         }
     }
 
-    NSMutableArray<NSString *> *nameList = [[NSMutableArray alloc] init];
-    [nameList addObject:TGEncodeText(@"_TtC5UIKitP33_ACD4A08F4BE9D00246F2A9C24A80CA8817UISDFBackdropView", 0)];
-    Class backdropViewClass = NSClassFromString(nameList.firstObject);
+    // One lookup of the private Swift class. A name that is not in the ObjC class table falls through to the Swift
+    // runtime's mangled-name scan (tens of milliseconds in +load, launch trace J), so it must not be repeated.
+    Class backdropViewClass = NSClassFromString(TGEncodeText(@"_TtC5UIKitP33_ACD4A08F4BE9D00246F2A9C24A80CA8817UISDFBackdropView", 0));
     if (backdropViewClass != nil) {
         Method moveMethod = class_getInstanceMethod(backdropViewClass, @selector(didMoveToWindow));
         if (moveMethod) {
             original_backdropViewDidMoveToWindow = (void (*)(UIView *, SEL))method_getImplementation(moveMethod);
             class_replaceMethod(backdropViewClass, @selector(didMoveToWindow), (IMP)&replacement_backdropViewDidMoveToWindow, method_getTypeEncoding(moveMethod));
         }
-    }
-    NSString *selectorString = [@"backdropLayer" stringByAppendingString:@":didChangeLuma:"];
-    
-    for (NSString *name in nameList) {
-        Class classValue = NSClassFromString(name);
-        if (classValue == nil) {
-            continue;
-        }
-        
-        Method method = (Method)[RuntimeUtils getMethodOfClass:classValue selector:NSSelectorFromString(selectorString)];
+
+        NSString *selectorString = [@"backdropLayer" stringByAppendingString:@":didChangeLuma:"];
+        Method method = (Method)[RuntimeUtils getMethodOfClass:backdropViewClass selector:NSSelectorFromString(selectorString)];
         if (method) {
             const char *typeEncoding = method_getTypeEncoding(method);
             if (strcmp(typeEncoding, "v32@0:8@16d24") == 0) {
                 original_backdropLayerDidChangeLuma = (id (*)(id, SEL, CALayer *, double))method_getImplementation(method);
-                [RuntimeUtils replaceMethodImplementationOfClass:classValue selector:NSSelectorFromString(selectorString) replacement:(IMP)&replacement_backdropLayerDidChangeLuma];
+                [RuntimeUtils replaceMethodImplementationOfClass:backdropViewClass selector:NSSelectorFromString(selectorString) replacement:(IMP)&replacement_backdropLayerDidChangeLuma];
             }
         }
-        break;
     }
 }
 
