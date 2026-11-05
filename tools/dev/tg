@@ -399,7 +399,11 @@ cache_cleanup_auto() { python3 "$ROOT/tools/dev/cachegc/cachegc.py" auto --repo 
 cache_guard() {
   [ -z "${TG_CACHE_GUARDED:-}" ] || return 0
   export TG_CACHE_GUARDED=1
-  python3 "$ROOT/tools/dev/cachegc/cachegc.py" guard --repo "$ROOT" || exit 1
+  [ -f "$ROOT/tools/dev/cachegc/cachegc.py" ] || return 0
+  local status=0
+  python3 "$ROOT/tools/dev/cachegc/cachegc.py" guard --repo "$ROOT" || status=$?
+  # Exit 1 is the refusal (too little free disk); any other failure of the guard itself must not stop a build.
+  [ "$status" -ne 1 ] || exit 1
 }
 
 # tg worktree add <name> [--branch B] [--from REF] | remove <name> [--force] — tools/dev/worktree/worktree.py (the same
