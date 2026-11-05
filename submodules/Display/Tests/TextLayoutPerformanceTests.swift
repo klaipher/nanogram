@@ -36,7 +36,7 @@ final class TextLayoutPerformanceTests: XCTestCase {
                 truncationType: .end,
                 constrainedSize: CGSize(width: 320.0, height: CGFloat.greatestFiniteMagnitude)
             ))
-            lineCount = layout.lines.count
+            lineCount = layout.linesRects().count
         }
         XCTAssertGreaterThan(lineCount, 400)
     }
