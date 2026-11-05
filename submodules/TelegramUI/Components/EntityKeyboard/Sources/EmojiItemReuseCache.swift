@@ -72,3 +72,24 @@ final class EmojiItemReuseCache<Key: Hashable, Fingerprint: Equatable, Value> {
         return self.entries.count
     }
 }
+
+// Fingerprint for a value that holds shared child objects (an emoji group and its items). Equal only when the values
+// compare equal AND every child is the same instance. `ItemGroup.==` compares items with `Item.==`, which checks the
+// file id but not the whole file, so a group fingerprinted by value alone could hand back a previous group whose items
+// the item cache has just rebuilt for a changed file.
+struct EmojiReuseIdentityFingerprint<Value: Equatable, Child: AnyObject>: Equatable {
+    let value: Value
+    let children: [Child]
+
+    static func ==(lhs: EmojiReuseIdentityFingerprint, rhs: EmojiReuseIdentityFingerprint) -> Bool {
+        if lhs.children.count != rhs.children.count {
+            return false
+        }
+        for i in 0 ..< lhs.children.count {
+            if lhs.children[i] !== rhs.children[i] {
+                return false
+            }
+        }
+        return lhs.value == rhs.value
+    }
+}

@@ -700,7 +700,6 @@ final class CoreListChatHistoryBackend: ASDisplayNode, ChatHistoryListViewBacken
     override init() {
         self.coreList = CoreVirtualListView(forEmbedding: .zero)
         super.init()
-        self.coreList.rebalancePreloadMargin = 480.0
         self.coreList.maxSpeculativeRowsPerTick = 1
         // Force the ASDisplayNode's view to load eagerly. The composed ChatHistoryListNode wrapper
         // gates its history dequeue on isNodeLoaded, mirroring ListViewImpl's eager view load.

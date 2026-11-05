@@ -383,7 +383,6 @@ struct ChatHistoryWholeScan {
 final class ChatHistoryTransactionOpaqueState {
     let historyView: ChatHistoryView
     var cachedWholeScan: ChatHistoryWholeScan?
-    var lastPossibleReactionsSubmitTimestamp: Double?
     
     init(historyView: ChatHistoryView) {
         self.historyView = historyView
@@ -3526,11 +3525,7 @@ public final class ChatHistoryListNodeImpl: ASDisplayNode, ChatHistoryNode, Chat
                 }
             }
             if !wholeScan.possibleReactionsMessageIds.isEmpty {
-                let now = CFAbsoluteTimeGetCurrent()
-                if transactionState.lastPossibleReactionsSubmitTimestamp.flatMap({ now - $0 < 1.0 }) != true {
-                    transactionState.lastPossibleReactionsSubmitTimestamp = now
-                    self.messageWithReactionsProcessingManager.add(wholeScan.possibleReactionsMessageIds)
-                }
+                self.messageWithReactionsProcessingManager.add(wholeScan.possibleReactionsMessageIds)
             }
             if !downloadableResourceIds.isEmpty {
                 let _ = markRecentDownloadItemsAsSeen(postbox: self.context.account.postbox, items: downloadableResourceIds).startStandalone()

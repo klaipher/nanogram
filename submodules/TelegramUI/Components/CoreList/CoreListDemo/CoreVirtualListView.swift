@@ -614,7 +614,6 @@ public final class CoreVirtualListView: UIView {
     }
 
     public var preloadMargin: CGFloat = 160
-    public var rebalancePreloadMargin: CGFloat?
     public var maxSpeculativeRowsPerTick: Int = .max
     public var loadedEdgeMargin: CGFloat = 0 {
         didSet {
@@ -2917,15 +2916,15 @@ public final class CoreVirtualListView: UIView {
     private var rebalanceDeferredRows = false
 
     private func rebalanceActiveWindow() {
+        rebalanceDeferredRows = false
         guard !activeWindow.isEmpty else { return }
 
         let scrollY = engine.offset
-        let band = rebalanceLoadBand
+        let band = projectedLoadBand
         let width = contentWidth
         let preRebalanceStart = activeWindow.startIndex
         let preRebalanceEnd = activeWindow.endIndex
         var rowBudget = RebalanceRowBudget(maxSpeculativeRows: maxSpeculativeRowsPerTick)
-        rebalanceDeferredRows = false
         defer { rebalanceDeferredRows = rowBudget.deferred }
         let absoluteBase = containerOriginY - activeWindow.minY
         var window = activeWindow
@@ -3058,11 +3057,6 @@ public final class CoreVirtualListView: UIView {
 
     private var projectedLoadBand: ClosedRange<CGFloat> {
         -preloadMargin ... logicalSize.height + preloadMargin
-    }
-
-    private var rebalanceLoadBand: ClosedRange<CGFloat> {
-        let margin = rebalancePreloadMargin ?? preloadMargin
-        return -margin ... logicalSize.height + margin
     }
 
     private func projectedFrame(_ frame: CGRect,
