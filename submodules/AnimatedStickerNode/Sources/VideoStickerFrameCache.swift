@@ -5,6 +5,7 @@ import Display
 import YuvConversion
 import UniversalMediaPlayer
 import ManagedFile
+import VP9Hardware
 
 // The frame file of a CachedVideoStickerRepresentation (the `.cached` playback mode), read by
 // AnimatedStickerCachedFrameSource: a header of Int32s (fps, frame count, width, height, bytes per
