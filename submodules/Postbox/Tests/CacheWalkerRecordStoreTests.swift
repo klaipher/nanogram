@@ -6,8 +6,9 @@ import SwiftSignalKit
 /// The last-run time of the cache walkers is kept in the storage index of the account (no server traffic, no UI
 /// state), so a relaunch within a day does not walk the cache again.
 final class CacheWalkerRecordStoreTests: XCTestCase {
-    func testTheTouchSkipIntervalMatchesTheInMemoryDedupe() {
-        XCTAssertEqual(CacheTouchPolicy.skipInterval, RecentFileTouches.defaultInterval)
+    func testTheShortLivedTouchIntervalMatchesTheInMemoryDedupe() {
+        XCTAssertEqual(CacheTouchPolicy.shortLivedSkipInterval, RecentFileTouches.defaultInterval)
+        XCTAssertGreaterThanOrEqual(CacheTouchPolicy.skipInterval, CacheTouchPolicy.shortLivedSkipInterval)
     }
 
     func testTheRunRecordSurvivesReopeningTheStorageBox() {
