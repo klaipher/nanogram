@@ -4,6 +4,30 @@ Newest first. Internal notes for each TestFlight build; testers see the What to 
 
 ## Unreleased
 
+## 13.1.2 (202611052231) — 2026-11-05 — 9971ecaa
+
+TestFlight upload (internal testers). Since 202611051247 (fb1b8101..9971ecaa): the keyboard-open reaction route, profiling waves 1 and 2 (shared core and iOS UI lanes), the signposts and performance tests, the Sendable fixes for the Mac and the module table; the detailed entries are the bullets that were under Unreleased until this upload, now below. Enhanced Security is not in this build: `tg testflight` leaves it off until the distribution profiles are checked (device builds since 202611052030 have it). Mac counterpart: GitHub release 13.1.0 (202611052243). Tester notes (What to Test):
+
+> What to test in this build:
+>
+> 1. Reactions with the keyboard open: pick a reaction from the message menu while typing. The reaction animation and effect should now play in the chat (the last build only showed the badge).
+>
+> 2. Faster start: the app no longer scans the whole media cache on every launch (once a day at most), so the first seconds after opening should feel lighter.
+>
+> 3. Emoji and animated stickers play at the right speed in Low Power Mode and when the phone is hot (they used to run slow), and the emoji tick uses less battery.
+>
+> 4. Emoji panel opens and switches faster and uses less memory.
+>
+> 5. Photo picker (attach > Gallery): scrolling a big library should be smoother, with thumbnails ready sooner.
+>
+> 6. Animated stickers that fail to draw on the GPU fall back cleanly instead of being redrawn on every loop.
+>
+> 7. Cached media: files you still use are kept, even in chats with a short "keep media" setting.
+>
+> Please report any crash, freeze, slow scrolling or sticker that stops playing, with the time it happened.
+
+Detailed entries:
+
 - **`tg device` turns on Enhanced Security (soft mode)** when the app profile grants `com.apple.security.hardened-process` (`profile_has_enhanced_security`, adds `--//Telegram:enhancedSecurity`): the app, NotificationService and Share are then signed with hardened-process, checked allocations in soft mode. `tg testflight` (`--app-store`) leaves it off until the distribution profiles are checked.
 - Reactions chosen in the context menu with the keyboard open now play their effect (build 202611051247 showed the badge only). The menu is then hosted in the keyboard window, another scene than the message, where the picker's flight and effect never showed and the message's reaction stayed hidden until the 2 s timer. When the menu is not in the chat's window the menu just fades and the chat plays the effect itself through `StandaloneReactionAnimation` (as for a double tap), after `dismiss()` has moved the bubble back into the chat. The check compares the menu's window with the chat's, not with the reaction pill's: while the menu is open the bubble, pill included, is extracted into the menu, so the pill is in the keyboard window too (the first version of this fix compared those and never left the old flight): `contextReactionLandingRoute` (ReactionSelectionNode), `ChatContextReactionStandaloneLanding.swift`, both `awaitingAppliedReaction` closures in `ChatControllerOpenMessageContextMenu.swift`. Keyboard closed: the flight is unchanged. The saved-messages tag tooltip is skipped on this route. Cause (a) cross-window geometry vs (b) overlay not drawing is still open; `ReactionKB` lines in the short log (menu callback, `dismissWithReaction`, flight start/end, timer reveal, cancel, picker window moves) tell them apart. Test: `ContextReactionLandingRouteTests`; the applied line also logs `targetInMenu`, and the standalone route logs `standalone targetInChatWin`.
 - **Development profiles carry Enhanced Security** for the app, NotificationService and Share (`device_signing.py profiles`; the capability was enabled on those App IDs on 2026-11-05). Profiles regenerated the same day. Builds turn it on with `--//Telegram:enhancedSecurity` (soft mode).
