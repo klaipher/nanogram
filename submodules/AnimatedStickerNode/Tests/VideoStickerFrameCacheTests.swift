@@ -152,6 +152,39 @@ final class VideoStickerFrameCacheTests: XCTestCase {
         XCTAssertEqual(frames.count, 24)
     }
 
+    // The cache is streamed to the file; the file holds exactly the bytes the previous writer produced.
+    func testFileOutputIsTheFileThePreviousWriterWrote() throws {
+        let path = try XCTUnwrap(fixture("sticker_vp9", "webm"))
+        makeVideoStickerHardwareStream = { _ in nil }
+        let outputPath = NSTemporaryDirectory() + "vsticker-test-" + UUID().uuidString
+        defer {
+            try? FileManager.default.removeItem(atPath: outputPath)
+        }
+        XCTAssertTrue(makeVideoStickerFrameCache(path: path, size: self.size, outputPath: outputPath, isCancelled: { false }))
+        let fileBytes = try Data(contentsOf: URL(fileURLWithPath: outputPath))
+        XCTAssertTrue(fileBytes == previousVideoStickerFrameCache(path: path, size: self.size), "the streamed file differs")
+    }
+
+    func testCancelledWriteLeavesNoFile() throws {
+        let path = try XCTUnwrap(fixture("sticker_vp9", "webm"))
+        makeVideoStickerHardwareStream = { _ in nil }
+        let outputPath = NSTemporaryDirectory() + "vsticker-test-" + UUID().uuidString
+        var calls = 0
+        let result = makeVideoStickerFrameCache(path: path, size: self.size, outputPath: outputPath, isCancelled: {
+            calls += 1
+            return calls > 3
+        })
+        XCTAssertFalse(result)
+        XCTAssertFalse(FileManager.default.fileExists(atPath: outputPath), "a cancelled write must not leave a partial cache")
+    }
+
+    func testFrameLimitKeepsAStickerShortAndBounded() {
+        XCTAssertEqual(videoStickerFrameCacheLimit(fps: 30), 300)
+        XCTAssertEqual(videoStickerFrameCacheLimit(fps: 24), 240)
+        XCTAssertEqual(videoStickerFrameCacheLimit(fps: 0), 300, "an unknown frame rate is treated as 30")
+        XCTAssertEqual(videoStickerFrameCacheLimit(fps: 1000), WebMStickerDemuxer.maxFrameCount)
+    }
+
     // Golden test: the hardware path writes byte for byte the file libvpx writes.
     func testHardwarePathWritesTheSameFile() throws {
         let path = try XCTUnwrap(fixture("sticker_vp9", "webm"))

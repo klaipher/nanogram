@@ -267,14 +267,11 @@ public func cacheVideoStickerFrames(path: String, size: CGSize, cacheKey: String
             if cancelled.with({ $0 }) {
                 return
             }
-            guard let data = makeVideoStickerFrameCache(path: path, size: size, isCancelled: { cancelled.with({ $0 }) }) else {
-                return
-            }
             let tempFile = EngineTempBox.shared.tempFile(fileName: "result.vsticker")
-            guard let file = ManagedFile(queue: nil, path: tempFile.path, mode: .readwrite) else {
+            // Written frame by frame straight into the file.
+            guard makeVideoStickerFrameCache(path: path, size: size, outputPath: tempFile.path, isCancelled: { cancelled.with({ $0 }) }) else {
                 return
             }
-            let _ = file.write(data)
             
             subscriber.putNext(.tempFile(tempFile))
             subscriber.putCompletion()

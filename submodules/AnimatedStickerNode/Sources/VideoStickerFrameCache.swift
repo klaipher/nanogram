@@ -4,6 +4,7 @@ import Compression
 import Display
 import YuvConversion
 import UniversalMediaPlayer
+import ManagedFile
 
 // The frame file of a CachedVideoStickerRepresentation (the `.cached` playback mode), read by
 // AnimatedStickerCachedFrameSource: a header of Int32s (fps, frame count, width, height, bytes per
@@ -14,7 +15,8 @@ import UniversalMediaPlayer
 // is 34% larger, and every displayed frame is decoded again on each loop, so the one-off encode
 // saving is lost after ~700 played frames (VideoStickerFrameCacheTests.testCodecCost).
 
-// Encodes BGRA frames into the cache format.
+// Encodes BGRA frames into the cache format, straight into a file: the compressed frames of a long sticker are
+// never held in memory (several of these run at once while a pack opens).
 private final class VideoStickerFrameCacheEncoder {
     private let size: CGSize
     private let bytesPerRow: Int
@@ -24,10 +26,14 @@ private final class VideoStickerFrameCacheEncoder {
     private var compressedFrameData: Data
     private let scratchData: UnsafeMutableRawPointer
     private let frameCountOffset = 4
-    private(set) var output = Data()
+    private let file: ManagedFile
     private(set) var frameCount: Int32 = 0
+    // Set when a write to the file came up short (disk full); the file is then not a valid cache.
+    private(set) var writeFailed = false
 
-    init(size: CGSize, fps: Int32) {
+    // The file is written from its current position, which the caller leaves at the start.
+    init(size: CGSize, fps: Int32, file: ManagedFile) {
+        self.file = file
         self.size = size
         self.bytesPerRow = DeviceGraphicsContextSettings.shared.bytesPerRow(forWidth: Int(size.width))
 
@@ -57,7 +63,9 @@ private final class VideoStickerFrameCacheEncoder {
 
     private func append(_ value: Int32) {
         var value = value
-        withUnsafeBytes(of: &value) { self.output.append(contentsOf: $0) }
+        if self.file.write(&value, count: 4) != 4 {
+            self.writeFailed = true
+        }
     }
 
     // A nil source re-encodes the previous frame's pixels, as the previous writer did.
@@ -92,7 +100,14 @@ private final class VideoStickerFrameCacheEncoder {
             return compression_encode_buffer(base.assumingMemoryBound(to: UInt8.self), compressedFrameDataLength, previous.assumingMemoryBound(to: UInt8.self), yuvaLength, scratch, COMPRESSION_LZFSE)
         }
         self.append(Int32(length))
-        self.output.append(self.compressedFrameData.prefix(length))
+        if length > 0 {
+            let written = self.compressedFrameData.withUnsafeBytes { bytes -> Int in
+                return self.file.write(bytes.baseAddress!, count: length)
+            }
+            if written != length {
+                self.writeFailed = true
+            }
+        }
 
         let tmp = self.previousYuvaFrameData
         self.previousYuvaFrameData = self.yuvaFrameData
@@ -100,39 +115,81 @@ private final class VideoStickerFrameCacheEncoder {
         self.frameCount += 1
     }
 
-    // Records the frame count; like before, only when the whole stream was read.
-    func finish(complete: Bool) -> Data {
-        if complete && self.frameCount > 0 {
+    // Records the frame count in the header; like before, only when the whole stream was read. Returns false
+    // when the file could not be written completely.
+    func finish(complete: Bool) -> Bool {
+        if complete && self.frameCount > 0 && !self.writeFailed {
             var frameCount = self.frameCount
-            let offset = self.frameCountOffset
-            withUnsafeBytes(of: &frameCount) { bytes in
-                self.output.replaceSubrange(offset ..< offset + 4, with: bytes)
+            if self.file.seek(position: Int64(self.frameCountOffset)) {
+                if self.file.write(&frameCount, count: 4) != 4 {
+                    self.writeFailed = true
+                }
+            } else {
+                self.writeFailed = true
             }
         }
-        return self.output
+        return !self.writeFailed
     }
 }
 
-// Returns the cache file's bytes, or nil when cancelled.
-public func makeVideoStickerFrameCache(path: String, size: CGSize, isCancelled: () -> Bool) -> Data? {
-    // The frame rate comes from FFmpeg as before, for both decoders.
-    let source = SoftwareVideoSource(path: path, hintVP9: true, unpremultiplyAlpha: true)
-    if isCancelled() {
-        return nil
-    }
-    let fps = Int32(min(30, source.getFramerate()))
+/// The most frames a cache holds: a "video sticker" is a few seconds long, so a longer or faster file (which would
+/// make the cache grow without bound while it is written) ends the cache early and is played from the source.
+func videoStickerFrameCacheLimit(fps: Int32) -> Int {
+    return min(WebMStickerDemuxer.maxFrameCount, (fps > 0 ? Int(fps) : 30) * 10)
+}
 
+// Writes the cache file for a video sticker to `outputPath`. False when cancelled or when the file could not be
+// written (the partial file is removed). A stream longer than `videoStickerFrameCacheLimit` is written with a frame
+// count of 0 (not usable), like any stream that was not read to its end.
+public func makeVideoStickerFrameCache(path: String, size: CGSize, outputPath: String, isCancelled: () -> Bool) -> Bool {
+    guard let file = ManagedFile(queue: nil, path: outputPath, mode: .readwrite) else {
+        return false
+    }
+    file.truncate(count: 0)
+    let success = writeVideoStickerFrameCache(path: path, size: size, file: file, isCancelled: isCancelled)
+    if !success {
+        file._unsafeClose()
+        let _ = try? FileManager.default.removeItem(atPath: outputPath)
+    }
+    return success
+}
+
+private func writeVideoStickerFrameCache(path: String, size: CGSize, file: ManagedFile, isCancelled: () -> Bool) -> Bool {
+    if isCancelled() {
+        return false
+    }
     // Hardware VP9 when the device has it. Its planes equal libvpx's and are converted to BGRA by
     // the same decodeYUVAPlanesToRGBA (unpremultiplied, as the libvpx path asks for), so the file is
     // the same; on any failure the file is written again from libvpx.
+    var openedSource: SoftwareVideoSource?
     if let hardwareStream = makeVideoStickerHardwareStream(path) {
-        let encoder = VideoStickerFrameCacheEncoder(size: size, fps: fps)
+        // The frame rate comes from the container when it states one (what FFmpeg reports as well); FFmpeg is opened
+        // only when it does not, or when the hardware decoder fails.
+        let fps: Int32
+        if let frameRate = hardwareStream.frameRate {
+            fps = Int32(min(30, Int(frameRate)))
+        } else {
+            let opened = SoftwareVideoSource(path: path, hintVP9: true, unpremultiplyAlpha: true)
+            openedSource = opened
+            fps = Int32(min(30, opened.getFramerate()))
+        }
+        if isCancelled() {
+            hardwareStream.decoder.invalidate()
+            return false
+        }
+        let limit = videoStickerFrameCacheLimit(fps: fps)
+        let encoder = VideoStickerFrameCacheEncoder(size: size, fps: fps, file: file)
         let converter = VideoStickerHardwareFrameConverter()
         var failed = false
+        var exceededLimit = false
         for frame in hardwareStream.frames {
             if isCancelled() {
                 hardwareStream.decoder.invalidate()
-                return nil
+                return false
+            }
+            if Int(encoder.frameCount) >= limit {
+                exceededLimit = true
+                break
             }
             guard let decoded = hardwareStream.decoder.decode(frame), converter.convert(decoded, unpremultiply: true, { source, width, height, bytesPerRow in
                 encoder.add(source: source, width: width, height: height, bytesPerRow: bytesPerRow)
@@ -143,13 +200,29 @@ public func makeVideoStickerFrameCache(path: String, size: CGSize, isCancelled: 
         }
         hardwareStream.decoder.invalidate()
         if !failed && !hardwareStream.frames.isEmpty {
-            return encoder.finish(complete: true)
+            return encoder.finish(complete: !exceededLimit)
         }
+        // Start the file again from libvpx.
+        file.truncate(count: 0)
+        file.seek(position: 0)
     }
 
-    let encoder = VideoStickerFrameCacheEncoder(size: size, fps: fps)
+    // The frame rate comes from FFmpeg as before.
+    let source = openedSource ?? SoftwareVideoSource(path: path, hintVP9: true, unpremultiplyAlpha: true)
+    if isCancelled() {
+        return false
+    }
+    let fps = Int32(min(30, source.getFramerate()))
+    let limit = videoStickerFrameCacheLimit(fps: fps)
+    let encoder = VideoStickerFrameCacheEncoder(size: size, fps: fps, file: file)
     var complete = false
     while true {
+        if isCancelled() {
+            return false
+        }
+        if Int(encoder.frameCount) >= limit {
+            break
+        }
         let frameAndLoop = source.readFrame(maxPts: nil)
         guard let frame = frameAndLoop.0 else {
             complete = frameAndLoop.3
@@ -163,4 +236,16 @@ public func makeVideoStickerFrameCache(path: String, size: CGSize, isCancelled: 
         CVPixelBufferUnlockBaseAddress(imageBuffer, CVPixelBufferLockFlags(rawValue: 0))
     }
     return encoder.finish(complete: complete)
+}
+
+// The cache file's bytes, or nil when cancelled or not writable (tests compare these).
+func makeVideoStickerFrameCache(path: String, size: CGSize, isCancelled: () -> Bool) -> Data? {
+    let outputPath = NSTemporaryDirectory() + "vsticker-cache-" + UUID().uuidString
+    defer {
+        let _ = try? FileManager.default.removeItem(atPath: outputPath)
+    }
+    guard makeVideoStickerFrameCache(path: path, size: size, outputPath: outputPath, isCancelled: isCancelled) else {
+        return nil
+    }
+    return try? Data(contentsOf: URL(fileURLWithPath: outputPath))
 }

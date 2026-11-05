@@ -18,11 +18,14 @@ extension VP9HardwareFrameDecoder: VideoStickerHardwareDecoder {
 final class VideoStickerHardwareStream {
     let frames: [WebMStickerFrame]
     let decoder: VideoStickerHardwareDecoder
+    // Frames per second when the container states it; nil makes the frame cache ask FFmpeg.
+    let frameRate: Double?
     var nextFrameIndex = 0
 
-    init(frames: [WebMStickerFrame], decoder: VideoStickerHardwareDecoder) {
+    init(frames: [WebMStickerFrame], decoder: VideoStickerHardwareDecoder, frameRate: Double? = nil) {
         self.frames = frames
         self.decoder = decoder
+        self.frameRate = frameRate
     }
 }
 
@@ -45,7 +48,7 @@ var makeVideoStickerHardwareStream: (String) -> VideoStickerHardwareStream? = { 
     guard let decoder = VP9HardwareFrameDecoder(sticker: sticker) else {
         return nil
     }
-    return VideoStickerHardwareStream(frames: sticker.frames, decoder: decoder)
+    return VideoStickerHardwareStream(frames: sticker.frames, decoder: decoder, frameRate: sticker.frameRate)
 }
 
 // Turns a decoded frame into premultiplied (or unpremultiplied) BGRA with the same conversion the libvpx path uses
