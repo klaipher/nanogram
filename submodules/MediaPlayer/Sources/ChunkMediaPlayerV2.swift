@@ -274,7 +274,9 @@ public final class ChunkMediaPlayerV2: ChunkMediaPlayer {
     private var didSetSourceSeek: Bool = false
     private var partsStateDisposable: Disposable?
     private var updateTimer: Foundation.Timer?
-    private var updateTimerIsFast: Bool = false
+    private var updateTimerInterval: Double?
+    private var lastIsBuffering: Bool = false
+    private var lastIsNearEnd: Bool = false
     
     private var audioSessionDisposable: Disposable?
     private var hasAudioSession: Bool = false
@@ -417,20 +419,35 @@ public final class ChunkMediaPlayerV2: ChunkMediaPlayer {
         if self.shouldSuspendInBackground {
             self.updateTimer?.invalidate()
             self.updateTimer = nil
+            self.updateTimerInterval = nil
             return
         }
-        let isFast = self.isPlaying || self.pendingSeekTimestamp != nil || !self.didSeekOnce
-        if isFast == self.updateTimerIsFast, self.updateTimer != nil {
+        let isStarved = !self.videoIsRequestingMediaData || (self.audioRenderer != nil && !self.audioIsRequestingMediaData)
+        let interval = ChunkMediaPlayerUpdateSchedule.interval(
+            isPlaying: self.isPlaying,
+            pendingSeek: self.pendingSeekTimestamp != nil,
+            didSeekOnce: self.didSeekOnce,
+            isBuffering: self.lastIsBuffering,
+            isStarved: isStarved,
+            isNearEnd: self.lastIsNearEnd
+        )
+        if interval == self.updateTimerInterval, (self.updateTimer != nil) == (interval != nil) {
             return
         }
-        self.updateTimerIsFast = isFast
+        self.updateTimerInterval = interval
         self.updateTimer?.invalidate()
-        self.updateTimer = Foundation.Timer.scheduledTimer(withTimeInterval: isFast ? 1.0 / 60.0 : 1.0 / 5.0, repeats: true, block: { [weak self] _ in
+        self.updateTimer = nil
+        guard let interval else {
+            return
+        }
+        let timer = Foundation.Timer.scheduledTimer(withTimeInterval: interval, repeats: true, block: { [weak self] _ in
             guard let self else {
                 return
             }
             self.updateInternalState()
         })
+        timer.tolerance = ChunkMediaPlayerUpdateSchedule.tolerance(for: interval)
+        self.updateTimer = timer
     }
 
     private func updateInternalState() {
@@ -887,6 +904,8 @@ public final class ChunkMediaPlayerV2: ChunkMediaPlayer {
             self.triggerRequestMediaData(now: now)
         }
         
+        self.lastIsBuffering = isBuffering
+        self.lastIsNearEnd = duration > 0.0 && timestampSeconds >= duration - ChunkMediaPlayerV2.endTolerance - 0.5
         if isBuffering {
             if self.bufferingStartTime == nil {
                 self.bufferingStartTime = CFAbsoluteTimeGetCurrent()
@@ -1178,7 +1197,9 @@ public final class ChunkMediaPlayerV2: ChunkMediaPlayer {
             if ChunkMediaPlayerV2.differsBeyondTiming(status, lastEmittedStatus) {
                 shouldEmit = true
             } else if isPlayingLike {
-                shouldEmit = now - self.lastStatusEmitTimestamp >= 1.0 / 10.0
+                // Slightly under the 10 Hz steady timer interval, so a tick that comes a hair early is not skipped
+                // (that would halve the rate to 5 Hz).
+                shouldEmit = now - self.lastStatusEmitTimestamp >= 0.09
             } else {
                 shouldEmit = status.timestamp != lastEmittedStatus.timestamp
             }
