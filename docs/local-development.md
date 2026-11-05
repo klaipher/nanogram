@@ -107,7 +107,7 @@ a few rough edges for a fork.
 | Change | Where | Effect |
 | --- | --- | --- |
 | Bazel 9.3: copy-on-write disk cache | `versions.json` | Disk cache entries are APFS clones of the build outputs instead of second copies: ~8 GB saved on a debug build. |
-| Disk cache garbage collection: 30 GB cap, 14-day max age | `.bazelrc` | Upstream passes `--disk_cache` with no limit, so it grows forever. Bazel now trims it in the background when idle. Change the limits in `user.bazelrc`. |
+| Disk cache garbage collection: 20 GB cap, 14-day max age | `.bazelrc` | Upstream passes `--disk_cache` with no limit, so it grows forever. Bazel now trims it in the background when idle. Change the limits in `user.bazelrc`. |
 | `--experimental_repository_cache_hardlinks` | `.bazelrc` | Downloaded archives are hardlinked into `external/` instead of copied. |
 | rules_xcodeproj with the clonetool-based copy tool | `MODULE.bazel` | Xcode builds copy outputs into DerivedData as APFS clones instead of with rsync. |
 | Shallow submodules (`shallow = true`) | `.gitmodules` | `git submodule update` fetches one commit per submodule instead of its whole history (~400 MB more for webrtc, libvpx and td alone). |
