@@ -64,7 +64,9 @@ marked (check) were not re-verified against the code; correct them on the next c
   Cache walkers (time-based cleanup scan, automatic cache eviction) run at most once a day, not in the first minute
   after launch, with the last run kept in the StorageBox metadata; cache touches `stat` before `utime`;
   `debug_measureTimeToFirstEvent` is DEBUG-only; the media player timer has a tolerance and stops when paused;
-  hardware VP9 sticker counters and session release when hidden or once the frame cache is complete.
+  hardware VP9 sticker counters and session release when hidden or once the frame cache is complete;
+  the MediaBox open-handle table evicts the least recently used handle (upstream: the oldest opened) and Postbox logs
+  which transaction call sites append the most WAL frames.
 - Where: docs/subsystems/media-io.md, docs/subsystems/media-decode-and-voice.md, docs/performance/.
 
 ### Chat features

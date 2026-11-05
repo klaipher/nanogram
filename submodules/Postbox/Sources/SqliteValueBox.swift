@@ -387,6 +387,11 @@ public final class SqliteValueBox: ValueBox {
     /// The current connection's write counter (also the WAL hook's context); the idle checkpoint reports to it too.
     private var walWriteAccounting: SqliteWalWriteAccounting?
 
+    /// WAL frames the last commit on this connection appended (0 for a read-only transaction), once.
+    func takeLastCommitAppendedFrames() -> Int {
+        return self.walWriteAccounting?.takeLastCommitAppendedFrames() ?? 0
+    }
+
     /// Removes the database together with its `-wal` and `-shm`, never `db_sqlite` alone.
     /// Another process may still hold the WAL/shm pair open; a connection created at this
     /// path afterwards would then share that process's `-shm` (the dead-man lock stops SQLite

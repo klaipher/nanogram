@@ -4,6 +4,11 @@ Newest first. Internal notes for each TestFlight build; testers see the What to 
 
 ## Unreleased
 
+### Round 3, core lane (perf/r3-core)
+
+- **CO1 / C12 Postbox write attribution**: the disk-write ledger says how many WAL bytes Postbox wrote, not which code wrote them. `SqliteWalWriteAccounting` now keeps the frames the last commit appended (`takeLastCommitAppendedFrames`, read right after `COMMIT`, where the WAL hook ran), and `PostboxImpl.internalTransaction` adds them per call site (`file:line` of the `transaction` call) in the new `TransactionWriteAttribution`. A Postbox log line at most every 10 minutes (only when something was written) lists the six call sites that appended the most frames (frames, commits, largest single commit). Counts and source locations only. A read-only transaction appends nothing and is not counted. Nothing about what is written changes. Tests: `TransactionWriteAttributionTests`, `testTheFramesOfTheLastCommitAreTakenOnce` in `SqliteValueBoxWriteAccountingTests`. Pure part ran in a scratch package (6/6).
+- **CO2 / C6 MediaBox handle table is LRU**: `MediaBoxFileManager` evicted the handle with the lowest id (opened first), so a file written for the whole download (one handle, opened early) was closed and opened again whenever 16 newer files were opened. It now evicts the handle least recently used (`ItemContext.lastUse`, set on every `Item.access` from a counter in the manager). The cap stays 16: the process fd limit is 256 on iOS and the table shares it with sockets and SQLite. The `mediaBoxReopen` event and the once-a-minute `reopened=` log line still count what remains. Test: `testTheLeastRecentlyUsedHandleIsEvictedNotTheOldestOpened`.
+
 ## 13.1.2 (202611052231) — 2026-11-05 — 9971ecaa
 
 TestFlight upload (internal testers). Since 202611051247 (fb1b8101..9971ecaa): the keyboard-open reaction route, profiling waves 1 and 2 (shared core and iOS UI lanes), the signposts and performance tests, the Sendable fixes for the Mac and the module table; the detailed entries are the bullets that were under Unreleased until this upload, now below. Enhanced Security is not in this build: `tg testflight` leaves it off until the distribution profiles are checked (device builds since 202611052030 have it). Mac counterpart: GitHub release 13.1.0 (202611052243). Tester notes (What to Test):

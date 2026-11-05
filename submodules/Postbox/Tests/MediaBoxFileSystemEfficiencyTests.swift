@@ -69,6 +69,39 @@ final class MediaBoxFileSystemEfficiencyTests: XCTestCase {
         }
     }
 
+    func testTheLeastRecentlyUsedHandleIsEvictedNotTheOldestOpened() {
+        var paths: [String] = []
+        for i in 0 ..< 18 {
+            let path = self.path("lru-\(i)")
+            XCTAssertTrue(FileManager.default.createFile(atPath: path, contents: Data([1, 2, 3])))
+            paths.append(path)
+        }
+        self.queue.sync {
+            let manager = MediaBoxFileManager(queue: self.queue)
+            var items: [MediaBoxFileManager.Item?] = []
+            for path in paths {
+                items.append(manager.open(path: path, mode: .read))
+            }
+            for item in items.prefix(17) {
+                try? item?.access { _ in }
+            }
+            XCTAssertEqual(manager.openedFileCount, 17)
+            // The first file is in use again; the second is now the one nobody touched for longest.
+            try? items[0]?.access { _ in }
+            try? items[17]?.access { _ in }
+            XCTAssertEqual(manager.openedFileCount, 18)
+            try? items[0]?.access { _ in }
+            XCTAssertEqual(manager.openedFileCount, 18, "the busy file kept its handle")
+            XCTAssertEqual(manager.reopenedFileCount, 0)
+            try? items[1]?.access { _ in }
+            XCTAssertEqual(manager.openedFileCount, 19, "the idle file lost its handle")
+            XCTAssertEqual(manager.reopenedFileCount, 1)
+            for i in 0 ..< items.count {
+                manager.releaseOnQueue(&items[i])
+            }
+        }
+    }
+
     // MARK: - MediaBoxFileMap.serialize
 
     func testSerializingAMapAfterEveryWriteOpensTheMetaFileOnce() {
