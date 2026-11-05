@@ -2248,6 +2248,7 @@ public final class SharedAccountContextImpl: SharedAccountContext {
     }
     
     public func navigateToChatController(_ params: NavigateToChatControllerParams) {
+        PerformanceSignposts.beginPending(.chatOpenToReady)
         navigateToChatControllerImpl(params)
     }
     

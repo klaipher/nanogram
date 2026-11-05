@@ -4,7 +4,11 @@ Newest first. Internal notes for each TestFlight build; testers see the What to 
 
 ## Unreleased
 
-(none)
+- **Profiling: shared signposts, performance tests with baselines, MetricKit launch tasks** (2026-11-05, branch `perf/signposts-tests`; not built or run yet; only `swift test` of SwiftSignalKit and Postbox ran; the Mac needs `tg core-bump` to this commit):
+  - **Signposts**: new `NanogramSignposts`, `UserSignpost`, `PerformanceSignpostName` and `LaunchTrace` in SwiftSignalKit (the same two files in `SwiftSignalKit/Source` for Bazel and `SwiftSignalKit2/Source` for SwiftPM, which the Mac consumes). `Display.PerformanceSignposts` is a typealias with the Mac's API. Six user-level intervals are also emitted in `.pointsOfInterest`: `launchToChatListReady` (AppDelegate), `chatOpenToReady` (navigateToChatController to ChatHistoryListNode ready), `navigationPushToReady` (NavigationController.pushViewController to completion), `chatListFirstFrame` (ChatListControllerImpl init to ChatListNode ready), `chatListFolderSwitch` (ChatListContainerNode.switchToFilter), `callConnect` (requestCall / answer until `.connected`). The composer keystroke interval uses the same begin/end API. No metadata.
+  - **Performance tests** (clock, CPU, memory; skipped unless `TG_PERF=1`): `PostboxReadPerformanceTests` (Postbox), `ChatListDiffPerformanceTests` (ChatListUITests), `TextLayoutPerformanceTests` (DisplayTests), `SyntaxHighlightPerformanceTests` (TextFormatTests, libprisma). `SwiftSignalKitTests` (new host test target) pins the signpost names and the launch-task bookkeeping.
+  - **`tools/dev/perfgate.py` and `tg perf run|check|record|model`**: compares measured values (XCTest log lines, `.xcresult`, JSON) with `tools/dev/perf/baselines.json`, keyed by `hw.model`; a missing baseline is recorded on the owner's devices (`Mac16,1`, `iPhone18,2`) and never fails; tests in `tools/dev/tests/test_perfgate.py`. Not in the pre-push hook.
+  - **MetricKit launch tasks (iOS 27 only)**: `LaunchTrace.begin()` in `didFinishLaunching` opens `account-load` (context received), `chat-list-first-data` (ChatListNode first ready) and `first-frame` (root controller ready, "Launch to ready") with `MetricManager.trackLaunchTask`. Reports stay local (CrashReportCollector); nothing is sent.
 
 ## 13.1.2 (202611051247) — 2026-11-05 — fb1b8101
 

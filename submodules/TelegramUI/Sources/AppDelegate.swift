@@ -364,6 +364,7 @@ private func extractAccountManagerState(records: AccountRecordsView<TelegramAcco
     func application(_ application: UIApplication, didFinishLaunchingWithOptions launchOptions: [UIApplication.LaunchOptionsKey: Any]? = nil) -> Bool {
         precondition(!testIsLaunched)
         testIsLaunched = true
+        LaunchTrace.begin()
         CrashReportCollector.shared.start()
         
         let _ = voipTokenPromise.get().start(next: { token in
@@ -1451,6 +1452,7 @@ private func extractAccountManagerState(records: AccountRecordsView<TelegramAcco
                 MainMenuInstaller.setNeedsRebuild()
             }
             if let context = context {
+                LaunchTrace.end(.accountLoad)
                 setupLegacyComponents(context: context.context)
                 let isReady = context.isReady.get()
                 contextReadyDisposable.set((isReady
@@ -1462,6 +1464,7 @@ private func extractAccountManagerState(records: AccountRecordsView<TelegramAcco
                         print("Application: context took \(readyTime) to become ready")
                     }
                     print("Launch to ready took \((CFAbsoluteTimeGetCurrent() - launchStartTime) * 1000.0) ms")
+                    LaunchTrace.end(.firstFrame)
 
                     self.mainWindow.debugAction = nil
                     self.mainWindow.viewController = context.rootController

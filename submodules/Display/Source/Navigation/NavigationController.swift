@@ -1576,7 +1576,11 @@ open class NavigationController: UINavigationController, ContainableController, 
     public func pushViewController(_ controller: ViewController, animated: Bool = true, completion: @escaping () -> Void) {
         var controllers = self.viewControllers
         controllers.append(controller)
-        self.setViewControllers(controllers, animated: animated, completion: completion)
+        PerformanceSignposts.beginPending(.navigationPushToReady)
+        self.setViewControllers(controllers, animated: animated, completion: {
+            PerformanceSignposts.endPending(.navigationPushToReady)
+            completion()
+        })
     }
         
     open override func pushViewController(_ viewController: UIViewController, animated: Bool) {

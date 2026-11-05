@@ -261,6 +261,7 @@ public class ChatListControllerImpl: TelegramBaseController, ChatListController 
     }
     
     public init(context: AccountContext, location: ChatListControllerLocation, controlsHistoryPreload: Bool, hideNetworkActivityStatus: Bool = false, previewing: Bool = false, enableDebugActions: Bool) {
+        PerformanceSignposts.beginPending(.chatListFirstFrame)
         self.context = context
         self.controlsHistoryPreload = controlsHistoryPreload
         self.hideNetworkActivityStatus = hideNetworkActivityStatus

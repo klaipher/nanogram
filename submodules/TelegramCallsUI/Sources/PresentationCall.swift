@@ -844,6 +844,7 @@ public final class PresentationCallImpl: PresentationCall {
                         presentationState = PresentationCallState(state: .terminating(.error(.disconnected)), videoState: mappedVideoState, remoteVideoState: mappedRemoteVideoState, remoteAudioState: mappedRemoteAudioState, remoteBatteryLevel: mappedRemoteBatteryLevel, supportsConferenceCalls: self.supportsConferenceCalls)
                         self.callSessionManager.drop(internalId: self.internalId, reason: .disconnect, debugLog: .single(nil))
                     case .connected:
+                        PerformanceSignposts.endPending(.callConnect)
                         let timestamp: Double
                         if let activeTimestamp = self.activeTimestamp {
                             timestamp = activeTimestamp
@@ -1484,6 +1485,7 @@ public final class PresentationCallImpl: PresentationCall {
             return
         }
         CallDiagnostics.log("call \(self.internalId) answer requested, \(fromCallKitAction ? "from CallKit" : "from the app")")
+        PerformanceSignposts.beginPending(.callConnect)
         let (presentationData, present, openSettings) = self.getDeviceAccessData()
         
         DeviceAccess.authorizeAccess(to: .microphone(.voiceCall), presentationData: presentationData, present: { c, a in

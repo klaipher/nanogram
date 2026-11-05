@@ -23,5 +23,9 @@ let package = Package(
             name: "SwiftSignalKit",
             dependencies: [],
             path: "SwiftSignalKit2/Source"),
+        .testTarget(
+            name: "SwiftSignalKitTests",
+            dependencies: ["SwiftSignalKit"],
+            path: "SwiftSignalKit/Tests"),
     ]
 )
