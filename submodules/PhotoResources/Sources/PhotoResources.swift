@@ -21,6 +21,7 @@ import RangeSet
 import Accelerate
 import ImageCompression
 import LegacyImpl
+import ImageDecodeSizing
 
 private enum ResourceFileData {
     case data(Data)
@@ -892,9 +893,14 @@ public func chatMessagePhotoInternal(photoData: Signal<Tuple4<Data?, Data?, Chat
                 if fullSizeComplete {
                     let options = NSMutableDictionary()
                     options[kCGImageSourceShouldCache as NSString] = false as NSNumber
-                    if let imageSource = CGImageSourceCreateWithData(fullSizeData as CFData, nil), let image = CGImageSourceCreateImageAtIndex(imageSource, 0, options as CFDictionary) {
+                    if let imageSource = CGImageSourceCreateWithData(fullSizeData as CFData, nil) {
                         imageOrientation = imageOrientationFromSource(imageSource)
-                        fullSizeImage = image
+                        let targetPixelSize = photoTargetPixelSize(fittedSize: fittedSize, scale: arguments.scale ?? UIScreenScale, orientation: imageOrientation)
+                        if let image = ImageDecodeSizing.downscaledImage(source: imageSource, targetPixelSize: targetPixelSize) {
+                            fullSizeImage = image
+                        } else if let image = CGImageSourceCreateImageAtIndex(imageSource, 0, options as CFDictionary) {
+                            fullSizeImage = image
+                        }
                     }
                 } else {
                     let imageSource = CGImageSourceCreateIncremental(nil)
@@ -2428,6 +2434,16 @@ private func rotationFor(_ orientation: UIImage.Orientation) -> CGFloat {
             return -CGFloat.pi
         default:
             return 0.0
+    }
+}
+
+private func photoTargetPixelSize(fittedSize: CGSize, scale: CGFloat, orientation: UIImage.Orientation) -> CGSize {
+    let pixelSize = CGSize(width: fittedSize.width * scale, height: fittedSize.height * scale)
+    switch orientation {
+    case .left, .right, .leftMirrored, .rightMirrored:
+        return CGSize(width: pixelSize.height, height: pixelSize.width)
+    default:
+        return pixelSize
     }
 }
 
