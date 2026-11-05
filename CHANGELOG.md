@@ -4,6 +4,7 @@ Newest first. Internal notes for each TestFlight build; testers see the What to 
 
 ## Unreleased
 
+- **Calls: a missed loudspeaker request is applied once more** (owner report: iPhone 14, 1:1 call, no Bluetooth, the speaker button did nothing). `ManagedAudioSession.applyVoiceChatOutputModeInCurrentAudioSession` (the CallKit path every region but CN uses) re-applies `.custom(.speaker)` once, 0.3 s later, when the route still contradicts it and no newer request replaced it (`loudspeakerRequestShouldBeRetried` in `AudioRouteClassification.swift`, a generation counter; tests in `AudioRouteClassificationTests`). Complements the calls lane fixes (route read while the input list is empty, request and route log lines with "MISSED").
 ### Calls (lane ios-calls, round 3)
 
 - **Defaults ON** (5f2b9404): `callsLivestreamHardwareDecoding`, `callsNativeCapturePath`, `callsSystemNoiseSuppression`,

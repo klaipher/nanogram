@@ -395,6 +395,7 @@ public final class ManagedAudioSessionImpl: NSObject, ManagedAudioSession {
     private let hasLoudspeaker: Bool
     private var holders: [HolderRecord] = []
     private let isRecordingActiveSync = Atomic<Bool>(value: false)
+    private let voiceChatOutputRequestGeneration = Atomic<Int>(value: 0)
     private var currentTypeAndOutputMode: (ManagedAudioSessionType, AudioSessionOutputMode)? {
         didSet {
             let _ = self.isRecordingActiveSync.swap(self.currentTypeAndOutputMode?.0.isRecord ?? false)
@@ -1108,7 +1109,14 @@ public final class ManagedAudioSessionImpl: NSObject, ManagedAudioSession {
     }
     
     public func applyVoiceChatOutputModeInCurrentAudioSession(outputMode: AudioSessionOutputMode) {
-        managedAudioSessionLog("applyVoiceChatOutputModeInCurrentAudioSession \(outputMode)")
+        let generation = self.voiceChatOutputRequestGeneration.modify { $0 + 1 }
+        self.applyVoiceChatOutputMode(outputMode: outputMode, generation: generation, attempt: 0)
+    }
+    
+    // Some devices leave the audio on the receiver after an override to the loudspeaker (owner report: iPhone 14, 1:1
+    // call, no Bluetooth). The request is applied once more 0.3 s later if it is still the latest one and still missed.
+    private func applyVoiceChatOutputMode(outputMode: AudioSessionOutputMode, generation: Int, attempt: Int) {
+        managedAudioSessionLog("applyVoiceChatOutputModeInCurrentAudioSession \(outputMode) attempt \(attempt)")
         
         do {
             var resetToBuiltin = false
@@ -1161,6 +1169,20 @@ public final class ManagedAudioSessionImpl: NSObject, ManagedAudioSession {
             managedAudioSessionLog("applyVoiceChatOutputModeInCurrentAudioSession error: \(e)")
         }
         logOutputRequestResult(outputMode, where: "CallKit session")
+        
+        if case .custom(.speaker) = outputMode {
+            let outputTypes = AVAudioSession.sharedInstance().currentRoute.outputs.map { $0.portType.rawValue }
+            let isLatest = self.voiceChatOutputRequestGeneration.with { $0 } == generation
+            if loudspeakerRequestShouldBeRetried(outputPortTypes: outputTypes, attempt: attempt, isLatestRequest: isLatest) {
+                managedAudioSessionLog("ManagedAudioSession loudspeaker request missed, applying it again in 0.3 s")
+                Queue.mainQueue().after(0.3, { [weak self] in
+                    guard let self, self.voiceChatOutputRequestGeneration.with({ $0 }) == generation else {
+                        return
+                    }
+                    self.applyVoiceChatOutputMode(outputMode: outputMode, generation: generation, attempt: attempt + 1)
+                })
+            }
+        }
     }
     
     private func setupOutputMode(_ outputMode: AudioSessionOutputMode, type: ManagedAudioSessionType) throws {

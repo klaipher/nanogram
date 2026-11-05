@@ -48,4 +48,16 @@ final class AudioRouteClassificationTests: XCTestCase {
         XCTAssertFalse(loudspeakerShouldBeReappliedOnActivation(outputPortTypes: ["CarAudio"]))
         XCTAssertFalse(loudspeakerShouldBeReappliedOnActivation(outputPortTypes: ["AirPlay"]))
     }
+
+    func testAMissedLoudspeakerRequestIsRetriedOnceWhileItIsTheLatest() {
+        XCTAssertTrue(loudspeakerRequestShouldBeRetried(outputPortTypes: ["Receiver"], attempt: 0, isLatestRequest: true))
+        XCTAssertFalse(loudspeakerRequestShouldBeRetried(outputPortTypes: ["Receiver"], attempt: 1, isLatestRequest: true))
+        XCTAssertFalse(loudspeakerRequestShouldBeRetried(outputPortTypes: ["Receiver"], attempt: 0, isLatestRequest: false))
+    }
+
+    func testAnHonouredOrHeadsetRouteIsNotRetried() {
+        XCTAssertFalse(loudspeakerRequestShouldBeRetried(outputPortTypes: ["Speaker"], attempt: 0, isLatestRequest: true))
+        XCTAssertFalse(loudspeakerRequestShouldBeRetried(outputPortTypes: ["BluetoothHFP"], attempt: 0, isLatestRequest: true))
+        XCTAssertFalse(loudspeakerRequestShouldBeRetried(outputPortTypes: [], attempt: 0, isLatestRequest: true))
+    }
 }

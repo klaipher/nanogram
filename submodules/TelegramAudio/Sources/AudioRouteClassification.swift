@@ -51,3 +51,9 @@ public func loudspeakerShouldBeReappliedOnActivation(outputPortTypes: [String]) 
         return outputPortTypes.isEmpty
     }
 }
+
+/// Whether a loudspeaker request the session did not honour is tried once more, a moment later: only the first attempt,
+/// only while no newer request replaced it, and only while the route still contradicts it (not a headset, not empty).
+public func loudspeakerRequestShouldBeRetried(outputPortTypes: [String], attempt: Int, isLatestRequest: Bool) -> Bool {
+    return attempt == 0 && isLatestRequest && loudspeakerRequestMissedRoute(outputPortTypes: outputPortTypes)
+}
