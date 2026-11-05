@@ -179,3 +179,26 @@ Neither of the two surprises above is visible from the code, and both were found
 delivery by walking windows front-to-back and asking each one's `-hitTest:` identifies which window
 would claim a touch without needing to inject one — but note that it will **not** reproduce the
 rendering-based filter described above, which only shows up for real touches.
+
+
+## Invariants moved from CLAUDE.md
+
+## iOS 26/27 windows and touch delivery
+
+Three measured facts that are invisible from the code and each cost an investigation
+([`docs/ios27-windows-and-touches.md`](docs/ios27-windows-and-touches.md) has the evidence):
+
+- **Never call `+[UIRemoteKeyboardWindow remoteKeyboardWindowForScreen:create:]`** — it traps
+  (`brk #0`) when the binary is linked against the iOS 27 SDK, which this project is. Get the keyboard
+  window via `-[UIApplication internalGetKeyboardForScene:]`, which goes through the window scene's
+  `keyboardSceneDelegate`. It legitimately returns nil (keyboard never created, or keyboard UI hosted
+  out of process), so nil must mean "no keyboard surface", never a missing window.
+- **An app can never place a window above the keyboard.** `UIRemoteKeyboardWindow` is at level
+  `1e7 + 1` and `-[UIWindow _adjustedWindowLevelFromLevel:]` clamps app windows to `1e7`. Content that
+  must appear over the keyboard has to be parented *into* the keyboard window — which is what
+  `NavigationController`'s `globalOverlayContainerParent` and `GlobalOverlayPresentationContext` do.
+- **A layer that renders nothing receives no real touches**, although `-hitTest:` still returns it:
+  `backgroundColor` unassigned (`layer.backgroundColor == nil`) and no `contents` means taps never
+  arrive. Transparent `layer.contents` fixes it; a near-zero background alpha only works above an
+  undocumented threshold. Watch for `NavigationBackgroundNode(color: .clear)`, whose `updateColor`
+  early-return means the colour is never assigned even once.

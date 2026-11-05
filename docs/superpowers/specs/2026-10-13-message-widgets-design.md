@@ -1,8 +1,7 @@
 # Message widgets: HTML widgets in chat bubbles
 
-Date: 2026-10-13. Status: approved, then amended with the implementation plan
-(`docs/superpowers/plans/2026-10-13-message-widgets.md`, "Deviations from the spec"). The
-amendments are written into the sections below.
+Date: 2026-10-13. Status: approved, then amended while the plan was written (the plan itself is
+removed; its deviations are written into the sections below).
 
 ## Goal
 

@@ -1,13 +1,13 @@
 # Local development
 
-This fork tracks the official Telegram-iOS releases (currently **release-13.1.1**) with changes that make local
+This fork tracks the official Telegram-iOS releases (currently **release-13.1.2**) with changes that make local
 builds faster, keep disk usage bounded, and bring the build dependencies up to date. This page explains what was
 changed and why, and how to work with the fork day to day.
 
 ## Quick start
 
 ```sh
-git clone https://github.com/klaipher/telegram-ios-dev.git && cd telegram-ios-dev
+git clone https://github.com/klaipher/nanogram.git && cd nanogram
 tools/dev/tg setup        # git tuning, shallow submodules, local config files
 # put your own api_id / api_hash in build-system/dev-configuration.json
 tools/dev/tg doctor       # checks Xcode, the Metal Toolchain, config, submodules, free disk

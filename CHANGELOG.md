@@ -68,6 +68,12 @@ Not yet built. Private notes. Evidence: `secreview-A-privacy.md`.
 - **Larger GIFs / Stickers / Emoji switcher on iPad.** Same floating glass lens, text 17 pt instead of 14, cells 36 pt, 20 pt side insets, 48 pt row (`mediaPanelSwitcherMetrics`, used by `EntityKeyboardBottomPanelComponent`). Tabs at the top were not chosen (see decisions in the branch report). iPhone unchanged.
 - Tests: `TabletLayoutRulesTests` (media panel height and switcher cases), run by `//submodules/Display:TabletLayoutTests`. Not built or run, no Bazel run or simulator in this session.
 
+### Documentation and change records (2026-11-05, night/docs)
+No build impact; private notes.
+- `CLAUDE.md` (1821 lines) is split into `docs/` topical files (index and old-section map in `docs/README.md`); `AGENTS.md` is the lean every-session file. `submodules/TgVoipWebrtc/CLAUDE.md` is split into `docs/subsystems/tgcalls/`.
+- New `docs/development-pipeline.md`, `docs/fork-records.md`, `NANOGRAM-CHANGES.md`; `tools/dev/lint/changelog_reminder.py` makes the pre-push hook warn when product code is pushed without a change record (`TG_CHANGELOG_STRICT=1` blocks).
+- Removed finished plans and gate records; fixed stale numbers in `docs/local-development.md` and dead spec links in `docs/instantpage-richtext.md`.
+
 ### Security review follow-up (2026-11-04, merged from sec/hardening, sec/platform, sec/db-keys)
 Not yet built into a TestFlight build. Private notes.
 - **Lockdown Mode and code highlighting** (7002c268, 41799c70, a1ab87c9, 19defdcb, a31481dc, 7250fa8e): one shared libprisma engine (upstream 94640c6 plus stats/limits hooks) with a depth cap of 32 and a per-block search budget; worst adversarial block 649 ms. New `submodules/HardenedMedia` (policy: no auto-download from non-contacts, no autoplay or looping, no link previews or highlighting under Lockdown). `SharedAccountContext` rebuilt the live auto-download settings without the policy, which undid the launch hardening at the first emission; `effectiveMediaAutoDownloadSettings(stored:autodownload:policy:)` in TelegramUIPreferences now applies the policy after the server presets. `LockdownMode` counts `com.apple.developer.lockdown-mode.state` only when it is boolean true (a false value led to `os_lockdown_mode_enabled()`, which aborts). Attach > Location no longer sends the position to a venue bot (MapKit venues, `VenueSearchPolicy`; secret chats and stories never query bots).
