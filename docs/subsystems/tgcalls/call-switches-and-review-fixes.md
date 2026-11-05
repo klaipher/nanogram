@@ -4,8 +4,9 @@
 
 Three Debug Settings switches reach tgcalls through `tgcalls::CallsRuntimeSwitches` (process-wide atomics,
 `tgcalls/CallsRuntimeSwitches.h`), set from `PresentationCallManagerImpl` via
-`OngoingCallContext.applyVideoExperiments` whenever the setting changes. All default OFF, none touches the wire
-(no SDP, signalling, negotiation or codec-list change), and each falls back to the old path at runtime:
+`OngoingCallContext.applyVideoExperiments` whenever the setting changes. Defaults: see "Defaults since 2026-11-06"
+below (the engine's own atomics start OFF; the app sets them from the settings, which default ON). None touches the
+wire (no SDP, signalling, negotiation or codec-list change), and each falls back to the old path at runtime:
 
 - **`callsLivestreamHardwareDecoding`**: live stream video decodes with VideoToolbox (`DarwinFFMpeg.mm`,
   `PlatformInterface::setupHardwareVideoDecoding`). `group/LivestreamDecodePolicy.h` holds the decisions (eligibility:
@@ -37,7 +38,7 @@ seconds, no tgcalls_core): `livestream_decode_policy_test`, `capture_frame_polic
 Four more Debug Settings switches, same path (`CallsRuntimeSwitches`, `OngoingCallContext.applyAudioExperiments`), same
 rules: local only, nothing on the wire. Decisions are in `tgcalls/AudioCallPolicy.h` (host test `audio_call_policy_test`).
 
-- **`callsSystemNoiseSuppression`** (OFF): on iOS the call microphone runs on VoiceProcessingIO, which already does AEC,
+- **`callsSystemNoiseSuppression`** (ON since 2026-11-06): on iOS the call microphone runs on VoiceProcessingIO, which already does AEC,
   noise suppression and AGC. With the switch on, `chooseCaptureProcessing` drops WebRTC's `noise_suppression` and
   `highpass_filter` from the outgoing audio options in v2 (`InstanceV2Impl.cpp`), legacy (`MediaManager.cpp`) and group
   (`GroupInstanceCustomImpl.cpp`, only when the participant has audio input). Software stays for RemoteIO (listeners,
@@ -48,10 +49,11 @@ rules: local only, nothing on the wire. Decisions are in `tgcalls/AudioCallPolic
   `.mixWithOthers` the other app's audio stays near full level between sentences with no echo reference, so it may reach
   the peer; the setting is stored under a new key so old `true` values do not turn it on): iOS 17+ `kAUVoiceIOProperty_OtherAudioDuckingConfiguration`, advanced ducking at the
   minimum level (`VoiceProcessingAudioUnit::ConfigureOtherAudioDucking`). A failure keeps the system default.
-- **`callsGroupNarrowbandProcessing`** (OFF): group calls on 8/16 kHz capture (Bluetooth HFP) keep the RNNoise result and the
-  external-audio mix. Before the Mac `a598e27` cherry-pick the narrowband result was discarded, so keeping it is a new
-  audio path and is gated (`GroupAudioCapturePostProcessor.cpp`). While on, every frame goes through both resamplers when
-  noise suppression is enabled, including the quiet frames RNNoise skips, so the delay is constant and the resampler
+- **`callsGroupNarrowbandProcessing`** (removed, always on; there is no switch and no setting): group calls on 8/16 kHz capture (Bluetooth HFP) keep the RNNoise result and the
+  external-audio mix. Before the Mac `a598e27` cherry-pick the narrowband result was discarded; keeping it is now
+  unconditional (`GroupAudioCapturePostProcessor.cpp`), which is what lets "RNNoise only" still suppress noise on a
+  Bluetooth HFP microphone. While noise suppression is enabled, every frame goes through both resamplers,
+  including the quiet frames RNNoise skips, so the delay is constant and the resampler
   history never goes stale.
 - The former **`callsOpusFirstLossFloor`** switch was removed: `WebRTC-Audio-OpusMinPacketLossRate` is read nowhere in
   `third-party/webrtc` (the same string in `GroupInstanceCustomImpl.cpp` and `MediaManager.cpp` is upstream and equally dead),
@@ -91,3 +93,68 @@ comes from a peak detector and RNNoise does not run; `tests/group_audio/run.sh` 
   Group video calls bind the governor too (`PresentationGroupCall`). Low Power Mode alone is level 1 and changes nothing.
 - **Thread QoS** was removed (owner decision, 2026-11-04): the engine threads keep the system default class
   (`StaticThreads.cpp` is upstream).
+
+## Defaults since 2026-11-06 (owner decision)
+
+On iOS these start ON, and stay switchable in Debug Settings ▸ Streams & Calls: `callsLivestreamHardwareDecoding`,
+`callsNativeCapturePath`, `callsSystemNoiseSuppression`, `callsThermalVideoLadder`, and `callsGroupNoiseMode` = 2
+(RNNoise only; narrowband processing is always on, so a Bluetooth HFP microphone is still suppressed). Not turned on:
+`callsAdvancedDucking` (other apps' audio may reach the peer), the group reference engine, VoIP TCP, on-device translation.
+
+`ExperimentalUISettings` is saved as a whole struct, so an install that ever saved it holds an explicit `false` (and
+group noise mode 0) under the old keys without having chosen it. Each changed setting therefore moved to a new key
+(`...DefaultOn`, `callsGroupNoiseModeRNNoiseDefault`), as advanced ducking did (`callsAdvancedDuckingOptIn`): the old
+keys are no longer read or written, so only a choice made after this change counts. Tests: `CallsSwitchesTests`.
+The tgcalls engine itself still starts with every atomic OFF; `PresentationCallManager` sets them from the settings
+(whose defaults are ON) before the first call. The Mac pins the same core: its own Debug Settings and defaults are
+separate and unchanged until the Mac lane decides (docs/feature-parity.md has the row).
+
+## Audio route requests (speaker toggle), 2026-11-06
+
+Report: on one iPhone 14 the speaker button did nothing. No log, so the cause is not proven; what the code showed:
+
+- **The request was dropped when it equalled the stored value** (`PresentationCall.setCurrentAudioOutput`,
+  `SharedCallAudioContext.setCurrentAudioOutput`, the non-shared `PresentationGroupCall` path). The stored value is set the
+  moment the user taps, before the session has done anything, and `ManagedAudioSession` reports a route only when it
+  changed. A first request that had no effect (session not active yet, the audio device module reset the category, an
+  interruption cleared the override) therefore left the receiver as the route, no report followed, and every later tap for
+  the speaker was swallowed for the rest of the call, while the screen flipped back to the receiver one second after each tap.
+  Now `audioOutputRequestDecision` (`AudioOutputRequestPolicy.swift`) skips a request only when the session itself reports
+  that route.
+- **CallKit gave the session back without the override** after an interruption (`didDeactivate`, `didActivate`); only a
+  request that arrived while the session was inactive was applied again. `CallKitProviderDelegate` now also re-applies the
+  last requested mode on `didActivate` while a call is active.
+- **The built-in-microphone test hid a loudspeaker route** (`ManagedAudioSession.updateCurrentAudioRouteInfo`): the speaker
+  was reported only when the built-in microphone was the active input. The route outputs now decide.
+- The video call screen forces the speaker every second while the route is the receiver (upstream). It now gives up after
+  three attempts (`AutomaticSpeakerEnforcement`) so a session that refuses does not get a request and a screen flash every second.
+- **Diagnostics for the next report** (short log, no names): `audio output request <route> (last request, session reports,
+  CallKit|direct): applying|skipped`, and after every apply `ManagedAudioSession output request ... -> route <headset|loudspeaker|receiver|other>
+  outputs=[...]`, with `MISSED` when the loudspeaker was asked for and the route is not on it. `audioInputStateDescription` now also
+  lists the route outputs, category, mode and options.
+
+Open without a recording from the phone: why the first request failed on that iPhone 14. The `MISSED` line plus the category, mode and
+options in the line before it will say whether the category was changed under the call, the session was inactive, or a
+Bluetooth / car / AirPlay route owned the output.
+
+## Call controls audit (iOS, 2026-11-06)
+
+Read from the action to the session, the engine call and back to the screen. Nothing was run on a device.
+
+| Control | Result |
+|---|---|
+| Speaker / route, 1:1 and group (`setCurrentAudioOutput`) | Fixed: a request was dropped when equal to the stored value (see above). Group calls through `SharedCallAudioContext` get the same fix. |
+| Route with Bluetooth, AirPods, wired, CarPlay | Read: more than two outputs open the route sheet, two outputs toggle. A headset in the route is never overridden by the speaker default (`resolveInitialOutput`, tests exist). CarPlay and AirPlay are not distinguished (they show as `.port` / headphones); not changed. Needs a device to judge. |
+| Mute: button | OK. 1:1 `setIsMuted` reaches the engine or the conference; group `setIsMuted` also persists the choice and the server mute state. |
+| Mute: CallKit (lock screen, Dynamic Island, system call UI, AirPods gesture, Siri) | Fixed: the handler passed `CXAction.uuid` (the action's id) instead of `callUUID`, so it matched no call. |
+| Mute: app to CallKit | Fixed: an in-app mute was never reported, so the system UI showed the wrong state (`CallKitMuteSync`). |
+| Camera on/off, 1:1 | Fixed: cancelling the camera preview left the capturer (and the camera) held by the call until it ended. |
+| Camera flip, 1:1 and group | Fixed: the flip belief was not reset when the camera went off and on, and not set when a capturer arrived on the back camera (video chat screen, 1:1 upgraded to a conference). The first flip did nothing (`CameraFacingTracker`). |
+| Video pause | `setOutgoingVideoIsPaused` has no caller; a camera interrupted by the system is reported by the capturer's `isActive` and shown as paused. OK. |
+| Screen broadcast start/stop | Start and stop are detected through the extension's keepalive file (`IpcGroupCallBufferAppContext`), so a stop from Control Center or the status bar pill is noticed after the keepalive timeout, not at once. Starting a broadcast turns the camera off and it is not restored when the broadcast ends (by design, unchanged). |
+| PiP | The gate follows PiP activation and is reset in `deinit` of the call screen. OK. |
+| Raise hand | `raiseHand` / `lowerHand` read the own participant's state first and are idempotent. OK. |
+| Interruptions (GSM call, Siri) | `ManagedAudioSession` keeps the call holder on an interruption; resuming the audio unit is done by the engine (`AudioDeviceIOS::OnInterruptionEnd`). The route override is lost on a CallKit reactivation: fixed (re-applied). |
+| Call end cleanup | The audio holder is released with the context (`markCallFinished`, `retire`); the camera capturer is released with the call object, at least 2 s after the end. Not changed. |
+| 1:1 to conference | Mute and video carry over; the camera side now carries over too (see the flip row). The speaker is switched on for the conference. |
+| Reconnect | Engine state only (`.reconnecting` mapped to the screen); no control state is kept in the UI. OK. |

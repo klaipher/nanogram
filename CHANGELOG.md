@@ -4,6 +4,33 @@ Newest first. Internal notes for each TestFlight build; testers see the What to 
 
 ## Unreleased
 
+### Calls (lane ios-calls, round 3)
+
+- **Defaults ON** (5f2b9404): `callsLivestreamHardwareDecoding`, `callsNativeCapturePath`, `callsSystemNoiseSuppression`,
+  `callsThermalVideoLadder` are on, `callsGroupNoiseMode` is 2 (RNNoise only). Narrowband (Bluetooth HFP) processing is
+  already unconditional in the fork (`GroupAudioCapturePostProcessor.cpp`), so RNNoise-only still suppresses on an HFP microphone.
+  Advanced ducking stays off. How: `ExperimentalUISettings` is encoded as a whole struct, so installs that ever saved it hold
+  an explicit false / 0 under the old keys; each changed value now has a new key (`callsLivestreamHardwareDecodingDefaultOn`,
+  `callsNativeCapturePathDefaultOn`, `callsSystemNoiseSuppressionDefaultOn`, `callsThermalVideoLadderDefaultOn`,
+  `callsGroupNoiseModeRNNoiseDefault`), the old keys are neither read nor written. Tests: `CallsSwitchesTests`.
+- **Speaker button went dead after one ineffective request** (7aa6153d, iPhone 14 report): the request was dropped when it
+  equalled the stored value, which is set at the tap; the session reports only changes, so after one request that had no
+  effect every later tap for the speaker was swallowed and the screen flipped back after 1 s. Now
+  `audioOutputRequestDecision` (`AudioOutputRequestPolicy.swift`) skips a request only when the session itself reports that route
+  (`PresentationCall`, `SharedCallAudioContext`, the non-shared `PresentationGroupCall` path). Also: CallKit re-applies the last
+  requested route on `didActivate` after an interruption; `updateCurrentAudioRouteInfo` reads the loudspeaker from the route
+  outputs (`AudioRouteClassification.swift`) and not only from the built-in microphone input; the video call screen stops forcing
+  the speaker after three attempts (`AutomaticSpeakerEnforcement`). Diagnostics in the short log: `audio output request ...` per
+  request and `ManagedAudioSession output request ... -> route ... MISSED` after an apply; `audioInputStateDescription` lists route
+  outputs, category, mode and options. Root cause on that phone is not proven; see the audit section of
+  docs/subsystems/tgcalls/call-switches-and-review-fixes.md.
+- **CallKit mute from the system UI did nothing** (7aa6153d): the handler passed `CXAction.uuid` instead of `callUUID`
+  (`callKitMuteTarget`). An in-app mute is now reported to CallKit (`CallKitMuteSync`, `reportMuted`), so the lock screen and the
+  Dynamic Island show the real state.
+- **1:1 camera**: the flip belief is a `CameraFacingTracker` that follows the capturer (new capturer = front, off = reset, handed
+  over on the back camera = back); the first flip after camera off/on or after a hand-over no longer does nothing. Cancelling the camera
+  preview releases the capturer instead of keeping the camera on for the rest of the call (7aa6153d).
+
 ## 13.1.2 (202611052231) — 2026-11-05 — 9971ecaa
 
 TestFlight upload (internal testers). Since 202611051247 (fb1b8101..9971ecaa): the keyboard-open reaction route, profiling waves 1 and 2 (shared core and iOS UI lanes), the signposts and performance tests, the Sendable fixes for the Mac and the module table; the detailed entries are the bullets that were under Unreleased until this upload, now below. Enhanced Security is not in this build: `tg testflight` leaves it off until the distribution profiles are checked (device builds since 202611052030 have it). Mac counterpart: GitHub release 13.1.0 (202611052243). Tester notes (What to Test):

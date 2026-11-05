@@ -80,3 +80,21 @@ marked (check) were not re-verified against the code; correct them on the next c
 - What: Nanogram name, icons (Sphere default), bundle names, Siri phrases, language packs; a lint keeps Telegram's name and logo out. Own bundle identifiers and team.
 - Where: `tools/dev/lint/branding.py`, `Telegram/Telegram-iOS/Nanogram.icon`.
 - Upstream: no.
+
+### Call switch defaults (iOS)
+- What: livestream hardware decoding, native camera frames, system noise suppression, the thermal video ladder and group
+  noise = RNNoise only are on by default and stay switchable in Debug Settings; each has a new storage key so earlier saved
+  values do not count. Advanced ducking, the reference engine, VoIP TCP and on-device translation stay off.
+- Why: owner decision, 2026-11-06 (measured wins, local only, nothing on the wire).
+- Where: `submodules/TelegramUIPreferences/Sources/ExperimentalUISettings.swift`, `docs/subsystems/tgcalls/call-switches-and-review-fixes.md`.
+- Upstream: no (the switches are ours).
+- Sync: none.
+
+### Call controls (iOS)
+- What: route requests are skipped only when the session reports that route; CallKit mute uses `callUUID`, is reported back
+  from the app and the route is re-applied after a reactivation; camera facing follows the capturer; the 1:1 camera preview
+  releases the camera on cancel; short-log lines for route requests.
+- Why: iPhone 14 speaker report and the controls audit (2026-11-06).
+- Where: `submodules/TelegramCallsUI/Sources/{AudioOutputRequestPolicy,CallKitMuteSync,CameraFacingTracker,CallKitIntegration,PresentationCall,SharedCallAudioContext}.swift`, `submodules/TelegramAudio/Sources/{ManagedAudioSession,AudioRouteClassification}.swift`.
+- Upstream: all of these are upstream code paths (`setCurrentAudioOutput`, `action.uuid`, `useFrontCamera`); expect conflicts there on import.
+- Sync: re-check the three guards when `PresentationCall.swift` / `SharedCallAudioContext.swift` change upstream.
