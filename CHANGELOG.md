@@ -4,7 +4,7 @@ Newest first. Internal notes for each TestFlight build; testers see the What to 
 
 ## Unreleased
 
-(none)
+- **`device_signing.py profiles` asks for Communication Notifications** for the main app: the app has been signed with `com.apple.developer.usernotifications.communication` since 2026-11-04, and a development profile without it makes the phone refuse `tg device` installs (0xe8008015 "A valid provisioning profile for this executable was not found"). Tests in `test_device_signing.py`.
 
 ## 13.1.2 (202611051247) — 2026-11-05 — fb1b8101
 

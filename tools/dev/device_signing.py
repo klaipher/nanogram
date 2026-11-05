@@ -65,8 +65,12 @@ def read_profile(path):
     return plistlib.loads(data)
 
 
-def entitlements_plist(groups, push):
+def entitlements_plist(groups, push, communication=False):
     entries = ['<key>com.apple.security.application-groups</key><array><string>{}</string></array>'.format(g) for g in groups]
+    if communication:
+        # The main app is signed with it (Telegram/BUILD, communication_notifications_bundle_ids); a profile
+        # without it makes the phone refuse the install (0xe8008015).
+        entries.append('<key>com.apple.developer.usernotifications.communication</key><true/>')
     if push:
         # Development profiles only ever grant development push. The release_arm64 build `tg device`
         # signs with them registers its token with Telegram as production, so such an install gets
@@ -99,7 +103,7 @@ def write_project(directory, team_id, targets):
     target_ids = []
     for name, bundle_id, push in targets:
         with open(os.path.join(directory, name + '.entitlements'), 'w') as f:
-            f.write(entitlements_plist(['group.' + targets[0][1]], push))
+            f.write(entitlements_plist(['group.' + targets[0][1]], push, communication=(bundle_id == targets[0][1])))
         build_file, product_ref, sources, target, config, config_list = (new_id() for _ in range(6))
         objects += [
             '{} = {{isa = PBXBuildFile; fileRef = {}; }};'.format(build_file, source_ref),
