@@ -70,6 +70,8 @@ test_success() {
   check "upload and notes succeeding exits 0" [ "$STATUS" -eq 0 ]
   check "upload then notes" [ "$(tr '\n' ' ' < "$TMP/calls")" = "upload notes " ]
   check "the TestFlight build is marked for the App Store" grep -q -- "--app-store" "$TMP/device_args"
+  check "the build's commit is recorded next to its dSYMs" grep -q "^commit [0-9a-f]\{40\}$" "$TMP/dsyms/202611031200/BUILD-INFO.txt"
+  check "the build number is recorded" grep -q "^build 202611031200$" "$TMP/dsyms/202611031200/BUILD-INFO.txt"
 }
 
 # run_device <aps-environment of the app's profile> [tg device options]: tg device --no-install with
@@ -83,9 +85,10 @@ run_device() {
     export TG_DEVICE_CONFIG="$TMP/device-configuration.json" TG_DEVICE_CODESIGNING="$TMP/signing"
     # shellcheck source=../tg
     source "$TG"
-    make_py() { :; }
+    make_py() { echo "$*" > "$TMP/make_args"; }
     archive_dsyms() { echo "$1" >> "$TMP/archived_ipa"; return "${ARCHIVE_STATUS:-0}"; }
     profile_aps_environment() { echo "$profile_aps"; }
+    profile_has_enhanced_security() { [ "${ES_PROFILES:-all}" = "all" ] || [ "$(basename "$1")" != "${ES_PROFILES}.mobileprovision" ]; }
     cmd_device --no-install ${@+"$@"}
   ) > "$TMP/out" 2> "$TMP/err"
   STATUS=$?
@@ -249,6 +252,22 @@ test_device_archives_dsyms() {
   check "it warns that the build has no archived dSYMs" grep -q "dSYMs were not archived" "$TMP/err"
 }
 
+# Enhanced Security: a TestFlight build gets it only when the app, NotificationService and Share profiles
+# grant it; otherwise it stops before building. TG_TF_ENHANCED_SECURITY=0 ships without it on purpose.
+test_enhanced_security_testflight() {
+  run_device production --app-store
+  check "a TestFlight build with all three profiles builds with Enhanced Security" grep -q -- "--//Telegram:enhancedSecurity" "$TMP/make_args"
+  ES_PROFILES=Share run_device production --app-store
+  check "a TestFlight build stops when the Share profile lacks it" [ "$STATUS" -ne 0 ]
+  check "it names the profile" grep -q "profiles of Share do not grant it" "$TMP/err"
+  ES_PROFILES=Telegram TG_TF_ENHANCED_SECURITY=0 run_device production --app-store
+  check "the opt-out builds without it" [ "$STATUS" -eq 0 ]
+  check "the opt-out passes no enhancedSecurity flag" not grep -q -- "enhancedSecurity" "$TMP/make_args"
+  ES_PROFILES=Share run_device production
+  check "a development build with a missing profile still builds, without it" [ "$STATUS" -eq 0 ]
+  check "it says it stays off" grep -q "Enhanced Security stays off" "$TMP/err"
+}
+
 # archive_dsyms names the TelegramUI UUID, the one a trace needs to match.
 test_archive_prints_telegramui_uuid() {
   local build="$TMP/build-uuid" uuid
@@ -264,6 +283,7 @@ test_build_rejected_after_upload
 test_upload_failure
 test_success
 test_device_push_environment
+test_enhanced_security_testflight
 test_archive_dsyms
 test_device_archives_dsyms
 test_archive_prints_telegramui_uuid

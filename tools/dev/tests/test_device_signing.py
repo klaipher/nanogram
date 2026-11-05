@@ -66,3 +66,79 @@ class EnhancedSecurityEntitlementsTests(unittest.TestCase):
         for suffix in ['.Widget', '.SiriIntents', '.BroadcastUpload', '.NotificationContent']:
             self.assertFalse(device_signing.wants_enhanced_security('org.klaipher.Nanogram' + suffix, 'org.klaipher.Nanogram'))
         self.assertNotIn(self.KEYS[0], device_signing.entitlements_plist(['g'], push=False))
+
+
+class EnhancedSecurityVerificationTests(unittest.TestCase):
+    # tg testflight re-signs for distribution; the three hardened bundles must keep the entitlements, and
+    # their distribution profiles must grant them, or the upload is stopped.
+    APP = 'org.klaipher.Nanogram'
+    FULL = dict(device_signing.ENHANCED_SECURITY_REQUIRED)
+
+    def make_app(self, suffixes=('.NotificationService', '.Share', '.Widget')):
+        import plistlib
+        root = tempfile.mkdtemp()
+        self.addCleanup(shutil.rmtree, root)
+        app = os.path.join(root, 'Telegram.app')
+        bundles = {self.APP: app}
+        os.makedirs(app)
+        for suffix in suffixes:
+            appex = os.path.join(app, 'PlugIns', suffix[1:] + '.appex')
+            os.makedirs(appex)
+            bundles[self.APP + suffix] = appex
+        for bundle_id, path in bundles.items():
+            with open(os.path.join(path, 'Info.plist'), 'wb') as f:
+                plistlib.dump({'CFBundleIdentifier': bundle_id}, f)
+        return app, {path: bundle_id for bundle_id, path in bundles.items()}
+
+    def problems(self, app, names, signed, profile, check_profiles=True):
+        return device_signing.app_enhanced_security_problems(
+            app, check_profiles,
+            entitlements_of=lambda path: signed(names[path]),
+            profile_of=lambda path: profile(names[path]))
+
+    def test_everything_present_has_no_problems(self):
+        app, names = self.make_app()
+        full_profile = {device_signing.HARDENED_PROCESS_KEY: True}
+        self.assertEqual([], self.problems(app, names, lambda b: self.FULL, lambda b: full_profile))
+
+    def test_a_resign_that_drops_the_entitlements_is_reported_per_bundle(self):
+        app, names = self.make_app()
+        signed = lambda b: {} if b.endswith('.Share') else self.FULL
+        problems = self.problems(app, names, signed, lambda b: {device_signing.HARDENED_PROCESS_KEY: True})
+        self.assertEqual(4, len(problems))
+        self.assertTrue(all(p.startswith(self.APP + '.Share:') and 'signed without' in p for p in problems))
+
+    def test_a_distribution_profile_without_the_capability_is_reported(self):
+        app, names = self.make_app()
+        profile = lambda b: {} if b == self.APP else {device_signing.HARDENED_PROCESS_KEY: True}
+        problems = self.problems(app, names, lambda b: self.FULL, profile)
+        self.assertEqual([self.APP + ': its provisioning profile does not grant com.apple.security.hardened-process'], problems)
+
+    def test_a_missing_profile_is_reported_when_profiles_are_checked(self):
+        app, names = self.make_app()
+        problems = self.problems(app, names, lambda b: self.FULL, lambda b: None)
+        self.assertEqual(3, len(problems))
+        self.assertTrue(all('no embedded provisioning profile' in p for p in problems))
+
+    def test_profiles_are_not_read_before_export(self):
+        app, names = self.make_app()
+        self.assertEqual([], self.problems(app, names, lambda b: self.FULL, lambda b: self.fail('read'), check_profiles=False))
+
+    def test_a_missing_extension_is_reported(self):
+        app, names = self.make_app(suffixes=('.NotificationService', '.Widget'))
+        problems = self.problems(app, names, lambda b: self.FULL, lambda b: {device_signing.HARDENED_PROCESS_KEY: True})
+        self.assertEqual([self.APP + '.Share: the bundle is not in the app'], problems)
+
+    def test_the_wrong_version_string_is_reported(self):
+        app, names = self.make_app()
+        signed = lambda b: dict(self.FULL, **{'com.apple.security.hardened-process.enhanced-security-version-string': '2'})
+        problems = self.problems(app, names, signed, lambda b: {device_signing.HARDENED_PROCESS_KEY: True})
+        self.assertEqual(3, len(problems))
+
+    def test_require_stops_the_upload_loudly(self):
+        app, names = self.make_app()
+        with self.assertRaises(SystemExit) as raised:
+            device_signing.require_enhanced_security(app, True, 'in the exported App Store build',
+                                                     entitlements_of=lambda p: {}, profile_of=lambda p: {})
+        self.assertIn('Nothing was uploaded', str(raised.exception))
+        self.assertIn('TG_TF_ENHANCED_SECURITY=0', str(raised.exception))
