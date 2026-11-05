@@ -126,7 +126,7 @@ final class DCTMultiAnimationRendererTickTests: XCTestCase {
     }
 
     private var highRateAvailable: Bool {
-        return !ProcessInfo.processInfo.isLowPowerModeEnabled && ProcessInfo.processInfo.processorCount > 2
+        return DCTAnimationTickPolicy.frameSkip(isLowPowerMode: ProcessInfo.processInfo.isLowPowerModeEnabled, thermalState: ProcessInfo.processInfo.thermalState, processorCount: ProcessInfo.processInfo.processorCount) == 1
     }
 
     func testThirtyFpsContentTicksAtThirtyHertz() {
@@ -212,9 +212,9 @@ final class DCTMultiAnimationRendererTickTests: XCTestCase {
         disposable.dispose()
     }
 
-    // The default scheduler is a real run loop timer.
-    func testDefaultSchedulerTicks() {
-        let renderer = DCTMultiAnimationRendererImpl()
+    // The run loop timer is the fallback scheduler (the default one follows the display).
+    func testRunLoopTimerSchedulerTicks() {
+        let renderer = DCTMultiAnimationRendererImpl(tickScheduler: .runLoopTimer)
         let target = CountingTarget()
         target.shouldBeAnimating = true
         let disposable = renderer.add(target: target, cache: FakeAnimationCache(frameDuration: 1.0 / 30.0), itemId: "item", unique: false, size: CGSize(width: 16, height: 16), fetch: { _ in EmptyDisposable })
@@ -223,6 +223,39 @@ final class DCTMultiAnimationRendererTickTests: XCTestCase {
         disposable.dispose()
         self.spin(until: { renderer.currentTickIntervalForTesting == nil })
         XCTAssertNil(renderer.currentTickIntervalForTesting)
+    }
+
+    // Low Power Mode and the thermal state are watched while the renderer lives: a change moves the tick
+    // between 60 and 30 Hz without a relaunch.
+    func testPowerStateChangesMoveTheTickRate() throws {
+        try XCTSkipUnless(self.highRateAvailable, "needs a device with the full rate available")
+        let ticker = ManualTicker()
+        let (renderer, _, disposables) = self.play(frameDurations: [1.0 / 24.0], ticker: ticker)
+        XCTAssertEqual(renderer.currentTickIntervalForTesting ?? 0.0, 1.0 / 60.0, accuracy: 0.0001)
+        renderer.updatePowerState(isLowPowerMode: true, thermalState: .nominal)
+        XCTAssertEqual(renderer.currentTickIntervalForTesting ?? 0.0, 2.0 / 60.0, accuracy: 0.0001)
+        XCTAssertEqual(ticker.interval ?? 0.0, 2.0 / 60.0, accuracy: 0.0001)
+        renderer.updatePowerState(isLowPowerMode: false, thermalState: .serious)
+        XCTAssertEqual(renderer.currentTickIntervalForTesting ?? 0.0, 2.0 / 60.0, accuracy: 0.0001)
+        renderer.updatePowerState(isLowPowerMode: false, thermalState: .fair)
+        XCTAssertEqual(renderer.currentTickIntervalForTesting ?? 0.0, 1.0 / 60.0, accuracy: 0.0001)
+        XCTAssertEqual(ticker.interval ?? 0.0, 1.0 / 60.0, accuracy: 0.0001)
+        for disposable in disposables {
+            disposable.dispose()
+        }
+    }
+
+    // An unchanged power state must not restart the tick.
+    func testUnchangedPowerStateKeepsTheTick() throws {
+        try XCTSkipUnless(self.highRateAvailable, "needs a device with the full rate available")
+        let ticker = ManualTicker()
+        let (renderer, _, disposables) = self.play(frameDurations: [1.0 / 24.0], ticker: ticker)
+        let starts = ticker.startCount
+        renderer.updatePowerState(isLowPowerMode: false, thermalState: .nominal)
+        XCTAssertEqual(ticker.startCount, starts)
+        for disposable in disposables {
+            disposable.dispose()
+        }
     }
 
     func testDurationClassification() {

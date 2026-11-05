@@ -4,7 +4,16 @@ Newest first. Internal notes for each TestFlight build; testers see the What to 
 
 ## Unreleased
 
-(none)
+- Emoji and sticker animation tick (profiling plan item 10, S6): the renderer's tick ran on a `Foundation.Timer` on the
+  main run loop, with no display-rate hint and Low Power Mode read once at creation. It now ticks from the shared
+  `SharedDisplayLinkDriver` (`DCTAnimationTickScheduler.sharedDisplayLink`, new `DCTAnimationTickPolicy.swift`), at the
+  same 60 or 30 Hz as before, so the system matches the screen's refresh rate to it and stops it in the background.
+  Low Power Mode and the thermal state are now watched while the app runs: 30 Hz on Low Power Mode, on a serious or
+  critical thermal state and on two-core devices; back to 60 Hz when they clear. Frame timing per tick is unchanged.
+  Tests: `DCTAnimationTickPolicyTests`, power-state cases in `DCTMultiAnimationRendererTickTests`.
+- `tools/dev/tg device` archives the build's dSYMs to `~/Library/Application Support/Nanogram/dsyms/<build>/` like
+  `tg testflight` (UUID file included, TelegramUI UUID printed), so a device build recording can be symbolicated. A
+  failed archive warns and does not stop the install.
 
 ## 13.1.2 (202611051247) — 2026-11-05 — fb1b8101
 

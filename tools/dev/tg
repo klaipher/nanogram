@@ -534,6 +534,13 @@ cmd_device() {
     --buildNumber="${TG_BUILD_NUMBER:-1}" \
     --configuration=release_arm64
   say "Built: $ROOT/bazel-bin/Telegram/Telegram.ipa"
+  # Keep this build's dSYMs, as tg testflight does (which archives its own, after this returns): an
+  # Instruments recording of the device build can only be symbolicated with them. The next build
+  # overwrites bazel-bin's. A build without usable dSYMs still installs.
+  if [ $app_store -eq 0 ]; then
+    ( archive_dsyms "$ROOT/bazel-bin/Telegram/Telegram.ipa" ) \
+      || warn "dSYMs were not archived for this build: its traces will not symbolicate"
+  fi
   if [ $app_store -eq 0 ] && [ -f "$signing/profiles/Telegram.mobileprovision" ]; then
     warn_device_push_environment "$signing/profiles/Telegram.mobileprovision"
   fi
@@ -667,6 +674,7 @@ archive_dsyms() {
   dwarfdump --uuid "${dsyms[@]}" | sed "s|$outdir/||" > "$dest/uuids.txt"
   ARCHIVED_DSYM_DIR="$dest"
   say "dSYMs for build $version ($(size_of "$dest")): $dest"
+  awk '$4 ~ /TelegramUIFramework/ { print "TelegramUI UUID " $2 }' "$dest/uuids.txt"
   prune_dsym_archive "$version"
 }
 

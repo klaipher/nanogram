@@ -1194,16 +1194,12 @@ public final class DCTMultiAnimationRendererImpl: MultiAnimationRenderer {
     }
 
     public convenience init() {
-        self.init(tickScheduler: .runLoopTimer)
+        self.init(tickScheduler: .sharedDisplayLink)
     }
 
     init(tickScheduler: DCTAnimationTickScheduler) {
         self.tickScheduler = tickScheduler
-        if !ProcessInfo.processInfo.isLowPowerModeEnabled && ProcessInfo.processInfo.processorCount > 2 {
-            self.frameSkip = 1
-        } else {
-            self.frameSkip = 2
-        }
+        self.frameSkip = DCTAnimationTickPolicy.frameSkip(isLowPowerMode: ProcessInfo.processInfo.isLowPowerModeEnabled, thermalState: ProcessInfo.processInfo.thermalState, processorCount: ProcessInfo.processInfo.processorCount)
 
         // Audio can keep the app running in the background, where frames are decoded for nobody.
         // Emoji keep their frame and continue from it on return.
@@ -1221,8 +1217,29 @@ public final class DCTMultiAnimationRendererImpl: MultiAnimationRenderer {
                 }
                 self.isInBackground = false
                 self.updateIsPlaying()
+            }),
+            // Low Power Mode and the thermal state change while the app runs.
+            NotificationCenter.default.addObserver(forName: Notification.Name.NSProcessInfoPowerStateDidChange, object: nil, queue: .main, using: { [weak self] _ in
+                self?.updatePowerStateFromProcessInfo()
+            }),
+            NotificationCenter.default.addObserver(forName: ProcessInfo.thermalStateDidChangeNotification, object: nil, queue: .main, using: { [weak self] _ in
+                self?.updatePowerStateFromProcessInfo()
             })
         ]
+    }
+
+    private func updatePowerStateFromProcessInfo() {
+        self.updatePowerState(isLowPowerMode: ProcessInfo.processInfo.isLowPowerModeEnabled, thermalState: ProcessInfo.processInfo.thermalState)
+    }
+
+    // Moves the tick to the rate the power state allows; an unchanged rate leaves the tick running.
+    func updatePowerState(isLowPowerMode: Bool, thermalState: ProcessInfo.ThermalState) {
+        let frameSkip = DCTAnimationTickPolicy.frameSkip(isLowPowerMode: isLowPowerMode, thermalState: thermalState, processorCount: ProcessInfo.processInfo.processorCount)
+        if self.frameSkip == frameSkip {
+            return
+        }
+        self.frameSkip = frameSkip
+        self.updateDisplayTimer()
     }
 
     deinit {
