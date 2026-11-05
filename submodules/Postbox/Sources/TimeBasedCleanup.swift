@@ -386,6 +386,7 @@ private final class TimeBasedCleanupImpl {
     private var recentTouches = RecentFileTouches()
     
     private var generalMaxStoreTime: Int32?
+    private var shortestPerChatStoreTime: Int32?
     private var shortLivedMaxStoreTime: Int32?
     private var gigabytesLimit: Int32?
     private let scheduledScanDisposable = MetaDisposable()
@@ -419,6 +420,10 @@ private final class TimeBasedCleanupImpl {
             self.shortLivedMaxStoreTime = shortLived
             self.resetScan(general: general, shortLived: shortLived, gigabytesLimit: gigabytesLimit)
         }
+    }
+    
+    func setShortestPerChatStoreTime(_ value: Int32) {
+        self.shortestPerChatStoreTime = value
     }
     
     func rescan() -> Signal<Never, NoError> {
@@ -697,8 +702,9 @@ private final class TimeBasedCleanupImpl {
             return
         }
         let shortLivedPaths = self.shortLivedPaths
-        // How stale a general file's time may be follows the keep time in effect (`CacheTouchPolicy.generalInterval`).
-        let generalInterval = CacheTouchPolicy.generalInterval(generalMaxStoreTime: self.generalMaxStoreTime)
+        // How stale a general file's time may be follows the shortest keep time in effect, general or per chat
+        // (`CacheTouchPolicy.keepTimeForTouches`, `generalInterval`).
+        let generalInterval = CacheTouchPolicy.generalInterval(generalMaxStoreTime: CacheTouchPolicy.keepTimeForTouches(general: self.generalMaxStoreTime, shortestPerChat: self.shortestPerChatStoreTime))
         DispatchQueue.global(qos: .utility).async {
             // A stat is a read; a utime is a metadata write and a journal entry. A file used in a recent session
             // already has a fresh enough time (`CacheTouchPolicy`), so only the stale ones are written.
@@ -734,6 +740,12 @@ final class TimeBasedCleanup {
     func setMaxStoreTimes(general: Int32, shortLived: Int32, gigabytesLimit: Int32) {
         self.impl.with { impl in
             impl.setMaxStoreTimes(general: general, shortLived: shortLived, gigabytesLimit: gigabytesLimit)
+        }
+    }
+    
+    func setShortestPerChatStoreTime(_ value: Int32) {
+        self.impl.with { impl in
+            impl.setShortestPerChatStoreTime(value)
         }
     }
     

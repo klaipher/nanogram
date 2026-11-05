@@ -3,8 +3,9 @@ import Foundation
 /// When a sticker keeps failing to be DCT-encoded on the GPU (a command buffer that did not complete, a frame the
 /// kernel cannot encode), trying the same frame again at every pass costs GPU time each time and gains nothing.
 /// After `maxFailuresPerIndex` failures of one frame that frame stays uncached, and after `maxFailuresInTotal`
-/// failures the source stops encoding on the GPU. The frames are then drawn from the CPU renderer, as for any frame
-/// that is not cached. Not thread safe: use it from the frame source's queue.
+/// failures the source stops encoding on the GPU. Those frames are then stored by the CPU path of the same cache
+/// (LZ4 YUVA; the reader tells the two formats apart by the DCT magic). Not thread safe: use it from the frame
+/// source's queue.
 struct GPUEncodeRetryPolicy {
     static let maxFailuresPerIndex = 3
     static let maxFailuresInTotal = 8

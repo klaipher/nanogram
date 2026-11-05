@@ -405,13 +405,12 @@ final class AnimatedStickerDirectFrameSourceCache {
         if index < 0 || index >= self.frameCount {
             return
         }
-        // The DCT encoder works on 8x8 blocks of full-size luma and alpha and half-size chroma.
-        if !AnimationCompressor.canCompress(width: self.width, height: self.height) {
-            return
-        }
-        // A frame that fails to encode again and again stays uncached (it is drawn by the CPU renderer), and a
-        // source whose encodes keep failing stops using the GPU for them.
-        if !self.gpuEncodeRetryPolicy.shouldAttempt(index: index) {
+        // The DCT encoder works on 8x8 blocks of full-size luma and alpha and half-size chroma. A frame the GPU
+        // cannot encode, or that failed to encode again and again (or a source whose encodes keep failing), is
+        // stored by the CPU path instead (LZ4 YUVA, read back like any cached frame), so it is not rendered again
+        // at every loop.
+        if !AnimationCompressor.canCompress(width: self.width, height: self.height) || !self.gpuEncodeRetryPolicy.shouldAttempt(index: index) {
+            self.storeUncompressedRgbFrameSoft(index: index, rgbData: rgbData)
             return
         }
         if self.isStoringFrames.contains(index) {
@@ -439,10 +438,11 @@ final class AnimatedStickerDirectFrameSourceCache {
                     }
                     guard let compressedData else {
                         // Not compressed (see AnimationCompressor.compress): stays uncached, so the
-                        // CPU-rendered frame is used and a later pass tries again, up to the retry limits.
+                        // CPU-rendered frame is used and a later pass tries again, up to the retry limits; past
+                        // them the frame is stored by the CPU path.
                         strongSelf.isStoringFrames.remove(index)
                         if strongSelf.gpuEncodeRetryPolicy.recordFailure(index: index) {
-                            Logger.shared.log("AnimatedSticker", "GPU encoding stopped for a sticker after \(GPUEncodeRetryPolicy.maxFailuresInTotal) failures, its frames are drawn by the CPU")
+                            Logger.shared.log("AnimatedSticker", "GPU encoding stopped for a sticker after \(GPUEncodeRetryPolicy.maxFailuresInTotal) failures, its frames are cached by the CPU path")
                         }
                         return
                     }

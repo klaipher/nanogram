@@ -240,6 +240,28 @@ final class CacheWalkerPolicyTests: XCTestCase {
         XCTAssertEqual(CacheTouchPolicy.generalInterval(generalMaxStoreTime: -5), hour)
     }
 
+    // The automatic eviction removes a chat's media by the same modification time, with per-category and per-chat
+    // keep times (stories 2 days, channels 7 days, any category or chat can be set to 1 day). The touch interval
+    // must follow the shortest of them, or a file in use could be removed as unused.
+    func testTheTouchKeepTimeIsTheShortestOfTheGeneralAndPerChatKeepTimes() {
+        XCTAssertNil(CacheTouchPolicy.keepTimeForTouches(general: nil, shortestPerChat: nil))
+        // Until the eviction reports its keep times, the old one-hour interval stays.
+        XCTAssertNil(CacheTouchPolicy.keepTimeForTouches(general: Int32.max, shortestPerChat: nil))
+        XCTAssertNil(CacheTouchPolicy.keepTimeForTouches(general: nil, shortestPerChat: 86_400))
+        XCTAssertEqual(CacheTouchPolicy.keepTimeForTouches(general: Int32.max, shortestPerChat: 2 * 86_400), 2 * 86_400)
+        XCTAssertEqual(CacheTouchPolicy.keepTimeForTouches(general: 86_400, shortestPerChat: 7 * 86_400), 86_400)
+        XCTAssertEqual(CacheTouchPolicy.keepTimeForTouches(general: Int32.max, shortestPerChat: Int32.max), Int32.max)
+    }
+
+    func testDefaultSettingsTouchAtMostEveryTwoPointFourHours() {
+        // Default settings: general forever, stories 2 days: a twentieth of 2 days is 2.4 h.
+        let keep = CacheTouchPolicy.keepTimeForTouches(general: Int32.max, shortestPerChat: 2 * 86_400)
+        XCTAssertEqual(CacheTouchPolicy.generalInterval(generalMaxStoreTime: keep), 8_640.0, accuracy: 0.001)
+        // A chat kept for one day: 72 min.
+        let oneDay = CacheTouchPolicy.keepTimeForTouches(general: Int32.max, shortestPerChat: 86_400)
+        XCTAssertEqual(CacheTouchPolicy.generalInterval(generalMaxStoreTime: oneDay), 4_320.0, accuracy: 0.001)
+    }
+
     func testTheShortLivedIntervalDoesNotDependOnTheGeneralOne() {
         let shortLived = ["/media/short-cache"]
         XCTAssertEqual(CacheTouchPolicy.interval(forPath: "/media/short-cache/a", shortLivedPaths: shortLived, generalInterval: 86_400.0), CacheTouchPolicy.shortLivedSkipInterval)
@@ -260,7 +282,9 @@ final class CacheWalkerPolicyTests: XCTestCase {
         let interval = CacheTouchPolicy.generalInterval(generalMaxStoreTime: 7 * 86_400)
         XCTAssertEqual(CacheTouchPolicy.touchNeeded(paths: [path], shortLivedPaths: [], now: now, generalInterval: interval), [])
         // The old fixed hour would have written it.
+        // With the old one-hour interval it would be touched; with a week of keep time it is fresh enough.
         XCTAssertEqual(CacheTouchPolicy.touchNeeded(paths: [path], shortLivedPaths: [], now: now), [path])
+        XCTAssertEqual(CacheTouchPolicy.touchNeeded(paths: [path], shortLivedPaths: [], now: now, generalInterval: interval), [])
         // Nine hours old is stale for a week of keep time.
         XCTAssertEqual(CacheTouchPolicy.touchNeeded(paths: [path], shortLivedPaths: [], now: now + 6.0 * 3600.0, generalInterval: interval), [path])
     }

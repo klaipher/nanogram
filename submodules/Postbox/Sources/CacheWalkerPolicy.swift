@@ -106,6 +106,16 @@ public enum CacheTouchPolicy {
     /// and a day is the shortest "keep media" choice.
     public static let maximumGeneralInterval: Double = 24.0 * 60.0 * 60.0
 
+    /// The keep time the touch interval follows: the shortest of the general keep time and the per-chat ones
+    /// (categories, stories, exceptions), because `AutomaticCacheEviction` removes a chat's media by the same
+    /// modification time. `nil` until both are known.
+    public static func keepTimeForTouches(general: Int32?, shortestPerChat: Int32?) -> Int32? {
+        guard let general, let shortestPerChat else {
+            return nil
+        }
+        return min(general, shortestPerChat)
+    }
+
     /// How stale the time of a general cache file may be, for the keep time in effect (`nil` until it is known).
     /// A twentieth of the keep time moves a removal by under 5 %; at least `skipInterval`, which covers the usual
     /// relaunch, and at most a day. A file used on an earlier day of the same week is not rewritten at every launch.

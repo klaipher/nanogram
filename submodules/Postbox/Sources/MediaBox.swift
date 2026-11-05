@@ -229,6 +229,12 @@ public final class MediaBox {
         self.timeBasedCleanup.setMaxStoreTimes(general: general, shortLived: shortLived, gigabytesLimit: gigabytesLimit)
     }
     
+    /// The shortest keep time of the per-chat limits (categories, stories, exceptions) that the automatic eviction
+    /// enforces by modification time: the cache touches keep times fresh enough for it.
+    public func setShortestPerChatStoreTime(_ value: Int32) {
+        self.timeBasedCleanup.setShortestPerChatStoreTime(value)
+    }
+    
     public func rescanCache() -> Signal<Never, NoError> {
         let sweep = Signal<Never, NoError> { [weak self] subscriber in
             guard let self else {

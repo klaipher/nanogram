@@ -10,6 +10,23 @@ func automaticCacheEvictionFingerprint(categoryStorageTimeout: [CacheStorageSett
     return categories.joined(separator: ",") + ";" + exceptionValues.joined(separator: ",")
 }
 
+/// The stories keep time the eviction uses when the settings have none.
+let automaticCacheEvictionDefaultStoryStoreTime: Int32 = 2 * 24 * 60 * 60
+
+/// The shortest keep time this eviction enforces (categories, stories, per-chat exceptions). It removes media by
+/// modification time, so the cache touches (`MediaBox.setShortestPerChatStoreTime`) must keep that time fresh enough
+/// for the shortest of them.
+func automaticCacheEvictionShortestStoreTime(categoryStorageTimeout: [CacheStorageSettings.PeerStorageCategory: Int32], exceptions: [AccountSpecificCacheStorageSettings.Value]) -> Int32 {
+    var result = categoryStorageTimeout[.stories] ?? automaticCacheEvictionDefaultStoryStoreTime
+    for value in categoryStorageTimeout.values {
+        result = min(result, value)
+    }
+    for exception in exceptions {
+        result = min(result, exception.value)
+    }
+    return result
+}
+
 final class AutomaticCacheEvictionContext {
     private final class Impl {
         private struct CombinedSettings: Equatable {
@@ -81,8 +98,12 @@ final class AutomaticCacheEvictionContext {
             }
             |> distinctUntilChanged
             |> deliverOn(self.queue)).start(next: { [weak self] combinedSettings in
+                guard let self else {
+                    return
+                }
+                self.postbox.mediaBox.setShortestPerChatStoreTime(automaticCacheEvictionShortestStoreTime(categoryStorageTimeout: combinedSettings.categoryStorageTimeout, exceptions: combinedSettings.exceptions))
                 // The scheduled run follows the cache walker gate; `rerun()` is explicit.
-                self?.restart(settings: combinedSettings, isScheduled: true)
+                self.restart(settings: combinedSettings, isScheduled: true)
             })
         }
         
@@ -154,7 +175,7 @@ final class AutomaticCacheEvictionContext {
                             }
                         }
                         
-                        let storyTimeout: Int32 = settings.categoryStorageTimeout[.stories] ?? (2 * 24 * 60 * 60)
+                        let storyTimeout: Int32 = settings.categoryStorageTimeout[.stories] ?? automaticCacheEvictionDefaultStoryStoreTime
                         
                         let allSignal: Signal<Never, NoError>
                         if timeout != Int32.max {
@@ -292,20 +313,23 @@ final class AutomaticCacheEvictionContext {
                 }
             }
             
+            // Not due at launch: wait for the day to pass, and arm again after every completed run.
+            let schedule = CacheWalkerSchedule.signal(
+                recordSignal: storageBox.cacheWalkerRecord(name: CacheWalkerName.automaticCacheEviction),
+                fingerprint: fingerprint,
+                configuredDelay: 0.0,
+                queue: Queue.concurrentBackgroundQueue(),
+                skipped: { record in
+                    Logger.shared.log("AutomaticCacheEviction", "not due, it last ran at \(record?.completedAt ?? 0.0)")
+                },
+                run: measuredEvict
+            )
             if isScheduled {
-                // Not due at launch: wait for the day to pass, and arm again after every completed run.
-                self.processDisposable = CacheWalkerSchedule.signal(
-                    recordSignal: storageBox.cacheWalkerRecord(name: CacheWalkerName.automaticCacheEviction),
-                    fingerprint: fingerprint,
-                    configuredDelay: 0.0,
-                    queue: Queue.concurrentBackgroundQueue(),
-                    skipped: { record in
-                        Logger.shared.log("AutomaticCacheEviction", "not due, it last ran at \(record?.completedAt ?? 0.0)")
-                    },
-                    run: measuredEvict
-                ).start()
+                self.processDisposable = schedule.start()
             } else {
-                self.processDisposable = measuredEvict.start()
+                // An explicit run (`rerun()`) records its completion, then the daily schedule goes on from it, so
+                // a long-lived process keeps evicting after the storage screen asked for a run.
+                self.processDisposable = (measuredEvict |> then(schedule)).start()
             }
         }
     }
