@@ -643,19 +643,21 @@ static NSString *hexStringFromData(NSData *data)
 
 bool MTCheckIsSafePrime(id<EncryptionProvider> provider, NSData *numberBytes, id<MTKeychain> keychain)
 {
-    NSString *primeKey = [[NSString alloc] initWithFormat:@"isPrimeSafe_%@", hexStringFromData(numberBytes)];
-    
-    NSNumber *nCachedResult = [keychain numberForKey:primeKey group:@"primes"];
-    if (nCachedResult != nil) {
-        return [nCachedResult boolValue];
-    }
-    
+    // The shape checks come before the cached verdict, so a cached entry can never vouch for a
+    // number of the wrong size (security review L-2).
     if (numberBytes.length != 256) {
         return false;
     }
     
     if (!(((uint8_t *)numberBytes.bytes)[0] & (1 << 7))) {
         return false;
+    }
+    
+    NSString *primeKey = [[NSString alloc] initWithFormat:@"isPrimeSafe_%@", hexStringFromData(numberBytes)];
+    
+    NSNumber *nCachedResult = [keychain numberForKey:primeKey group:@"primes"];
+    if (nCachedResult != nil) {
+        return [nCachedResult boolValue];
     }
     
     unsigned char goodPrime0[] = {

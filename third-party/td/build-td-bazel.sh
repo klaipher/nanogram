@@ -42,6 +42,11 @@ else
   echo "Unsupported architecture $ARCH"
   exit 1
 fi
+# tde2e checks the call blockchain and decrypts conference-call frames from other participants, so it
+# gets the memory-safety hardening .bazelrc gives every C-family compile (this genrule builds with
+# CMake, outside Bazel's copts). Only the target build: the source generators above stay plain.
+HARDENING_FLAGS="-ftrivial-auto-var-init=zero -fstack-protector-strong -D_LIBCPP_HARDENING_MODE=_LIBCPP_HARDENING_MODE_FAST"
+export CFLAGS="$CFLAGS $HARDENING_FLAGS"
 export CXXFLAGS="$CFLAGS"
 
 # Common build steps
