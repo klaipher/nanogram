@@ -29,7 +29,7 @@ Newest first. Internal notes for each TestFlight build; testers see the What to 
 - **CallKit mute from the system UI did nothing** (7aa6153d): the handler passed `CXAction.uuid` instead of `callUUID`
   (`callKitMuteTarget`). An in-app mute is now reported to CallKit (`CallKitMuteSync`, `reportMuted`), so the lock screen and the
   Dynamic Island show the real state.
-- **Review fixes (lane ios-calls)**: the app's own CallKit mute action is recognised by its action id when CallKit performs it
+- **Review fixes (lane ios-calls, 211c6fea)**: the app's own CallKit mute action is recognised by its action id when CallKit performs it
   and is not applied a second time (a quick mute-unmute was undone by the late echo), and a refused transaction restores what
   CallKit shows (`CallKitMuteSync.appRequested/isAppRequested/appRequestFailed`). After a 1:1 call turned into a conference
   the CallKit call stays under the 1:1 id: the lock-screen mute now reaches the conference (`callKitMuteRecipient`,
