@@ -166,7 +166,7 @@ private func writeVideoStickerFrameCache(path: String, size: CGSize, file: Manag
     // the same decodeYUVAPlanesToRGBA (unpremultiplied, as the libvpx path asks for), so the file is
     // the same; on any failure the file is written again from libvpx.
     var openedSource: SoftwareVideoSource?
-    if let hardwareStream = makeVideoStickerHardwareStream(path) {
+    if let hardwareStream = makeVideoStickerHardwareStream(path, false) {
         // The frame rate comes from the container when it states one (what FFmpeg reports as well); FFmpeg is opened
         // only when it does not, or when the hardware decoder fails.
         let fps: Int32

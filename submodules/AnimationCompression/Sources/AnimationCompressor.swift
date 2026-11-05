@@ -320,6 +320,8 @@ public final class AnimationCompressor {
             computeEncoder.endEncoding()
             
             commandBuffer.addCompletedHandler { [weak compressor] commandBuffer in
+                let didComplete = commandBuffer.status == .completed && commandBuffer.error == nil
+                GPUTimeCounters.shared.record(.encode, gpuSeconds: didComplete ? commandBuffer.gpuEndTime - commandBuffer.gpuStartTime : nil)
                 // A command buffer that did not complete (an app in the background may not use the
                 // GPU, a GPU timeout or reset) leaves the planes as they were: not this frame.
                 guard commandBuffer.status == .completed, commandBuffer.error == nil else {

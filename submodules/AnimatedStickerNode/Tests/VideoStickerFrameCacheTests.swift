@@ -137,7 +137,7 @@ final class VideoStickerFrameCacheTests: XCTestCase {
 
     private func libvpxCache() throws -> Data {
         let path = try XCTUnwrap(fixture("sticker_vp9", "webm"))
-        makeVideoStickerHardwareStream = { _ in nil }
+        makeVideoStickerHardwareStream = { _, _ in nil }
         return try XCTUnwrap(makeVideoStickerFrameCache(path: path, size: self.size, isCancelled: { false }))
     }
 
@@ -155,7 +155,7 @@ final class VideoStickerFrameCacheTests: XCTestCase {
     // The cache is streamed to the file; the file holds exactly the bytes the previous writer produced.
     func testFileOutputIsTheFileThePreviousWriterWrote() throws {
         let path = try XCTUnwrap(fixture("sticker_vp9", "webm"))
-        makeVideoStickerHardwareStream = { _ in nil }
+        makeVideoStickerHardwareStream = { _, _ in nil }
         let outputPath = NSTemporaryDirectory() + "vsticker-test-" + UUID().uuidString
         defer {
             try? FileManager.default.removeItem(atPath: outputPath)
@@ -167,7 +167,7 @@ final class VideoStickerFrameCacheTests: XCTestCase {
 
     func testCancelledWriteLeavesNoFile() throws {
         let path = try XCTUnwrap(fixture("sticker_vp9", "webm"))
-        makeVideoStickerHardwareStream = { _ in nil }
+        makeVideoStickerHardwareStream = { _, _ in nil }
         let outputPath = NSTemporaryDirectory() + "vsticker-test-" + UUID().uuidString
         var calls = 0
         let result = makeVideoStickerFrameCache(path: path, size: self.size, outputPath: outputPath, isCancelled: {
@@ -192,7 +192,7 @@ final class VideoStickerFrameCacheTests: XCTestCase {
 
         let sticker = try XCTUnwrap(WebMStickerDemuxer.parse(try Data(contentsOf: URL(fileURLWithPath: path))))
         var decoder: LibvpxBackedDecoder?
-        makeVideoStickerHardwareStream = { path in
+        makeVideoStickerHardwareStream = { path, _ in
             let instance = LibvpxBackedDecoder(path: path, failAt: nil)
             decoder = instance
             return VideoStickerHardwareStream(frames: sticker.frames, decoder: instance)
@@ -212,7 +212,7 @@ final class VideoStickerFrameCacheTests: XCTestCase {
 
         let sticker = try XCTUnwrap(WebMStickerDemuxer.parse(try Data(contentsOf: URL(fileURLWithPath: path))))
         var decoder: LibvpxBackedDecoder?
-        makeVideoStickerHardwareStream = { path in
+        makeVideoStickerHardwareStream = { path, _ in
             let instance = LibvpxBackedDecoder(path: path, failAt: 7)
             decoder = instance
             return VideoStickerHardwareStream(frames: sticker.frames, decoder: instance)
@@ -227,7 +227,7 @@ final class VideoStickerFrameCacheTests: XCTestCase {
     // on the sticker's real frame deltas (best of 30 alternating runs).
     func testCodecCost() throws {
         let path = try XCTUnwrap(fixture("sticker_vp9", "webm"))
-        makeVideoStickerHardwareStream = { _ in nil }
+        makeVideoStickerHardwareStream = { _, _ in nil }
         let legacy = try XCTUnwrap(makeVideoStickerFrameCache(path: path, size: self.size, isCancelled: { false }))
         let current = try XCTUnwrap(makeVideoStickerFrameCache(path: path, size: self.size, isCancelled: { false }))
 

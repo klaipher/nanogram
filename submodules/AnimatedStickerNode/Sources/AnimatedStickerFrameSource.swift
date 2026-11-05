@@ -8,8 +8,16 @@ import LottieSettings
 import GZip
 import ManagedFile
 import AnimationCompression
+import TelegramCore
 
 private let sharedStoreQueue = Queue.concurrentDefaultQueue()
+
+// The GPU time of the sticker encoder and renderer, logged at most once a minute. Installed on first use.
+private let installGPUTimeReporter: Void = {
+    GPUTimeCounters.shared.setReporter({ line in
+        Logger.shared.log("AnimatedSticker", line)
+    })
+}()
 
 public extension EmojiFitzModifier {
     var lottieFitzModifier: LottieFitzModifier {
@@ -270,6 +278,7 @@ final class AnimatedStickerDirectFrameSourceCache {
     private let useHardware: Bool
     
     private var isStoringFrames = Set<Int>()
+    private var gpuEncodeRetryPolicy = GPUEncodeRetryPolicy()
     
     private var scratchBuffer: Data
     private let decodedFrameLength: Int
@@ -400,11 +409,17 @@ final class AnimatedStickerDirectFrameSourceCache {
         if !AnimationCompressor.canCompress(width: self.width, height: self.height) {
             return
         }
+        // A frame that fails to encode again and again stays uncached (it is drawn by the CPU renderer), and a
+        // source whose encodes keep failing stops using the GPU for them.
+        if !self.gpuEncodeRetryPolicy.shouldAttempt(index: index) {
+            return
+        }
         if self.isStoringFrames.contains(index) {
             return
         }
         self.isStoringFrames.insert(index)
         
+        let _: Void = installGPUTimeReporter
         if self.frameCompressor == nil {
             self.frameCompressor = AnimationCompressor(sharedContext: AnimationCompressor.SharedContext.shared)
         }
@@ -424,10 +439,14 @@ final class AnimatedStickerDirectFrameSourceCache {
                     }
                     guard let compressedData else {
                         // Not compressed (see AnimationCompressor.compress): stays uncached, so the
-                        // CPU-rendered frame is used and a later pass tries again.
+                        // CPU-rendered frame is used and a later pass tries again, up to the retry limits.
                         strongSelf.isStoringFrames.remove(index)
+                        if strongSelf.gpuEncodeRetryPolicy.recordFailure(index: index) {
+                            Logger.shared.log("AnimatedSticker", "GPU encoding stopped for a sticker after \(GPUEncodeRetryPolicy.maxFailuresInTotal) failures, its frames are drawn by the CPU")
+                        }
                         return
                     }
+                    strongSelf.gpuEncodeRetryPolicy.recordSuccess(index: index)
                     guard let currentSize = strongSelf.file.getSize() else {
                         return
                     }

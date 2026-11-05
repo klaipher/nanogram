@@ -440,16 +440,19 @@ private final class TimeBasedCleanupImpl {
             let fingerprint = CacheWalkerGate.timeBasedCleanupFingerprint(general: general, shortLived: shortLived, gigabytesLimit: gigabytesLimit)
             let scanDelay = self.scanDelay
             let processStartTime = self.processStartTime
-            scan = self.storageBox.cacheWalkerRecord(name: CacheWalkerName.timeBasedCleanup)
-            |> mapToSignal { record -> Signal<Never, NoError> in
-                let now = Date().timeIntervalSince1970
-                if !CacheWalkerGate.isDue(record: record, fingerprint: fingerprint, now: now) {
-                    postboxLog("TimeBasedCleanup: scan skipped, it last ran at \(record?.completedAt ?? 0.0)")
-                    return .complete()
-                }
-                return scanOnce
-                |> delay(CacheWalkerGate.delay(configured: scanDelay, processStartTime: processStartTime, now: now), queue: Queue.concurrentDefaultQueue())
-            }
+            // A scan that is not due waits for the day to pass instead of giving up, and arms itself again after
+            // every completed run, so a long-lived process (macOS) keeps enforcing the limits.
+            scan = CacheWalkerSchedule.signal(
+                recordSignal: self.storageBox.cacheWalkerRecord(name: CacheWalkerName.timeBasedCleanup),
+                fingerprint: fingerprint,
+                configuredDelay: scanDelay,
+                processStartTime: processStartTime,
+                queue: Queue.concurrentDefaultQueue(),
+                skipped: { record in
+                    postboxLog("TimeBasedCleanup: scan skipped until it is due, it last ran at \(record?.completedAt ?? 0.0)")
+                },
+                run: scanOnce
+            )
         } else {
             scan = scanOnce
             |> delay(self.scanDelay, queue: Queue.concurrentDefaultQueue())
@@ -694,11 +697,13 @@ private final class TimeBasedCleanupImpl {
             return
         }
         let shortLivedPaths = self.shortLivedPaths
+        // How stale a general file's time may be follows the keep time in effect (`CacheTouchPolicy.generalInterval`).
+        let generalInterval = CacheTouchPolicy.generalInterval(generalMaxStoreTime: self.generalMaxStoreTime)
         DispatchQueue.global(qos: .utility).async {
             // A stat is a read; a utime is a metadata write and a journal entry. A file used in a recent session
             // already has a fresh enough time (`CacheTouchPolicy`), so only the stale ones are written.
             let signpost = NanogramSignposts.OneShot(PerformanceSignpostName.cacheTouchBatch)
-            let stale = CacheTouchPolicy.touchNeeded(paths: scheduledTouches, shortLivedPaths: shortLivedPaths, now: Date().timeIntervalSince1970)
+            let stale = CacheTouchPolicy.touchNeeded(paths: scheduledTouches, shortLivedPaths: shortLivedPaths, now: Date().timeIntervalSince1970, generalInterval: generalInterval)
             for item in stale {
                 utime(item, nil)
             }

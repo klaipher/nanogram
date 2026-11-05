@@ -293,16 +293,17 @@ final class AutomaticCacheEvictionContext {
             }
             
             if isScheduled {
-                self.processDisposable = (storageBox.cacheWalkerRecord(name: CacheWalkerName.automaticCacheEviction)
-                |> mapToSignal { record -> Signal<Never, NoError> in
-                    let now = Date().timeIntervalSince1970
-                    if !CacheWalkerGate.isDue(record: record, fingerprint: fingerprint, now: now) {
-                        Logger.shared.log("AutomaticCacheEviction", "skipped, it last ran at \(record?.completedAt ?? 0.0)")
-                        return .complete()
-                    }
-                    return measuredEvict
-                    |> delay(CacheWalkerGate.delay(configured: 0.0, now: now), queue: Queue.concurrentBackgroundQueue())
-                }).start()
+                // Not due at launch: wait for the day to pass, and arm again after every completed run.
+                self.processDisposable = CacheWalkerSchedule.signal(
+                    recordSignal: storageBox.cacheWalkerRecord(name: CacheWalkerName.automaticCacheEviction),
+                    fingerprint: fingerprint,
+                    configuredDelay: 0.0,
+                    queue: Queue.concurrentBackgroundQueue(),
+                    skipped: { record in
+                        Logger.shared.log("AutomaticCacheEviction", "not due, it last ran at \(record?.completedAt ?? 0.0)")
+                    },
+                    run: measuredEvict
+                ).start()
             } else {
                 self.processDisposable = measuredEvict.start()
             }

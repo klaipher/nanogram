@@ -220,7 +220,7 @@ final class VideoStickerHardwareSelectionTests: XCTestCase {
     }
 
     private func libvpxFrames(path: String, loops: Int) -> [[Data]] {
-        makeVideoStickerHardwareStream = { _ in nil }
+        makeVideoStickerHardwareStream = { _, _ in nil }
         return self.onQueue {
             guard let source = VideoStickerDirectFrameSource(queue: self.queue, path: path, width: 160, height: 160, cachePathPrefix: nil, unpremultiplyAlpha: false) else {
                 return []
@@ -234,7 +234,7 @@ final class VideoStickerHardwareSelectionTests: XCTestCase {
     func testSimulatorProbeKeepsLibvpx() throws {
         let path = try XCTUnwrap(fixturePath("sticker_vp9", "webm"))
         XCTAssertFalse(videoStickerVP9HardwareProbe.hasHardwareDecoder, "\(videoStickerVP9HardwareProbe)")
-        XCTAssertNil(makeVideoStickerHardwareStream(path))
+        XCTAssertNil(makeVideoStickerHardwareStream(path, false))
         self.queue.sync {
             let source = VideoStickerDirectFrameSource(queue: self.queue, path: path, width: 64, height: 64, cachePathPrefix: nil, unpremultiplyAlpha: false)
             XCTAssertEqual(source?.usesHardwareDecoderForTesting, false)
@@ -249,7 +249,7 @@ final class VideoStickerHardwareSelectionTests: XCTestCase {
 
         let sticker = try XCTUnwrap(WebMStickerDemuxer.parse(try Data(contentsOf: URL(fileURLWithPath: path))))
         var decoder: LibvpxBackedDecoder?
-        makeVideoStickerHardwareStream = { path in
+        makeVideoStickerHardwareStream = { path, _ in
             let instance = LibvpxBackedDecoder(path: path, failAt: nil)
             decoder = instance
             return VideoStickerHardwareStream(frames: sticker.frames, decoder: instance)
@@ -278,7 +278,7 @@ final class VideoStickerHardwareSelectionTests: XCTestCase {
 
         let sticker = try XCTUnwrap(WebMStickerDemuxer.parse(try Data(contentsOf: URL(fileURLWithPath: path))))
         var decoder: LibvpxBackedDecoder?
-        makeVideoStickerHardwareStream = { path in
+        makeVideoStickerHardwareStream = { path, _ in
             let instance = LibvpxBackedDecoder(path: path, failAt: 7)
             decoder = instance
             return VideoStickerHardwareStream(frames: sticker.frames, decoder: instance)
@@ -304,7 +304,7 @@ final class VideoStickerHardwareSelectionTests: XCTestCase {
 
         let sticker = try XCTUnwrap(WebMStickerDemuxer.parse(try Data(contentsOf: URL(fileURLWithPath: path))))
         var decoders: [LibvpxBackedDecoder] = []
-        makeVideoStickerHardwareStream = { path in
+        makeVideoStickerHardwareStream = { path, _ in
             let instance = LibvpxBackedDecoder(path: path, failAt: nil)
             decoders.append(instance)
             return VideoStickerHardwareStream(frames: sticker.frames, decoder: instance)
@@ -346,7 +346,7 @@ final class VideoStickerHardwareSelectionTests: XCTestCase {
         let path = try XCTUnwrap(fixturePath("sticker_vp9", "webm"))
         let sticker = try XCTUnwrap(WebMStickerDemuxer.parse(try Data(contentsOf: URL(fileURLWithPath: path))))
         var decoders: [LibvpxBackedDecoder] = []
-        makeVideoStickerHardwareStream = { path in
+        makeVideoStickerHardwareStream = { path, _ in
             let instance = LibvpxBackedDecoder(path: path, failAt: nil)
             decoders.append(instance)
             return VideoStickerHardwareStream(frames: sticker.frames, decoder: instance)
@@ -383,7 +383,7 @@ final class VideoStickerHardwareSelectionTests: XCTestCase {
 
         let sticker = try XCTUnwrap(WebMStickerDemuxer.parse(try Data(contentsOf: URL(fileURLWithPath: path))))
         var created = 0
-        makeVideoStickerHardwareStream = { path in
+        makeVideoStickerHardwareStream = { path, _ in
             created += 1
             if created > 1 {
                 return nil

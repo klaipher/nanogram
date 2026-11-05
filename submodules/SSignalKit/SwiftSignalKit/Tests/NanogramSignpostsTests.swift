@@ -23,7 +23,19 @@ final class NanogramSignpostsTests: XCTestCase {
             PerformanceSignpostName.composerKeystroke,
             PerformanceSignpostName.composerTextDidChange,
             PerformanceSignpostName.tableMerge,
-            PerformanceSignpostName.lottieRenderFrame
+            PerformanceSignpostName.lottieRenderFrame,
+            PerformanceSignpostName.cacheCleanupScan,
+            PerformanceSignpostName.automaticCacheEviction,
+            PerformanceSignpostName.cacheTouchBatch,
+            PerformanceSignpostName.chatControllerCreated,
+            PerformanceSignpostName.chatControllerDeinit,
+            PerformanceSignpostName.panelScrollTick,
+            PerformanceSignpostName.mouseMovedDispatch,
+            PerformanceSignpostName.modalOpenToVisible,
+            PerformanceSignpostName.launchToChatListUsable,
+            PerformanceSignpostName.resumeToFirstFrame,
+            PerformanceSignpostName.vp9ResumeCatchUp,
+            PerformanceSignpostName.mediaBoxReopen
         ].map { "\($0)" }
         let user = Set(UserSignpost.all.map { "\($0.name)" })
         XCTAssertTrue(user.isDisjoint(with: hotPath))
@@ -124,5 +136,33 @@ final class LaunchTaskTrackerTests: XCTestCase {
             LaunchTrace.end(phase)
         }
         XCTAssertFalse(NanogramSignposts.hasPending(.launchToChatListReady))
+    }
+
+    func testPerformanceNamesAreUnique() {
+        let names = [
+            PerformanceSignpostName.chatHistoryEntriesForView,
+            PerformanceSignpostName.chatListPrepareEntries,
+            PerformanceSignpostName.composerKeystroke,
+            PerformanceSignpostName.composerTextDidChange,
+            PerformanceSignpostName.tableMerge,
+            PerformanceSignpostName.lottieRenderFrame,
+            PerformanceSignpostName.cacheCleanupScan,
+            PerformanceSignpostName.automaticCacheEviction,
+            PerformanceSignpostName.cacheTouchBatch,
+            PerformanceSignpostName.chatControllerCreated,
+            PerformanceSignpostName.chatControllerDeinit,
+            PerformanceSignpostName.panelScrollTick,
+            PerformanceSignpostName.mouseMovedDispatch,
+            PerformanceSignpostName.modalOpenToVisible,
+            PerformanceSignpostName.launchToChatListUsable,
+            PerformanceSignpostName.resumeToFirstFrame,
+            PerformanceSignpostName.vp9ResumeCatchUp,
+            PerformanceSignpostName.mediaBoxReopen
+        ].map { "\($0)" }
+        XCTAssertEqual(Set(names).count, names.count)
+    }
+
+    func testEventDoesNotCrashWhenNothingRecords() {
+        NanogramSignposts.event(PerformanceSignpostName.mediaBoxReopen)
     }
 }

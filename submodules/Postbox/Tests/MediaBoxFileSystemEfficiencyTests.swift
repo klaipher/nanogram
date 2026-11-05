@@ -35,6 +35,40 @@ final class MediaBoxFileSystemEfficiencyTests: XCTestCase {
         XCTAssertEqual(lutimes(path, &times), 0)
     }
 
+    // MARK: - MediaBoxFileManager re-opens
+
+    func testAnEvictedFileThatIsUsedAgainCountsAsAReopen() {
+        var paths: [String] = []
+        for i in 0 ..< 20 {
+            let path = self.path("reopen-\(i)")
+            XCTAssertTrue(FileManager.default.createFile(atPath: path, contents: Data([1, 2, 3])))
+            paths.append(path)
+        }
+        self.queue.sync {
+            let manager = MediaBoxFileManager(queue: self.queue)
+            var items: [MediaBoxFileManager.Item?] = []
+            for path in paths {
+                items.append(manager.open(path: path, mode: .read))
+            }
+            for item in items {
+                try? item?.access { _ in }
+            }
+            XCTAssertEqual(manager.openedFileCount, 20)
+            XCTAssertEqual(manager.reopenedFileCount, 0, "every file was opened for the first time")
+            // The table holds 17 handles at most; the first ones were evicted. Using them again opens them again.
+            try? items[0]?.access { _ in }
+            XCTAssertEqual(manager.openedFileCount, 21)
+            XCTAssertEqual(manager.reopenedFileCount, 1)
+            // A file whose handle is still there is not opened again.
+            try? items[19]?.access { _ in }
+            XCTAssertEqual(manager.openedFileCount, 21)
+            XCTAssertEqual(manager.reopenedFileCount, 1)
+            for i in 0 ..< items.count {
+                manager.releaseOnQueue(&items[i])
+            }
+        }
+    }
+
     // MARK: - MediaBoxFileMap.serialize
 
     func testSerializingAMapAfterEveryWriteOpensTheMetaFileOnce() {

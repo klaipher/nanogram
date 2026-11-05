@@ -355,7 +355,7 @@ public final class VideoStickerDirectFrameSource: AnimatedStickerFrameSource {
                 self.frameRate = min(30, source.frameRate())
                 self.duration = source.duration().seconds
                 if isVP9 {
-                    self.hardwareStream = makeVideoStickerHardwareStream(path)
+                    self.hardwareStream = makeVideoStickerHardwareStream(path, false)
                 }
             } else {
                 self.source = nil
@@ -552,11 +552,17 @@ public final class VideoStickerDirectFrameSource: AnimatedStickerFrameSource {
         self.suspendedHardwarePosition = nil
         // A new decoder can only start from the first frame (a key frame): the frames before the position are
         // decoded and dropped. At the end of the stream the next frame starts over anyway.
-        guard let stream = makeVideoStickerHardwareStream(self.path) else {
+        guard let stream = makeVideoStickerHardwareStream(self.path, true) else {
             self.continueWithSoftwareDecoding(from: position)
             return
         }
         if position < stream.frames.count {
+            // The replay decodes `position` frames only to reach the frame the sticker had; how long it takes
+            // decides whether resuming should keep a decoder or restart from the cache.
+            let catchUp = NanogramSignposts.OneShot(PerformanceSignpostName.vp9ResumeCatchUp)
+            defer {
+                catchUp.end()
+            }
             for index in 0 ..< position {
                 if stream.decoder.decode(stream.frames[index]) == nil {
                     stream.decoder.invalidate()

@@ -385,6 +385,7 @@ public final class CompressedImageRenderer {
         commandBuffer.addCompletedHandler { commandBuffer in
             release()
             let succeeded = commandBuffer.status == .completed && commandBuffer.error == nil
+            GPUTimeCounters.shared.record(.render, gpuSeconds: succeeded ? commandBuffer.gpuEndTime - commandBuffer.gpuStartTime : nil)
             DispatchQueue.main.async {
                 autoreleasepool {
                     if succeeded, let drawable = storedDrawable {

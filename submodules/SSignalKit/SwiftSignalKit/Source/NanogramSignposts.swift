@@ -48,6 +48,23 @@ public enum PerformanceSignpostName {
     public static let automaticCacheEviction: StaticString = "automaticCacheEviction"
     /// One batch of cache file touches (a `stat` per file and a `utime` for the stale ones).
     public static let cacheTouchBatch: StaticString = "cacheTouchBatch"
+    /// A ChatController is created / deallocated (macOS; unmatched creations show a leak). Events.
+    public static let chatControllerCreated: StaticString = "chatControllerCreated"
+    public static let chatControllerDeinit: StaticString = "chatControllerDeinit"
+    /// One scroll tick of a table view (macOS). Interval.
+    public static let panelScrollTick: StaticString = "panelScrollTick"
+    /// One dispatch of a mouse-moved event through the responder tree (macOS). Interval.
+    public static let mouseMovedDispatch: StaticString = "mouseMovedDispatch"
+    /// A modal is requested until its first committed frame (macOS). Interval.
+    public static let modalOpenToVisible: StaticString = "modalOpenToVisible"
+    /// Launch until the chat list is usable, i.e. committed to the screen. Interval.
+    public static let launchToChatListUsable: StaticString = "launchToChatListUsable"
+    /// The app becomes active again until the first committed frame. Interval.
+    public static let resumeToFirstFrame: StaticString = "resumeToFirstFrame"
+    /// The replay of skipped frames after a hardware VP9 session is resumed. Interval.
+    public static let vp9ResumeCatchUp: StaticString = "vp9ResumeCatchUp"
+    /// A media box file had to be opened again after its handle was evicted. Event.
+    public static let mediaBoxReopen: StaticString = "mediaBoxReopen"
 }
 
 /// Signposts shared by the iOS and macOS apps: subsystem = the bundle id, category `Performance`, plus a
@@ -114,6 +131,16 @@ public enum NanogramSignposts {
 
     public static func end(_ signpost: UserSignpost, _ state: State) {
         NanogramSignposts.end(signpost.name, state)
+    }
+
+    /// A point event in category `Performance`. No metadata.
+    public static func event(_ name: StaticString) {
+        if #available(macOS 12.0, iOS 15.0, *) {
+            let signposter = NanogramSignposts.performanceSignposter
+            if signposter.isEnabled {
+                signposter.emitEvent(name)
+            }
+        }
     }
 
     @inline(__always)

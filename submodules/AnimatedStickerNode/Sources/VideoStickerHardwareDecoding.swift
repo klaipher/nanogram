@@ -42,14 +42,16 @@ let videoStickerVP9HardwareProbe: VP9HardwareProbeResult = {
 
 // Hardware decoding is used only when the probe found a hardware VP9 decoder and the file is a
 // plain VP9 WebM; everything else keeps libvpx. Tests replace this.
-var makeVideoStickerHardwareStream: (String) -> VideoStickerHardwareStream? = { path in
+// `isResume` is true when a sticker that gave its sessions back asks for a decoder again.
+// The file is not read or parsed when every session slot is taken.
+var makeVideoStickerHardwareStream: (String, Bool) -> VideoStickerHardwareStream? = { path, isResume in
     guard videoStickerVP9HardwareProbe.hasHardwareDecoder else {
         return nil
     }
-    guard let data = try? Data(contentsOf: URL(fileURLWithPath: path), options: .mappedIfSafe), let sticker = WebMStickerDemuxer.parse(data) else {
+    guard let sticker = VP9HardwareDecoding.loadSticker({ try? Data(contentsOf: URL(fileURLWithPath: path), options: .mappedIfSafe) }) else {
         return nil
     }
-    guard let decoder = VP9HardwareFrameDecoder(sticker: sticker) else {
+    guard let decoder = VP9HardwareFrameDecoder(sticker: sticker, isResume: isResume) else {
         return nil
     }
     return VideoStickerHardwareStream(frames: sticker.frames, decoder: decoder, frameRate: sticker.frameRate)

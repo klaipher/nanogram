@@ -42,6 +42,9 @@ public final class MediaBoxFileManager {
         let mode: Mode
         
         weak var context: ItemContext?
+        /// Whether this item had a handle before. A handle that the manager evicted is opened again on the next
+        /// access: that is a re-open.
+        private var hadContext = false
         
         init(manager: MediaBoxFileManager, path: String, mode: Mode) {
             self.manager = manager
@@ -60,8 +63,9 @@ public final class MediaBoxFileManager {
                 try f(Accessor(file: context.file))
             } else {
                 if let manager = self.manager {
-                    if let context = manager.takeContext(path: self.path, mode: self.mode) {
+                    if let context = manager.takeContext(path: self.path, mode: self.mode, isReopen: self.hadContext) {
                         self.context = context
+                        self.hadContext = true
                         try f(Accessor(file: context.file))
                     } else {
                         throw AccessError.generic
@@ -140,6 +144,11 @@ public final class MediaBoxFileManager {
     private let maxOpenFiles: Int
     /// Number of files opened so far (for tests).
     private(set) var openedFileCount: Int = 0
+    /// Number of files opened again after their handle was evicted (for tests).
+    var reopenedFileCount: Int {
+        return self.stats.reopened
+    }
+    private var stats = MediaBoxFileManagerStats()
     /// Number of files open right now (for tests).
     var currentlyOpenFileCount: Int {
         return self.contexts.count
@@ -173,7 +182,7 @@ public final class MediaBoxFileManager {
         return Item(manager: self, path: path, mode: mode)
     }
     
-    private func takeContext(path: String, mode: Mode) -> ItemContext? {
+    private func takeContext(path: String, mode: Mode, isReopen: Bool) -> ItemContext? {
         if let queue = self.queue {
             assert(queue.isCurrent())
         }
@@ -189,6 +198,13 @@ public final class MediaBoxFileManager {
         let context = ItemContext(id: id, path: path, mode: mode)
         if context != nil {
             self.openedFileCount += 1
+            self.stats.noteOpen(isReopen: isReopen)
+            if isReopen {
+                NanogramSignposts.event(PerformanceSignpostName.mediaBoxReopen)
+            }
+            if let line = self.stats.takeLogLine(now: Date().timeIntervalSince1970, currentlyOpen: self.contexts.count + 1) {
+                postboxLog(line)
+            }
         }
         self.contexts[id] = context
         return context

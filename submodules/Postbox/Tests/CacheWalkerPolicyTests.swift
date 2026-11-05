@@ -156,4 +156,112 @@ final class CacheWalkerPolicyTests: XCTestCase {
         let now = Date().timeIntervalSince1970 + 30.0 * 60.0
         XCTAssertEqual(CacheTouchPolicy.touchNeeded(paths: [general, shortLived], shortLivedPaths: [shortLivedDirectory], now: now), [shortLived])
     }
+
+    // MARK: - Re-arming (a walker that is not due waits instead of giving up)
+
+    func testAWalkerThatIsNotDueWaitsUntilADayAfterItsLastRun() {
+        let record = CacheWalkerRecord(completedAt: 1_000_000.0, fingerprint: "a")
+        // Launched long ago, 2 h after the run: due again at completedAt + 24 h, 22 h from now.
+        let now = 1_000_000.0 + 2.0 * 3600.0
+        XCTAssertEqual(
+            CacheWalkerGate.nextRunDelay(record: record, fingerprint: "a", now: now, configured: 10.0, processStartTime: 1_000.0),
+            self.day - 2.0 * 3600.0,
+            accuracy: 0.001
+        )
+    }
+
+    func testAWalkerThatRanJustNowWaitsAWholeDay() {
+        let record = CacheWalkerRecord(completedAt: 1_000_000.0, fingerprint: "a")
+        XCTAssertEqual(
+            CacheWalkerGate.nextRunDelay(record: record, fingerprint: "a", now: 1_000_000.0, configured: 10.0, processStartTime: 1_000.0),
+            self.day,
+            accuracy: 0.001
+        )
+    }
+
+    func testAWalkerRunsAgainADayLater() {
+        let record = CacheWalkerRecord(completedAt: 1_000_000.0, fingerprint: "a")
+        let delay = CacheWalkerGate.nextRunDelay(record: record, fingerprint: "a", now: 1_000_000.0 + 3600.0, configured: 10.0, processStartTime: 1_000.0)
+        let runsAt = 1_000_000.0 + 3600.0 + delay
+        XCTAssertEqual(runsAt, 1_000_000.0 + self.day, accuracy: 0.001)
+        // At that time the gate agrees it is due, so the re-armed run does not skip again.
+        XCTAssertTrue(CacheWalkerGate.isDue(record: record, fingerprint: "a", now: runsAt))
+    }
+
+    func testADueWalkerUsesTheConfiguredAndLaunchDelay() {
+        let record = CacheWalkerRecord(completedAt: 1_000_000.0, fingerprint: "a")
+        // Changed limits: due at once, but not in the first minute after launch.
+        XCTAssertEqual(
+            CacheWalkerGate.nextRunDelay(record: record, fingerprint: "b", now: 1_005.0, configured: 10.0, processStartTime: 1_000.0),
+            55.0,
+            accuracy: 0.001
+        )
+        XCTAssertEqual(
+            CacheWalkerGate.nextRunDelay(record: nil, fingerprint: "a", now: 5_000.0, configured: 10.0, processStartTime: 1_000.0),
+            10.0,
+            accuracy: 0.001
+        )
+    }
+
+    func testAChangedFingerprintRunsAfterTheDelayEvenIfTheLastRunWasRecent() {
+        let record = CacheWalkerRecord(completedAt: 4_990.0, fingerprint: "a")
+        XCTAssertEqual(
+            CacheWalkerGate.nextRunDelay(record: record, fingerprint: "b", now: 5_000.0, configured: 10.0, processStartTime: 1_000.0),
+            10.0,
+            accuracy: 0.001
+        )
+    }
+
+    func testTheWaitIsNeverNegativeNorMoreThanADayPlusTheLaunchWindow() {
+        let record = CacheWalkerRecord(completedAt: 1_000_000.0, fingerprint: "a")
+        for now in [1_000_000.0, 1_000_000.0 + self.day - 0.5, 999_999.0] {
+            let delay = CacheWalkerGate.nextRunDelay(record: record, fingerprint: "a", now: now, configured: 10.0, processStartTime: 1_000.0)
+            XCTAssertGreaterThanOrEqual(delay, 0.0, "\(now)")
+            XCTAssertLessThanOrEqual(delay, self.day, "\(now)")
+        }
+    }
+
+    // MARK: - General touch interval
+
+    func testTheGeneralTouchIntervalFollowsTheKeepTime() {
+        let hour = 3600.0
+        XCTAssertEqual(CacheTouchPolicy.generalInterval(generalMaxStoreTime: nil), CacheTouchPolicy.skipInterval)
+        XCTAssertEqual(CacheTouchPolicy.generalInterval(generalMaxStoreTime: Int32.max), 24.0 * hour)
+        // One day: a twentieth is 72 min.
+        XCTAssertEqual(CacheTouchPolicy.generalInterval(generalMaxStoreTime: 86_400), 4_320.0, accuracy: 0.001)
+        // One week: 8.4 h.
+        XCTAssertEqual(CacheTouchPolicy.generalInterval(generalMaxStoreTime: 7 * 86_400), 30_240.0, accuracy: 0.001)
+        // A month or more is capped at 24 h.
+        XCTAssertEqual(CacheTouchPolicy.generalInterval(generalMaxStoreTime: 30 * 86_400), 24.0 * hour)
+        XCTAssertEqual(CacheTouchPolicy.generalInterval(generalMaxStoreTime: 365 * 86_400), 24.0 * hour)
+        // Short or odd keep times never go below an hour.
+        XCTAssertEqual(CacheTouchPolicy.generalInterval(generalMaxStoreTime: 3_600), hour)
+        XCTAssertEqual(CacheTouchPolicy.generalInterval(generalMaxStoreTime: 0), hour)
+        XCTAssertEqual(CacheTouchPolicy.generalInterval(generalMaxStoreTime: -5), hour)
+    }
+
+    func testTheShortLivedIntervalDoesNotDependOnTheGeneralOne() {
+        let shortLived = ["/media/short-cache"]
+        XCTAssertEqual(CacheTouchPolicy.interval(forPath: "/media/short-cache/a", shortLivedPaths: shortLived, generalInterval: 86_400.0), CacheTouchPolicy.shortLivedSkipInterval)
+        XCTAssertEqual(CacheTouchPolicy.interval(forPath: "/media/cache/a", shortLivedPaths: shortLived, generalInterval: 86_400.0), 86_400.0)
+    }
+
+    func testAThreeHourOldFileIsNotTouchedWithAWeekOfKeepTime() throws {
+        let directory = NSTemporaryDirectory() + "CacheTouchPolicy-" + UUID().uuidString
+        try FileManager.default.createDirectory(atPath: directory, withIntermediateDirectories: true)
+        defer {
+            let _ = try? FileManager.default.removeItem(atPath: directory)
+        }
+        let path = directory + "/resource"
+        XCTAssertTrue(FileManager.default.createFile(atPath: path, contents: Data([1])))
+        let now = Date().timeIntervalSince1970
+        let threeHoursAgo = Date(timeIntervalSince1970: now - 3.0 * 3600.0)
+        try FileManager.default.setAttributes([.modificationDate: threeHoursAgo], ofItemAtPath: path)
+        let interval = CacheTouchPolicy.generalInterval(generalMaxStoreTime: 7 * 86_400)
+        XCTAssertEqual(CacheTouchPolicy.touchNeeded(paths: [path], shortLivedPaths: [], now: now, generalInterval: interval), [])
+        // The old fixed hour would have written it.
+        XCTAssertEqual(CacheTouchPolicy.touchNeeded(paths: [path], shortLivedPaths: [], now: now), [path])
+        // Nine hours old is stale for a week of keep time.
+        XCTAssertEqual(CacheTouchPolicy.touchNeeded(paths: [path], shortLivedPaths: [], now: now + 6.0 * 3600.0, generalInterval: interval), [path])
+    }
 }
