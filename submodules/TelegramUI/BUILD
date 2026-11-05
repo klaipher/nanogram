@@ -307,6 +307,7 @@ swift_library(
         "//submodules/TelegramUI/Components/MultiAnimationRenderer:MultiAnimationRenderer",
         "//submodules/TelegramUI/Components/DCTAnimationCacheImpl:DCTAnimationCacheImpl",
         "//submodules/TelegramUI/Components/DCTMultiAnimationRendererImpl:DCTMultiAnimationRendererImpl",
+        "//submodules/TelegramUI/Components/LaunchSignpostSupport:LaunchSignpostSupport",
         "//submodules/TelegramUI/Components/ChatInputPanelContainer:ChatInputPanelContainer",
         "//submodules/TelegramUI/Components/TextNodeWithEntities:TextNodeWithEntities",
         "//submodules/TelegramUI/Components/EmojiSuggestionsComponent:EmojiSuggestionsComponent",

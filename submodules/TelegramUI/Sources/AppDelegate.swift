@@ -66,6 +66,7 @@ import AlertComponent
 
 #if canImport(AppCenter)
 import AppCenter
+import LaunchSignpostSupport
 import AppCenterCrashes
 #endif
 
@@ -359,12 +360,18 @@ private func extractAccountManagerState(records: AccountRecordsView<TelegramAcco
     private let voipDeviceToken = Promise<Data?>(nil)
     private let regularDeviceToken = Promise<Data?>(nil)
     
+    private var resumeSignpost: PerformanceSignposts.OneShot?
+    
     private var recaptchaClientsBySiteKey: [String: Promise<RecaptchaClient>] = [:]
         
     func application(_ application: UIApplication, didFinishLaunchingWithOptions launchOptions: [UIApplication.LaunchOptionsKey: Any]? = nil) -> Bool {
         precondition(!testIsLaunched)
         testIsLaunched = true
         LaunchTrace.begin()
+        // A launch in the background never shows a first frame: close the launch measurement now.
+        for phase in LaunchSignpostPolicy.phasesToEnd(atLaunchInBackground: application.applicationState == .background) {
+            LaunchTrace.end(phase)
+        }
         CrashReportCollector.shared.start()
         
         let _ = voipTokenPromise.get().start(next: { token in
@@ -1464,10 +1471,13 @@ private func extractAccountManagerState(records: AccountRecordsView<TelegramAcco
                         print("Application: context took \(readyTime) to become ready")
                     }
                     print("Launch to ready took \((CFAbsoluteTimeGetCurrent() - launchStartTime) * 1000.0) ms")
-                    LaunchTrace.end(.firstFrame)
 
                     self.mainWindow.debugAction = nil
                     self.mainWindow.viewController = context.rootController
+                    // The launch ends at the first committed frame of the root controller, not when it is assigned.
+                    SignpostCommit.afterNextCommit {
+                        LaunchTrace.end(.firstFrame)
+                    }
                     
                     if firstTime {
                         let layer = context.rootController.view.layer
@@ -2323,6 +2333,16 @@ private func extractAccountManagerState(records: AccountRecordsView<TelegramAcco
     }
 
     func handleWillEnterForeground() {
+        // Foreground until the first committed frame (what the user waits for after the app comes back).
+        let resumeSignpost = PerformanceSignposts.OneShot(PerformanceSignpostName.resumeToFirstFrame)
+        self.resumeSignpost?.end()
+        self.resumeSignpost = resumeSignpost
+        SignpostCommit.afterNextCommit { [weak self] in
+            resumeSignpost.end()
+            if self?.resumeSignpost === resumeSignpost {
+                self?.resumeSignpost = nil
+            }
+        }
         self.interruptDatabaseMaintenance()
         self.backgroundDiagnostics.willEnterForeground()
         // What was written while in the background (background sync, downloads, pushes).
