@@ -758,7 +758,10 @@ private func extractAccountManagerState(records: AccountRecordsView<TelegramAcco
         }
         
         let deviceSpecificEncryptionParameters = BuildConfig.deviceSpecificEncryptionParameters(rootPath, baseAppBundleId: baseAppBundleId)
-        let encryptionParameters = ValueBoxEncryptionParameters(forceEncryptionIfNoSet: false, key: ValueBoxEncryptionParameters.Key(data: deviceSpecificEncryptionParameters.key)!, salt: ValueBoxEncryptionParameters.Salt(data: deviceSpecificEncryptionParameters.salt)!, isEphemeral: deviceSpecificEncryptionParameters.isEphemeral)
+        guard let encryptionKey = ValueBoxEncryptionParameters.Key(data: deviceSpecificEncryptionParameters.key), let encryptionSalt = ValueBoxEncryptionParameters.Salt(data: deviceSpecificEncryptionParameters.salt) else {
+            preconditionFailure("The device database key or salt has the wrong length")
+        }
+        let encryptionParameters = ValueBoxEncryptionParameters(forceEncryptionIfNoSet: false, key: encryptionKey, salt: encryptionSalt, isEphemeral: deviceSpecificEncryptionParameters.isEphemeral)
         if deviceSpecificEncryptionParameters.isEphemeral {
             // The real database key could not be read (keychain unavailable). A database that does not open with this
             // throwaway key is left alone instead of being recreated; the accounts show the loading state until the

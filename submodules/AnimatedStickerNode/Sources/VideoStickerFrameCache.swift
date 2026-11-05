@@ -102,7 +102,10 @@ private final class VideoStickerFrameCacheEncoder {
         self.append(Int32(length))
         if length > 0 {
             let written = self.compressedFrameData.withUnsafeBytes { bytes -> Int in
-                return self.file.write(bytes.baseAddress!, count: length)
+                guard let address = bytes.baseAddress else {
+                    return 0
+                }
+                return self.file.write(address, count: length)
             }
             if written != length {
                 self.writeFailed = true
