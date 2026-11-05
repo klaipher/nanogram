@@ -2,6 +2,7 @@ import Foundation
 import UIKit
 import SwiftSignalKit
 import Display
+import CrashReporting
 import AnimationCache
 import MultiAnimationRenderer
 import Accelerate
@@ -28,21 +29,24 @@ func animationFrameDurationNeedsHighTickRate(_ duration: Double) -> Bool {
 // Starts a repeating tick on the main thread and returns a function that stops it.
 // Tests pass a manual one, so frame counts do not depend on wall-clock time.
 struct DCTAnimationTickScheduler {
-    let start: (_ interval: Double, _ tick: @escaping () -> Void) -> () -> Void
+    // The tick gets the elapsed time since the previous one, in seconds.
+    let start: (_ interval: Double, _ tick: @escaping (_ elapsed: Double) -> Void) -> () -> Void
 
     static let runLoopTimer = DCTAnimationTickScheduler(start: { interval, tick in
         final class TimerTarget: NSObject {
-            private let f: () -> Void
+            private let f: (Double) -> Void
+            private let interval: Double
 
-            init(_ f: @escaping () -> Void) {
+            init(interval: Double, _ f: @escaping (Double) -> Void) {
+                self.interval = interval
                 self.f = f
             }
 
             @objc func timerEvent() {
-                self.f()
+                self.f(self.interval)
             }
         }
-        let timer = Foundation.Timer(timeInterval: interval, target: TimerTarget(tick), selector: #selector(TimerTarget.timerEvent), userInfo: nil, repeats: true)
+        let timer = Foundation.Timer(timeInterval: interval, target: TimerTarget(interval: interval, tick), selector: #selector(TimerTarget.timerEvent), userInfo: nil, repeats: true)
         // Apple's guidance for energy: a tolerance lets the system batch this wake-up
         // with others. 10% of a frame is below what can be seen.
         timer.tolerance = interval * 0.1
@@ -1155,6 +1159,8 @@ public final class DCTMultiAnimationRendererImpl: MultiAnimationRenderer {
     private var applicationStateObservers: [NSObjectProtocol] = []
 
     private(set) var isPlaying: Bool = false
+    // Open while any animation plays: the MetricKit report splits its CPU and GPU by this activity.
+    private var playbackActivity: ActivityIntervalCounter.Token?
     private var needsHighTickRate: Bool = false
     private var displayTimerInterval: Double?
 
@@ -1185,11 +1191,11 @@ public final class DCTMultiAnimationRendererImpl: MultiAnimationRenderer {
         guard let frameInterval else {
             return
         }
-        self.stopDisplayTimer = self.tickScheduler.start(frameInterval, { [weak self] in
+        self.stopDisplayTimer = self.tickScheduler.start(frameInterval, { [weak self] elapsed in
             guard let strongSelf = self else {
                 return
             }
-            strongSelf.animationTick(frameInterval: frameInterval)
+            strongSelf.animationTick(advance: elapsed)
         })
     }
 
@@ -1343,12 +1349,13 @@ public final class DCTMultiAnimationRendererImpl: MultiAnimationRenderer {
         }
 
         self.isPlaying = isPlaying && !self.isInBackground
+        self.playbackActivity = MetricActivityIntervals.update(self.playbackActivity, .stickerPlayback, active: self.isPlaying)
         self.needsHighTickRate = needsHighTickRate
         self.updateDisplayTimer()
     }
 
-    private func animationTick(frameInterval: Double) {
-        let secondsPerFrame = frameInterval
+    private func animationTick(advance: Double) {
+        let secondsPerFrame = advance
 
         var tasks: [LoadFrameGroupTask] = []
         if let groupContext = self.groupContext {

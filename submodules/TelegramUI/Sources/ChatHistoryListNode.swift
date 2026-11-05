@@ -39,6 +39,7 @@ import TextFormat
 import ChatNewThreadInfoItem
 import PhoneNumberFormat
 import Postbox
+import LaunchSignpostSupport
 
 struct ChatTopVisibleMessageRange: Equatable {
     var lowerBound: MessageIndex
@@ -2206,7 +2207,9 @@ public final class ChatHistoryListNodeImpl: ASDisplayNode, ChatHistoryNode, Chat
                         strongSelf._isReady.set(true)
                         if !strongSelf.didSetReady {
                             strongSelf.didSetReady = true
-                            PerformanceSignposts.endPending(.chatOpenToReady)
+                            SignpostCommit.afterNextCommit {
+                                PerformanceSignposts.endPending(.chatOpenToReady)
+                            }
                             #if DEBUG
                             let deltaTime = (CFAbsoluteTimeGetCurrent() - strongSelf.initTimestamp) * 1000.0
                             print("Chat init to dequeue time: \(deltaTime) ms")
@@ -4745,7 +4748,9 @@ public final class ChatHistoryListNodeImpl: ASDisplayNode, ChatHistoryNode, Chat
                 
                 if !strongSelf.didSetReady {
                     strongSelf.didSetReady = true
-                    PerformanceSignposts.endPending(.chatOpenToReady)
+                    SignpostCommit.afterNextCommit {
+                        PerformanceSignposts.endPending(.chatOpenToReady)
+                    }
                     #if DEBUG
                     let deltaTime = (CFAbsoluteTimeGetCurrent() - strongSelf.initTimestamp) * 1000.0
                     print("Chat init to dequeue time: \(deltaTime) ms")

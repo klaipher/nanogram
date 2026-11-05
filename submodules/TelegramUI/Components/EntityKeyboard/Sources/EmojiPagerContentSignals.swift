@@ -199,17 +199,30 @@ public extension EmojiPagerContentComponent {
             searchCategories = .single(nil)
         }
         
+        // Every input emits again when nothing in it changed (a view refresh, a re-fetch), and each emission rebuilds
+        // every item of every pack, so only a changed input goes on.
+        let hasPremiumSignal: Signal<Bool, NoError> = forceHasPremium ? .single(true) : hasPremium(context: context, chatPeerId: chatPeerId, premiumIfSavedMessages: premiumIfSavedMessages)
+        let itemReuseCache = EmojiItemReuseCache<EmojiPanelItemKey, EmojiPanelItemFingerprint, EmojiPagerContentComponent.Item>()
+        
         let emojiItems: Signal<EmojiPagerContentComponent, NoError> = combineLatest(
-            context.account.postbox.itemCollectionsView(orderedItemListCollectionIds: orderedItemListCollectionIds, namespaces: [Namespaces.ItemCollection.CloudEmojiPacks], aroundIndex: nil, count: 10000000),
-            forceHasPremium ? .single(true) : hasPremium(context: context, chatPeerId: chatPeerId, premiumIfSavedMessages: premiumIfSavedMessages),
-            context.account.viewTracker.featuredEmojiPacks(),
-            availableReactions,
-            searchCategories,
-            iconStatusEmoji,
+            context.account.postbox.itemCollectionsView(orderedItemListCollectionIds: orderedItemListCollectionIds, namespaces: [Namespaces.ItemCollection.CloudEmojiPacks], aroundIndex: nil, count: 10000000)
+            |> distinctUntilChanged(isEqual: emojiPanelItemCollectionsViewsAreEqual),
+            hasPremiumSignal
+            |> distinctUntilChanged,
+            context.account.viewTracker.featuredEmojiPacks()
+            |> distinctUntilChanged(isEqual: emojiPanelFeaturedPacksAreEqual),
+            availableReactions
+            |> distinctUntilChanged,
+            searchCategories
+            |> distinctUntilChanged,
+            iconStatusEmoji
+            |> distinctUntilChanged,
             peerSpecificPack,
             ApplicationSpecificNotice.dismissedTrendingEmojiPacks(accountManager: context.sharedContext.accountManager)
+            |> distinctUntilChanged
         )
         |> map { view, hasPremium, featuredEmojiPacks, availableReactions, searchCategories, iconStatusEmoji, peerSpecificPack, dismissedTrendingEmojiPacks -> EmojiPagerContentComponent in
+            var itemReusePass = itemReuseCache.beginPass()
             struct ItemGroup {
                 var supergroupId: AnyHashable
                 var id: AnyHashable
@@ -1366,14 +1379,20 @@ public extension EmojiPagerContentComponent {
                         continue
                     }
                     
-                    let animationData = EntityKeyboardAnimationData(file: item.file)
-                    let resultItem = EmojiPagerContentComponent.Item(
-                        animationData: animationData,
-                        content: .animation(animationData),
-                        itemFile: item.file,
-                        subgroupId: nil,
-                        icon: icon,
-                        tintMode: tintMode
+                    let resultItem = itemReusePass.value(
+                        for: EmojiPanelItemKey(collectionId: entry.index.collectionId, itemIndex: entry.index.itemIndex),
+                        fingerprint: EmojiPanelItemFingerprint(file: item.file, icon: icon, tintMode: tintMode),
+                        make: {
+                            let animationData = EntityKeyboardAnimationData(file: item.file)
+                            return EmojiPagerContentComponent.Item(
+                                animationData: animationData,
+                                content: .animation(animationData),
+                                itemFile: item.file,
+                                subgroupId: nil,
+                                icon: icon,
+                                tintMode: tintMode
+                            )
+                        }
                     )
                     
                     let isPremiumLocked: Bool = item.file.isPremiumEmoji && !hasPremium
@@ -1536,6 +1555,8 @@ public extension EmojiPagerContentComponent {
                     displaySearchWithPlaceholder = strings.Common_Search
                 }
             }
+            
+            itemReuseCache.commit(itemReusePass)
             
             let allItemGroups = itemGroups.map { group -> EmojiPagerContentComponent.ItemGroup in
                 var hasClear = group.isClearable
@@ -2352,4 +2373,78 @@ public extension EmojiPagerContentComponent {
             )
         }
     }
+}
+
+// Identity of an installed pack's item in the emoji panel.
+struct EmojiPanelItemKey: Hashable {
+    let collectionId: ItemCollectionId
+    let itemIndex: ItemCollectionItemIndex
+}
+
+// Everything an installed pack's item is built from. An equal fingerprint gives an equal item.
+struct EmojiPanelItemFingerprint: Equatable {
+    let file: TelegramMediaFile.Accessor
+    let icon: EmojiPagerContentComponent.Item.Icon
+    let tintMode: EmojiPagerContentComponent.Item.TintMode
+}
+
+// Whether two views of the installed packs would give the same panel. An entry or info of a kind that is not known
+// compares as different, so the panel is rebuilt rather than left stale.
+func emojiPanelItemCollectionsViewsAreEqual(_ lhs: ItemCollectionsView, _ rhs: ItemCollectionsView) -> Bool {
+    if lhs === rhs {
+        return true
+    }
+    if lhs.collectionInfos.count != rhs.collectionInfos.count || lhs.entries.count != rhs.entries.count || lhs.orderedItemListsViews.count != rhs.orderedItemListsViews.count {
+        return false
+    }
+    for i in 0 ..< lhs.collectionInfos.count {
+        let (lhsId, lhsInfo, _) = lhs.collectionInfos[i]
+        let (rhsId, rhsInfo, _) = rhs.collectionInfos[i]
+        if lhsId != rhsId {
+            return false
+        }
+        guard let lhsInfo = lhsInfo as? StickerPackCollectionInfo, let rhsInfo = rhsInfo as? StickerPackCollectionInfo, lhsInfo == rhsInfo else {
+            return false
+        }
+    }
+    for i in 0 ..< lhs.entries.count {
+        let lhsEntry = lhs.entries[i]
+        let rhsEntry = rhs.entries[i]
+        if lhsEntry.index.collectionId != rhsEntry.index.collectionId || lhsEntry.index.itemIndex != rhsEntry.index.itemIndex {
+            return false
+        }
+        guard let lhsItem = lhsEntry.item as? StickerPackItem, let rhsItem = rhsEntry.item as? StickerPackItem, lhsItem == rhsItem else {
+            return false
+        }
+    }
+    for i in 0 ..< lhs.orderedItemListsViews.count {
+        let lhsList = lhs.orderedItemListsViews[i]
+        let rhsList = rhs.orderedItemListsViews[i]
+        if lhsList.collectionId != rhsList.collectionId || lhsList.items.count != rhsList.items.count {
+            return false
+        }
+        for j in 0 ..< lhsList.items.count {
+            if lhsList.items[j].id != rhsList.items[j].id || lhsList.items[j].contents != rhsList.items[j].contents {
+                return false
+            }
+        }
+    }
+    return true
+}
+
+func emojiPanelFeaturedPacksAreEqual(_ lhs: [FeaturedStickerPackItem], _ rhs: [FeaturedStickerPackItem]) -> Bool {
+    if lhs.count != rhs.count {
+        return false
+    }
+    for i in 0 ..< lhs.count {
+        let a = lhs[i]
+        let b = rhs[i]
+        if a === b {
+            continue
+        }
+        if a.info != b.info || a.unread != b.unread || a.topItems != b.topItems {
+            return false
+        }
+    }
+    return true
 }

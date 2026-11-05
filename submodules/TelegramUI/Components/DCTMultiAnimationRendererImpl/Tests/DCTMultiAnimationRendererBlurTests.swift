@@ -87,7 +87,7 @@ private func pixelBytes(_ image: CGImage) -> [UInt8] {
 
 private final class ManualTicker {
     private(set) var interval: Double?
-    private var tick: (() -> Void)?
+    private var tick: ((Double) -> Void)?
 
     func makeScheduler() -> DCTAnimationTickScheduler {
         return DCTAnimationTickScheduler(start: { [weak self] interval, tick in
@@ -101,7 +101,7 @@ private final class ManualTicker {
     }
 
     func fire() {
-        self.tick?()
+        self.tick?(self.interval ?? 0.0)
     }
 }
 

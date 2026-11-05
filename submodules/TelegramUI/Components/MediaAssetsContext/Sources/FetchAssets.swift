@@ -357,6 +357,72 @@ private func downloadAssetMediaData(_ asset: PHAsset) -> Signal<AssetDownloadSta
     }
 }
 
+/// The options every image request of the asset grid uses. The caching manager only serves a request from its cache
+/// when target size, content mode and options match what was passed to `startCachingImages`, so the requests and the
+/// prefetcher share this one function.
+public func assetImageRequestOptions(deliveryMode: PHImageRequestOptionsDeliveryMode, exact: Bool, synchronous: Bool) -> PHImageRequestOptions {
+    let options = PHImageRequestOptions()
+    options.deliveryMode = deliveryMode
+    if exact {
+        options.resizeMode = .exact
+    }
+    options.isSynchronous = synchronous
+    options.isNetworkAccessAllowed = true
+    return options
+}
+
+/// Asks Photos to prepare the thumbnails of the visible grid cells and one screen around them (PHCachingImageManager),
+/// with the exact size and options the cells request. Main thread only.
+public final class AssetThumbnailPrefetcher {
+    private let targetSize: CGSize
+    private let options: PHImageRequestOptions
+    private var fetchResult: PHFetchResult<PHAsset>?
+    private var window: Range<Int>?
+
+    public init(targetSize: CGSize) {
+        self.targetSize = targetSize
+        self.options = assetImageRequestOptions(deliveryMode: .opportunistic, exact: false, synchronous: false)
+    }
+
+    deinit {
+        self.stop()
+    }
+
+    /// `visible` holds the fetch-result indices on screen, nil when nothing is.
+    public func update(fetchResult: PHFetchResult<PHAsset>, visible: ClosedRange<Int>?) {
+        if let current = self.fetchResult, current !== fetchResult {
+            self.stop()
+        }
+        self.fetchResult = fetchResult
+        let next = visible.map { AssetCachingWindow.window(visible: $0, count: fetchResult.count) }
+        let diff = AssetCachingWindow.diff(previous: self.window, next: next)
+        for range in diff.stop {
+            imageManager.stopCachingImages(for: self.assets(in: range, of: fetchResult), targetSize: self.targetSize, contentMode: .aspectFill, options: self.options)
+        }
+        for range in diff.start {
+            imageManager.startCachingImages(for: self.assets(in: range, of: fetchResult), targetSize: self.targetSize, contentMode: .aspectFill, options: self.options)
+        }
+        self.window = next.flatMap { $0.isEmpty ? nil : $0 }
+    }
+
+    /// Stops what this prefetcher started (the screen is gone, or memory is low).
+    public func stop() {
+        if let fetchResult = self.fetchResult, let window = self.window {
+            imageManager.stopCachingImages(for: self.assets(in: window, of: fetchResult), targetSize: self.targetSize, contentMode: .aspectFill, options: self.options)
+        }
+        self.window = nil
+        self.fetchResult = nil
+    }
+
+    private func assets(in range: Range<Int>, of fetchResult: PHFetchResult<PHAsset>) -> [PHAsset] {
+        let upper = min(range.upperBound, fetchResult.count)
+        guard range.lowerBound < upper else {
+            return []
+        }
+        return fetchResult.objects(at: IndexSet(integersIn: range.lowerBound ..< upper))
+    }
+}
+
 public func assetImage(fetchResult: PHFetchResult<PHAsset>, index: Int, targetSize: CGSize, exact: Bool, deliveryMode: PHImageRequestOptionsDeliveryMode = .opportunistic, synchronous: Bool = false) -> Signal<UIImage?, NoError> {
     let asset = fetchResult[index]
     return assetImage(asset: asset, targetSize: targetSize, exact: exact, deliveryMode: deliveryMode, synchronous: synchronous)
@@ -364,13 +430,7 @@ public func assetImage(fetchResult: PHFetchResult<PHAsset>, index: Int, targetSi
 
 public func assetImage(asset: PHAsset, targetSize: CGSize, exact: Bool, deliveryMode: PHImageRequestOptionsDeliveryMode = .opportunistic, synchronous: Bool = false) -> Signal<UIImage?, NoError> {
     return Signal { subscriber in
-        let options = PHImageRequestOptions()
-        options.deliveryMode = deliveryMode
-        if exact {
-            options.resizeMode = .exact
-        }
-        options.isSynchronous = synchronous
-        options.isNetworkAccessAllowed = true
+        let options = assetImageRequestOptions(deliveryMode: deliveryMode, exact: exact, synchronous: synchronous)
         let token = imageManager.requestImage(for: asset, targetSize: targetSize, contentMode: .aspectFill, options: options) { (image, info) in
             var degraded = false
             

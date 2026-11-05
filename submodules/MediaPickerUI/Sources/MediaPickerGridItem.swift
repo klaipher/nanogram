@@ -436,6 +436,16 @@ final class MediaPickerGridItemNode: GridItemNode {
         self.updateHiddenMedia()
     }
         
+    // The size the cells request thumbnails at; the screen's prefetcher caches the same size.
+    static func thumbnailTargetSize(stories: Bool) -> CGSize {
+        let scale = min(2.0, UIScreenScale)
+        if stories {
+            return CGSize(width: 128.0 * UIScreenScale, height: 128.0 * UIScreenScale)
+        } else {
+            return CGSize(width: 128.0 * scale, height: 128.0 * scale)
+        }
+    }
+    
     func setup(interaction: MediaPickerInteraction, fetchResult: PHFetchResult<PHAsset>, index: Int, theme: PresentationTheme, selectable: Bool, enableAnimations: Bool, stories: Bool) {
         let isFirstTime = self.currentAssetState == nil
         
@@ -508,13 +518,7 @@ final class MediaPickerGridItemNode: GridItemNode {
                 }
             }
             
-            let scale = min(2.0, UIScreenScale)
-            let targetSize: CGSize
-            if stories {
-                targetSize = CGSize(width: 128.0 * UIScreenScale, height: 128.0 * UIScreenScale)
-            } else {
-                targetSize = CGSize(width: 128.0 * scale, height: 128.0 * scale)
-            }
+            let targetSize = MediaPickerGridItemNode.thumbnailTargetSize(stories: stories)
             
             let assetImageSignal = assetImage(fetchResult: fetchResult, index: index, targetSize: targetSize, exact: false, deliveryMode: .opportunistic, synchronous: false)
 //            |> then(

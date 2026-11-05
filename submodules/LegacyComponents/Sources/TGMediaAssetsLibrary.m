@@ -11,8 +11,8 @@ static Class TGMediaAssetsLibraryClass = nil;
 + (void)load
 {
     TGMediaAssetsLibraryClass = [TGMediaAssetsModernLibrary class];
-
-    [TGMediaAssetsLibraryClass authorizationStatus];
+    // No authorizationStatus query here: its result was discarded and it cost a TCC round trip in load_images.
+    // The status is read when a library is first used.
 }
 
 - (instancetype)initForAssetType:(TGMediaAssetType)assetType
