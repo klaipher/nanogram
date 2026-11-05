@@ -92,8 +92,8 @@ public final class HLSQualitySet {
                                         currentCodec = videoCodec
                                     }
                                 }
-                                if let currentCodec, (currentCodec == "av1" || currentCodec == "av01") {
-                                } else {
+                                // Hardware AV1 keeps AV1; software-only AV1 is the last resort (see VideoRenditionCodecPreference).
+                                if VideoRenditionCodecPreference.shouldReplace(currentCodec: currentCodec, candidateCodec: videoCodec, isHardwareAv1Supported: codecConfiguration.isHardwareAv1Supported) {
                                     qualityFiles[key] = baseFile.withMedia(alternativeFile)
                                 }
                             } else {
