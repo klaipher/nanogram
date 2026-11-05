@@ -72,7 +72,7 @@ upstream gap (official Telegram has the same gap on that platform).
 | Rust MTProto engine, Network.framework transport, download experiments | yes | yes | mac:SettingsUI/DeveloperNetworkSwitches.swift |
 | Power / thermal policy for UI | yes (ios:Display/Source/EnergyRules.swift, 1907a285) | yes (mac:NanogramRuntime/LiteModePower.swift, M11) | |
 | Calls thermal ladder, power governor | yes (CallThermalGovernor.swift) | yes (CallVideoLayer/CallPowerGovernor.swift) | |
-| Call switch defaults: livestream hardware decoding, native camera frames, system noise suppression, thermal video ladder, group noise = RNNoise only | on by default since 2026-11-06 (new storage keys, still switchable; ExperimentalUISettings.swift) | off by default | Parity gap by owner decision, iOS first. Advanced ducking stays off on both. |
+| Call switch defaults: livestream hardware decoding, native camera frames, system noise suppression, thermal video ladder, group noise = RNNoise only | on by default since 2026-11-06 (new storage keys, still switchable; ExperimentalUISettings.swift; also the narrowband RNNoise switch) | on by default since 2026-11-06 (livestream hardware decoding, hardware crop, native decode format, screen-share hardware encoder, thermal video limits, 10-video group cap, RNNoise only; still switchable in the Debug menu) | Owner decision 2026-11-06. Advanced ducking stays off on both. |
 | MetricKit collection and export | yes (DebugLogExport) | yes (CrashReports/MetricReportStore.swift, NanogramLogExport) | |
 | Disk-write accounting | yes: counters, hourly line, `logs/disk-writes.json` ledger (ios:TelegramUI/Sources/AppDelegate.swift) | yes since 2026-11-05: mac:NanogramRuntime/DiskWriteReports.swift, started in Telegram-Mac/app/AppDelegate.swift, ledger in the MetricKit export | |
 | Background diagnostics | yes (ios:submodules/BackgroundDiagnostics) | n/a (iOS lifecycle) | |
@@ -109,7 +109,7 @@ upstream gap (official Telegram has the same gap on that platform).
   M19, H10 and H15 are done (69381d0a, bfeb43f0, e0198d5a, eb33a0a5). H24: MAS has the entitlement, Direct does not.
 - Off-by-default experiments. iOS: localTranscription, enableVoipTcp, groupCallReferenceEngine, liveStreamV2,
   callsAdvancedDucking (the other calls* switches are on by default since 2026-11-06), Enhanced Security build flags. Mac: system PiP, wide-gamut JPEG, the macOS 15-25 translation
-  fallback, isolated decoding, Q9 built-in mic, the calls switches. On Mac only on-device transcription is on.
+  fallback, isolated decoding, Q9 built-in mic. On Mac on-device transcription and the calls switches (since 2026-11-06) are on.
 - iOS local transcription (switch off by default, ios:submodules/Media/LocalAudioTranscription): since 2026-11-05 it
   requires on-device recognition and returns no transcript when the locale has no on-device model, as the Mac does.
 - Copies that can drift: the VP9 decoder (identical, now compared by the parity check). LocalAudioTranscription is a
