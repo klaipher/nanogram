@@ -183,7 +183,7 @@ final class LibvpxBackedDecoder: VideoStickerHardwareDecoder {
 
 final class VideoStickerHardwareSelectionTests: XCTestCase {
     private let queue = Queue(name: "VideoStickerHardwareSelectionTests")
-    private var savedFactory: ((String) -> VideoStickerHardwareStream?)?
+    private var savedFactory: ((String, Bool) -> VideoStickerHardwareStream?)?
 
     override func setUp() {
         super.setUp()

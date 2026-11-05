@@ -102,7 +102,7 @@ private func previousVideoStickerFrameCache(path: String, size: CGSize) -> Data 
 // hardware VP9 decoder when there is one, falling back to libvpx, and must not change.
 final class VideoStickerFrameCacheTests: XCTestCase {
     private let queue = Queue(name: "VideoStickerFrameCacheTests")
-    private var savedFactory: ((String) -> VideoStickerHardwareStream?)?
+    private var savedFactory: ((String, Bool) -> VideoStickerHardwareStream?)?
     private let size = CGSize(width: 160.0, height: 160.0)
 
     override func setUp() {
