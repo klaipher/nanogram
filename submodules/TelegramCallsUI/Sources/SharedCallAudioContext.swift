@@ -33,6 +33,9 @@ public final class SharedCallAudioContext {
     
     private let audioOutputStatePromise = Promise<([AudioSessionOutput], AudioSessionOutput?)>(([], nil))
     private var audioOutputStateValue: ([AudioSessionOutput], AudioSessionOutput?) = ([], nil)
+    /// The route the audio session itself last reported. `audioOutputStateValue` also carries the optimistic value shown
+    /// for a second after a tap, so it cannot tell whether a request took effect.
+    private var reportedAudioOutput: AudioSessionOutput?
     public private(set) var currentAudioOutputValue: AudioSessionOutput = .builtin
     private var didSetCurrentAudioOutputValue: Bool = false
     var audioOutputState: Signal<([AudioSessionOutput], AudioSessionOutput?), NoError> {
@@ -243,6 +246,7 @@ public final class SharedCallAudioContext {
                     return
                 }
                 self.audioOutputStateValue = (availableOutputs, currentOutput)
+                self.reportedAudioOutput = currentOutput
                 if let currentOutput = currentOutput, self.acceptReportedAudioOutput(currentOutput) {
                     self.currentAudioOutputValue = currentOutput
                     self.didSetCurrentAudioOutputValue = true
@@ -360,7 +364,9 @@ public final class SharedCallAudioContext {
         self.initialSetupTimer = nil
         self.isInitialOutputPending = false
         
-        guard self.currentAudioOutputValue != output else {
+        let decision = audioOutputRequestDecision(requested: output, lastRequested: self.didSetCurrentAudioOutputValue ? self.currentAudioOutputValue : nil, reported: self.reportedAudioOutput)
+        CallDiagnostics.log(audioOutputRequestLogLine(requested: audioOutputLogName(output), lastRequested: self.didSetCurrentAudioOutputValue ? audioOutputLogName(self.currentAudioOutputValue) : nil, reported: self.reportedAudioOutput.map { audioOutputLogName($0) }, decision: decision, hasSessionControl: self.audioSessionControl != nil, viaCallKit: self.callKitIntegration != nil))
+        guard decision == .apply else {
             return
         }
         self.currentAudioOutputValue = output

@@ -1,4 +1,5 @@
 import XCTest
+import CallKit
 @testable import TelegramCallsUI
 
 // CallKit hands the app end and answer actions by call UUID. A stale or placeholder call (a VoIP push the
@@ -28,5 +29,15 @@ final class CallKitActionTargetTests: XCTestCase {
         XCTAssertTrue(callKitActionAnswersPersonalCall(uuid: current, personalCallId: current))
         XCTAssertFalse(callKitActionAnswersPersonalCall(uuid: UUID(), personalCallId: current))
         XCTAssertFalse(callKitActionAnswersPersonalCall(uuid: current, personalCallId: nil))
+    }
+
+    func testMuteActionNamesTheCallNotTheAction() {
+        let call = UUID()
+        let action = CXSetMutedCallAction(call: call, muted: true)
+        XCTAssertNotEqual(action.uuid, call, "the action's own id is not the call's")
+        let target = callKitMuteTarget(action)
+        XCTAssertEqual(target.callUUID, call)
+        XCTAssertTrue(target.isMuted)
+        XCTAssertFalse(callKitMuteTarget(CXSetMutedCallAction(call: call, muted: false)).isMuted)
     }
 }

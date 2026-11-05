@@ -34,14 +34,16 @@ final class VoiceChatCameraPreviewController: ViewController {
     private let cameraNode: PreviewVideoNode
     private let shareCamera: (ASDisplayNode, Bool) -> Void
     private let switchCamera: () -> Void
+    private let cancelled: (() -> Void)?
     
     private var presentationDataDisposable: Disposable?
     
-    init(sharedContext: SharedAccountContext, cameraNode: PreviewVideoNode, shareCamera: @escaping (ASDisplayNode, Bool) -> Void, switchCamera: @escaping () -> Void) {
+    init(sharedContext: SharedAccountContext, cameraNode: PreviewVideoNode, shareCamera: @escaping (ASDisplayNode, Bool) -> Void, switchCamera: @escaping () -> Void, cancelled: (() -> Void)? = nil) {
         self.sharedContext = sharedContext
         self.cameraNode = cameraNode
         self.shareCamera = shareCamera
         self.switchCamera = switchCamera
+        self.cancelled = cancelled
         
         super.init(navigationBarPresentationData: nil)
         
@@ -83,6 +85,7 @@ final class VoiceChatCameraPreviewController: ViewController {
             self?.presentingViewController?.dismiss(animated: false, completion: nil)
         }
         self.controllerNode.cancel = { [weak self] in
+            self?.cancelled?()
             self?.dismiss()
         }
     }

@@ -798,7 +798,7 @@ public final class PresentationGroupCallImpl: PresentationGroupCall {
         }
     }
     private var thermalLevelDisposable: Disposable?
-    private var useFrontCamera: Bool = true
+    private var cameraFacing = CameraFacingTracker()
 
     private var peerUpdatesSubscription: Disposable?
     
@@ -3423,7 +3423,7 @@ public final class PresentationGroupCallImpl: PresentationGroupCall {
 
     public func requestVideo(capturer: OngoingCallVideoCapturer, useFrontCamera: Bool = true) {
         self.videoCapturer = capturer
-        self.useFrontCamera = useFrontCamera
+        self.cameraFacing.cameraStarted(isFront: useFrontCamera)
         
         self.hasVideo = true
         if let videoCapturer = self.videoCapturer {
@@ -3449,7 +3449,7 @@ public final class PresentationGroupCallImpl: PresentationGroupCall {
     
     public func disableVideo() {
         self.hasVideo = false
-        self.useFrontCamera = true
+        self.cameraFacing.cameraStopped()
         if let _ = self.videoCapturer {
             self.videoCapturer = nil
             self.isVideoMutedDisposable.set(nil)
@@ -3469,8 +3469,10 @@ public final class PresentationGroupCallImpl: PresentationGroupCall {
     }
     
     public func switchVideoCamera() {
-        self.useFrontCamera = !self.useFrontCamera
-        self.videoCapturer?.switchVideoInput(isFront: self.useFrontCamera)
+        guard let isFront = self.cameraFacing.flip() else {
+            return
+        }
+        self.videoCapturer?.switchVideoInput(isFront: isFront)
     }
 
     private func requestScreencast() {
@@ -3582,7 +3584,9 @@ public final class PresentationGroupCallImpl: PresentationGroupCall {
             sharedAudioContext.setCurrentAudioOutput(output)
             return
         }
-        guard self.currentSelectedAudioOutputValue != output else {
+        let decision = audioOutputRequestDecision(requested: output, lastRequested: self.currentSelectedAudioOutputValue, reported: self.audioOutputStateValue.1)
+        CallDiagnostics.log(audioOutputRequestLogLine(requested: audioOutputLogName(output), lastRequested: audioOutputLogName(self.currentSelectedAudioOutputValue), reported: self.audioOutputStateValue.1.map { audioOutputLogName($0) }, decision: decision, hasSessionControl: self.audioSessionControl != nil, viaCallKit: false))
+        guard decision == .apply else {
             return
         }
         self.currentSelectedAudioOutputValue = output

@@ -149,7 +149,7 @@ extension VideoChatCall {
         case let .group(groupCall):
             (groupCall as! PresentationGroupCallImpl).requestVideo(capturer: capturer, useFrontCamera: useFrontCamera)
         case let .conferenceSource(conferenceSource):
-            (conferenceSource as! PresentationCallImpl).requestVideo(capturer: capturer)
+            (conferenceSource as! PresentationCallImpl).requestVideo(capturer: capturer, useFrontCamera: useFrontCamera)
         }
     }
     

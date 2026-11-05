@@ -95,6 +95,10 @@ public final class CallKitIntegration {
         sharedProviderDelegate?.reportOutgoingCallConnected(uuid: uuid, at: date)
     }
     
+    public func reportMuted(uuid: UUID, isMuted: Bool) {
+        sharedProviderDelegate?.reportMuted(uuid: uuid, isMuted: isMuted)
+    }
+    
     public func updateShowCallsInRecents(_ value: Bool) {
         CallKitPrivacy.storeShowCallsInRecents(value)
         sharedProviderDelegate?.updateShowCallsInRecents(value)
@@ -154,6 +158,8 @@ class CallKitProviderDelegate: NSObject, CXProviderDelegate {
     
     private var isAudioSessionActive: Bool = false
     private var pendingVoiceChatOutputMode: AudioSessionOutputMode?
+    private var lastVoiceChatOutputMode: AudioSessionOutputMode?
+    private var muteSync = CallKitMuteSync()
     
     private let disposableSet = DisposableSet()
     
@@ -162,6 +168,11 @@ class CallKitProviderDelegate: NSObject, CXProviderDelegate {
     private var activeCalls = Set<UUID>() {
         didSet {
             self.hasActiveCallsValue?.set(!self.activeCalls.isEmpty)
+            if self.activeCalls.isEmpty {
+                self.muteSync.forgetAll()
+                self.lastVoiceChatOutputMode = nil
+                self.pendingVoiceChatOutputMode = nil
+            }
         }
     }
     
@@ -181,6 +192,15 @@ class CallKitProviderDelegate: NSObject, CXProviderDelegate {
         self.setCallMuted = setCallMuted
         self.audioSessionActivationChanged = audioSessionActivationChanged
         self.hasActiveCallsValue = hasActiveCallsValue
+    }
+    
+    /// The user muted or unmuted in the app: the lock screen, the Dynamic Island and the system call UI follow it.
+    func reportMuted(uuid: UUID, isMuted: Bool) {
+        guard self.activeCalls.contains(uuid), self.muteSync.shouldReport(uuid: uuid, isMuted: isMuted) else {
+            return
+        }
+        Logger.shared.log("CallKitIntegration", "report mute \(isMuted) for \(uuid)")
+        self.requestTransaction(CXTransaction(action: CXSetMutedCallAction(call: uuid, muted: isMuted)))
     }
     
     func updateShowCallsInRecents(_ value: Bool) {
@@ -432,7 +452,9 @@ class CallKitProviderDelegate: NSObject, CXProviderDelegate {
             action.fail()
             return
         }
-        setCallMuted(action.uuid, action.isMuted)
+        let target = callKitMuteTarget(action)
+        self.muteSync.systemSet(uuid: target.callUUID, isMuted: target.isMuted)
+        setCallMuted(target.callUUID, target.isMuted)
         action.fulfill()
     }
     
@@ -442,7 +464,9 @@ class CallKitProviderDelegate: NSObject, CXProviderDelegate {
         self.audioSessionActivationChanged?(true)
         self.audioSessionActivePromise?.set(true)
         
-        if let outputMode = self.pendingVoiceChatOutputMode {
+        // CallKit hands the session back after an interruption (a phone call, Siri, an alarm) with the route override
+        // cleared, so the route the user chose has to be applied again, not only one that was waiting.
+        if let outputMode = self.pendingVoiceChatOutputMode ?? self.lastVoiceChatOutputMode {
             self.pendingVoiceChatOutputMode = nil
             sharedManagedAudioSession?.applyVoiceChatOutputModeInCurrentAudioSession(outputMode: outputMode)
         }
@@ -456,6 +480,7 @@ class CallKitProviderDelegate: NSObject, CXProviderDelegate {
     }
     
     func applyVoiceChatOutputMode(outputMode: AudioSessionOutputMode) {
+        self.lastVoiceChatOutputMode = outputMode
         if self.isAudioSessionActive {
             sharedManagedAudioSession?.applyVoiceChatOutputModeInCurrentAudioSession(outputMode: outputMode)
         } else {

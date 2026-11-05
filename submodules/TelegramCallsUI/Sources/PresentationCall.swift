@@ -129,9 +129,14 @@ public final class PresentationCallImpl: PresentationCall {
     private var droppedCall = false
     private var dropCallKitCallTimer: SwiftSignalKit.Timer?
     
-    private var useFrontCamera: Bool = true
+    private var cameraFacing = CameraFacingTracker()
     private var videoCapturer: OngoingCallVideoCapturer? {
         didSet {
+            if self.videoCapturer == nil {
+                self.cameraFacing.cameraStopped()
+            } else if oldValue == nil {
+                self.cameraFacing.cameraStarted()
+            }
             self.updateThermalBinding()
         }
     }
@@ -946,7 +951,7 @@ public final class PresentationCallImpl: PresentationCall {
                     
                     conferenceCall.setIsMuted(action: self.isMutedValue ? .muted(isPushToTalkActive: false) : .unmuted)
                     if let videoCapturer = self.videoCapturer {
-                        conferenceCall.requestVideo(capturer: videoCapturer)
+                        conferenceCall.requestVideo(capturer: videoCapturer, useFrontCamera: self.cameraFacing.isFront)
                     }
                     
                     let waitForLocalVideo = self.videoCapturer != nil
@@ -1126,7 +1131,7 @@ public final class PresentationCallImpl: PresentationCall {
                                     
                                     conferenceCallContext.setIsMuted(action: self.isMutedValue ? .muted(isPushToTalkActive: false) : .unmuted)
                                     if let videoCapturer = self.videoCapturer {
-                                        conferenceCallContext.requestVideo(capturer: videoCapturer)
+                                        conferenceCallContext.requestVideo(capturer: videoCapturer, useFrontCamera: self.cameraFacing.isFront)
                                     }
                                     
                                     self.ongoingContextStateDisposable = (combineLatest(queue: .mainQueue(),
@@ -1612,6 +1617,7 @@ public final class PresentationCallImpl: PresentationCall {
         } else {
             self.ongoingContext?.setIsMuted(self.isMutedValue)
         }
+        self.callKitIntegration?.reportMuted(uuid: self.internalId, isMuted: value)
     }
     
     public func requestVideo() {
@@ -1632,11 +1638,16 @@ public final class PresentationCallImpl: PresentationCall {
     }
     
     public func requestVideo(capturer: OngoingCallVideoCapturer) {
+        self.requestVideo(capturer: capturer, useFrontCamera: true)
+    }
+    
+    func requestVideo(capturer: OngoingCallVideoCapturer, useFrontCamera: Bool) {
         if self.isMovedToConference {
             return
         }
         if self.videoCapturer == nil {
             self.videoCapturer = capturer
+            self.cameraFacing.cameraStarted(isFront: useFrontCamera)
         }
         if let videoCapturer = self.videoCapturer {
             if let conferenceCallContext = self.conferenceCallContext {
@@ -1790,7 +1801,9 @@ public final class PresentationCallImpl: PresentationCall {
             return
         }
         
-        guard self.currentAudioOutputValue != output else {
+        let decision = audioOutputRequestDecision(requested: output, lastRequested: self.didSetCurrentAudioOutputValue ? self.currentAudioOutputValue : nil, reported: self.audioOutputStateValue.1)
+        CallDiagnostics.log("call \(self.internalId) " + audioOutputRequestLogLine(requested: audioOutputLogName(output), lastRequested: self.didSetCurrentAudioOutputValue ? audioOutputLogName(self.currentAudioOutputValue) : nil, reported: self.audioOutputStateValue.1.map { audioOutputLogName($0) }, decision: decision, hasSessionControl: self.audioSessionControl != nil, viaCallKit: self.callKitIntegration != nil))
+        guard decision == .apply else {
             return
         }
         self.currentAudioOutputValue = output
@@ -1916,8 +1929,10 @@ public final class PresentationCallImpl: PresentationCall {
         if self.isMovedToConference {
             return
         }
-        self.useFrontCamera = !self.useFrontCamera
-        self.videoCapturer?.switchVideoInput(isFront: self.useFrontCamera)
+        guard let isFront = self.cameraFacing.flip() else {
+            return
+        }
+        self.videoCapturer?.switchVideoInput(isFront: isFront)
     }
     
     public func playRemoteCameraTone() {

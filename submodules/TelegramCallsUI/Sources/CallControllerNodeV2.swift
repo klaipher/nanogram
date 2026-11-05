@@ -84,6 +84,7 @@ final class CallControllerNodeV2: ViewControllerTracingNode, CallControllerNodeP
     private var isMicrophoneMutedDisposable: Disposable?
     private var audioLevelDisposable: Disposable?
     private var audioOutputCheckTimer: Foundation.Timer?
+    private var speakerEnforcement = AutomaticSpeakerEnforcement()
     
     private var applicationInForegroundDisposable: Disposable?
     private var energyUsageDisposable: Disposable?
@@ -456,6 +457,18 @@ final class CallControllerNodeV2: ViewControllerTracingNode, CallControllerNodeP
                                 Queue.mainQueue().after(0.1) {
                                     self?.call.switchVideoCamera()
                                 }
+                            }, cancelled: { [weak self] in
+                                // The preview made the call create its camera capturer. Nothing was shared, so release it
+                                // here, otherwise the camera keeps running for the rest of the call.
+                                guard let self, let callState = self.callState else {
+                                    return
+                                }
+                                switch callState.videoState {
+                                case .active, .paused:
+                                    break
+                                default:
+                                    self.call.disableVideo()
+                                }
                             })
                             self.present?(controller)
                             
@@ -660,11 +673,13 @@ final class CallControllerNodeV2: ViewControllerTracingNode, CallControllerNodeP
         if callScreenState.localVideo != nil || callScreenState.remoteVideo != nil {
             switch currentAudioOutput {
             case .headphones, .speaker:
-                break
+                self.speakerEnforcement.reset()
             case let .port(port) where port.type == .bluetooth || port.type == .wired:
-                break
+                self.speakerEnforcement.reset()
             default:
-                self.setCurrentAudioOutput?(.speaker)
+                if self.speakerEnforcement.shouldAttempt() {
+                    self.setCurrentAudioOutput?(.speaker)
+                }
             }
             
             if self.audioOutputCheckTimer == nil {
@@ -676,6 +691,7 @@ final class CallControllerNodeV2: ViewControllerTracingNode, CallControllerNodeP
                 })
             }
         } else {
+            self.speakerEnforcement.reset()
             if let audioOutputCheckTimer = self.audioOutputCheckTimer {
                 self.audioOutputCheckTimer = nil
                 audioOutputCheckTimer.invalidate()

@@ -258,4 +258,41 @@ final class SharedCallAudioContextTests: XCTestCase {
         XCTAssertEqual(self.control.appliedOutputModes.last, .custom(.builtin), "applied: \(self.control.appliedOutputModes)")
         XCTAssertEqual(context.currentAudioOutputValue, .builtin)
     }
+
+    /// A request the session did not honour must not make every further tap on the same route a no-op: the
+    /// session reports no change when nothing changed, so the stored value stays on the route that was asked for.
+    func testASecondSpeakerTapIsAppliedWhenTheFirstOneLeftTheRouteOnTheReceiver() {
+        self.session.isHeadsetPluggedIn = false
+        let context = self.makeContext(defaultToSpeaker: false)
+
+        self.handOutControl()
+        self.completeActivation(reporting: [.builtin, .speaker], current: .builtin, isHeadsetConnected: false)
+        self.waitForInitialSetupTimer()
+
+        context.setCurrentAudioOutput(.speaker)
+        self.spinMainQueue()
+        context.setCurrentAudioOutput(.speaker)
+        self.spinMainQueue()
+
+        let speakerRequests = self.control.appliedOutputModes.filter { $0 == .custom(.speaker) }
+        XCTAssertEqual(speakerRequests.count, 2, "applied: \(self.control.appliedOutputModes)")
+    }
+
+    func testASpeakerTapIsSkippedWhenTheSessionAlreadyReportsTheSpeaker() {
+        self.session.isHeadsetPluggedIn = false
+        let context = self.makeContext(defaultToSpeaker: false)
+
+        self.handOutControl()
+        self.completeActivation(reporting: [.builtin, .speaker], current: .builtin, isHeadsetConnected: false)
+        self.waitForInitialSetupTimer()
+
+        context.setCurrentAudioOutput(.speaker)
+        self.pushedParams.availableOutputsChanged([.builtin, .speaker], .speaker)
+        self.spinMainQueue()
+        let before = self.control.appliedOutputModes.count
+        context.setCurrentAudioOutput(.speaker)
+        self.spinMainQueue()
+
+        XCTAssertEqual(self.control.appliedOutputModes.count, before, "applied: \(self.control.appliedOutputModes)")
+    }
 }

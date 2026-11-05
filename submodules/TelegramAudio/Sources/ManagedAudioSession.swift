@@ -31,7 +31,20 @@ func audioInputStateDescription() -> String {
     #else
     let bluetoothHighQuality = ""
     #endif
-    return "preferredInput=\(preferred) route.inputs=[\(current)] available=[\(available)]\(bluetoothHighQuality)"
+    let outputs = session.currentRoute.outputs.map(describeAudioPort).joined(separator: ", ")
+    return "preferredInput=\(preferred) route.inputs=[\(current)] route.outputs=[\(outputs)] available=[\(available)] category=\(session.category.rawValue) mode=\(session.mode.rawValue) options=\(session.categoryOptions.rawValue)\(bluetoothHighQuality)"
+}
+
+/// One line in the short log for a route request: what was asked and where the audio went. The loudspeaker request is the
+/// one that silently does nothing on some devices, so a miss is named.
+private func logOutputRequestResult(_ outputMode: AudioSessionOutputMode, where place: String) {
+    let outputTypes = AVAudioSession.sharedInstance().currentRoute.outputs.map { $0.portType.rawValue }
+    let destination = audioRouteDestination(outputPortTypes: outputTypes)
+    var line = "ManagedAudioSession output request \(outputMode) (\(place)) -> route \(destination) outputs=\(outputTypes)"
+    if case .custom(.speaker) = outputMode, loudspeakerRequestMissedRoute(outputPortTypes: outputTypes) {
+        line += " MISSED: the loudspeaker was requested but the route is not on it"
+    }
+    managedAudioSessionLog(line)
 }
 
 
@@ -556,6 +569,13 @@ public final class ManagedAudioSessionImpl: NSObject, ManagedAudioSession {
                 if isActive {
                     activeOutput = output
                 }
+            }
+            
+            if activeOutput == .builtin, !headphonesAreActive, audioRouteDestination(outputPortTypes: audioSession.currentRoute.outputs.map { $0.portType.rawValue }) == .loudspeaker {
+                // The audio is on the loudspeaker even when the built-in microphone is not the route's input
+                // (the input list is momentarily empty while the session reconfigures); reporting the receiver
+                // here made the speaker button show the wrong state and send the wrong request.
+                activeOutput = .speaker
             }
             
             if self.hasLoudspeaker {
@@ -1140,6 +1160,7 @@ public final class ManagedAudioSessionImpl: NSObject, ManagedAudioSession {
         } catch let e {
             managedAudioSessionLog("applyVoiceChatOutputModeInCurrentAudioSession error: \(e)")
         }
+        logOutputRequestResult(outputMode, where: "CallKit session")
     }
     
     private func setupOutputMode(_ outputMode: AudioSessionOutputMode, type: ManagedAudioSessionType) throws {
@@ -1147,6 +1168,7 @@ public final class ManagedAudioSessionImpl: NSObject, ManagedAudioSession {
         managedAudioSessionLog("ManagedAudioSession input before setupOutputMode: \(audioInputStateDescription()) headset=\(self.isHeadsetPluggedInValue) options=\(AVAudioSession.sharedInstance().categoryOptions.rawValue)")
         defer {
             managedAudioSessionLog("ManagedAudioSession input after setupOutputMode: \(audioInputStateDescription())")
+            logOutputRequestResult(outputMode, where: "\(type)")
         }
         var resetToBuiltin = false
         switch outputMode {

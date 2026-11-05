@@ -1,4 +1,5 @@
 import Foundation
+import CallKit
 
 enum CallKitActionTarget: Equatable {
     case personalCall
@@ -19,4 +20,11 @@ func callKitActionTarget(uuid: UUID, personalCallId: UUID?, hasGroupCall: Bool) 
 /// An answer action answers only the one-to-one call whose UUID it names.
 func callKitActionAnswersPersonalCall(uuid: UUID, personalCallId: UUID?) -> Bool {
     return personalCallId == uuid
+}
+
+/// The call and the state a CallKit mute action is for. `CXAction.uuid` is the id of the action itself; the call it acts on
+/// is `callUUID`. The mute handler used to pass `uuid`, which never named a call, so a mute from the lock screen, the
+/// system call UI, an AirPods gesture or Siri matched no call and did nothing.
+func callKitMuteTarget(_ action: CXSetMutedCallAction) -> (callUUID: UUID, isMuted: Bool) {
+    return (action.callUUID, action.isMuted)
 }
