@@ -2,6 +2,7 @@ import Foundation
 import UIKit
 import XCTest
 import WebPBinding
+@testable import AnimatedStickerNode
 
 /// Static stickers are decoded from received WebP data. A header can declare a canvas of 16383 x 16383 (a gigabyte of
 /// pixels from a few dozen bytes), and a failed decode used to leak the bitmap and leave a UIGraphics context pushed.
@@ -62,5 +63,29 @@ final class WebPDecodeLimitsTests: XCTestCase {
         // Never enlarged.
         let notEnlarged = try XCTUnwrap(WebP.convert(fromWebP: encoded, fittingPixelSize: CGSize(width: 512, height: 512)))
         XCTAssertEqual(notEnlarged.size.width * notEnlarged.scale, 64)
+    }
+}
+
+/// A video sticker (WebM) used to be read into memory in full only to find out it is not a WebP image.
+final class VideoStickerWebPSignatureTests: XCTestCase {
+    func testOnlyRiffWebpHeadersCount() {
+        XCTAssertTrue(videoStickerDataIsWebP(Data("RIFF".utf8) + Data([1, 2, 3, 4]) + Data("WEBP".utf8)))
+        XCTAssertTrue(videoStickerDataIsWebP(Data("RIFF".utf8) + Data([1, 2, 3, 4]) + Data("WEBPVP8L".utf8)))
+        XCTAssertFalse(videoStickerDataIsWebP(Data("RIFF".utf8) + Data([1, 2, 3, 4]) + Data("WAVE".utf8)))
+        XCTAssertFalse(videoStickerDataIsWebP(Data([0x1A, 0x45, 0xDF, 0xA3, 0x9F, 0x42, 0x86, 0x81, 0x01, 0x42, 0xF7, 0x81])))
+        XCTAssertFalse(videoStickerDataIsWebP(Data("RIFF".utf8)))
+        XCTAssertFalse(videoStickerDataIsWebP(Data()))
+    }
+
+    func testFileCheckReadsTheHeader() throws {
+        let path = NSTemporaryDirectory() + "webp-signature-" + UUID().uuidString
+        defer {
+            try? FileManager.default.removeItem(atPath: path)
+        }
+        try (Data("RIFF".utf8) + Data([0, 0, 0, 0]) + Data("WEBP".utf8)).write(to: URL(fileURLWithPath: path))
+        XCTAssertTrue(videoStickerFileIsWebP(path: path))
+        try Data([0x1A, 0x45, 0xDF, 0xA3, 0x9F, 0x42, 0x86, 0x81, 0x01, 0x42, 0xF7, 0x81]).write(to: URL(fileURLWithPath: path))
+        XCTAssertFalse(videoStickerFileIsWebP(path: path))
+        XCTAssertFalse(videoStickerFileIsWebP(path: path + "-missing"))
     }
 }

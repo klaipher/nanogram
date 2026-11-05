@@ -342,7 +342,7 @@ public final class VideoStickerDirectFrameSource: AnimatedStickerFrameSource {
             } else {
                 self.duration = 0.0
             }
-        } else if let data = try? Data(contentsOf: URL(fileURLWithPath: path)), let image = WebP.convert(fromWebP: data) {
+        } else if videoStickerFileIsWebP(path: path), let data = try? Data(contentsOf: URL(fileURLWithPath: path)), let image = WebP.convert(fromWebP: data, fittingPixelSize: CGSize(width: 1024.0, height: 1024.0)) {
             self.source = nil
             self.image = image
             self.frameRate = 1
@@ -555,4 +555,28 @@ public final class VideoStickerDirectFrameSource: AnimatedStickerFrameSource {
     public func skipToFrameIndex(_ index: Int) {
         self.currentFrame = index
     }
+}
+
+
+/// Whether the file starts with the WebP signature (`RIFF`, four size bytes, `WEBP`). Only 12 bytes are read, so a
+/// WebM video sticker is not read into memory in full just to find out that it is not an image.
+func videoStickerFileIsWebP(path: String) -> Bool {
+    guard let handle = FileHandle(forReadingAtPath: path) else {
+        return false
+    }
+    defer {
+        try? handle.close()
+    }
+    guard let header = try? handle.read(upToCount: 12) else {
+        return false
+    }
+    return videoStickerDataIsWebP(header)
+}
+
+func videoStickerDataIsWebP(_ header: Data) -> Bool {
+    if header.count < 12 {
+        return false
+    }
+    let bytes = [UInt8](header.prefix(12))
+    return bytes[0 ..< 4].elementsEqual(Array("RIFF".utf8)) && bytes[8 ..< 12].elementsEqual(Array("WEBP".utf8))
 }
