@@ -811,9 +811,6 @@ public class Window1 {
                 if case .hidden = notificationDecision {
                     keyboardHeight = 0.0
                 }
-                #if DEBUG // TEMP iPad keyboard log (WindowKeyboardDebugLog.swift)
-                debugLogWindowKeyboard(event: "willChangeFrame", endFrame: (notification.userInfo?[UIResponder.keyboardFrameEndUserInfoKey] as? NSValue)?.cgRectValue ?? CGRect(), windowSize: strongSelf.windowLayout.size, isTablet: isTablet, isWindowed: isWindowed, decision: notificationDecision, inputHeight: keyboardHeight)
-                #endif
                 
                 var duration: Double = (notification.userInfo?[UIResponder.keyboardAnimationDurationUserInfoKey] as? NSNumber)?.doubleValue ?? 0.0
                 if duration > Double.ulpOfOne {
@@ -864,9 +861,6 @@ public class Window1 {
                 guard let self, self.keyboardFrameChangeSerial == serial, let inputHeight = self.windowLayout.inputHeight, inputHeight > 0.0 else {
                     return
                 }
-                #if DEBUG // TEMP iPad keyboard log (WindowKeyboardDebugLog.swift)
-                debugLogWindowKeyboard(event: "willHide", endFrame: endFrame, windowSize: self.windowLayout.size, isTablet: isTablet, isWindowed: nil, decision: decision, inputHeight: 0.0)
-                #endif
                 let transition: ContainedViewLayoutTransition = duration > Double.ulpOfOne ? .animated(duration: duration, curve: .easeInOut) : .immediate
                 self.updateLayout { $0.update(inputHeight: nil, transition: transition, overrideTransition: false) }
             }
