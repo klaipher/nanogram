@@ -37,25 +37,14 @@ LIB_NAMES="libavcodec libavformat libavutil libswresample"
 
 set -e
 
-CONFIGURE_FLAGS="--enable-cross-compile --disable-programs \
-                 --disable-armv5te --disable-armv6 --disable-armv6t2 \
-                 --disable-doc --enable-pic --disable-all --disable-everything \
-                 --enable-avcodec  \
-                 --enable-swresample \
-                 --enable-avformat \
-                 --disable-xlib \
-                 --enable-libopus \
-                 --enable-libvpx \
-                 --enable-libdav1d \
-                 --enable-bsf=aac_adtstoasc,vp9_superframe,h264_mp4toannexb \
-                 --enable-decoder=h264,libvpx_vp9,hevc,libopus,flac,pcm_s16le,pcm_s24le,pcm_f32le,libdav1d,av1,mp3 \
-                 --enable-demuxer=aac,mov,m4v,mp3,ogg,libopus,flac,wav,aiff,matroska,mpegts, \
-                 --enable-parser=aac,h264,mp3,libopus \
-                 --enable-protocol=file \
+# The shared list (decoders, demuxers, parsers, disabled Apple frameworks) lives in ffmpeg-common-flags.sh, which
+# the Mac build reads too. What is added here is iOS only: the muxers for recording; the AudioToolbox decoders
+# and encoders and the VideoToolbox hwaccels come with the darwin configure call below.
+. "$(cd "$(dirname "${BASH_SOURCE[0]}")" && pwd)/ffmpeg-common-flags.sh"
+
+CONFIGURE_FLAGS="$FFMPEG_COMMON_FLAGS \
                  --enable-muxer=mp4,matroska,ogg,mpegts \
                  "
-
-#vorbis
 
 EXTRA_CFLAGS="-DCONFIG_SAFE_BITSTREAM_READER=1 -fstack-protector-strong"
 

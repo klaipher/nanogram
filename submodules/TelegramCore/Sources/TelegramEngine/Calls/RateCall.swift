@@ -41,10 +41,14 @@ func _internal_saveCompleteCallDebugLog(account: Account, callId: CallId, logPat
     let tempFile = TempBox.shared.tempFile(fileName: "log.txt.gz")
     
     do {
-        guard let data = try? Data(contentsOf: URL(fileURLWithPath: logPath), options: .mappedIfSafe) else {
+        guard var data = try? Data(contentsOf: URL(fileURLWithPath: logPath), options: .mappedIfSafe) else {
             Logger.shared.log("saveCompleteCallDebugLog", "Failed to open log file")
             
             return .complete()
+        }
+        // A long call turns its log over at half the size cap: the older half is `<path>.1`, which comes first.
+        if let older = try? Data(contentsOf: URL(fileURLWithPath: logPath + ".1"), options: .mappedIfSafe), !older.isEmpty {
+            data = older + data
         }
         
         guard let gzippedData = MTGzip.compress(data) else {

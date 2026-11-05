@@ -1,0 +1,120 @@
+{
+ "description": "Settings for tools/dev/upstream-sync/sync.py (the upstream sync dry run). base_commit is the commit in OUR history whose tree equals the upstream release we imported; this repo has no upstream ancestry, so releases are applied as a three-way merge against that tree.",
+ "upstream_url": "https://github.com/TelegramMessenger/Telegram-iOS.git",
+ "base_commit": "0650eac5",
+ "base_label": "release-13.1.2",
+ "branch": "main",
+ "areas": [
+  {
+   "name": "Localization",
+   "prefixes": [
+    "Telegram/Telegram-iOS/Resources/",
+    "submodules/TelegramPresentationData/Resources/",
+    "Telegram/Telegram-iOS/en.lproj/"
+   ]
+  },
+  {
+   "name": "Debug and settings screens",
+   "prefixes": [
+    "submodules/DebugSettingsUI/",
+    "submodules/SettingsUI/",
+    "submodules/TelegramUI/Components/Settings/"
+   ]
+  },
+  {
+   "name": "Calls, WebRTC and tgcalls",
+   "prefixes": [
+    "submodules/TgVoipWebrtc/",
+    "submodules/TelegramVoip/",
+    "submodules/TelegramCallsUI/",
+    "third-party/webrtc/"
+   ]
+  },
+  {
+   "name": "Core, Postbox and MTProto",
+   "prefixes": [
+    "submodules/TelegramCore/",
+    "submodules/Postbox/",
+    "submodules/MtProtoKit/",
+    "third-party/mtproto-engine"
+   ]
+  },
+  {
+   "name": "Chat and list UI",
+   "prefixes": [
+    "submodules/TelegramUI/",
+    "submodules/ChatListUI/",
+    "submodules/ChatPresentationInterfaceState/",
+    "submodules/Display/",
+    "submodules/AsyncDisplayKit/"
+   ]
+  },
+  {
+   "name": "Build system and third-party libraries",
+   "prefixes": [
+    "build-system/",
+    "MODULE.bazel",
+    "WORKSPACE",
+    "BUILD.bazel",
+    ".bazel",
+    "third-party/",
+    "versions.json"
+   ]
+  },
+  {
+   "name": "App target, branding and entitlements",
+   "prefixes": [
+    "Telegram/",
+    "Tests/"
+   ]
+  }
+ ],
+ "pins": [
+  {
+   "name": "tgcalls",
+   "path": "submodules/TgVoipWebrtc/tgcalls",
+   "upstream_url": "https://github.com/TelegramMessenger/tgcalls.git",
+   "fork_url": "https://github.com/klaipher/tgcalls.git",
+   "fork_branch": "nanogram-shared"
+  },
+  {
+   "name": "webrtc",
+   "path": "third-party/webrtc/webrtc",
+   "upstream_url": "https://github.com/ali-fareed/webrtc.git",
+   "fork_url": "https://github.com/klaipher/webrtc.git",
+   "fork_branch": "nanogram-security-fixes"
+  },
+  {
+   "name": "rlottie",
+   "path": "submodules/rlottie/rlottie",
+   "upstream_url": "https://github.com/TelegramMessenger/rlottie.git",
+   "fork_url": "https://github.com/klaipher/rlottie.git",
+   "fork_branch": "telegram-ios-dev"
+  },
+  {
+   "name": "mtproto-engine",
+   "path": "third-party/mtproto-engine",
+   "upstream_url": "https://github.com/TelegramMessenger/mtproto-engine.git"
+  },
+  {
+   "name": "tlottie",
+   "path": "submodules/tlottie/tlottie",
+   "upstream_url": "https://github.com/dkaraush/tlottie.git"
+  },
+  {
+   "name": "dav1d",
+   "path": "third-party/dav1d/dav1d",
+   "upstream_url": "https://github.com/ali-fareed/dav1d.git"
+  },
+  {
+   "name": "libvpx",
+   "path": "third-party/libvpx/libvpx",
+   "upstream_url": "https://github.com/webmproject/libvpx.git"
+  },
+  {
+   "name": "td",
+   "path": "third-party/td/td",
+   "upstream_url": "https://github.com/tdlib/td"
+  }
+ ]
+}
