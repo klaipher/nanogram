@@ -4,7 +4,7 @@ import os
 /// A signpost interval a person would name ("open a chat", "launch to chat list"). It is emitted twice, in category
 /// `Performance` and in `.pointsOfInterest`, so it shows in every Instruments template and gives Run Comparisons a
 /// range. At most 6 exist; both apps (iOS and macOS) emit exactly these names.
-public struct UserSignpost {
+public struct UserSignpost: Sendable {
     public let name: StaticString
 
     public init(_ name: StaticString) {
@@ -189,7 +189,8 @@ public enum NanogramSignposts {
     }
 
     private static let pendingLock = NSLock()
-    private static var pending: [String: OneShot] = [:]
+    // Guarded by pendingLock.
+    nonisolated(unsafe) private static var pending: [String: OneShot] = [:]
 
     /// Begins a user-level interval whose start and end are in different places that share no object (a tap in one
     /// module, the first drawn frame in another). One interval per name is open at a time: beginning again closes the

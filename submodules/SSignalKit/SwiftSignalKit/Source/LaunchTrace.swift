@@ -17,7 +17,8 @@ public enum LaunchPhase: String, CaseIterable, Sendable {
 /// Tracks which launch phases are open and ends each exactly once. The platform part is injected so the bookkeeping
 /// runs in tests: `start` opens a MetricKit task for an id and returns the closure that finishes it (or nil when the
 /// OS has no launch-task API).
-public final class LaunchTaskTracker {
+// Every mutable field is guarded by `lock`.
+public final class LaunchTaskTracker: @unchecked Sendable {
     public typealias Starter = (_ id: String) -> (() -> Void)?
 
     private let lock = NSLock()
@@ -74,7 +75,8 @@ public enum LaunchTrace {
     private static let tracker = LaunchTaskTracker(start: LaunchTrace.metricKitStarter)
 
     private static let lock = NSLock()
-    private static var didBegin = false
+    // Guarded by lock.
+    nonisolated(unsafe) private static var didBegin = false
 
     public static func begin() {
         LaunchTrace.lock.lock()
