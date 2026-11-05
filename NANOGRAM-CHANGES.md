@@ -67,6 +67,8 @@ marked (check) were not re-verified against the code; correct them on the next c
   hardware VP9 sticker counters and session release when hidden or once the frame cache is complete.
 - Where: docs/subsystems/media-io.md, docs/subsystems/media-decode-and-voice.md, docs/performance/.
 
+- Chat photos decode complete JPEGs at the drawn size (`ImageDecodeSizing`, used by `PhotoResources`), the photo picker issues thumbnail requests off the main thread, and `ChatHistoryListNode.processDisplayedItemRangeChanged` caches its whole-history scan per history view (all three differ from upstream; round 3, iOS UI performance).
+
 ### Chat features
 - What: News feed, opening a channel at a post, suspicious-peer chat gate, Postbox to TelegramEngine refactor, CoreList chat history backend. (check)
 - Where: docs/subsystems/channel-post-and-news-feed.md, docs/subsystems/suspicious-peer.md, docs/chat/.
