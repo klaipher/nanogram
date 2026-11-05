@@ -4,6 +4,38 @@ Newest first. Internal notes for each TestFlight build; testers see the What to 
 
 ## Unreleased
 
+(none)
+
+## 13.1.2 (202611051247) — 2026-11-05 — fb1b8101
+
+TestFlight upload (internal testers). Since 202611041250 (daac83e2..fb1b8101). Tester notes (What to Test):
+
+> What to test in this build:
+>
+> 1. Calls: answering an incoming call no longer drops it a moment later. Please call each other a few times (answer from the lock screen and from inside the app) and tell us if a call still ends by itself, with the time.
+>
+> 2. New setting: Privacy and Security > Voice Calls > "Show Calls in Phone Recents". Turn it off and check that calls no longer appear in the Phone app's Recents.
+>
+> 3. Coming back to the app after a while no longer freezes it for up to half a minute.
+>
+> 4. Reactions with the keyboard open: the animation plays, and no menu flashes up after you close the keyboard.
+>
+> 5. Group video calls: the expanded view shows every participant's picture. Screen sharing no longer shows an old frame after a pause.
+>
+> 6. Stickers and GIFs use less memory; a broken sticker can no longer slow the app down.
+>
+> 7. Text like "@7 (pm)" in photo and story captions is no longer lost.
+>
+> 8. iPad: opening a chat no longer pops up the keyboard, and dragging the messages hides it; photos only underline dates and links after you tap Live Text; the sticker and GIF panel is shorter and its tabs are bigger.
+>
+> 9. Lockdown Mode (iOS Settings): with it on, Nanogram stops auto-downloading and autoplaying media, link previews and code colouring, and keeps media out of notifications.
+>
+> 10. New app icon.
+>
+> Please report any crash, dropped call or freeze, with the time it happened.
+
+Detailed entries:
+
 - **Call stop closures are Sendable-clean**: `CallId` is `Sendable` (two `Int64`s) and both call contexts build `statsLogPath` as a `let`, so the restored call-debug upload closure captures no mutable or non-Sendable state (4 Swift 6 warnings in the Mac's TelegramVoip).
 - **Attach > Location as upstream** (owner, 2026-11-05): nearby places come from Telegram's venue bot again (Foursquare data, same lists as official Telegram); reverts a1ab87c9 (MapKit venues, `VenueSearchPolicy`). The Lockdown notification-media tests in HardenedMediaTests stay.
 - **Text like "@7 (pm)" is kept** (upstream Mac #205): the `@(\d+)\s*\((.+?)\)` alternative of `markdownRegexFormat` in `ChatTextInputAttributes.swift` matched but `convertMarkdownToAttributes` emitted nothing for it, so the text was dropped from media captions, story captions and message actions from search and profile. The alternative is removed. Tests: `MentionParenthesisMarkdownTests`.
