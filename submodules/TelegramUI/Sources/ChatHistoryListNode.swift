@@ -2206,6 +2206,7 @@ public final class ChatHistoryListNodeImpl: ASDisplayNode, ChatHistoryNode, Chat
                         strongSelf._isReady.set(true)
                         if !strongSelf.didSetReady {
                             strongSelf.didSetReady = true
+                            PerformanceSignposts.endPending(.chatOpenToReady)
                             #if DEBUG
                             let deltaTime = (CFAbsoluteTimeGetCurrent() - strongSelf.initTimestamp) * 1000.0
                             print("Chat init to dequeue time: \(deltaTime) ms")
@@ -2330,7 +2331,7 @@ public final class ChatHistoryListNodeImpl: ASDisplayNode, ChatHistoryNode, Chat
                 }
                                 
                 let previousChatHistoryEntriesForViewState = chatHistoryEntriesForViewState.with({ $0 })
-                let (filteredEntries, updatedChatHistoryEntriesForViewState) = PerformanceSignposts.interval("chatHistoryEntriesForView") { chatHistoryEntriesForView(
+                let (filteredEntries, updatedChatHistoryEntriesForViewState) = PerformanceSignposts.interval(PerformanceSignpostName.chatHistoryEntriesForView) { chatHistoryEntriesForView(
                     currentState: previousChatHistoryEntriesForViewState,
                     context: context,
                     location: chatLocation,
@@ -4744,6 +4745,7 @@ public final class ChatHistoryListNodeImpl: ASDisplayNode, ChatHistoryNode, Chat
                 
                 if !strongSelf.didSetReady {
                     strongSelf.didSetReady = true
+                    PerformanceSignposts.endPending(.chatOpenToReady)
                     #if DEBUG
                     let deltaTime = (CFAbsoluteTimeGetCurrent() - strongSelf.initTimestamp) * 1000.0
                     print("Chat init to dequeue time: \(deltaTime) ms")

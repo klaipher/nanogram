@@ -33,6 +33,10 @@ final class VideoStickerHardwareStream {
 let videoStickerVP9HardwareProbe: VP9HardwareProbeResult = {
     let result = VP9HardwareDecoding.probe()
     Logger.shared.log("VideoSticker", result.description)
+    // How many stickers got a hardware decoder and how many met a full cap, at most once a minute.
+    VP9HardwareDecoding.setStatsReporter({ text in
+        Logger.shared.log("VideoSticker", text)
+    })
     return result
 }()
 

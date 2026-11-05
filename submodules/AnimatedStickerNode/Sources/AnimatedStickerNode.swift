@@ -797,12 +797,30 @@ public final class DefaultAnimatedStickerNodeImpl: ASDisplayNode, AnimatedSticke
     
     public func pause() {
         self.timer.swap(nil)?.invalidate()
+        self.scheduleHardwareDecodingSuspension()
+    }
+    
+    // A sticker that stays hidden gives its hardware VP9 sessions back after a while (see
+    // `VideoStickerDirectFrameSource.suspendHardwareDecoding`). Scrolling a panel pauses stickers for a moment
+    // only, and those keep their decoder.
+    private func scheduleHardwareDecodingSuspension() {
+        let frameSourceHolder = self.frameSource
+        let timerHolder = self.timer
+        self.queue.after(2.0, {
+            if timerHolder.with({ $0 }) != nil {
+                return
+            }
+            frameSourceHolder.with { $0 }?.with { wrapper in
+                (wrapper.value as? VideoStickerDirectFrameSource)?.suspendHardwareDecoding()
+            }
+        })
     }
     
     public func stop() {
         self.isSetUpForPlayback = false
         self.reportedStarted = false
         self.timer.swap(nil)?.invalidate()
+        self.scheduleHardwareDecodingSuspension()
         if self.playToCompletionOnStop {
             self.seekTo(.start)
         }

@@ -298,6 +298,48 @@ final class TimeBasedCleanupTests: XCTestCase {
         withExtendedLifetime(cleanup) {}
     }
 
+    func testAFileTouchedInARecentSessionIsNotWrittenAgain() {
+        let recent = self.writeFile("recent", bytes: 10)
+        self.setAge(recent, seconds: 60)
+        let recentBefore = self.modificationTime(recent)
+        let stale = self.writeFile("stale", bytes: 10)
+        self.setAge(stale, seconds: 5 * 86_400)
+
+        let cleanup = self.makeCleanup()
+        cleanup.touch(paths: [recent, stale])
+
+        let deadline = Date().addingTimeInterval(20.0)
+        let now = Int(Date().timeIntervalSince1970)
+        while Date() < deadline, (self.modificationTime(stale) ?? 0) < now - 60 {
+            Thread.sleep(forTimeInterval: 0.2)
+        }
+        XCTAssertGreaterThanOrEqual(self.modificationTime(stale) ?? 0, now - 60, "the stale file was not touched")
+        XCTAssertEqual(self.modificationTime(recent), recentBefore, "a file touched a minute ago needs no metadata write")
+        withExtendedLifetime(cleanup) {}
+    }
+
+    // Short-lived files are removed an hour after their last use, so a short-lived file used ten minutes ago is
+    // still written; any other cache file keeps a time up to an hour old.
+    func testAShortLivedFileKeepsTheShortTouchInterval() {
+        let general = self.writeFile("cache/general", bytes: 10)
+        self.setAge(general, seconds: 10 * 60)
+        let generalBefore = self.modificationTime(general)
+        let shortLived = self.writeFile("short-cache/part", bytes: 10)
+        self.setAge(shortLived, seconds: 10 * 60)
+
+        let cleanup = self.makeCleanup()
+        cleanup.touch(paths: [general, shortLived])
+
+        let deadline = Date().addingTimeInterval(20.0)
+        let now = Int(Date().timeIntervalSince1970)
+        while Date() < deadline, (self.modificationTime(shortLived) ?? 0) < now - 60 {
+            Thread.sleep(forTimeInterval: 0.2)
+        }
+        XCTAssertGreaterThanOrEqual(self.modificationTime(shortLived) ?? 0, now - 60, "the short-lived file was not touched")
+        XCTAssertEqual(self.modificationTime(general), generalBefore, "a cache file used ten minutes ago needs no metadata write")
+        withExtendedLifetime(cleanup) {}
+    }
+
     func testTouchingTensOfThousandsOfDistinctPathsIsFlushedWithinTheBatchInterval() {
         let count = 30_000
         var paths: [String] = []

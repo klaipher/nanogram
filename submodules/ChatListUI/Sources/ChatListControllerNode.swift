@@ -902,8 +902,15 @@ public final class ChatListContainerNode: ASDisplayNode, ASGestureRecognizerDele
         }
     }
     
-    public func switchToFilter(id: ChatListFilterTabEntryId, animated: Bool = true, completion: (() -> Void)? = nil) {
+    public func switchToFilter(id: ChatListFilterTabEntryId, animated: Bool = true, completion originalCompletion: (() -> Void)? = nil) {
         self.onFilterSwitch?()
+        if id != self.selectedId, self.availableFilters.contains(where: { $0.id == id }) {
+            PerformanceSignposts.beginPending(.chatListFolderSwitch)
+        }
+        let completion: (() -> Void)? = {
+            PerformanceSignposts.endPending(.chatListFolderSwitch)
+            originalCompletion?()
+        }
         if id != self.selectedId, let index = self.availableFilters.firstIndex(where: { $0.id == id }) {
             if let itemNode = self.itemNodes[id] {
                 guard let (layout, navigationBarHeight, visualNavigationHeight, originalNavigationHeight, cleanNavigationBarHeight, insets, isReorderingFilters, isEditing, inlineNavigationLocation, inlineNavigationTransitionFraction, storiesInset) = self.validLayout else {

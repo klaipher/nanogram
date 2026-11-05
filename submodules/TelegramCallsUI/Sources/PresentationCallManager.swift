@@ -461,6 +461,7 @@ public final class PresentationCallManagerImpl: PresentationCallManager {
     }
     
     public func requestCall(context: AccountContext, peerId: EnginePeer.Id, isVideo: Bool, endCurrentIfAny: Bool) -> RequestCallResult {
+        PerformanceSignposts.beginPending(.callConnect)
         var alreadyInCallType: CallAlreadyInProgressType?
         
         if let call = self.currentCall {

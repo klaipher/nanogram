@@ -3358,6 +3358,8 @@ public final class ChatListNode: ListViewImpl {
                     if !strongSelf.didSetReady && strongSelf.autoSetReady {
                         strongSelf.didSetReady = true
                         strongSelf._ready.set(true)
+                        PerformanceSignposts.endPending(.chatListFirstFrame)
+                        LaunchTrace.end(.chatListFirstData)
                     }
                 }
             } else {
@@ -3451,6 +3453,8 @@ public final class ChatListNode: ListViewImpl {
                     if !strongSelf.didSetReady {
                         strongSelf.didSetReady = true
                         strongSelf._ready.set(true)
+                        PerformanceSignposts.endPending(.chatListFirstFrame)
+                        LaunchTrace.end(.chatListFirstData)
                     }
                     if !strongSelf.didSetContentsReady {
                         strongSelf.didSetContentsReady = true

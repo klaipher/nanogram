@@ -408,10 +408,14 @@ private func fetchCachedStickerAJpegRepresentation(resource: MediaResource, reso
                         finalData.append(&alphaSize, length: 4)
                         finalData.append(alphaData as Data)
                         
-                        if (try? finalData.write(to: url, options: [.atomic])) != nil {
+                        // A plain write: `path` is a fresh random temp file that MediaBox renames into place,
+                        // so `.atomic` would only write a second temp file and rename it again.
+                        if (try? finalData.write(to: url)) != nil {
                             delivered = true
                             subscriber.putNext(.temporaryPath(path))
                             subscriber.putCompletion()
+                        } else {
+                            let _ = try? FileManager.default.removeItem(at: url)
                         }
                     }
                 }

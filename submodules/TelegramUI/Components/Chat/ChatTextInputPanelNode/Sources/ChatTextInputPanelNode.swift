@@ -4027,9 +4027,9 @@ public class ChatTextInputPanelNode: ChatInputPanelNode, ASEditableTextNodeDeleg
         if self.ignoreChatInputTextNodeDidUpdateText {
             return
         }
-        let signpostState = PerformanceSignposts.signposter.beginInterval("composerKeystroke")
+        let signpostState = PerformanceSignposts.begin(PerformanceSignpostName.composerKeystroke)
         defer {
-            PerformanceSignposts.signposter.endInterval("composerKeystroke", signpostState)
+            PerformanceSignposts.end(PerformanceSignpostName.composerKeystroke, signpostState)
         }
         if let richTextInputNode = self.richTextInputNode, let presentationInterfaceState = self.presentationInterfaceState, let context = self.context {
             let baseFontSize = chatTextInputBaseFontSize(for: presentationInterfaceState.fontSize)
