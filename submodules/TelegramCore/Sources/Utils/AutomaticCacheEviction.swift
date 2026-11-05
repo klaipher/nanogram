@@ -2,6 +2,14 @@ import Foundation
 import SwiftSignalKit
 import Postbox
 
+/// Identifies the limits an eviction run enforced: the same limits give the same text whatever the order of the
+/// entries, so a run within a day of the last one with the same limits can be skipped.
+func automaticCacheEvictionFingerprint(categoryStorageTimeout: [CacheStorageSettings.PeerStorageCategory: Int32], exceptions: [AccountSpecificCacheStorageSettings.Value]) -> String {
+    let categories = categoryStorageTimeout.map { "\($0.key.rawValue)=\($0.value)" }.sorted()
+    let exceptionValues = exceptions.map { "\($0.key.toInt64())=\($0.value)" }.sorted()
+    return categories.joined(separator: ",") + ";" + exceptionValues.joined(separator: ",")
+}
+
 final class AutomaticCacheEvictionContext {
     private final class Impl {
         private struct CombinedSettings: Equatable {
@@ -73,17 +81,18 @@ final class AutomaticCacheEvictionContext {
             }
             |> distinctUntilChanged
             |> deliverOn(self.queue)).start(next: { [weak self] combinedSettings in
-                self?.restart(settings: combinedSettings)
+                // The scheduled run follows the cache walker gate; `rerun()` is explicit.
+                self?.restart(settings: combinedSettings, isScheduled: true)
             })
         }
         
         func rerun() {
             if let settings = self.currentSettings {
-                self.restart(settings: settings)
+                self.restart(settings: settings, isScheduled: false)
             }
         }
         
-        private func restart(settings: CombinedSettings) {
+        private func restart(settings: CombinedSettings, isScheduled: Bool) {
             self.currentSettings = settings
             self.processDisposable?.dispose()
             
@@ -94,7 +103,10 @@ final class AutomaticCacheEvictionContext {
             let _ = processingQueue
             let _ = mediaBox
             
-            self.processDisposable = (self.postbox.mediaBox.storageBox.allPeerIds()
+            let storageBox = self.postbox.mediaBox.storageBox
+            let fingerprint = automaticCacheEvictionFingerprint(categoryStorageTimeout: settings.categoryStorageTimeout, exceptions: settings.exceptions)
+            
+            let evict = (self.postbox.mediaBox.storageBox.allPeerIds()
             |> mapToSignal { peerIds -> Signal<Never, NoError> in
                 return postbox.transaction { transaction -> [PeerId: CacheStorageSettings.PeerStorageCategory] in
                     var channelCategoryMapping: [PeerId: CacheStorageSettings.PeerStorageCategory] = [:]
@@ -262,7 +274,38 @@ final class AutomaticCacheEvictionContext {
                     
                     return signals
                 }
-            }).start()
+            })
+            
+            // The walk reads the usage time of every stored resource (`stat`): seconds of CPU at launch. The
+            // scheduled run happens at most once a day per account, when the limits change, and not in the first
+            // minute after launch. The time is recorded in the storage index, without any server traffic.
+            let measuredEvict = Signal<Never, NoError> { subscriber in
+                let signpost = NanogramSignposts.OneShot(PerformanceSignpostName.automaticCacheEviction)
+                let disposable = evict.start(completed: {
+                    storageBox.setCacheWalkerRecord(CacheWalkerRecord(completedAt: Date().timeIntervalSince1970, fingerprint: fingerprint), name: CacheWalkerName.automaticCacheEviction)
+                    signpost.end()
+                    subscriber.putCompletion()
+                })
+                return ActionDisposable {
+                    signpost.end()
+                    disposable.dispose()
+                }
+            }
+            
+            if isScheduled {
+                self.processDisposable = (storageBox.cacheWalkerRecord(name: CacheWalkerName.automaticCacheEviction)
+                |> mapToSignal { record -> Signal<Never, NoError> in
+                    let now = Date().timeIntervalSince1970
+                    if !CacheWalkerGate.isDue(record: record, fingerprint: fingerprint, now: now) {
+                        Logger.shared.log("AutomaticCacheEviction", "skipped, it last ran at \(record?.completedAt ?? 0.0)")
+                        return .complete()
+                    }
+                    return measuredEvict
+                    |> delay(CacheWalkerGate.delay(configured: 0.0, now: now), queue: Queue.concurrentBackgroundQueue())
+                }).start()
+            } else {
+                self.processDisposable = measuredEvict.start()
+            }
         }
     }
     

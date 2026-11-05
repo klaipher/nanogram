@@ -792,6 +792,34 @@ public final class StorageBox {
             }
         }
         
+        private static func cacheWalkerKey(_ name: String) -> ValueBoxKey {
+            return ValueBoxKey("cacheWalker." + name)
+        }
+        
+        func cacheWalkerRecord(name: String, completion: @escaping (CacheWalkerRecord?) -> Void) {
+            self.beginInternalTransaction {
+                self.valueBox.begin()
+                var record: CacheWalkerRecord?
+                if let value = self.valueBox.get(self.metadataTable, key: Impl.cacheWalkerKey(name)) {
+                    record = try? JSONDecoder().decode(CacheWalkerRecord.self, from: value.makeData())
+                }
+                self.valueBox.commit()
+                
+                completion(record)
+            }
+        }
+        
+        func setCacheWalkerRecord(_ record: CacheWalkerRecord, name: String) {
+            self.beginInternalTransaction {
+                guard let data = try? JSONEncoder().encode(record) else {
+                    return
+                }
+                self.valueBox.begin()
+                self.valueBox.set(self.metadataTable, key: Impl.cacheWalkerKey(name), value: MemoryBuffer(data: data))
+                self.valueBox.commit()
+            }
+        }
+        
         func allPeerIds(completion: @escaping([PeerId]) -> Void) {
             self.beginInternalTransaction {
                 var result: [PeerId] = []
@@ -1410,6 +1438,24 @@ public final class StorageBox {
             })
             
             return EmptyDisposable
+        }
+    }
+    
+    /// When a cache walker last completed for this account (see `CacheWalkerGate`).
+    public func cacheWalkerRecord(name: String) -> Signal<CacheWalkerRecord?, NoError> {
+        return self.impl.signalWith { impl, subscriber in
+            impl.cacheWalkerRecord(name: name, completion: { result in
+                subscriber.putNext(result)
+                subscriber.putCompletion()
+            })
+            
+            return EmptyDisposable
+        }
+    }
+    
+    public func setCacheWalkerRecord(_ record: CacheWalkerRecord, name: String) {
+        self.impl.with { impl in
+            impl.setCacheWalkerRecord(record, name: name)
         }
     }
     

@@ -206,7 +206,7 @@ public final class MediaBox {
             self.basePath + "/animation-cache"
         ], totalSizeBasedPath: self.basePath, shortLivedPaths: [
             self.basePath + "/short-cache"
-        ])
+        ], gatesScans: true)
         
         self.dataFileManager = MediaBoxFileManager(queue: self.dataQueue)
         

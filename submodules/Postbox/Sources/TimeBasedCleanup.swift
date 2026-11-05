@@ -391,8 +391,10 @@ private final class TimeBasedCleanupImpl {
     private let scheduledScanDisposable = MetaDisposable()
     private let scanQueue = Queue(name: "TimeBasedCleanupScan", qos: .background)
     private let scanDelay: Double
+    private let gatesScans: Bool
+    private let processStartTime: Double
     
-    init(queue: Queue, storageBox: StorageBox, cacheStorageBox: StorageBox, generalPaths: [String], totalSizeBasedPath: String, shortLivedPaths: [String], scanDelay: Double) {
+    init(queue: Queue, storageBox: StorageBox, cacheStorageBox: StorageBox, generalPaths: [String], totalSizeBasedPath: String, shortLivedPaths: [String], scanDelay: Double, gatesScans: Bool, processStartTime: Double) {
         self.queue = queue
         self.storageBox = storageBox
         self.cacheStorageBox = cacheStorageBox
@@ -400,6 +402,8 @@ private final class TimeBasedCleanupImpl {
         self.totalSizeBasedPath = totalSizeBasedPath
         self.shortLivedPaths = shortLivedPaths
         self.scanDelay = scanDelay
+        self.gatesScans = gatesScans
+        self.processStartTime = processStartTime
     }
     
     deinit {
@@ -429,12 +433,33 @@ private final class TimeBasedCleanupImpl {
             self.scheduledScanDisposable.set(nil)
             return
         }
-        let scanFirstTime = scanOnce
-        |> delay(self.scanDelay, queue: Queue.concurrentDefaultQueue())
-        
-        let scan = scanFirstTime
+        let scan: Signal<Never, NoError>
+        if self.gatesScans {
+            // The scan stats every cached file. It runs at most once a day, when the limits change, and not in
+            // the first minute after launch (`CacheWalkerGate`). `rescan()` is explicit and always runs.
+            let fingerprint = TimeBasedCleanupImpl.fingerprint(general: general, shortLived: shortLived, gigabytesLimit: gigabytesLimit)
+            let scanDelay = self.scanDelay
+            let processStartTime = self.processStartTime
+            scan = self.storageBox.cacheWalkerRecord(name: CacheWalkerName.timeBasedCleanup)
+            |> mapToSignal { record -> Signal<Never, NoError> in
+                let now = Date().timeIntervalSince1970
+                if !CacheWalkerGate.isDue(record: record, fingerprint: fingerprint, now: now) {
+                    postboxLog("TimeBasedCleanup: scan skipped, it last ran at \(record?.completedAt ?? 0.0)")
+                    return .complete()
+                }
+                return scanOnce
+                |> delay(CacheWalkerGate.delay(configured: scanDelay, processStartTime: processStartTime, now: now), queue: Queue.concurrentDefaultQueue())
+            }
+        } else {
+            scan = scanOnce
+            |> delay(self.scanDelay, queue: Queue.concurrentDefaultQueue())
+        }
         self.scheduledScanDisposable.set((scan
         |> deliverOn(self.queue)).start())
+    }
+    
+    private static func fingerprint(general: Int32, shortLived: Int32, gigabytesLimit: Int32) -> String {
+        return "\(general),\(shortLived),\(gigabytesLimit)"
     }
     
     private func makeScan(general: Int32, shortLived: Int32, gigabytesLimit: Int32) -> Signal<Never, NoError>? {
@@ -450,6 +475,8 @@ private final class TimeBasedCleanupImpl {
         let storageBox = self.storageBox
         let cacheStorageBox = self.cacheStorageBox
         let scanQueue = self.scanQueue
+        let recordsCompletion = self.gatesScans
+        let fingerprint = TimeBasedCleanupImpl.fingerprint(general: general, shortLived: shortLived, gigabytesLimit: gigabytesLimit)
         let scanOnce = Signal<Never, NoError> { subscriber in
             let cancelled = Atomic<Bool>(value: false)
             let isCancelled: () -> Bool = {
@@ -461,6 +488,7 @@ private final class TimeBasedCleanupImpl {
                     subscriber.putCompletion()
                     return
                 }
+                let signpost = NanogramSignposts.OneShot(PerformanceSignpostName.cacheCleanupScan)
                 let tempDirectory = TempBox.shared.tempDirectory()
                 let randomId = UInt32.random(in: 0 ... UInt32.max)
                 
@@ -469,6 +497,7 @@ private final class TimeBasedCleanupImpl {
                 guard let tempDatabase = TempScanDatabase(queue: queue, basePath: tempDirectory.path) else {
                     postboxLog("TimeBasedCleanup: couldn't create temp database at \(tempDirectory.path)")
                     TempBox.shared.dispose(tempDirectory)
+                    signpost.end()
                     subscriber.putCompletion()
                     return
                 }
@@ -628,6 +657,10 @@ private final class TimeBasedCleanupImpl {
                     postboxLog("[TimeBasedCleanup] \(CFAbsoluteTimeGetCurrent() - startTime) s removed \(removedShortLivedCount) short-lived files, \(removedGeneralCount) general files, \(removedGeneralLimitCount) limit files")
                 }
                 postboxLog("TimeBasedCleanup: scan id: \(randomId) finished\(isCancelled() ? " (cancelled)" : "")")
+                if recordsCompletion && !isCancelled() {
+                    storageBox.setCacheWalkerRecord(CacheWalkerRecord(completedAt: Date().timeIntervalSince1970, fingerprint: fingerprint), name: CacheWalkerName.timeBasedCleanup)
+                }
+                signpost.end()
                 subscriber.putCompletion()
             }
             return ActionDisposable {
@@ -665,9 +698,14 @@ private final class TimeBasedCleanupImpl {
             return
         }
         DispatchQueue.global(qos: .utility).async {
-            for item in scheduledTouches {
+            // A stat is a read; a utime is a metadata write and a journal entry. A file used in a recent session
+            // already has a fresh time, so only the stale ones are written.
+            let signpost = NanogramSignposts.OneShot(PerformanceSignpostName.cacheTouchBatch)
+            let stale = CacheTouchPolicy.touchNeeded(paths: scheduledTouches, now: Date().timeIntervalSince1970)
+            for item in stale {
                 utime(item, nil)
             }
+            signpost.end()
         }
     }
 }
@@ -676,10 +714,12 @@ final class TimeBasedCleanup {
     private let queue = Queue()
     private let impl: QueueLocalObject<TimeBasedCleanupImpl>
     
-    init(storageBox: StorageBox, cacheStorageBox: StorageBox, generalPaths: [String], totalSizeBasedPath: String, shortLivedPaths: [String], scanDelay: Double = 10.0) {
+    /// `gatesScans` limits the scheduled scan to once a day and after the first minute of the process; the
+    /// app turns it on (`MediaBox`), tests that exercise the scan itself leave it off.
+    init(storageBox: StorageBox, cacheStorageBox: StorageBox, generalPaths: [String], totalSizeBasedPath: String, shortLivedPaths: [String], scanDelay: Double = 10.0, gatesScans: Bool = false, processStartTime: Double = CacheWalkerGate.processStartTime) {
         let queue = self.queue
         self.impl = QueueLocalObject(queue: self.queue, generate: {
-            return TimeBasedCleanupImpl(queue: queue, storageBox: storageBox, cacheStorageBox: cacheStorageBox, generalPaths: generalPaths, totalSizeBasedPath: totalSizeBasedPath, shortLivedPaths: shortLivedPaths, scanDelay: scanDelay)
+            return TimeBasedCleanupImpl(queue: queue, storageBox: storageBox, cacheStorageBox: cacheStorageBox, generalPaths: generalPaths, totalSizeBasedPath: totalSizeBasedPath, shortLivedPaths: shortLivedPaths, scanDelay: scanDelay, gatesScans: gatesScans, processStartTime: processStartTime)
         })
     }
     

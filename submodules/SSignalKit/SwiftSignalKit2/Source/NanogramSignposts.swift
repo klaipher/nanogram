@@ -42,6 +42,12 @@ public enum PerformanceSignpostName {
     public static let composerTextDidChange: StaticString = "composerTextDidChange"
     public static let tableMerge: StaticString = "tableMerge"
     public static let lottieRenderFrame: StaticString = "lottieRenderFrame"
+    /// One pass of the time-based cache cleanup over the cached files (once a day at most).
+    public static let cacheCleanupScan: StaticString = "cacheCleanupScan"
+    /// One run of the automatic cache eviction over the stored resources of an account (once a day at most).
+    public static let automaticCacheEviction: StaticString = "automaticCacheEviction"
+    /// One batch of cache file touches (a `stat` per file and a `utime` for the stale ones).
+    public static let cacheTouchBatch: StaticString = "cacheTouchBatch"
 }
 
 /// Signposts shared by the iOS and macOS apps: subsystem = the bundle id, category `Performance`, plus a

@@ -298,6 +298,26 @@ final class TimeBasedCleanupTests: XCTestCase {
         withExtendedLifetime(cleanup) {}
     }
 
+    func testAFileTouchedInARecentSessionIsNotWrittenAgain() {
+        let recent = self.writeFile("recent", bytes: 10)
+        self.setAge(recent, seconds: 60)
+        let recentBefore = self.modificationTime(recent)
+        let stale = self.writeFile("stale", bytes: 10)
+        self.setAge(stale, seconds: 5 * 86_400)
+
+        let cleanup = self.makeCleanup()
+        cleanup.touch(paths: [recent, stale])
+
+        let deadline = Date().addingTimeInterval(20.0)
+        let now = Int(Date().timeIntervalSince1970)
+        while Date() < deadline, (self.modificationTime(stale) ?? 0) < now - 60 {
+            Thread.sleep(forTimeInterval: 0.2)
+        }
+        XCTAssertGreaterThanOrEqual(self.modificationTime(stale) ?? 0, now - 60, "the stale file was not touched")
+        XCTAssertEqual(self.modificationTime(recent), recentBefore, "a file touched a minute ago needs no metadata write")
+        withExtendedLifetime(cleanup) {}
+    }
+
     func testTouchingTensOfThousandsOfDistinctPathsIsFlushedWithinTheBatchInterval() {
         let count = 30_000
         var paths: [String] = []
