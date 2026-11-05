@@ -41,13 +41,15 @@ private func transcribeAudio(path: String, locale: String) -> Signal<Transcripti
                             speechRecognizerValue.defaultTaskHint = .dictation
                             sharedRecognizers[locale] = speechRecognizerValue
                             speechRecognizer = speechRecognizerValue
+                        }
+                        
+                        // The voice message never leaves the device: without an on-device model for this locale there
+                        // is no transcript (Apple would otherwise send the audio to its servers).
+                        guard speechRecognizer.supportsOnDeviceRecognition else {
+                            subscriber.putNext(nil)
+                            subscriber.putCompletion()
                             
-                            if locale == "en-US" {
-                                speechRecognizer.supportsOnDeviceRecognition = true
-                            } else {
-                                speechRecognizer.supportsOnDeviceRecognition = false
-                            }
-                            speechRecognizer.supportsOnDeviceRecognition = true
+                            return
                         }
                         
                         let tempFilePath = NSTemporaryDirectory() + "/\(UInt64.random(in: 0 ... UInt64.max)).m4a"
@@ -57,7 +59,7 @@ private func transcribeAudio(path: String, locale: String) -> Signal<Transcripti
                         if #available(iOS 16.0, *) {
                             request.addsPunctuation = true
                         }
-                        request.requiresOnDeviceRecognition = speechRecognizer.supportsOnDeviceRecognition
+                        request.requiresOnDeviceRecognition = true
                         request.shouldReportPartialResults = false
                         
                         let task = speechRecognizer.recognitionTask(with: request, resultHandler: { result, error in

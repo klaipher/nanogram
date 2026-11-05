@@ -815,6 +815,7 @@ Usage: tools/dev/tg <command> [options]
   refresh-fake-profiles Re-date and re-sign the fake provisioning profiles (device builds)
   fake-signing [--remove]  Install (or remove) the fake signing identity for device builds
   lint [args]           Lint changed Swift lines (tools/dev/lint/tglint.py; default: lint, then parity)
+  build-drift [--module M] [--strict]  Report differences between BUILD and Package.swift of the shared core modules (never fails without --strict)
   parity                Fast parity checks against the macOS app: history root, submodule pins pushed (docs/mac-core-paths.txt)
   disk                  Show what is using disk space
   clean                 Remove build outputs, keep downloads and caches
@@ -869,6 +870,7 @@ case "$command" in
       python3 "$ROOT/tools/dev/lint/tglint.py" "$@"
     fi ;;
   parity) python3 "$ROOT/tools/dev/parity/parity.py" fast --root "$ROOT" "$@" ;;
+  build-drift) python3 "$ROOT/tools/dev/lint/buildpkgdrift.py" --root "$ROOT" "$@" ;;
   disk) cmd_disk "$@" ;;
   clean) cmd_clean "$@" ;;
   prune) cmd_prune "$@" ;;

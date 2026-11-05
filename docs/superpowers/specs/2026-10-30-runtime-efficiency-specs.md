@@ -80,7 +80,7 @@ Status values: `todo`, `in progress`, `done (<commit>)`, `dropped (<reason>)`.
 - **Fix**: no timer for `.system`; for the time trigger, a single timer to the next switch; for brightness,
   `UIScreen.brightnessDidChangeNotification`.
 
-### R7. Low Power Mode and thermal state are ignored — `todo` (skipped in round 2: changes what power saving turns off)
+### R7. Low Power Mode and thermal state are ignored — `done (1907a285: Power Saving follows the system on iPhone too: heat, Low Power Mode, iOS 27 reduced resource usage)`
 
 - **Where**: `PresentationData.swift:531-565` (battery percentage only); `AppDelegate.swift:2077`;
   `DCTMultiAnimationRendererImpl.swift:930` (read once at init).
