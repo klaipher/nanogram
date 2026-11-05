@@ -50,6 +50,16 @@
   answers "is it cached" from MediaBox's live range status and, once that covers the whole file,
   reads the complete file through one `pread` handle. Do not route its per-read path back through
   `MediaBox.resourceData`/`internal_*` calls (each one stat'ed and opened files: 38% of the thread).
+- **The lookahead thread is woken only when the buffer needs it.** `FFMpegLookaheadWakeGate` stores the player's
+  position on every update (about 10 Hz) but sends the `perform` to the thread only when the readable range is less
+  than the lookahead minus 2 s ahead of the position, and never while one wake is queued or after the file ended.
+  With the 10 s lookahead the buffer stays at least 8 s ahead. Do not wake the thread per position update again.
+- **`UniversalSoftwareVideoSource` reads a complete file through one handle** (`CompleteResourceFileReader`,
+  looked up once per `readImage`), straight into FFmpeg's buffer. Partial files still go through
+  `MediaBox.resourceData`.
+- **Message text and signatures are decoded from the value box memory** (`StrictUTF8String`, Postbox), not through
+  a heap `Data` copy. It must keep returning nil for invalid UTF-8 and the Foundation result for byte-order marks
+  (`StrictUTF8StringTests`).
 - **RangeSet is `@inlinable`** (clients specialize it; 57-100x faster than the unspecialized calls,
   benchmark under the deep-audit fix-bench). Its invariant check runs only with `DEBUG`. Its
   `intersects` also returns true for a range that only touches the set (pinned by

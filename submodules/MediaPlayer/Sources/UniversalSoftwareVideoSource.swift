@@ -10,6 +10,7 @@ import Postbox
 import TelegramCore
 import FFMpegBinding
 import CoreMedia
+import ManagedFile
 
 private func readPacketCallback(userData: UnsafeMutableRawPointer?, buffer: UnsafeMutablePointer<UInt8>?, bufferSize: Int32) -> Int32 {
     let context = Unmanaged<UniversalSoftwareVideoSourceImpl>.fromOpaque(userData!).takeUnretainedValue()
@@ -17,10 +18,19 @@ private func readPacketCallback(userData: UnsafeMutableRawPointer?, buffer: Unsa
     let data: Signal<(Data, Bool), NoError>
     
     let readCount = min(256 * 1024, Int64(bufferSize))
-    let requestRange: Range<Int64> = context.readingOffset ..< (context.readingOffset + readCount)
-    
     context.currentNumberOfReads += 1
     context.currentReadBytes += readCount
+    
+    if let buffer, let completeFileReader = context.completeFileReaderIfAvailable() {
+        let count = completeFileReader.read(into: buffer, offset: context.readingOffset, maxCount: Int(readCount))
+        if count <= 0 {
+            return FFMPEG_CONSTANT_AVERROR_EOF
+        }
+        context.readingOffset += Int64(count)
+        return Int32(count)
+    }
+    
+    let requestRange: Range<Int64> = context.readingOffset ..< (context.readingOffset + readCount)
     
     let semaphore = DispatchSemaphore(value: 0)
     
@@ -123,6 +133,9 @@ private final class UniversalSoftwareVideoSourceImpl {
     fileprivate var videoStream: SoftwareVideoStream!
     
     fileprivate var readingOffset: Int64 = 0
+    
+    private var completeFileReader: CompleteResourceFileReader?
+    private var didTryOpeningCompleteFile = false
     
     fileprivate var cancelRead: Signal<Bool, NoError>
     fileprivate var requiredDataIsNotLocallyAvailable: (() -> Void)?
@@ -231,6 +244,26 @@ private final class UniversalSoftwareVideoSourceImpl {
         state.set(.ready)
     }
     
+    /// Reads of a fully downloaded resource go through one open handle straight into FFmpeg's buffer. The lookup runs
+    /// once per frame request (see `readImage`), not once per read.
+    fileprivate func completeFileReaderIfAvailable() -> CompleteResourceFileReader? {
+        if let completeFileReader = self.completeFileReader {
+            return completeFileReader
+        }
+        if self.didTryOpeningCompleteFile {
+            return nil
+        }
+        self.didTryOpeningCompleteFile = true
+        guard let path = self.mediaBox.completedResourcePath(self.source.resource), let file = ManagedFile(queue: nil, path: path, mode: .read), let size = file.getSize(), size > 0 else {
+            return nil
+        }
+        let completeFileReader = CompleteResourceFileReader(size: size, readAt: { buffer, count, offset in
+            return file.read(buffer, count, at: offset)
+        })
+        self.completeFileReader = completeFileReader
+        return completeFileReader
+    }
+    
     private func readPacketInternal() -> FFMpegPacket? {
         guard let avFormatContext = self.avFormatContext else {
             return nil
@@ -296,6 +329,7 @@ private final class UniversalSoftwareVideoSourceImpl {
             return (nil, 0.0, 1.0, false)
         }
         
+        self.didTryOpeningCompleteFile = false
         self.seek(timestamp: timestamp)
     
         self.currentNumberOfReads = 0

@@ -66,7 +66,9 @@ marked (check) were not re-verified against the code; correct them on the next c
   `debug_measureTimeToFirstEvent` is DEBUG-only; the media player timer has a tolerance and stops when paused;
   hardware VP9 sticker counters and session release when hidden or once the frame cache is complete;
   the MediaBox open-handle table evicts the least recently used handle (upstream: the oldest opened) and Postbox logs
-  which transaction call sites append the most WAL frames.
+  which transaction call sites append the most WAL frames; the direct-fetch lookahead thread is woken only when its
+  buffer needs a refill (upstream: on every position update); Postbox decodes message text from memory without a
+  `Data` copy; the universal software video source reads complete files through one handle.
 - Where: docs/subsystems/media-io.md, docs/subsystems/media-decode-and-voice.md, docs/performance/.
 
 ### Chat features

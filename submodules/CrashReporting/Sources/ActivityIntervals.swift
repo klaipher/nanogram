@@ -77,3 +77,11 @@ public final class ActivityIntervalCounter: @unchecked Sendable {
         self.lock.unlock()
     }
 }
+
+/// When a video counts as playing for the `videoPlayback` interval: it advances, or it stalls while it is meant to
+/// advance. A paused or idle video, or one that is only loading before the viewer pressed play, does not count.
+public enum VideoPlaybackActivityPolicy {
+    public static func isActive(isPlaying: Bool, isBufferingWhilePlaying: Bool) -> Bool {
+        return isPlaying || isBufferingWhilePlaying
+    }
+}

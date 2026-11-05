@@ -68,4 +68,25 @@ final class ActivityIntervalCounterTests: XCTestCase {
         token = MetricActivityIntervals.update(token, .videoPlayback, active: false)
         XCTAssertNil(token)
     }
+
+    func testVideoPlaybackIsActiveWhilePlayingOrStalledWhilePlaying() {
+        XCTAssertTrue(VideoPlaybackActivityPolicy.isActive(isPlaying: true, isBufferingWhilePlaying: false))
+        XCTAssertTrue(VideoPlaybackActivityPolicy.isActive(isPlaying: false, isBufferingWhilePlaying: true))
+        XCTAssertFalse(VideoPlaybackActivityPolicy.isActive(isPlaying: false, isBufferingWhilePlaying: false))
+    }
+
+    func testTwoPlayingVideosAreOneIntervalThatEndsWithTheLastOne() {
+        var events: [Bool] = []
+        let counter = ActivityIntervalCounter(onChange: { activity, isActive in
+            if activity == .videoPlayback {
+                events.append(isActive)
+            }
+        })
+        let first = counter.begin(.videoPlayback)
+        let second = counter.begin(.videoPlayback)
+        first.end()
+        XCTAssertEqual(events, [true])
+        second.end()
+        XCTAssertEqual(events, [true, false])
+    }
 }

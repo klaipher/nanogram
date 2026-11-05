@@ -203,7 +203,7 @@ struct SqlitePreparedStatement {
     func stringAt(_ index: Int) -> String? {
         let valueLength = sqlite3_column_bytes(statement, Int32(index))
         if let valueData = sqlite3_column_blob(statement, Int32(index)) {
-            return String(data: Data(bytes: valueData, count: Int(valueLength)), encoding: .utf8)
+            return StrictUTF8String.decode(raw: valueData, count: Int(valueLength))
         } else {
             return nil
         }

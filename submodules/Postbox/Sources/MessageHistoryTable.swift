@@ -2551,14 +2551,14 @@ final class MessageHistoryTable: Table {
                 if (forwardInfoFlags & (1 << 3)) != 0 {
                     var signatureLength: Int32 = 0
                     value.read(&signatureLength, offset: 0, length: 4)
-                    authorSignature = String(data: Data(bytes: value.memory.assumingMemoryBound(to: UInt8.self).advanced(by: value.offset), count: Int(signatureLength)), encoding: .utf8)
+                    authorSignature = StrictUTF8String.decode(value.memory.assumingMemoryBound(to: UInt8.self).advanced(by: value.offset), count: Int(signatureLength))
                     value.skip(Int(signatureLength))
                 }
                 
                 if (forwardInfoFlags & (1 << 4)) != 0 {
                     var psaTypeLength: Int32 = 0
                     value.read(&psaTypeLength, offset: 0, length: 4)
-                    psaType = String(data: Data(bytes: value.memory.assumingMemoryBound(to: UInt8.self).advanced(by: value.offset), count: Int(psaTypeLength)), encoding: .utf8)
+                    psaType = StrictUTF8String.decode(value.memory.assumingMemoryBound(to: UInt8.self).advanced(by: value.offset), count: Int(psaTypeLength))
                     value.skip(Int(psaTypeLength))
                 }
                 
@@ -2582,7 +2582,7 @@ final class MessageHistoryTable: Table {
             
             var textLength: Int32 = 0
             value.read(&textLength, offset: 0, length: 4)
-            let text = String(data: Data(bytes: value.memory.assumingMemoryBound(to: UInt8.self).advanced(by: value.offset), count: Int(textLength)), encoding: .utf8) ?? ""
+            let text = StrictUTF8String.decode(value.memory.assumingMemoryBound(to: UInt8.self).advanced(by: value.offset), count: Int(textLength)) ?? ""
             value.skip(Int(textLength))
             
             let attributesOffset = value.offset

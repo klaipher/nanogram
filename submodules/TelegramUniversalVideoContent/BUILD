@@ -68,6 +68,7 @@ swift_library(
         "//submodules/Utils/RangeSet:RangeSet",
         "//submodules/TelegramVoip",
         "//submodules/ManagedFile",
+        "//submodules/CrashReporting:CrashReporting",
     ],
     visibility = [
         "//visibility:public",
