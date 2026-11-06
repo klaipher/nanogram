@@ -54,15 +54,29 @@ final class LegacyCameraSimplePreviewView: UIView, CameraSimplePreviewView {
         return cache
     }()
 
+    /// The camera's queue (set by `LegacyCameraImpl`), where `startRunning()`/`stopRunning()` run. Changing the preview
+    /// connection takes the session's AVFoundation lock, which those calls hold for as long as they take; made on main
+    /// (layout, a scene update on the way to the background) it blocked the main thread until the watchdog killed the
+    /// app (0x8BADF00D). So the change is made on that queue instead, in order with the start or stop around it.
+    var connectionQueue: DispatchQueue?
+
     func updateOrientation() {
-        guard self.videoPreviewLayer.connection?.isVideoOrientationSupported == true else {
-            return
-        }
         let windowScene = self.window?.windowScene ?? UIApplication.shared.connectedScenes.first(where: { $0 is UIWindowScene }) as? UIWindowScene
         let statusBarOrientation = windowScene?.interfaceOrientation ?? .portrait
         let videoOrientation = statusBarOrientation.videoOrientation
-        self.videoPreviewLayer.connection?.videoOrientation = videoOrientation
-        self.videoPreviewLayer.removeAllAnimations()
+        let layer = self.videoPreviewLayer
+        let change: () -> Void = { [weak layer] in
+            guard let connection = layer?.connection, connection.isVideoOrientationSupported else {
+                return
+            }
+            connection.videoOrientation = videoOrientation
+        }
+        if let queue = self.connectionQueue {
+            queue.async(execute: change)
+        } else {
+            change()
+        }
+        layer.removeAllAnimations()
     }
     
     private static func cacheImage(_ image: UIImage, front: Bool) {
@@ -191,7 +205,16 @@ final class LegacyCameraSimplePreviewView: UIView, CameraSimplePreviewView {
     
     var isEnabled: Bool = true {
         didSet {
-            self.videoPreviewLayer.connection?.isEnabled = self.isEnabled
+            let layer = self.videoPreviewLayer
+            let isEnabled = self.isEnabled
+            let change: () -> Void = { [weak layer] in
+                layer?.connection?.isEnabled = isEnabled
+            }
+            if let queue = self.connectionQueue {
+                queue.async(execute: change)
+            } else {
+                change()
+            }
         }
     }
     

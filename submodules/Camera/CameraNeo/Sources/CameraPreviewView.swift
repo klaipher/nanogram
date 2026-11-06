@@ -58,14 +58,33 @@ final class CameraPreviewView: UIView, CameraSimplePreviewView {
         self.updateOrientation()
     }
 
+    /// Called on main (layout, and after the camera is configured). The orientation is read here, on main; the
+    /// connection itself is changed on the session queue (`applyOrientation`): the setter takes the session's
+    /// AVFoundation lock, which `startRunning()`/`stopRunning()` hold for as long as they take, and a main-thread
+    /// wait on it while the app goes to the background got the app killed by the watchdog (0x8BADF00D).
     func updateOrientation() {
-        guard self.videoPreviewLayer.connection?.isVideoOrientationSupported == true else {
-            return
-        }
         // iPad (audit A-8): the scene's effective geometry, which follows a resizable window.
         let interfaceOrientation = CameraTabletPolicy.interfaceOrientation(of: self.window?.windowScene)
-        self.videoPreviewLayer.connection?.videoOrientation = interfaceOrientation.videoOrientation
-        self.videoPreviewLayer.removeAllAnimations()
+        let layer = self.videoPreviewLayer
+        let stopped = self.connectionChangesStopped
+        Self.applyOrientation(
+            interfaceOrientation.videoOrientation,
+            queue: self.connectionQueue,
+            isStopped: { stopped.with { $0 } }
+        ) { [weak layer] orientation in
+            guard let connection = layer?.connection, connection.isVideoOrientationSupported else {
+                return
+            }
+            connection.videoOrientation = orientation
+        }
+        layer.removeAllAnimations()
+    }
+
+    /// Hands an orientation change to `queue` (in order, skipped once `isStopped`), or makes it directly without a queue.
+    static func applyOrientation(_ orientation: AVCaptureVideoOrientation, queue: DispatchQueue?, isStopped: @escaping () -> Bool, apply: @escaping (AVCaptureVideoOrientation) -> Void) {
+        Self.performConnectionChange(on: queue, isStopped: isStopped) {
+            apply(orientation)
+        }
     }
 
     func setSession(_ session: AVCaptureSession, automaticallyConnect: Bool) {

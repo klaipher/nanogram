@@ -744,6 +744,8 @@ final class LegacyCamera: CameraProtocol {
         Camera.applyBluetoothHighQualityRecordingPolicy(to: session.session, configuration: configuration)
         // iPad: the camera keeps running in Split View, Slide Over and Stage Manager.
         CameraMultitaskingAccess.apply(to: session.session)
+        previewView?.connectionQueue = self.queue.queue
+        secondaryPreviewView?.connectionQueue = self.queue.queue
         if let previewView {
             previewView.setSession(session.session, autoConnect: !session.hasMultiCam)
         }
@@ -1034,7 +1036,9 @@ final class LegacyCamera: CameraProtocol {
         let viewRef: Unmanaged<LegacyCameraSimplePreviewView> = Unmanaged.passRetained(view)
         self.queue.async {
             if let context = self.contextRef?.takeUnretainedValue() {
-                context.simplePreviewView = viewRef.takeUnretainedValue()
+                let attachedView = viewRef.takeUnretainedValue()
+                attachedView.connectionQueue = self.queue.queue
+                context.simplePreviewView = attachedView
                 viewRef.release()
             } else {
                 Queue.mainQueue().async {
