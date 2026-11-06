@@ -58,23 +58,77 @@ final class LegacyCameraSimplePreviewView: UIView, CameraSimplePreviewView {
     /// connection takes the session's AVFoundation lock, which those calls hold for as long as they take; made on main
     /// (layout, a scene update on the way to the background) it blocked the main thread until the watchdog killed the
     /// app (0x8BADF00D). So the change is made on that queue instead, in order with the start or stop around it.
-    var connectionQueue: DispatchQueue?
+    var connectionQueue: DispatchQueue? {
+        get {
+            self.connectionStateLock.lock()
+            defer { self.connectionStateLock.unlock() }
+            return self.connectionQueueValue
+        }
+        set {
+            self.connectionStateLock.lock()
+            self.connectionQueueValue = newValue
+            self.connectionStateLock.unlock()
+        }
+    }
+
+    /// `connectionQueue` is set on the camera queue (`attachSimplePreviewView`) and read on main, so both sides take this lock.
+    private let connectionStateLock = NSLock()
+    private var connectionQueueValue: DispatchQueue?
+
+    /// What the orientation change queued on the camera queue reads, so it never holds the view: the latest request wins,
+    /// and a request that is already applied to the connection is skipped.
+    private final class OrientationState {
+        private let lock = NSLock()
+        private var requested: AVCaptureVideoOrientation?
+        private var applied: AVCaptureVideoOrientation?
+
+        func request(_ orientation: AVCaptureVideoOrientation) -> Bool {
+            self.lock.lock()
+            defer { self.lock.unlock() }
+            self.requested = orientation
+            return self.applied != orientation
+        }
+
+        func latest(or fallback: AVCaptureVideoOrientation) -> AVCaptureVideoOrientation {
+            self.lock.lock()
+            defer { self.lock.unlock() }
+            return self.requested ?? fallback
+        }
+
+        func markApplied(_ orientation: AVCaptureVideoOrientation) {
+            self.lock.lock()
+            self.applied = orientation
+            self.lock.unlock()
+        }
+    }
+
+    private let orientationState = OrientationState()
 
     func updateOrientation() {
         let windowScene = self.window?.windowScene ?? UIApplication.shared.connectedScenes.first(where: { $0 is UIWindowScene }) as? UIWindowScene
         let statusBarOrientation = windowScene?.interfaceOrientation ?? .portrait
         let videoOrientation = statusBarOrientation.videoOrientation
         let layer = self.videoPreviewLayer
-        let change: () -> Void = { [weak layer] in
-            guard let connection = layer?.connection, connection.isVideoOrientationSupported else {
-                return
+        let state = self.orientationState
+        if state.request(videoOrientation) {
+            let change: () -> Void = { [weak layer] in
+                guard let connection = layer?.connection, connection.isVideoOrientationSupported else {
+                    return
+                }
+                let latest = state.latest(or: videoOrientation)
+                if connection.videoOrientation != latest {
+                    CATransaction.begin()
+                    CATransaction.setDisableActions(true)
+                    connection.videoOrientation = latest
+                    CATransaction.commit()
+                }
+                state.markApplied(latest)
             }
-            connection.videoOrientation = videoOrientation
-        }
-        if let queue = self.connectionQueue {
-            queue.async(execute: change)
-        } else {
-            change()
+            if let queue = self.connectionQueue {
+                queue.async(execute: change)
+            } else {
+                change()
+            }
         }
         layer.removeAllAnimations()
     }

@@ -104,8 +104,12 @@ final class ExpiringProcessActivity {
     typealias Perform = (_ block: @escaping (_ expired: Bool) -> Void) -> Void
 
     private let semaphore = DispatchSemaphore(value: 0)
+    private let flushLogs: () -> Void
 
-    init(reason: String, perform: Perform? = nil) {
+    /// `flushLogs` runs when the activity ends (`end()` or release), before the process may be suspended, so the
+    /// lines logged up to then (the pause and delivery of the request) are written.
+    init(reason: String, flushLogs: @escaping () -> Void = {}, perform: Perform? = nil) {
+        self.flushLogs = flushLogs
         let semaphore = self.semaphore
         let block: (Bool) -> Void = { expired in
             if expired {
@@ -124,10 +128,12 @@ final class ExpiringProcessActivity {
     }
 
     deinit {
+        self.flushLogs()
         self.semaphore.signal()
     }
 
     func end() {
+        self.flushLogs()
         self.semaphore.signal()
     }
 }

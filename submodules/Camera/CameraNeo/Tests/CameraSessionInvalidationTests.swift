@@ -1,4 +1,5 @@
 import XCTest
+import AVFoundation
 @testable import CameraNeo
 
 /// Pins how CameraNeo invalidates its capture session (closing a round video).
@@ -135,5 +136,121 @@ final class CameraSessionInvalidationTests: XCTestCase {
         queue.sync {
             XCTAssertEqual(applied, ["before"])
         }
+    }
+
+    /// A camera released without an invalidation (`CameraNeo.deinit`) follows the same order: connection changes stop,
+    /// the session queue stops the session, the preview detaches on main, and only then does the session queue change
+    /// the graph. The detach and the graph change never overlap, and the caller never waits for either queue.
+    func testReleasingACameraStopsThenDetachesOnMainThenTearsDown() {
+        var events: [String] = []
+        let lock = NSLock()
+        let record: (String) -> Void = { event in
+            lock.lock()
+            events.append(event)
+            lock.unlock()
+        }
+        var graphChangeRunning = false
+        var detachOverlappedGraphChange = false
+
+        // The session queue is busy (a long startRunning()) and main is busy when the camera is released.
+        self.sessionQueue.suspend()
+        self.mainQueue.suspend()
+        CameraSessionInvalidation.tearDownWithoutOwner(
+            sessionQueue: self.sessionQueue,
+            mainQueue: self.mainQueue,
+            stopConnectionChanges: {
+                record("stopConnectionChanges")
+            },
+            stopSession: { [sessionQueue = self.sessionQueue] in
+                dispatchPrecondition(condition: .onQueue(sessionQueue))
+                record("stopSession")
+            },
+            detachPreview: { [mainQueue = self.mainQueue] in
+                dispatchPrecondition(condition: .onQueue(mainQueue))
+                if graphChangeRunning {
+                    detachOverlappedGraphChange = true
+                }
+                record("detach")
+            },
+            tearDown: { [sessionQueue = self.sessionQueue] in
+                dispatchPrecondition(condition: .onQueue(sessionQueue))
+                graphChangeRunning = true
+                record("tearDown")
+                graphChangeRunning = false
+            }
+        )
+        // Returned at once: only the flag was set, nothing else ran.
+        lock.lock()
+        XCTAssertEqual(events, ["stopConnectionChanges"])
+        lock.unlock()
+
+        self.mainQueue.resume()
+        self.sessionQueue.resume()
+        self.drain([self.sessionQueue, self.mainQueue])
+        lock.lock()
+        XCTAssertEqual(events, ["stopConnectionChanges", "stopSession", "detach", "tearDown"])
+        lock.unlock()
+        XCTAssertFalse(detachOverlappedGraphChange)
+    }
+
+    func testTheDetachWaitsForTheSessionQueueToFinishStoppingEvenWhenMainIsFree() {
+        var events: [String] = []
+        let lock = NSLock()
+        let stopFinished = DispatchSemaphore(value: 0)
+        let stopMayFinish = DispatchSemaphore(value: 0)
+        CameraSessionInvalidation.tearDownWithoutOwner(
+            sessionQueue: self.sessionQueue,
+            mainQueue: self.mainQueue,
+            stopConnectionChanges: {},
+            stopSession: {
+                stopMayFinish.wait()
+                lock.lock()
+                events.append("stopSession")
+                lock.unlock()
+                stopFinished.signal()
+            },
+            detachPreview: {
+                lock.lock()
+                events.append("detach")
+                lock.unlock()
+            },
+            tearDown: {}
+        )
+        // Main is free, but the session is still stopping: the preview stays attached.
+        self.mainQueue.sync {}
+        lock.lock()
+        XCTAssertEqual(events, [])
+        lock.unlock()
+        stopMayFinish.signal()
+        stopFinished.wait()
+        self.drain([self.sessionQueue, self.mainQueue])
+        lock.lock()
+        XCTAssertEqual(events, ["stopSession", "detach"])
+        lock.unlock()
+    }
+
+    func testTheOrientationTrackerSkipsAnAppliedValueAndKeepsTheLatestRequest() {
+        let tracker = PreviewOrientationTracker()
+        XCTAssertNil(tracker.latest)
+        XCTAssertTrue(tracker.request(.portrait))
+        // No connection yet, so nothing was applied: the same request must be scheduled again.
+        XCTAssertTrue(tracker.request(.portrait))
+        tracker.markApplied(.portrait)
+        XCTAssertFalse(tracker.request(.portrait))
+        XCTAssertTrue(tracker.request(.landscapeLeft))
+        // Rotated back before the queue got to it: the latest request wins, and it is already applied.
+        XCTAssertFalse(tracker.request(.portrait))
+        XCTAssertEqual(tracker.latest, .portrait)
+    }
+
+    func testTheDetachIsLoggedBeforeAndAfter() {
+        var lines: [String] = []
+        CameraSessionInvalidation.logged({ lines.append($0) }) {
+            lines.append("detach")
+        }
+        XCTAssertEqual(lines.count, 3)
+        XCTAssertEqual(lines.first, "Camera preview detach: start")
+        XCTAssertEqual(lines[1], "detach")
+        XCTAssertTrue(lines[2].hasPrefix("Camera preview detach: done in "))
     }
 }

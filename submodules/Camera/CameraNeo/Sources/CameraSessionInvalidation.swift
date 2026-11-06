@@ -1,4 +1,5 @@
 import Foundation
+import AVFoundation
 
 /// Invalidates a camera's capture session once: detaches the preview layers from it on the main thread, then tears
 /// its graph down on the session queue.
@@ -46,5 +47,64 @@ final class CameraSessionInvalidation {
                 tearDown()
             }
         }
+    }
+
+    /// Runs the main-thread detach with a log line before and after it, so a hang inside AVFoundation's lock
+    /// (`AVCaptureVideoPreviewLayer.session = nil`) can be attributed to it in the next report.
+    static func logged(_ log: ((String) -> Void)?, _ detach: () -> Void) {
+        log?("Camera preview detach: start")
+        let start = CFAbsoluteTimeGetCurrent()
+        detach()
+        log?("Camera preview detach: done in \(Int((CFAbsoluteTimeGetCurrent() - start) * 1000.0)) ms")
+    }
+
+    /// The same hand-off for a camera that is released without having been invalidated (`CameraNeo.deinit`, which owns
+    /// nothing but what the closures capture). Order: `stopConnectionChanges` (any thread, a flag), then on
+    /// `sessionQueue` `stopSession`, then on `mainQueue` `detachPreview`, then back on `sessionQueue` `tearDown`.
+    /// `detachPreview` captures the preview views strongly, so their layers cannot detach on their own (on main, while
+    /// the graph is changing on the session queue) before then. Nothing here waits for another queue.
+    static func tearDownWithoutOwner(sessionQueue: DispatchQueue, mainQueue: DispatchQueue, stopConnectionChanges: () -> Void, stopSession: @escaping () -> Void, detachPreview: @escaping () -> Void, tearDown: @escaping () -> Void) {
+        stopConnectionChanges()
+        sessionQueue.async {
+            stopSession()
+            mainQueue.async {
+                detachPreview()
+                sessionQueue.async {
+                    tearDown()
+                }
+            }
+        }
+    }
+}
+
+/// The orientation a preview layer should have, shared by main (which requests it) and the session queue (which applies
+/// it to the connection). The latest request wins: a queued change applies the value requested last, not the one it was
+/// queued with, so a busy queue never ends with a stale orientation. A request equal to the one already applied to a
+/// connection is skipped; one made while there is no connection yet (before the session is configured) is not "applied".
+final class PreviewOrientationTracker {
+    private let lock = NSLock()
+    private var requested: AVCaptureVideoOrientation?
+    private var applied: AVCaptureVideoOrientation?
+
+    /// The orientation requested last, if any.
+    var latest: AVCaptureVideoOrientation? {
+        self.lock.lock()
+        defer { self.lock.unlock() }
+        return self.requested
+    }
+
+    /// Records the request; returns whether a change has to be scheduled (not if it is already applied).
+    func request(_ orientation: AVCaptureVideoOrientation) -> Bool {
+        self.lock.lock()
+        defer { self.lock.unlock() }
+        self.requested = orientation
+        return self.applied != orientation
+    }
+
+    /// Records that `orientation` was set on a connection.
+    func markApplied(_ orientation: AVCaptureVideoOrientation) {
+        self.lock.lock()
+        self.applied = orientation
+        self.lock.unlock()
     }
 }

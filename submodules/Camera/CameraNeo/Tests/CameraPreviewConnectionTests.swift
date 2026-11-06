@@ -101,17 +101,50 @@ final class CameraPreviewConnectionTests: XCTestCase {
         }
     }
 
-    func testUpdatingTheOrientationDoesNotWaitForABusySessionQueue() {
+    /// A session with a real input, so the preview layer has a connection and the old main-thread setter would have
+    /// had something to block on while the session queue is busy. Skipped where there is no capture device.
+    func testUpdatingTheOrientationDoesNotWaitForABusySessionQueue() throws {
+        let session = AVCaptureSession()
+        guard let device = AVCaptureDevice.default(for: .video), let input = try? AVCaptureDeviceInput(device: device), session.canAddInput(input) else {
+            throw XCTSkip("No camera device: the preview layer has no connection")
+        }
+        session.addInput(input)
         let view = CameraPreviewView(frame: CGRect(x: 0.0, y: 0.0, width: 100.0, height: 100.0), main: true, roundVideo: false)
         let queue = DispatchQueue(label: "CameraPreviewConnectionTests.busyOrientation")
         view.connectionQueue = queue
-        view.setSession(AVCaptureSession(), automaticallyConnect: true)
-        queue.suspend()
+        view.setSession(session, automaticallyConnect: true)
+
+        let release = DispatchSemaphore(value: 0)
+        queue.async {
+            release.wait()
+        }
         let start = CACurrentMediaTime()
         view.updateOrientation()
         view.layoutIfNeeded()
         XCTAssertLessThan(CACurrentMediaTime() - start, 0.5)
-        queue.resume()
+        release.signal()
         queue.sync {}
+        XCTAssertEqual(view.captureOrientation, view.videoPreviewLayer.connection?.videoOrientation)
+    }
+
+    func testOnlyTheLatestOrientationIsAppliedWhenTheQueueWasBusy() {
+        let queue = DispatchQueue(label: "CameraPreviewConnectionTests.latestOrientation")
+        let tracker = PreviewOrientationTracker()
+        var applied: [AVCaptureVideoOrientation] = []
+        queue.suspend()
+        for orientation in [AVCaptureVideoOrientation.landscapeLeft, .portrait, .landscapeRight] {
+            if tracker.request(orientation) {
+                CameraPreviewView.applyOrientation(orientation, queue: queue, isStopped: { false }) { queued in
+                    let latest = tracker.latest ?? queued
+                    applied.append(latest)
+                    tracker.markApplied(latest)
+                }
+            }
+        }
+        queue.resume()
+        queue.sync {
+            XCTAssertEqual(applied.last, .landscapeRight)
+            XCTAssertEqual(Set(applied), [.landscapeRight])
+        }
     }
 }

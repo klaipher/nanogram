@@ -35,8 +35,6 @@ final class WalletStateRetryPolicyTests: XCTestCase {
                 attempts.append(t)
             case let .wait(seconds):
                 t += foregroundEvery.map { min(seconds, $0) } ?? seconds
-            case .blocked:
-                return attempts
             }
         }
         return attempts
@@ -70,13 +68,34 @@ final class WalletStateRetryPolicyTests: XCTestCase {
         XCTAssertEqual(policy.delay(hasRefreshDemand: false), 5)
     }
 
-    func testAuthoritativeFailureStopsAllRetries() {
+    func testAuthoritativeFailureWaitsAnHourBetweenAttempts() {
         var policy = WalletStateRetryPolicy()
         policy.recordAttempt(at: start)
         policy.recordFailure(.authoritative, at: start)
-        XCTAssertEqual(policy.gate(hasRefreshDemand: false, now: start.addingTimeInterval(86_400)), .blocked)
-        XCTAssertEqual(policy.gate(hasRefreshDemand: true, now: start.addingTimeInterval(86_400)), .blocked)
-        XCTAssertEqual(simulate(kind: .authoritative, demand: false, duration: 86_400, foregroundEvery: 3), [0])
+        XCTAssertEqual(policy.gate(hasRefreshDemand: false, now: start.addingTimeInterval(1800)), .wait(1800))
+        XCTAssertEqual(policy.gate(hasRefreshDemand: true, now: start.addingTimeInterval(1800)), .wait(1800))
+        XCTAssertEqual(policy.gate(hasRefreshDemand: false, now: start.addingTimeInterval(3600)), .allow)
+        // Foreground every 3 s for a day: one attempt at launch, then one per hour.
+        let attempts = simulate(kind: .authoritative, demand: false, duration: 86_400, foregroundEvery: 3)
+        XCTAssertEqual(attempts.count, 24)
+        XCTAssertEqual(attempts.first, 0)
+        XCTAssertEqual(Set(gaps(attempts)), [3600])
+    }
+
+    func testATransientFailureAfterAnAuthoritativeOneEndsTheHourlyWait() {
+        var policy = WalletStateRetryPolicy()
+        policy.recordAttempt(at: start)
+        policy.recordFailure(.authoritative, at: start)
+        policy.recordAttempt(at: start.addingTimeInterval(3600))
+        policy.recordFailure(.transient(minimumDelay: 0), at: start.addingTimeInterval(3600))
+        XCTAssertEqual(policy.gate(hasRefreshDemand: false, now: start.addingTimeInterval(3600 + 60)), .allow)
+    }
+
+    func testOnlyWalletUnavailableMapsToAnAuthoritativeFailure() {
+        XCTAssertEqual(WalletStateFailureKind(isAuthoritative: true, floodWaitSeconds: nil), .authoritative)
+        XCTAssertEqual(WalletStateFailureKind(isAuthoritative: false, floodWaitSeconds: nil), .transient(minimumDelay: 0))
+        XCTAssertEqual(WalletStateFailureKind(isAuthoritative: false, floodWaitSeconds: 30), .transient(minimumDelay: 30))
+        XCTAssertEqual(WalletStateFailureKind(isAuthoritative: false, floodWaitSeconds: -5), .transient(minimumDelay: 0))
     }
 
     func testOpeningTheWalletLiftsAnAuthoritativeStop() {

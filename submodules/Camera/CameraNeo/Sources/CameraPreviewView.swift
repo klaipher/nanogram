@@ -66,19 +66,32 @@ final class CameraPreviewView: UIView, CameraSimplePreviewView {
         // iPad (audit A-8): the scene's effective geometry, which follows a resizable window.
         let interfaceOrientation = CameraTabletPolicy.interfaceOrientation(of: self.window?.windowScene)
         let layer = self.videoPreviewLayer
-        let stopped = self.connectionChangesStopped
-        Self.applyOrientation(
-            interfaceOrientation.videoOrientation,
-            queue: self.connectionQueue,
-            isStopped: { stopped.with { $0 } }
-        ) { [weak layer] orientation in
-            guard let connection = layer?.connection, connection.isVideoOrientationSupported else {
-                return
+        let orientation = interfaceOrientation.videoOrientation
+        if self.orientationTracker.request(orientation) {
+            let stopped = self.connectionChangesStopped
+            let tracker = self.orientationTracker
+            Self.applyOrientation(
+                orientation,
+                queue: self.connectionQueue,
+                isStopped: { stopped.with { $0 } }
+            ) { [weak layer] queued in
+                guard let connection = layer?.connection, connection.isVideoOrientationSupported else {
+                    return
+                }
+                let latest = tracker.latest ?? queued
+                if connection.videoOrientation != latest {
+                    CATransaction.begin()
+                    CATransaction.setDisableActions(true)
+                    connection.videoOrientation = latest
+                    CATransaction.commit()
+                }
+                tracker.markApplied(latest)
             }
-            connection.videoOrientation = orientation
         }
         layer.removeAllAnimations()
     }
+
+    private let orientationTracker = PreviewOrientationTracker()
 
     /// Hands an orientation change to `queue` (in order, skipped once `isStopped`), or makes it directly without a queue.
     static func applyOrientation(_ orientation: AVCaptureVideoOrientation, queue: DispatchQueue?, isStopped: @escaping () -> Bool, apply: @escaping (AVCaptureVideoOrientation) -> Void) {
@@ -100,10 +113,10 @@ final class CameraPreviewView: UIView, CameraSimplePreviewView {
     }
 
     var captureOrientation: AVCaptureVideoOrientation {
-        return self.videoPreviewLayer.connection?.videoOrientation ?? .portrait
+        return self.orientationTracker.latest ?? .portrait
     }
 
-    /// The camera's session queue (set by `CameraNeo`). Enabling or disabling the preview connection is a capture
+    /// The camera's session queue (set by `CameraNeo`; written once, before the view is used from other threads). Enabling or disabling the preview connection is a capture
     /// graph change that AVFoundation serializes with the session's own work, and `startRunning()`/`stopRunning()`
     /// (run on that queue) block for as long as they take. Done on main, a round video paused or resumed while the
     /// session was still stopping or starting could hold the main thread for that long; on the session queue the

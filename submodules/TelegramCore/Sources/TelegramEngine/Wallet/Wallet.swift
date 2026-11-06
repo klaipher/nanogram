@@ -263,12 +263,20 @@ public enum WalletGetStateError: Error, Equatable, Sendable {
         }
     }
 
-    /// True when the server's answer will not change by asking again.
+    /// True only for WALLET_UNAVAILABLE. Any other 4xx may be temporary (rollout, maintenance, a wallet that is not ready
+    /// yet), so it is retried with the backoff and the hourly cap; stopping on it would hide a real wallet.
     public var isAuthoritative: Bool {
         switch self {
-        case .unavailable, .rejected: return true
-        case .floodWait, .generic: return false
+        case .unavailable: return true
+        case .rejected, .floodWait, .generic: return false
         }
+    }
+
+    public var floodWaitSeconds: Int32? {
+        if case let .floodWait(seconds) = self {
+            return seconds
+        }
+        return nil
     }
 }
 

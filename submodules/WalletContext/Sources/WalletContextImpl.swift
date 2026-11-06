@@ -364,7 +364,7 @@ actor WalletContextImpl {
             self.scheduleCardStickerSave(immediate: false)
         }
         if previousWalletCount == 0 && self.walletScreenCount > 0 {
-            // A visible wallet must not wait out a background backoff or an authoritative stop.
+            // A visible wallet must not wait out a background backoff or the hourly wait after WALLET_UNAVAILABLE.
             self.serverStateRetryPolicy.resetForUserDemand()
             self.serverStateRetryTask?.cancel()
             self.serverStateRetryTask = nil
@@ -529,7 +529,7 @@ actor WalletContextImpl {
     }
 
     /// Automatic entry point (foreground, network resume, subscriber demand): honours the backoff, the
-    /// authoritative stop and the hourly attempt cap instead of asking the server again right away.
+    /// hourly wait after WALLET_UNAVAILABLE and the hourly attempt cap instead of asking the server again right away.
     private func requestServerWalletStateRespectingRetryPolicy() {
         guard self.serverStateTask == nil, self.serverStateRetryTask == nil else { return }
         switch self.serverStateRetryPolicy.gate(hasRefreshDemand: self.hasActiveWalletRefreshDemand, now: Date()) {
@@ -537,8 +537,6 @@ actor WalletContextImpl {
             self.requestServerWalletState()
         case let .wait(seconds):
             self.startServerStateRetryTimer(seconds: seconds)
-        case .blocked:
-            break
         }
     }
 
@@ -1587,8 +1585,6 @@ actor WalletContextImpl {
             self.startServerStateRetryTimer(seconds: 0)
         case let .wait(seconds):
             self.startServerStateRetryTimer(seconds: seconds)
-        case .blocked:
-            self.logger.log("event=wallet_state_retry_stopped")
         }
     }
 
@@ -1601,9 +1597,7 @@ actor WalletContextImpl {
 
     static func failureKind(_ error: Error) -> WalletStateFailureKind {
         guard let stateError = error as? WalletGetStateError else { return .transient(minimumDelay: 0) }
-        if stateError.isAuthoritative { return .authoritative }
-        if case let .floodWait(seconds) = stateError { return .transient(minimumDelay: TimeInterval(max(0, seconds))) }
-        return .transient(minimumDelay: 0)
+        return WalletStateFailureKind(isAuthoritative: stateError.isAuthoritative, floodWaitSeconds: stateError.floodWaitSeconds)
     }
 
     private func performServerStateRetryDelay(seconds: TimeInterval) async {
