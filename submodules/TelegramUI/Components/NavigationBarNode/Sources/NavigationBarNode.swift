@@ -135,6 +135,7 @@ public final class NavigationBarNode: ASDisplayNode, NavigationBar, NavigationBa
         self.edgeEffectViewImpl = EdgeEffectView()
         self.edgeEffectViewImpl.isUserInteractionEnabled = false
         self.glassContainer = GlassBackgroundContainerView()
+        self.glassContainer.debugGroup = .navigationBar
 
         self.contentView = UIView()
         self.backdropHost = UIView()
@@ -559,6 +560,7 @@ public final class NavigationBarNode: ASDisplayNode, NavigationBar, NavigationBa
             container = current
         } else {
             container = GlassBackgroundContainerView()
+            container.debugGroup = .navigationBar
             container.alpha = 0.0
             self.sideColumnContainer = container
             self.columnHost.addSubview(container)

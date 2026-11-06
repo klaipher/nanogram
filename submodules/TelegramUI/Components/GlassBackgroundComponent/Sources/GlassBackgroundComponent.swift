@@ -694,6 +694,37 @@ public class GlassBackgroundView: UIView {
     }
 
     private var lastUpdateSize = CGSize()
+    private var appliedSwitchedOff = false
+
+    /// Whether the last update left the glass replaced by its solid fallback (Debug Settings' glass groups).
+    var isSwitchedOffForTesting: Bool {
+        return self.appliedSwitchedOff
+    }
+
+    /// Whether the nearest `GlassBackgroundContainerView` above this view that has a debug group is in a group that Debug
+    /// Settings switched off. Costs a comparison unless some group is.
+    private func isInSwitchedOffDebugGroup() -> Bool {
+        if !GlassDebugGroups.anyDisabled {
+            return false
+        }
+        var current = self.superview
+        while let view = current {
+            if let container = view as? GlassBackgroundContainerView, let group = container.debugGroup {
+                return GlassDebugGroups.isDisabled(group)
+            }
+            current = view.superview
+        }
+        return false
+    }
+
+    override public func didMoveToWindow() {
+        super.didMoveToWindow()
+        
+        // A view that joins its container after the switch was set (a chat opened while a group is off).
+        if self.window != nil && (GlassDebugGroups.anyDisabled || self.appliedSwitchedOff) && self.isInSwitchedOffDebugGroup() != self.appliedSwitchedOff {
+            self.environmentDidChange()
+        }
+    }
 
     func update(size: CGSize, shape: Shape, isDark: Bool, tintColor: TintColor, isInteractive: Bool = false, isVisible: Bool = true, transition: ComponentTransition) {
         self.lastUpdateSize = size
@@ -840,10 +871,15 @@ public class GlassBackgroundView: UIView {
                 transition.setAlpha(view: foregroundView, alpha: isVisible ? 1.0 : 0.0)
             } else {
                 if let nativeView = self.nativeView {
+                    // Debug Settings can switch a group of chat glass off to attribute GPU passes to it: the glass is
+                    // replaced by its solid fallback. Never true unless a group is switched off.
+                    let isSwitchedOff = self.isInSwitchedOffDebugGroup()
+                    self.appliedSwitchedOff = isSwitchedOff
+                    nativeView.backgroundColor = isSwitchedOff ? GlassAccessibility.solidBase(isDark: isDark) : nil
                     if #available(iOS 26.0, *) {
                         var glassEffect: UIGlassEffect?
                         
-                        if isVisible {
+                        if isVisible && !isSwitchedOff {
                             let nativeTint = tintColor.nativeEffect(isDark: isDark)
                             let glassEffectValue = UIGlassEffect(style: nativeTint.isClear ? .clear : .regular)
                             glassEffectValue.tintColor = nativeTint.color
@@ -948,6 +984,9 @@ public final class GlassBackgroundContainerView: UIView {
     /// How close two shapes come before they merge (`UIGlassContainerEffect.spacing`, which UIKit passes on unchanged as
     /// the container's SDF smoothness: measured on iOS 27). Only native glass merges (`mergesShapes`).
     public let spacing: CGFloat
+
+    /// The chat glass group this container belongs to, for Debug Settings' per-group switches (`GlassDebugGroups`).
+    public var debugGroup: GlassDebugGroup?
 
     /// Whether containers merge the glass shapes in them: native glass does, the custom implementation (before iOS 26, or
     /// `GlassBackgroundView.useCustomGlassImpl`) only stacks them.

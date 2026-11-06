@@ -136,6 +136,7 @@ final class ChatHistoryNavigationButtons: ASDisplayNode {
         self.dateTimeFormat = dateTimeFormat
         
         self.glassContainer = GlassBackgroundContainerView()
+        self.glassContainer.debugGroup = .floatingButtons
         self.glassStackView = UIView()
         
         self.mentionsButton = ChatHistoryNavigationButtonNode(theme: theme, preferClearGlass: preferClearGlass, backgroundNode: backgroundNode, type: .mentions)
