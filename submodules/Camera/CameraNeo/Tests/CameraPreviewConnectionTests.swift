@@ -1,5 +1,6 @@
 import XCTest
 import AVFoundation
+import SwiftSignalKit
 @testable import CameraNeo
 
 /// Pins where the round-video preview connection is switched on and off.
@@ -64,5 +65,53 @@ final class CameraPreviewConnectionTests: XCTestCase {
         }
         queue.resume()
         self.wait(for: [drained], timeout: 2.0)
+    }
+
+    func testOrientationChangesNeverRunOnTheCallingThreadAndKeepTheirOrder() {
+        let queue = DispatchQueue(label: "CameraPreviewConnectionTests.orientation")
+        queue.suspend()
+        var applied: [AVCaptureVideoOrientation] = []
+        let callerIsMain = Thread.isMainThread
+        for orientation in [AVCaptureVideoOrientation.portrait, .landscapeLeft, .portrait] {
+            CameraPreviewView.applyOrientation(orientation, queue: queue, isStopped: { false }) { value in
+                dispatchPrecondition(condition: .onQueue(queue))
+                XCTAssertEqual(Thread.isMainThread, false, "ran on main (caller main: \(callerIsMain))")
+                applied.append(value)
+            }
+        }
+        XCTAssertEqual(applied, [])
+        queue.resume()
+        queue.sync {
+            XCTAssertEqual(applied, [.portrait, .landscapeLeft, .portrait])
+        }
+    }
+
+    func testOrientationChangesAreSkippedOnceConnectionChangesStopped() {
+        let queue = DispatchQueue(label: "CameraPreviewConnectionTests.orientationStopped")
+        let stopped = Atomic<Bool>(value: false)
+        var applied = 0
+        queue.suspend()
+        CameraPreviewView.applyOrientation(.portrait, queue: queue, isStopped: { stopped.with { $0 } }) { _ in
+            applied += 1
+        }
+        let _ = stopped.swap(true)
+        queue.resume()
+        queue.sync {
+            XCTAssertEqual(applied, 0)
+        }
+    }
+
+    func testUpdatingTheOrientationDoesNotWaitForABusySessionQueue() {
+        let view = CameraPreviewView(frame: CGRect(x: 0.0, y: 0.0, width: 100.0, height: 100.0), main: true, roundVideo: false)
+        let queue = DispatchQueue(label: "CameraPreviewConnectionTests.busyOrientation")
+        view.connectionQueue = queue
+        view.setSession(AVCaptureSession(), automaticallyConnect: true)
+        queue.suspend()
+        let start = CACurrentMediaTime()
+        view.updateOrientation()
+        view.layoutIfNeeded()
+        XCTAssertLessThan(CACurrentMediaTime() - start, 0.5)
+        queue.resume()
+        queue.sync {}
     }
 }

@@ -9,8 +9,8 @@ import Foundation
 /// until the watchdog killed the app (0x8BADF00D). So: the session queue marks the camera invalidated (from then on
 /// no session-queue work changes the graph or the preview connections), hands the detach to the main thread, and
 /// the main thread hands the teardown back to the session queue once the detach is done. Neither queue ever waits
-/// for the other: the main thread waits for the session queue (`sessionQueue.sync` in `CameraNeo.deinit`), so the
-/// session queue must never `main.sync`.
+/// for the other, and the main thread never waits for the session queue (`CameraNeo.deinit` hands its clean-up to
+/// the session queue with `async`; a `sync` there held the main thread for as long as `stopRunning()` took).
 ///
 /// Confined to the session queue.
 final class CameraSessionInvalidation {

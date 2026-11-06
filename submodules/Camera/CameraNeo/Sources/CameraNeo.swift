@@ -162,28 +162,40 @@ final class CameraNeo: NSObject, CameraProtocol {
 
     deinit {
         NotificationCenter.default.removeObserver(self)
-        let cleanUpSession = {
-            self.primaryVideoOutput?.setSampleBufferDelegate(nil, queue: nil)
-            self.secondaryVideoOutput?.setSampleBufferDelegate(nil, queue: nil)
-            self.audioOutput?.setSampleBufferDelegate(nil, queue: nil)
-            if self.session.isRunning {
-                self.session.stopRunning()
-            }
-            if self.invalidation.needsTearDownOnDeinit {
-                self.tearDownSession()
-            }
+        // Never wait for the session queue here: deinit usually runs on main, and `startRunning()`/`stopRunning()`
+        // on that queue block for as long as AVFoundation takes (a long time while the app goes to the background:
+        // the watchdog killed the app, 0x8BADF00D). The clean-up owns what it touches instead of `self`; the session
+        // stops as soon as the queue gets to it. Nothing else touches `self` now: every block that did held it.
+        let session = self.session
+        let sampleOutputs: [AVCaptureOutput?] = [self.primaryVideoOutput, self.secondaryVideoOutput, self.audioOutput]
+        let needsTearDown = self.invalidation.needsTearDownOnDeinit
+        self.sessionQueue.async {
+            Self.cleanUpOnDeinit(session: session, sampleOutputs: sampleOutputs, tearDownGraph: needsTearDown)
         }
-        if DispatchQueue.getSpecific(key: self.sessionQueueKey) != nil {
-            cleanUpSession()
-        } else {
-            self.sessionQueue.sync(execute: cleanUpSession)
+        let recorder = self.recorder
+        self.mediaQueue.async {
+            recorder?.cancel()
         }
-        if DispatchQueue.getSpecific(key: self.mediaQueueKey) != nil {
-            self.recorder?.cancel()
-        } else {
-            self.mediaQueue.sync {
-                self.recorder?.cancel()
+    }
+
+    /// Runs on the session queue after the camera is gone.
+    static func cleanUpOnDeinit(session: AVCaptureSession, sampleOutputs: [AVCaptureOutput?], tearDownGraph: Bool) {
+        for output in sampleOutputs {
+            (output as? AVCaptureVideoDataOutput)?.setSampleBufferDelegate(nil, queue: nil)
+            (output as? AVCaptureAudioDataOutput)?.setSampleBufferDelegate(nil, queue: nil)
+        }
+        if session.isRunning {
+            session.stopRunning()
+        }
+        if tearDownGraph {
+            session.beginConfiguration()
+            for output in session.outputs {
+                session.removeOutput(output)
             }
+            for input in session.inputs {
+                session.removeInput(input)
+            }
+            session.commitConfiguration()
         }
     }
 

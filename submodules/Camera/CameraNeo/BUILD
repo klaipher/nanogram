@@ -78,6 +78,7 @@ swift_library(
     ]),
     deps = [
         ":CameraNeo",
+        "//submodules/SSignalKit/SwiftSignalKit:SwiftSignalKit",
         "//submodules/Camera",
     ],
 )
