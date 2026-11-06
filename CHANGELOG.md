@@ -4,6 +4,7 @@ Newest first. Internal notes for each TestFlight build; testers see the What to 
 
 ## Unreleased
 
+- `tg testflight` no longer stops between the build and the upload when CHANGELOG.md has a long Unreleased section: `record_build_info` piped `awk` into `head -1` (and `git branch -r` into `grep -q`) under `set -o pipefail`, so the writer died of SIGPIPE (141) and `set -e` ended tg (build 202611060158 was built but not uploaded). Both now read without an early-exit reader; regression test in `test_tg.sh`.
 - **Calls: a missed loudspeaker request is applied once more** (owner report: iPhone 14, 1:1 call, no Bluetooth, the speaker button did nothing). `ManagedAudioSession.applyVoiceChatOutputModeInCurrentAudioSession` (the CallKit path every region but CN uses) re-applies `.custom(.speaker)` once, 0.3 s later, when the route still contradicts it and no newer request replaced it (`loudspeakerRequestShouldBeRetried` in `AudioRouteClassification.swift`, a generation counter; tests in `AudioRouteClassificationTests`). Complements the calls lane fixes (route read while the input list is empty, request and route log lines with "MISSED").
 ### Calls (lane ios-calls, round 3)
 

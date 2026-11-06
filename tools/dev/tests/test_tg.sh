@@ -291,6 +291,26 @@ test_archive_dsyms
 test_device_archives_dsyms
 test_archive_prints_telegramui_uuid
 
+# record_build_info with a long Unreleased section and a commit on many remote branches: under pipefail a
+# pipeline whose reader stops early (head -1, grep -q) kills the writer with SIGPIPE (141), and set -e then stopped
+# tg testflight after the build and before the upload (2026-11-06, build 202611060158).
+mkdir -p "$TMP/bigrepo"
+git -C "$TMP/bigrepo" init -q
+{ echo "# Changelog"; echo; echo "## Unreleased"; echo; for i in $(seq 1 30000); do echo "- entry $i with enough text to fill the pipe buffer"; done; echo; echo "## 1.0 (1)"; } > "$TMP/bigrepo/CHANGELOG.md"
+git -C "$TMP/bigrepo" add CHANGELOG.md
+git -C "$TMP/bigrepo" -c user.email=t@t -c user.name=t commit -q -m init
+mkdir -p "$TMP/bigdsyms"
+(
+  # shellcheck source=../tg
+  source "$TG"
+  ROOT="$TMP/bigrepo"
+  record_build_info "$TMP/bigdsyms" 7 2> "$TMP/big_err"
+)
+big_status=$?
+check "record_build_info survives a long Unreleased section (no SIGPIPE exit)" test "$big_status" -eq 0
+check "the long Unreleased section is still reported" grep -q "Unreleased entries" "$TMP/big_err"
+check "BUILD-INFO is written with a long Unreleased section" grep -q "^build 7$" "$TMP/bigdsyms/BUILD-INFO.txt"
+
 if [ "$failures" -ne 0 ]; then
   echo "$failures failed"
   exit 1

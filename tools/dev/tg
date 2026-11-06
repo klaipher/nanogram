@@ -717,7 +717,8 @@ record_build_info() {
   commit="$(git -C "$ROOT" rev-parse HEAD 2>/dev/null)" || commit="unknown"
   branch="$(git -C "$ROOT" rev-parse --abbrev-ref HEAD 2>/dev/null)" || branch="unknown"
   [ -z "$(git -C "$ROOT" status --porcelain --untracked-files=no 2>/dev/null)" ] || dirty="yes"
-  git -C "$ROOT" branch -r --contains "$commit" 2>/dev/null | grep -q . || pushed="no"
+  # No early-exit reader in a pipeline here: under pipefail its writer would die of SIGPIPE (141) and stop tg.
+  [ -n "$(git -C "$ROOT" branch -r --contains "$commit" 2>/dev/null || true)" ] || pushed="no"
   {
     echo "build $build"
     echo "commit $commit"
@@ -727,7 +728,7 @@ record_build_info() {
   } > "$dir/BUILD-INFO.txt"
   [ "$dirty" = "no" ] || warn "the working tree has uncommitted changes: build $build is not exactly commit ${commit:0:8}"
   [ "$pushed" = "yes" ] || warn "commit ${commit:0:8} is not on any remote branch: the changelog for the next build cannot start from it"
-  unreleased="$(awk '/^## Unreleased/ { on = 1; next } /^## / { on = 0 } on && NF' "$ROOT/CHANGELOG.md" 2>/dev/null | head -1)"
+  unreleased="$(awk '/^## Unreleased/ { on = 1; next } /^## / { on = 0 } on && NF { print; exit }' "$ROOT/CHANGELOG.md" 2>/dev/null || true)"
   [ -z "$unreleased" ] || warn "CHANGELOG.md still has Unreleased entries: add this build's entry (build $build, commit ${commit:0:8})"
 }
 
