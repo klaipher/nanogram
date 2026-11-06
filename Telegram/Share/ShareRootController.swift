@@ -24,6 +24,8 @@ private final class ShareProcessActivity {
     }
 
     deinit {
+        // The extension can be gone right after: write the buffered log lines first.
+        Logger.shared.flushPendingLogsAndWait()
         self.semaphore.signal()
     }
 }

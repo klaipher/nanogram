@@ -55,7 +55,7 @@ let package = Package(
             swiftSettings: [.unsafeFlags(["-warnings-as-errors"])]),
         .testTarget(
             name: "TelegramCoreTests",
-            dependencies: ["TelegramCore"],
+            dependencies: ["TelegramCore", .product(name: "DiskWriteAccounting", package: "DiskWriteAccounting", condition: nil)],
             path: "Tests"
         ),
     ]
