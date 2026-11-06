@@ -593,7 +593,8 @@ public final class AvatarNode: ASDisplayNode {
             synchronousLoad: Bool = false,
             displayDimensions: CGSize = CGSize(width: 60.0, height: 60.0),
             storeUnrounded: Bool = false,
-            cutoutRect: CGRect? = nil
+            cutoutRect: CGRect? = nil,
+            avoidMainThreadDecode: Bool = false
         ) {
             var synchronousLoad = synchronousLoad
             var representation: TelegramMediaImageRepresentation?
@@ -651,7 +652,7 @@ public final class AvatarNode: ASDisplayNode {
                 
                 let parameters: AvatarNodeParameters
                 
-                if let peer = peer, let signal = peerAvatarImage(postbox: postbox, peerReference: PeerReference(peer), authorOfMessage: authorOfMessage, representation: representation, displayDimensions: displayDimensions, clipStyle: clipStyle, emptyColor: emptyColor, synchronousLoad: synchronousLoad, provideUnrounded: storeUnrounded, cutoutRect: cutoutRect, avoidMainThreadDecode: true) {
+                if let peer = peer, let signal = peerAvatarImage(postbox: postbox, peerReference: PeerReference(peer), authorOfMessage: authorOfMessage, representation: representation, displayDimensions: displayDimensions, clipStyle: clipStyle, emptyColor: emptyColor, synchronousLoad: synchronousLoad, provideUnrounded: storeUnrounded, cutoutRect: cutoutRect, avoidMainThreadDecode: avoidMainThreadDecode) {
                     self.contents = nil
                     self.displaySuspended = true
                     self.imageReady.set(self.imageNode.contentReady)
@@ -800,7 +801,8 @@ public final class AvatarNode: ASDisplayNode {
             synchronousLoad: Bool = false,
             displayDimensions: CGSize = CGSize(width: 60.0, height: 60.0),
             storeUnrounded: Bool = false,
-            cutoutRect: CGRect? = nil
+            cutoutRect: CGRect? = nil,
+            avoidMainThreadDecode: Bool = false
         ) {
             var synchronousLoad = synchronousLoad
             var representation: TelegramMediaImageRepresentation?
@@ -860,7 +862,7 @@ public final class AvatarNode: ASDisplayNode {
                 
                 let account = account ?? genericContext.account
                 
-                if let peer = peer, let signal = peerAvatarImage(account: account, peerReference: PeerReference(peer), authorOfMessage: authorOfMessage, representation: representation, displayDimensions: displayDimensions, clipStyle: clipStyle, emptyColor: emptyColor, synchronousLoad: synchronousLoad, provideUnrounded: storeUnrounded, cutoutRect: cutoutRect, avoidMainThreadDecode: true) {
+                if let peer = peer, let signal = peerAvatarImage(account: account, peerReference: PeerReference(peer), authorOfMessage: authorOfMessage, representation: representation, displayDimensions: displayDimensions, clipStyle: clipStyle, emptyColor: emptyColor, synchronousLoad: synchronousLoad, provideUnrounded: storeUnrounded, cutoutRect: cutoutRect, avoidMainThreadDecode: avoidMainThreadDecode) {
                     self.contents = nil
                     self.displaySuspended = true
                     self.imageReady.set(self.imageNode.contentReady)
@@ -1302,7 +1304,8 @@ public final class AvatarNode: ASDisplayNode {
         clipStyle: AvatarNodeClipStyle = .round,
         synchronousLoad: Bool = false,
         displayDimensions: CGSize = CGSize(width: 60.0, height: 60.0),
-        storeUnrounded: Bool = false
+        storeUnrounded: Bool = false,
+        avoidMainThreadDecode: Bool = false
     ) {
         self.contentNode.setPeer(
             accountPeerId: accountPeerId,
@@ -1317,7 +1320,8 @@ public final class AvatarNode: ASDisplayNode {
             clipStyle: clipStyle,
             synchronousLoad: synchronousLoad,
             displayDimensions: displayDimensions,
-            storeUnrounded: storeUnrounded
+            storeUnrounded: storeUnrounded,
+            avoidMainThreadDecode: avoidMainThreadDecode
         )
     }
     
@@ -1359,7 +1363,8 @@ public final class AvatarNode: ASDisplayNode {
         synchronousLoad: Bool = false,
         displayDimensions: CGSize = CGSize(width: 60.0, height: 60.0),
         storeUnrounded: Bool = false,
-        cutoutRect: CGRect? = nil
+        cutoutRect: CGRect? = nil,
+        avoidMainThreadDecode: Bool = false
     ) {
         self.contentNode.setPeer(
             context: context,
@@ -1373,7 +1378,8 @@ public final class AvatarNode: ASDisplayNode {
             synchronousLoad: synchronousLoad,
             displayDimensions: displayDimensions,
             storeUnrounded: storeUnrounded,
-            cutoutRect: cutoutRect
+            cutoutRect: cutoutRect,
+            avoidMainThreadDecode: avoidMainThreadDecode
         )
     }
     

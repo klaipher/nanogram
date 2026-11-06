@@ -103,7 +103,7 @@ final class ShareScreenPeerComponent: Component {
                 self.communityShadow.bounds = CGRect(origin: .zero, size: shadowSize)
                 self.communityShadow.center = CGPoint(x: frame.midX - 12.0 + UIScreenPixel, y: frame.midY)
             }
-            self.avatar.setPeer(context: component.context, theme: component.theme, peer: component.avatarPeer ?? component.peer, overrideImage: component.isStory ? .repostIcon : (component.peer?.id == component.context.account.peerId ? .savedMessagesIcon : nil), clipStyle: isMonoforum ? .bubble : (isForum ? .roundedRect : .round), synchronousLoad: synchronousLoad)
+            self.avatar.setPeer(context: component.context, theme: component.theme, peer: component.avatarPeer ?? component.peer, overrideImage: component.isStory ? .repostIcon : (component.peer?.id == component.context.account.peerId ? .savedMessagesIcon : nil), clipStyle: isMonoforum ? .bubble : (isForum ? .roundedRect : .round), synchronousLoad: synchronousLoad, avoidMainThreadDecode: true)
             // Match SelectablePeerNode: keep AvatarNode's layout fixed and animate
             // only its scale. Resizing the node while animating its frame shifts
             // its internal image and placeholder relative to the selection ring.
