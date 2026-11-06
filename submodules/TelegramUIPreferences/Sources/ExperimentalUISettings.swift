@@ -184,8 +184,8 @@ public struct ExperimentalUISettings: Codable, Equatable {
         callsGroupNoiseMode: Int32 = 2,
         callsThermalVideoLadder: Bool = true,
         glassDebugDisabledGroups: Int32 = 0,
-        emojiPanelDefersHeavyWork: Bool = false
-        chatOpenDeferSetup: Bool = false
+        emojiPanelDefersHeavyWork: Bool = false,
+        chatOpenDeferSetup: Bool = false,
         chatScrollExperiments: Int32 = 0
     ) {
         self.keepChatNavigationStack = keepChatNavigationStack
