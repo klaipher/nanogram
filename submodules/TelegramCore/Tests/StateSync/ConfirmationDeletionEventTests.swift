@@ -104,7 +104,7 @@ final class ConfirmationDeletionEventTests: StateSyncTestCase {
         ])))
         self.server.on(Name.messagesGetMessages, .result(StateSyncApi.messages([
             StateSyncApi.privateMessage(id: 11, peerUserId: 500, fromUserId: 500, date: self.baseDate + 11, text: "edited")
-        ] + StateSyncApi.deletedMessages([13])))
+        ] + StateSyncApi.deletedMessages([13]))))
 
         let _ = self.runHistoryFill(peerInput: .direct(peerId: peerId, threadId: nil), direction: self.downwardFillDirection(peerId))
 

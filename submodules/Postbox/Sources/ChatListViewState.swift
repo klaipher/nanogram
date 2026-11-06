@@ -207,6 +207,7 @@ private func chatListFilterInputsMayHaveChanged(_ transaction: PostboxTransactio
         || !transaction.currentInvalidateMessageTagSummaries.isEmpty
         || !transaction.currentUpdatedMessageActionsSummaries.isEmpty
         || !transaction.currentPendingMessageActionsOperations.isEmpty
+}
 
 /// The topics a chat list row shows, read from the topics' stored infos: the topic of its top message
 /// (`forumTopicData`, for `topThreadId`) and, for a forum shown as one (`listsTopics`), its first five topics

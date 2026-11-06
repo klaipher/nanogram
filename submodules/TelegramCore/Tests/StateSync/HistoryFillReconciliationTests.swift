@@ -155,7 +155,7 @@ final class HistoryFillReconciliationTests: StateSyncTestCase {
         ])))
         self.server.on(getMessages, .result(StateSyncApi.messages([
             StateSyncApi.privateMessage(id: 11, peerUserId: 500, fromUserId: 500, date: self.baseDate + 11, text: "edited")
-        ] + StateSyncApi.deletedMessages([13])))
+        ] + StateSyncApi.deletedMessages([13]))))
 
         let result = self.runHistoryFill(peerInput: .direct(peerId: peerId, threadId: nil), direction: self.downwardFillDirection(peerId))
 
