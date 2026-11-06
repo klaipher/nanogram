@@ -3157,9 +3157,15 @@ public final class PresentationGroupCallImpl: PresentationGroupCall {
         }*/
 
         if !action.isEffectivelyMuted, let muteState = self.stateValue.muteState, !muteState.canUnmute {
+            // CallKit may already show the unmute (lock screen, Dynamic Island): tell it the call is still muted.
+            self.reportMuteToCallKit()
             return
         }
-        switch self.microphoneAccessGate.decide(action: action, isAccessGranted: self.isMicrophoneAccessGranted) {
+        let gateDecision = self.microphoneAccessGate.decide(action: action, isAccessGranted: self.isMicrophoneAccessGranted)
+        if gateDecision.leavesTheCallAsItWas {
+            self.reportMuteToCallKit()
+        }
+        switch gateDecision {
         case .apply:
             break
         case .requestAccess:

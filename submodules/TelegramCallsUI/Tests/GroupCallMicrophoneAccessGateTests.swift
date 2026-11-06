@@ -11,6 +11,18 @@ final class GroupCallMicrophoneAccessGateTests: XCTestCase {
     private let pushToTalk: PresentationGroupCallMuteAction = .muted(isPushToTalkActive: true)
     private let muted: PresentationGroupCallMuteAction = .muted(isPushToTalkActive: false)
 
+    /// Whatever the gate refuses leaves the call as it was, and the call tells CallKit (an unmute from the lock screen
+    /// or the Dynamic Island would otherwise stay shown as on while the call is muted).
+    func testARefusedChangeIsOneThatCallKitMustBeToldAbout() {
+        var gate = GroupCallMicrophoneAccessGate()
+        XCTAssertTrue(gate.decide(action: .unmuted, isAccessGranted: false).leavesTheCallAsItWas, "requestAccess")
+        XCTAssertTrue(gate.decide(action: .unmuted, isAccessGranted: false).leavesTheCallAsItWas, "ignore: a request is showing")
+        XCTAssertTrue(gate.decide(action: self.pushToTalk, isAccessGranted: false).leavesTheCallAsItWas, "ignore: push-to-talk")
+        gate.accessRequestCompleted()
+        XCTAssertFalse(gate.decide(action: .unmuted, isAccessGranted: true).leavesTheCallAsItWas)
+        XCTAssertFalse(gate.decide(action: self.muted, isAccessGranted: false).leavesTheCallAsItWas)
+    }
+
     func testWithAccessEveryActionApplies() {
         var gate = GroupCallMicrophoneAccessGate()
         XCTAssertEqual(gate.decide(action: self.pushToTalk, isAccessGranted: true), .apply)

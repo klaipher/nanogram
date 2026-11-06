@@ -16,6 +16,17 @@ struct GroupCallMicrophoneAccessGate {
         case requestAccess
         /// Nothing changes: push-to-talk without access, or an unmute while a request is showing.
         case ignore
+
+        /// The change does not take effect, so a system UI that already shows it (CallKit after an unmute from the lock
+        /// screen or the Dynamic Island) must be told the call is still as it was.
+        var leavesTheCallAsItWas: Bool {
+            switch self {
+            case .apply:
+                return false
+            case .requestAccess, .ignore:
+                return true
+            }
+        }
     }
 
     private(set) var isRequestingAccess: Bool = false
