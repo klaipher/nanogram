@@ -1,4 +1,5 @@
 import XCTest
+import UIKit
 import Postbox
 import QuartzCore
 import SwiftSignalKit
@@ -69,6 +70,48 @@ final class ChunkMediaPlayerV2CustomSourceTests: XCTestCase {
         
         XCTAssertTrue(source.seeks.contains(where: { abs($0.position - 3.0) < 0.001 }), "seeks: \(source.seeks)")
         XCTAssertTrue(source.playbackStates.contains(where: { abs($0.position - 3.0) < 0.05 }), "states: \(source.playbackStates.suffix(3))")
+        withExtendedLifetime(player) {
+        }
+    }
+
+    // A muted video suspended in the background must tell a custom source (HLS) that it is not playing, so the source
+    // stops filling its forward buffer; in the foreground it reports playing again.
+    func testCustomSourceHearsNotPlayingWhileSuspendedInTheBackground() throws {
+        let _ = ChunkMediaPlayerV2CustomSourceTests.initializeTempBox
+        let playerNode = MediaPlayerNode()
+        self.spin(timeout: 2.0, until: { playerNode.videoLayer != nil })
+        let _ = try XCTUnwrap(playerNode.videoLayer)
+        defer {
+            NotificationCenter.default.post(name: UIApplication.willEnterForegroundNotification, object: nil)
+        }
+
+        let part = ChunkMediaPlayerPart(
+            startTime: 0.0,
+            endTime: 10.0,
+            content: ChunkMediaPlayerPart.TempFile(file: TempBox.shared.tempFile(fileName: "part.mp4")),
+            codecName: nil,
+            offsetTime: 0.0
+        )
+        let source = RecordingSource(partsState: .single(ChunkMediaPlayerPartsState(duration: 10.0, content: .parts([part]))))
+        let player = ChunkMediaPlayerV2(
+            params: ChunkMediaPlayerV2.MediaDataReaderParams(useV2Reader: true),
+            audioSessionManager: ManagedAudioSessionImpl(),
+            source: .custom(source),
+            video: true,
+            enableSound: false,
+            playerNode: playerNode
+        )
+        player.play()
+        self.spin(timeout: 2.0, until: { source.playbackStates.last?.isPlaying == true })
+        XCTAssertEqual(source.playbackStates.last?.isPlaying, true, "playing in the foreground")
+
+        NotificationCenter.default.post(name: UIApplication.didEnterBackgroundNotification, object: nil)
+        self.spin(timeout: 2.0, until: { source.playbackStates.last?.isPlaying == false })
+        XCTAssertEqual(source.playbackStates.last?.isPlaying, false, "suspended in the background: not playing")
+
+        NotificationCenter.default.post(name: UIApplication.willEnterForegroundNotification, object: nil)
+        self.spin(timeout: 2.0, until: { source.playbackStates.last?.isPlaying == true })
+        XCTAssertEqual(source.playbackStates.last?.isPlaying, true, "playing again in the foreground")
         withExtendedLifetime(player) {
         }
     }

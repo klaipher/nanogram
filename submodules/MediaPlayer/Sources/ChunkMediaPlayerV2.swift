@@ -637,7 +637,7 @@ public final class ChunkMediaPlayerV2: ChunkMediaPlayer {
         self.source.updatePlaybackState(
             seekTimestamp: self.seekTimestamp,
             position: timestampSeconds,
-            isPlaying: self.isPlaying
+            isPlaying: self.isPlaying && !self.isSuspendedInBackground
         )
         
         var duration: Double = 0.0
