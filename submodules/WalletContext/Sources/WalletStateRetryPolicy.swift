@@ -2,11 +2,26 @@ import Foundation
 
 /// What a failed server wallet-state request tells us.
 enum WalletStateFailureKind: Equatable {
-    /// The server answered definitively (wallet unavailable for this account, other permanent RPC error).
-    /// Asking again cannot change the answer until the user opens the wallet or the app is relaunched.
+    /// The server said WALLET_UNAVAILABLE for this account. Asking again is pointless for now, but the server may
+    /// enable the wallet later in the session, so one attempt per `authoritativeRetryInterval` is still made (and
+    /// opening the wallet asks at once).
     case authoritative
     /// Network, server or flood-wait trouble; the answer is still unknown. `minimumDelay` is a server-imposed wait.
     case transient(minimumDelay: TimeInterval)
+}
+
+extension WalletStateFailureKind {
+    /// TelegramCore-free mapping of a `WalletGetStateError`: authoritative only for WALLET_UNAVAILABLE, a flood wait is
+    /// a transient failure with the wait the server asked for, everything else is transient.
+    init(isAuthoritative: Bool, floodWaitSeconds: Int32?) {
+        if isAuthoritative {
+            self = .authoritative
+        } else if let seconds = floodWaitSeconds {
+            self = .transient(minimumDelay: TimeInterval(max(0, seconds)))
+        } else {
+            self = .transient(minimumDelay: 0)
+        }
+    }
 }
 
 /// Retry timing for a failed server wallet-state request.
@@ -22,13 +37,13 @@ struct WalletStateRetryPolicy: Equatable {
     static let maximumDelay: TimeInterval = 600
     static let maximumDelayWithDemand: TimeInterval = 20
     static let attemptWindow: TimeInterval = 3600
+    static let authoritativeRetryInterval: TimeInterval = 3600
     static let maximumAttemptsPerWindow = 8
     static let maximumAttemptsPerWindowWithDemand = 120
 
     enum Gate: Equatable {
         case allow
         case wait(TimeInterval)
-        case blocked
     }
 
     private(set) var failures = 0
@@ -43,12 +58,12 @@ struct WalletStateRetryPolicy: Equatable {
         return hasRefreshDemand ? min(backoff, Self.maximumDelayWithDemand) : backoff
     }
 
-    /// Whether a request may start now, must wait, or must not be made at all.
+    /// Whether a request may start now or must wait.
     func gate(hasRefreshDemand: Bool, now: Date) -> Gate {
-        if self.isAuthoritativelyStopped {
-            return .blocked
-        }
         var wait: TimeInterval = 0
+        if self.isAuthoritativelyStopped, let lastFailureAt = self.lastFailureAt {
+            wait = max(wait, lastFailureAt.addingTimeInterval(Self.authoritativeRetryInterval).timeIntervalSince(now))
+        }
         if let lastFailureAt = self.lastFailureAt {
             let due = lastFailureAt.addingTimeInterval(max(self.delay(hasRefreshDemand: hasRefreshDemand), self.lastMinimumDelay))
             wait = max(wait, due.timeIntervalSince(now))
@@ -74,6 +89,7 @@ struct WalletStateRetryPolicy: Equatable {
             self.isAuthoritativelyStopped = true
             self.lastMinimumDelay = 0
         case let .transient(minimumDelay):
+            self.isAuthoritativelyStopped = false
             self.lastMinimumDelay = max(0, minimumDelay)
         }
     }
