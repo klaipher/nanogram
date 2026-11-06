@@ -279,7 +279,7 @@ public final class GifPagerContentComponent: Component {
                 self.item = item
                 self.onUpdateDisplayPlaceholder = onUpdateDisplayPlaceholder
                 
-                super.init(context: context, batchVideoContext: batchVideoContext, userLocation: .other, file: item?.file, synchronousLoad: attemptSynchronousLoad)
+                super.init(context: context, batchVideoContext: batchVideoContext, userLocation: .other, file: item?.file, synchronousLoad: attemptSynchronousLoad, synchronousLoadOnlyFromCache: true)
                 
                 if item == nil {
                     self.updateDisplayPlaceholder(displayPlaceholder: true, duration: 0.0)

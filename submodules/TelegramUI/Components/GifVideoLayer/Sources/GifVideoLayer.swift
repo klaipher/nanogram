@@ -34,7 +34,7 @@ open class GifVideoLayer: AVSampleBufferDisplayLayer, BatchVideoRenderingContext
         }
     }
     
-    public init(context: AccountContext, batchVideoContext: BatchVideoRenderingContext, userLocation: MediaResourceUserLocation, file: FileMediaReference?, synchronousLoad: Bool) {
+    public init(context: AccountContext, batchVideoContext: BatchVideoRenderingContext, userLocation: MediaResourceUserLocation, file: FileMediaReference?, synchronousLoad: Bool, synchronousLoadOnlyFromCache: Bool = false) {
         self.context = context
         self.batchVideoContext = batchVideoContext
         self.userLocation = userLocation
@@ -46,7 +46,16 @@ open class GifVideoLayer: AVSampleBufferDisplayLayer, BatchVideoRenderingContext
         
         if let file = self.file {
             if let dimensions = file.media.dimensions {
-                self.thumbnailDisposable = (mediaGridMessageVideo(postbox: context.account.postbox, userLocation: userLocation, videoReference: file, synchronousLoad: synchronousLoad, nilForEmptyResult: true)
+                let cacheKey = GifThumbnailCache.key(namespace: file.media.fileId.namespace, id: file.media.fileId.id, width: 93, height: 93)
+                let cachedImage = synchronousLoad && synchronousLoadOnlyFromCache ? GifThumbnailCache.shared.image(forKey: cacheKey) : nil
+                let plan = GifThumbnailCache.plan(isCached: cachedImage != nil, synchronousLoadRequested: synchronousLoad, synchronousOnlyFromCache: synchronousLoadOnlyFromCache)
+                if plan == .applyCachedNow, let cachedImage {
+                    // A picture decoded earlier: no read and no draw on the main thread. The load below
+                    // still runs off main and replaces it if a better one arrives.
+                    self.contents = cachedImage
+                    self.setupVideo()
+                }
+                self.thumbnailDisposable = (mediaGridMessageVideo(postbox: context.account.postbox, userLocation: userLocation, videoReference: file, synchronousLoad: plan == .loadOnMain, nilForEmptyResult: true)
                 |> deliverOnMainQueue).start(next: { [weak self] transform in
                     guard let strongSelf = self else {
                         return
@@ -55,7 +64,7 @@ open class GifVideoLayer: AVSampleBufferDisplayLayer, BatchVideoRenderingContext
                     let imageSize = dimensions.cgSize.aspectFilled(boundingSize)
                     let arguments = TransformImageArguments(corners: ImageCorners(), imageSize: imageSize, boundingSize: boundingSize, intrinsicInsets: UIEdgeInsets(), resizeMode: .fill(.clear))
                     
-                    if synchronousLoad {
+                    if plan == .loadOnMain {
                         if let image = transform(arguments)?.generateImage() {
                             Queue.mainQueue().async {
                                 if let strongSelf = self {
@@ -76,6 +85,9 @@ open class GifVideoLayer: AVSampleBufferDisplayLayer, BatchVideoRenderingContext
                         let generation = strongSelf.thumbnailGeneration
                         Queue.concurrentDefaultQueue().async {
                             let image = transform(arguments)?.generateImage()
+                            if let cgImage = image?.cgImage {
+                                GifThumbnailCache.shared.store(cgImage, forKey: cacheKey)
+                            }
                             Queue.mainQueue().async {
                                 guard let strongSelf = self, generation > strongSelf.appliedThumbnailGeneration else {
                                     return
