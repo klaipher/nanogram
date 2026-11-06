@@ -1,5 +1,9 @@
 import XCTest
+#if canImport(UniversalMediaPlayer)
 @testable import UniversalMediaPlayer
+#else
+@testable import TelegramMediaPlayer
+#endif
 
 /// Every playing player used to wake its lookahead thread ten times a second, whether or not the buffer needed
 /// anything. The gate sends a wake-up only when the readable range has fallen behind the position.

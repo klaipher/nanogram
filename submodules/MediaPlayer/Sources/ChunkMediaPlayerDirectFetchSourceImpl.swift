@@ -283,8 +283,7 @@ private final class FFMpegLookaheadReader {
         
         let maxPtsSeconds = max(self.params.seekToTimestamp, currentTimestamp) + self.params.lookaheadDuration
         
-        var currentAudioPtsSecondsAdvanced: Double = 0.0
-        var currentVideoPtsSecondsAdvanced: Double = 0.0
+        var reportStep = FFMpegLookaheadReportStep()
         
         let packet = FFMpegPacket()
         while !self.isCancelled && !self.isEnded {
@@ -321,7 +320,7 @@ private final class FFMpegLookaheadReader {
             if let audioStream = self.audioStream, Int(packet.streamIndex) == audioStream.index {
                 let pts = CMTimeMake(value: packet.pts, timescale: audioStream.timeScale)
                 if let audioStreamState = self.audioStreamState {
-                    currentAudioPtsSecondsAdvanced += pts.seconds - audioStreamState.readableToTime.seconds
+                    reportStep.addAudio(pts.seconds - audioStreamState.readableToTime.seconds)
                 }
                 self.audioStreamState = FFMpegLookahead.StreamState(
                     info: audioStream,
@@ -330,7 +329,7 @@ private final class FFMpegLookaheadReader {
             } else if let videoStream = self.videoStream, Int(packet.streamIndex) == videoStream.index {
                 let pts = CMTimeMake(value: packet.pts, timescale: videoStream.timeScale)
                 if let videoStreamState = self.videoStreamState {
-                    currentVideoPtsSecondsAdvanced += pts.seconds - videoStreamState.readableToTime.seconds
+                    reportStep.addVideo(pts.seconds - videoStreamState.readableToTime.seconds)
                 }
                 self.videoStreamState = FFMpegLookahead.StreamState(
                     info: videoStream,
@@ -338,7 +337,7 @@ private final class FFMpegLookaheadReader {
                 )
             }
             
-            if min(currentAudioPtsSecondsAdvanced, currentVideoPtsSecondsAdvanced) >= 0.1 {
+            if reportStep.takeIfDue() {
                 self.reportStateIfNeeded()
             }
         }

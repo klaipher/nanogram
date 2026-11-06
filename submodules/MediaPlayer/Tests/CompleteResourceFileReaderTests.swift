@@ -1,5 +1,9 @@
 import XCTest
+#if canImport(UniversalMediaPlayer)
 @testable import UniversalMediaPlayer
+#else
+@testable import TelegramMediaPlayer
+#endif
 
 final class CompleteResourceFileReaderTests: XCTestCase {
     private let bytes: [UInt8] = (0 ..< 1000).map { UInt8($0 % 251) }

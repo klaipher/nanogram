@@ -54,6 +54,8 @@
   position on every update (about 10 Hz) but sends the `perform` to the thread only when the readable range is less
   than the lookahead minus 2 s ahead of the position, and never while one wake is queued or after the file ended.
   With the 10 s lookahead the buffer stays at least 8 s ahead. Do not wake the thread per position update again.
+  Within a pass the reader reports its state once per 0.1 s of media (`FFMpegLookaheadReportStep`), not once per
+  packet: each report is a main-queue hop and a full player update.
 - **`UniversalSoftwareVideoSource` reads a complete file through one handle** (`CompleteResourceFileReader`,
   looked up once per `readImage`), straight into FFmpeg's buffer. Partial files still go through
   `MediaBox.resourceData`.

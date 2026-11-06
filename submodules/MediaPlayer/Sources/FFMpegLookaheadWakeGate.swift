@@ -54,3 +54,30 @@ final class FFMpegLookaheadWakeGate: @unchecked Sendable {
         return true
     }
 }
+
+/// When the lookahead reader sends an intermediate state report during a read pass: once every stream has advanced
+/// `interval` seconds since the last report. Each report is a main-queue hop and a full player update. A file
+/// without one of the streams never reaches the step and reports only at the end of the pass, as before.
+struct FFMpegLookaheadReportStep {
+    static let interval: Double = 0.1
+
+    private var audioAdvanced: Double = 0.0
+    private var videoAdvanced: Double = 0.0
+
+    mutating func addAudio(_ seconds: Double) {
+        self.audioAdvanced += seconds
+    }
+
+    mutating func addVideo(_ seconds: Double) {
+        self.videoAdvanced += seconds
+    }
+
+    mutating func takeIfDue() -> Bool {
+        if min(self.audioAdvanced, self.videoAdvanced) < FFMpegLookaheadReportStep.interval {
+            return false
+        }
+        self.audioAdvanced = 0.0
+        self.videoAdvanced = 0.0
+        return true
+    }
+}
