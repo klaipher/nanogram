@@ -780,6 +780,7 @@ open class ChatMessageItemView: ListViewItemNode, ChatMessageItemNodeProtocol {
         "appliedNeighbors": .constant,
         "isHighlightedInOverlay": .reset,
         "accessoryItemNode": .constant,
+        "headerAccessoryItemNode": .constant,
         "animations": .constant,
         "pendingControlledTransitions": .constant,
         "controlledTransitions": .constant,
