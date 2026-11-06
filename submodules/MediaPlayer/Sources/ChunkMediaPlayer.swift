@@ -89,6 +89,16 @@ public final class ChunkMediaPlayerPart {
         case tempFile(TempFile)
         case mediaBoxRanges(MediaBoxRanges)
 
+        /// The temp file a `.tempFile` part owns; nil for `.mediaBoxRanges`, which reads the cache in place.
+        public var file: TempBoxFile? {
+            switch self {
+            case let .tempFile(tempFile):
+                return tempFile.file
+            case .mediaBoxRanges:
+                return nil
+            }
+        }
+
         public var ignoreAudioEditList: Bool {
             switch self {
             case let .tempFile(tempFile):
