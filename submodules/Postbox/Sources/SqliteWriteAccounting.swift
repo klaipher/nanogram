@@ -11,11 +11,16 @@ import DiskWriteAccounting
 ///
 /// SQLite reports a checkpoint's result as the WAL's total backfilled frames, not the frames that checkpoint copied.
 /// While another connection reads (an extension), the WAL cannot restart and every commit past the autocheckpoint
-/// threshold checkpoints again, so only the growth of that total is counted.
+/// threshold checkpoints again, so only the growth of that total is looked at. A checkpoint writes the newest copy of
+/// each page once, however many of the new frames carry that page, so the bytes counted are the distinct page numbers
+/// in the frames backfilled since the previous checkpoint (read from the frame headers of the `-wal` file, which a
+/// PASSIVE checkpoint leaves in place until the next write restarts it) times the page size. If the file cannot be
+/// read, the frame count is the upper bound that is counted.
 final class SqliteWalWriteAccounting {
     let walCategory: String
     let checkpointCategory: String
     let frameSize: Int
+    private let walPath: String
     private var lastFrames: Int32 = 0
     private var lastBackfilledFrames: Int32 = 0
     private var lastCommitAppendedFrames: Int32 = 0
@@ -24,6 +29,7 @@ final class SqliteWalWriteAccounting {
         let name = DiskWriteCategory.databaseName(path: (databasePath as NSString).deletingLastPathComponent)
         self.walCategory = DiskWriteCategory.sqliteWal(database: name)
         self.checkpointCategory = DiskWriteCategory.sqliteCheckpoint(database: name)
+        self.walPath = databasePath + "-wal"
         var pageSize = 4096
         var statement: OpaquePointer?
         if sqlite3_prepare_v2(handle, "PRAGMA page_size", -1, &statement, nil) == SQLITE_OK, sqlite3_step(statement) == SQLITE_ROW {
@@ -58,10 +64,38 @@ final class SqliteWalWriteAccounting {
     /// `backfilledFrames`: the WAL's total backfilled frames after a checkpoint (`sqlite3_wal_checkpoint_v2`'s
     /// `pnCkpt`).
     func checkpointed(backfilledFrames: Int32) {
-        let copied = backfilledFrames >= self.lastBackfilledFrames ? backfilledFrames - self.lastBackfilledFrames : backfilledFrames
+        let firstFrame = backfilledFrames >= self.lastBackfilledFrames ? self.lastBackfilledFrames : 0
+        let copied = backfilledFrames - firstFrame
         self.lastBackfilledFrames = max(0, backfilledFrames)
         if copied > 0 {
-            DiskWriteAccounting.shared.add(self.checkpointCategory, bytes: Int(copied) * (self.frameSize - 24))
+            let pageSize = self.frameSize - SqliteWalWriteAccounting.frameHeaderSize
+            let pages = SqliteWalWriteAccounting.distinctPages(walPath: self.walPath, frameSize: self.frameSize, firstFrame: Int(firstFrame), frameCount: Int(copied)) ?? Int(copied)
+            DiskWriteAccounting.shared.add(self.checkpointCategory, bytes: pages * pageSize)
         }
+    }
+
+    private static let walHeaderSize = 32
+    private static let frameHeaderSize = 24
+
+    /// The number of distinct page numbers in `frameCount` frames of the WAL file after the first `firstFrame` ones,
+    /// or nil when the file cannot be read. A frame starts with its page number as a big-endian 32-bit integer.
+    static func distinctPages(walPath: String, frameSize: Int, firstFrame: Int, frameCount: Int) -> Int? {
+        let descriptor = open(walPath, O_RDONLY)
+        if descriptor < 0 {
+            return nil
+        }
+        defer {
+            close(descriptor)
+        }
+        var pages = Set<UInt32>()
+        var bytes = [UInt8](repeating: 0, count: 4)
+        for index in firstFrame ..< firstFrame + frameCount {
+            let offset = off_t(SqliteWalWriteAccounting.walHeaderSize + index * frameSize)
+            if pread(descriptor, &bytes, 4, offset) != 4 {
+                return nil
+            }
+            pages.insert(UInt32(bytes[0]) << 24 | UInt32(bytes[1]) << 16 | UInt32(bytes[2]) << 8 | UInt32(bytes[3]))
+        }
+        return pages.count
     }
 }
