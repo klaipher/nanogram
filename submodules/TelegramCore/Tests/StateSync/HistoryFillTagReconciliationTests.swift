@@ -77,7 +77,7 @@ final class HistoryFillTagReconciliationTests: StateSyncTestCase {
         self.server.on(search, .result(StateSyncApi.messages(answerIds.map { id in
             HistoryFillApi.pinnedPrivateMessage(id: id, userId: 500, date: self.baseDate + id)
         })))
-        self.server.on(getMessages, .result(StateSyncApi.messages([])))
+        self.server.on(getMessages, .result(StateSyncApi.everythingGone()))
 
         let result = self.runHistoryFill(peerInput: .direct(peerId: peerId, threadId: nil), direction: self.downwardFillDirection(peerId, from: 50), space: .tag(.pinned))
 
@@ -98,7 +98,7 @@ final class HistoryFillTagReconciliationTests: StateSyncTestCase {
         self.addHistoryFillHole(accountPeerId)
         self.server.on(search, .result(StateSyncApi.messages([])))
         // Answered, so a leaked confirmation fails the request assertion instead of stalling the fill.
-        self.server.on(getMessages, .result(StateSyncApi.messages([])))
+        self.server.on(getMessages, .result(StateSyncApi.everythingGone()))
         let customTag = ReactionsMessageAttribute.messageTag(reaction: .builtin("👍"))
 
         let _ = self.runHistoryFill(peerInput: .direct(peerId: accountPeerId, threadId: nil), direction: self.downwardFillDirection(accountPeerId), space: .customTag(customTag, nil))

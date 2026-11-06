@@ -333,6 +333,18 @@ enum StateSyncApi {
         return .messages(.init(messages: messages, topics: [], chats: chats, users: users))
     }
 
+    /// A `messages.getMessages` answer in which the server marks ids 1...300 as gone, a `messageEmpty` each, as it does
+    /// for deleted messages. A confirmation deletes a stored message only on such an entry, or when the answer is
+    /// complete; an empty answer is a short one and confirms nothing (`StoredMessageConfirmation.unconfirmed`).
+    static func everythingGone() -> Api.messages.Messages {
+        return messages(deletedMessages(Array(1 ... 300)))
+    }
+
+    /// `messageEmpty` entries (no peer) for `ids`.
+    static func deletedMessages(_ ids: [Int32]) -> [Api.Message] {
+        return ids.map { Api.Message.messageEmpty(.init(flags: 0, id: $0, peerId: nil)) }
+    }
+
     /// Answer to `channels.getMessages`. `offset_id_offset` (flags.2) and `inexact` (flags.1) unset.
     static func channelMessages(pts: Int32, _ messages: [Api.Message], chats: [Api.Chat] = [], users: [Api.User] = []) -> Api.messages.Messages {
         return .channelMessages(.init(flags: 0, pts: pts, count: Int32(messages.count), offsetIdOffset: nil, messages: messages, topics: [], chats: chats, users: users))

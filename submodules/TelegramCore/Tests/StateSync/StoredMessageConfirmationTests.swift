@@ -92,15 +92,17 @@ final class StoredMessageConfirmationTests: StateSyncTestCase {
         XCTAssertEqual(self.payload(at: 0), ConfirmationApi.getMessagesPayload(Array(Int32(1) ... Int32(200))))
         XCTAssertEqual(self.payload(at: 1), ConfirmationApi.getMessagesPayload(Array(Int32(201) ... Int32(250))))
         XCTAssertEqual(self.existingIds(confirmation), [self.messageId(user, 5), self.messageId(user, 240)])
-        XCTAssertEqual(confirmation?.missing.count, 248)
-        XCTAssertEqual(confirmation?.missing.contains(self.messageId(user, 5)), false)
-        XCTAssertEqual(confirmation?.missing.contains(self.messageId(user, 240)), false)
+        // Both answers are short (one entry for 200 and for 50 ids), so what they leave out is unconfirmed, not missing.
+        XCTAssertEqual(confirmation?.missing, Set())
+        XCTAssertEqual(confirmation?.unconfirmed.count, 248)
+        XCTAssertEqual(confirmation?.unconfirmed.contains(self.messageId(user, 5)), false)
+        XCTAssertEqual(confirmation?.unconfirmed.contains(self.messageId(user, 240)), false)
         XCTAssertEqual(confirmation?.peers.users.keys.sorted(), [user])
     }
 
-    /// messageEmpty and an id the answer leaves out both count as missing: a left-out message is considered
-    /// deleted (owner, 2026-10-25, keeping spec §4's "not returned: delete").
-    func testMessageEmptyAndOmittedIdsAreMissing() {
+    /// A short answer (fewer entries than ids asked): only a `messageEmpty` marks an id as gone. An id left out
+    /// without one is unconfirmed and is not deleted (the answer may have been cut off).
+    func testInAShortAnswerOnlyMessageEmptyIdsAreMissing() {
         let user = StateSyncFixture.userPeerId(200)
         self.server.on(Name.messagesGetMessages, .result(StateSyncApi.messages([
             self.incomingMessage(10, from: 200),
@@ -111,10 +113,41 @@ final class StoredMessageConfirmationTests: StateSyncTestCase {
 
         XCTAssertEqual(self.server.requestNames, [Name.messagesGetMessages])
         XCTAssertEqual(self.existingIds(confirmation), [self.messageId(user, 10)])
-        XCTAssertEqual(confirmation?.missing, Set([self.messageId(user, 11), self.messageId(user, 12)]))
+        XCTAssertEqual(confirmation?.missing, Set([self.messageId(user, 11)]))
+        XCTAssertEqual(confirmation?.unconfirmed, Set([self.messageId(user, 12)]))
     }
 
-    /// An id answered as a real message of another chat is neither existing nor missing.
+    /// A `messageEmpty` without a peer marks the requested id of that number as gone.
+    func testMessageEmptyWithoutAPeerMarksTheRequestedIdAsMissing() {
+        let user = StateSyncFixture.userPeerId(200)
+        self.server.on(Name.messagesGetMessages, .result(StateSyncApi.messages([
+            ConfirmationApi.messageEmpty(id: 11, peer: nil)
+        ])))
+
+        let confirmation = self.confirm([self.messageId(user, 11), self.messageId(user, 12)])
+
+        XCTAssertEqual(confirmation?.missing, Set([self.messageId(user, 11)]))
+        XCTAssertEqual(confirmation?.unconfirmed, Set([self.messageId(user, 12)]))
+    }
+
+    /// A complete answer (as many entries as ids asked) keeps the owner's rule of 2026-10-25: an id with no entry
+    /// is missing. Here the second entry belongs to another chat, so 12 has none.
+    func testACompleteAnswerStillTreatsALeftOutIdAsMissing() {
+        let user = StateSyncFixture.userPeerId(200)
+        self.server.on(Name.messagesGetMessages, .result(StateSyncApi.messages([
+            self.incomingMessage(10, from: 200),
+            StateSyncApi.privateMessage(id: 15, peerUserId: 201, fromUserId: 201, date: self.baseDate)
+        ])))
+
+        let confirmation = self.confirm([self.messageId(user, 10), self.messageId(user, 12)])
+
+        XCTAssertEqual(self.existingIds(confirmation), [self.messageId(user, 10)])
+        XCTAssertEqual(confirmation?.missing, Set([self.messageId(user, 12)]))
+        XCTAssertEqual(confirmation?.unconfirmed, Set())
+    }
+
+    /// An id answered as a real message of another chat is neither existing nor missing; an id left out of the
+    /// short answer is unconfirmed.
     func testIdAnsweredUnderAnotherChatIsNeitherExistingNorMissing() {
         let user = StateSyncFixture.userPeerId(200)
         self.server.on(Name.messagesGetMessages, .result(StateSyncApi.messages([
@@ -124,14 +157,15 @@ final class StoredMessageConfirmationTests: StateSyncTestCase {
         let confirmation = self.confirm([self.messageId(user, 15), self.messageId(user, 16)])
 
         XCTAssertEqual(self.existingIds(confirmation), [])
-        XCTAssertEqual(confirmation?.missing, Set([self.messageId(user, 16)]))
+        XCTAssertEqual(confirmation?.missing, Set())
+        XCTAssertEqual(confirmation?.unconfirmed, Set([self.messageId(user, 16)]))
     }
 
     /// An error is retried with the same ids, and only the answer decides what is missing.
     func testAnErrorIsRetriedAndNothingIsLost() {
         let user = StateSyncFixture.userPeerId(200)
         self.server.on(Name.messagesGetMessages, .error(code: 500, text: "INTERNAL_SERVER_ERROR"))
-        self.server.on(Name.messagesGetMessages, .result(StateSyncApi.messages([self.incomingMessage(20, from: 200)])))
+        self.server.on(Name.messagesGetMessages, .result(StateSyncApi.messages([self.incomingMessage(20, from: 200)] + StateSyncApi.deletedMessages([21]))))
 
         let confirmation = self.confirm([self.messageId(user, 20), self.messageId(user, 21)])
 
@@ -162,7 +196,7 @@ final class StoredMessageConfirmationTests: StateSyncTestCase {
     func testAChannelIdIsSkippedAndNothingIsAskedAboutIt() {
         let user = StateSyncFixture.userPeerId(200)
         let channel = self.seedChannel(300, pts: nil, storedMessageId: nil)
-        self.server.on(Name.messagesGetMessages, .result(StateSyncApi.messages([self.incomingMessage(9, from: 200)])))
+        self.server.on(Name.messagesGetMessages, .result(StateSyncApi.messages([self.incomingMessage(9, from: 200)] + StateSyncApi.deletedMessages([10]))))
         // Answered only so that a confirmation that still asks fails on its requests rather than by timing out.
         self.server.on(Name.channelsGetMessages, .result(StateSyncApi.channelMessages(pts: 40, [])))
 

@@ -25,7 +25,7 @@ final class ManagedHistoryHolesLeftoverTests: StateSyncTestCase {
         self.storeHistoryFillMessages(peerId: peerId, ids: Array(1 ... 250))
         self.addHistoryFillHole(peerId)
         self.server.always(getHistory, { _ in .result(StateSyncApi.messages([])) })
-        self.server.always(getMessages, { _ in .result(StateSyncApi.messages([])) })
+        self.server.always(getMessages, { _ in .result(StateSyncApi.everythingGone()) })
 
         let views = self.fixture.observe(self.fixture.postbox.aroundMessageHistoryViewForLocation(.peer(peerId: peerId, threadId: nil), anchor: .upperBound, ignoreMessagesInTimestampRange: nil, ignoreMessageIds: [], count: 20, fixedCombinedReadStates: nil, topTaggedMessageIdNamespaces: [], tag: nil, appendMessagesFromTheSameGroup: false, namespaces: .all, orderStatistics: []) |> map { $0.0 })
         views.wait { !$0.isEmpty }

@@ -30,7 +30,7 @@ final class PreloadFillConfirmationTests: StateSyncTestCase {
         self.server.onWorker(getHistory, .result(StateSyncApi.messages([
             StateSyncApi.privateMessage(id: 10, peerUserId: 500, fromUserId: 500, date: self.baseDate + 10)
         ])))
-        self.server.onWorker(getMessages, .result(StateSyncApi.messages([])))
+        self.server.onWorker(getMessages, .result(StateSyncApi.everythingGone()))
         guard let download = self.makeDownload() else {
             XCTFail("no download session")
             return

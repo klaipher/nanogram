@@ -155,7 +155,7 @@ final class HistoryFillReconciliationTests: StateSyncTestCase {
         ])))
         self.server.on(getMessages, .result(StateSyncApi.messages([
             StateSyncApi.privateMessage(id: 11, peerUserId: 500, fromUserId: 500, date: self.baseDate + 11, text: "edited")
-        ])))
+        ] + StateSyncApi.deletedMessages([13])))
 
         let result = self.runHistoryFill(peerInput: .direct(peerId: peerId, threadId: nil), direction: self.downwardFillDirection(peerId))
 
@@ -180,7 +180,7 @@ final class HistoryFillReconciliationTests: StateSyncTestCase {
         self.server.on(getHistory, .result(StateSyncApi.messages([
             HistoryFillApi.groupMessage(id: 20, chatId: 800, fromUserId: 500, date: self.baseDate + 20)
         ])))
-        self.server.on(getMessages, .result(StateSyncApi.messages([])))
+        self.server.on(getMessages, .result(StateSyncApi.everythingGone()))
 
         let result = self.runHistoryFill(peerInput: .direct(peerId: groupId, threadId: nil), direction: self.downwardFillDirection(groupId))
 
@@ -200,7 +200,7 @@ final class HistoryFillReconciliationTests: StateSyncTestCase {
         self.storeHistoryFillMessages(peerId: peerId, ids: Array(1 ... 250))
         self.addHistoryFillHole(peerId)
         self.server.always(getHistory, { _ in .result(StateSyncApi.messages([])) })
-        self.server.always(getMessages, { _ in .result(StateSyncApi.messages([])) })
+        self.server.always(getMessages, { _ in .result(StateSyncApi.everythingGone()) })
 
         let first = self.runHistoryFill(peerInput: .direct(peerId: peerId, threadId: nil), direction: self.downwardFillDirection(peerId))
 
@@ -235,7 +235,7 @@ final class HistoryFillReconciliationTests: StateSyncTestCase {
         }
         XCTAssertEqual(self.fixture.holes(peerId: peerId), IndexSet(integersIn: 1 ... 40).union(IndexSet(integersIn: 61 ... Int(Int32.max - 1))))
         self.server.always(getHistory, { _ in .result(StateSyncApi.messages([])) })
-        self.server.always(getMessages, { _ in .result(StateSyncApi.messages([])) })
+        self.server.always(getMessages, { _ in .result(StateSyncApi.everythingGone()) })
 
         let first = self.runHistoryFill(peerInput: .direct(peerId: peerId, threadId: nil), direction: self.downwardFillDirection(peerId))
 
@@ -258,7 +258,7 @@ final class HistoryFillReconciliationTests: StateSyncTestCase {
         self.storeHistoryFillMessages(peerId: peerId, ids: Array(1 ... 250))
         self.addHistoryFillHole(peerId)
         self.server.on(getHistory, .result(StateSyncApi.messages([])))
-        self.server.on(getMessages, .result(StateSyncApi.messages([])))
+        self.server.on(getMessages, .result(StateSyncApi.everythingGone()))
 
         let result = self.runHistoryFill(peerInput: .direct(peerId: peerId, threadId: nil), direction: .aroundId(self.messageId(peerId, 100)))
 
@@ -295,7 +295,7 @@ final class HistoryFillReconciliationTests: StateSyncTestCase {
         XCTAssertNotNil(self.fixture.message(self.messageId(peerId, 11)))
         XCTAssertEqual(self.fixture.holes(peerId: peerId), IndexSet(integersIn: 1 ... Int(Int32.max - 1)))
 
-        XCTAssertTrue(self.server.release(getMessages, with: .result(StateSyncApi.messages([]))))
+        XCTAssertTrue(self.server.release(getMessages, with: .result(StateSyncApi.everythingGone())))
         results.wait { !$0.isEmpty }
 
         XCTAssertNil(self.fixture.message(self.messageId(peerId, 11)))
@@ -321,7 +321,7 @@ final class HistoryFillReconciliationTests: StateSyncTestCase {
 
         XCTAssertTrue(self.server.waitForRequest(getMessages), "no confirmation was sent: \(self.server.requestNames)")
         self.storeHistoryFillMessages(peerId: peerId, ids: [11], text: "edited meanwhile")
-        XCTAssertTrue(self.server.release(getMessages, with: .result(StateSyncApi.messages([]))))
+        XCTAssertTrue(self.server.release(getMessages, with: .result(StateSyncApi.everythingGone())))
         results.wait { !$0.isEmpty }
 
         XCTAssertEqual(self.fixture.message(self.messageId(peerId, 11))?.text, "edited meanwhile")
@@ -354,7 +354,7 @@ final class HistoryFillReconciliationTests: StateSyncTestCase {
             transaction.deleteMessages([deletedId], forEachMedia: nil)
         }
         self.storeHistoryFillMessages(peerId: peerId, ids: [10], text: "edited meanwhile")
-        XCTAssertTrue(self.server.release(getMessages, with: .result(StateSyncApi.messages([]))))
+        XCTAssertTrue(self.server.release(getMessages, with: .result(StateSyncApi.everythingGone())))
         results.wait { !$0.isEmpty }
 
         XCTAssertNil(self.fixture.message(self.messageId(peerId, 12)), "the fill's older answer re-stored a message deleted during the confirmation")
@@ -423,7 +423,7 @@ final class HistoryFillReconciliationTests: StateSyncTestCase {
         self.fixture.eventually(timeout: 5.0) {
             return self.server.cancelled.contains(confirmationIndex)
         }
-        XCTAssertFalse(self.server.release(getMessages, with: .result(StateSyncApi.messages([]))), "the confirmation outlived its fill")
+        XCTAssertFalse(self.server.release(getMessages, with: .result(StateSyncApi.everythingGone())), "the confirmation outlived its fill")
         self.server.flush()
         XCTAssertNil(self.fixture.message(self.messageId(peerId, 12)))
         XCTAssertNotNil(self.fixture.message(self.messageId(peerId, 11)))
@@ -439,7 +439,7 @@ final class HistoryFillReconciliationTests: StateSyncTestCase {
         self.storeHistoryFillMessages(peerId: peerId, ids: Array(1 ... 250))
         self.addHistoryFillHole(peerId)
         self.server.always(getHistory, { _ in .result(StateSyncApi.messages([])) })
-        self.server.always(getMessages, { _ in .result(StateSyncApi.messages([])) })
+        self.server.always(getMessages, { _ in .result(StateSyncApi.everythingGone()) })
 
         let result = self.runHistoryFill(peerInput: .direct(peerId: peerId, threadId: nil), direction: .range(start: self.messageId(peerId, 1), end: self.messageId(peerId, Int32.max - 1)))
 
@@ -464,7 +464,7 @@ final class HistoryFillReconciliationTests: StateSyncTestCase {
         self.server.on(getHistory, .result(StateSyncApi.messages([
             StateSyncApi.privateMessage(id: 20, peerUserId: accountUserId, fromUserId: accountUserId, date: self.baseDate + 20, outgoing: true)
         ])))
-        self.server.on(getMessages, .result(StateSyncApi.messages([])))
+        self.server.on(getMessages, .result(StateSyncApi.everythingGone()))
 
         let result = self.runHistoryFill(peerInput: .direct(peerId: accountPeerId, threadId: nil), direction: self.downwardFillDirection(accountPeerId))
 
@@ -492,7 +492,7 @@ final class HistoryFillReconciliationTests: StateSyncTestCase {
         self.addHistoryFillHole(botId)
         self.server.on(getHistory, .result(StateSyncApi.messages([])))
         // Answered, so a leaked confirmation fails the request assertion instead of stalling the fill.
-        self.server.on(getMessages, .result(StateSyncApi.messages([])))
+        self.server.on(getMessages, .result(StateSyncApi.everythingGone()))
 
         let _ = self.runHistoryFill(peerInput: .direct(peerId: botId, threadId: nil), direction: self.downwardFillDirection(botId))
 

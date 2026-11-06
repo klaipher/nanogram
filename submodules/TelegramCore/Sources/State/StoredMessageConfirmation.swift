@@ -13,8 +13,12 @@ struct StoredMessageConfirmation {
     /// (`AccumulatedPeers(transaction:chats:users:)`); `updatePeers` them before storing `existing`.
     var peers: AccumulatedPeers
     /// The candidates the server did not return as a real message of their own chat (`messageEmpty`, or
-    /// left out of the answer: a left-out message is considered deleted, owner 2026-10-25).
+    /// left out of a complete answer: a left-out message is considered deleted, owner 2026-10-25; but not when the
+    /// answer is short, see `unconfirmed`).
     var missing: Set<MessageId>
+    /// The candidates a short answer (fewer messages than ids asked) left out without a `messageEmpty`: the server
+    /// did not say they are gone, so they are neither existing nor missing and stay as stored.
+    var unconfirmed: Set<MessageId> = Set()
 }
 
 extension StoredMessageConfirmation {
@@ -98,7 +102,18 @@ private func parseStoredMessageConfirmation(transaction: Transaction, _ result: 
     var existing: [StoreMessage] = []
     var existingIds = Set<MessageId>()
     var answeredInAnotherChat = Set<MessageId>()
+    // Ids the server positively marked as gone: a `messageEmpty` entry (with its peer when it names one).
+    var markedEmpty = Set<MessageId>()
     for apiMessage in apiMessages {
+        if case let .messageEmpty(emptyData) = apiMessage {
+            for candidate in requestedByNumber[emptyData.id] ?? [] {
+                if let emptyPeerId = emptyData.peerId?.peerId, emptyPeerId != candidate.peerId {
+                    continue
+                }
+                markedEmpty.insert(candidate)
+            }
+            continue
+        }
         var peerIsForum = false
         if let peerId = apiMessage.peerId {
             if let peer = peers.get(peerId) {
@@ -124,8 +139,18 @@ private func parseStoredMessageConfirmation(transaction: Transaction, _ result: 
         }
     }
 
-    let missing = requestedIds.subtracting(existingIds).subtracting(answeredInAnotherChat)
-    return StoredMessageConfirmation(existing: existing, peers: peers, missing: missing)
+    var missing = requestedIds.subtracting(existingIds).subtracting(answeredInAnotherChat)
+    var unconfirmed = Set<MessageId>()
+    if apiMessages.count < requested.count {
+        // A short answer: the server returned fewer entries than ids asked, so an id with no entry at all may be one
+        // it cut off rather than one it does not have. Only a `messageEmpty` deletes; the rest stays stored.
+        unconfirmed = missing.subtracting(markedEmpty)
+        missing = missing.intersection(markedEmpty)
+        if !unconfirmed.isEmpty {
+            Logger.shared.log("State", "confirmStoredMessages: \(apiMessages.count) entries for \(requested.count) ids, leaving \(unconfirmed.count) left-out ids unconfirmed")
+        }
+    }
+    return StoredMessageConfirmation(existing: existing, peers: peers, missing: missing, unconfirmed: unconfirmed)
 }
 
 /// Asks the server which of `ids`, stored Cloud messages of private chats and basic groups, it still has.
@@ -189,6 +214,7 @@ func confirmStoredMessages(accountPeerId: PeerId, postbox: Postbox, source: Fetc
                         updated.existing.append(contentsOf: parsed.existing)
                         updated.peers = updated.peers.union(with: parsed.peers)
                         updated.missing.formUnion(parsed.missing)
+                        updated.unconfirmed.formUnion(parsed.unconfirmed)
                         return updated
                     }
                 }

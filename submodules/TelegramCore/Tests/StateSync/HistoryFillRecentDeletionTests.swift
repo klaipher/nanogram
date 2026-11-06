@@ -71,7 +71,7 @@ final class HistoryFillRecentDeletionTests: StateSyncTestCase {
         XCTAssertTrue(self.server.waitForRequest(getMessages), "no confirmation was sent: \(self.server.requestNames)")
         XCTAssertEqual(self.server.requests.last?.payload, HistoryFillApi.getMessagesPayload(ids: [11]))
         self.deleteWithGlobalIds([12])
-        XCTAssertTrue(self.server.release(getMessages, with: .result(StateSyncApi.messages([]))))
+        XCTAssertTrue(self.server.release(getMessages, with: .result(StateSyncApi.everythingGone())))
         results.wait { !$0.isEmpty }
 
         XCTAssertEqual(self.server.requestNames, [getHistory, getMessages])
@@ -216,7 +216,7 @@ final class HistoryFillRecentDeletionTests: StateSyncTestCase {
         XCTAssertTrue(self.server.waitForRequest(getMessages), "no confirmation was sent: \(self.server.requestNames)")
         // The confirmation outlasts the (shortened) bound.
         Thread.sleep(forTimeInterval: 0.4)
-        XCTAssertTrue(self.server.release(getMessages, with: .result(StateSyncApi.messages([]))))
+        XCTAssertTrue(self.server.release(getMessages, with: .result(StateSyncApi.everythingGone())))
         first.wait { !$0.isEmpty }
 
         XCTAssertEqual(first.values.count, 1)

@@ -804,7 +804,7 @@ Each: the rule; why; where enforced; what pins it.
     `.tooLong` writes nothing; `grep -rn '_internal_resetAccountState(' Sources | grep -v '///'`. Pinned:
     `testDifferenceTooLongEndsThePollAndLeavesTheResetToTheApp`, `NotificationExtensionPollOutcomeTests`.
 14. **The history fill (private chats and basic groups) deletes a stored message only after the server answered for
-    its id (`messageEmpty`, or left out of the answer: owner, 2026-10-25), and only if it is unchanged; the reset
+    its id (`messageEmpty`, or left out of a complete answer: owner, 2026-10-25; ids left out of a short answer, fewer entries than ids asked, are `unconfirmed` and stay stored), and only if it is unchanged; the reset
     deletes, without asking, only the stored messages above a fetched dialog's top message; the chat-list fill
     deletes none, and leaves a private chat's or basic group's stored messages above the top it fetched under a hole,
     for the chat's next history fill to confirm (owner, 2026-10-25); none of them stores a fetched message that
