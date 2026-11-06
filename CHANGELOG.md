@@ -4,7 +4,7 @@ Newest first. Internal notes for each TestFlight build; testers see the What to 
 
 ## Unreleased
 
-- `StaleChannelDiagnostics.counters` is `nonisolated(unsafe)` (an `Atomic`, safe across threads): the two Swift 6 warnings it added to TelegramCore on the Mac (561 -> 563) are gone.
+- `StaleChannelDiagnostics` keeps its counters in a small lock-guarded `@unchecked Sendable` class instead of a static `Atomic`: `Atomic` is `Sendable` in the iOS build (so `nonisolated(unsafe)` is an error there, a84d1a50 did not build) but not in the Mac package build, where the plain `let` added two Swift 6 warnings to TelegramCore (561 -> 563).
 
 ## 13.1.2 (202611061452) — 2026-11-06 — 33d7d094
 

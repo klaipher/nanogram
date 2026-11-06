@@ -13,7 +13,23 @@ enum StaleChannelDiagnostics {
         var lastDifferenceTime: Double?
     }
 
-    nonisolated(unsafe) private static let counters = Atomic<Counters>(value: Counters())
+    /// The counters behind a lock. A class of our own rather than `Atomic`: `Atomic` is `Sendable` in the iOS build
+    /// and not in the Mac's package build, so neither a plain `let` nor `nonisolated(unsafe)` is clean on both.
+    private final class CounterStore: @unchecked Sendable {
+        private let lock = NSLock()
+        private var value = Counters()
+
+        func modify(_ f: (Counters) -> Counters) -> Counters {
+            self.lock.lock()
+            defer {
+                self.lock.unlock()
+            }
+            self.value = f(self.value)
+            return self.value
+        }
+    }
+
+    private static let counters = CounterStore()
 
     struct PollSnapshot {
         let ptsBefore: Int32?
