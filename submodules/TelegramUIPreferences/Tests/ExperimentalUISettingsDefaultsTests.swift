@@ -42,6 +42,16 @@ final class ExperimentalUISettingsDefaultsTests: XCTestCase {
         XCTAssertEqual(saved.glassDebugDisabledGroups, 6)
     }
 
+    func testChatOpenDeferSetupIsOffByDefaultAndTheChoiceIsKept() throws {
+        XCTAssertFalse(ExperimentalUISettings.defaultSettings.chatOpenDeferSetup)
+        XCTAssertFalse(try self.decode("{}").chatOpenDeferSetup)
+        XCTAssertFalse(try self.decode(#"{"glassDebugDisabledGroups": 2}"#).chatOpenDeferSetup, "blobs of older builds have no key")
+        var settings = ExperimentalUISettings.defaultSettings
+        settings.chatOpenDeferSetup = true
+        XCTAssertTrue(try self.roundTrip(settings).chatOpenDeferSetup)
+        XCTAssertFalse(try self.roundTrip(try self.roundTrip(settings).withChatOpenDeferSetup(false)).chatOpenDeferSetup)
+    }
+
     func testAChoiceMadeAfterTheUpgradeIsKept() throws {
         var settings = try self.decode(#"{"compressedEmojiCache": 0, "stickerRendererMode": "cpu"}"#)
         settings.stickerRendererMode = .cpu
@@ -70,5 +80,13 @@ final class ExperimentalUISettingsDefaultsTests: XCTestCase {
         let settings = try self.decode(#"{"compressedEmojiCache": 1, "stickerRendererMode": "gpuAll"}"#)
         XCTAssertEqual(settings.stickerRendererMode, .gpuAll)
         XCTAssertTrue(settings.compressedEmojiCache)
+    }
+}
+
+private extension ExperimentalUISettings {
+    func withChatOpenDeferSetup(_ value: Bool) -> ExperimentalUISettings {
+        var settings = self
+        settings.chatOpenDeferSetup = value
+        return settings
     }
 }
