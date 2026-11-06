@@ -169,8 +169,36 @@ final class CameraNeo: NSObject, CameraProtocol {
         let session = self.session
         let sampleOutputs: [AVCaptureOutput?] = [self.primaryVideoOutput, self.secondaryVideoOutput, self.audioOutput]
         let needsTearDown = self.invalidation.needsTearDownOnDeinit
-        self.sessionQueue.async {
-            Self.cleanUpOnDeinit(session: session, sampleOutputs: sampleOutputs, tearDownGraph: needsTearDown)
+        let previewView = self.previewView
+        let secondaryPreviewView = self.secondaryPreviewView
+        if needsTearDown {
+            let previews = PreviewHolder(previewView, secondaryPreviewView)
+            let log = self.log
+            // Same order as an invalidation: the preview layers (held by the closures until then) leave the session on
+            // main only after the session queue has stopped it, and the graph is changed only after that.
+            CameraSessionInvalidation.tearDownWithoutOwner(
+                sessionQueue: self.sessionQueue,
+                mainQueue: .main,
+                stopConnectionChanges: {
+                    previewView?.stopConnectionChanges()
+                    secondaryPreviewView?.stopConnectionChanges()
+                },
+                stopSession: {
+                    Self.cleanUpOnDeinit(session: session, sampleOutputs: sampleOutputs, tearDownGraph: false)
+                },
+                detachPreview: {
+                    CameraSessionInvalidation.logged(log) {
+                        previews.detachAndRelease()
+                    }
+                },
+                tearDown: {
+                    Self.removeGraph(of: session)
+                }
+            )
+        } else {
+            self.sessionQueue.async {
+                Self.cleanUpOnDeinit(session: session, sampleOutputs: sampleOutputs, tearDownGraph: false)
+            }
         }
         let recorder = self.recorder
         self.mediaQueue.async {
@@ -188,15 +216,37 @@ final class CameraNeo: NSObject, CameraProtocol {
             session.stopRunning()
         }
         if tearDownGraph {
-            session.beginConfiguration()
-            for output in session.outputs {
-                session.removeOutput(output)
-            }
-            for input in session.inputs {
-                session.removeInput(input)
-            }
-            session.commitConfiguration()
+            Self.removeGraph(of: session)
         }
+    }
+
+    /// Holds the preview views for `deinit`'s teardown and lets go of them on main, after detaching, so the last
+    /// reference (and the layer's own detach on dealloc) can neither be dropped on another queue nor come earlier.
+    private final class PreviewHolder {
+        private var views: [CameraPreviewView]
+
+        init(_ views: CameraPreviewView?...) {
+            self.views = views.compactMap { $0 }
+        }
+
+        func detachAndRelease() {
+            dispatchPrecondition(condition: .onQueue(.main))
+            for view in self.views {
+                view.invalidate()
+            }
+            self.views = []
+        }
+    }
+
+    static func removeGraph(of session: AVCaptureSession) {
+        session.beginConfiguration()
+        for output in session.outputs {
+            session.removeOutput(output)
+        }
+        for input in session.inputs {
+            session.removeInput(input)
+        }
+        session.commitConfiguration()
     }
 
     func startCapture() {
@@ -230,12 +280,15 @@ final class CameraNeo: NSObject, CameraProtocol {
                 self.secondaryPreviewView?.stopConnectionChanges()
                 let previewView = self.previewView
                 let secondaryPreviewView = self.secondaryPreviewView
+                let log = self.log
                 self.invalidation.invalidate(
                     sessionQueue: self.sessionQueue,
                     mainQueue: .main,
                     detachPreview: {
-                        previewView?.invalidate()
-                        secondaryPreviewView?.invalidate()
+                        CameraSessionInvalidation.logged(log) {
+                            previewView?.invalidate()
+                            secondaryPreviewView?.invalidate()
+                        }
                     },
                     tearDown: {
                         self.tearDownSession()
