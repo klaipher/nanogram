@@ -154,6 +154,22 @@ enum AttachmentRuns {
         for (index, identity) in newIdentities.enumerated() {
             newIndexByIdentity[identity] = index
         }
+        return assignSerials(pending: pending,
+                             newIndexOfIdentity: { newIndexByIdentity[$0] },
+                             prior: prior,
+                             nextSerial: &nextSerial)
+    }
+
+    /// The same assignment with the identity-to-new-index lookup supplied by the caller.
+    ///
+    /// Only the identities in `prior[*].memberIdentities` are ever looked up, so a caller that can
+    /// answer for just those (see `CoreVirtualListView.resolveAttachments`) avoids hashing the whole
+    /// collection on every window change.
+    static func assignSerials(pending: [PendingRun],
+                              newIndexOfIdentity: (AnyHashable) -> Int?,
+                              prior: [PriorRun],
+                              nextSerial: inout UInt64)
+        -> (assigned: [ResolvedRun], departed: [PriorRun]) {
 
         // Which pending run, if any, contains a given new collection index under a given key.
         func runIndex(containing index: Int, key: AnyHashable) -> Int? {
@@ -168,7 +184,7 @@ enum AttachmentRuns {
                 ? priorRun.memberIdentities
                 : priorRun.memberIdentities.reversed().map { $0 }
             for identity in ordered {
-                guard let newIndex = newIndexByIdentity[identity],
+                guard let newIndex = newIndexOfIdentity(identity),
                       let run = runIndex(containing: newIndex, key: priorRun.key)
                 else { continue }
                 witnessByPrior[priorIndex] = (run, newIndex)
