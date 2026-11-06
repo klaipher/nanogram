@@ -277,6 +277,7 @@ private enum DebugControllerSection: Int32 {
     case experiments
     case streamsAndCalls
     case glassGroups
+    case emojiPanelOpen
     case translation
     case web
     case videoExperiments2
@@ -348,6 +349,8 @@ enum DebugControllerEntry: ItemListNodeEntry {
     case glassGroupNavigationBar(Bool)
     case glassGroupInputPanel(Bool)
     case glassGroupFloatingButtons(Bool)
+    case emojiPanelHeader(PresentationTheme)
+    case emojiPanelDefersHeavyWork(Bool)
     case enableNetworkFramework(Bool)
     case enableNetworkExperiments(Bool)
     case rustMTProtoEngine(Bool)
@@ -377,6 +380,8 @@ enum DebugControllerEntry: ItemListNodeEntry {
             return DebugControllerSection.streamsAndCalls.rawValue
         case .glassGroupsHeader, .glassGroupNavigationBar, .glassGroupInputPanel, .glassGroupFloatingButtons:
             return DebugControllerSection.glassGroups.rawValue
+        case .emojiPanelHeader, .emojiPanelDefersHeavyWork:
+            return DebugControllerSection.emojiPanelOpen.rawValue
         case .springSendAnimation, .fakeWalletTransfers, .stickerRendererMode, .disableImageContentAnalysis, .disableLanguageRecognition, .localTranscription, .enableVoipTcp, .tabletDisplayLinkFrameRateCap:
             return DebugControllerSection.experiments.rawValue
         case .enableNetworkFramework, .enableNetworkExperiments, .rustMTProtoEngine, .networkEngineInfo:
@@ -500,6 +505,11 @@ enum DebugControllerEntry: ItemListNodeEntry {
             return 122
         case .glassGroupFloatingButtons:
             return 123
+        case .emojiPanelHeader:
+            // Its own section, so these ids only order it inside itself.
+            return 130
+        case .emojiPanelDefersHeavyWork:
+            return 131
         case .springSendAnimation:
             // ItemList asserts its entries are in strictly increasing order (`<`: section, then
             // `sortIndex`, which is the stableId here; ItemListControllerNode.swift), so an id must
@@ -569,6 +579,16 @@ enum DebugControllerEntry: ItemListNodeEntry {
             return ItemListSectionHeaderItem(presentationData: presentationData, text: "STREAMS & CALLS", sectionId: self.section)
         case .glassGroupsHeader:
             return ItemListSectionHeaderItem(presentationData: presentationData, text: "GLASS GROUPS (GPU ATTRIBUTION)", sectionId: self.section)
+        case .emojiPanelHeader:
+            return ItemListSectionHeaderItem(presentationData: presentationData, text: "EMOJI PANEL (OPEN HANG)", sectionId: self.section)
+        case let .emojiPanelDefersHeavyWork(value):
+            return ItemListSwitchItem(presentationData: presentationData, systemStyle: .glass, title: "Emoji panel: defer first-responder handoff / heavy layers", text: "Opening the panel builds it first and only then swaps the keyboard's input view and first responder; GIF tiles get their display layers after the pane is on screen, a few per frame. The panel can show empty GIF cells for a moment. Default: off. Applies at once.", value: value, maximumNumberOfLines: 0, sectionId: self.section, style: .blocks, updated: { value in
+                let _ = updateExperimentalUISettingsInteractively(accountManager: arguments.sharedContext.accountManager, { settings in
+                    var settings = settings
+                    settings.emojiPanelDefersHeavyWork = value
+                    return settings
+                }).start()
+            })
         case let .glassGroupNavigationBar(value):
             return glassGroupSwitch(presentationData: presentationData, arguments: arguments, sectionId: self.section, title: "Navigation bar glass off", text: "Replaces the navigation bar's glass with a solid fill, to measure what it costs. Default: off. Applies at once.", bit: ExperimentalUISettings.glassDebugNavigationBar, value: value)
         case let .glassGroupInputPanel(value):
@@ -1287,6 +1307,10 @@ func debugControllerEntries(environment: DebugControllerEntriesEnvironment, them
         entries.append(.glassGroupNavigationBar(experimentalSettings.glassDebugDisabledGroups & ExperimentalUISettings.glassDebugNavigationBar != 0))
         entries.append(.glassGroupInputPanel(experimentalSettings.glassDebugDisabledGroups & ExperimentalUISettings.glassDebugInputPanel != 0))
         entries.append(.glassGroupFloatingButtons(experimentalSettings.glassDebugDisabledGroups & ExperimentalUISettings.glassDebugFloatingButtons != 0))
+        
+        // Performance switch (off by default): the emoji / sticker / GIF panel open hang.
+        entries.append(.emojiPanelHeader(theme))
+        entries.append(.emojiPanelDefersHeavyWork(experimentalSettings.emojiPanelDefersHeavyWork))
     }
 
     if isMainApp {

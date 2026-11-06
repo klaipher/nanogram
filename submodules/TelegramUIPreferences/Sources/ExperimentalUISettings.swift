@@ -100,6 +100,10 @@ public struct ExperimentalUISettings: Codable, Equatable {
     public static let glassDebugNavigationBar: Int32 = 1
     public static let glassDebugInputPanel: Int32 = 2
     public static let glassDebugFloatingButtons: Int32 = 4
+    /// Debug Settings ▸ "Emoji panel: defer first-responder handoff / heavy layers". Off by default; main app only.
+    /// On: opening the emoji / sticker / GIF panel builds the panel before the keyboard's input view and first responder change,
+    /// and creates GIF tile display layers after the pane is on screen, a few per run-loop turn. Applies at once.
+    public var emojiPanelDefersHeavyWork: Bool
     public var stickerRendererMode: StickerRendererMode
 
     public static var defaultSettings: ExperimentalUISettings {
@@ -167,7 +171,8 @@ public struct ExperimentalUISettings: Codable, Equatable {
         callsAdvancedDucking: Bool = false,
         callsGroupNoiseMode: Int32 = 2,
         callsThermalVideoLadder: Bool = true,
-        glassDebugDisabledGroups: Int32 = 0
+        glassDebugDisabledGroups: Int32 = 0,
+        emojiPanelDefersHeavyWork: Bool = false
     ) {
         self.keepChatNavigationStack = keepChatNavigationStack
         self.skipReadHistory = skipReadHistory
@@ -205,6 +210,7 @@ public struct ExperimentalUISettings: Codable, Equatable {
         self.callsGroupNoiseMode = callsGroupNoiseMode
         self.callsThermalVideoLadder = callsThermalVideoLadder
         self.glassDebugDisabledGroups = glassDebugDisabledGroups
+        self.emojiPanelDefersHeavyWork = emojiPanelDefersHeavyWork
     }
     
     /// Revision of Nanogram's defaults that a saved blob was written with. Revision 1 turned on large
@@ -265,6 +271,7 @@ public struct ExperimentalUISettings: Codable, Equatable {
         self.callsGroupNoiseMode = try container.decodeIfPresent(Int32.self, forKey: "callsGroupNoiseModeRNNoiseDefault") ?? 2
         self.callsThermalVideoLadder = try container.decodeIfPresent(Bool.self, forKey: "callsThermalVideoLadderDefaultOn") ?? true
         self.glassDebugDisabledGroups = try container.decodeIfPresent(Int32.self, forKey: "glassDebugDisabledGroups") ?? 0
+        self.emojiPanelDefersHeavyWork = try container.decodeIfPresent(Bool.self, forKey: "emojiPanelDefersHeavyWork") ?? false
 
         if savedDefaultsRevision < 1 {
             // Saved before the GPU renderers became the default: both were the old CPU defaults.
@@ -314,6 +321,7 @@ public struct ExperimentalUISettings: Codable, Equatable {
         try container.encode(self.callsGroupNoiseMode, forKey: "callsGroupNoiseModeRNNoiseDefault")
         try container.encode(self.callsThermalVideoLadder, forKey: "callsThermalVideoLadderDefaultOn")
         try container.encode(self.glassDebugDisabledGroups, forKey: "glassDebugDisabledGroups")
+        try container.encode(self.emojiPanelDefersHeavyWork, forKey: "emojiPanelDefersHeavyWork")
         try container.encode(ExperimentalUISettings.nanogramDefaultsRevision, forKey: "nanogramDefaultsRevision")
     }
 }

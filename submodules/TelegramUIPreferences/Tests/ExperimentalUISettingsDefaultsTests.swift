@@ -42,6 +42,14 @@ final class ExperimentalUISettingsDefaultsTests: XCTestCase {
         XCTAssertEqual(saved.glassDebugDisabledGroups, 6)
     }
 
+    func testEmojiPanelDeferralIsOffByDefaultAndTheChoiceIsKept() throws {
+        XCTAssertFalse(try self.decode("{}").emojiPanelDefersHeavyWork)
+        XCTAssertFalse(ExperimentalUISettings.defaultSettings.emojiPanelDefersHeavyWork)
+        var settings = ExperimentalUISettings.defaultSettings
+        settings.emojiPanelDefersHeavyWork = true
+        XCTAssertTrue(try self.roundTrip(settings).emojiPanelDefersHeavyWork)
+    }
+
     func testAChoiceMadeAfterTheUpgradeIsKept() throws {
         var settings = try self.decode(#"{"compressedEmojiCache": 0, "stickerRendererMode": "cpu"}"#)
         settings.stickerRendererMode = .cpu
