@@ -24,6 +24,7 @@ import PremiumUI
 import ChatTitleView
 import ChatInputNode
 import ChatEntityKeyboardInputNode
+import EntityKeyboard
 import ChatControllerInteraction
 import ChatAvatarNavigationNode
 import AccessoryPanelNode
@@ -487,6 +488,8 @@ class ChatControllerNode: ASDisplayNode, ASScrollViewDelegate {
     private var displayVideoUnmuteTipDisposable: Disposable?
     
     private var onLayoutCompletions: [(ContainedViewLayoutTransition) -> Void] = []
+    /// Debug Settings "Emoji panel: defer first-responder handoff / heavy layers": at most one keyboard handoff waits for the panel build.
+    private var deferredMediaKeyboardHandoffGate = DeferredKeyboardHandoffGate()
 
     init(context: AccountContext, chatLocation: ChatLocation, chatLocationContextHolder: Atomic<ChatLocationContextHolder?>, subject: ChatControllerSubject?, controllerInteraction: ChatControllerInteraction, chatPresentationInterfaceState: ChatPresentationInterfaceState, automaticMediaDownloadSettings: MediaAutoDownloadSettings, navigationBar: NavigationBar?, statusBar: StatusBar?, backgroundNode: WallpaperBackgroundNode, controller: ChatControllerImpl?) {
         self.context = context
@@ -1854,9 +1857,11 @@ class ChatControllerNode: ASDisplayNode, ASScrollViewDelegate {
             previewing = false
         }
         
+        let inputNodeForStateSignpost = PerformanceSignposts.begin(EmojiPanelOpenSignpost.inputNodeForState)
         let inputNodeForState = inputNodeForChatPresentationIntefaceState(self.chatPresentationInterfaceState, context: self.context, currentNode: self.inputNode, interfaceInteraction: self.interfaceInteraction, controllerInteraction: self.controllerInteraction, inputPanelNode: self.inputPanelNode, makeMediaInputNode: {
             return self.makeMediaInputNode()
         })
+        PerformanceSignposts.end(EmojiPanelOpenSignpost.inputNodeForState, inputNodeForStateSignpost)
         
         var insets: UIEdgeInsets
         var inputPanelBottomInsetTerm: CGFloat = 0.0
@@ -2078,7 +2083,14 @@ class ChatControllerNode: ASDisplayNode, ASScrollViewDelegate {
             let restingInputHeight = self.restingInputNodeHeight(inputNode: inputNode, layout: layout)
             let inputHeight = restingInputHeight + self.inputPanelContainerNode.expansionFraction * (maximumInputNodeHeight - restingInputHeight)
             
+            let inputNodeUpdateLayoutSignpost = PerformanceSignposts.begin(EmojiPanelOpenSignpost.inputNodeUpdateLayout)
             let heightAndOverflow = inputNode.updateLayout(width: layout.size.width, leftInset: layout.safeInsets.left, rightInset: layout.safeInsets.right, bottomInset: cleanInsets.bottom, standardInputHeight: inputHeight, inputHeight: layout.inputHeight ?? 0.0, maximumHeight: maximumInputNodeHeight, inputPanelHeight: inputPanelNodeBaseHeight, transition: immediatelyLayoutInputNodeAndAnimateAppearance ? .immediate : transition, interfaceState: self.chatPresentationInterfaceState, layoutMetrics: layout.metrics, deviceMetrics: layout.deviceMetrics, isVisible: self.isInFocus, isExpanded: self.inputPanelContainerNode.stableIsExpanded)
+            PerformanceSignposts.end(EmojiPanelOpenSignpost.inputNodeUpdateLayout, inputNodeUpdateLayoutSignpost)
+            if immediatelyLayoutInputNodeAndAnimateAppearance, inputNode is ChatEntityKeyboardInputNode {
+                Queue.mainQueue().async {
+                    EmojiPanelOpenSignpost.endOpen()
+                }
+            }
             
             let boundedHeight = inputNode.followsDefaultHeight ? min(heightAndOverflow.0, restingInputHeight) : heightAndOverflow.0
             
@@ -3796,6 +3808,10 @@ class ChatControllerNode: ASDisplayNode, ASScrollViewDelegate {
             if case .media = chatPresentationInterfaceState.inputMode {
                 focusedTextInputIsMedia = true
             }
+            var previousInputModeIsMedia = false
+            if case .media = self.chatPresentationInterfaceState.inputMode {
+                previousInputModeIsMedia = true
+            }
             self.controllerInteraction.focusedTextInputIsMedia = focusedTextInputIsMedia
             self.controllerInteraction.focusedPollAddOptionMessageId = chatPresentationInterfaceState.focusedPollAddOptionMessageId
             
@@ -3921,6 +3937,16 @@ class ChatControllerNode: ASDisplayNode, ASScrollViewDelegate {
                         
             var waitForKeyboardLayout = false
             let customTextView = self.chatPresentationInterfaceStateTextFieldView(chatPresentationInterfaceState)
+            let deferKeyboardHandoff = DeferredKeyboardHandoffGate.shouldDefer(
+                switchEnabled: EmojiPanelOpenTuning.defersHeavyWork,
+                wasMedia: previousInputModeIsMedia,
+                willBeMedia: focusedTextInputIsMedia,
+                panelAlreadyBuilt: self.inputNode is ChatEntityKeyboardInputNode,
+                hasCustomTextView: customTextView != nil
+            )
+            if !focusedTextInputIsMedia {
+                self.deferredMediaKeyboardHandoffGate.cancel()
+            }
             if let richTextInputNode = self.textInputPanelNode?.richTextInputNode {
                 let updatedInputView = self.chatPresentationInterfaceStateInputView(chatPresentationInterfaceState)
                 if let customTextView {
@@ -3934,7 +3960,10 @@ class ChatControllerNode: ASDisplayNode, ASScrollViewDelegate {
                         }
                     }
                 } else {
-                    if richTextInputNode.keyboardInputView !== updatedInputView {
+                    if deferKeyboardHandoff {
+                        // Debug Settings "Emoji panel: defer ...": the input view swap and the first-responder change run after
+                        // the panel has been built (`performDeferredMediaKeyboardHandoff`).
+                    } else if richTextInputNode.keyboardInputView !== updatedInputView {
                         richTextInputNode.keyboardInputView = updatedInputView
                         // Nanogram: no input assistant bar under the sticker panel on iPad (ChatInputAssistantSuppressor.swift).
                         self.inputAssistantSuppressor.update(responder: updatedInputView.flatMap { chatInputResponder(in: richTextInputNode.inputView, withInputView: $0) }, suppress: chatSuppressesInputAssistant(isMediaInput: updatedInputView != nil, deviceType: self.validLayout?.0.deviceMetrics.type))
@@ -3946,7 +3975,9 @@ class ChatControllerNode: ASDisplayNode, ASScrollViewDelegate {
                                     waitForKeyboardLayout = true
                                 }
                             }
+                            let reloadInputViewsSignpost = PerformanceSignposts.begin(EmojiPanelOpenSignpost.reloadInputViews)
                             richTextInputNode.reloadInputViews()
+                            PerformanceSignposts.end(EmojiPanelOpenSignpost.reloadInputViews, reloadInputViewsSignpost)
                         }
                     }
                 }
@@ -3960,17 +3991,24 @@ class ChatControllerNode: ASDisplayNode, ASScrollViewDelegate {
                 if self.chatPresentationInterfaceStateRequiresInputFocus(chatPresentationInterfaceState) {
                     if let customTextView {
                         customTextView.activateInput()
+                    } else if deferKeyboardHandoff {
+                        self.scheduleDeferredMediaKeyboardHandoff()
                     } else {
+                        let ensureFocusedSignpost = PerformanceSignposts.begin(EmojiPanelOpenSignpost.ensureFocused)
                         self.ensureInputViewFocused()
+                        PerformanceSignposts.end(EmojiPanelOpenSignpost.ensureFocused, ensureFocusedSignpost)
                     }
                 } else {
+                    self.deferredMediaKeyboardHandoffGate.cancel()
                     if let customTextView, customTextView.isFirstResponder {
                         self.context.sharedContext.mainWindow?.simulateKeyboardDismiss(transition: .animated(duration: 0.5, curve: .spring))
                     } else if let inputPanelNode = self.inputPanelNode as? ChatTextInputPanelNode {
                         if inputPanelNode.isFocused {
+                            let keyboardDismissSignpost = PerformanceSignposts.begin(EmojiPanelOpenSignpost.keyboardDismiss)
                             inputPanelNode.skipPresentationInterfaceStateUpdate = true
                             self.context.sharedContext.mainWindow?.simulateKeyboardDismiss(transition: .animated(duration: 0.5, curve: .spring))
                             inputPanelNode.skipPresentationInterfaceStateUpdate = false
+                            PerformanceSignposts.end(EmojiPanelOpenSignpost.keyboardDismiss, keyboardDismissSignpost)
                         }
                     }
                 }
@@ -4029,6 +4067,47 @@ class ChatControllerNode: ASDisplayNode, ASScrollViewDelegate {
         } else {
             return false
         }
+    }
+    
+    /// Switch on only. Switching into the media mode used to swap the keyboard's input view and change the first responder
+    /// (both talk to the keyboard process) before the panel was built, inside the same main-thread turn. Here the layout that
+    /// builds the panel is requested first; the handoff runs after that layout has completed (or after 0.4 s if none comes).
+    private func scheduleDeferredMediaKeyboardHandoff() {
+        let token = self.deferredMediaKeyboardHandoffGate.schedule()
+        self.onLayoutCompletions.append({ [weak self] _ in
+            Queue.mainQueue().async {
+                self?.performDeferredMediaKeyboardHandoff(token: token)
+            }
+        })
+        Queue.mainQueue().after(0.4, { [weak self] in
+            self?.performDeferredMediaKeyboardHandoff(token: token)
+        })
+    }
+    
+    private func performDeferredMediaKeyboardHandoff(token: Int) {
+        guard self.deferredMediaKeyboardHandoffGate.consume(token) else {
+            return
+        }
+        guard case .media = self.chatPresentationInterfaceState.inputMode, let richTextInputNode = self.textInputPanelNode?.richTextInputNode else {
+            return
+        }
+        let handoffSignpost = PerformanceSignposts.begin(EmojiPanelOpenSignpost.deferredKeyboardHandoff)
+        defer {
+            PerformanceSignposts.end(EmojiPanelOpenSignpost.deferredKeyboardHandoff, handoffSignpost)
+        }
+        let updatedInputView = self.chatPresentationInterfaceStateInputView(self.chatPresentationInterfaceState)
+        if richTextInputNode.keyboardInputView !== updatedInputView {
+            richTextInputNode.keyboardInputView = updatedInputView
+            self.inputAssistantSuppressor.update(responder: updatedInputView.flatMap { chatInputResponder(in: richTextInputNode.inputView, withInputView: $0) }, suppress: chatSuppressesInputAssistant(isMediaInput: updatedInputView != nil, deviceType: self.validLayout?.0.deviceMetrics.type))
+            if richTextInputNode.isInputFirstResponder {
+                let reloadInputViewsSignpost = PerformanceSignposts.begin(EmojiPanelOpenSignpost.reloadInputViews)
+                richTextInputNode.reloadInputViews()
+                PerformanceSignposts.end(EmojiPanelOpenSignpost.reloadInputViews, reloadInputViewsSignpost)
+            }
+        }
+        let ensureFocusedSignpost = PerformanceSignposts.begin(EmojiPanelOpenSignpost.ensureFocused)
+        self.ensureInputViewFocused()
+        PerformanceSignposts.end(EmojiPanelOpenSignpost.ensureFocused, ensureFocusedSignpost)
     }
     
     @discardableResult func ensureInputViewFocused() -> Bool {
@@ -4126,6 +4205,7 @@ class ChatControllerNode: ASDisplayNode, ASScrollViewDelegate {
             return nil
         }
         
+        let inputNodeInitSignpost = PerformanceSignposts.begin(EmojiPanelOpenSignpost.inputNodeInit)
         let inputNode = ChatEntityKeyboardInputNode(
             context: self.context,
             currentInputData: inputMediaNodeData,
@@ -4136,6 +4216,7 @@ class ChatControllerNode: ASDisplayNode, ASScrollViewDelegate {
             stateContext: self.inputMediaNodeStateContext,
             displayBottomPanel: self.chatPresentationInterfaceState.focusedPollAddOptionMessageId == nil
         )
+        PerformanceSignposts.end(EmojiPanelOpenSignpost.inputNodeInit, inputNodeInitSignpost)
         self.openStickersBeginWithEmoji = false
         
         return inputNode
@@ -4760,6 +4841,7 @@ class ChatControllerNode: ASDisplayNode, ASScrollViewDelegate {
     }
     
     func openStickers(beginWithEmoji: Bool) {
+        EmojiPanelOpenSignpost.beginOpen()
         self.openStickersBeginWithEmoji = beginWithEmoji
         self.startInputMediaNodeDataIfNeeded(.demand)
         
