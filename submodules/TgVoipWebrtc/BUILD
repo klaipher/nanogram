@@ -450,6 +450,12 @@ policy_cc_test(
 )
 
 policy_cc_test(
+    name = "screen_share_policy_test",
+    src = "tgcalls/tests/screen_share_policy/ScreenSharePolicyTest.cpp",
+    headers = ["ScreenSharePolicy.h"],
+)
+
+policy_cc_test(
     name = "bounded_history_test",
     src = "tgcalls/tests/bounded_history/BoundedHistoryPolicyTest.cpp",
     headers = ["BoundedHistory.h"],
