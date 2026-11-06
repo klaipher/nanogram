@@ -17,7 +17,7 @@ final class FFMpegFileReaderProbeTests: XCTestCase {
         return Double(time.tv_sec) + Double(time.tv_nsec) / 1e9
     }
 
-    private func open(mediaType: FFMpegFileReader.SelectedStream.MediaType, probeOnlySelectedMediaType: Bool) throws -> (seconds: Double, frames: Int) {
+    private func open(mediaType: FFMpegFileReader.SelectedStream.MediaType, probeOnlySelectedMediaType: Bool, fullStreamInfoProbe: Bool = false) throws -> (seconds: Double, frames: Int) {
         let path = try XCTUnwrap(Bundle(for: FFMpegFileReaderProbeTests.self).path(forResource: "fragment720", ofType: "mp4"))
         let start = self.threadCPUSeconds()
         let reader = try XCTUnwrap(FFMpegFileReader(
@@ -27,6 +27,7 @@ final class FFMpegFileReaderProbeTests: XCTestCase {
             seek: nil,
             maxReadablePts: nil,
             ignoreEditList: false,
+            fullStreamInfoProbe: fullStreamInfoProbe,
             probeOnlySelectedMediaType: probeOnlySelectedMediaType
         ))
         let seconds = self.threadCPUSeconds() - start
@@ -38,10 +39,10 @@ final class FFMpegFileReaderProbeTests: XCTestCase {
     }
 
     // Best of five.
-    private func openTime(mediaType: FFMpegFileReader.SelectedStream.MediaType, probeOnlySelectedMediaType: Bool) throws -> Double {
+    private func openTime(mediaType: FFMpegFileReader.SelectedStream.MediaType, probeOnlySelectedMediaType: Bool, fullStreamInfoProbe: Bool = false) throws -> Double {
         var best = Double.infinity
         for _ in 0 ..< 5 {
-            best = min(best, try self.open(mediaType: mediaType, probeOnlySelectedMediaType: probeOnlySelectedMediaType).seconds)
+            best = min(best, try self.open(mediaType: mediaType, probeOnlySelectedMediaType: probeOnlySelectedMediaType, fullStreamInfoProbe: fullStreamInfoProbe).seconds)
         }
         return best
     }
@@ -52,8 +53,10 @@ final class FFMpegFileReaderProbeTests: XCTestCase {
         XCTAssertGreaterThan(all.frames, 0)
         XCTAssertEqual(only.frames, all.frames)
 
-        let allTime = try self.openTime(mediaType: .audio, probeOnlySelectedMediaType: false)
-        let onlyTime = try self.openTime(mediaType: .audio, probeOnlySelectedMediaType: true)
+        // Both with FFmpeg's default (decoding) probe: Nanogram's own probe already skips decoding this fixture's video
+        // (its SPS signals the reorder delay), so against that probe the stream selection saves nothing measurable.
+        let allTime = try self.openTime(mediaType: .audio, probeOnlySelectedMediaType: false, fullStreamInfoProbe: true)
+        let onlyTime = try self.openTime(mediaType: .audio, probeOnlySelectedMediaType: true, fullStreamInfoProbe: true)
         // Measured 0.39 (1.6 ms against 4.1 ms of CPU); about 1.0 when the reader probes every stream.
         XCTAssertLessThan(onlyTime, allTime * 0.75, "probing only audio: \(onlyTime) s, every stream: \(allTime) s")
     }
