@@ -89,13 +89,20 @@ func applyDifferenceAnswer(_ answer: Api.updates.Difference?, requestedFrom auth
     case let .differenceTooLong(differenceTooLongData):
         // The main app's poll resets to the pts the answer carries (its completion); the extension leaves the reset
         // to the app (Q3).
+        StaleChannelDiagnostics.noteDifference(kind: "tooLong")
         return .single(.tooLong(replyPts: differenceTooLongData.pts))
     default:
         let isSlice: Bool
         if case .differenceSlice = difference {
             isSlice = true
+            StaleChannelDiagnostics.noteDifference(kind: "slice")
         } else {
             isSlice = false
+            if case .differenceEmpty = difference {
+                StaleChannelDiagnostics.noteDifference(kind: "empty")
+            } else {
+                StaleChannelDiagnostics.noteDifference(kind: "difference")
+            }
         }
         let mediaBox = postbox.mediaBox
         return initialStateWithDifference(postbox: postbox, difference: difference)

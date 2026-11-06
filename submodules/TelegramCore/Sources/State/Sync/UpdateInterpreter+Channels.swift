@@ -16,8 +16,10 @@ extension UpdateInterpreter {
         if !channelRecovery.isPollRequested(peerId) {
             if let channelPts = channelPts, let channelState = state.channelStates[peerId], channelState.pts >= channelPts {
                 Logger.shared.log("State", "channel \(peerId) (\((updatedState.peers[peerId] as? TelegramChannel)?.title ?? "nil")) skip updateChannelTooLong by pts")
+                StaleChannelDiagnostics.noteTooLong(peerId: peerId, skipped: true)
             } else {
                 channelRecovery.requestPoll(peerId, ptsHint: channelPts)
+                StaleChannelDiagnostics.noteTooLong(peerId: peerId, skipped: false)
             }
         }
     }

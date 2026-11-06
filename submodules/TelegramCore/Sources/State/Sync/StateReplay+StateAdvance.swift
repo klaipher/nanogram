@@ -38,8 +38,10 @@ extension ReplayContext {
     }
     
     func applyUpdateChannelState(_ peerId: PeerId, _ pts: Int32) {
-        var state = (transaction.getPeerChatState(peerId) as? ChannelState) ?? ChannelState(pts: pts, invalidatedPts: nil, synchronizedUntilMessageId: nil)
-        state = state.withUpdatedPts(pts)
+        // Nanogram: a poll that leaves the pts where it is writes nothing (`channelStateUpdatedByPoll`).
+        guard let state = channelStateUpdatedByPoll(transaction.getPeerChatState(peerId) as? ChannelState, pts: pts) else {
+            return
+        }
         transaction.setPeerChatState(peerId, state: state)
         Logger.shared.log("State", "apply channel state \(peerId): \(state)")
     }

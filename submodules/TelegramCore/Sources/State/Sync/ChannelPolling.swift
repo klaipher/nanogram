@@ -20,6 +20,7 @@ func pollChannelOnce(accountPeerId: PeerId, postbox: Postbox, network: Network, 
         if let channelState = transaction.getPeerChatState(peerId) as? ChannelState {
             channelStates[peerId] = AccountStateChannelState(pts: channelState.pts)
         }
+        let pollDiagnostics = StaleChannelDiagnostics.beginPoll(transaction: transaction, peerId: peerId)
         let initialPeers: [PeerId: Peer] = [peerId: peer]
         var peerChatInfos: [PeerId: PeerChatInfo] = [:]
         let inclusion = transaction.getPeerChatListInclusion(peerId)
@@ -40,6 +41,7 @@ func pollChannelOnce(accountPeerId: PeerId, postbox: Postbox, network: Network, 
         |> mapToSignal { outcome -> Signal<Int32, NoError> in
             let finalState = outcome.state
             let timeout = outcome.timeout
+            StaleChannelDiagnostics.endPoll(pollDiagnostics, peerId: peerId, state: finalState)
             return resolveAssociatedMessages(accountPeerId: accountPeerId, postbox: postbox, network: network, state: finalState)
             |> mapToSignal { resultingState -> Signal<AccountMutableState, NoError> in
                 return resolveAssociatedStories(postbox: postbox, network: network, accountPeerId: accountPeerId, state: resultingState)

@@ -404,12 +404,9 @@ extension ReplayContext {
     
     func applyUpdateMessageImpressionCount(_ id: MessageId, _ count: Int32) {
         transaction.updateMessage(id, update: { currentMessage in
-            var attributes = currentMessage.attributes
-            loop: for j in 0 ..< attributes.count {
-                if let attribute = attributes[j] as? ViewCountMessageAttribute {
-                    attributes[j] = ViewCountMessageAttribute(count: max(attribute.count, Int(count)))
-                    break loop
-                }
+            // Nanogram: a count that does not raise the stored one writes nothing (`messageAttributesWithIncreasedViewCount`).
+            guard let attributes = messageAttributesWithIncreasedViewCount(currentMessage.attributes, count: Int(count)) else {
+                return .skip
             }
             return .update(StoreMessage(updating: currentMessage, attributes: attributes, tags: currentMessage.tags))
         })
