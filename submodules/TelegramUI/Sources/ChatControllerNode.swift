@@ -301,6 +301,8 @@ class ChatControllerNode: ASDisplayNode, ASScrollViewDelegate {
     private var inputMediaNodeData: ChatEntityKeyboardInputNode.InputData?
     private var inputMediaNodeDataPromise = Promise<ChatEntityKeyboardInputNode.InputData>()
     private var didInitializeInputMediaNodeDataPromise: Bool = false
+    private var inputMediaNodeDataStartGate = InputDataStartGate()
+    private var inputMediaNodeDataIdleDisposable: Disposable?
     private var inputMediaNodeDataDisposable: Disposable?
     private var inputMediaNodeStateContext = ChatEntityKeyboardInputNode.StateContext()
         
@@ -1069,7 +1071,12 @@ class ChatControllerNode: ASDisplayNode, ASScrollViewDelegate {
             guard let strongSelf = self else {
                 return
             }
+            let isFirstValue = strongSelf.inputMediaNodeData == nil
             strongSelf.inputMediaNodeData = value
+            if isFirstValue, case .media = strongSelf.chatPresentationInterfaceState.inputMode, !(strongSelf.inputNode is ChatEntityKeyboardInputNode) {
+                // The panel was requested before its data was built (the data is built on demand): show it now.
+                strongSelf.requestLayout(.animated(duration: 0.4, curve: .spring))
+            }
         })
     }
     
@@ -1078,6 +1085,7 @@ class ChatControllerNode: ASDisplayNode, ASScrollViewDelegate {
         self.openStickersDisposable?.dispose()
         self.displayVideoUnmuteTipDisposable?.dispose()
         self.inputMediaNodeDataDisposable?.dispose()
+        self.inputMediaNodeDataIdleDisposable?.dispose()
         self.inlineSearchResultsReadyDisposable?.dispose()
         self.loadMoreSearchResultsDisposable?.dispose()
     }
@@ -4102,6 +4110,7 @@ class ChatControllerNode: ASDisplayNode, ASScrollViewDelegate {
     
     private func makeMediaInputNode() -> ChatInputNode? {
         guard let inputMediaNodeData = self.inputMediaNodeData else {
+            self.startInputMediaNodeDataIfNeeded(.demand)
             return nil
         }
         
@@ -4129,27 +4138,41 @@ class ChatControllerNode: ASDisplayNode, ASScrollViewDelegate {
         return inputNode
     }
     
+    private func startInputMediaNodeDataIfNeeded(_ trigger: InputDataStartGate.Trigger) {
+        guard self.didInitializeInputMediaNodeDataPromise, self.inputMediaNodeDataStartGate.shouldStart(trigger) else {
+            return
+        }
+        self.inputMediaNodeDataIdleDisposable?.dispose()
+        self.inputMediaNodeDataIdleDisposable = nil
+        self.inputMediaNodeDataPromise.set(
+            ChatEntityKeyboardInputNode.inputData(
+                context: self.context,
+                chatPeerId: self.chatLocation.peerId,
+                areCustomEmojiEnabled: self.chatPresentationInterfaceState.customEmojiAvailable,
+                hasEdit: true,
+                hideBackground: true,
+                maskEdge: .clip,
+                sendGif: { [weak self] fileReference, sourceView, sourceRect, silentPosting, schedule in
+                    if let self {
+                        return self.controllerInteraction.sendGif(fileReference, sourceView, sourceRect, silentPosting, schedule)
+                    } else {
+                        return false
+                    }
+                }
+            )
+        )
+    }
+    
     func loadInputPanels(theme: PresentationTheme, strings: PresentationStrings, fontSize: PresentationFontSize) {
         if !self.didInitializeInputMediaNodeDataPromise {
             self.didInitializeInputMediaNodeDataPromise = true
-                        
-            self.inputMediaNodeDataPromise.set(
-                ChatEntityKeyboardInputNode.inputData(
-                    context: self.context,
-                    chatPeerId: self.chatLocation.peerId,
-                    areCustomEmojiEnabled: self.chatPresentationInterfaceState.customEmojiAvailable,
-                    hasEdit: true,
-                    hideBackground: true,
-                    maskEdge: .clip,
-                    sendGif: { [weak self] fileReference, sourceView, sourceRect, silentPosting, schedule in
-                        if let self {
-                            return self.controllerInteraction.sendGif(fileReference, sourceView, sourceRect, silentPosting, schedule)
-                        } else {
-                            return false
-                        }
-                    }
-                )
-            )
+            
+            // The emoji and sticker panel data is expensive to build and most chats never open the panel:
+            // build it on demand, or in the background once the chat has been open for a while.
+            self.inputMediaNodeDataIdleDisposable = (Signal<Void, NoError>.single(Void())
+            |> delay(InputDataStartGate.idleDelay, queue: Queue.mainQueue())).startStrict(next: { [weak self] _ in
+                self?.startInputMediaNodeDataIfNeeded(.idle)
+            })
         }
         
         self.textInputPanelNode?.loadTextInputNodeIfNeeded()
@@ -4713,6 +4736,7 @@ class ChatControllerNode: ASDisplayNode, ASScrollViewDelegate {
     
     func openStickers(beginWithEmoji: Bool) {
         self.openStickersBeginWithEmoji = beginWithEmoji
+        self.startInputMediaNodeDataIfNeeded(.demand)
         
         if self.openStickersDisposable == nil {
             self.openStickersDisposable = (self.inputMediaNodeDataPromise.get()

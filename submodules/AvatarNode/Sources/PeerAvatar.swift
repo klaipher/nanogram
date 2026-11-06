@@ -7,6 +7,7 @@ import TelegramCore
 import TinyThumbnail
 import FastBlur
 import Postbox
+import AccountContext
 
 private let roundCorners = { () -> UIImage in
     let diameter: CGFloat = 60.0
@@ -170,7 +171,7 @@ public func peerAvatarCompleteImage(postbox: Postbox, peer: EnginePeer, forcePro
     return iconSignal
 }
 
-public func peerAvatarImage(account: Account, peerReference: PeerReference?, authorOfMessage: MessageReference?, representation: TelegramMediaImageRepresentation?, displayDimensions: CGSize = CGSize(width: 60.0, height: 60.0), clipStyle: AvatarNodeClipStyle = .round, blurred: Bool = false, inset: CGFloat = 0.0, emptyColor: UIColor? = nil, synchronousLoad: Bool = false, provideUnrounded: Bool = false, cutoutRect: CGRect? = nil) -> Signal<(UIImage, UIImage)?, NoError>? {
+public func peerAvatarImage(account: Account, peerReference: PeerReference?, authorOfMessage: MessageReference?, representation: TelegramMediaImageRepresentation?, displayDimensions: CGSize = CGSize(width: 60.0, height: 60.0), clipStyle: AvatarNodeClipStyle = .round, blurred: Bool = false, inset: CGFloat = 0.0, emptyColor: UIColor? = nil, synchronousLoad: Bool = false, provideUnrounded: Bool = false, cutoutRect: CGRect? = nil, avoidMainThreadDecode: Bool = false) -> Signal<(UIImage, UIImage)?, NoError>? {
     return peerAvatarImage(
         postbox: account.postbox,
         peerReference: peerReference,
@@ -182,20 +183,31 @@ public func peerAvatarImage(account: Account, peerReference: PeerReference?, aut
         inset: inset,
         emptyColor: emptyColor,
         synchronousLoad: synchronousLoad,
-        provideUnrounded: synchronousLoad,
-        cutoutRect: cutoutRect
+        // The unrounded copy doubles the decode and is only wanted by callers that ask for it
+        // (`storeUnrounded`); the legacy tie to `synchronousLoad` stays for everyone else.
+        provideUnrounded: avoidMainThreadDecode ? provideUnrounded : synchronousLoad,
+        cutoutRect: cutoutRect,
+        avoidMainThreadDecode: avoidMainThreadDecode
     )
 }
     
-public func peerAvatarImage(postbox: Postbox, peerReference: PeerReference?, authorOfMessage: MessageReference?, representation: TelegramMediaImageRepresentation?, displayDimensions: CGSize = CGSize(width: 60.0, height: 60.0), clipStyle: AvatarNodeClipStyle = .round, blurred: Bool = false, inset: CGFloat = 0.0, emptyColor: UIColor? = nil, synchronousLoad: Bool = false, provideUnrounded: Bool = false, cutoutRect: CGRect? = nil) -> Signal<(UIImage, UIImage)?, NoError>? {
+public func peerAvatarImage(postbox: Postbox, peerReference: PeerReference?, authorOfMessage: MessageReference?, representation: TelegramMediaImageRepresentation?, displayDimensions: CGSize = CGSize(width: 60.0, height: 60.0), clipStyle: AvatarNodeClipStyle = .round, blurred: Bool = false, inset: CGFloat = 0.0, emptyColor: UIColor? = nil, synchronousLoad: Bool = false, provideUnrounded: Bool = false, cutoutRect: CGRect? = nil, avoidMainThreadDecode: Bool = false) -> Signal<(UIImage, UIImage)?, NoError>? {
     if let imageData = peerAvatarImageData(postbox: postbox, peerReference: peerReference, authorOfMessage: authorOfMessage, representation: representation, synchronousLoad: synchronousLoad) {
         return imageData
         |> mapToSignal { data -> Signal<(UIImage, UIImage)?, NoError> in
             let resourceId = representation?.resource.id.stringRepresentation
+            var cached: (UIImage, UIImage)?
+            if avoidMainThreadDecode {
+                // Also for asynchronous requests: a cache hit needs no queue hop.
+                cached = peerAvatarCachedImages(resourceId: resourceId, data: data, displayDimensions: displayDimensions, clipStyle: clipStyle, blurred: blurred, inset: inset, provideUnrounded: provideUnrounded, cutoutRect: cutoutRect, cache: PeerAvatarImageCache.shared)
+            }
+            if let cached {
+                return .single(cached)
+            }
             let generate = deferred { () -> Signal<(UIImage, UIImage)?, NoError> in
                 return .single(peerAvatarRenderedImages(resourceId: resourceId, data: data, displayDimensions: displayDimensions, clipStyle: clipStyle, blurred: blurred, inset: inset, emptyColor: emptyColor, provideUnrounded: provideUnrounded, cutoutRect: cutoutRect, cache: PeerAvatarImageCache.shared))
             }
-            if synchronousLoad {
+            if peerAvatarRendersOnCallingThread(synchronousLoad: synchronousLoad, avoidMainThreadDecode: avoidMainThreadDecode, dataType: data?.1) {
                 return generate
             } else {
                 return generate |> runOn(Queue.concurrentDefaultQueue())
@@ -204,6 +216,66 @@ public func peerAvatarImage(postbox: Postbox, peerReference: PeerReference?, aut
     } else {
         return nil
     }
+}
+
+/// Whether an avatar that is not in the render cache is decoded on the calling (main) thread.
+/// A caller that asked for a synchronous load keeps getting one, unless it also asked to avoid
+/// main-thread decodes; then only the tiny blurred preview (a few hundred bytes, no hardware
+/// decoder round trip) and placeholder-only renders stay synchronous. Cached photos never get
+/// here: `peerAvatarImage` serves them from the cache directly.
+func peerAvatarRendersOnCallingThread(synchronousLoad: Bool, avoidMainThreadDecode: Bool, dataType: PeerAvatarImageType?) -> Bool {
+    if !synchronousLoad {
+        return false
+    }
+    if !avoidMainThreadDecode {
+        return true
+    }
+    switch dataType {
+    case .none, .some(.blurred):
+        return true
+    case .some(.complete):
+        return false
+    }
+}
+
+public func prewarmPeerAvatarImages(context: AccountContext, peers: [(peer: EnginePeer, clipStyle: AvatarNodeClipStyle)], displayDimensions: CGSize = CGSize(width: 60.0, height: 60.0), provideUnrounded: Bool = false) -> Disposable {
+    return prewarmPeerAvatarImages(postbox: context.account.postbox, peers: peers, displayDimensions: displayDimensions, provideUnrounded: provideUnrounded)
+}
+
+/// Decodes the avatars of `peers` into the render cache on a background queue, at low priority,
+/// so that a later (synchronous) request for the same size and clip style finds them there.
+/// Photos that are not downloaded are skipped: this never starts a fetch. Dispose to cancel.
+public func prewarmPeerAvatarImages(postbox: Postbox, peers: [(peer: EnginePeer, clipStyle: AvatarNodeClipStyle)], displayDimensions: CGSize = CGSize(width: 60.0, height: 60.0), provideUnrounded: Bool = false) -> Disposable {
+    let disposable = DisposableSet()
+    let queue = Queue(name: "avatar-prewarm", qos: .utility)
+    for (peer, clipStyle) in peers {
+        guard let representation = peer.smallProfileImage else {
+            continue
+        }
+        let resourceId = representation.resource.id.stringRepresentation
+        let signal = postbox.mediaBox.resourceData(representation.resource, attemptSynchronously: false)
+        |> take(1)
+        |> deliverOn(queue)
+        disposable.add(signal.start(next: { resourceData in
+            guard resourceData.complete, let data = try? Data(contentsOf: URL(fileURLWithPath: resourceData.path)) else {
+                return
+            }
+            let input: (Data, PeerAvatarImageType)? = (data, .complete)
+            if peerAvatarCachedImages(resourceId: resourceId, data: input, displayDimensions: displayDimensions, clipStyle: clipStyle, blurred: false, inset: 0.0, provideUnrounded: provideUnrounded, cutoutRect: nil, cache: PeerAvatarImageCache.shared) != nil {
+                return
+            }
+            let _ = peerAvatarRenderedImages(resourceId: resourceId, data: input, displayDimensions: displayDimensions, clipStyle: clipStyle, blurred: false, inset: 0.0, emptyColor: nil, provideUnrounded: provideUnrounded, cutoutRect: nil, cache: PeerAvatarImageCache.shared)
+        }))
+    }
+    return disposable
+}
+
+/// The cached render of a complete photo, if any. Cheap: a dictionary lookup.
+func peerAvatarCachedImages(resourceId: String?, data: (Data, PeerAvatarImageType)?, displayDimensions: CGSize, clipStyle: AvatarNodeClipStyle, blurred: Bool, inset: CGFloat, provideUnrounded: Bool, cutoutRect: CGRect?, cache: PeerAvatarImageCache?) -> (UIImage, UIImage)? {
+    guard let cache, let resourceId, let (bytes, dataType) = data, case .complete = dataType else {
+        return nil
+    }
+    return cache.get(PeerAvatarImageCache.key(resourceId: resourceId, dataLength: bytes.count, displayDimensions: displayDimensions, clipStyle: clipStyle, blurred: blurred, inset: inset, provideUnrounded: provideUnrounded, cutoutRect: cutoutRect))
 }
 
 /// Decodes, scales and clips one avatar. Results for complete photos are kept in `cache`.
