@@ -10,7 +10,7 @@ import FFMpegBinding
 import YuvConversion
 
 private let bufferCount = 32
-private let poolAllocationAuxAttributes: CFDictionary = [kCVPixelBufferPoolAllocationThresholdKey as String: bufferCount as NSNumber] as CFDictionary
+nonisolated(unsafe) private let poolAllocationAuxAttributes: CFDictionary = [kCVPixelBufferPoolAllocationThresholdKey as String: bufferCount as NSNumber] as CFDictionary
 
 
 
