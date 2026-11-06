@@ -35,7 +35,6 @@ swift_library(
         ":LottieAnimationCache",
         "//submodules/SSignalKit/SwiftSignalKit:SwiftSignalKit",
         "//submodules/TelegramUI/Components/AnimationCache:AnimationCache",
-        "//submodules/LottieSettings:LottieSettings",
     ],
 )
 

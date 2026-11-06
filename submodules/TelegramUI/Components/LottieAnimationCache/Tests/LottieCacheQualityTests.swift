@@ -3,7 +3,6 @@ import UIKit
 import XCTest
 import SwiftSignalKit
 import AnimationCache
-import LottieSettings
 @testable import LottieAnimationCache
 
 // A large animation in a menu (the reaction in a reaction's context menu) is cached at every source frame and at
