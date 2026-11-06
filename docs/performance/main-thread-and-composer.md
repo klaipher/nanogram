@@ -42,3 +42,15 @@ Invariants the compiler does not check; each has a test.
   versions. Nothing is uploaded; Debug Settings ▸ Send MetricKit Reports is the only way out. Host test:
   `//submodules/CrashReporting:CrashReportingTests`.
 - **Signposts**: `PerformanceSignposts` (Display) intervals `chatHistoryEntriesForView` and `composerKeystroke`.
+- **Chat open: defer non-visible setup** (Debug Settings ▸ "CHAT OPEN (PERFORMANCE)", `ExperimentalUISettings.chatOpenDeferSetup`,
+  default off, main app only). `ChatControllerImpl` reads the switch once in `init` (standard, non-previewing chats only) into
+  `openSetup` (`DeferredSetup`, SwiftSignalKit). With it off, `openSetup.run` executes the work at once in place, so the code path
+  is the original one. With it on, the setup submitted through `openSetup.run` runs from `viewDidAppear` on the next main-queue
+  turn: nameColor, botCallbackAlert, audio/video recorder, typing/sticker/recording activity (init); translation host (iOS 18),
+  send-as list, network-speed notices, `GlobalControlPanelsContext` and its state subscription (`loadDisplayNodeImpl`). Anything
+  that can change the first frame (presentation data, content data, history, sticker/download settings, read state, network title) stays
+  synchronous. Attribution signposts (category Performance): `chatInit` (whole init) with `chatInitInteraction`,
+  `chatInitDisplayNode`, `chatInitReloadLocation`, `chatInitPresentationData`, one `chatInitDeferrable` per deferrable item,
+  `chatInitDeferredSetup` (the flush) and `chatFirstLayout`. Tests: `//submodules/SSignalKit/SwiftSignalKit:SwiftSignalKitTests`
+  (`DeferredSetupTests`), `//submodules/DebugSettingsUI:DebugSettingsUITests` (`ChatOpenSwitchTests`),
+  `//submodules/TelegramUIPreferences:TelegramUIPreferencesTests`.
