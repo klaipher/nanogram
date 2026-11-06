@@ -502,13 +502,16 @@ static void registerEffectViewOverrides(void) {
     // the discriminator now belongs to UISDFElementView). A name that is not in the ObjC class table falls through to
     // the Swift runtime's mangled-name scan (45 ms in _contextDescriptorMatchesMangling in +load, launch trace J), so
     // the other OS's name is never tried as a fallback.
+    // On iOS 27 the overrides stay off, as they have been in every build so far (upstream's lookup misses there too):
+    // turning them on changes how the glass looks and waits for a check of recorded frames (owner, 2026-11-06). The
+    // lookup is skipped, which keeps the 45 ms gain. To turn them on, use _TtC5UIKit17UISDFBackdropView on iOS 27.
     NSString *backdropViewClassName = nil;
     if (@available(iOS 27.0, *)) {
-        backdropViewClassName = TGEncodeText(@"_TtC5UIKit17UISDFBackdropView", 0);
+        backdropViewClassName = nil;
     } else {
         backdropViewClassName = TGEncodeText(@"_TtC5UIKitP33_ACD4A08F4BE9D00246F2A9C24A80CA8817UISDFBackdropView", 0);
     }
-    Class backdropViewClass = NSClassFromString(backdropViewClassName);
+    Class backdropViewClass = backdropViewClassName != nil ? NSClassFromString(backdropViewClassName) : nil;
     if (backdropViewClass != nil) {
         Method moveMethod = class_getInstanceMethod(backdropViewClass, @selector(didMoveToWindow));
         if (moveMethod) {
