@@ -66,7 +66,7 @@ private func crashReportArchive(_ report: CrashReport) throws -> Data {
     let metadata = directory.appendingPathComponent("metadata.json")
     let text = directory.appendingPathComponent("report.txt")
     try report.diagnosticJSON.write(to: json)
-    try report.exportMetadata().write(to: metadata)
+    try report.exportMetadata(bundleId: getAppBundle().bundleIdentifier ?? "Unknown").write(to: metadata)
     try Data(report.text.utf8).write(to: text)
     let archive = directory.appendingPathComponent("report.zip")
     guard SSZipArchive.createZipFile(atPath: archive.path, withFilesAtPaths: [json.path, metadata.path, text.path]) else {
