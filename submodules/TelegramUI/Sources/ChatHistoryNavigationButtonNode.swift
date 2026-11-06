@@ -23,7 +23,9 @@ class ChatHistoryNavigationButtonNode: ContextControllerSourceNode {
     let containerNode: ContextExtractedContentContainingNode
     private let backgroundView: GlassBackgroundView
     let imageView: GlassBackgroundView.ContentImageView
-    private let badgeBackgroundView: GlassBackgroundView
+    /// A tinted fill, not glass: the badge sits on the button's glass, and Apple's rule is no glass on glass (a fill is
+    /// what goes on top of it).
+    private let badgeBackgroundView: UIView
     private let badgeTextNode: ImmediateAnimatedCountLabelNode
     private var tapRecognizer: UITapGestureRecognizer?
     
@@ -74,7 +76,9 @@ class ChatHistoryNavigationButtonNode: ContextControllerSourceNode {
             self.imageView.image = PresentationResourcesChat.chatHistoryPollVotesButtonImage(theme)
         }
         
-        self.badgeBackgroundView = GlassBackgroundView()
+        self.badgeBackgroundView = UIView()
+        self.badgeBackgroundView.layer.cornerCurve = .circular
+        self.badgeBackgroundView.backgroundColor = theme.chat.inputPanel.actionControlFillColor
         self.badgeBackgroundView.isUserInteractionEnabled = false
         self.badgeBackgroundView.alpha = 0.0
         
@@ -107,7 +111,7 @@ class ChatHistoryNavigationButtonNode: ContextControllerSourceNode {
         self.imageView.frame = CGRect(origin: CGPoint(), size: size)
         
         self.containerNode.contentNode.view.addSubview(self.badgeBackgroundView)
-        self.badgeBackgroundView.contentView.addSubview(self.badgeTextNode.view)
+        self.badgeBackgroundView.addSubview(self.badgeTextNode.view)
         
         self.frame = CGRect(origin: CGPoint(), size: size)
     }
@@ -133,7 +137,8 @@ class ChatHistoryNavigationButtonNode: ContextControllerSourceNode {
                 self.imageView.image = PresentationResourcesChat.chatHistoryPollVotesButtonImage(theme)
             }
             
-            self.badgeBackgroundView.update(size: self.badgeBackgroundView.bounds.size, cornerRadius: self.badgeBackgroundView.bounds.height * 0.5, isDark: theme.overallDarkAppearance, tintColor: .init(kind: .custom(style: .default, color: theme.chat.inputPanel.actionControlFillColor)), transition: .immediate)
+            self.badgeBackgroundView.backgroundColor = theme.chat.inputPanel.actionControlFillColor
+            self.badgeBackgroundView.layer.cornerRadius = self.badgeBackgroundView.bounds.height * 0.5
             
             var segments: [AnimatedCountLabelNode.Segment] = []
             if let value = Int(self.badge) {
@@ -185,7 +190,8 @@ class ChatHistoryNavigationButtonNode: ContextControllerSourceNode {
             }
             
             let transition: ContainedViewLayoutTransition = .animated(duration: 0.2, curve: .easeInOut)
-            self.badgeBackgroundView.update(size: backgroundFrame.size, cornerRadius: backgroundFrame.height * 0.5, isDark: theme.overallDarkAppearance, tintColor: .init(kind: .custom(style: .default, color: self.theme.chat.inputPanel.actionControlFillColor)), transition: ComponentTransition(transition))
+            self.badgeBackgroundView.backgroundColor = self.theme.chat.inputPanel.actionControlFillColor
+            ComponentTransition(transition).setCornerRadius(layer: self.badgeBackgroundView.layer, cornerRadius: backgroundFrame.height * 0.5)
             
             self.badgeTextNode.frame = CGRect(origin: CGPoint(x: floorToScreenPixels((backgroundFrame.width - badgeSize.width) / 2.0), y: 2.0), size: badgeSize)
             
