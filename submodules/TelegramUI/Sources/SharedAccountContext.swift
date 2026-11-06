@@ -114,6 +114,7 @@ import PostSuggestionsSettingsScreen
 import ForumSettingsScreen
 import ForumCreateTopicScreen
 import GlassBackgroundComponent
+import ChatRowPrep
 import AttachmentFileController
 import NewContactScreen
 import PasskeysScreen
@@ -548,6 +549,7 @@ public final class SharedAccountContextImpl: SharedAccountContext {
         
         GlassBackgroundView.useCustomGlassImpl = immediateExperimentalUISettingsValue.with({ $0.fakeGlass })
         GlassDebugGroups.setDisabledMask(immediateExperimentalUISettingsValue.with({ $0.glassDebugDisabledGroups }))
+        ChatScrollExperiments.setMask(immediateExperimentalUISettingsValue.with({ $0.chatScrollExperiments }))
         ManagedAudioSessionImpl.respectsSystemRecordingInput = immediateExperimentalUISettingsValue.with({ $0.respectSystemMicrophone })
         // iPad audit B-1: the display-link cap A/B (Debug Settings) and its pacing log.
         SharedDisplayLinkDriver.shared.pacingLog = { line in
@@ -563,6 +565,7 @@ public final class SharedAccountContextImpl: SharedAccountContext {
                 flatBuffers_checkedGet = settings.checkSerializedData
                 GlassBackgroundView.useCustomGlassImpl = settings.fakeGlass
                 GlassDebugGroups.setDisabledMask(settings.glassDebugDisabledGroups)
+                ChatScrollExperiments.setMask(settings.chatScrollExperiments)
                 ManagedAudioSessionImpl.respectsSystemRecordingInput = settings.respectSystemMicrophone
                 SharedDisplayLinkDriver.shared.capsTabletFrameRate = settings.tabletDisplayLinkFrameRateCap
             }

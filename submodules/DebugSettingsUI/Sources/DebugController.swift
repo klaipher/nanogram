@@ -277,6 +277,7 @@ private enum DebugControllerSection: Int32 {
     case experiments
     case streamsAndCalls
     case glassGroups
+    case chatScroll
     case translation
     case web
     case videoExperiments2
@@ -289,6 +290,17 @@ private func glassGroupSwitch(presentationData: ItemListPresentationData, argume
         let _ = updateExperimentalUISettingsInteractively(accountManager: arguments.sharedContext.accountManager, { settings in
             var settings = settings
             settings.glassDebugDisabledGroups = value ? (settings.glassDebugDisabledGroups | bit) : (settings.glassDebugDisabledGroups & ~bit)
+            return settings
+        }).start()
+    })
+}
+
+/// One switch of the "Chat scroll" section: sets or clears `bit` in `chatScrollExperiments`.
+private func chatScrollSwitch(presentationData: ItemListPresentationData, arguments: DebugControllerArguments, sectionId: ItemListSectionId, title: String, text: String, bit: Int32, value: Bool) -> ListViewItem {
+    return ItemListSwitchItem(presentationData: presentationData, systemStyle: .glass, title: title, text: text, value: value, maximumNumberOfLines: 0, sectionId: sectionId, style: .blocks, updated: { value in
+        let _ = updateExperimentalUISettingsInteractively(accountManager: arguments.sharedContext.accountManager, { settings in
+            var settings = settings
+            settings.chatScrollExperiments = value ? (settings.chatScrollExperiments | bit) : (settings.chatScrollExperiments & ~bit)
             return settings
         }).start()
     })
@@ -348,6 +360,9 @@ enum DebugControllerEntry: ItemListNodeEntry {
     case glassGroupNavigationBar(Bool)
     case glassGroupInputPanel(Bool)
     case glassGroupFloatingButtons(Bool)
+    case chatScrollHeader(PresentationTheme)
+    case chatScrollPrepareLayoutAhead(Bool)
+    case chatScrollReuseRowViews(Bool)
     case enableNetworkFramework(Bool)
     case enableNetworkExperiments(Bool)
     case rustMTProtoEngine(Bool)
@@ -377,6 +392,8 @@ enum DebugControllerEntry: ItemListNodeEntry {
             return DebugControllerSection.streamsAndCalls.rawValue
         case .glassGroupsHeader, .glassGroupNavigationBar, .glassGroupInputPanel, .glassGroupFloatingButtons:
             return DebugControllerSection.glassGroups.rawValue
+        case .chatScrollHeader, .chatScrollPrepareLayoutAhead, .chatScrollReuseRowViews:
+            return DebugControllerSection.chatScroll.rawValue
         case .springSendAnimation, .fakeWalletTransfers, .stickerRendererMode, .disableImageContentAnalysis, .disableLanguageRecognition, .localTranscription, .enableVoipTcp, .tabletDisplayLinkFrameRateCap:
             return DebugControllerSection.experiments.rawValue
         case .enableNetworkFramework, .enableNetworkExperiments, .rustMTProtoEngine, .networkEngineInfo:
@@ -500,6 +517,13 @@ enum DebugControllerEntry: ItemListNodeEntry {
             return 122
         case .glassGroupFloatingButtons:
             return 123
+        case .chatScrollHeader:
+            // Its own section, like the glass groups above.
+            return 130
+        case .chatScrollPrepareLayoutAhead:
+            return 131
+        case .chatScrollReuseRowViews:
+            return 132
         case .springSendAnimation:
             // ItemList asserts its entries are in strictly increasing order (`<`: section, then
             // `sortIndex`, which is the stableId here; ItemListControllerNode.swift), so an id must
@@ -575,6 +599,12 @@ enum DebugControllerEntry: ItemListNodeEntry {
             return glassGroupSwitch(presentationData: presentationData, arguments: arguments, sectionId: self.section, title: "Input panel glass off", text: "Replaces the chat input panel's glass with a solid fill. Default: off. Applies at once.", bit: ExperimentalUISettings.glassDebugInputPanel, value: value)
         case let .glassGroupFloatingButtons(value):
             return glassGroupSwitch(presentationData: presentationData, arguments: arguments, sectionId: self.section, title: "Floating buttons glass off", text: "Replaces the scroll-to-bottom, mentions and reactions buttons' glass with a solid fill. Default: off. Applies at once.", bit: ExperimentalUISettings.glassDebugFloatingButtons, value: value)
+        case .chatScrollHeader:
+            return ItemListSectionHeaderItem(presentationData: presentationData, text: "CHAT SCROLL (EXPERIMENTS)", sectionId: self.section)
+        case let .chatScrollPrepareLayoutAhead(value):
+            return chatScrollSwitch(presentationData: presentationData, arguments: arguments, sectionId: self.section, title: "Chat rows: prepare layout ahead", text: "Lays out the rows that are about to scroll into view on a background queue, so the scroll frame only applies them. A prepared row is used only when everything it depends on is unchanged; otherwise it is laid out as before. Default: off. Applies at once.", bit: ExperimentalUISettings.chatScrollPrepareLayoutAhead, value: value)
+        case let .chatScrollReuseRowViews(value):
+            return chatScrollSwitch(presentationData: presentationData, arguments: arguments, sectionId: self.section, title: "Chat rows: reuse row views", text: "Tears down the rows that scrolled out of the loaded range when the app is idle instead of inside the scroll frame, and reuses the views of sticker rows. Default: off. Applies to rows that leave the range from now on.", bit: ExperimentalUISettings.chatScrollReuseRowViews, value: value)
         case .sendLogs:
             return ItemListActionItem(presentationData: presentationData, systemStyle: .glass, title: "Send Logs", kind: .generic, alignment: .natural, sectionId: self.section, style: .blocks, action: {
                 arguments.openLogs()
@@ -1287,6 +1317,11 @@ func debugControllerEntries(environment: DebugControllerEntriesEnvironment, them
         entries.append(.glassGroupNavigationBar(experimentalSettings.glassDebugDisabledGroups & ExperimentalUISettings.glassDebugNavigationBar != 0))
         entries.append(.glassGroupInputPanel(experimentalSettings.glassDebugDisabledGroups & ExperimentalUISettings.glassDebugInputPanel != 0))
         entries.append(.glassGroupFloatingButtons(experimentalSettings.glassDebugDisabledGroups & ExperimentalUISettings.glassDebugFloatingButtons != 0))
+
+        // Chat scroll experiments (A/B on device): both off by default.
+        entries.append(.chatScrollHeader(theme))
+        entries.append(.chatScrollPrepareLayoutAhead(experimentalSettings.chatScrollExperiments & ExperimentalUISettings.chatScrollPrepareLayoutAhead != 0))
+        entries.append(.chatScrollReuseRowViews(experimentalSettings.chatScrollExperiments & ExperimentalUISettings.chatScrollReuseRowViews != 0))
     }
 
     if isMainApp {
