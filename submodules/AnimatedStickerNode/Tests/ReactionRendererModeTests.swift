@@ -4,7 +4,6 @@ import XCTest
 import SwiftSignalKit
 import AsyncDisplayKit
 import Display
-import LottieSettings
 import MediaResources
 @testable import AnimatedStickerNode
 
@@ -72,7 +71,6 @@ final class ReactionRendererModeTests: XCTestCase {
         super.tearDown()
     }
 
-    private let lottieSettings = LottieRenderingSettings(backend: .rlottie)
 
     // Set up before the view loads, so the decision is made without creating a renderer (a Metal one
     // would trap here: the logic-test process has no Metal device).
@@ -85,18 +83,18 @@ final class ReactionRendererModeTests: XCTestCase {
         AnimatedStickerRendererMode.processWide = .gpuLarge
 
         // The process-wide mode still applies to other nodes: a 240 px sticker goes to Metal.
-        XCTAssertEqual(self.decision(for: DefaultAnimatedStickerNodeImpl(lottieSettings: self.lottieSettings), size: 240), true)
+        XCTAssertEqual(self.decision(for: DefaultAnimatedStickerNodeImpl(), size: 240), true)
 
         // A reaction effect (240x240 in the picker flow, 319 for a large reaction) stays on the CPU.
         for size in [80, 240, 319, 480] {
-            let node = DefaultAnimatedStickerNodeImpl(rendererMode: .reactions, lottieSettings: self.lottieSettings)
+            let node = DefaultAnimatedStickerNodeImpl(rendererMode: .reactions)
             XCTAssertEqual(self.decision(for: node, size: size), false, "a \(size) px reaction node took the Metal renderer")
         }
     }
 
     func testReactionNodeUsesTheCPURendererUnderGpuAll() {
         AnimatedStickerRendererMode.processWide = .gpuAll
-        let node = DefaultAnimatedStickerNodeImpl(rendererMode: .reactions, lottieSettings: self.lottieSettings)
+        let node = DefaultAnimatedStickerNodeImpl(rendererMode: .reactions)
         XCTAssertEqual(self.decision(for: node, size: 240), false)
     }
 
@@ -109,7 +107,7 @@ final class ReactionRendererModeTests: XCTestCase {
         let path = try XCTUnwrap(bundles.lazy.compactMap({ $0.path(forResource: "Slot_M_Berries", ofType: "tgs") }).first, "fixture missing")
 
         let size = 240
-        let node = DefaultAnimatedStickerNodeImpl(rendererMode: .reactions, lottieSettings: self.lottieSettings)
+        let node = DefaultAnimatedStickerNodeImpl(rendererMode: .reactions)
         node.frame = CGRect(x: 0.0, y: 0.0, width: CGFloat(size) / 2.0, height: CGFloat(size) / 2.0)
         var frames = 0
         var started = false

@@ -1,7 +1,7 @@
 # How Nanogram for iOS differs from Telegram-iOS
 
 Upstream: https://github.com/TelegramMessenger/Telegram-iOS, imported as one snapshot commit per `release-*` tag on the
-branch `upstream` (now `release-13.1.2`, 0650eac5). Ours: `main` (443 commits ahead at 2026-11-05, 17.8k files differ,
+branch `upstream` (now `release-13.2`, 5083532f). Ours: `main` (443 commits ahead at 2026-11-05, 17.8k files differ,
 mostly the history-free import layout and generated files). Format: [docs/fork-records.md](docs/fork-records.md).
 History of builds: [CHANGELOG.md](CHANGELOG.md). Last checked against `git diff upstream..main --stat`: 2026-11-05.
 
@@ -32,6 +32,13 @@ marked (check) were not re-verified against the code; correct them on the next c
 - Where: `Telegram/entitlements.bzl`, `submodules/BuildConfig`, `submodules/HardenedMedia`, `third-party/libprisma`, `submodules/UrlWhitelist`, `.bazelrc`, `third-party/webrtc` (fork).
 - Upstream: partly (libprisma and WebRTC fixes yes).
 - Sync: libprisma is `desktop-app/libprisma` 94640c6 plus `TokenizeStats`/`TokenizeLimits`; re-add those hooks on refresh.
+
+### Message widgets (13.2) gates
+- What: upstream's message widgets (a bot's HTML/CSS/JS run in the app process) are on by default there, switched off only by the server. Here they also stop when Lockdown Mode is on (`HardenedMediaPolicy.allowsMessageWidgets`) and by a local Debug Settings switch (default on); the widget wallet is off behind a second Debug switch (default off) until tested on a device with a funded wallet; a crash sentinel (`MessageWidgetCrashSentinel`) makes a source that was running when the app last crashed start stopped (the static "Widget stopped" badge) for 7 days.
+- Where: `chatMessageWidgetRenderingEnabled` (`ChatMessageWidgetBubbleContentNode`), `MessageWidgetLocalSettings`, `MessageWidgetWalletAvailability.isReady`, `MessageWidgetRegistry` (sentinel), `DebugController` rows, `HardenedMedia`.
+- Why: widgets run sender code in-process, the hardened libc++ build may trap where upstream's build is silent, and the wallet path has never run end to end upstream (review up132 I3, W1-W3).
+- Upstream: no.
+- Sync: expect small conflicts in `MessageWidgetRegistry.swift`, `MessageWidgetWalletAvailability.swift` and the bubble node's `chatMessageWidgetRenderingEnabled`.
 
 ### Shared core with the Mac app
 - What: this repository is the Telegram core of Nanogram for macOS; Mac-only behaviour sits behind `#if os(macOS)`;
@@ -137,3 +144,11 @@ marked (check) were not re-verified against the code; correct them on the next c
   member) and `ChatControllerInteraction` are upstream files with small changes; the rest is new. Not shared with the Mac (CoreList is iOS only).
 - Sync: a property added upstream to `ChatControllerInteraction` that a row's layout reads needs the `rowPrepEpoch` `didSet`; a
   property added to `ChatMessageStickerItemNode` needs a ledger entry and a reset in `prepareForRowReuse` (the ledger test fails otherwise).
+### Differences added or changed by the 13.2 merge (2026-11-06)
+- rlottie: upstream removed it and `LottieSettings`; iOS now renders only with tlottie. Our rlottie fork and `submodules/rlottie` wrappers stay for the macOS app and the Watch app (`docs/mac-core-paths.txt`). Upstream: no.
+- Glass: iOS 26 keeps a fixed luma range (light 0.8/0.801, dark 0/0.15); iOS 27 takes upstream's adaptive ranges and installs the luma clamp through `UISDFBackdropView`. Where: `GlassBackgroundView.adaptiveLumaRange`, `UIViewController+Navigation.m`.
+- HLS: upstream's native player replaces the JS player we had optimised; our zero-copy `MediaBoxRanges` parts are still read by the FFmpeg reader (with `startAt`), but the native part store writes temp files (open: use our parts for cached segments).
+- State sync: the `State/Sync/` layout is upstream's. We differ in four small places inside it: `applyUpdateChannelState` writes nothing when the pts is unchanged and `applyUpdateMessageImpressionCount` writes nothing unless the view count grows (`UnchangedStateUpdates.swift`; the equal participants-count skip sits in `AccountMutableState.mergeChats`); and the `StaleChannelDiagnostics` log hooks (`UpdateInterpreter+Channels`, `ChannelPolling.pollChannelOnce`, `DifferencePolicy.applyDifferenceAnswer`). Nothing changes what is sent to the server. Sync: expect small conflicts in those three Sync files.
+- History-fill confirmation: upstream's 200-id `messages.getMessages` is unchanged, but ids left out of a short answer (fewer entries than ids asked, no `messageEmpty`) stay stored and their hole is reopened (`StoredMessageConfirmation.unconfirmed`); upstream deletes them.
+- Kept removed (ours): in-app updater, AppCenter, notification content extension, share-to-Telegram-team crash log.
+- Debug Settings: upstream's seven new "legacy"/trace switches added to our curated list; widget debug tools, pts-limit override and remove-models not taken.

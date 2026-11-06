@@ -85,8 +85,12 @@ public struct ContainerViewLayout: Equatable {
     /// that corner. Not an initializer parameter: the window sets it, and the `with…` copies and the split
     /// container's master pane carry it; a layout built from scratch has none, as upstream.
     public var windowControls: CGSize? = nil
+    /// The layout is a split view's detail pane, and the master pane beside it shows a horizontal tab bar along its
+    /// bottom edge (`ViewController.showsBottomTabBar`), which the detail's bottom controls may line up with (iPad). Set
+    /// by `NavigationSplitContainer`; false everywhere else, including a layout built anew with the initializer's default.
+    public var isBesideBottomTabBar: Bool
     
-    public init(size: CGSize, metrics: LayoutMetrics, deviceMetrics: DeviceMetrics, intrinsicInsets: UIEdgeInsets, safeInsets: UIEdgeInsets, reservedCorners: ContainerViewLayoutCorners, division: CGRect?, additionalInsets: UIEdgeInsets, statusBarHeight: CGFloat?, inputHeight: CGFloat?, inputHeightIsInteractivellyChanging: Bool, inVoiceOver: Bool, presentedInFormSheet: Bool) {
+    public init(size: CGSize, metrics: LayoutMetrics, deviceMetrics: DeviceMetrics, intrinsicInsets: UIEdgeInsets, safeInsets: UIEdgeInsets, reservedCorners: ContainerViewLayoutCorners, division: CGRect?, additionalInsets: UIEdgeInsets, statusBarHeight: CGFloat?, inputHeight: CGFloat?, inputHeightIsInteractivellyChanging: Bool, inVoiceOver: Bool, presentedInFormSheet: Bool, isBesideBottomTabBar: Bool = false) {
         self.size = size
         self.metrics = metrics
         self.deviceMetrics = deviceMetrics
@@ -100,6 +104,7 @@ public struct ContainerViewLayout: Equatable {
         self.inputHeightIsInteractivellyChanging = inputHeightIsInteractivellyChanging
         self.inVoiceOver = inVoiceOver
         self.presentedInFormSheet = presentedInFormSheet
+        self.isBesideBottomTabBar = isBesideBottomTabBar
     }
     
     public func addedInsets(insets: UIEdgeInsets) -> ContainerViewLayout {

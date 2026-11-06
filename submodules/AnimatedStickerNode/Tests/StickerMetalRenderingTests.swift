@@ -5,7 +5,6 @@ import AsyncDisplayKit
 import Metal
 import SwiftSignalKit
 import Display
-import LottieSettings
 @testable import AnimatedStickerNode
 
 private func log(_ string: String) {
@@ -144,7 +143,7 @@ final class StickerMetalRenderingTests: XCTestCase {
         let prefix = self.directory + "/sticker"
         // 250 is not a multiple of 16: the Metal cache renders it at 256.
         var sourceValue: AnimatedStickerDirectFrameSource? = onQueue(queue) {
-            AnimatedStickerDirectFrameSource(queue: queue, data: sticker, width: 250, height: 250, cachePathPrefix: prefix, useMetalCache: true, fitzModifier: nil, lottieSettings: .noAccountFallback)
+            AnimatedStickerDirectFrameSource(queue: queue, data: sticker, width: 250, height: 250, cachePathPrefix: prefix, useMetalCache: true, fitzModifier: nil)
         }
         defer {
             queue.sync {
@@ -204,7 +203,7 @@ final class StickerMetalRenderingTests: XCTestCase {
         let queue = Queue()
         let prefix = self.directory + "/sticker"
         var sourceValue: AnimatedStickerDirectFrameSource? = onQueue(queue) {
-            AnimatedStickerDirectFrameSource(queue: queue, data: sticker, width: 256, height: 256, cachePathPrefix: prefix, useMetalCache: false, fitzModifier: nil, lottieSettings: .noAccountFallback)
+            AnimatedStickerDirectFrameSource(queue: queue, data: sticker, width: 256, height: 256, cachePathPrefix: prefix, useMetalCache: false, fitzModifier: nil)
         }
         defer {
             queue.sync {

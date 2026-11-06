@@ -502,21 +502,25 @@ static void registerEffectViewOverrides(void) {
     // the discriminator now belongs to UISDFElementView). A name that is not in the ObjC class table falls through to
     // the Swift runtime's mangled-name scan (45 ms in _contextDescriptorMatchesMangling in +load, launch trace J), so
     // the other OS's name is never tried as a fallback.
-    // On iOS 27 the overrides stay off, as they have been in every build so far (upstream's lookup misses there too):
-    // turning them on changes how the glass looks and waits for a check of recorded frames (owner, 2026-11-06). The
-    // lookup is skipped, which keeps the 45 ms gain. To turn them on, use _TtC5UIKit17UISDFBackdropView on iOS 27.
+    // iOS 27: the luma limits are installed there too (upstream 13.2; its static glass assets were captured with the clamp
+    // on, so live glass must be clamped the same way). The blur-radius hook on didMoveToWindow stays iOS 26 only, as
+    // upstream has it.
+    BOOL isBackdropViewModuleLevel = NO;
     NSString *backdropViewClassName = nil;
     if (@available(iOS 27.0, *)) {
-        backdropViewClassName = nil;
+        isBackdropViewModuleLevel = YES;
+        backdropViewClassName = TGEncodeText(@"_TtC5UIKit17UISDFBackdropView", 0);
     } else {
         backdropViewClassName = TGEncodeText(@"_TtC5UIKitP33_ACD4A08F4BE9D00246F2A9C24A80CA8817UISDFBackdropView", 0);
     }
-    Class backdropViewClass = backdropViewClassName != nil ? NSClassFromString(backdropViewClassName) : nil;
+    Class backdropViewClass = NSClassFromString(backdropViewClassName);
     if (backdropViewClass != nil) {
-        Method moveMethod = class_getInstanceMethod(backdropViewClass, @selector(didMoveToWindow));
-        if (moveMethod) {
-            original_backdropViewDidMoveToWindow = (void (*)(UIView *, SEL))method_getImplementation(moveMethod);
-            class_replaceMethod(backdropViewClass, @selector(didMoveToWindow), (IMP)&replacement_backdropViewDidMoveToWindow, method_getTypeEncoding(moveMethod));
+        if (!isBackdropViewModuleLevel) {
+            Method moveMethod = class_getInstanceMethod(backdropViewClass, @selector(didMoveToWindow));
+            if (moveMethod) {
+                original_backdropViewDidMoveToWindow = (void (*)(UIView *, SEL))method_getImplementation(moveMethod);
+                class_replaceMethod(backdropViewClass, @selector(didMoveToWindow), (IMP)&replacement_backdropViewDidMoveToWindow, method_getTypeEncoding(moveMethod));
+            }
         }
 
         NSString *selectorString = [@"backdropLayer" stringByAppendingString:@":didChangeLuma:"];
@@ -934,8 +938,9 @@ void snapshotViewByDrawingInContext(UIView * _Nonnull view) {
 - (instancetype)initWithFrame:(CGRect)frame {
     self = [super initWithFrame:frame];
     if (self != nil) {
+        // No limit until the owner sets one: a luma that arrives first passes through instead of clamping to 0.
         _lumaMin = 0.0;
-        _lumaMax = 0.0;
+        _lumaMax = 1.0;
     }
     return self;
 }

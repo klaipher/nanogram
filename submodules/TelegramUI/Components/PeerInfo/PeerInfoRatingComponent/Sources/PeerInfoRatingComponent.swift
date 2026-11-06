@@ -139,19 +139,22 @@ public final class PeerInfoRatingComponent: Component {
     let foregroundColor: UIColor
     let level: Int
     let action: () -> Void
+    let accessibilityLabel: String?
     
     public init(
         backgroundColor: UIColor,
         borderColor: UIColor,
         foregroundColor: UIColor,
         level: Int,
-        action: @escaping () -> Void
+        action: @escaping () -> Void,
+        accessibilityLabel: String? = nil
     ) {
         self.backgroundColor = backgroundColor
         self.borderColor = borderColor
         self.foregroundColor = foregroundColor
         self.level = level
         self.action = action
+        self.accessibilityLabel = accessibilityLabel
     }
     
     public static func ==(lhs: PeerInfoRatingComponent, rhs: PeerInfoRatingComponent) -> Bool {
@@ -165,6 +168,9 @@ public final class PeerInfoRatingComponent: Component {
             return false
         }
         if lhs.level != rhs.level {
+            return false
+        }
+        if lhs.accessibilityLabel != rhs.accessibilityLabel {
             return false
         }
         return true
@@ -204,6 +210,14 @@ public final class PeerInfoRatingComponent: Component {
             fatalError("init(coder:) has not been implemented")
         }
         
+        override public func accessibilityActivate() -> Bool {
+            guard let component = self.component else {
+                return false
+            }
+            component.action()
+            return true
+        }
+        
         @objc private func onTapGesture(_ recognizer: UITapGestureRecognizer) {
             guard let component = self.component else {
                 return
@@ -223,6 +237,12 @@ public final class PeerInfoRatingComponent: Component {
             self.state = state
             
             let level = component.level
+            
+            // VoiceOver: one button, labelled by the host, whose value is the level the badge shows.
+            self.isAccessibilityElement = component.accessibilityLabel != nil
+            self.accessibilityLabel = component.accessibilityLabel
+            self.accessibilityValue = "\(level)"
+            self.accessibilityTraits = .button
             
             let iconSize = CGSize(width: 26.0, height: 26.0)
             

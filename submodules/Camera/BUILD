@@ -1,4 +1,4 @@
-load("@build_bazel_rules_swift//swift:swift.bzl", "swift_library")
+load("@build_bazel_rules_swift//swift:swift.bzl", "swift_library", "swift_test")
 load("@build_bazel_rules_apple//apple:ios.bzl", "ios_unit_test")
 load("@build_bazel_rules_apple//apple/testing/default_runner:ios_test_runner.bzl", "ios_test_runner")
 load("//build-system/bazel-utils:test_simulator.bzl", "TEST_SIMULATOR_DEVICE", "TEST_SIMULATOR_OS")
@@ -73,6 +73,10 @@ swift_library(
     ], exclude = [
         "Tests/CameraMultitaskingPolicyTests.swift",
         "Tests/CameraTabletPolicyTests.swift",
+        # Compiled with their sources by CameraHostTests (they have no `import Camera`).
+        "Tests/CameraCaptureModeTests.swift",
+        "Tests/CameraCaptureModeChangeTests.swift",
+        "Tests/CameraVideoOrientationTests.swift",
     ]),
     deps = [
         ":Camera",
@@ -132,5 +136,21 @@ ios_unit_test(
     runner = ":CameraTestRunner",
     deps = [
         ":CameraMultitaskingPolicyTestsLib",
+    ],
+)
+
+# Host (macOS) tests of the capture-mode and video-orientation decisions: compiled with their sources, no simulator.
+swift_test(
+    name = "CameraHostTests",
+    srcs = [
+        "Sources/CameraCaptureMode.swift",
+        "Sources/CameraCaptureModeChange.swift",
+        "Sources/CameraVideoOrientation.swift",
+        "Tests/CameraCaptureModeTests.swift",
+        "Tests/CameraCaptureModeChangeTests.swift",
+        "Tests/CameraVideoOrientationTests.swift",
+    ],
+    copts = [
+        "-warnings-as-errors",
     ],
 )

@@ -125,12 +125,31 @@ final class OggOpusWriterContinuityTests: XCTestCase {
         XCTAssertEqual(decoded.samples, uninterruptedSampleCount(frames: 100))
     }
 
-    func testResumeFromStateWithoutPageNumberReparsesTheData() {
+    /// A state that carries the encoder (`encoderData`) but no `pageno` is not a state this writer produced: the restore
+    /// refuses it instead of guessing the next page number (upstream 13.2's `restoreState` validates every key).
+    func testResumeFromStateWithEncoderButWithoutPageNumberIsRefused() {
         let item = TGDataItem(data: Data())!
         let writer = TGOggOpusWriter()
         XCTAssertTrue(writer.begin(with: item))
         write(writer, frames: 0 ..< 50)
         var state = writer.pause()
+        state.removeValue(forKey: "pageno")
+
+        let restoredItem = TGDataItem(data: item.data())!
+        let restored = TGOggOpusWriter()
+        XCTAssertFalse(restored.resume(with: restoredItem, encoderState: state))
+    }
+
+    /// A state of the older kind (no encoder, no opus version; only the byte count of what was written) is resumed by
+    /// reparsing the data and appending, which keeps one logical stream.
+    func testResumeFromStateWithoutEncoderDataReparsesTheData() {
+        let item = TGDataItem(data: Data())!
+        let writer = TGOggOpusWriter()
+        XCTAssertTrue(writer.begin(with: item))
+        write(writer, frames: 0 ..< 50)
+        var state = writer.pause()
+        state.removeValue(forKey: "encoderData")
+        state.removeValue(forKey: "opusVersion")
         state.removeValue(forKey: "pageno")
 
         let restoredItem = TGDataItem(data: item.data())!

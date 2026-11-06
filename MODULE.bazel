@@ -196,6 +196,16 @@ archive_override(
     urls = ["https://github.com/bazelbuild/rules_apple/releases/download/5.4.0/rules_apple.5.4.0.tar.gz"],
 )
 
+# rules_apple's ios_test_runner drives xcodebuild through xctestrunner, which passes
+# `-collect-test-diagnostics=never`. xcodebuild ignores that spelling (it needs the value as a separate
+# argument), so every FAILING test run then waits in `simctl diagnose` for up to 600 s (longer if the Mac
+# sleeps). The patch passes the two arguments. Bumping xctestrunner means re-checking the patch.
+single_version_override(
+    module_name = "xctestrunner",
+    patch_strip = 1,
+    patches = ["//build-system/bazel-patches:xctestrunner-collect-test-diagnostics.patch"],
+)
+
 bazel_dep(name = "rules_swift", version = "4.2.2", repo_name = "build_bazel_rules_swift")
 bazel_dep(name = "apple_support", version = "2.11.0", repo_name = "build_bazel_apple_support")
 

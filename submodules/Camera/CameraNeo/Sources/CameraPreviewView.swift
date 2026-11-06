@@ -2,23 +2,9 @@ import Foundation
 import UIKit
 import AVFoundation
 import SwiftSignalKit
+import Display
 import Camera
 import CameraMultitaskingPolicy
-
-private extension UIInterfaceOrientation {
-    var videoOrientation: AVCaptureVideoOrientation {
-        switch self {
-        case .portraitUpsideDown:
-            return .portraitUpsideDown
-        case .landscapeRight:
-            return .landscapeRight
-        case .landscapeLeft:
-            return .landscapeLeft
-        default:
-            return .portrait
-        }
-    }
-}
 
 final class CameraPreviewView: UIView, CameraSimplePreviewView {
     private let placeholderView = UIImageView()
@@ -66,7 +52,10 @@ final class CameraPreviewView: UIView, CameraSimplePreviewView {
         // iPad (audit A-8): the scene's effective geometry, which follows a resizable window.
         let interfaceOrientation = CameraTabletPolicy.interfaceOrientation(of: self.window?.windowScene)
         let layer = self.videoPreviewLayer
-        let orientation = interfaceOrientation.videoOrientation
+        // The window's orientation is measured against its screen, the connection's against the body that holds the
+        // camera: a quarter turn apart on iPhone Duo's inner screen (scene orientation first, then the Duo mapping).
+        let screenPortrait = screenPortraitDeviceOrientationForWindow(size: self.window?.bounds.size ?? .zero)
+        let orientation = CameraVideoOrientation(interfaceOrientation: CameraVideoOrientation(interfaceOrientation), screenPortrait: CameraVideoOrientation(screenPortrait)).avCaptureVideoOrientation
         if self.orientationTracker.request(orientation) {
             let stopped = self.connectionChangesStopped
             let tracker = self.orientationTracker

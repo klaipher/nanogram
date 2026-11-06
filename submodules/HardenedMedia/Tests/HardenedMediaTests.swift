@@ -59,6 +59,7 @@ final class HardenedMediaPolicyTests: XCTestCase {
         XCTAssertFalse(policy.confirmsOutgoingLinkPreviews)
         XCTAssertTrue(policy.allowsCodeHighlighting)
         XCTAssertTrue(policy.allowsMiniAppAutoOpen)
+        XCTAssertTrue(policy.allowsMessageWidgets)
     }
 
     func testLockdownKeepsContactsAndBlocksEveryoneElse() {
@@ -75,6 +76,7 @@ final class HardenedMediaPolicyTests: XCTestCase {
         XCTAssertTrue(policy.confirmsOutgoingLinkPreviews)
         XCTAssertFalse(policy.allowsCodeHighlighting)
         XCTAssertFalse(policy.allowsMiniAppAutoOpen)
+        XCTAssertFalse(policy.allowsMessageWidgets)
     }
 
     func testPolicyFollowsTheDetectedState() {

@@ -26,6 +26,7 @@ swift_library(
         "//submodules/TextFormat:TextFormat",
         "//submodules/ManagedFile",
         "//submodules/DiskWriteAccounting",
+        "//submodules/HLSPlayback:HLSPlayback",
     ],
     visibility = [
         "//visibility:public",
@@ -41,6 +42,7 @@ swift_library(
     deps = [
         ":UniversalMediaPlayer",
         "//submodules/FFMpegBinding:FFMpegBinding",
+        "//submodules/HLSPlayback:HLSPlayback",
         "//submodules/Postbox:Postbox",
         "//submodules/Utils/RangeSet:RangeSet",
         "//submodules/TelegramAudio:TelegramAudio",
@@ -61,6 +63,7 @@ ios_unit_test(
     runner = ":UniversalMediaPlayerTestRunner",
     resources = glob([
         "Tests/Resources/*",
+        "Tests/Fixtures/*.mp4",
     ]),
     deps = [
         ":UniversalMediaPlayerTestsLib",

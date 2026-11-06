@@ -95,7 +95,7 @@ final class LottieCacheQualityTests: XCTestCase {
 
     private func cache(quality: LottieCacheQuality) throws -> CountingWriter {
         let writer = CountingWriter()
-        cacheLottieAnimation(data: try self.fixture(), width: 64, height: 64, keyframeOnly: true, writer: writer, firstFrameOnly: false, customColor: nil, lottieSettings: LottieRenderingSettings(backend: .rlottie), frameSkip: quality.frameSkip)
+        cacheLottieAnimation(data: try self.fixture(), width: 64, height: 64, keyframeOnly: true, writer: writer, firstFrameOnly: false, customColor: nil, frameSkip: quality.frameSkip)
         XCTAssertTrue(writer.waitUntilFinished())
         return writer
     }
@@ -117,7 +117,7 @@ final class LottieCacheQualityTests: XCTestCase {
 
     func testTheDefaultStaysUpstreams() throws {
         let writer = CountingWriter()
-        cacheLottieAnimation(data: try self.fixture(), width: 64, height: 64, keyframeOnly: true, writer: writer, firstFrameOnly: false, customColor: nil, lottieSettings: LottieRenderingSettings(backend: .rlottie))
+        cacheLottieAnimation(data: try self.fixture(), width: 64, height: 64, keyframeOnly: true, writer: writer, firstFrameOnly: false, customColor: nil)
         XCTAssertTrue(writer.waitUntilFinished())
         XCTAssertEqual(writer.durations.count, 90)
     }

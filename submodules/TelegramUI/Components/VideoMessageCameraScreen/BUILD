@@ -14,7 +14,6 @@ swift_library(
     ],
     deps = [
         "//submodules/AsyncDisplayKit",
-        "//submodules/LottieSettings:LottieSettings",
         "//submodules/Display",
         "//submodules/TelegramCore",
         "//submodules/SSignalKit/SwiftSignalKit",
@@ -62,6 +61,7 @@ swift_library(
     ]),
     deps = [
         ":VideoMessageCameraScreen",
+        "//submodules/Display",
     ],
 )
 

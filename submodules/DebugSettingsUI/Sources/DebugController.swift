@@ -24,6 +24,7 @@ import WalletContext
 import CpuProfiler
 import CrashReporting
 import ContextUI
+import MessageWidget
 
 private final class DebugControllerArguments {
     let sharedContext: SharedAccountContext
@@ -341,7 +342,15 @@ enum DebugControllerEntry: ItemListNodeEntry {
     case localTranscription(Bool)
     case enableVoipTcp(Bool)
     case tabletDisplayLinkFrameRateCap(Bool)
-    case forceRLottieBackend(Bool)
+    case coreListScrollTrace(Bool)
+    case chatMediaEditorLegacy(Bool)
+    case mediaGridLegacy(Bool)
+    case sharedMediaGridLegacy(Bool)
+    case storyLegacyVideoWriter(Bool)
+    case chatLegacyVideoWriter(Bool)
+    case chatSideListLegacy(Bool)
+    case messageWidgets(Bool)
+    case messageWidgetWallet(Bool)
     case respectSystemMicrophone(Bool)
     case videoMessageCameraMode(ExperimentalUISettings.VideoMessageCameraMode)
     case videoMessageCloseFocus(Bool)
@@ -392,7 +401,7 @@ enum DebugControllerEntry: ItemListNodeEntry {
             return DebugControllerSection.web.rawValue
         case .experimentsHeader, .keepChatNavigationStack, .skipReadHistory, .alwaysDisplayTyping, .crashOnSlowQueries, .crashOnMemoryPressure:
             return DebugControllerSection.experiments.rawValue
-        case .compressedEmojiCache, .checkSerializedData, .enableQuickReactionSwitch, .fakeGlass, .inputDecEngineEditor, .forceListViewImplChatBackend, .forceRLottieBackend, .respectSystemMicrophone, .videoMessageCameraMode, .videoMessageCloseFocus, .videoMessageCameraMatrix, .liveStreamV2, .groupCallReferenceEngine:
+        case .compressedEmojiCache, .checkSerializedData, .enableQuickReactionSwitch, .fakeGlass, .inputDecEngineEditor, .forceListViewImplChatBackend, .coreListScrollTrace, .respectSystemMicrophone, .videoMessageCameraMode, .videoMessageCloseFocus, .videoMessageCameraMatrix, .liveStreamV2, .groupCallReferenceEngine:
             return DebugControllerSection.experiments.rawValue
         case .callsHeader, .callsLivestreamHardwareDecoding, .callsNativeCapturePath, .callsSystemNoiseSuppression, .callsAdvancedDucking, .callsGroupNoiseMode, .callsThermalVideoLadder:
             return DebugControllerSection.streamsAndCalls.rawValue
@@ -404,7 +413,7 @@ enum DebugControllerEntry: ItemListNodeEntry {
             return DebugControllerSection.chatOpen.rawValue
         case .chatScrollHeader, .chatScrollPrepareLayoutAhead, .chatScrollReuseRowViews:
             return DebugControllerSection.chatScroll.rawValue
-        case .springSendAnimation, .fakeWalletTransfers, .stickerRendererMode, .disableImageContentAnalysis, .disableLanguageRecognition, .localTranscription, .enableVoipTcp, .tabletDisplayLinkFrameRateCap:
+        case .springSendAnimation, .fakeWalletTransfers, .stickerRendererMode, .disableImageContentAnalysis, .disableLanguageRecognition, .localTranscription, .enableVoipTcp, .tabletDisplayLinkFrameRateCap, .chatMediaEditorLegacy, .mediaGridLegacy, .sharedMediaGridLegacy, .storyLegacyVideoWriter, .chatLegacyVideoWriter, .chatSideListLegacy, .messageWidgets, .messageWidgetWallet:
             return DebugControllerSection.experiments.rawValue
         case .enableNetworkFramework, .enableNetworkExperiments, .rustMTProtoEngine, .networkEngineInfo:
             return DebugControllerSection.videoExperiments2.rawValue
@@ -445,7 +454,8 @@ enum DebugControllerEntry: ItemListNodeEntry {
             return 20
         case .forceListViewImplChatBackend:
             return 22
-        case .forceRLottieBackend:
+        case .coreListScrollTrace:
+            // Takes the id of the removed rlottie switch, right after `forceListViewImplChatBackend`.
             return 23
         case .respectSystemMicrophone:
             return 24
@@ -495,6 +505,29 @@ enum DebugControllerEntry: ItemListNodeEntry {
         case .tabletDisplayLinkFrameRateCap:
             // Appended right after `enableVoipTcp`; see the ordering note at `springSendAnimation`.
             return 81
+        case .chatMediaEditorLegacy:
+            // Appended right after `tabletDisplayLinkFrameRateCap`, in this order; see the ordering note at `springSendAnimation`.
+            return 82
+        case .mediaGridLegacy:
+            // Appended right after `tabletDisplayLinkFrameRateCap`, in this order; see the ordering note at `springSendAnimation`.
+            return 83
+        case .sharedMediaGridLegacy:
+            // Appended right after `tabletDisplayLinkFrameRateCap`, in this order; see the ordering note at `springSendAnimation`.
+            return 84
+        case .storyLegacyVideoWriter:
+            // Appended right after `tabletDisplayLinkFrameRateCap`, in this order; see the ordering note at `springSendAnimation`.
+            return 85
+        case .chatLegacyVideoWriter:
+            // Appended right after `tabletDisplayLinkFrameRateCap`, in this order; see the ordering note at `springSendAnimation`.
+            return 86
+        case .chatSideListLegacy:
+            // Appended right after `tabletDisplayLinkFrameRateCap`, in this order; see the ordering note at `springSendAnimation`.
+            return 87
+        case .messageWidgets:
+            // Appended right after `chatSideListLegacy`; see the ordering note at `springSendAnimation`.
+            return 88
+        case .messageWidgetWallet:
+            return 89
         case .checkSerializedData:
             return 58
         case .enableQuickReactionSwitch:
@@ -898,14 +931,12 @@ enum DebugControllerEntry: ItemListNodeEntry {
                     })
                 }).start()
             })
-        case let .forceRLottieBackend(value):
-            return ItemListSwitchItem(presentationData: presentationData, systemStyle: .glass, title: "Lottie: force rlottie", value: value, sectionId: self.section, style: .blocks, updated: { value in
-                let _ = arguments.sharedContext.accountManager.transaction ({ transaction in
-                    transaction.updateSharedData(ApplicationSpecificSharedDataKeys.experimentalUISettings, { settings in
-                        var settings = settings?.get(ExperimentalUISettings.self) ?? ExperimentalUISettings.defaultSettings
-                        settings.forceRLottieBackend = value
-                        return EnginePreferencesEntry(settings)
-                    })
+        case let .coreListScrollTrace(value):
+            return ItemListSwitchItem(presentationData: presentationData, systemStyle: .glass, title: "Chat: CoreList scroll trace", value: value, sectionId: self.section, style: .blocks, updated: { value in
+                let _ = updateExperimentalUISettingsInteractively(accountManager: arguments.sharedContext.accountManager, { settings in
+                    var settings = settings
+                    settings.coreListScrollTrace = value
+                    return settings
                 }).start()
             })
         case let .respectSystemMicrophone(value):
@@ -1058,6 +1089,62 @@ enum DebugControllerEntry: ItemListNodeEntry {
                 let _ = updateExperimentalUISettingsInteractively(accountManager: arguments.sharedContext.accountManager, { settings in
                     var settings = settings
                     settings.tabletDisplayLinkFrameRateCap = value
+                    return settings
+                }).start()
+            })
+        case let .messageWidgets(value):
+            return ItemListSwitchItem(presentationData: presentationData, systemStyle: .glass, title: "Message widgets", text: "A bot's widget in a message runs its own script in this app. Off (or in Lockdown Mode) a widget message shows the unsupported-content pill and runs nothing. Turning it on forgets widgets stopped after a crash.", value: value, maximumNumberOfLines: 0, sectionId: self.section, style: .blocks, updated: { value in
+                MessageWidgetLocalSettings.setWidgetsEnabled(value)
+            })
+        case let .messageWidgetWallet(value):
+            return ItemListSwitchItem(presentationData: presentationData, systemStyle: .glass, title: "Message widgets: wallet", text: "Lets a widget ask the wallet to pay or sign. Off until the path has been tested on a device with a funded test wallet.", value: value, maximumNumberOfLines: 0, sectionId: self.section, style: .blocks, updated: { value in
+                MessageWidgetLocalSettings.setWalletEnabled(value)
+            })
+        case let .chatMediaEditorLegacy(value):
+            return ItemListSwitchItem(presentationData: presentationData, systemStyle: .glass, title: "Chat: legacy media editor", value: value, sectionId: self.section, style: .blocks, updated: { value in
+                let _ = updateExperimentalUISettingsInteractively(accountManager: arguments.sharedContext.accountManager, { settings in
+                    var settings = settings
+                    settings.chatMediaEditorLegacy = value
+                    return settings
+                }).start()
+            })
+        case let .mediaGridLegacy(value):
+            return ItemListSwitchItem(presentationData: presentationData, systemStyle: .glass, title: "Media picker: legacy grid", value: value, sectionId: self.section, style: .blocks, updated: { value in
+                let _ = updateExperimentalUISettingsInteractively(accountManager: arguments.sharedContext.accountManager, { settings in
+                    var settings = settings
+                    settings.mediaGridLegacy = value
+                    return settings
+                }).start()
+            })
+        case let .sharedMediaGridLegacy(value):
+            return ItemListSwitchItem(presentationData: presentationData, systemStyle: .glass, title: "Shared media: legacy grid", value: value, sectionId: self.section, style: .blocks, updated: { value in
+                let _ = updateExperimentalUISettingsInteractively(accountManager: arguments.sharedContext.accountManager, { settings in
+                    var settings = settings
+                    settings.sharedMediaGridLegacy = value
+                    return settings
+                }).start()
+            })
+        case let .storyLegacyVideoWriter(value):
+            return ItemListSwitchItem(presentationData: presentationData, systemStyle: .glass, title: "Stories: legacy video writer", value: value, sectionId: self.section, style: .blocks, updated: { value in
+                let _ = updateExperimentalUISettingsInteractively(accountManager: arguments.sharedContext.accountManager, { settings in
+                    var settings = settings
+                    settings.storyLegacyVideoWriter = value
+                    return settings
+                }).start()
+            })
+        case let .chatLegacyVideoWriter(value):
+            return ItemListSwitchItem(presentationData: presentationData, systemStyle: .glass, title: "Chat videos: legacy video writer", value: value, sectionId: self.section, style: .blocks, updated: { value in
+                let _ = updateExperimentalUISettingsInteractively(accountManager: arguments.sharedContext.accountManager, { settings in
+                    var settings = settings
+                    settings.chatLegacyVideoWriter = value
+                    return settings
+                }).start()
+            })
+        case let .chatSideListLegacy(value):
+            return ItemListSwitchItem(presentationData: presentationData, systemStyle: .glass, title: "Chat side list: legacy strip", value: value, sectionId: self.section, style: .blocks, updated: { value in
+                let _ = updateExperimentalUISettingsInteractively(accountManager: arguments.sharedContext.accountManager, { settings in
+                    var settings = settings
+                    settings.chatSideListLegacy = value
                     return settings
                 }).start()
             })
@@ -1274,6 +1361,9 @@ struct DebugControllerEntriesEnvironment {
     var modernVideoMessagePipelineKilled: Bool
     var networkEngineKind: String?
     var useBetaFeatures: Bool
+    /// This device's switches for message widgets (`MessageWidgetLocalSettings`): widgets on by default, the wallet off.
+    var messageWidgetsEnabled: Bool = true
+    var messageWidgetWalletEnabled: Bool = false
 }
 
 func debugControllerEntries(environment: DebugControllerEntriesEnvironment, theme: PresentationTheme, loggingSettings: LoggingSettings, experimentalSettings: ExperimentalUISettings, networkSettings: NetworkSettings?, networkEngineSettings: NetworkEngineSettings) -> [DebugControllerEntry] {
@@ -1314,7 +1404,7 @@ func debugControllerEntries(environment: DebugControllerEntriesEnvironment, them
         entries.append(.alwaysDisplayTyping(experimentalSettings.alwaysDisplayTyping))
     }
     entries.append(.forceListViewImplChatBackend(experimentalSettings.forceListViewImplChatBackend))
-    entries.append(.forceRLottieBackend(experimentalSettings.forceRLottieBackend))
+    entries.append(.coreListScrollTrace(experimentalSettings.coreListScrollTrace))
     entries.append(.respectSystemMicrophone(experimentalSettings.respectSystemMicrophone))
     let useModernVideoMessagePipeline = (experimentalSettings.useModernVideoMessagePipeline ?? !environment.modernVideoMessagePipelineKilled) && experimentalSettings.videoMessageCameraMode != .legacy
     entries.append(.videoMessageCameraMode(useModernVideoMessagePipeline ? experimentalSettings.videoMessageCameraMode : .legacy))
@@ -1340,6 +1430,14 @@ func debugControllerEntries(environment: DebugControllerEntriesEnvironment, them
         entries.append(.localTranscription(experimentalSettings.localTranscription))
         entries.append(.enableVoipTcp(experimentalSettings.enableVoipTcp))
         entries.append(.tabletDisplayLinkFrameRateCap(experimentalSettings.tabletDisplayLinkFrameRateCap))
+        entries.append(.chatMediaEditorLegacy(experimentalSettings.chatMediaEditorLegacy))
+        entries.append(.mediaGridLegacy(experimentalSettings.mediaGridLegacy))
+        entries.append(.sharedMediaGridLegacy(experimentalSettings.sharedMediaGridLegacy))
+        entries.append(.storyLegacyVideoWriter(experimentalSettings.storyLegacyVideoWriter))
+        entries.append(.chatLegacyVideoWriter(experimentalSettings.chatLegacyVideoWriter))
+        entries.append(.chatSideListLegacy(experimentalSettings.chatSideListLegacy))
+        entries.append(.messageWidgets(environment.messageWidgetsEnabled))
+        entries.append(.messageWidgetWallet(environment.messageWidgetWalletEnabled))
     }
 
     if isMainApp {
@@ -1448,7 +1546,9 @@ public func debugController(sharedContext: SharedAccountContext, context: Accoun
             isDevAccount: isDevAccount,
             modernVideoMessagePipelineKilled: context?.getAppConfigValue("ios_killswitch_disable_neo_round_camera_v2") != nil,
             networkEngineKind: context?.account.network.engineKind.rawValue,
-            useBetaFeatures: useBetaFeatures
+            useBetaFeatures: useBetaFeatures,
+            messageWidgetsEnabled: MessageWidgetLocalSettings.widgetsEnabled(),
+            messageWidgetWalletEnabled: MessageWidgetLocalSettings.walletEnabled()
         )
         
         let controllerState = ItemListControllerState(presentationData: ItemListPresentationData(presentationData), title: .text("Debug Settings"), leftNavigationButton: leftNavigationButton, rightNavigationButton: nil, backNavigationButton: ItemListBackButton(title: presentationData.strings.Common_Back))

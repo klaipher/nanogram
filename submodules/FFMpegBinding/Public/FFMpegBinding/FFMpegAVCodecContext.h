@@ -36,6 +36,9 @@ typedef NS_ENUM(NSUInteger, FFMpegAVCodecContextReceiveResult)
 - (void)setSkipLoopFilterToAll;
 - (void)setThreadCount:(int32_t)threadCount;
 - (int32_t)threadCount;
+// Sets `skip_frame` to `AVDISCARD_NONREF` (or back to the default): packets of frames no other frame references are
+// not decoded at all. Takes effect for the packets sent after it.
+- (void)setSkipNonReferenceFrames:(bool)skip;
 - (FFMpegAVCodecContextReceiveResult)receiveIntoFrame:(FFMpegAVFrame *)frame;
 - (void)flushBuffers;
 

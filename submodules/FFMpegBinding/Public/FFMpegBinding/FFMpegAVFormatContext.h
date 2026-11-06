@@ -58,6 +58,9 @@ extern int FFMpegCodecIdAV1;
 // Whether an avcC record's SPS tells the H.264 decoder its reorder delay (POC type 2, or a
 // VUI bitstream restriction), so the delay need not be guessed by decoding frames.
 + (bool)avcCSignalsReorderDelay:(NSData *)avcC;
+// Marks every stream not of `type` discarded (`AVDISCARD_ALL`): `findStreamInfo` then analyses only streams of `type`,
+// and reading returns no packets of the others.
+- (void)discardStreamsNotOfType:(FFMpegAVFormatStreamType)type NS_SWIFT_NAME(discardStreams(notOf:));
 - (void)seekFrameForStreamIndex:(int32_t)streamIndex pts:(int64_t)pts positionOnKeyframe:(bool)positionOnKeyframe;
 - (void)seekFrameForStreamIndex:(int32_t)streamIndex byteOffset:(int64_t)byteOffset;
 - (bool)readFrameIntoPacket:(FFMpegPacket *)packet;

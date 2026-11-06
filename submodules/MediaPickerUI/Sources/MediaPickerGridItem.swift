@@ -946,7 +946,7 @@ class SpoilerOverlayNode: ASDisplayNode {
     }
 }
 
-private func blurredImage(_ image: UIImage) -> UIImage? {
+func blurredImage(_ image: UIImage) -> UIImage? {
     guard let image = image.cgImage else {
         return nil
     }
