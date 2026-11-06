@@ -1904,6 +1904,7 @@ public final class ChatEntityKeyboardInputNode: ChatInputNode {
         if case .regular = layoutMetrics.widthClass, inputHeight > 0.0 && inputHeight < 100.0 {
             keyboardBottomInset = inputHeight + 15.0
         }
+        let entityKeyboardUpdateSignpost = PerformanceSignposts.begin(EmojiPanelOpenSignpost.entityKeyboardUpdate)
         let entityKeyboardSize = self.entityKeyboardView.update(
             transition: mappedTransition,
             component: AnyComponent(EntityKeyboardComponent(
@@ -2012,6 +2013,7 @@ public final class ChatEntityKeyboardInputNode: ChatInputNode {
             environment: {},
             containerSize: CGSize(width: width, height: expandedHeight)
         )
+        PerformanceSignposts.end(EmojiPanelOpenSignpost.entityKeyboardUpdate, entityKeyboardUpdateSignpost)
 
         var clippingFrame = CGRect(origin: CGPoint(), size: entityKeyboardSize)
         clippingFrame.size.height += 32.0
