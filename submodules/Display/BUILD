@@ -211,6 +211,9 @@ ios_unit_test(
     runner = ":DisplayTestRunner",
     deps = [
         ":TabletSecondBatchTestsLib",
+    ],
+)
+
 # DisplayAccessibilityTests need a running UIApplication (ListViewImpl's CADisplayLink is nil without one). The host
 # links Display and AsyncDisplayKit itself so the test bundle does not carry a second copy: ASDK's `+load` creating a
 # UIView while XCTest injects the bundle deadlocks in `+[UIScreen initialize]`.
