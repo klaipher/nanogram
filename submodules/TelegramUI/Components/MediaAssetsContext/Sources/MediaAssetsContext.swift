@@ -7,7 +7,7 @@ import AVFoundation
 public final class MediaAssetsContext: NSObject, PHPhotoLibraryChangeObserver {
     private let assetType: PHAssetMediaType?
     
-    private var registeredChangeObserver = false
+    private let changeObserverGate = ChangeObserverGate()
     private let changeSink = ValuePipe<PHChange>()
     private let mediaAccessSink = ValuePipe<PHAuthorizationStatus>()
     private let cameraAccessSink = ValuePipe<AVAuthorizationStatus?>()
@@ -16,27 +16,25 @@ public final class MediaAssetsContext: NSObject, PHPhotoLibraryChangeObserver {
         self.assetType = assetType
         
         super.init()
-        
-        self.registerChangeObserverIfAllowed(PHPhotoLibrary.authorizationStatus(for: .readWrite))
     }
     
     /// Limited access also delivers changes (the user adds photos to the selection, takes a new one). Registered
-    /// again when access is first granted, so the grid updates in that same session. Main queue only.
+    /// again when access is first granted, so the grid updates in that same session. Any thread. Not done in
+    /// `init` (it is the first PhotoKit call of a picker open): every fetch below registers before it reads.
     private func registerChangeObserverIfAllowed(_ status: PHAuthorizationStatus) {
-        if self.registeredChangeObserver {
-            return
-        }
-        switch status {
-        case .authorized, .limited:
+        if self.changeObserverGate.shouldRegister(for: status) {
             PHPhotoLibrary.shared().register(self)
-            self.registeredChangeObserver = true
-        default:
-            break
+        }
+    }
+    
+    private func registerChangeObserverIfNeeded() {
+        if !self.changeObserverGate.isRegistered {
+            self.registerChangeObserverIfAllowed(PHPhotoLibrary.authorizationStatus(for: .readWrite))
         }
     }
     
     deinit {
-        if self.registeredChangeObserver {
+        if self.changeObserverGate.isRegistered {
             PHPhotoLibrary.shared().unregisterChangeObserver(self)
         }
     }
@@ -46,6 +44,7 @@ public final class MediaAssetsContext: NSObject, PHPhotoLibraryChangeObserver {
     }
     
     public func fetchAssets(_ collection: PHAssetCollection) -> Signal<PHFetchResult<PHAsset>, NoError> {
+        self.registerChangeObserverIfNeeded()
         let options = PHFetchOptions()
         if let assetType = self.assetType {
             options.predicate = NSPredicate(format: "mediaType = %d", assetType.rawValue)
@@ -68,6 +67,7 @@ public final class MediaAssetsContext: NSObject, PHPhotoLibraryChangeObserver {
     }
     
     public func fetchAssetsCollections(_ type: PHAssetCollectionType) -> Signal<PHFetchResult<PHAssetCollection>, NoError> {
+        self.registerChangeObserverIfNeeded()
         let initialFetchResult = PHAssetCollection.fetchAssetCollections(with: type, subtype: .any, options: nil)
         let fetchResult = Atomic<PHFetchResult<PHAssetCollection>>(value: initialFetchResult)
         return .single(initialFetchResult)
@@ -85,6 +85,7 @@ public final class MediaAssetsContext: NSObject, PHPhotoLibraryChangeObserver {
     }
     
     public func recentAssets() -> Signal<PHFetchResult<PHAsset>?, NoError> {
+        self.registerChangeObserverIfNeeded()
         let collections = PHAssetCollection.fetchAssetCollections(with: .smartAlbum, subtype: .smartAlbumUserLibrary, options: nil)
         if let collection = collections.firstObject {
             return fetchAssets(collection)
@@ -95,8 +96,11 @@ public final class MediaAssetsContext: NSObject, PHPhotoLibraryChangeObserver {
     }
         
     public func mediaAccess() -> Signal<PHAuthorizationStatus, NoError> {
-        let initialStatus = PHPhotoLibrary.authorizationStatus(for: .readWrite)
-        return .single(initialStatus)
+        // The status is read when the signal is subscribed, on the subscriber's queue, not when it is built.
+        return Signal<Void, NoError>.single(Void())
+        |> map { _ -> PHAuthorizationStatus in
+            return PHPhotoLibrary.authorizationStatus(for: .readWrite)
+        }
         |> then(
             self.mediaAccessSink.signal()
         )
