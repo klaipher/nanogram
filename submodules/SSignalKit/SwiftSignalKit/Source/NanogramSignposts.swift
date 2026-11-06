@@ -67,7 +67,7 @@ public enum PerformanceSignpostName {
     public static let mediaBoxReopen: StaticString = "mediaBoxReopen"
     /// A chat list row is tapped, before the open is dispatched (iOS). Event.
     public static let chatListRowTap: StaticString = "chatListRowTap"
-    /// A view controller push starts (iOS and macOS, `NavigationController.pushViewController`). Event.
+    /// A view controller push starts (iOS, `NavigationController.pushViewController`). Event.
     public static let navigationPush: StaticString = "navigationPush"
     /// The first history transition with messages is applied in a chat. Event.
     public static let historyFirstContent: StaticString = "historyFirstContent"
