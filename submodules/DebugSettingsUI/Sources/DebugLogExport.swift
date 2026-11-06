@@ -21,6 +21,7 @@ enum DebugLogExportKind: CaseIterable, Equatable {
     case logs
     case shareLogs
     case groupCallLogs
+    case callLogs
     case notificationLogs
     case criticalLogs
     case allLogs
@@ -87,6 +88,10 @@ func debugLogExportSpec(_ kind: DebugLogExportKind, appVersion: String, buildNum
         what = "Group Call Logs"
         lowercased = "group call logs"
         base = "group-calls"
+    case .callLogs:
+        what = "Call Logs"
+        lowercased = "call logs"
+        base = "calls"
     case .notificationLogs:
         what = "Notification Logs"
         lowercased = "notification logs"
@@ -683,6 +688,51 @@ func debugLogConcatenatedArchiveSignal(_ logs: Signal<[(String, String)], NoErro
             return debugLogConcatenatedArchive(logs: logs, additionalInfo: additionalInfo, baseName: spec.fileBaseName, in: directory).flatMap { [$0] } ?? []
         }
     }
+}
+
+/// The logs of the newest 1:1 calls in `path`, newest call first: each call's "<id>_<time>.log" followed by its
+/// rotated older half ".log.1" when there is one. The ".log.json" stats files and anything else are left out.
+func debugCallLogFiles(in path: String, limit: Int) -> [(String, String)] {
+    guard let urls = try? FileManager.default.contentsOfDirectory(at: URL(fileURLWithPath: path), includingPropertiesForKeys: [.contentModificationDateKey], options: [.skipsHiddenFiles]) else {
+        return []
+    }
+    var calls: [String: (date: Date, log: URL?, rotated: URL?)] = [:]
+    for url in urls {
+        let name = url.lastPathComponent
+        let stem: String
+        let isRotated: Bool
+        if name.hasSuffix(".log.1") {
+            stem = String(name.dropLast(".log.1".count))
+            isRotated = true
+        } else if name.hasSuffix(".log") {
+            stem = String(name.dropLast(".log".count))
+            isRotated = false
+        } else {
+            continue
+        }
+        let date = (try? url.resourceValues(forKeys: [.contentModificationDateKey]).contentModificationDate) ?? Date.distantPast
+        var entry = calls[stem] ?? (date: date, log: nil, rotated: nil)
+        entry.date = max(entry.date, date)
+        if isRotated {
+            entry.rotated = url
+        } else {
+            entry.log = url
+        }
+        calls[stem] = entry
+    }
+    let newest = calls.sorted { lhs, rhs in
+        if lhs.value.date != rhs.value.date {
+            return lhs.value.date > rhs.value.date
+        }
+        return lhs.key > rhs.key
+    }.prefix(max(0, limit))
+    var result: [(String, String)] = []
+    for (_, entry) in newest {
+        for url in [entry.log, entry.rotated].compactMap({ $0 }) {
+            result.append((url.lastPathComponent, url.path))
+        }
+    }
+    return result
 }
 
 /// Files zipped unchanged under their own names (MetricKit's JSON reports, so each still opens as JSON).

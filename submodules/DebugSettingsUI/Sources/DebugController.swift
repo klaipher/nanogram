@@ -122,6 +122,7 @@ private enum DebugLogAction {
     case sendLogs
     case sendShareLogs
     case sendGroupCallLogs
+    case sendCallLogs
     case sendNotificationLogs
     case sendCriticalLogs
     case sendAllLogs
@@ -132,6 +133,7 @@ private enum DebugLogAction {
         case .sendLogs: return "Logs"
         case .sendShareLogs: return "Share Logs"
         case .sendGroupCallLogs: return "Group Call Logs"
+        case .sendCallLogs: return "Call Logs"
         case .sendNotificationLogs: return "Notification Logs"
         case .sendCriticalLogs: return "Critical Logs"
         case .sendAllLogs: return "All Logs"
@@ -144,6 +146,7 @@ private enum DebugLogAction {
         case .sendLogs: return .logs
         case .sendShareLogs: return .shareLogs
         case .sendGroupCallLogs: return .groupCallLogs
+        case .sendCallLogs: return .callLogs
         case .sendNotificationLogs: return .notificationLogs
         case .sendCriticalLogs: return .criticalLogs
         case .sendAllLogs: return .allLogs
@@ -155,6 +158,8 @@ private enum DebugLogAction {
         switch self {
         case .sendLogs, .sendShareLogs, .sendGroupCallLogs, .sendNotificationLogs:
             return .secondLineWithValue("Up to 40 MB")
+        case .sendCallLogs:
+            return .secondLineWithValue("Last 10 calls")
         case .sendCriticalLogs, .sendAllLogs, .sendStorageStats:
             return .singleLine
         }
@@ -175,6 +180,16 @@ private enum DebugLogAction {
                 return { _, _ in .single([]) }
             }
             return debugLogConcatenatedArchiveSignal(Logger.shared.collectLogs(basePath: context.account.basePath + "/group-calls"))
+        case .sendCallLogs:
+            guard let context = arguments.context else {
+                return { _, _ in .single([]) }
+            }
+            let path = callLogsPath(account: context.account)
+            return debugLogFilesArchiveSignal(Signal { subscriber in
+                subscriber.putNext(debugCallLogFiles(in: path, limit: 10))
+                subscriber.putCompletion()
+                return EmptyDisposable
+            })
         case .sendNotificationLogs:
             let logsPath = arguments.sharedContext.basePath + "/logs/notification-logs"
             return debugLogConcatenatedArchiveSignal(Logger(rootPath: logsPath, basePath: logsPath).collectLogs())
@@ -1329,6 +1344,7 @@ public func debugController(sharedContext: SharedAccountContext, context: Accoun
         var options: [DebugLogAction] = [.sendLogs, .sendShareLogs]
         if arguments.context != nil {
             options.append(.sendGroupCallLogs)
+            options.append(.sendCallLogs)
         }
         options.append(contentsOf: [.sendNotificationLogs, .sendCriticalLogs, .sendAllLogs])
         if sharedContext.applicationBindings.isMainApp {

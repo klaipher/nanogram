@@ -177,6 +177,25 @@ final class DebugLogExportTests: XCTestCase {
         XCTAssertFalse(gate.isRunning)
     }
 
+    /// 1:1 call logs are named "<call id>_<time>.log" (plus a rotated ".log.1" and a ".log.json" stats file), so the
+    /// "log-" collector never saw them. The export takes the logs of the newest calls, the rotated half with its log.
+    func testCallLogFilesAreTheNewestCallsLogs() throws {
+        let directory = FileManager.default.temporaryDirectory.appendingPathComponent(UUID().uuidString, isDirectory: true)
+        try FileManager.default.createDirectory(at: directory, withIntermediateDirectories: true)
+        defer { try? FileManager.default.removeItem(at: directory) }
+        let names = ["1_100.log", "1_100.log.1", "1_100.log.json", "2_200.log", "3_300.log", "notes.txt", "log-2026.txt"]
+        for (index, name) in names.enumerated() {
+            let url = directory.appendingPathComponent(name)
+            try Data("x".utf8).write(to: url)
+            try FileManager.default.setAttributes([.modificationDate: Date(timeIntervalSince1970: 1_000_000 + Double(index))], ofItemAtPath: url.path)
+        }
+        let all = debugCallLogFiles(in: directory.path, limit: 10)
+        XCTAssertEqual(all.map { $0.0 }, ["3_300.log", "2_200.log", "1_100.log", "1_100.log.1"])
+        let newest = debugCallLogFiles(in: directory.path, limit: 2)
+        XCTAssertEqual(newest.map { $0.0 }, ["3_300.log", "2_200.log"])
+        XCTAssertTrue(debugCallLogFiles(in: directory.appendingPathComponent("missing").path, limit: 10).isEmpty)
+    }
+
     func testGateLetsOneExportRunAtATime() {
         let gate = DebugLogExportGate()
         XCTAssertFalse(gate.isRunning)
