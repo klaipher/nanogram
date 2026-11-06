@@ -4,6 +4,12 @@ Newest first. Internal notes for each TestFlight build; testers see the What to 
 
 ## Unreleased
 
+- Main-thread image work (branch perf/main-thread-images; evidence: share sheet hang 256 ms, 19 of 26 samples avatar JPEG decode on main; chat list update hang 103 ms; chat open 111 ms; owner traces 1606 items 3, 6).
+  - 326598e7 (no visible change): `peerAvatarImage` gains `avoidMainThreadDecode` (default off), a cache-only lookup (`peerAvatarCachedImages`) and the pure decision `peerAvatarRendersOnCallingThread`; `prewarmPeerAvatarImages` decodes downloaded avatars into `PeerAvatarImageCache` at utility QoS without fetching; the share sheet prewarms rows 20-60 of its first page. Tests: `AvatarNodeTests` (`PeerAvatarRenderPolicyTests`).
+  - b987d029 VISUAL: `AvatarNode` passes `avoidMainThreadDecode`: a synchronous load shows a cached avatar at once and otherwise decodes in the background (letters first). Also, for these nodes the unrounded copy follows `storeUnrounded` instead of `synchronousLoad`, so sync and async requests share cache entries.
+  - ad25f6c8 VISUAL: chat list `PreferSynchronousResourceLoading` only for the first transition, a filter change, a scroll-to-item or more than 3 inserted rows (`ChatListSynchronousLoadingPolicy`); `PreferSynchronousDrawing` unchanged. Avatar cache hits skip the queue hop. Tests: `ChatListUITests` (`ChatListSynchronousLoadingPolicyTests`).
+  - e5201a18 VISUAL: the chat's emoji/sticker panel data (`ChatEntityKeyboardInputNode.inputData`) is built on demand (`openStickers`, first `makeMediaInputNode`) or after 4 s idle (`InputDataStartGate`); a panel opened earlier waits for the build and appears when it is ready. Tests: new `ChatEntityKeyboardInputNodeTests`.
+
 - `StaleChannelDiagnostics` keeps its counters in a small lock-guarded `@unchecked Sendable` class instead of a static `Atomic`: `Atomic` is `Sendable` in the iOS build (so `nonisolated(unsafe)` is an error there, a84d1a50 did not build) but not in the Mac package build, where the plain `let` added two Swift 6 warnings to TelegramCore (561 -> 563).
 
 ## 13.1.2 (202611061452) — 2026-11-06 — 33d7d094
