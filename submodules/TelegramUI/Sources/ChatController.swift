@@ -8555,6 +8555,12 @@ public final class ChatControllerImpl: TelegramBaseController, ChatController, G
         if !self.didMeasureFirstLayout {
             self.didMeasureFirstLayout = true
             firstLayoutSignpost = PerformanceSignposts.begin(PerformanceSignpostName.chatFirstLayout)
+            if self.openSetup.isEnabled && !self.openSetup.isFlushed {
+                // Fallback for a controller that is laid out but never appears: the recorder listeners must still hook up.
+                Queue.mainQueue().after(1.5, { [weak self] in
+                    self?.openSetup.flush()
+                })
+            }
         }
         defer {
             if let firstLayoutSignpost {

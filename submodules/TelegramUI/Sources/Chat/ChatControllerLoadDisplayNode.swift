@@ -692,15 +692,10 @@ extension ChatControllerImpl {
             }
         }
         
-        self.openSetup.run { [weak self] in
-            guard let self else {
-                return
-            }
-            if #available(iOS 18.0, *) {
-                if engineExperimentalInternalTranslationService == nil, let hostView = self.context.sharedContext.mainWindow?.hostView {
-                    let translationService = ExperimentalInternalTranslationServiceImpl(view: hostView.containerView)
-                    engineExperimentalInternalTranslationService = translationService
-                }
+        if #available(iOS 18.0, *) {
+            if engineExperimentalInternalTranslationService == nil, let hostView = self.context.sharedContext.mainWindow?.hostView {
+                let translationService = ExperimentalInternalTranslationServiceImpl(view: hostView.containerView)
+                engineExperimentalInternalTranslationService = translationService
             }
         }
         
