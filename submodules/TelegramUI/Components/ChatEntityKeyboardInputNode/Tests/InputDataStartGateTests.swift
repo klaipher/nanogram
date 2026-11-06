@@ -23,4 +23,12 @@ final class InputDataStartGateTests: XCTestCase {
     func testIdleDelayLeavesChatOpenWindowFree() {
         XCTAssertGreaterThanOrEqual(InputDataStartGate.idleDelay, 2.0)
     }
+
+    func testPrewarmStartsOnceAndIdleOrDemandDoNotRestart() {
+        var gate = InputDataStartGate()
+        XCTAssertTrue(gate.shouldStart(.prewarm))
+        XCTAssertFalse(gate.shouldStart(.prewarm), "a second touch-down or focus must not build twice")
+        XCTAssertFalse(gate.shouldStart(.demand))
+        XCTAssertFalse(gate.shouldStart(.idle))
+    }
 }

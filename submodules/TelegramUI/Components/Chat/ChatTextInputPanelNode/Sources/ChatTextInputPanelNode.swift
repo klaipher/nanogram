@@ -502,6 +502,7 @@ public class ChatTextInputPanelNode: ChatInputPanelNode, ASEditableTextNodeDeleg
                     if itemAndButton == nil {
                         let button = AccessoryItemIconButton(item: item, theme: currentState.theme, strings: currentState.strings)
                         button.addTarget(self, action: #selector(self.accessoryItemButtonPressed(_:)), for: .touchUpInside)
+                        button.addTarget(self, action: #selector(self.accessoryItemButtonTouchDown(_:)), for: .touchDown)
                         itemAndButton = (item, button)
                     }
                     updatedButtons.append(itemAndButton!)
@@ -2413,6 +2414,7 @@ public class ChatTextInputPanelNode: ChatInputPanelNode, ASEditableTextNodeDeleg
                 if itemAndButton == nil {
                     let button = AccessoryItemIconButton(item: item, theme: interfaceState.theme, strings: interfaceState.strings)
                     button.addTarget(self, action: #selector(self.accessoryItemButtonPressed(_:)), for: .touchUpInside)
+                        button.addTarget(self, action: #selector(self.accessoryItemButtonTouchDown(_:)), for: .touchDown)
                     itemAndButton = (item, button)
                 }
                 updatedButtons.append(itemAndButton!)
@@ -4967,6 +4969,8 @@ public class ChatTextInputPanelNode: ChatInputPanelNode, ASEditableTextNodeDeleg
         if let touchDownGestureRecognizer = self.touchDownGestureRecognizer {
             self.richTextInputNode?.inputView.addGestureRecognizer(touchDownGestureRecognizer)
         }
+        
+        self.inputPanelsPrewarmRequested?()
     }
 
     @objc public func editableTextNodeDidBeginEditing(_ editableTextNode: ASEditableTextNode) {
@@ -6024,6 +6028,28 @@ public class ChatTextInputPanelNode: ChatInputPanelNode, ASEditableTextNodeDeleg
 
     @objc private func stopButtonPressed() {
         self.interfaceInteraction?.stopIncomingStreamingMessage()
+    }
+    
+    /// Called on touch-down of an input-mode accessory button (stickers/emoji) and when the text input
+    /// begins editing: the chat uses it to start building the emoji and sticker panel data early.
+    public var inputPanelsPrewarmRequested: (() -> Void)?
+    
+    @objc func accessoryItemButtonTouchDown(_ button: UIView) {
+        for (item, currentButton) in self.accessoryItemButtons where currentButton === button {
+            switch item {
+            case let .input(isEnabled, inputMode), let .botInput(isEnabled, inputMode):
+                switch inputMode {
+                case .stickers, .emoji:
+                    if isEnabled {
+                        self.inputPanelsPrewarmRequested?()
+                    }
+                default:
+                    break
+                }
+            default:
+                break
+            }
+        }
     }
     
     @objc func accessoryItemButtonPressed(_ button: UIView) {

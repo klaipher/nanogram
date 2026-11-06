@@ -956,6 +956,9 @@ class ChatControllerNode: ASDisplayNode, ASScrollViewDelegate {
         self.textInputPanelNode = ChatTextInputPanelNode(context: context, presentationInterfaceState: chatPresentationInterfaceState, presentationContext: ChatPresentationContext(context: context, backgroundNode: backgroundNode), presentController: { [weak self] controller in
             self?.interfaceInteraction?.presentController(controller, nil)
         })
+        self.textInputPanelNode?.inputPanelsPrewarmRequested = { [weak self] in
+            self?.startInputMediaNodeDataIfNeeded(.prewarm)
+        }
         self.textInputPanelNode?.mediaItemViewFactory = { items, existing in
             // In-place update: reuse the existing container (surviving photo/video cells keep their bound fetch,
             // no re-flash) across add-more / delete-one; else build a fresh one.
