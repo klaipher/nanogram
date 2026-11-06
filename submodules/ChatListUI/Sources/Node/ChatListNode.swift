@@ -1326,6 +1326,8 @@ public final class ChatListNode: ListViewImpl {
         return self.chatListFilterValue.get()
     }
     private var hasUpdatedAppliedChatListFilterValueOnce = false
+    private var hasAppliedFirstListTransition = false
+    private var lastTransitionFilter: ChatListFilter?
     private var currentAppliedChatListFilterValue: ChatListFilter?
     private let appliedChatListFilterValue = Promise<ChatListFilter?>()
     var appliedChatListFilterSignal: Signal<ChatListFilter?, NoError> {
@@ -3586,8 +3588,12 @@ public final class ChatListNode: ListViewImpl {
             if self.view.window != nil || self.synchronousDrawingWhenNotAnimated {
                 if !options.contains(.AnimateInsertion) {
                     options.insert(.PreferSynchronousDrawing)
-                    options.insert(.PreferSynchronousResourceLoading)
+                    if ChatListSynchronousLoadingPolicy.prefersSynchronousResourceLoading(isFirstTransition: !self.hasAppliedFirstListTransition, filterChanged: transition.chatListView.filter != self.lastTransitionFilter, scrollsToItem: transition.scrollToItem != nil, insertedCount: transition.insertItems.count) {
+                        options.insert(.PreferSynchronousResourceLoading)
+                    }
                 }
+                self.hasAppliedFirstListTransition = true
+                self.lastTransitionFilter = transition.chatListView.filter
                 if options.contains(.AnimateCrossfade) && !self.isDeceleratingAfterTracking {
                     options.insert(.PreferSynchronousDrawing)
                 }

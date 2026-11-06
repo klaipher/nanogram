@@ -197,7 +197,8 @@ public func peerAvatarImage(postbox: Postbox, peerReference: PeerReference?, aut
         |> mapToSignal { data -> Signal<(UIImage, UIImage)?, NoError> in
             let resourceId = representation?.resource.id.stringRepresentation
             var cached: (UIImage, UIImage)?
-            if synchronousLoad && avoidMainThreadDecode {
+            if avoidMainThreadDecode {
+                // Also for asynchronous requests: a cache hit needs no queue hop.
                 cached = peerAvatarCachedImages(resourceId: resourceId, data: data, displayDimensions: displayDimensions, clipStyle: clipStyle, blurred: blurred, inset: inset, provideUnrounded: provideUnrounded, cutoutRect: cutoutRect, cache: PeerAvatarImageCache.shared)
             }
             if let cached {
