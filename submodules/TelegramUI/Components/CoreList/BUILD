@@ -101,3 +101,30 @@ ios_unit_test(
         ":CoreListIdentityScanTestsLib",
     ],
 )
+
+# Scroll-path membership and serial lookups (render() / rebalanceActiveWindow()), pinned against the
+# quadratic and whole-collection algorithms they replaced.
+swift_library(
+    name = "CoreListScrollPathTestsLib",
+    testonly = True,
+    srcs = glob(
+        ["CoreListDemoTests/TestSupport/*.swift"],
+        exclude = [
+            "CoreListDemoTests/TestSupport/ManualAutoLoadResponseScheduler.swift",
+        ],
+    ) + [
+        "CoreListDemoTests/ListMembershipTests.swift",
+    ],
+    deps = [
+        ":CoreListDemoForTests",
+    ],
+)
+
+ios_unit_test(
+    name = "CoreListScrollPathTests",
+    minimum_os_version = "15.0",
+    runner = ":CoreListTestRunner",
+    deps = [
+        ":CoreListScrollPathTestsLib",
+    ],
+)
