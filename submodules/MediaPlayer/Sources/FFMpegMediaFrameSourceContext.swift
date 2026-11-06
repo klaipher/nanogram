@@ -98,8 +98,7 @@ private func readPacketCallback(userData: UnsafeMutableRawPointer?, buffer: Unsa
                 fetchedData = fileData
             } else {
                 let semaphore = DispatchSemaphore(value: 0)
-                let _ = context.currentSemaphore.swap(semaphore)
-                var completedRequest = false
+                                var completedRequest = false
                 let disposable = data.start(next: { result in
                     let (data, isComplete) = result
                     if data.count == readCount || isComplete {
@@ -109,8 +108,7 @@ private func readPacketCallback(userData: UnsafeMutableRawPointer?, buffer: Unsa
                         semaphore.signal()
                     }
                 })
-                semaphore.wait()
-                let _ = context.currentSemaphore.swap(nil)
+                context.cancellation.wait(semaphore)
                 disposable.dispose()
                 if !completedRequest {
                     context.readingError = true
@@ -140,8 +138,7 @@ private func readPacketCallback(userData: UnsafeMutableRawPointer?, buffer: Unsa
         } else {
             let data = postbox.mediaBox.resourceData(resourceReference.resource, pathExtension: nil, option: .complete(waitUntilFetchStatus: false))
             let semaphore = DispatchSemaphore(value: 0)
-            let _ = context.currentSemaphore.swap(semaphore)
-            let readingOffset = context.readingOffset
+                        let readingOffset = context.readingOffset
             var completedRequest = false
             let disposable = data.start(next: { next in
                 if next.complete {
@@ -167,8 +164,7 @@ private func readPacketCallback(userData: UnsafeMutableRawPointer?, buffer: Unsa
                     semaphore.signal()
                 }
             })
-            semaphore.wait()
-            let _ = context.currentSemaphore.swap(nil)
+            context.cancellation.wait(semaphore)
             disposable.dispose()
             if !completedRequest {
                 context.readingError = true
@@ -216,8 +212,7 @@ private func seekCallback(userData: UnsafeMutableRawPointer?, offset: Int64, whe
                 var resultSize: Int64 = Int64.max - 1
                 let data = postbox.mediaBox.resourceData(resourceReference.resource, pathExtension: nil, option: .complete(waitUntilFetchStatus: false))
                 let semaphore = DispatchSemaphore(value: 0)
-                let _ = context.currentSemaphore.swap(semaphore)
-                var completedRequest = false
+                                var completedRequest = false
                 let disposable = data.start(next: { next in
                     if next.complete {
                         resultSize = next.size
@@ -225,8 +220,7 @@ private func seekCallback(userData: UnsafeMutableRawPointer?, offset: Int64, whe
                         semaphore.signal()
                     }
                 })
-                semaphore.wait()
-                let _ = context.currentSemaphore.swap(nil)
+                context.cancellation.wait(semaphore)
                 disposable.dispose()
                 if !completedRequest {
                     context.readingError = true
@@ -326,10 +320,11 @@ final class FFMpegMediaFrameSourceContext: NSObject {
     fileprivate var maximumFetchSize: Int? = nil
     fileprivate var touchedRanges = IndexSet()
     
-    let currentSemaphore = Atomic<DispatchSemaphore?>(value: nil)
+    let cancellation: MediaReadCancellationScope
     
-    init(thread: Thread) {
+    init(thread: Thread, lifetime: MediaReadCancellation) {
         self.thread = thread
+        self.cancellation = MediaReadCancellationScope(lifetime: lifetime)
     }
     
     deinit {
@@ -342,6 +337,10 @@ final class FFMpegMediaFrameSourceContext: NSObject {
     }
     
     func initializeState(postbox: Postbox, userLocation: MediaResourceUserLocation, resourceReference: MediaResourceReference, tempFilePath: String?, limitedFileRange: Range<Int64>?, streamable: Bool, isSeekable: Bool, video: Bool, preferSoftwareDecoding: Bool, fetchAutomatically: Bool, maximumFetchSize: Int?, storeAfterDownload: (() -> Void)?, isAudioVideoMessage: Bool) {
+        if self.cancellation.isCancelled {
+            self.readingError = true
+            return
+        }
         if self.readingError || self.initializedState != nil {
             return
         }
@@ -415,16 +414,14 @@ final class FFMpegMediaFrameSourceContext: NSObject {
         if !streamable && isAudioVideoMessage {
             let data = postbox.mediaBox.resourceData(resourceReference.resource, pathExtension: nil, option: .complete(waitUntilFetchStatus: false))
             let semaphore = DispatchSemaphore(value: 0)
-            let _ = self.currentSemaphore.swap(semaphore)
-            var resultFilePath: String?
+                        var resultFilePath: String?
             let disposable = data.start(next: { next in
                 if next.complete {
                     resultFilePath = next.path
                     semaphore.signal()
                 }
             })
-            semaphore.wait()
-            let _ = self.currentSemaphore.swap(nil)
+            self.cancellation.wait(semaphore)
             disposable.dispose()
             
             if let resultFilePath {

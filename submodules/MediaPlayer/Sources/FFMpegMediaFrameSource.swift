@@ -8,6 +8,7 @@ private final class ThreadTaskQueue: NSObject {
     private var condition: pthread_cond_t
     private var tasks: [() -> Void] = []
     private var shouldExit = false
+    let lifetime = MediaReadCancellation()
     
     override init() {
         self.mutex = pthread_mutex_t()
@@ -94,7 +95,7 @@ public final class FFMpegMediaFrameSource: NSObject, MediaFrameSource {
     
     @objc private static func threadEntry(_ taskQueue: ThreadTaskQueue) {
         autoreleasepool {
-            let context = FFMpegMediaFrameSourceContext(thread: Thread.current)
+            let context = FFMpegMediaFrameSourceContext(thread: Thread.current, lifetime: taskQueue.lifetime)
             let localStorage = Thread.current.threadDictionary
             localStorage["FFMpegMediaFrameSourceContext"] = context
 
@@ -136,6 +137,7 @@ public final class FFMpegMediaFrameSource: NSObject, MediaFrameSource {
     deinit {
         assert(self.queue.isCurrent())
         
+        self.taskQueue.lifetime.cancel()
         self.taskQueue.terminate()
     }
     
@@ -166,14 +168,18 @@ public final class FFMpegMediaFrameSource: NSObject, MediaFrameSource {
         
         return Signal { subscriber in
             let disposable = MetaDisposable()
-            let currentSemaphore = Atomic<Atomic<DispatchSemaphore?>?>(value: nil)
+            let requestCancellation = MediaReadCancellation()
             
             disposable.set(ActionDisposable {
-                currentSemaphore.with({ $0 })?.with({ $0 })?.signal()
+                requestCancellation.cancel()
             })
             self.performWithContext({ context in
-                let _ = currentSemaphore.swap(context.currentSemaphore)
+                if requestCancellation.isCancelled {
+                    return
+                }
+                context.cancellation.request = requestCancellation
                 let _ = context.takeFrames(until: timestamp, types: [.audio, .video])
+                context.cancellation.request = nil
                 subscriber.putCompletion()
             })
             return disposable
@@ -258,14 +264,20 @@ public final class FFMpegMediaFrameSource: NSObject, MediaFrameSource {
             let storeAfterDownload = self.storeAfterDownload
             let isAudioVideoMessage = self.isAudioVideoMessage
             
-            let currentSemaphore = Atomic<Atomic<DispatchSemaphore?>?>(value: nil)
+            let requestCancellation = MediaReadCancellation()
             
             disposable.set(ActionDisposable {
-                currentSemaphore.with({ $0 })?.with({ $0 })?.signal()
+                requestCancellation.cancel()
             })
             
             self.performWithContext { [weak self] context in
-                let _ = currentSemaphore.swap(context.currentSemaphore)
+                if requestCancellation.isCancelled {
+                    return
+                }
+                context.cancellation.request = requestCancellation
+                defer {
+                    context.cancellation.request = nil
+                }
                 
                 context.initializeState(postbox: postbox, userLocation: userLocation, resourceReference: resourceReference, tempFilePath: tempFilePath, limitedFileRange: limitedFileRange, streamable: streamable, isSeekable: isSeekable, video: video, preferSoftwareDecoding: preferSoftwareDecoding, fetchAutomatically: fetchAutomatically, maximumFetchSize: maximumFetchSize, storeAfterDownload: storeAfterDownload, isAudioVideoMessage: isAudioVideoMessage)
                 
@@ -305,14 +317,11 @@ public final class FFMpegMediaFrameSource: NSObject, MediaFrameSource {
                                         return MediaFrameSourceSeekResult(buffers: MediaPlaybackBuffers(audioBuffer: nil, videoBuffer: nil), extraDecodedVideoFrames: [], timestamp: timestamp)
                                     }
                                 }))
-                                let _ = currentSemaphore.swap(nil)
                                 subscriber.putCompletion()
                             } else {
-                                let _ = currentSemaphore.swap(nil)
                                 subscriber.putError(.generic)
                             }
                         } else {
-                            let _ = currentSemaphore.swap(nil)
                             subscriber.putError(.generic)
                         }
                     }
