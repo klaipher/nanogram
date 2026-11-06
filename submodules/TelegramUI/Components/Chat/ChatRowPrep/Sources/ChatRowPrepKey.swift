@@ -1,4 +1,4 @@
-import Foundation
+public import Foundation
 import CoreGraphics
 
 /// Everything a prepared row's layout depends on. A prepared result is used only when the key computed at use time is

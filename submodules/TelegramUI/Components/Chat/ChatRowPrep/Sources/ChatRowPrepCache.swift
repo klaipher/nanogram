@@ -1,8 +1,8 @@
-import Foundation
+public import Foundation
 
 /// Cancellation flag of one background preparation. The job checks it before it starts and the cache cancels it when
 /// the result is no longer wanted. Safe from any thread.
-public final class ChatRowPrepTicket {
+public final class ChatRowPrepTicket: @unchecked Sendable {
     private let lock = NSLock()
     private var cancelled = false
 
@@ -76,6 +76,9 @@ public final class ChatRowPrepCache<Neighbors: Equatable, Payload> {
     public let limits: Limits
     private let now: () -> TimeInterval
     private var entries: [UInt64: Entry] = [:]
+    /// Rows `take` found in flight and the caller then built synchronously, by the key. The job cannot be stopped once it
+    /// runs, so the same key must not be claimed again while the row is still planned (a second build of the same row).
+    private var builtSynchronously: [UInt64: Key] = [:]
     /// Called for every ready payload that leaves the cache without being taken.
     public var onDiscard: ((Payload) -> Void)?
 
@@ -98,6 +101,9 @@ public final class ChatRowPrepCache<Neighbors: Equatable, Payload> {
     }
 
     public func claim(_ key: Key) -> Claim {
+        if let built = self.builtSynchronously[key.stableId], built == key {
+            return .alreadyPrepared
+        }
         if let entry = self.entries[key.stableId] {
             if entry.key == key {
                 return .alreadyPrepared
@@ -145,6 +151,7 @@ public final class ChatRowPrepCache<Neighbors: Equatable, Payload> {
         case .inFlight:
             // The row is built synchronously now; the late result would be unused.
             self.remove(key.stableId)
+            self.builtSynchronously[key.stableId] = key
             return .miss(.inFlight)
         case let .ready(payload, readyAt):
             self.entries.removeValue(forKey: key.stableId)
@@ -169,9 +176,13 @@ public final class ChatRowPrepCache<Neighbors: Equatable, Payload> {
         for stableId in stale {
             self.remove(stableId)
         }
+        self.builtSynchronously = self.builtSynchronously.filter { _, built in
+            keys.contains(where: { $0 == built })
+        }
     }
 
     public func evictAll() {
+        self.builtSynchronously.removeAll()
         for stableId in Array(self.entries.keys) {
             self.remove(stableId)
         }

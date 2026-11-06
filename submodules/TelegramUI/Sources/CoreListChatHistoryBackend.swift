@@ -881,6 +881,11 @@ final class CoreListChatHistoryBackend: ASDisplayNode, ChatHistoryListViewBacken
             guard ChatScrollExperiments.isReuseRowViewsEnabled, let self else {
                 return false
             }
+            // A heavy fling unloads rows faster than the idle turns finish them, and every waiting row is a whole hidden
+            // bubble in the container: past the cap the list removes these in the tick, as it does with the switch off.
+            guard self.rowTeardownQueue.hasRoom(for: views.count) else {
+                return false
+            }
             for view in views {
                 self.rowTeardownQueue.enqueue { [weak self] in
                     self?.finishRetiring(view)
@@ -933,8 +938,10 @@ final class CoreListChatHistoryBackend: ASDisplayNode, ChatHistoryListViewBacken
             ChatRowPrepSignposts.poolMiss()
             return nil
         }
-        // Unhide it and take it out of the list's protection; it is still a child of the container, which `render()` accepts.
+        // Take it out of the list's protection and out of the container: `render()` adds it back on top of the others when it
+        // places the row, so it is never shown at its old frame or left at its old place in the stack.
         self.coreList.releaseRetiredRow(host)
+        host.removeFromSuperview()
         host.reconfigureForReuse(listItem: entry.listItem, stableId: entry.stableId, stableVersion: entry.stableVersion, neighbors: entry.neighbors, leftInset: entry.leftInset, rightInset: entry.rightInset)
         ChatRowPrepSignposts.poolReuse()
         return host

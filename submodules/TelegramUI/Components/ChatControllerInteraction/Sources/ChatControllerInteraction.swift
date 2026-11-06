@@ -1,6 +1,7 @@
 import Foundation
 import UIKit
 import SwiftSignalKit
+import ChatRowPrep
 import AsyncDisplayKit
 import TelegramCore
 import Display
@@ -340,38 +341,42 @@ public final class ChatControllerInteraction: ChatControllerInteractionProtocol 
     
     /// Moves whenever state that a chat row's layout reads is assigned (selection, highlight, hidden media, download and
     /// sticker settings, ...). "Chat rows: prepare layout ahead" keys a prepared row by it, so a row prepared before such a
-    /// change is never used after it. Only ever read and written on the main thread.
-    public private(set) var rowPrepEpoch: UInt64 = 0
+    /// change is never used after it. Bool and id properties count only a real change (several are assigned every scroll
+    /// frame or interface update with the same value); collections and settings structs count every assignment. Only ever read and written on the main thread.
+    public var rowPrepEpoch: UInt64 {
+        return self.rowPrepEpochCounter.value
+    }
+    private var rowPrepEpochCounter = ChatRowPrepEpoch()
 
-    public var canPlayMedia: Bool = false { didSet { self.rowPrepEpoch &+= 1 } }
-    public var hiddenMedia: [EngineMessage.Id: [EngineRawMedia]] = [:] { didSet { self.rowPrepEpoch &+= 1 } }
-    public var expandedTranslationMessageStableIds: Set<UInt32> = Set() { didSet { self.rowPrepEpoch &+= 1 } }
-    public var selectionState: ChatInterfaceSelectionState? { didSet { self.rowPrepEpoch &+= 1 } }
-    public var highlightedState: ChatInterfaceHighlightedState? { didSet { self.rowPrepEpoch &+= 1 } }
-    public var contextHighlightedState: ChatInterfaceHighlightedState? { didSet { self.rowPrepEpoch &+= 1 } }
-    public var automaticMediaDownloadSettings: MediaAutoDownloadSettings { didSet { self.rowPrepEpoch &+= 1 } }
-    public var pollActionState: ChatInterfacePollActionState { didSet { self.rowPrepEpoch &+= 1 } }
-    public var currentPollMessageWithTooltip: EngineMessage.Id? { didSet { self.rowPrepEpoch &+= 1 } }
-    public var currentPsaMessageWithTooltip: EngineMessage.Id? { didSet { self.rowPrepEpoch &+= 1 } }
-    public var stickerSettings: ChatInterfaceStickerSettings { didSet { self.rowPrepEpoch &+= 1 } }
-    public var searchTextHighightState: (String, [EngineMessage.Index])? { didSet { self.rowPrepEpoch &+= 1 } }
-    public var unreadMessageRange: [UnreadMessageRangeKey: Range<Int32>] = [:] { didSet { self.rowPrepEpoch &+= 1 } }
+    public var canPlayMedia: Bool = false { didSet { self.rowPrepEpochCounter.noteAssignment(from: oldValue, to: self.canPlayMedia) } }
+    public var hiddenMedia: [EngineMessage.Id: [EngineRawMedia]] = [:] { didSet { self.rowPrepEpochCounter.noteChange() } }
+    public var expandedTranslationMessageStableIds: Set<UInt32> = Set() { didSet { self.rowPrepEpochCounter.noteChange() } }
+    public var selectionState: ChatInterfaceSelectionState? { didSet { self.rowPrepEpochCounter.noteChange() } }
+    public var highlightedState: ChatInterfaceHighlightedState? { didSet { self.rowPrepEpochCounter.noteChange() } }
+    public var contextHighlightedState: ChatInterfaceHighlightedState? { didSet { self.rowPrepEpochCounter.noteChange() } }
+    public var automaticMediaDownloadSettings: MediaAutoDownloadSettings { didSet { self.rowPrepEpochCounter.noteChange() } }
+    public var pollActionState: ChatInterfacePollActionState { didSet { self.rowPrepEpochCounter.noteChange() } }
+    public var currentPollMessageWithTooltip: EngineMessage.Id? { didSet { self.rowPrepEpochCounter.noteAssignment(from: oldValue, to: self.currentPollMessageWithTooltip) } }
+    public var currentPsaMessageWithTooltip: EngineMessage.Id? { didSet { self.rowPrepEpochCounter.noteAssignment(from: oldValue, to: self.currentPsaMessageWithTooltip) } }
+    public var stickerSettings: ChatInterfaceStickerSettings { didSet { self.rowPrepEpochCounter.noteChange() } }
+    public var searchTextHighightState: (String, [EngineMessage.Index])? { didSet { self.rowPrepEpochCounter.noteChange() } }
+    public var unreadMessageRange: [UnreadMessageRangeKey: Range<Int32>] = [:] { didSet { self.rowPrepEpochCounter.noteChange() } }
     public var seenOneTimeAnimatedMedia = Set<EngineMessage.Id>()
-    public var freshWalletTransferMessageIds = Set<EngineMessage.Id>() { didSet { self.rowPrepEpoch &+= 1 } }
+    public var freshWalletTransferMessageIds = Set<EngineMessage.Id>() { didSet { self.rowPrepEpochCounter.noteChange() } }
     public var requestWalletTransferArrival: ((EngineRawMessage) -> Void)?
     public var walletTransferArrivalState: ((EngineMessage.Id) -> WalletTransferArrivalState?)?
     public var cancelWalletTransferArrival: ((EngineMessage.Id) -> Void)?
-    public var currentMessageWithLoadingReplyThread: EngineMessage.Id? { didSet { self.rowPrepEpoch &+= 1 } }
+    public var currentMessageWithLoadingReplyThread: EngineMessage.Id? { didSet { self.rowPrepEpochCounter.noteAssignment(from: oldValue, to: self.currentMessageWithLoadingReplyThread) } }
     public var updatedPresentationData: (initial: PresentationData, signal: Signal<PresentationData, NoError>)?
     public let presentationContext: ChatPresentationContext
-    public var playNextOutgoingGift: Bool = false { didSet { self.rowPrepEpoch &+= 1 } }
-    public var recommendedChannelsOpenUp: Bool = false { didSet { self.rowPrepEpoch &+= 1 } }
-    public var enableFullTranslucency: Bool = true { didSet { self.rowPrepEpoch &+= 1 } }
+    public var playNextOutgoingGift: Bool = false { didSet { self.rowPrepEpochCounter.noteAssignment(from: oldValue, to: self.playNextOutgoingGift) } }
+    public var recommendedChannelsOpenUp: Bool = false { didSet { self.rowPrepEpochCounter.noteAssignment(from: oldValue, to: self.recommendedChannelsOpenUp) } }
+    public var enableFullTranslucency: Bool = true { didSet { self.rowPrepEpochCounter.noteAssignment(from: oldValue, to: self.enableFullTranslucency) } }
     public var chatIsRotated: Bool = true
-    public var canReadHistory: Bool = false { didSet { self.rowPrepEpoch &+= 1 } }
-    public var summarizedMessageIds: Set<EngineMessage.Id> = Set() { didSet { self.rowPrepEpoch &+= 1 } }
-    public var focusedTextInputIsMedia: Bool = false { didSet { self.rowPrepEpoch &+= 1 } }
-    public var focusedPollAddOptionMessageId: EngineMessage.Id? { didSet { self.rowPrepEpoch &+= 1 } }
+    public var canReadHistory: Bool = false { didSet { self.rowPrepEpochCounter.noteAssignment(from: oldValue, to: self.canReadHistory) } }
+    public var summarizedMessageIds: Set<EngineMessage.Id> = Set() { didSet { self.rowPrepEpochCounter.noteChange() } }
+    public var focusedTextInputIsMedia: Bool = false { didSet { self.rowPrepEpochCounter.noteAssignment(from: oldValue, to: self.focusedTextInputIsMedia) } }
+    public var focusedPollAddOptionMessageId: EngineMessage.Id? { didSet { self.rowPrepEpochCounter.noteAssignment(from: oldValue, to: self.focusedPollAddOptionMessageId) } }
     public var isAwaitingWalletTransferFlight: ((EngineRawMessage) -> Bool)?
     
     private var isOpeningMediaValue: Bool = false

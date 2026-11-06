@@ -1538,20 +1538,23 @@ Two switches for A/B on a device. Bits of `ExperimentalUISettings.chatScrollExpe
 one of those Bools; with both off the row paths are the ones above, apart from a closure that answers `false`.
 
 **Chat rows: prepare layout ahead.** On each user-scroll frame `planRowPrefetch` looks at the rows just beyond the loaded edge
-in the direction of travel (`CoreListChatRowPrefetcher.lookahead`, 4) and builds them on a serial background queue with
+in the direction of travel (`CoreListChatRowPrefetcher.lookahead`, 3) and builds them on a serial background queue with
 the same `ChatMessageItemImpl.nodeConfiguredForParams` the host calls (off the main thread it runs the layout inline,
 as `ListViewImpl` always has, and delivers `(node, apply)` to main). `CoreListNodeHostView.rebuild`, fresh-node branch, takes
 the result only when the whole `ChatRowPrepKey` is equal: row identity and version, the exact item instance (it carries the
 message, associated data and presentation data), width, side insets, neighbour descriptors, presentation-data object,
 font size, `ChatControllerInteraction.rowPrepEpoch` (moves whenever selection, highlight, hidden media, download and sticker
-settings, unread range, ... are assigned), rotation and the synchronous-load flag. Anything else is a miss and the node is
+settings, unread range, ... change; Bool and id properties count only a real change, because several are assigned every scroll frame), rotation and the synchronous-load flag. Anything else is a miss and the node is
 built synchronously as before. Every planning round keeps only the planned keys (rows that left the band, a new width,
 theme, font size or item evict and cancel), at most 8 rows, 5 s to live. Heights are the node's own, computed earlier;
-CoreList's anchoring is untouched.
+CoreList's anchoring is untouched. Debug only: the background build reads state the main thread mutates (`hiddenMedia`,
+`selectionState`, `unreadMessageRange`, ... on `ChatControllerInteraction`) without a lock, as `ListViewImpl` does for its
+own async builds but which CoreList never did; the epoch key rejects a stale result, it does not make the read safe. The
+switch must not default on until that state is snapshotted at plan time.
 
 **Chat rows: reuse row views.** `CoreVirtualListView.rowRetirementHandler` is offered the rows a scroll rebalance unloaded.
 With the switch on the backend takes them over: `render()` leaves them in the container (hidden) and the backend finishes
-them at an idle run-loop turn (`ChatRowIdleWorkQueue`, 2 ms budget per turn): a host whose node type is certified
+them at an idle run-loop turn (`ChatRowIdleWorkQueue`: after the Core Animation commit, never in the run-loop turn that unloaded the rows, 2 ms budget per turn checked between rows, at most 16 waiting rows; past that the list removes the rows in the tick as with the switch off): a host whose node type is certified
 (`ChatMessageItemView.supportsRowReuse`) is reset with `prepareForRowReuse` and pooled (`ChatRowViewPool`, 4 per type,
 8 total), every other host is removed and released as before, only later. `CoreListEntryItem.view()` hands a pooled host to a
 new row of the same node type; the host then takes the `updateNode` path on the reset node. Certified types: **sticker

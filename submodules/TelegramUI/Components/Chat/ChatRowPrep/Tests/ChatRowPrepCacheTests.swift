@@ -168,6 +168,39 @@ final class ChatRowPrepCacheTests: XCTestCase {
         XCTAssertEqual(discards.values, ["a"])
     }
 
+    func testARowBuiltSynchronouslyWhileItsJobWasInFlightIsNotClaimedAgain() {
+        let (cache, _) = self.makeCache()
+        guard case .started = cache.claim(self.key(1)) else {
+            XCTFail("claim refused")
+            return
+        }
+        guard case .miss(.inFlight) = cache.take(self.key(1)) else {
+            XCTFail("expected an in-flight miss")
+            return
+        }
+        // The next planning round still lists the row: it must not start a second build of it.
+        guard case .alreadyPrepared = cache.claim(self.key(1)) else {
+            XCTFail("a second job would build the row twice")
+            return
+        }
+        XCTAssertEqual(cache.count, 0)
+    }
+
+    func testTheSynchronousBuildGuardEndsWhenTheRowLeavesThePlanOrChanges() {
+        let (cache, _) = self.makeCache()
+        let _ = cache.claim(self.key(1))
+        let _ = cache.take(self.key(1))
+        guard case .started = cache.claim(self.key(1, version: 2)) else {
+            XCTFail("another version is another row state")
+            return
+        }
+        cache.retain(keys: [])
+        guard case .started = cache.claim(self.key(1)) else {
+            XCTFail("a row that left the plan may be prepared again")
+            return
+        }
+    }
+
     func testFailRemovesTheClaim() {
         let (cache, _) = self.makeCache()
         guard case let .started(ticket) = cache.claim(self.key(1)) else {

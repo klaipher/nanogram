@@ -70,6 +70,12 @@ open class TransformImageNode: ASDisplayNode {
         self.image = nil
     }
     
+    /// Forgets the last drawing arguments (`reset()` keeps them). A node that is reused for another image calls this with
+    /// `reset()`, so the next signal is not drawn once with the previous image's size. Old signals are disposed by `reset()`.
+    public func resetArguments() {
+        self.argumentsPromise = ValuePromise<TransformImageArguments>(ignoreRepeated: true)
+    }
+    
     public func setSignal(_ signal: Signal<(TransformImageArguments) -> DrawingContext?, NoError>, attemptSynchronously: Bool = false, dispatchOnDisplayLink: Bool = true) {
         let argumentsPromise = self.argumentsPromise
         

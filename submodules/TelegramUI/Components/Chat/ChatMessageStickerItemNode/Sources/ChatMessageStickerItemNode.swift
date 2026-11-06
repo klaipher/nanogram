@@ -56,7 +56,7 @@ public class ChatMessageStickerItemNode: ChatMessageItemView {
     private var suggestedPostInfoNode: ChatMessageSuggestedPostInfoNode?
     
     private var viaBotNode: TextNode?
-    private let dateAndStatusNode: ChatMessageDateAndStatusNode
+    private var dateAndStatusNode: ChatMessageDateAndStatusNode
     private var threadInfoNode: ChatMessageThreadInfoNode?
     private var replyInfoNode: ChatMessageReplyInfoNode?
     private var replyBackgroundContent: WallpaperBubbleBackgroundNode?
@@ -125,14 +125,18 @@ public class ChatMessageStickerItemNode: ChatMessageItemView {
             if image != nil {
                 if strongSelf.imageUpdatedFirstTime && !strongSelf.placeholderNode.isEmpty {
                     if strongSelf.enableSynchronousImageApply {
-                        strongSelf.removePlaceholder(animated: false)
+                        strongSelf.removePlaceholder(strongSelf.placeholderNode, animated: false)
                     } else {
-                        strongSelf.imageNode.layer.animateAlpha(from: 0.0, to: 1.0, duration: 0.2, completion: { [weak self] _ in
-                            self?.removePlaceholder(animated: false)
+                        let placeholderNode = strongSelf.placeholderNode
+                        strongSelf.imageNode.layer.animateAlpha(from: 0.0, to: 1.0, duration: 0.2, completion: { [weak self, weak placeholderNode] _ in
+                            guard let placeholderNode else {
+                                return
+                            }
+                            self?.removePlaceholder(placeholderNode, animated: false)
                         })
                     }
                 } else {
-                    strongSelf.removePlaceholder(animated: true)
+                    strongSelf.removePlaceholder(strongSelf.placeholderNode, animated: true)
                 }
                 strongSelf.imageUpdatedFirstTime = false
             }
@@ -221,7 +225,7 @@ public class ChatMessageStickerItemNode: ChatMessageItemView {
         "fetchDisposable": .reset,
         "suggestedPostInfoNode": .reset,
         "viaBotNode": .reset,
-        "dateAndStatusNode": .constant,
+        "dateAndStatusNode": .reset,
         "threadInfoNode": .reset,
         "replyInfoNode": .reset,
         "replyBackgroundContent": .reset,
@@ -261,6 +265,7 @@ public class ChatMessageStickerItemNode: ChatMessageItemView {
         self.fetchDisposable.set(nil)
         self.telegramFile = nil
         self.imageNode.reset()
+        self.imageNode.resetArguments()
         self.imageNode.setOverlayColor(nil, animated: false)
         self.imageUpdatedFirstTime = true
         
@@ -301,7 +306,11 @@ public class ChatMessageStickerItemNode: ChatMessageItemView {
         self.actionButtonsNode = nil
         self.reactionButtonsNode?.removeFromSupernode()
         self.reactionButtonsNode = nil
-        self.dateAndStatusNode.pressed = nil
+        // The date, checks and reactions belong to one message: a new node, in the same place in the stack.
+        let dateAndStatusNode = ChatMessageDateAndStatusNode()
+        self.contextSourceNode.contentNode.insertSubnode(dateAndStatusNode, aboveSubnode: self.dateAndStatusNode)
+        self.dateAndStatusNode.removeFromSupernode()
+        self.dateAndStatusNode = dateAndStatusNode
         
         self.messageAccessibilityArea.accessibilityLabel = nil
         self.messageAccessibilityArea.accessibilityValue = nil
@@ -324,13 +333,15 @@ public class ChatMessageStickerItemNode: ChatMessageItemView {
         return true
     }
     
-    private func removePlaceholder(animated: Bool) {
+    /// Takes `placeholderNode` out, never whichever node is current when a fade ends: a row reset in between has a new
+    /// placeholder that must stay.
+    private func removePlaceholder(_ placeholderNode: StickerShimmerEffectNode, animated: Bool) {
         if !animated {
-            self.placeholderNode.removeFromSupernode()
+            placeholderNode.removeFromSupernode()
         } else {
-            self.placeholderNode.alpha = 0.0
-            self.placeholderNode.layer.animateAlpha(from: 1.0, to: 0.0, duration: 0.2, completion: { [weak self] _ in
-                self?.placeholderNode.removeFromSupernode()
+            placeholderNode.alpha = 0.0
+            placeholderNode.layer.animateAlpha(from: 1.0, to: 0.0, duration: 0.2, completion: { [weak placeholderNode] _ in
+                placeholderNode?.removeFromSupernode()
             })
         }
     }

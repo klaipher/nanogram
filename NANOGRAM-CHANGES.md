@@ -132,6 +132,7 @@ marked (check) were not re-verified against the code; correct them on the next c
   `ChatMessageItemView.supportsRowReuse` / `prepareForRowReuse` (sticker row overrides them);
   `ChatMessageItemImpl.resolvedItemViewClass()` (the former inline class choice); `ChatControllerInteraction.rowPrepEpoch`
   (`didSet` on the properties a row's layout reads); `ExperimentalUISettings.chatScrollExperiments`; `DebugController.swift`.
+  Also `Display/TransformImageNode.resetArguments()` (new, used by the pooled sticker row) and `ChatMessageStickerItemNode` (placeholder removal by node, new `dateAndStatusNode` on reset).
 - Upstream: `ChatMessageItemImpl`, `ChatMessageItemView`, `ChatMessageStickerItemNode` (the `firstTime` closure variable became a
   member) and `ChatControllerInteraction` are upstream files with small changes; the rest is new. Not shared with the Mac (CoreList is iOS only).
 - Sync: a property added upstream to `ChatControllerInteraction` that a row's layout reads needs the `rowPrepEpoch` `didSet`; a
