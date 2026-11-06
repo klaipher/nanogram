@@ -2977,9 +2977,10 @@ public final class CoreVirtualListView: UIView {
         }
 
         guard changed else { return }
-        let promotedCrossingIdentities = Set(window.items.map {
-            _items[$0.index].identity
-        }).intersection(crossingCarries.keys)
+        let promotedCrossingIdentities = ListMembership.promotedIdentities(
+            windowIdentities: crossingCarries.isEmpty ? [] : window.items.map { _items[$0.index].identity },
+            carries: crossingCarries
+        )
         for identity in promotedCrossingIdentities {
             crossingCarries.removeValue(forKey: identity)
         }
@@ -3517,8 +3518,8 @@ public final class CoreVirtualListView: UIView {
                                  y: newOriginY,
                                  width: logicalSize.width,
                                  height: max(1, window.height))
-        for subview in container.subviews
-            where !window.items.contains(where: { $0.view === subview }) {
+        for subview in ListMembership.staleSubviews(in: container.subviews,
+                                                    keeping: window.items.map { $0.view }) {
             subview.removeFromSuperview()
         }
         for item in window.items {

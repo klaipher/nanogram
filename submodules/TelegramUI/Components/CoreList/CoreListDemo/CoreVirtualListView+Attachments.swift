@@ -131,6 +131,53 @@ extension CoreVirtualListView {
         }
     }
 
+    /// `AttachmentRuns.assignSerials` against the current collection, without hashing all of it.
+    ///
+    /// Serial inheritance only asks for the new index of identities that were members of a prior run.
+    /// While the collection has not shifted under those members (every scroll rebalance: `items` is
+    /// unchanged and the previous window's rows are still at their indices), each such identity is
+    /// still at its old index, which is checked per member, so the lookup is a handful of entries
+    /// instead of a dictionary over every loaded message. Any member that moved, or any index that
+    /// no longer exists, falls back to the full map and its exact semantics.
+    private func assignAttachmentSerials(pending: [AttachmentRuns.PendingRun],
+                                         prior: [AttachmentRuns.PriorRun],
+                                         sourceWindow: Window?)
+        -> (assigned: [AttachmentRuns.ResolvedRun], departed: [AttachmentRuns.PriorRun]) {
+        if let sourceWindow,
+           let lookup = Self.sameIndexLookup(for: sourceWindow.attachments,
+                                             priorItems: priorItems,
+                                             currentItems: items) {
+            return AttachmentRuns.assignSerials(pending: pending,
+                                                newIndexOfIdentity: { lookup[$0] },
+                                                prior: prior,
+                                                nextSerial: &nextAttachmentSerial)
+        }
+        return AttachmentRuns.assignSerials(pending: pending,
+                                            newIdentities: items.map(\.identity),
+                                            prior: prior,
+                                            nextSerial: &nextAttachmentSerial)
+    }
+
+    /// Identity to index for every member of `attachments`' runs, or nil when any member is not at the
+    /// same index in `currentItems` as in `priorItems` (so the caller must use the full map).
+    static func sameIndexLookup(for attachments: [Window.Attachment],
+                                priorItems: [CoreListItem],
+                                currentItems: [CoreListItem]) -> [AnyHashable: Int]? {
+        var lookup: [AnyHashable: Int] = [:]
+        for attachment in attachments {
+            for index in attachment.memberRange {
+                // The prior run list drops members whose index left `priorItems`; a member with no
+                // prior identity is never looked up, so skipping it here is the same.
+                guard priorItems.indices.contains(index) else { continue }
+                guard currentItems.indices.contains(index),
+                      currentItems[index].identity == priorItems[index].identity
+                else { return nil }
+                lookup[priorItems[index].identity] = index
+            }
+        }
+        return lookup
+    }
+
     /// Resolves every attachment run intersecting `window`, reusing views from `sourceWindow` where
     /// the witness rule inherits a serial, and finalises each run's band from its loaded members.
     ///
@@ -165,12 +212,9 @@ extension CoreVirtualListView {
             )
         }
 
-        let (assigned, departed) = AttachmentRuns.assignSerials(
-            pending: pending,
-            newIdentities: items.map(\.identity),
-            prior: prior,
-            nextSerial: &nextAttachmentSerial
-        )
+        let (assigned, departed) = assignAttachmentSerials(pending: pending,
+                                                           prior: prior,
+                                                           sourceWindow: sourceWindow)
 
         var viewBySerial: [UInt64: UIView & CoreListAttachedItemView] = [:]
         for attachment in sourceWindow?.attachments ?? [] {
