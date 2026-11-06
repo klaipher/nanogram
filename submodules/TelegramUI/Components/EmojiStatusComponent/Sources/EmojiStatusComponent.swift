@@ -65,6 +65,9 @@ public final class EmojiStatusComponent: Component {
     public let roundMask: Bool
     public let isVisibleForAnimations: Bool
     public let useSharedAnimation: Bool
+    /// The animation is cached at every source frame and the screen's scale (`LottieCacheQuality.full`), unless
+    /// the system asks for less. For one large animation; fixed when the animation layer is made.
+    public let fullQuality: Bool
     public let action: (() -> Void)?
     public let emojiFileUpdated: ((TelegramMediaFile?) -> Void)?
     public let tag: AnyObject?
@@ -79,6 +82,7 @@ public final class EmojiStatusComponent: Component {
         roundMask: Bool = false,
         isVisibleForAnimations: Bool,
         useSharedAnimation: Bool = false,
+        fullQuality: Bool = false,
         action: (() -> Void)?,
         emojiFileUpdated: ((TelegramMediaFile?) -> Void)? = nil,
         tag: AnyObject? = nil
@@ -97,6 +101,7 @@ public final class EmojiStatusComponent: Component {
             roundMask: roundMask,
             isVisibleForAnimations: isVisibleForAnimations,
             useSharedAnimation: useSharedAnimation,
+            fullQuality: fullQuality,
             action: action,
             emojiFileUpdated: emojiFileUpdated,
             tag: tag
@@ -115,6 +120,7 @@ public final class EmojiStatusComponent: Component {
         roundMask: Bool = false,
         isVisibleForAnimations: Bool,
         useSharedAnimation: Bool = false,
+        fullQuality: Bool = false,
         action: (() -> Void)?,
         emojiFileUpdated: ((TelegramMediaFile?) -> Void)? = nil,
         tag: AnyObject? = nil
@@ -130,6 +136,7 @@ public final class EmojiStatusComponent: Component {
         self.roundMask = roundMask
         self.isVisibleForAnimations = isVisibleForAnimations
         self.useSharedAnimation = useSharedAnimation
+        self.fullQuality = fullQuality
         self.action = action
         self.emojiFileUpdated = emojiFileUpdated
         self.tag = tag
@@ -148,6 +155,7 @@ public final class EmojiStatusComponent: Component {
             roundMask: self.roundMask,
             isVisibleForAnimations: isVisibleForAnimations,
             useSharedAnimation: self.useSharedAnimation,
+            fullQuality: self.fullQuality,
             action: self.action,
             emojiFileUpdated: self.emojiFileUpdated,
             tag: self.tag
@@ -183,6 +191,9 @@ public final class EmojiStatusComponent: Component {
             return false
         }
         if lhs.useSharedAnimation != rhs.useSharedAnimation {
+            return false
+        }
+        if lhs.fullQuality != rhs.fullQuality {
             return false
         }
         if lhs.tag !== rhs.tag {
@@ -571,7 +582,8 @@ public final class EmojiStatusComponent: Component {
                             unique: !component.useSharedAnimation,
                             placeholderColor: emojiPlaceholderColor,
                             pointSize: emojiSize,
-                            loopCount: loopCount
+                            loopCount: loopCount,
+                            fullQuality: component.fullQuality
                         )
                         self.animationLayer = animationLayer
                         self.layer.addSublayer(animationLayer)

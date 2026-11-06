@@ -106,7 +106,7 @@ public extension AnimationCacheAnimationType {
     }
 }
 
-public func animationCacheFetchFile(context: AccountContext, userLocation: MediaResourceUserLocation, userContentType: MediaResourceUserContentType, resource: MediaResourceReference, type: AnimationCacheAnimationType, keyframeOnly: Bool, customColor: UIColor?) -> (AnimationCacheFetchOptions) -> Disposable {
+public func animationCacheFetchFile(context: AccountContext, userLocation: MediaResourceUserLocation, userContentType: MediaResourceUserContentType, resource: MediaResourceReference, type: AnimationCacheAnimationType, keyframeOnly: Bool, customColor: UIColor?, frameSkip: Int = LottieCacheQuality.standard.frameSkip) -> (AnimationCacheFetchOptions) -> Disposable {
     return animationCacheFetchFile(
         postbox: context.account.postbox,
         userLocation: userLocation,
@@ -115,11 +115,12 @@ public func animationCacheFetchFile(context: AccountContext, userLocation: Media
         type: type,
         keyframeOnly: keyframeOnly,
         customColor: customColor,
-        lottieSettings: context.lottieRenderingSettings
+        lottieSettings: context.lottieRenderingSettings,
+        frameSkip: frameSkip
     )
 }
 
-public func animationCacheFetchFile(postbox: Postbox, userLocation: MediaResourceUserLocation, userContentType: MediaResourceUserContentType, resource: MediaResourceReference, type: AnimationCacheAnimationType, keyframeOnly: Bool, customColor: UIColor?, lottieSettings: LottieRenderingSettings) -> (AnimationCacheFetchOptions) -> Disposable {
+public func animationCacheFetchFile(postbox: Postbox, userLocation: MediaResourceUserLocation, userContentType: MediaResourceUserContentType, resource: MediaResourceReference, type: AnimationCacheAnimationType, keyframeOnly: Bool, customColor: UIColor?, lottieSettings: LottieRenderingSettings, frameSkip: Int = LottieCacheQuality.standard.frameSkip) -> (AnimationCacheFetchOptions) -> Disposable {
     return { options in
         let source = AnimatedStickerResourceSource(postbox: postbox, resource: resource.resource, fitzModifier: nil, isVideo: false)
         
@@ -136,7 +137,7 @@ public func animationCacheFetchFile(postbox: Postbox, userLocation: MediaResourc
                     options.writer.finish()
                     return
                 }
-                cacheLottieAnimation(data: data, width: Int(options.size.width), height: Int(options.size.height), keyframeOnly: keyframeOnly, writer: options.writer, firstFrameOnly: options.firstFrameOnly, customColor: customColor, lottieSettings: lottieSettings)
+                cacheLottieAnimation(data: data, width: Int(options.size.width), height: Int(options.size.height), keyframeOnly: keyframeOnly, writer: options.writer, firstFrameOnly: options.firstFrameOnly, customColor: customColor, lottieSettings: lottieSettings, frameSkip: frameSkip)
             case .still:
                 cacheStillSticker(path: result, width: Int(options.size.width), height: Int(options.size.height), writer: options.writer, customColor: customColor)
             }
@@ -243,8 +244,9 @@ public final class InlineStickerItemLayer: MultiAnimationRenderTarget {
         
         let pointSize: CGSize
         let pixelSize: CGSize
+        let cacheQuality: LottieCacheQuality
         
-        init(context: InlineStickerItemLayer.Context, userLocation: MediaResourceUserLocation, emoji: ChatTextInputTextCustomEmojiAttribute, cache: AnimationCache, renderer: MultiAnimationRenderer, placeholderColor: UIColor, loopCount: Int?, pointSize: CGSize, pixelSize: CGSize) {
+        init(context: InlineStickerItemLayer.Context, userLocation: MediaResourceUserLocation, emoji: ChatTextInputTextCustomEmojiAttribute, cache: AnimationCache, renderer: MultiAnimationRenderer, placeholderColor: UIColor, loopCount: Int?, pointSize: CGSize, pixelSize: CGSize, cacheQuality: LottieCacheQuality) {
             self.context = context
             self.userLocation = userLocation
             self.emoji = emoji
@@ -254,6 +256,7 @@ public final class InlineStickerItemLayer: MultiAnimationRenderTarget {
             self.loopCount = loopCount
             self.pointSize = pointSize
             self.pixelSize = pixelSize
+            self.cacheQuality = cacheQuality
         }
     }
     
@@ -499,7 +502,7 @@ public final class InlineStickerItemLayer: MultiAnimationRenderTarget {
         self.isSettingPlaceholderContents = false
     }
     
-    public convenience init(context: AccountContext, userLocation: MediaResourceUserLocation, attemptSynchronousLoad: Bool, emoji: ChatTextInputTextCustomEmojiAttribute, file: TelegramMediaFile?, cache: AnimationCache, renderer: MultiAnimationRenderer, unique: Bool = false, placeholderColor: UIColor, pointSize: CGSize, dynamicColor: UIColor? = nil, loopCount: Int? = nil) {
+    public convenience init(context: AccountContext, userLocation: MediaResourceUserLocation, attemptSynchronousLoad: Bool, emoji: ChatTextInputTextCustomEmojiAttribute, file: TelegramMediaFile?, cache: AnimationCache, renderer: MultiAnimationRenderer, unique: Bool = false, placeholderColor: UIColor, pointSize: CGSize, dynamicColor: UIColor? = nil, loopCount: Int? = nil, fullQuality: Bool = false) {
         self.init(
             context: .account(context),
             userLocation: userLocation,
@@ -512,12 +515,17 @@ public final class InlineStickerItemLayer: MultiAnimationRenderTarget {
             placeholderColor: placeholderColor,
             pointSize: pointSize,
             dynamicColor: dynamicColor,
-            loopCount: loopCount
+            loopCount: loopCount,
+            fullQuality: fullQuality
         )
     }
     
-    public init(context: InlineStickerItemLayer.Context, userLocation: MediaResourceUserLocation, attemptSynchronousLoad: Bool, emoji: ChatTextInputTextCustomEmojiAttribute, file: TelegramMediaFile?, cache: AnimationCache, renderer: MultiAnimationRenderer, unique: Bool = false, placeholderColor: UIColor, pointSize: CGSize, dynamicColor: UIColor? = nil, loopCount: Int? = nil) {
-        let scale = min(2.0, UIScreenScale)
+    public init(context: InlineStickerItemLayer.Context, userLocation: MediaResourceUserLocation, attemptSynchronousLoad: Bool, emoji: ChatTextInputTextCustomEmojiAttribute, file: TelegramMediaFile?, cache: AnimationCache, renderer: MultiAnimationRenderer, unique: Bool = false, placeholderColor: UIColor, pointSize: CGSize, dynamicColor: UIColor? = nil, loopCount: Int? = nil, fullQuality: Bool = false) {
+        // `fullQuality` is for one large animation in a menu: every source frame at the screen's scale instead of
+        // every second at no more than 2x (see `LottieCacheQuality`). The standard emoji and sticker surfaces
+        // never ask. The quality is chosen once, here: a surface made in Low Power Mode keeps the standard one.
+        let cacheQuality = LottieCacheQuality.current(requestsFull: fullQuality)
+        let scale = cacheQuality.pixelScale(screenScale: UIScreenScale)
         
         self.isUnique = unique
         
@@ -530,7 +538,8 @@ public final class InlineStickerItemLayer: MultiAnimationRenderTarget {
             placeholderColor: placeholderColor,
             loopCount: loopCount,
             pointSize: pointSize,
-            pixelSize: CGSize(width: pointSize.width * scale, height: pointSize.height * scale)
+            pixelSize: CGSize(width: pointSize.width * scale, height: pointSize.height * scale),
+            cacheQuality: cacheQuality
         )
         
         self._dynamicColor = dynamicColor
@@ -864,7 +873,7 @@ public final class InlineStickerItemLayer: MultiAnimationRenderTarget {
         
         if attemptSynchronousLoad {
             let placeholderGeneration = self.beginPlaceholderGeneration()
-            if !arguments.renderer.loadFirstFrameSynchronously(target: self, cache: arguments.cache, itemId: file.resource.id.stringRepresentation, size: arguments.pixelSize) {
+            if !arguments.renderer.loadFirstFrameSynchronously(target: self, cache: arguments.cache, itemId: arguments.cacheQuality.cacheSourceId(file.resource.id.stringRepresentation), size: arguments.pixelSize) {
                 // Not in the cache: the silhouette placeholder used to be drawn here, on the main thread, for
                 // every such item of a panel that was opening. It is drawn on the first-frame queue now (as in
                 // the asynchronous branch below) and lands a frame or two later, unless the real frame came first.
@@ -892,7 +901,7 @@ public final class InlineStickerItemLayer: MultiAnimationRenderTarget {
             let pointSize = arguments.pointSize
             let placeholderColor = arguments.placeholderColor
             let isThumbnailCancelled = Atomic<Bool>(value: false)
-            self.loadDisposable = arguments.renderer.loadFirstFrame(target: self, cache: arguments.cache, itemId: file.resource.id.stringRepresentation, size: arguments.pixelSize, fetch: animationCacheFetchFile(postbox: arguments.context.postbox, userLocation: arguments.userLocation, userContentType: .sticker, resource: .media(media: .standalone(media: file), resource: file.resource), type: AnimationCacheAnimationType(file: file), keyframeOnly: true, customColor: isTemplate ? .white : nil, lottieSettings: arguments.context.lottieRenderingSettings), completion: { [weak self] result, isFinal in
+            self.loadDisposable = arguments.renderer.loadFirstFrame(target: self, cache: arguments.cache, itemId: arguments.cacheQuality.cacheSourceId(file.resource.id.stringRepresentation), size: arguments.pixelSize, fetch: animationCacheFetchFile(postbox: arguments.context.postbox, userLocation: arguments.userLocation, userContentType: .sticker, resource: .media(media: .standalone(media: file), resource: file.resource), type: AnimationCacheAnimationType(file: file), keyframeOnly: true, customColor: isTemplate ? .white : nil, lottieSettings: arguments.context.lottieRenderingSettings, frameSkip: arguments.cacheQuality.frameSkip), completion: { [weak self] result, isFinal in
                 if !result {
                     DCTMultiAnimationRendererImpl.firstFrameQueue.async {
                         let image = generateStickerPlaceholderImage(data: file.immediateThumbnailData, size: pointSize, scale: min(2.0, UIScreenScale), imageSize: file.dimensions?.cgSize ?? CGSize(width: 512.0, height: 512.0), backgroundColor: nil, foregroundColor: placeholderColor)
@@ -950,9 +959,9 @@ public final class InlineStickerItemLayer: MultiAnimationRenderTarget {
         if file.isAnimatedSticker || file.isVideoSticker || file.isVideoEmoji {
             let keyframeOnly = arguments.pixelSize.width >= 120.0
             
-            self.disposable = arguments.renderer.add(target: self, cache: arguments.cache, itemId: file.resource.id.stringRepresentation, unique: self.isUnique, size: arguments.pixelSize, fetch: animationCacheFetchFile(postbox: arguments.context.postbox, userLocation: arguments.userLocation, userContentType: .sticker, resource: .media(media: .standalone(media: file), resource: file.resource), type: AnimationCacheAnimationType(file: file), keyframeOnly: keyframeOnly, customColor: isTemplate ? .white : nil, lottieSettings: arguments.context.lottieRenderingSettings))
+            self.disposable = arguments.renderer.add(target: self, cache: arguments.cache, itemId: arguments.cacheQuality.cacheSourceId(file.resource.id.stringRepresentation), unique: self.isUnique, size: arguments.pixelSize, fetch: animationCacheFetchFile(postbox: arguments.context.postbox, userLocation: arguments.userLocation, userContentType: .sticker, resource: .media(media: .standalone(media: file), resource: file.resource), type: AnimationCacheAnimationType(file: file), keyframeOnly: keyframeOnly, customColor: isTemplate ? .white : nil, lottieSettings: arguments.context.lottieRenderingSettings, frameSkip: arguments.cacheQuality.frameSkip))
         } else {
-            self.disposable = arguments.renderer.add(target: self, cache: arguments.cache, itemId: file.resource.id.stringRepresentation, unique: self.isUnique, size: arguments.pixelSize, fetch: { options in
+            self.disposable = arguments.renderer.add(target: self, cache: arguments.cache, itemId: arguments.cacheQuality.cacheSourceId(file.resource.id.stringRepresentation), unique: self.isUnique, size: arguments.pixelSize, fetch: { options in
                 let dataDisposable = context.postbox.mediaBox.resourceData(file.resource).start(next: { result in
                     guard result.complete else {
                         return
