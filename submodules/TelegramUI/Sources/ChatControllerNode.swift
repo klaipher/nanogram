@@ -2087,7 +2087,7 @@ class ChatControllerNode: ASDisplayNode, ASScrollViewDelegate {
             let heightAndOverflow = inputNode.updateLayout(width: layout.size.width, leftInset: layout.safeInsets.left, rightInset: layout.safeInsets.right, bottomInset: cleanInsets.bottom, standardInputHeight: inputHeight, inputHeight: layout.inputHeight ?? 0.0, maximumHeight: maximumInputNodeHeight, inputPanelHeight: inputPanelNodeBaseHeight, transition: immediatelyLayoutInputNodeAndAnimateAppearance ? .immediate : transition, interfaceState: self.chatPresentationInterfaceState, layoutMetrics: layout.metrics, deviceMetrics: layout.deviceMetrics, isVisible: self.isInFocus, isExpanded: self.inputPanelContainerNode.stableIsExpanded)
             PerformanceSignposts.end(EmojiPanelOpenSignpost.inputNodeUpdateLayout, inputNodeUpdateLayoutSignpost)
             if immediatelyLayoutInputNodeAndAnimateAppearance, inputNode is ChatEntityKeyboardInputNode {
-                Queue.mainQueue().async {
+                NextFrame.run {
                     EmojiPanelOpenSignpost.endOpen()
                 }
             }
@@ -4075,7 +4075,7 @@ class ChatControllerNode: ASDisplayNode, ASScrollViewDelegate {
     private func scheduleDeferredMediaKeyboardHandoff() {
         let token = self.deferredMediaKeyboardHandoffGate.schedule()
         self.onLayoutCompletions.append({ [weak self] _ in
-            Queue.mainQueue().async {
+            NextFrame.run {
                 self?.performDeferredMediaKeyboardHandoff(token: token)
             }
         })
@@ -4088,21 +4088,23 @@ class ChatControllerNode: ASDisplayNode, ASScrollViewDelegate {
         guard self.deferredMediaKeyboardHandoffGate.consume(token) else {
             return
         }
-        guard case .media = self.chatPresentationInterfaceState.inputMode, let richTextInputNode = self.textInputPanelNode?.richTextInputNode else {
+        guard case .media = self.chatPresentationInterfaceState.inputMode else {
             return
         }
         let handoffSignpost = PerformanceSignposts.begin(EmojiPanelOpenSignpost.deferredKeyboardHandoff)
         defer {
             PerformanceSignposts.end(EmojiPanelOpenSignpost.deferredKeyboardHandoff, handoffSignpost)
         }
-        let updatedInputView = self.chatPresentationInterfaceStateInputView(self.chatPresentationInterfaceState)
-        if richTextInputNode.keyboardInputView !== updatedInputView {
-            richTextInputNode.keyboardInputView = updatedInputView
-            self.inputAssistantSuppressor.update(responder: updatedInputView.flatMap { chatInputResponder(in: richTextInputNode.inputView, withInputView: $0) }, suppress: chatSuppressesInputAssistant(isMediaInput: updatedInputView != nil, deviceType: self.validLayout?.0.deviceMetrics.type))
-            if richTextInputNode.isInputFirstResponder {
-                let reloadInputViewsSignpost = PerformanceSignposts.begin(EmojiPanelOpenSignpost.reloadInputViews)
-                richTextInputNode.reloadInputViews()
-                PerformanceSignposts.end(EmojiPanelOpenSignpost.reloadInputViews, reloadInputViewsSignpost)
+        if let richTextInputNode = self.textInputPanelNode?.richTextInputNode {
+            let updatedInputView = self.chatPresentationInterfaceStateInputView(self.chatPresentationInterfaceState)
+            if richTextInputNode.keyboardInputView !== updatedInputView {
+                richTextInputNode.keyboardInputView = updatedInputView
+                self.inputAssistantSuppressor.update(responder: updatedInputView.flatMap { chatInputResponder(in: richTextInputNode.inputView, withInputView: $0) }, suppress: chatSuppressesInputAssistant(isMediaInput: updatedInputView != nil, deviceType: self.validLayout?.0.deviceMetrics.type))
+                if richTextInputNode.isInputFirstResponder {
+                    let reloadInputViewsSignpost = PerformanceSignposts.begin(EmojiPanelOpenSignpost.reloadInputViews)
+                    richTextInputNode.reloadInputViews()
+                    PerformanceSignposts.end(EmojiPanelOpenSignpost.reloadInputViews, reloadInputViewsSignpost)
+                }
             }
         }
         let ensureFocusedSignpost = PerformanceSignposts.begin(EmojiPanelOpenSignpost.ensureFocused)

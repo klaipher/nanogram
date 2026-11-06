@@ -732,7 +732,7 @@ public final class GifPagerContentComponent: Component {
                 return
             }
             self.deferredTilePassScheduled = true
-            DispatchQueue.main.async { [weak self] in
+            NextFrame.run { [weak self] in
                 guard let self else {
                     return
                 }
@@ -742,7 +742,7 @@ public final class GifPagerContentComponent: Component {
                 }
                 self.isPaneSettled = true
                 PerformanceSignposts.interval(EmojiPanelOpenSignpost.deferredGifTiles) {
-                    self.updateVisibleItems(attemptSynchronousLoads: false, transition: .immediate, fromScrolling: false)
+                    self.updateVisibleItems(attemptSynchronousLoads: true, transition: .immediate, fromScrolling: false)
                 }
             }
         }

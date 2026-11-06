@@ -93,3 +93,39 @@ final class EmojiPanelOpenTuningTests: XCTestCase {
         EmojiPanelOpenSignpost.endOpen()
     }
 }
+
+final class NextFrameTests: XCTestCase {
+    func testTheBlockNeverRunsInlineAndRunsOnce() {
+        var runs = 0
+        let ran = expectation(description: "ran")
+        NextFrame.run {
+            runs += 1
+            ran.fulfill()
+        }
+        XCTAssertEqual(runs, 0, "SwiftSignalKit's Queue.async would have run it inline here")
+        wait(for: [ran], timeout: 2.0)
+        let settled = expectation(description: "settled")
+        DispatchQueue.main.asyncAfter(deadline: .now() + 0.2) { settled.fulfill() }
+        wait(for: [settled], timeout: 2.0)
+        XCTAssertEqual(runs, 1, "display link and fallback timer must not both run it")
+    }
+
+    func testCancelDropsTheBlock() {
+        var runs = 0
+        let task = NextFrame.run { runs += 1 }
+        task.cancel()
+        let settled = expectation(description: "settled")
+        DispatchQueue.main.asyncAfter(deadline: .now() + 0.2) { settled.fulfill() }
+        wait(for: [settled], timeout: 2.0)
+        XCTAssertEqual(runs, 0)
+    }
+
+    func testADanglingOpenIntervalIsClosed() {
+        EmojiPanelOpenSignpost.beginOpen()
+        XCTAssertTrue(EmojiPanelOpenSignpost.isOpenIntervalActive)
+        let closed = expectation(description: "closed")
+        DispatchQueue.main.asyncAfter(deadline: .now() + EmojiPanelOpenSignpost.danglingOpenTimeout + 0.3) { closed.fulfill() }
+        wait(for: [closed], timeout: EmojiPanelOpenSignpost.danglingOpenTimeout + 2.0)
+        XCTAssertFalse(EmojiPanelOpenSignpost.isOpenIntervalActive)
+    }
+}

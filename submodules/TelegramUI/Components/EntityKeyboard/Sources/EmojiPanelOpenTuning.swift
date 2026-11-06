@@ -1,6 +1,7 @@
 import Foundation
 import SwiftSignalKit
 import Display
+import UIKit
 
 /// Signpost names for the steps of opening the emoji / sticker / GIF panel (category `Performance`, see docs/profiling.md).
 /// One Performance Trace of the open shows where the wall time goes, including the time the main thread spends
@@ -26,19 +27,84 @@ public enum EmojiPanelOpenSignpost {
 
     // Main thread only.
     nonisolated(unsafe) private static var openShot: PerformanceSignposts.OneShot?
+    nonisolated(unsafe) private static var openGeneration: Int = 0
 
-    /// The panel was requested (tap on the panel button). A second request closes the first interval.
+    public static let danglingOpenTimeout: Double = 2.0
+
+    /// The panel was requested (tap on the panel button). A second request closes the first interval, and an interval
+    /// that no layout ever ends is closed after `danglingOpenTimeout`.
     public static func beginOpen() {
         self.openShot?.end()
         self.openShot = PerformanceSignposts.OneShot(self.openToReady)
+        self.openGeneration += 1
+        let generation = self.openGeneration
+        DispatchQueue.main.asyncAfter(deadline: .now() + self.danglingOpenTimeout) {
+            if self.openGeneration == generation {
+                self.endOpen()
+            }
+        }
+    }
+
+    public static var isOpenIntervalActive: Bool {
+        return self.openShot != nil
     }
 
     /// The first run-loop turn after the panel's first layout. A proxy for "first render": the exact commit time is in the
     /// Hitches / Animation Hitches lanes of the same trace.
     public static func endOpen() {
-        PerformanceSignposts.event(self.firstTurnAfterLayout)
+        if self.openShot != nil {
+            PerformanceSignposts.event(self.firstTurnAfterLayout)
+        }
         self.openShot?.end()
         self.openShot = nil
+    }
+}
+
+/// Runs a block on a later main-thread turn, after the frame that is being prepared now has been committed.
+/// `Queue.mainQueue().async` is not enough for that: it runs the block inline when already on the main queue.
+/// A one-shot display link fires at the next frame start; the short timer is the fallback when no frames are produced.
+public final class NextFrame: NSObject {
+    public static let fallbackDelay: Double = 0.05
+
+    private var block: (() -> Void)?
+    private var displayLink: CADisplayLink?
+
+    private init(block: @escaping () -> Void) {
+        self.block = block
+        super.init()
+    }
+
+    @discardableResult
+    public static func run(_ block: @escaping () -> Void) -> NextFrame {
+        let task = NextFrame(block: block)
+        let displayLink = CADisplayLink(target: task, selector: #selector(NextFrame.tick))
+        task.displayLink = displayLink
+        displayLink.add(to: .main, forMode: .common)
+        DispatchQueue.main.asyncAfter(deadline: .now() + self.fallbackDelay) {
+            task.fire()
+        }
+        return task
+    }
+
+    public func cancel() {
+        self.block = nil
+        self.finish()
+    }
+
+    @objc private func tick() {
+        self.fire()
+    }
+
+    private func fire() {
+        let block = self.block
+        self.block = nil
+        self.finish()
+        block?()
+    }
+
+    private func finish() {
+        self.displayLink?.invalidate()
+        self.displayLink = nil
     }
 }
 
