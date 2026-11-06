@@ -659,6 +659,11 @@ public final class ChatControllerImpl: TelegramBaseController, ChatController, G
     var postedScheduledMessagesEventsDisposable: Disposable?
     
     var globalControlPanelsContext: GlobalControlPanelsContext?
+    /// Debug Settings "Chat open: defer non-visible setup". Disabled (everything runs inside `init` / `loadDisplayNode`, as before)
+    /// unless the switch was on when this controller was created and it is a standard chat; then the setup submitted
+    /// through it runs from `viewDidAppear` on the next main-queue turn. The switch is read once, in `init`.
+    var openSetup = DeferredSetup(isEnabled: false)
+    var didMeasureFirstLayout = false
     var globalControlPanelsContextState: GlobalControlPanelsContext.State?
     var globalControlPanelsContextStateDisposable: Disposable?
     
@@ -679,6 +684,11 @@ public final class ChatControllerImpl: TelegramBaseController, ChatController, G
         initialTextInputState: ChatTextInputState? = nil,
         params: ChatControllerParams? = nil
     ) {
+        let initSignpost = PerformanceSignposts.begin(PerformanceSignpostName.chatInit)
+        defer {
+            PerformanceSignposts.end(PerformanceSignpostName.chatInit, initSignpost)
+        }
+        
         self.initTimestamp = CFAbsoluteTimeGetCurrent()
         
         let _ = ChatControllerCount.modify { value in
@@ -762,6 +772,10 @@ public final class ChatControllerImpl: TelegramBaseController, ChatController, G
         super.init(context: context, navigationBarPresentationData: navigationBarPresentationData)
         
         self._hasGlassStyle = true
+        
+        if case .standard(.default) = mode, context.sharedContext.immediateExperimentalUISettings.chatOpenDeferSetup {
+            self.openSetup = DeferredSetup(isEnabled: true)
+        }
         
         self.automaticallyControlPresentationContextLayout = false
         self.blocksBackgroundWhenInOverlay = true
@@ -881,6 +895,7 @@ public final class ChatControllerImpl: TelegramBaseController, ChatController, G
             return true
         }
         
+        let interactionSignpost = PerformanceSignposts.begin(PerformanceSignpostName.chatInitInteraction)
         let controllerInteraction = ChatControllerInteraction(openMessage: { [weak self] message, params in
             guard let self, self.isNodeLoaded, let message = self.chatDisplayNode.historyNode.messageInCurrentHistoryView(message.id)?._asMessage() else {
                 return false
@@ -6052,6 +6067,7 @@ public final class ChatControllerImpl: TelegramBaseController, ChatController, G
         }, automaticMediaDownloadSettings: self.automaticMediaDownloadSettings, pollActionState: ChatInterfacePollActionState(), stickerSettings: self.stickerSettings, presentationContext: ChatPresentationContext(context: context, backgroundNode: self.chatBackgroundNode))
         controllerInteraction.enableFullTranslucency = context.sharedContext.energyUsageSettings.fullTranslucency
         
+        PerformanceSignposts.end(PerformanceSignpostName.chatInitInteraction, interactionSignpost)
         self.controllerInteraction = controllerInteraction
         controllerInteraction.requestWalletTransferArrival = { [weak self] message in
             self?.walletTransferAnimationCoordinator().requestArrival(message)
@@ -6475,186 +6491,205 @@ public final class ChatControllerImpl: TelegramBaseController, ChatController, G
             }
         })
         
-        if let chatPeerId = chatLocation.peerId {
-            self.nameColorDisposable = (context.engine.data.subscribe(
-                TelegramEngine.EngineData.Item.Peer.Peer(id: context.account.peerId),
-                TelegramEngine.EngineData.Item.Peer.Peer(id: chatPeerId)
-            )
-            |> deliverOnMainQueue).start(next: { [weak self] accountPeer, chatPeer in
-                guard let self, let accountPeer, let chatPeer else {
-                    return
-                }
-                var nameColor: PeerColor?
-                if case let .channel(channel) = chatPeer, case .broadcast = channel.info {
-                    nameColor = chatPeer.nameColor
-                } else {
-                    nameColor = accountPeer.nameColor
-                }
-                var accountPeerColor: ChatPresentationInterfaceState.AccountPeerColor?
-                if let nameColor {
-                    let colors: PeerNameColors.Colors
-                    switch nameColor {
-                    case let .preset(nameColor):
-                        colors = self.context.peerNameColors.get(nameColor)
-                    case let .collectible(collectibleColor):
-                        colors = collectibleColor.peerNameColors(dark: false)
+        self.openSetup.run { [weak self] in
+            guard let self else {
+                return
+            }
+            if let chatPeerId = chatLocation.peerId {
+                self.nameColorDisposable = (context.engine.data.subscribe(
+                    TelegramEngine.EngineData.Item.Peer.Peer(id: context.account.peerId),
+                    TelegramEngine.EngineData.Item.Peer.Peer(id: chatPeerId)
+                )
+                |> deliverOnMainQueue).start(next: { [weak self] accountPeer, chatPeer in
+                    guard let self, let accountPeer, let chatPeer else {
+                        return
                     }
-                    var style: ChatPresentationInterfaceState.AccountPeerColor.Style = .solid
-                    if colors.tertiary != nil {
-                        style = .tripleDashed
-                    } else if colors.secondary != nil {
-                        style = .doubleDashed
+                    var nameColor: PeerColor?
+                    if case let .channel(channel) = chatPeer, case .broadcast = channel.info {
+                        nameColor = chatPeer.nameColor
+                    } else {
+                        nameColor = accountPeer.nameColor
                     }
-                    accountPeerColor = ChatPresentationInterfaceState.AccountPeerColor(style: style)
-                }
-                self.updateChatPresentationInterfaceState(animated: false, interactive: false, { state in
-                    return state.updatedAccountPeerColor(accountPeerColor)
+                    var accountPeerColor: ChatPresentationInterfaceState.AccountPeerColor?
+                    if let nameColor {
+                        let colors: PeerNameColors.Colors
+                        switch nameColor {
+                        case let .preset(nameColor):
+                            colors = self.context.peerNameColors.get(nameColor)
+                        case let .collectible(collectibleColor):
+                            colors = collectibleColor.peerNameColors(dark: false)
+                        }
+                        var style: ChatPresentationInterfaceState.AccountPeerColor.Style = .solid
+                        if colors.tertiary != nil {
+                            style = .tripleDashed
+                        } else if colors.secondary != nil {
+                            style = .doubleDashed
+                        }
+                        accountPeerColor = ChatPresentationInterfaceState.AccountPeerColor(style: style)
+                    }
+                    self.updateChatPresentationInterfaceState(animated: false, interactive: false, { state in
+                        return state.updatedAccountPeerColor(accountPeerColor)
+                    })
                 })
-            })
+            }
         }
         
-        self.reloadChatLocation(chatLocation: self.chatLocation, chatLocationContextHolder: self.chatLocationContextHolder, historyNode: self.chatDisplayNode.historyNode, apply: { $0(nil) })
+        // The first use of `chatDisplayNode` loads the display node (`chatInitDisplayNode`), so it is read before the interval.
+        let initialHistoryNode = self.chatDisplayNode.historyNode
+        let reloadLocationSignpost = PerformanceSignposts.begin(PerformanceSignpostName.chatInitReloadLocation)
+        self.reloadChatLocation(chatLocation: self.chatLocation, chatLocationContextHolder: self.chatLocationContextHolder, historyNode: initialHistoryNode, apply: { $0(nil) })
+        PerformanceSignposts.end(PerformanceSignpostName.chatInitReloadLocation, reloadLocationSignpost)
         
-        self.botCallbackAlertMessageDisposable = (self.botCallbackAlertMessage.get()
-        |> deliverOnMainQueue).startStrict(next: { [weak self] message in
-                if let strongSelf = self {
-                    strongSelf.updateChatPresentationInterfaceState(animated: true, interactive: false, {
-                        return $0.updatedTitlePanelContext {
-                            if let message = message {
-                                if let index = $0.firstIndex(where: {
-                                    switch $0 {
-                                        case .toastAlert:
-                                            return true
-                                        default:
-                                            return false
-                                    }
-                                }) {
-                                    if $0[index] != ChatTitlePanelContext.toastAlert(message) {
+        self.openSetup.run { [weak self] in
+            guard let self else {
+                return
+            }
+            self.botCallbackAlertMessageDisposable = (self.botCallbackAlertMessage.get()
+            |> deliverOnMainQueue).startStrict(next: { [weak self] message in
+                    if let strongSelf = self {
+                        strongSelf.updateChatPresentationInterfaceState(animated: true, interactive: false, {
+                            return $0.updatedTitlePanelContext {
+                                if let message = message {
+                                    if let index = $0.firstIndex(where: {
+                                        switch $0 {
+                                            case .toastAlert:
+                                                return true
+                                            default:
+                                                return false
+                                        }
+                                    }) {
+                                        if $0[index] != ChatTitlePanelContext.toastAlert(message) {
+                                            var updatedContexts = $0
+                                            updatedContexts[index] = .toastAlert(message)
+                                            return updatedContexts
+                                        } else {
+                                            return $0
+                                        }
+                                    } else {
                                         var updatedContexts = $0
-                                        updatedContexts[index] = .toastAlert(message)
+                                        updatedContexts.append(.toastAlert(message))
+                                        return updatedContexts.sorted()
+                                    }
+                                } else {
+                                    if let index = $0.firstIndex(where: {
+                                        switch $0 {
+                                            case .toastAlert:
+                                                return true
+                                            default:
+                                                return false
+                                        }
+                                    }) {
+                                        var updatedContexts = $0
+                                        updatedContexts.remove(at: index)
                                         return updatedContexts
                                     } else {
                                         return $0
                                     }
-                                } else {
-                                    var updatedContexts = $0
-                                    updatedContexts.append(.toastAlert(message))
-                                    return updatedContexts.sorted()
-                                }
-                            } else {
-                                if let index = $0.firstIndex(where: {
-                                    switch $0 {
-                                        case .toastAlert:
-                                            return true
-                                        default:
-                                            return false
-                                    }
-                                }) {
-                                    var updatedContexts = $0
-                                    updatedContexts.remove(at: index)
-                                    return updatedContexts
-                                } else {
-                                    return $0
-                                }
-                            }
-                        }
-                    })
-                }
-            })
-        
-        self.audioRecorderDisposable = (self.audioRecorder.get()
-        |> deliverOnMainQueue).startStrict(next: { [weak self] audioRecorder in
-            if let strongSelf = self {
-                if strongSelf.audioRecorderValue !== audioRecorder {
-                    strongSelf.audioRecorderValue = audioRecorder
-                    strongSelf.lockOrientation = audioRecorder != nil
-                    
-                    strongSelf.updateChatPresentationInterfaceState(animated: true, interactive: true, {
-                        $0.updatedInputTextPanelState { panelState in
-                            let isLocked = strongSelf.lockMediaRecordingRequestId == strongSelf.beginMediaRecordingRequestId
-                            if let audioRecorder = audioRecorder {
-                                if panelState.mediaRecordingState == nil {
-                                    return panelState.withUpdatedMediaRecordingState(.audio(recorder: audioRecorder, isLocked: isLocked))
-                                }
-                            } else {
-                                if case .waitingForPreview = panelState.mediaRecordingState {
-                                    return panelState
-                                }
-                                return panelState.withUpdatedMediaRecordingState(nil)
-                            }
-                            return panelState
-                        }
-                    })
-                    strongSelf.audioRecorderStatusDisposable?.dispose()
-                    
-                    if let audioRecorder = audioRecorder {
-                        if !audioRecorder.beginWithTone {
-                            strongSelf.recorderFeedback?.impact(.light)
-                        }
-                        audioRecorder.start()
-                        strongSelf.audioRecorderStatusDisposable = (audioRecorder.recordingState
-                        |> deliverOnMainQueue).startStrict(next: { [weak self] value in
-                            if let self, case .stopped = value {
-                                if self.presentationInterfaceState.interfaceState.mediaDraftState != nil {
-                                    
-                                } else {
-                                    self.stopMediaRecorder()
                                 }
                             }
                         })
-                    } else {
-                        strongSelf.audioRecorderStatusDisposable = nil
                     }
-                    strongSelf.updateDownButtonVisibility()
-                }
-            }
-        })
+                })
+        }
         
-        self.videoRecorderDisposable = (self.videoRecorder.get()
-        |> deliverOnMainQueue).startStrict(next: { [weak self] videoRecorder in
-            if let strongSelf = self {
-                if strongSelf.videoRecorderValue !== videoRecorder {
-                    let previousVideoRecorderValue = strongSelf.videoRecorderValue
-                    strongSelf.videoRecorderValue = videoRecorder
-                    strongSelf.videoRecorderActivity = MetricActivityIntervals.update(strongSelf.videoRecorderActivity, .roundVideoRecording, active: videoRecorder != nil)
+        self.openSetup.run { [weak self] in
+            guard let self else {
+                return
+            }
+            self.audioRecorderDisposable = (self.audioRecorder.get()
+            |> deliverOnMainQueue).startStrict(next: { [weak self] audioRecorder in
+                if let strongSelf = self {
+                    if strongSelf.audioRecorderValue !== audioRecorder {
+                        strongSelf.audioRecorderValue = audioRecorder
+                        strongSelf.lockOrientation = audioRecorder != nil
                     
-                    strongSelf.updateChatPresentationInterfaceState(animated: true, interactive: true, {
-                        $0.updatedInputTextPanelState { panelState in
-                            if let videoRecorder = videoRecorder {
-                                if panelState.mediaRecordingState == nil {
-                                    let recordingStatus = videoRecorder.recordingStatus
-                                    return panelState.withUpdatedMediaRecordingState(.video(status: .recording(InstantVideoControllerRecordingStatus(micLevel: recordingStatus.micLevel, duration: recordingStatus.duration)), isLocked: strongSelf.lockMediaRecordingRequestId == strongSelf.beginMediaRecordingRequestId))
+                        strongSelf.updateChatPresentationInterfaceState(animated: true, interactive: true, {
+                            $0.updatedInputTextPanelState { panelState in
+                                let isLocked = strongSelf.lockMediaRecordingRequestId == strongSelf.beginMediaRecordingRequestId
+                                if let audioRecorder = audioRecorder {
+                                    if panelState.mediaRecordingState == nil {
+                                        return panelState.withUpdatedMediaRecordingState(.audio(recorder: audioRecorder, isLocked: isLocked))
+                                    }
+                                } else {
+                                    if case .waitingForPreview = panelState.mediaRecordingState {
+                                        return panelState
+                                    }
+                                    return panelState.withUpdatedMediaRecordingState(nil)
                                 }
-                            } else {
-                                return panelState.withUpdatedMediaRecordingState(nil)
+                                return panelState
                             }
-                            return panelState
-                        }
-                    })
+                        })
+                        strongSelf.audioRecorderStatusDisposable?.dispose()
                     
-                    if let videoRecorder {
-                        strongSelf.recorderFeedback?.impact(.light)
-                        
-                        videoRecorder.onStop = {
-                            if let strongSelf = self {
-                                strongSelf.dismissMediaRecorder(.pause)
+                        if let audioRecorder = audioRecorder {
+                            if !audioRecorder.beginWithTone {
+                                strongSelf.recorderFeedback?.impact(.light)
                             }
+                            audioRecorder.start()
+                            strongSelf.audioRecorderStatusDisposable = (audioRecorder.recordingState
+                            |> deliverOnMainQueue).startStrict(next: { [weak self] value in
+                                if let self, case .stopped = value {
+                                    if self.presentationInterfaceState.interfaceState.mediaDraftState != nil {
+                                    
+                                    } else {
+                                        self.stopMediaRecorder()
+                                    }
+                                }
+                            })
+                        } else {
+                            strongSelf.audioRecorderStatusDisposable = nil
                         }
-                        strongSelf.chatDisplayNode.setVideoRecorder(backgroundView: videoRecorder.backgroundView)
-                        strongSelf.present(videoRecorder, in: .window(.root))
-                        
-                        if strongSelf.lockMediaRecordingRequestId == strongSelf.beginMediaRecordingRequestId {
-                            videoRecorder.lockVideoRecording()
-                        }
-                    }
-                    strongSelf.updateDownButtonVisibility()
-                    
-                    if let previousVideoRecorderValue = previousVideoRecorderValue {
-                        previousVideoRecorderValue.discardVideo()
+                        strongSelf.updateDownButtonVisibility()
                     }
                 }
-            }
-        })
+            })
+        
+            self.videoRecorderDisposable = (self.videoRecorder.get()
+            |> deliverOnMainQueue).startStrict(next: { [weak self] videoRecorder in
+                if let strongSelf = self {
+                    if strongSelf.videoRecorderValue !== videoRecorder {
+                        let previousVideoRecorderValue = strongSelf.videoRecorderValue
+                        strongSelf.videoRecorderValue = videoRecorder
+                        strongSelf.videoRecorderActivity = MetricActivityIntervals.update(strongSelf.videoRecorderActivity, .roundVideoRecording, active: videoRecorder != nil)
+                    
+                        strongSelf.updateChatPresentationInterfaceState(animated: true, interactive: true, {
+                            $0.updatedInputTextPanelState { panelState in
+                                if let videoRecorder = videoRecorder {
+                                    if panelState.mediaRecordingState == nil {
+                                        let recordingStatus = videoRecorder.recordingStatus
+                                        return panelState.withUpdatedMediaRecordingState(.video(status: .recording(InstantVideoControllerRecordingStatus(micLevel: recordingStatus.micLevel, duration: recordingStatus.duration)), isLocked: strongSelf.lockMediaRecordingRequestId == strongSelf.beginMediaRecordingRequestId))
+                                    }
+                                } else {
+                                    return panelState.withUpdatedMediaRecordingState(nil)
+                                }
+                                return panelState
+                            }
+                        })
+                    
+                        if let videoRecorder {
+                            strongSelf.recorderFeedback?.impact(.light)
+                        
+                            videoRecorder.onStop = {
+                                if let strongSelf = self {
+                                    strongSelf.dismissMediaRecorder(.pause)
+                                }
+                            }
+                            strongSelf.chatDisplayNode.setVideoRecorder(backgroundView: videoRecorder.backgroundView)
+                            strongSelf.present(videoRecorder, in: .window(.root))
+                        
+                            if strongSelf.lockMediaRecordingRequestId == strongSelf.beginMediaRecordingRequestId {
+                                videoRecorder.lockVideoRecording()
+                            }
+                        }
+                        strongSelf.updateDownButtonVisibility()
+                    
+                        if let previousVideoRecorderValue = previousVideoRecorderValue {
+                            previousVideoRecorderValue.discardVideo()
+                        }
+                    }
+                }
+            })
+        }
         
         if let botStart = botStart, case .automatic = botStart.behavior {
             self.startBot(botStart.payload)
@@ -6670,45 +6705,50 @@ public final class ChatControllerImpl: TelegramBaseController, ChatController, G
             activitySpace = nil
         }
         
-        if let activitySpace = activitySpace {
-            self.inputActivityDisposable = (self.typingActivityPromise.get()
-            |> deliverOnMainQueue).startStrict(next: { [weak self] value in
-                if let strongSelf = self, strongSelf.presentationInterfaceState.interfaceState.editMessage == nil && strongSelf.presentationInterfaceState.subject != .scheduledMessages && strongSelf.presentationInterfaceState.currentSendAsPeerId == nil {
-                    strongSelf.context.account.updateLocalInputActivity(peerId: activitySpace, activity: .typingText, isPresent: value)
-                }
-            })
-        
-            self.choosingStickerActivityDisposable = (self.choosingStickerActivityPromise.get()
-            |> mapToSignal { value -> Signal<Bool, NoError> in
-                if value {
-                    return .single(true)
-                } else {
-                    return .single(false) |> delay(2.0, queue: Queue.mainQueue())
-                }
+        self.openSetup.run { [weak self] in
+            guard let self else {
+                return
             }
-            |> deliverOnMainQueue).startStrict(next: { [weak self] value in
-                if let strongSelf = self, strongSelf.presentationInterfaceState.interfaceState.editMessage == nil && strongSelf.presentationInterfaceState.subject != .scheduledMessages && strongSelf.presentationInterfaceState.currentSendAsPeerId == nil {
+            if let activitySpace = activitySpace {
+                self.inputActivityDisposable = (self.typingActivityPromise.get()
+                |> deliverOnMainQueue).startStrict(next: { [weak self] value in
+                    if let strongSelf = self, strongSelf.presentationInterfaceState.interfaceState.editMessage == nil && strongSelf.presentationInterfaceState.subject != .scheduledMessages && strongSelf.presentationInterfaceState.currentSendAsPeerId == nil {
+                        strongSelf.context.account.updateLocalInputActivity(peerId: activitySpace, activity: .typingText, isPresent: value)
+                    }
+                })
+        
+                self.choosingStickerActivityDisposable = (self.choosingStickerActivityPromise.get()
+                |> mapToSignal { value -> Signal<Bool, NoError> in
                     if value {
-                        strongSelf.context.account.updateLocalInputActivity(peerId: activitySpace, activity: .typingText, isPresent: false)
+                        return .single(true)
+                    } else {
+                        return .single(false) |> delay(2.0, queue: Queue.mainQueue())
                     }
-                    strongSelf.context.account.updateLocalInputActivity(peerId: activitySpace, activity: .choosingSticker, isPresent: value)
                 }
-            })
+                |> deliverOnMainQueue).startStrict(next: { [weak self] value in
+                    if let strongSelf = self, strongSelf.presentationInterfaceState.interfaceState.editMessage == nil && strongSelf.presentationInterfaceState.subject != .scheduledMessages && strongSelf.presentationInterfaceState.currentSendAsPeerId == nil {
+                        if value {
+                            strongSelf.context.account.updateLocalInputActivity(peerId: activitySpace, activity: .typingText, isPresent: false)
+                        }
+                        strongSelf.context.account.updateLocalInputActivity(peerId: activitySpace, activity: .choosingSticker, isPresent: value)
+                    }
+                })
             
-            self.recordingActivityDisposable = (self.recordingActivityPromise.get()
-            |> deliverOnMainQueue).startStrict(next: { [weak self] value in
-                if let strongSelf = self, strongSelf.presentationInterfaceState.interfaceState.editMessage == nil && strongSelf.presentationInterfaceState.subject != .scheduledMessages && strongSelf.presentationInterfaceState.currentSendAsPeerId == nil {
-                    strongSelf.acquiredRecordingActivityDisposable?.dispose()
-                    switch value {
-                        case .voice:
-                            strongSelf.acquiredRecordingActivityDisposable = strongSelf.context.account.acquireLocalInputActivity(peerId: activitySpace, activity: .recordingVoice)
-                        case .instantVideo:
-                            strongSelf.acquiredRecordingActivityDisposable = strongSelf.context.account.acquireLocalInputActivity(peerId: activitySpace, activity: .recordingInstantVideo)
-                        case .none:
-                            strongSelf.acquiredRecordingActivityDisposable = nil
+                self.recordingActivityDisposable = (self.recordingActivityPromise.get()
+                |> deliverOnMainQueue).startStrict(next: { [weak self] value in
+                    if let strongSelf = self, strongSelf.presentationInterfaceState.interfaceState.editMessage == nil && strongSelf.presentationInterfaceState.subject != .scheduledMessages && strongSelf.presentationInterfaceState.currentSendAsPeerId == nil {
+                        strongSelf.acquiredRecordingActivityDisposable?.dispose()
+                        switch value {
+                            case .voice:
+                                strongSelf.acquiredRecordingActivityDisposable = strongSelf.context.account.acquireLocalInputActivity(peerId: activitySpace, activity: .recordingVoice)
+                            case .instantVideo:
+                                strongSelf.acquiredRecordingActivityDisposable = strongSelf.context.account.acquireLocalInputActivity(peerId: activitySpace, activity: .recordingInstantVideo)
+                            case .none:
+                                strongSelf.acquiredRecordingActivityDisposable = nil
+                        }
                     }
-                }
-            })
+                })
+            }
         }
         
         let chatTheme: Signal<ChatTheme?, NoError> = self.chatThemePromise.get()
@@ -6922,6 +6962,12 @@ public final class ChatControllerImpl: TelegramBaseController, ChatController, G
                 
                 let previousChatTheme = currentChatTheme.swap((chatTheme, useDarkAppearance))
                 
+                let presentationDataSignpost = isFirstTime ? PerformanceSignposts.begin(PerformanceSignpostName.chatInitPresentationData) : nil
+                defer {
+                    if let presentationDataSignpost {
+                        PerformanceSignposts.end(PerformanceSignpostName.chatInitPresentationData, presentationDataSignpost)
+                    }
+                }
                 if isFirstTime || previousTheme != presentationData.theme || previousStrings !== presentationData.strings || presentationData.chatWallpaper != previousChatWallpaper {
                     strongSelf.themeAndStringsUpdated()
                     
@@ -7110,6 +7156,7 @@ public final class ChatControllerImpl: TelegramBaseController, ChatController, G
             timer.invalidate()
         }
 
+        self.openSetup.discard()
         self.historyStateDisposable?.dispose()
         self.messageIndexDisposable.dispose()
         self.navigationActionDisposable.dispose()
@@ -7699,7 +7746,9 @@ public final class ChatControllerImpl: TelegramBaseController, ChatController, G
     }
     
     override public func loadDisplayNode() {
-        self.loadDisplayNodeImpl()
+        PerformanceSignposts.interval(PerformanceSignpostName.chatInitDisplayNode) {
+            self.loadDisplayNodeImpl()
+        }
         self.galleryPresentationContext.view = self.view
         self.galleryPresentationContext.controllersUpdated = { [weak self] _ in
             guard let self else {
@@ -7881,10 +7930,52 @@ public final class ChatControllerImpl: TelegramBaseController, ChatController, G
         }
     }
 
+    /// Hooks the temporary voice playlist of the panels context to this chat (raise to listen, history list). Called from
+    /// `viewDidAppear`, and when the panels context is created after that (Debug Settings "Chat open: defer non-visible setup").
+    func installTempVoicePlaylistHandlers() {
+        self.globalControlPanelsContext?.setTempVoicePlaylistEnded({ [weak self] in
+            guard let strongSelf = self else {
+                return
+            }
+            if !canSendMessagesToChat(strongSelf.presentationInterfaceState) {
+                return
+            }
+            
+            if let raiseToListen = strongSelf.raiseToListen {
+                strongSelf.voicePlaylistDidEndTimestamp = CACurrentMediaTime()
+                raiseToListen.activateBasedOnProximity(delay: 0.0)
+            }
+            
+            if strongSelf.returnInputViewFocus {
+                strongSelf.returnInputViewFocus = false
+                strongSelf.chatDisplayNode.ensureInputViewFocused()
+            }
+        })
+        self.globalControlPanelsContext?.setTempVoicePlaylistItemChanged({ [weak self] previousItem, currentItem in
+            guard let strongSelf = self else {
+                return
+            }
+            
+            strongSelf.chatDisplayNode.historyNode.voicePlaylistItemChanged(previousItem, currentItem)
+        })
+    }
+    
     override public func viewDidAppear(_ animated: Bool) {
         super.viewDidAppear(animated)
         
         self.didAppear = true
+        
+        if self.openSetup.isEnabled && !self.openSetup.isFlushed {
+            // After the transition's first committed frame: the next main-queue turn. Idempotent, so a second appearance is harmless.
+            DispatchQueue.main.async { [weak self] in
+                guard let self else {
+                    return
+                }
+                PerformanceSignposts.interval(PerformanceSignpostName.chatInitDeferredSetup) {
+                    self.openSetup.flush()
+                }
+            }
+        }
         
         self.chatDisplayNode.historyNode.experimentalSnapScrollToItem = false
         self.chatDisplayNode.historyNode.canReadHistory.set(self.computedCanReadHistoryPromise.get())
@@ -7945,31 +8036,7 @@ public final class ChatControllerImpl: TelegramBaseController, ChatController, G
             }, deactivate: { [weak self] in
                 self?.deactivateRaiseGesture()
             })
-            self.globalControlPanelsContext?.setTempVoicePlaylistEnded({ [weak self] in
-                guard let strongSelf = self else {
-                    return
-                }
-                if !canSendMessagesToChat(strongSelf.presentationInterfaceState) {
-                    return
-                }
-                
-                if let raiseToListen = strongSelf.raiseToListen {
-                    strongSelf.voicePlaylistDidEndTimestamp = CACurrentMediaTime()
-                    raiseToListen.activateBasedOnProximity(delay: 0.0)
-                }
-                
-                if strongSelf.returnInputViewFocus {
-                    strongSelf.returnInputViewFocus = false
-                    strongSelf.chatDisplayNode.ensureInputViewFocused()
-                }
-            })
-            self.globalControlPanelsContext?.setTempVoicePlaylistItemChanged({ [weak self] previousItem, currentItem in
-                guard let strongSelf = self else {
-                    return
-                }
-                
-                strongSelf.chatDisplayNode.historyNode.voicePlaylistItemChanged(previousItem, currentItem)
-            })
+            self.installTempVoicePlaylistHandlers()
         }
         self.updateRaiseToListenEnabled()
         
@@ -8484,6 +8551,22 @@ public final class ChatControllerImpl: TelegramBaseController, ChatController, G
     }
     
     override public func containerLayoutUpdated(_ layout: ContainerViewLayout, transition: ContainedViewLayoutTransition) {
+        var firstLayoutSignpost: PerformanceSignposts.State?
+        if !self.didMeasureFirstLayout {
+            self.didMeasureFirstLayout = true
+            firstLayoutSignpost = PerformanceSignposts.begin(PerformanceSignpostName.chatFirstLayout)
+            if self.openSetup.isEnabled && !self.openSetup.isFlushed {
+                // Fallback for a controller that is laid out but never appears: the recorder listeners must still hook up.
+                Queue.mainQueue().after(1.5, { [weak self] in
+                    self?.openSetup.flush()
+                })
+            }
+        }
+        defer {
+            if let firstLayoutSignpost {
+                PerformanceSignposts.end(PerformanceSignpostName.chatFirstLayout, firstLayoutSignpost)
+            }
+        }
         self.suspendNavigationBarLayout = true
         super.containerLayoutUpdated(layout, transition: transition)
         

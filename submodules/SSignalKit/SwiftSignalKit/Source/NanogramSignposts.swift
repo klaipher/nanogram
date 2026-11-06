@@ -71,6 +71,24 @@ public enum PerformanceSignpostName {
     public static let navigationPush: StaticString = "navigationPush"
     /// The first history transition with messages is applied in a chat. Event.
     public static let historyFirstContent: StaticString = "historyFirstContent"
+    /// ChatControllerImpl.init, whole (iOS). Interval. The pieces below attribute its cost; they nest inside it.
+    public static let chatInit: StaticString = "chatInit"
+    /// The ChatControllerInteraction (about 150 closures) is built (iOS, inside `chatInit`). Interval.
+    public static let chatInitInteraction: StaticString = "chatInitInteraction"
+    /// `loadDisplayNodeImpl`: the chat display node and its history list are created (iOS, inside `chatInit`). Interval.
+    public static let chatInitDisplayNode: StaticString = "chatInitDisplayNode"
+    /// `reloadChatLocation`: the content data is created and subscribed (iOS, inside `chatInit`). Interval.
+    public static let chatInitReloadLocation: StaticString = "chatInitReloadLocation"
+    /// The first emission of the presentation-data pipeline, i.e. `themeAndStringsUpdated` (iOS). Inside `chatInit` when every
+    /// source of the pipeline emits at once, otherwise after it. Interval.
+    public static let chatInitPresentationData: StaticString = "chatInitPresentationData"
+    /// The setup that "Chat open: defer non-visible setup" can move to after the first appearance, measured where it runs
+    /// today (iOS, inside `chatInit` and `chatInitDisplayNode`). Interval, once per item.
+    public static let chatInitDeferrable: StaticString = "chatInitDeferrable"
+    /// The setup deferred by "Chat open: defer non-visible setup" runs after the first appearance (iOS). Interval.
+    public static let chatInitDeferredSetup: StaticString = "chatInitDeferredSetup"
+    /// The first `containerLayoutUpdated` of a chat controller (iOS). Interval.
+    public static let chatFirstLayout: StaticString = "chatFirstLayout"
 }
 
 /// Signposts shared by the iOS and macOS apps: subsystem = the bundle id, category `Performance`, plus a

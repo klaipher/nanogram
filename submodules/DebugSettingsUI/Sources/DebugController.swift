@@ -278,6 +278,7 @@ private enum DebugControllerSection: Int32 {
     case streamsAndCalls
     case glassGroups
     case emojiPanelOpen
+    case chatOpen
     case translation
     case web
     case videoExperiments2
@@ -351,6 +352,8 @@ enum DebugControllerEntry: ItemListNodeEntry {
     case glassGroupFloatingButtons(Bool)
     case emojiPanelHeader(PresentationTheme)
     case emojiPanelDefersHeavyWork(Bool)
+    case chatOpenHeader(PresentationTheme)
+    case chatOpenDeferSetup(Bool)
     case enableNetworkFramework(Bool)
     case enableNetworkExperiments(Bool)
     case rustMTProtoEngine(Bool)
@@ -382,6 +385,8 @@ enum DebugControllerEntry: ItemListNodeEntry {
             return DebugControllerSection.glassGroups.rawValue
         case .emojiPanelHeader, .emojiPanelDefersHeavyWork:
             return DebugControllerSection.emojiPanelOpen.rawValue
+        case .chatOpenHeader, .chatOpenDeferSetup:
+            return DebugControllerSection.chatOpen.rawValue
         case .springSendAnimation, .fakeWalletTransfers, .stickerRendererMode, .disableImageContentAnalysis, .disableLanguageRecognition, .localTranscription, .enableVoipTcp, .tabletDisplayLinkFrameRateCap:
             return DebugControllerSection.experiments.rawValue
         case .enableNetworkFramework, .enableNetworkExperiments, .rustMTProtoEngine, .networkEngineInfo:
@@ -510,6 +515,11 @@ enum DebugControllerEntry: ItemListNodeEntry {
             return 130
         case .emojiPanelDefersHeavyWork:
             return 131
+        case .chatOpenHeader:
+            // Its own section, like the glass groups.
+            return 132
+        case .chatOpenDeferSetup:
+            return 133
         case .springSendAnimation:
             // ItemList asserts its entries are in strictly increasing order (`<`: section, then
             // `sortIndex`, which is the stableId here; ItemListControllerNode.swift), so an id must
@@ -593,6 +603,16 @@ enum DebugControllerEntry: ItemListNodeEntry {
             return glassGroupSwitch(presentationData: presentationData, arguments: arguments, sectionId: self.section, title: "Navigation bar glass off", text: "Replaces the navigation bar's glass with a solid fill, to measure what it costs. Default: off. Applies at once.", bit: ExperimentalUISettings.glassDebugNavigationBar, value: value)
         case let .glassGroupInputPanel(value):
             return glassGroupSwitch(presentationData: presentationData, arguments: arguments, sectionId: self.section, title: "Input panel glass off", text: "Replaces the chat input panel's glass with a solid fill. Default: off. Applies at once.", bit: ExperimentalUISettings.glassDebugInputPanel, value: value)
+        case .chatOpenHeader:
+            return ItemListSectionHeaderItem(presentationData: presentationData, text: "CHAT OPEN (PERFORMANCE)", sectionId: self.section)
+        case let .chatOpenDeferSetup(value):
+            return ItemListSwitchItem(presentationData: presentationData, systemStyle: .glass, title: "Chat open: defer non-visible setup", text: "Starts the send-as list, the account colour, the recorder and activity listeners, the media and call panels, the on-device translation host and the network-speed notices after the chat has appeared instead of while it opens. They show up a moment later (panels slide in after the open animation). Default: off. Applies to chats opened afterwards.", value: value, maximumNumberOfLines: 0, sectionId: self.section, style: .blocks, updated: { value in
+                let _ = updateExperimentalUISettingsInteractively(accountManager: arguments.sharedContext.accountManager, { settings in
+                    var settings = settings
+                    settings.chatOpenDeferSetup = value
+                    return settings
+                }).start()
+            })
         case let .glassGroupFloatingButtons(value):
             return glassGroupSwitch(presentationData: presentationData, arguments: arguments, sectionId: self.section, title: "Floating buttons glass off", text: "Replaces the scroll-to-bottom, mentions and reactions buttons' glass with a solid fill. Default: off. Applies at once.", bit: ExperimentalUISettings.glassDebugFloatingButtons, value: value)
         case .sendLogs:
@@ -1311,6 +1331,9 @@ func debugControllerEntries(environment: DebugControllerEntriesEnvironment, them
         // Performance switch (off by default): the emoji / sticker / GIF panel open hang.
         entries.append(.emojiPanelHeader(theme))
         entries.append(.emojiPanelDefersHeavyWork(experimentalSettings.emojiPanelDefersHeavyWork))
+        // Chat open performance: moves non-visible setup of a chat to after its first appearance.
+        entries.append(.chatOpenHeader(theme))
+        entries.append(.chatOpenDeferSetup(experimentalSettings.chatOpenDeferSetup))
     }
 
     if isMainApp {

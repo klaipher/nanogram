@@ -16,6 +16,7 @@ final class DebugControllerEntriesTests: XCTestCase {
         settings.crashOnLongQueries = on
         settings.enableVoipTcp = on
         settings.fakeGlass = on
+        settings.chatOpenDeferSetup = on
         settings.compressedEmojiCache = on
         settings.localTranscription = on
         settings.disableQuickReaction = on

@@ -791,78 +791,83 @@ extension ChatControllerImpl {
             return SendAsPeer(peer: peer, subscribers: nil, isPremiumRequired: false)
         }
         
-        if let peerId = self.chatLocation.peerId, [Namespaces.Peer.CloudChannel, Namespaces.Peer.CloudGroup].contains(peerId.namespace) {
-            self.sendAsPeersDisposable = (combineLatest(
-                queue: Queue.mainQueue(),
-                currentAccountPeer,
-                self.context.account.postbox.peerView(id: peerId),
-                self.context.engine.peers.sendAsAvailablePeers(peerId: peerId))
-            ).startStrict(next: { [weak self] currentAccountPeer, peerView, peers in
-                guard let strongSelf = self else {
-                    return
-                }
+        self.openSetup.run { [weak self] in
+            guard let self else {
+                return
+            }
+            if let peerId = self.chatLocation.peerId, [Namespaces.Peer.CloudChannel, Namespaces.Peer.CloudGroup].contains(peerId.namespace) {
+                self.sendAsPeersDisposable = (combineLatest(
+                    queue: Queue.mainQueue(),
+                    currentAccountPeer,
+                    self.context.account.postbox.peerView(id: peerId),
+                    self.context.engine.peers.sendAsAvailablePeers(peerId: peerId))
+                ).startStrict(next: { [weak self] currentAccountPeer, peerView, peers in
+                    guard let strongSelf = self else {
+                        return
+                    }
                 
-                if let channel = peerViewMainPeer(peerView) as? TelegramChannel, channel.isMonoForum {
-                    return
-                }
+                    if let channel = peerViewMainPeer(peerView) as? TelegramChannel, channel.isMonoForum {
+                        return
+                    }
                 
-                let isPremium = strongSelf.presentationInterfaceState.isPremium
+                    let isPremium = strongSelf.presentationInterfaceState.isPremium
                 
-                var allPeers: [SendAsPeer]?
-                if !peers.isEmpty {
-                    if let channel = peerViewMainPeer(peerView) as? TelegramChannel, case .group = channel.info, channel.hasPermission(.canBeAnonymous) {
-                        allPeers = peers
+                    var allPeers: [SendAsPeer]?
+                    if !peers.isEmpty {
+                        if let channel = peerViewMainPeer(peerView) as? TelegramChannel, case .group = channel.info, channel.hasPermission(.canBeAnonymous) {
+                            allPeers = peers
                         
-                        var hasAnonymousPeer = false
-                        for peer in peers {
-                            if peer.peer.id == channel.id {
-                                hasAnonymousPeer = true
-                                break
+                            var hasAnonymousPeer = false
+                            for peer in peers {
+                                if peer.peer.id == channel.id {
+                                    hasAnonymousPeer = true
+                                    break
+                                }
                             }
-                        }
-                        if !hasAnonymousPeer {
-                            allPeers?.insert(SendAsPeer(peer: EnginePeer(channel), subscribers: 0, isPremiumRequired: false), at: 0)
-                        }
-                    } else if let channel = peerViewMainPeer(peerView) as? TelegramChannel, case let .broadcast(info) = channel.info, (info.flags.contains(.messagesShouldHaveSignatures) || info.flags.contains(.messagesShouldHaveProfiles)) {
-                        allPeers = peers
+                            if !hasAnonymousPeer {
+                                allPeers?.insert(SendAsPeer(peer: EnginePeer(channel), subscribers: 0, isPremiumRequired: false), at: 0)
+                            }
+                        } else if let channel = peerViewMainPeer(peerView) as? TelegramChannel, case let .broadcast(info) = channel.info, (info.flags.contains(.messagesShouldHaveSignatures) || info.flags.contains(.messagesShouldHaveProfiles)) {
+                            allPeers = peers
                         
-                        var hasAnonymousPeer = false
-                        var hasSelfPeer = false
-                        for peer in peers {
-                            if peer.peer.id == channel.id {
-                                hasAnonymousPeer = true
-                            } else if peer.peer.id == strongSelf.context.account.peerId {
-                                hasSelfPeer = true
+                            var hasAnonymousPeer = false
+                            var hasSelfPeer = false
+                            for peer in peers {
+                                if peer.peer.id == channel.id {
+                                    hasAnonymousPeer = true
+                                } else if peer.peer.id == strongSelf.context.account.peerId {
+                                    hasSelfPeer = true
+                                }
                             }
-                        }
-                        if !hasSelfPeer {
+                            if !hasSelfPeer {
+                                allPeers?.insert(currentAccountPeer, at: 0)
+                            }
+                            if !hasAnonymousPeer {
+                                allPeers?.insert(SendAsPeer(peer: EnginePeer(channel), subscribers: 0, isPremiumRequired: false), at: 0)
+                            }
+                        } else {
+                            allPeers = peers.filter { $0.peer.id != peerViewMainPeer(peerView)?.id }
                             allPeers?.insert(currentAccountPeer, at: 0)
                         }
-                        if !hasAnonymousPeer {
-                            allPeers?.insert(SendAsPeer(peer: EnginePeer(channel), subscribers: 0, isPremiumRequired: false), at: 0)
+                    }
+                    if allPeers?.count == 1 {
+                        allPeers = nil
+                    }
+                
+                    var currentSendAsPeerId = strongSelf.presentationInterfaceState.currentSendAsPeerId
+                    if let peerId = currentSendAsPeerId, let peer = allPeers?.first(where: { $0.peer.id == peerId }) {
+                        if !isPremium && peer.isPremiumRequired {
+                            currentSendAsPeerId = nil
                         }
                     } else {
-                        allPeers = peers.filter { $0.peer.id != peerViewMainPeer(peerView)?.id }
-                        allPeers?.insert(currentAccountPeer, at: 0)
-                    }
-                }
-                if allPeers?.count == 1 {
-                    allPeers = nil
-                }
-                
-                var currentSendAsPeerId = strongSelf.presentationInterfaceState.currentSendAsPeerId
-                if let peerId = currentSendAsPeerId, let peer = allPeers?.first(where: { $0.peer.id == peerId }) {
-                    if !isPremium && peer.isPremiumRequired {
                         currentSendAsPeerId = nil
                     }
-                } else {
-                    currentSendAsPeerId = nil
-                }
                 
-                strongSelf.updateChatPresentationInterfaceState(animated: true, interactive: false, {
-                    return $0.updatedSendAsPeers(allPeers).updatedCurrentSendAsPeerId(currentSendAsPeerId)
+                    strongSelf.updateChatPresentationInterfaceState(animated: true, interactive: false, {
+                        return $0.updatedSendAsPeers(allPeers).updatedCurrentSendAsPeerId(currentSendAsPeerId)
+                    })
                 })
-            })
+            }
         }
         
         if let peerId = self.chatLocation.peerId {
@@ -4823,87 +4828,92 @@ extension ChatControllerImpl {
             }
         }
         
-        var lastEventTimestamp: Double = 0.0
-        self.networkSpeedEventsDisposable = (self.context.account.network.networkSpeedLimitedEvents
-        |> deliverOnMainQueue).start(next: { [weak self] event in
+        self.openSetup.run { [weak self] in
             guard let self else {
                 return
             }
+            var lastEventTimestamp: Double = 0.0
+            self.networkSpeedEventsDisposable = (self.context.account.network.networkSpeedLimitedEvents
+            |> deliverOnMainQueue).start(next: { [weak self] event in
+                guard let self else {
+                    return
+                }
             
-            switch event {
-            case let .download(subject):
-                if case let .message(messageId) = subject {
-                    var isVisible = false
-                    self.chatDisplayNode.historyNode.forEachVisibleItemNode { itemNode in
-                        if let itemNode = itemNode as? ChatMessageItemView, let item = itemNode.item {
-                            for (message, _) in item.content {
-                                if message.id == messageId {
-                                    isVisible = true
+                switch event {
+                case let .download(subject):
+                    if case let .message(messageId) = subject {
+                        var isVisible = false
+                        self.chatDisplayNode.historyNode.forEachVisibleItemNode { itemNode in
+                            if let itemNode = itemNode as? ChatMessageItemView, let item = itemNode.item {
+                                for (message, _) in item.content {
+                                    if message.id == messageId {
+                                        isVisible = true
+                                    }
                                 }
                             }
                         }
-                    }
                     
-                    if !isVisible {
-                        return
+                        if !isVisible {
+                            return
+                        }
                     }
-                }
-            case .upload:
-                break
-            }
-            
-            let timestamp = CFAbsoluteTimeGetCurrent()
-            if lastEventTimestamp + 10.0 < timestamp {
-                lastEventTimestamp = timestamp
-            } else {
-                return
-            }
-            
-            let title: String
-            let text: String
-            switch event {
-            case .download:
-                var speedIncreaseFactor = 10
-                if let data = self.context.currentAppConfiguration.with({ $0 }).data, let value = data["upload_premium_speedup_download"] as? Double {
-                    speedIncreaseFactor = Int(value)
-                }
-                title = self.presentationData.strings.Chat_SpeedLimitAlert_Download_Title
-                text = self.presentationData.strings.Chat_SpeedLimitAlert_Download_Text("\(speedIncreaseFactor)").string
-            case .upload:
-                var speedIncreaseFactor = 10
-                if let data = self.context.currentAppConfiguration.with({ $0 }).data, let value = data["upload_premium_speedup_upload"] as? Double {
-                    speedIncreaseFactor = Int(value)
-                }
-                title = self.presentationData.strings.Chat_SpeedLimitAlert_Upload_Title
-                text = self.presentationData.strings.Chat_SpeedLimitAlert_Upload_Text("\(speedIncreaseFactor)").string
-            }
-            let content: UndoOverlayContent = .universal(animation: "anim_speed_low", scale: 0.066, colors: [:], title: title, text: text, customUndoText: nil, timeout: 5.0)
-            
-            self.context.account.network.markNetworkSpeedLimitDisplayed()
-            
-            self.present(UndoOverlayController(presentationData: self.presentationData, content: content, elevatedLayout: false, position: .top, action: { [weak self] action in
-                guard let self else {
-                    return false
-                }
-                switch action {
-                case .info:
-                    let context = self.context
-                    var replaceImpl: ((ViewController) -> Void)?
-                    let controller = context.sharedContext.makePremiumDemoController(context: context, subject: .fasterDownload, forceDark: false, action: {
-                        let controller = context.sharedContext.makePremiumIntroController(context: context, source: .fasterDownload, forceDark: false, dismissed: nil)
-                        replaceImpl?(controller)
-                    }, dismissed: nil)
-                    replaceImpl = { [weak controller] c in
-                        controller?.replace(with: c)
-                    }
-                    self.push(controller)
-                    return true
-                default:
+                case .upload:
                     break
                 }
-                return false
-            }), in: .current)
-        })
+            
+                let timestamp = CFAbsoluteTimeGetCurrent()
+                if lastEventTimestamp + 10.0 < timestamp {
+                    lastEventTimestamp = timestamp
+                } else {
+                    return
+                }
+            
+                let title: String
+                let text: String
+                switch event {
+                case .download:
+                    var speedIncreaseFactor = 10
+                    if let data = self.context.currentAppConfiguration.with({ $0 }).data, let value = data["upload_premium_speedup_download"] as? Double {
+                        speedIncreaseFactor = Int(value)
+                    }
+                    title = self.presentationData.strings.Chat_SpeedLimitAlert_Download_Title
+                    text = self.presentationData.strings.Chat_SpeedLimitAlert_Download_Text("\(speedIncreaseFactor)").string
+                case .upload:
+                    var speedIncreaseFactor = 10
+                    if let data = self.context.currentAppConfiguration.with({ $0 }).data, let value = data["upload_premium_speedup_upload"] as? Double {
+                        speedIncreaseFactor = Int(value)
+                    }
+                    title = self.presentationData.strings.Chat_SpeedLimitAlert_Upload_Title
+                    text = self.presentationData.strings.Chat_SpeedLimitAlert_Upload_Text("\(speedIncreaseFactor)").string
+                }
+                let content: UndoOverlayContent = .universal(animation: "anim_speed_low", scale: 0.066, colors: [:], title: title, text: text, customUndoText: nil, timeout: 5.0)
+            
+                self.context.account.network.markNetworkSpeedLimitDisplayed()
+            
+                self.present(UndoOverlayController(presentationData: self.presentationData, content: content, elevatedLayout: false, position: .top, action: { [weak self] action in
+                    guard let self else {
+                        return false
+                    }
+                    switch action {
+                    case .info:
+                        let context = self.context
+                        var replaceImpl: ((ViewController) -> Void)?
+                        let controller = context.sharedContext.makePremiumDemoController(context: context, subject: .fasterDownload, forceDark: false, action: {
+                            let controller = context.sharedContext.makePremiumIntroController(context: context, source: .fasterDownload, forceDark: false, dismissed: nil)
+                            replaceImpl?(controller)
+                        }, dismissed: nil)
+                        replaceImpl = { [weak controller] c in
+                            controller?.replace(with: c)
+                        }
+                        self.push(controller)
+                        return true
+                    default:
+                        break
+                    }
+                    return false
+                }), in: .current)
+            })
+        }
         
         if case .scheduledMessages = self.subject {
             self.postedScheduledMessagesEventsDisposable = (self.context.account.stateManager.sentScheduledMessageIds
@@ -4919,43 +4929,52 @@ extension ChatControllerImpl {
             })
         }
         
-        var mediaPlayback = false
-        var liveLocationMode: GlobalControlPanelsContext.LiveLocationMode?
-        if case .standard = self.mode {
-            //mediaAccessoryPanelVisibility = .specific(size: .compact)
-            mediaPlayback = true
-            liveLocationMode = self.chatLocation.peerId.flatMap(GlobalControlPanelsContext.LiveLocationMode.peer)
-        }
-        
-        var groupCallPanelSource: EnginePeer.Id?
-        switch self.chatLocation {
-        case let .peer(peerId):
-            switch self.subject {
-            case .message, .none:
-                groupCallPanelSource = peerId
-            default:
-                break
-            }
-        case .replyThread, .customChatContents:
-            break
-        }
-        
-        let globalControlPanelsContext = GlobalControlPanelsContext(
-            context: self.context,
-            mediaPlayback: mediaPlayback,
-            liveLocationMode: liveLocationMode,
-            groupCalls: groupCallPanelSource,
-            chatListNotices: false
-        )
-        self.globalControlPanelsContext = globalControlPanelsContext
-        self.globalControlPanelsContextStateDisposable = (globalControlPanelsContext.state
-        |> deliverOnMainQueue).startStrict(next: { [weak self] state in
+        self.openSetup.run { [weak self] in
             guard let self else {
                 return
             }
-            self.globalControlPanelsContextState = state
-            self.requestLayout(transition: .animated(duration: 0.4, curve: .spring))
-        })
+            var mediaPlayback = false
+            var liveLocationMode: GlobalControlPanelsContext.LiveLocationMode?
+            if case .standard = self.mode {
+                //mediaAccessoryPanelVisibility = .specific(size: .compact)
+                mediaPlayback = true
+                liveLocationMode = self.chatLocation.peerId.flatMap(GlobalControlPanelsContext.LiveLocationMode.peer)
+            }
+        
+            var groupCallPanelSource: EnginePeer.Id?
+            switch self.chatLocation {
+            case let .peer(peerId):
+                switch self.subject {
+                case .message, .none:
+                    groupCallPanelSource = peerId
+                default:
+                    break
+                }
+            case .replyThread, .customChatContents:
+                break
+            }
+        
+            let globalControlPanelsContext = GlobalControlPanelsContext(
+                context: self.context,
+                mediaPlayback: mediaPlayback,
+                liveLocationMode: liveLocationMode,
+                groupCalls: groupCallPanelSource,
+                chatListNotices: false
+            )
+            self.globalControlPanelsContext = globalControlPanelsContext
+            self.globalControlPanelsContextStateDisposable = (globalControlPanelsContext.state
+            |> deliverOnMainQueue).startStrict(next: { [weak self] state in
+                guard let self else {
+                    return
+                }
+                self.globalControlPanelsContextState = state
+                self.requestLayout(transition: .animated(duration: 0.4, curve: .spring))
+            })
+            if self.openSetup.isEnabled && self.raiseToListen != nil {
+                // `viewDidAppear` has already run: hook the temporary voice playlist now.
+                self.installTempVoicePlaylistHandlers()
+            }
+        }
         
         self.displayNodeDidLoad()
     }

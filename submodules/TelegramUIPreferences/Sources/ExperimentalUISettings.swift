@@ -104,6 +104,11 @@ public struct ExperimentalUISettings: Codable, Equatable {
     /// On: opening the emoji / sticker / GIF panel builds the panel before the keyboard's input view and first responder change,
     /// and creates GIF tile display layers after the pane is on screen, a few per run-loop turn. Applies at once.
     public var emojiPanelDefersHeavyWork: Bool
+    /// Debug Settings ▸ "Chat open: defer non-visible setup". Off by default. When on, a standard chat starts the subscriptions and
+    /// helpers that are not needed for its first frame (send-as list, account colour, recorders, activity, panels context,
+    /// translation host, network-speed notices) after its first appearance instead of inside `ChatControllerImpl.init`.
+    /// Read once per chat controller (the value is cached in the controller).
+    public var chatOpenDeferSetup: Bool
     public var stickerRendererMode: StickerRendererMode
 
     public static var defaultSettings: ExperimentalUISettings {
@@ -173,6 +178,7 @@ public struct ExperimentalUISettings: Codable, Equatable {
         callsThermalVideoLadder: Bool = true,
         glassDebugDisabledGroups: Int32 = 0,
         emojiPanelDefersHeavyWork: Bool = false
+        chatOpenDeferSetup: Bool = false
     ) {
         self.keepChatNavigationStack = keepChatNavigationStack
         self.skipReadHistory = skipReadHistory
@@ -211,6 +217,7 @@ public struct ExperimentalUISettings: Codable, Equatable {
         self.callsThermalVideoLadder = callsThermalVideoLadder
         self.glassDebugDisabledGroups = glassDebugDisabledGroups
         self.emojiPanelDefersHeavyWork = emojiPanelDefersHeavyWork
+        self.chatOpenDeferSetup = chatOpenDeferSetup
     }
     
     /// Revision of Nanogram's defaults that a saved blob was written with. Revision 1 turned on large
@@ -272,6 +279,7 @@ public struct ExperimentalUISettings: Codable, Equatable {
         self.callsThermalVideoLadder = try container.decodeIfPresent(Bool.self, forKey: "callsThermalVideoLadderDefaultOn") ?? true
         self.glassDebugDisabledGroups = try container.decodeIfPresent(Int32.self, forKey: "glassDebugDisabledGroups") ?? 0
         self.emojiPanelDefersHeavyWork = try container.decodeIfPresent(Bool.self, forKey: "emojiPanelDefersHeavyWork") ?? false
+        self.chatOpenDeferSetup = try container.decodeIfPresent(Bool.self, forKey: "chatOpenDeferSetup") ?? false
 
         if savedDefaultsRevision < 1 {
             // Saved before the GPU renderers became the default: both were the old CPU defaults.
@@ -322,6 +330,7 @@ public struct ExperimentalUISettings: Codable, Equatable {
         try container.encode(self.callsThermalVideoLadder, forKey: "callsThermalVideoLadderDefaultOn")
         try container.encode(self.glassDebugDisabledGroups, forKey: "glassDebugDisabledGroups")
         try container.encode(self.emojiPanelDefersHeavyWork, forKey: "emojiPanelDefersHeavyWork")
+        try container.encode(self.chatOpenDeferSetup, forKey: "chatOpenDeferSetup")
         try container.encode(ExperimentalUISettings.nanogramDefaultsRevision, forKey: "nanogramDefaultsRevision")
     }
 }

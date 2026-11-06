@@ -38,7 +38,15 @@ final class NanogramSignpostsTests: XCTestCase {
             PerformanceSignpostName.mediaBoxReopen,
             PerformanceSignpostName.chatListRowTap,
             PerformanceSignpostName.navigationPush,
-            PerformanceSignpostName.historyFirstContent
+            PerformanceSignpostName.historyFirstContent,
+            PerformanceSignpostName.chatInit,
+            PerformanceSignpostName.chatInitInteraction,
+            PerformanceSignpostName.chatInitDisplayNode,
+            PerformanceSignpostName.chatInitReloadLocation,
+            PerformanceSignpostName.chatInitPresentationData,
+            PerformanceSignpostName.chatInitDeferrable,
+            PerformanceSignpostName.chatInitDeferredSetup,
+            PerformanceSignpostName.chatFirstLayout
         ].map { "\($0)" }
         let user = Set(UserSignpost.all.map { "\($0.name)" })
         XCTAssertTrue(user.isDisjoint(with: hotPath))
@@ -163,7 +171,15 @@ final class LaunchTaskTrackerTests: XCTestCase {
             PerformanceSignpostName.mediaBoxReopen,
             PerformanceSignpostName.chatListRowTap,
             PerformanceSignpostName.navigationPush,
-            PerformanceSignpostName.historyFirstContent
+            PerformanceSignpostName.historyFirstContent,
+            PerformanceSignpostName.chatInit,
+            PerformanceSignpostName.chatInitInteraction,
+            PerformanceSignpostName.chatInitDisplayNode,
+            PerformanceSignpostName.chatInitReloadLocation,
+            PerformanceSignpostName.chatInitPresentationData,
+            PerformanceSignpostName.chatInitDeferrable,
+            PerformanceSignpostName.chatInitDeferredSetup,
+            PerformanceSignpostName.chatFirstLayout
         ].map { "\($0)" }
         XCTAssertEqual(Set(names).count, names.count)
     }
