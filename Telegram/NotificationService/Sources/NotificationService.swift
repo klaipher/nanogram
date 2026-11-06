@@ -3134,6 +3134,8 @@ final class NotificationService: UNNotificationServiceExtension {
     }
 
     private static func finish(_ requestCompletion: ExtensionRequestCompletion?, impl: QueueLocalObject<BoxedNotificationServiceHandler>?, deliverTimeout: Double, deliver: @escaping () -> Void) {
+        // The extension can be suspended or killed after delivering: write the buffered log lines first.
+        Logger.shared.flushPendingLogsAndWait()
         guard let requestCompletion else {
             deliver()
             return

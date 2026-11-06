@@ -2200,6 +2200,8 @@ private func extractAccountManagerState(records: AccountRecordsView<TelegramAcco
     // request-throttle records. Nothing visible is affected.
     func applicationDidReceiveMemoryWarning(_ application: UIApplication) {
         Logger.shared.log("App \(self.episodeId)", "Memory warning")
+        // The app may be killed for memory next: write the buffered log lines.
+        Logger.shared.flushPendingLogs()
         let _ = (self.sharedContextPromise.get()
         |> take(1)
         |> mapToSignal { sharedApplicationContext in
@@ -2214,7 +2216,7 @@ private func extractAccountManagerState(records: AccountRecordsView<TelegramAcco
     }
     
     func handleDidEnterBackground() {
-        Logger.shared.flushPendingShortLog()
+        Logger.shared.flushPendingLogs()
         let _ = (self.sharedContextPromise.get()
         |> take(1)
         |> deliverOnMainQueue).start(next: { sharedApplicationContext in
@@ -2441,7 +2443,8 @@ private func extractAccountManagerState(records: AccountRecordsView<TelegramAcco
 
     func applicationWillTerminate(_ application: UIApplication) {
         Logger.shared.log("App \(self.episodeId)", "terminating")
-        Logger.shared.flushPendingShortLog()
+        // The process ends right after this returns: wait for the write.
+        Logger.shared.flushPendingLogsAndWait()
     }
     
     func application(_ application: UIApplication, didRegisterForRemoteNotificationsWithDeviceToken deviceToken: Data) {

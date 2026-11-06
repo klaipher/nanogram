@@ -51,6 +51,7 @@ swift_library(
         "//submodules/MtProtoKit:MtProtoKit",
         "//submodules/Postbox:Postbox",
         "//submodules/WebProxyTransport:WebProxyTransport",
+        "//submodules/DiskWriteAccounting:DiskWriteAccounting",
         # InstantPageButtonLinkStyleTests round-trips through the flatc-generated TelegramCore_* types.
         "//submodules/TelegramCore/FlatBuffers",
         "//submodules/TelegramCore/FlatSerialization",

@@ -94,8 +94,31 @@ public final class Logger {
     private var pendingShortLogData = Data()
     private var isShortLogFlushScheduled: Bool = false
     
+    // Log lines (`log-*.txt`, only when "Log to File" is on) are buffered the same way: one write() per line was
+    // ~230,000 writes a day on a device with logging on. Lines are appended to `pendingLogData` on the logger queue
+    // and written, byte for byte as before, when the buffer reaches `logFlushSize`, `logFlushDelay` after the first
+    // unflushed line (one timer, none while idle), on rotation, on sync(), before logs are collected, when logging
+    // to file is switched off, and from `flushPendingLogs`. A crash or kill between flushes loses at most the lines
+    // of the last `logFlushDelay` (1 s), or of a suspension that stops the timer.
+    private let logFlushDelay: Double = 1.0
+    // Internal so tests can use a small buffer; never above `maxLogBuffer`.
+    var logFlushSize: Int = 64 * 1024
+    // Internal: schedules the one flush timer. Tests replace it with a manual clock; the callback may run on any
+    // thread, it hops to the logger queue itself.
+    var scheduleLogFlush: (Double, @escaping () -> Void) -> Void
+    // Internal: called on the logger queue for every write() of log lines (tests count them).
+    var onLogWrite: ((Int) -> Void)?
+    private var pendingLogFile: ManagedFile?
+    private var pendingLogData = Data()
+    private var isLogFlushScheduled: Bool = false
+    
     public var logToFile: Bool = true {
         didSet {
+            if oldValue && !self.logToFile {
+                self.queue.async {
+                    self.flushLog()
+                }
+            }
             let oldEnabled = self.logToConsole || oldValue
             let newEnabled = self.logToConsole || self.logToFile
             if oldEnabled != newEnabled {
@@ -139,10 +162,15 @@ public final class Logger {
     public init(rootPath: String, basePath: String) {
         self.rootPath = rootPath
         self.basePath = basePath
+        let queue = self.queue
+        self.scheduleLogFlush = { delay, f in
+            queue.after(delay, f)
+        }
     }
     
     public func sync() {
         self.queue.sync {
+            self.flushLog()
             self.flushShortLog()
             if let (currentFile, _) = self.file {
                 let _ = currentFile.sync()
@@ -150,12 +178,72 @@ public final class Logger {
         }
     }
     
-    /// Writes the batched short log lines now, without waiting for the flush timer (which does not fire while the
-    /// app is suspended) and without the fsync of `sync()`: a plain write survives a kill. Call it before the app
-    /// can be suspended. Does not block the caller.
-    public func flushPendingShortLog() {
+    /// Writes the batched log and short log lines now, without waiting for the flush timers (which do not fire
+    /// while the app is suspended) and without the fsync of `sync()`: a plain write survives a kill. Call it before
+    /// the app can be suspended, on memory warnings and on termination. Does not block the caller.
+    public func flushPendingLogs() {
         self.queue.async {
+            self.flushLog()
             self.flushShortLog()
+        }
+    }
+    
+    /// Same as `flushPendingLogs`, but returns after the lines are written. For app extensions that finish: the
+    /// process can be gone right after. A few milliseconds (one write of at most 64 KB plus what the queue has
+    /// queued); never call it from a path that must not wait.
+    public func flushPendingLogsAndWait() {
+        self.queue.sync {
+            self.flushLog()
+            self.flushShortLog()
+        }
+    }
+    
+    /// Waits until the logger queue ran everything queued so far, without flushing (tests).
+    func drainForTesting() {
+        self.queue.sync {
+        }
+    }
+    
+    private func flushLog() {
+        assert(self.queue.isCurrent())
+        guard let file = self.pendingLogFile, !self.pendingLogData.isEmpty else {
+            self.pendingLogFile = nil
+            return
+        }
+        let data = self.pendingLogData
+        self.pendingLogData = Data()
+        self.pendingLogFile = nil
+        let count = data.count
+        data.withUnsafeBytes { rawBytes -> Void in
+            guard let baseAddress = rawBytes.baseAddress else {
+                return
+            }
+            let _ = file.write(baseAddress, count: count)
+        }
+        self.onLogWrite?(count)
+        DiskWriteAccounting.shared.add(DiskWriteCategory.logs, bytes: count)
+    }
+    
+    private func appendLog(_ data: Data, to file: ManagedFile) {
+        assert(self.queue.isCurrent())
+        if let pendingFile = self.pendingLogFile, pendingFile !== file {
+            self.flushLog()
+        }
+        self.pendingLogFile = file
+        self.pendingLogData.append(data)
+        if self.pendingLogData.count >= self.logFlushSize {
+            self.flushLog()
+        } else if !self.isLogFlushScheduled {
+            self.isLogFlushScheduled = true
+            self.scheduleLogFlush(self.logFlushDelay, { [weak self] in
+                guard let self else {
+                    return
+                }
+                self.queue.async {
+                    self.isLogFlushScheduled = false
+                    self.flushLog()
+                }
+            })
         }
     }
     
@@ -199,6 +287,7 @@ public final class Logger {
     public func collectLogs(prefix: String? = nil) -> Signal<[(String, String)], NoError> {
         return Signal { subscriber in
             self.queue.async {
+                self.flushLog()
                 let logsPath: String
                 if let prefix = prefix {
                     logsPath = self.rootPath + prefix
@@ -228,6 +317,7 @@ public final class Logger {
     public func collectLogs(basePath: String) -> Signal<[(String, String)], NoError> {
         return Signal { subscriber in
             self.queue.async {
+                self.flushLog()
                 let logsPath: String = basePath
                 
                 var result: [(Date, String, String)] = []
@@ -377,6 +467,8 @@ public final class Logger {
                 var openNew = false
                 if let (file, length) = self.file {
                     if length >= self.maxLength {
+                        // Pending lines belong to the file being closed.
+                        self.flushLog()
                         self.file = nil
                         openNew = true
                     } else {
@@ -437,17 +529,12 @@ public final class Logger {
                 }
                 
                 if let currentFile = currentFile {
-                    if let data = content.data(using: .utf8) {
-                        data.withUnsafeBytes { rawBytes -> Void in
-                            let bytes = rawBytes.baseAddress!.assumingMemoryBound(to: UInt8.self)
-
-                            let _ = currentFile.write(bytes, count: data.count)
-                        }
-                        var newline: UInt8 = 0x0a
-                        let _ = currentFile.write(&newline, count: 1)
-                        DiskWriteAccounting.shared.add(DiskWriteCategory.logs, bytes: data.count + 1)
+                    if var data = content.data(using: .utf8) {
+                        data.append(0x0a)
+                        let lineLength = data.count
+                        self.appendLog(data, to: currentFile)
                         if let file = self.file {
-                            self.file = (file.0, file.1 + data.count + 1)
+                            self.file = (file.0, file.1 + lineLength)
                         } else {
                             assertionFailure()
                         }
