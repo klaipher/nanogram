@@ -184,6 +184,7 @@ final class ChatHistoryNavigationButtons: ASDisplayNode {
         self.glassContainer.frame = geometry.hostFrame
         self.glassContainer.update(size: geometry.hostFrame.size, isDark: self.theme.overallDarkAppearance, transition: .immediate)
         self.view.addSubview(self.glassContainer)
+        self.glassContainer.isHidden = true
         
         self.glassStackView.frame = CGRect(origin: geometry.stackOrigin, size: geometry.hostFrame.size)
         self.glassContainer.contentView.addSubview(self.glassStackView)
@@ -245,6 +246,12 @@ final class ChatHistoryNavigationButtons: ASDisplayNode {
         self.downButton.update(rect: downFrame, within: containerSize, transition: transition)
     }
     
+    /// The glass container (88 x 456 pt) samples its backdrop even when empty: hide it while no button is visible.
+    private func updateGlassContainerVisibility() {
+        let anyVisible = [self.downButton, self.upButton, self.mentionsButton, self.reactionsButton, self.pollVotesButton].contains(where: { !$0.isHidden })
+        self.glassContainer.isHidden = !anyVisible
+    }
+    
     func updateLayout(transition: ContainedViewLayoutTransition) -> CGSize {
         let buttonSize = CGSize(width: 40.0, height: 40.0)
         let completeSize = CGSize(width: buttonSize.width, height: buttonSize.height * 2.0 + 8.0)
@@ -269,6 +276,7 @@ final class ChatHistoryNavigationButtons: ASDisplayNode {
                     return
                 }
                 strongSelf.downButton.isHidden = true
+                strongSelf.updateGlassContainerVisibility()
             })
             transition.updateTransformScale(node: self.downButton, scale: 0.2)
         }
@@ -288,6 +296,7 @@ final class ChatHistoryNavigationButtons: ASDisplayNode {
                     return
                 }
                 strongSelf.upButton.isHidden = true
+                strongSelf.updateGlassContainerVisibility()
             })
             transition.updateTransformScale(node: self.upButton, scale: 0.2)
         }
@@ -304,6 +313,7 @@ final class ChatHistoryNavigationButtons: ASDisplayNode {
                     return
                 }
                 strongSelf.mentionsButton.isHidden = true
+                strongSelf.updateGlassContainerVisibility()
             })
             transition.updateTransformScale(node: self.mentionsButton, scale: 0.2)
         }
@@ -319,6 +329,7 @@ final class ChatHistoryNavigationButtons: ASDisplayNode {
                     return
                 }
                 strongSelf.reactionsButton.isHidden = true
+                strongSelf.updateGlassContainerVisibility()
             })
             transition.updateTransformScale(node: self.reactionsButton, scale: 0.2)
         }
@@ -333,9 +344,12 @@ final class ChatHistoryNavigationButtons: ASDisplayNode {
                     return
                 }
                 strongSelf.pollVotesButton.isHidden = true
+                strongSelf.updateGlassContainerVisibility()
             })
             transition.updateTransformScale(node: self.pollVotesButton, scale: 0.2)
         }
+        
+        self.updateGlassContainerVisibility()
         
         if self.isChatRotated {
             transition.updatePosition(node: self.downButton, position: CGRect(origin: CGPoint(x: 0.0, y: completeSize.height - buttonSize.height), size: buttonSize).center)
