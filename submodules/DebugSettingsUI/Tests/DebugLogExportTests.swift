@@ -111,6 +111,72 @@ final class DebugLogExportTests: XCTestCase {
         XCTAssertNil(debugLogFilesArchive(logs: [], baseName: "nanogram-logs-metrickit", in: output))
     }
 
+    /// The prepared files reach the export before its completion. On a concurrent queue the completion overtook the
+    /// files while they were being zipped, and the export reported "nothing to send" with dozens of MetricKit reports.
+    func testPreparedFilesArriveBeforeTheCompletion() throws {
+        let directory = FileManager.default.temporaryDirectory.appendingPathComponent(UUID().uuidString, isDirectory: true)
+        let reports = directory.appendingPathComponent("reports", isDirectory: true)
+        try FileManager.default.createDirectory(at: reports, withIntermediateDirectories: true)
+        defer { try? FileManager.default.removeItem(at: directory) }
+        var logs: [(String, String)] = []
+        for index in 0 ..< 40 {
+            let url = reports.appendingPathComponent("metrics-\(index)-0.json")
+            try Data(repeating: UInt8(ascii: "a"), count: 32 * 1024).write(to: url)
+            logs.append((url.lastPathComponent, url.path))
+        }
+        let spec = debugLogExportSpec(.metricKitReports, appVersion: self.version, buildNumber: self.build)
+        for round in 0 ..< 10 {
+            let output = directory.appendingPathComponent("out-\(round)", isDirectory: true)
+            try FileManager.default.createDirectory(at: output, withIntermediateDirectories: true)
+            let lock = NSLock()
+            var events: [String] = []
+            let done = self.expectation(description: "completed \(round)")
+            let _ = debugLogFilesArchiveSignal(.single(logs))(output, spec).start(next: { files in
+                lock.lock()
+                events.append("files:\(files.count)")
+                lock.unlock()
+            }, completed: {
+                lock.lock()
+                events.append("completed")
+                lock.unlock()
+                done.fulfill()
+            })
+            self.wait(for: [done], timeout: 30.0)
+            Thread.sleep(forTimeInterval: 0.2)
+            lock.lock()
+            XCTAssertEqual(events, ["files:1", "completed"], "round \(round)")
+            lock.unlock()
+        }
+    }
+
+    func testMetricKitExportDeliversTheArchive() throws {
+        let directory = FileManager.default.temporaryDirectory.appendingPathComponent(UUID().uuidString, isDirectory: true)
+        try FileManager.default.createDirectory(at: directory, withIntermediateDirectories: true)
+        defer { try? FileManager.default.removeItem(at: directory) }
+        var logs: [(String, String)] = []
+        for index in 0 ..< 40 {
+            let url = directory.appendingPathComponent("metrics-\(index)-0.json")
+            try Data(repeating: UInt8(ascii: "b"), count: 32 * 1024).write(to: url)
+            logs.append((url.lastPathComponent, url.path))
+        }
+        let gate = DebugLogExportGate()
+        let spec = debugLogExportSpec(.metricKitReports, appVersion: self.version, buildNumber: self.build)
+        let delivered = self.expectation(description: "delivered")
+        var deliveredFiles: [DebugLogExportFile] = []
+        XCTAssertTrue(runDebugLogExport(gate: gate, spec: spec, prepare: debugLogFilesArchiveSignal(.single(logs)), showProgress: { {} }, nothingToSend: {
+            XCTFail("nothing to send")
+            delivered.fulfill()
+        }, deliver: { files, exportDirectory, finish in
+            deliveredFiles = files
+            finish()
+            try? FileManager.default.removeItem(at: exportDirectory)
+            delivered.fulfill()
+        }))
+        self.wait(for: [delivered], timeout: 30.0)
+        XCTAssertEqual(deliveredFiles.map(\.name), ["nanogram-logs-metrickit.zip"])
+        XCTAssertFalse(gate.isRunning)
+    }
+
     func testGateLetsOneExportRunAtATime() {
         let gate = DebugLogExportGate()
         XCTAssertFalse(gate.isRunning)

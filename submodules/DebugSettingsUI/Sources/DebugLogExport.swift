@@ -666,12 +666,19 @@ func presentDebugLogExport(host: DebugLogExportHost, kind: DebugLogExportKind, p
     host.present(actionSheet)
 }
 
+/// The queue an export prepares its files on. It is serial: on a concurrent queue the completion that follows the
+/// prepared files could overtake them, and the export reported "nothing to send" while the files were still being
+/// zipped (MetricKit reports, 2026-11-03..06).
+func debugLogExportPreparationQueue() -> Queue {
+    return Queue(name: "org.telegram.debug-log-export", qos: .utility)
+}
+
 /// Collected log files as one zipped text file: the shape most kinds use.
 func debugLogConcatenatedArchiveSignal(_ logs: Signal<[(String, String)], NoError>, additionalInfo: String? = nil) -> (URL, DebugLogExportSpec) -> Signal<[DebugLogExportFile], NoError> {
     return { directory, spec in
         return logs
         |> take(1)
-        |> deliverOn(Queue.concurrentDefaultQueue())
+        |> deliverOn(debugLogExportPreparationQueue())
         |> map { logs -> [DebugLogExportFile] in
             return debugLogConcatenatedArchive(logs: logs, additionalInfo: additionalInfo, baseName: spec.fileBaseName, in: directory).flatMap { [$0] } ?? []
         }
@@ -683,7 +690,7 @@ func debugLogFilesArchiveSignal(_ logs: Signal<[(String, String)], NoError>) -> 
     return { directory, spec in
         return logs
         |> take(1)
-        |> deliverOn(Queue.concurrentDefaultQueue())
+        |> deliverOn(debugLogExportPreparationQueue())
         |> map { logs -> [DebugLogExportFile] in
             return debugLogFilesArchive(logs: logs, baseName: spec.fileBaseName, in: directory).flatMap { [$0] } ?? []
         }
