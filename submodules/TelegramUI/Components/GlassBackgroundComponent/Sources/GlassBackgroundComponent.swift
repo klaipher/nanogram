@@ -1050,17 +1050,28 @@ public final class GlassBackgroundContainerView: UIView {
         EffectSettingsContainerView.applyGlassBlurRadius(radius, toLayerTree: nativeParamsView.layer, depth: 0)
     }
 
+    /// What `update` last applied to the effect view. The bars call `update` on every layout pass, and layouts run on every
+    /// scroll and keyboard tick; only a real change reaches the effect view (a trait change and a frame change each
+    /// invalidate the glass UIKit has sampled).
+    private var appliedNativeState: (size: CGSize, isDark: Bool)?
+
     public func update(size: CGSize, isDark: Bool, transition: ComponentTransition) {
         if let nativeParamsView = self.nativeParamsView, let nativeView = self.nativeView {
             nativeParamsView.lumaMin = isDark ? 0.0 : 0.8
             nativeParamsView.lumaMax = isDark ? 0.15 : 0.801
-            nativeView.overrideUserInterfaceStyle = isDark ? .dark : .light
             if let nativeParamsView = self.nativeParamsView {
                 transition.setFrame(view: nativeParamsView, frame: CGRect(origin: CGPoint(x: 0.0, y: 0.0), size: size))
             }
             
-            transition.animateView {
-                nativeView.frame = CGRect(origin: CGPoint(), size: size)
+            let applied = GlassContainerUpdateGate.changes(applied: self.appliedNativeState, size: size, isDark: isDark)
+            self.appliedNativeState = (size, isDark)
+            if applied.isDark {
+                nativeView.overrideUserInterfaceStyle = isDark ? .dark : .light
+            }
+            if applied.size {
+                transition.animateView {
+                    nativeView.frame = CGRect(origin: CGPoint(), size: size)
+                }
             }
         } else if let legacyView = self.legacyView {
             transition.setFrame(view: legacyView, frame: CGRect(origin: CGPoint(), size: size))
