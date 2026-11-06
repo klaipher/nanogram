@@ -3280,6 +3280,9 @@ final class PostboxImpl {
     public func setCanBeginTransactions(_ value: Bool, afterTransactionIfRunning: @escaping () -> Void) {
         self.queue.async {
             let previous = self.canBeginTransactionsValue.swap(value)
+            if previous != value {
+                postboxLog("setCanBeginTransactions \(value) at \(Int(CFAbsoluteTimeGetCurrent() + kCFAbsoluteTimeIntervalSince1970)), queued=\(self.queuedInternalTransactions.with({ $0.count }))")
+            }
             if previous != value && value {
                 let fs = self.queuedInternalTransactions.swap([])
                 for f in fs {

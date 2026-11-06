@@ -952,8 +952,10 @@ private func finalStateWithUpdatesAndServerTime(accountPeerId: PeerId, postbox: 
                 if case .none = channelsToPoll[peerId] {
                     if let channelPts = channelPts, let channelState = state.channelStates[peerId], channelState.pts >= channelPts {
                         Logger.shared.log("State", "channel \(peerId) (\((updatedState.peers[peerId] as? TelegramChannel)?.title ?? "nil")) skip updateChannelTooLong by pts")
+                        StaleChannelDiagnostics.noteTooLong(peerId: peerId, skipped: true)
                     } else {
                         channelsToPoll[peerId] = channelPts
+                        StaleChannelDiagnostics.noteTooLong(peerId: peerId, skipped: false)
                     }
                 }
         case let .updatePinnedForumTopics(updatePinnedForumTopicsData):
@@ -3166,6 +3168,7 @@ func pollChannelOnce(accountPeerId: PeerId, postbox: Postbox, network: Network, 
         if let channelState = transaction.getPeerChatState(peerId) as? ChannelState {
             channelStates[peerId] = AccountStateChannelState(pts: channelState.pts)
         }
+        let pollDiagnostics = StaleChannelDiagnostics.beginPoll(transaction: transaction, peerId: peerId)
         let initialPeers: [PeerId: Peer] = [peerId: peer]
         var peerChatInfos: [PeerId: PeerChatInfo] = [:]
         let inclusion = transaction.getPeerChatListInclusion(peerId)
@@ -3184,6 +3187,7 @@ func pollChannelOnce(accountPeerId: PeerId, postbox: Postbox, network: Network, 
         let initialState = AccountMutableState(initialState: AccountInitialState(state: accountState, peerIds: Set(), peerIdsRequiringLocalChatState: Set(), channelStates: channelStates, peerChatInfos: peerChatInfos, locallyGeneratedMessageTimestamps: [:], cloudReadStates: [:], channelsToPollExplicitely: Set()), initialPeers: initialPeers, initialReferencedReplyMessageIds: ReferencedReplyMessageIds(), initialReferencedGeneralMessageIds: Set(), initialStoredMessages: Set(), initialStoredStories: [:], initialReadInboxMaxIds: [:], storedMessagesByPeerIdAndTimestamp: [:], initialSentScheduledMessageIds: Set())
         return pollChannel(accountPeerId: accountPeerId, postbox: postbox, network: network, peer: peer, state: initialState)
         |> mapToSignal { (finalState, _, timeout) -> Signal<Int32, NoError> in
+            StaleChannelDiagnostics.endPoll(pollDiagnostics, peerId: peerId, state: finalState)
             return resolveAssociatedMessages(accountPeerId: accountPeerId, postbox: postbox, network: network, state: finalState)
             |> mapToSignal { resultingState -> Signal<AccountMutableState, NoError> in
                 return resolveAssociatedStories(postbox: postbox, network: network, accountPeerId: accountPeerId, state: finalState)

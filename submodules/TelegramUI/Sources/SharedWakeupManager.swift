@@ -169,6 +169,7 @@ public final class SharedWakeupManager {
                 return
             }
             strongSelf.inForeground = value
+            Logger.shared.log("Wakeup", "app \(value ? "foreground" : "background") at \(Int(CFAbsoluteTimeGetCurrent() + kCFAbsoluteTimeIntervalSince1970))")
             if value {
                 strongSelf.activeExplicitExtensionTimer?.invalidate()
                 strongSelf.activeExplicitExtensionTimer = nil
