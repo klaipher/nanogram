@@ -422,6 +422,8 @@ public final class MediaPickerScreenImpl: ViewController, MediaPickerScreen, Att
         
         private var validLayout: (ContainerViewLayout, CGFloat)?
         
+        static let stateQueue = Queue(name: "MediaPickerScreen-State", qos: .userInitiated)
+        
         init(controller: MediaPickerScreenImpl) {
             self.controller = controller
             self.presentationData = controller.presentationData
@@ -526,11 +528,15 @@ public final class MediaPickerScreenImpl: ViewController, MediaPickerScreen, Att
                             if let collection {
                                 return combineLatest(mediaAssetsContext.fetchAssets(collection), preloadPromise.get())
                                 |> map { fetchResult, preload in
+                                    AssetPrimingWindow.prime(fetchResult)
                                     return .assets(fetchResult: fetchResult, preload: preload, drafts: [], mediaAccess: mediaAccess, cameraAccess: selectedCollection != nil ? nil : cameraAccess)
                                 }
                             } else {
                                 return combineLatest(mediaAssetsContext.recentAssets(), preloadPromise.get(), drafts)
                                 |> map { fetchResult, preload, drafts in
+                                    if let fetchResult {
+                                        AssetPrimingWindow.prime(fetchResult)
+                                    }
                                     return .assets(fetchResult: fetchResult, preload: preload, drafts: drafts, mediaAccess: mediaAccess, cameraAccess: cameraAccess)
                                 }
                             }
@@ -541,7 +547,12 @@ public final class MediaPickerScreenImpl: ViewController, MediaPickerScreen, Att
                 updatedState = .single(.media(media))
             }
             
+            // The PhotoKit calls behind the state (authorization status, change-observer registration, the
+            // album and asset fetches) block on photolibraryd: 272 blocks / 164 ms on the main thread when the
+            // picker opened. Run them on a queue; the first state still arrives before the picker is ready
+            // (`ready` waits for it), so the grid does not appear empty.
             self.itemsDisposable = (updatedState
+            |> runOn(Node.stateQueue)
             |> deliverOnMainQueue).start(next: { [weak self] state in
                 guard let self else {
                     return
