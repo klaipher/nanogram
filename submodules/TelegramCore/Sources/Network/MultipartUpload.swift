@@ -239,11 +239,13 @@ final class MultipartUploadManager {
     }
     
     func checkState() {
-        if let resourceData = self.resourceData, !resourceData.complete, !self.bigParts, !self.forceNoBigParts, resourceData.size > 10 * 1024 * 1024, self.uploadedParts.isEmpty, self.uploadingParts.isEmpty {
+        if let resourceData = self.resourceData, !resourceData.complete, !self.bigParts, !self.forceNoBigParts, resourceData.size > 10 * 1024 * 1024, self.uploadedParts.isEmpty, self.uploadingParts.isEmpty, self.committedOffset <= self.heldHeaderLength {
+            // Nothing beyond the held header went out yet. Once small parts are committed, the restart below handles the crossing.
             self.defaultPartSize = 512 * 1024
             self.bigTotalParts = nil
             self.bigParts = true
             self.committedOffset = 0
+            self.heldHeaderLength = 0
         }
         if let resourceData = self.resourceData, resourceData.complete, resourceData.size > 10 * 1024 * 1024, !self.bigParts, !self.forceNoBigParts, self.committedOffset != 0 || !self.uploadedParts.isEmpty || !self.uploadingParts.isEmpty {
             // Parts went out while the file was still growing, as a small file; it ended up over the

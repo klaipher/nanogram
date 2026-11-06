@@ -249,6 +249,62 @@ final class MultipartUploadTests: XCTestCase {
         XCTAssertEqual(value.size, Int64(size))
     }
 
+    /// The upload catches up with the writer while the file crosses 10 MB, with no part in flight: the early switch to
+    /// big parts must not fire after small parts were committed (same file id, inflated part count).
+    func testACrossingOf10MBWhileGrowingAfterSmallPartsWereSentDoesNotSwitchToBigPartsUnderTheSameId() {
+        let path = NSTemporaryDirectory() + "multipart-upload-\(UUID().uuidString)"
+        let size = 10 * 1024 * 1024 + 512 * 1024
+        XCTAssertTrue(FileManager.default.createFile(atPath: path, contents: Data(count: size)))
+        defer {
+            try? FileManager.default.removeItem(atPath: path)
+        }
+        let data = Promise<MultipartUploadData>()
+        let sentParts = Atomic<[UploadPart]>(value: [])
+        let finished = expectation(description: "the upload finished")
+        let result = Atomic<MultipartIntermediateResult??>(value: nil)
+        let manager = MultipartUploadManager(headerSize: { 32 * 1024 }, data: data.get(), encryptionKey: nil, hintFileSize: nil, hintFileIsLarge: false, forceNoBigParts: false, useLargerParts: false, increaseParallelParts: false, uploadPart: { part in
+            let _ = sentParts.modify { $0 + [part] }
+            return .complete()
+        }, progress: { _ in
+        }, completed: { value in
+            let _ = result.swap(.some(value))
+            finished.fulfill()
+        })
+        manager.start()
+
+        data.set(.single(.resourceData(MediaResourceData(path: path, offset: 0, size: 1024 * 1024, complete: false))))
+        let deadline = Date().addingTimeInterval(5.0)
+        while sentParts.with({ $0.count }) < 7 && Date() < deadline {
+            Thread.sleep(forTimeInterval: 0.01)
+        }
+        let earlyParts = sentParts.with { $0 }
+        XCTAssertEqual(earlyParts.count, 7)
+        let earlyFileId = earlyParts.first?.fileId
+
+        // Still growing, now over the small-file limit, nothing in flight.
+        data.set(.single(.resourceData(MediaResourceData(path: path, offset: 0, size: 10 * 1024 * 1024 + 1024, complete: false))))
+        Thread.sleep(forTimeInterval: 0.3)
+        let beforeComplete = sentParts.with { $0 }
+        XCTAssertTrue(beforeComplete.allSatisfy { !$0.bigPart }, "no big part goes out under the id that holds small parts")
+
+        data.set(.single(.resourceData(MediaResourceData(path: path, offset: 0, size: Int64(size), complete: true))))
+        wait(for: [finished], timeout: 10.0)
+
+        let all = sentParts.with { $0 }
+        XCTAssertTrue(all.filter { $0.fileId == earlyFileId }.allSatisfy { !$0.bigPart })
+        let bigParts = all.filter { $0.bigPart }
+        XCTAssertEqual(Set(bigParts.map(\.fileId)).count, 1)
+        XCTAssertNotEqual(bigParts.first?.fileId, earlyFileId)
+        XCTAssertEqual(bigParts.map(\.index).sorted(), Array(0 ..< 21))
+        guard let completedResult = result.with({ $0 }), let value = completedResult else {
+            XCTFail("the upload failed")
+            return
+        }
+        XCTAssertEqual(value.id, bigParts.first?.fileId)
+        XCTAssertEqual(value.bigTotalParts, 21)
+        XCTAssertEqual(value.partCount, 21, "the abandoned small parts are not counted")
+    }
+
     func testASmallFileOfKnownSizeIsUploadedIn128KBParts() {
         let size = 300 * 1024
         let sentParts = Atomic<[UploadPart]>(value: [])
