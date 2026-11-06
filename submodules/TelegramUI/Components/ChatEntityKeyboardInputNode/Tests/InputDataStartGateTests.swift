@@ -20,8 +20,20 @@ final class InputDataStartGateTests: XCTestCase {
         XCTAssertFalse(gate.shouldStart(.demand))
     }
 
-    func testIdleDelayLeavesChatOpenWindowFree() {
-        XCTAssertGreaterThanOrEqual(InputDataStartGate.idleDelay, 2.0)
+    func testIdleDelayIsAfterThePushTransitionButShort() {
+        XCTAssertGreaterThanOrEqual(InputDataStartGate.idleDelay, 0.4, "after the ~0.35 s push transition")
+        XCTAssertLessThanOrEqual(InputDataStartGate.idleDelay, 1.0, "an early panel open must not wait for a cold build")
+    }
+
+    func testIdleBuildWaitsWhileTheHistoryScrolls() {
+        XCTAssertEqual(InputDataStartGate.idleDecision(secondsSinceLastScroll: nil), .startNow)
+        XCTAssertEqual(InputDataStartGate.idleDecision(secondsSinceLastScroll: 5.0), .startNow)
+        XCTAssertEqual(InputDataStartGate.idleDecision(secondsSinceLastScroll: 0.0), .retry(after: InputDataStartGate.scrollQuietPeriod))
+        if case let .retry(after) = InputDataStartGate.idleDecision(secondsSinceLastScroll: 0.1) {
+            XCTAssertEqual(after, InputDataStartGate.scrollQuietPeriod - 0.1, accuracy: 0.0001)
+        } else {
+            XCTFail("a scroll 0.1 s ago must postpone the build")
+        }
     }
 
     func testPrewarmStartsOnceAndIdleOrDemandDoNotRestart() {

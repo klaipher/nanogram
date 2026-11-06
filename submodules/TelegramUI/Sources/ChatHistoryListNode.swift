@@ -822,6 +822,9 @@ public final class ChatHistoryListNodeImpl: ASDisplayNode, ChatHistoryNode, Chat
     // finger lifts the release branches own it, and a flight-sampler emission must not reach in and
     // undo it mid-spring.
     private var isDraggingForOverscrollAction: Bool = false
+    /// When the visible content offset last changed (`CACurrentMediaTime`), nil before the first change. Used to
+    /// keep background work such as the emoji panel build out of scrolls.
+    private(set) var lastScrollActivityTimestamp: Double?
 
     private let adMessagesContext: AdMessagesHistoryContext?
     private var adMessagesDisposable: Disposable?
@@ -1154,6 +1157,7 @@ public final class ChatHistoryListNodeImpl: ASDisplayNode, ChatHistoryNode, Chat
         
         self.listView.visibleContentOffsetChanged = { [weak self] offset, _ in
             if let strongSelf = self {
+                strongSelf.lastScrollActivityTimestamp = CACurrentMediaTime()
                 strongSelf.contentPositionChanged(offset)
                 
                 if strongSelf.tag == nil {

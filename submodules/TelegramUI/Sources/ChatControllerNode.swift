@@ -4166,16 +4166,38 @@ class ChatControllerNode: ASDisplayNode, ASScrollViewDelegate {
         )
     }
     
+    private func scheduleIdleInputMediaNodeDataStart(after delay: Double) {
+        self.inputMediaNodeDataIdleDisposable?.dispose()
+        self.inputMediaNodeDataIdleDisposable = (Signal<Void, NoError>.single(Void())
+        |> delay(delay, queue: Queue.mainQueue())).startStrict(next: { [weak self] _ in
+            guard let self else {
+                return
+            }
+            var secondsSinceLastScroll: Double?
+            if let timestamp = self.historyNode.lastScrollActivityTimestamp {
+                secondsSinceLastScroll = CACurrentMediaTime() - timestamp
+            }
+            switch InputDataStartGate.idleDecision(secondsSinceLastScroll: secondsSinceLastScroll) {
+            case .startNow:
+                self.startInputMediaNodeDataIfNeeded(.idle)
+            case let .retry(after):
+                self.scheduleIdleInputMediaNodeDataStart(after: after)
+            }
+        })
+    }
+    
     func loadInputPanels(theme: PresentationTheme, strings: PresentationStrings, fontSize: PresentationFontSize) {
         if !self.didInitializeInputMediaNodeDataPromise {
             self.didInitializeInputMediaNodeDataPromise = true
             
             // The emoji and sticker panel data is expensive to build and most chats never open the panel:
-            // build it on demand, or in the background once the chat has been open for a while.
-            self.inputMediaNodeDataIdleDisposable = (Signal<Void, NoError>.single(Void())
-            |> delay(InputDataStartGate.idleDelay, queue: Queue.mainQueue())).startStrict(next: { [weak self] _ in
-                self?.startInputMediaNodeDataIfNeeded(.idle)
-            })
+            // build it on intent (input focus, touch-down on the panel button), on demand, or shortly after the
+            // chat finished opening and the history is not scrolling. Already in panel mode: at once.
+            if case .media = self.chatPresentationInterfaceState.inputMode {
+                self.startInputMediaNodeDataIfNeeded(.demand)
+            } else {
+                self.scheduleIdleInputMediaNodeDataStart(after: InputDataStartGate.idleDelay)
+            }
         }
         
         self.textInputPanelNode?.loadTextInputNodeIfNeeded()

@@ -16,8 +16,26 @@ public struct InputDataStartGate {
         case prewarm
     }
 
-    /// Seconds a chat stays open before the data is built without any demand.
-    public static let idleDelay: Double = 4.0
+    /// Seconds after the chat's panels were loaded (the push transition takes ~0.35 s) before the data is built
+    /// without any demand. Short, so a panel opened without a touch-down or focus signal first is not slower than
+    /// when the data was built at chat open; long enough to stay out of the chat-open window.
+    public static let idleDelay: Double = 0.5
+    /// The idle build waits until the history list has not scrolled for this long, and asks again after the same time.
+    public static let scrollQuietPeriod: Double = 0.3
+
+    public enum IdleDecision: Equatable {
+        case startNow
+        case retry(after: Double)
+    }
+
+    /// Whether the idle build may start now, given the seconds since the history list last scrolled
+    /// (nil: it has not scrolled).
+    public static func idleDecision(secondsSinceLastScroll: Double?) -> IdleDecision {
+        guard let secondsSinceLastScroll, secondsSinceLastScroll < scrollQuietPeriod else {
+            return .startNow
+        }
+        return .retry(after: scrollQuietPeriod - max(0.0, secondsSinceLastScroll))
+    }
 
     public private(set) var hasStarted = false
 
