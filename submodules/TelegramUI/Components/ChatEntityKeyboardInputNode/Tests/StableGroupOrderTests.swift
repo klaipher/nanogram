@@ -80,7 +80,7 @@ final class StableGroupOrderTests: XCTestCase {
     }
 
     private func run(_ groups: [TestGroup], stored: [ItemCollectionId]?) -> (groups: [TestGroup], order: [ItemCollectionId]) {
-        return StableGroupOrder.process(groups: groups, storedOrder: stored, id: { $0.id }, isEmbedded: { $0.isEmbedded }, isFeatured: { $0.isFeatured })
+        return StableGroupOrder.process(groups: groups, storedOrder: stored, id: { $0.id }, isEmbedded: { $0.isEmbedded }, isFeatured: { $0.isFeatured }, collectionId: { $0.base as? ItemCollectionId })
     }
 
     private func assertSame(_ groups: [TestGroup], stored: [ItemCollectionId]?, file: StaticString = #filePath, line: UInt = #line) {

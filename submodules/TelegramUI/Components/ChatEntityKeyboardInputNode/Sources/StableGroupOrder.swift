@@ -1,5 +1,4 @@
 import Foundation
-import Postbox
 
 /// Orders the item groups of an emoji or sticker panel so that the groups the user may reorder keep a stable
 /// order between updates. This ran on the main thread when the panel opened (`processStableItemGroupList`,
@@ -9,29 +8,30 @@ import Postbox
 enum StableGroupOrder {
     private static let topStaticGroups: Set<AnyHashable> = [AnyHashable("static"), AnyHashable("recent"), AnyHashable("featuredTop")]
 
-    static func isReorderable(id: AnyHashable, isEmbedded: Bool, isFeatured: Bool) -> ItemCollectionId? {
+    static func isReorderable<CollectionId>(id: AnyHashable, isEmbedded: Bool, isFeatured: Bool, collectionId: (AnyHashable) -> CollectionId?) -> CollectionId? {
         if isEmbedded || isFeatured {
             return nil
         }
-        return id.base as? ItemCollectionId
+        return collectionId(id)
     }
 
     /// - Parameters:
     ///   - groups: the groups of the new data.
     ///   - storedOrder: the order of reorderable collection ids stored by the previous call, if any.
     /// - Returns: the groups in display order and the order to store for the next call.
-    static func process<Group>(
+    static func process<Group, CollectionId: Hashable>(
         groups: [Group],
-        storedOrder: [ItemCollectionId]?,
+        storedOrder: [CollectionId]?,
         id: (Group) -> AnyHashable,
         isEmbedded: (Group) -> Bool,
-        isFeatured: (Group) -> Bool
-    ) -> (groups: [Group], order: [ItemCollectionId]) {
+        isFeatured: (Group) -> Bool,
+        collectionId: (AnyHashable) -> CollectionId?
+    ) -> (groups: [Group], order: [CollectionId]) {
         let ids = groups.map(id)
 
-        var nextIds: [ItemCollectionId] = []
+        var nextIds: [CollectionId] = []
         for (index, group) in groups.enumerated() {
-            if let collectionId = isReorderable(id: ids[index], isEmbedded: isEmbedded(group), isFeatured: isFeatured(group)) {
+            if let collectionId = isReorderable(id: ids[index], isEmbedded: isEmbedded(group), isFeatured: isFeatured(group), collectionId: collectionId) {
                 nextIds.append(collectionId)
             }
         }
@@ -70,7 +70,7 @@ enum StableGroupOrder {
 
         for (index, group) in groups.enumerated() {
             let groupId = ids[index]
-            if !(groupId.base is ItemCollectionId) {
+            if collectionId(groupId) == nil {
                 if groupId != AnyHashable("static") || staticIsFirst {
                     append(group, groupId)
                 }
@@ -94,9 +94,9 @@ enum StableGroupOrder {
             }
         }
 
-        var order: [ItemCollectionId] = []
+        var order: [CollectionId] = []
         for group in updated {
-            if let collectionId = isReorderable(id: id(group), isEmbedded: isEmbedded(group), isFeatured: isFeatured(group)) {
+            if let collectionId = isReorderable(id: id(group), isEmbedded: isEmbedded(group), isFeatured: isFeatured(group), collectionId: collectionId) {
                 order.append(collectionId)
             }
         }

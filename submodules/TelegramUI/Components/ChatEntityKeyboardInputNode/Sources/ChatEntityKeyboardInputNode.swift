@@ -2080,7 +2080,8 @@ public final class ChatEntityKeyboardInputNode: ChatInputNode {
             storedOrder: self.stableReorderableGroupOrder[category],
             id: { $0.groupId },
             isEmbedded: { $0.isEmbedded },
-            isFeatured: { $0.isFeatured }
+            isFeatured: { $0.isFeatured },
+            collectionId: { $0.base as? ItemCollectionId }
         )
         self.stableReorderableGroupOrder[category] = result.order
         return result.groups
