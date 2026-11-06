@@ -1221,11 +1221,12 @@ func fetchMessageHistoryHole(accountPeerId: PeerId, source: FetchMessageHistoryH
                         // A candidate the server answered as gone but written again while the confirmation was in
                         // flight is left stored: the newer write wins (`applyStoredMessageConfirmation`). It is not
                         // confirmed either, so the hole is opened again over it alone, and the next fill that reaches
-                        // it asks again; closing over it would show a message the server says is gone for good.
+                        // it asks again; closing over it would show a message the server says is gone for good. An id a short
+                        // answer left out (`unconfirmed`) is reopened the same way: the server did not say it is gone.
                         var reopenedIds: [MessageId] = []
                         if let confirmation = confirmation, let reconciliation = reconciliation {
                             applyStoredMessageConfirmation(transaction: transaction, accountPeerId: accountPeerId, mediaBox: postbox.mediaBox, confirmation: confirmation, versions: reconciliation.versions)
-                            reopenedIds = transaction.filterStoredMessageIds(confirmation.missing).filter { closedRange.contains($0.id) }.sorted()
+                            reopenedIds = transaction.filterStoredMessageIds(confirmation.missing.union(confirmation.unconfirmed)).filter { closedRange.contains($0.id) }.sorted()
                         }
 
                         switch peerInput {
