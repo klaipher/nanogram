@@ -1531,6 +1531,40 @@ defers itself onto the same FIFO scheduler, behind the deferred pass. `InsertedB
 the geometry, the rigidity, the direction, the unloaded-row skip, the deferral, and the mid-slide
 composition, each with its own non-vacuity control.
 
+## Chat-scroll experiments (Debug Settings ▸ Chat scroll, both off by default)
+
+Two switches for A/B on a device. Bits of `ExperimentalUISettings.chatScrollExperiments`, cached as two Bools in
+`ChatScrollExperiments` (ChatRowPrep, set from `SharedAccountContext` when the settings change). Every use is behind
+one of those Bools; with both off the row paths are the ones above, apart from a closure that answers `false`.
+
+**Chat rows: prepare layout ahead.** On each user-scroll frame `planRowPrefetch` looks at the rows just beyond the loaded edge
+in the direction of travel (`CoreListChatRowPrefetcher.lookahead`, 4) and builds them on a serial background queue with
+the same `ChatMessageItemImpl.nodeConfiguredForParams` the host calls (off the main thread it runs the layout inline,
+as `ListViewImpl` always has, and delivers `(node, apply)` to main). `CoreListNodeHostView.rebuild`, fresh-node branch, takes
+the result only when the whole `ChatRowPrepKey` is equal: row identity and version, the exact item instance (it carries the
+message, associated data and presentation data), width, side insets, neighbour descriptors, presentation-data object,
+font size, `ChatControllerInteraction.rowPrepEpoch` (moves whenever selection, highlight, hidden media, download and sticker
+settings, unread range, ... are assigned), rotation and the synchronous-load flag. Anything else is a miss and the node is
+built synchronously as before. Every planning round keeps only the planned keys (rows that left the band, a new width,
+theme, font size or item evict and cancel), at most 8 rows, 5 s to live. Heights are the node's own, computed earlier;
+CoreList's anchoring is untouched.
+
+**Chat rows: reuse row views.** `CoreVirtualListView.rowRetirementHandler` is offered the rows a scroll rebalance unloaded.
+With the switch on the backend takes them over: `render()` leaves them in the container (hidden) and the backend finishes
+them at an idle run-loop turn (`ChatRowIdleWorkQueue`, 2 ms budget per turn): a host whose node type is certified
+(`ChatMessageItemView.supportsRowReuse`) is reset with `prepareForRowReuse` and pooled (`ChatRowViewPool`, 4 per type,
+8 total), every other host is removed and released as before, only later. `CoreListEntryItem.view()` hands a pooled host to a
+new row of the same node type; the host then takes the `updateNode` path on the reset node. Certified types: **sticker
+(`ChatMessageStickerItemNode`) only**. Bubble, animated sticker, instant video and service rows are created and destroyed per
+row. The pool is drained on a memory warning and when the list leaves the hierarchy. A new certified type needs its own
+`prepareForRowReuse` and a ledger of its stored properties that `ChatRowReuseLedgerTests` compares with the class.
+
+Signposts (category Performance, point events): `chatRowPrefetchHit`, `chatRowPrefetchMiss`, `chatRowPoolReuse`,
+`chatRowPoolMiss`, and the interval `chatRowPrefetchCompute` (the background part of one row). Tests:
+`//submodules/TelegramUI/Components/Chat/ChatRowPrep:ChatRowPrepTests`,
+`//submodules/TelegramUI/Components/Chat/ChatMessageStickerItemNode:ChatMessageStickerItemNodeTests`,
+`//submodules/TelegramUI/Components/CoreList:CoreListScrollPathTests`, `//submodules/DebugSettingsUI:DebugSettingsUITests`.
+
 ## Deferred items / known limitations
 
 These are still open with the backend now default for the rotated history, and are what

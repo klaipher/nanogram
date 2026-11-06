@@ -39,6 +39,8 @@ public class ChatMessageStickerItemNode: ChatMessageItemView {
     public let imageNode: TransformImageNode
     private var backgroundNode: WallpaperBubbleBackgroundNode?
     private var placeholderNode: StickerShimmerEffectNode
+    /// Whether the next image the node shows is its first, which decides how the placeholder goes away. Reset when the row is reused.
+    var imageUpdatedFirstTime = true
     public var textNode: TextNode?
     
     private var swipeToReplyNode: ChatMessageSwipeToReplyNode?
@@ -67,19 +69,19 @@ public class ChatMessageStickerItemNode: ChatMessageItemView {
     
     private let messageAccessibilityArea: AccessibilityAreaNode
     
-    private var highlightedState: Bool = false
+    var highlightedState: Bool = false
     
-    private var currentSwipeToReplyTranslation: CGFloat = 0.0
+    var currentSwipeToReplyTranslation: CGFloat = 0.0
     
     private var replyRecognizer: ChatSwipeToReplyRecognizer?
-    private var currentSwipeAction: ChatControllerInteractionSwipeAction?
+    var currentSwipeAction: ChatControllerInteractionSwipeAction?
     
-    private var appliedForwardInfo: ChatMessageAppliedForwardInfo?
+    var appliedForwardInfo: ChatMessageAppliedForwardInfo?
 
-    private var enableSynchronousImageApply: Bool = false
+    var enableSynchronousImageApply: Bool = false
     
-    private var wasPending: Bool = false
-    private var didChangeFromPendingToSent: Bool = false
+    var wasPending: Bool = false
+    var didChangeFromPendingToSent: Bool = false
     
     override public var visibility: ListViewItemNodeVisibility {
         didSet {
@@ -92,7 +94,7 @@ public class ChatMessageStickerItemNode: ChatMessageItemView {
         }
     }
     
-    private var visibilityStatus: Bool? {
+    var visibilityStatus: Bool? {
         didSet {
             if self.visibilityStatus != oldValue {
                 self.threadInfoNode?.visibility = self.visibilityStatus == true
@@ -103,7 +105,7 @@ public class ChatMessageStickerItemNode: ChatMessageItemView {
         }
     }
     
-    private var forceStopAnimations: Bool = false
+    var forceStopAnimations: Bool = false
     
     required public init(rotated: Bool) {
         self.contextSourceNode = ContextExtractedContentContainingNode()
@@ -116,13 +118,12 @@ public class ChatMessageStickerItemNode: ChatMessageItemView {
         
         super.init(rotated: rotated)
         
-        var firstTime = true
         self.imageNode.imageUpdated = { [weak self] image in
             guard let strongSelf = self else {
                 return
             }
             if image != nil {
-                if firstTime && !strongSelf.placeholderNode.isEmpty {
+                if strongSelf.imageUpdatedFirstTime && !strongSelf.placeholderNode.isEmpty {
                     if strongSelf.enableSynchronousImageApply {
                         strongSelf.removePlaceholder(animated: false)
                     } else {
@@ -133,7 +134,7 @@ public class ChatMessageStickerItemNode: ChatMessageItemView {
                 } else {
                     strongSelf.removePlaceholder(animated: true)
                 }
-                firstTime = false
+                strongSelf.imageUpdatedFirstTime = false
             }
         }
         
@@ -195,6 +196,132 @@ public class ChatMessageStickerItemNode: ChatMessageItemView {
     
     deinit {
         self.fetchDisposable.dispose()
+    }
+    
+    override public class var supportsRowReuse: Bool {
+        return true
+    }
+    
+    /// Stored properties of this class and what `prepareForRowReuse` does with each. `ChatRowReuseLedgerTests` fails when the
+    /// class gains a property that is not listed here.
+    static let stickerRowReuseLedger: [String: ChatRowReuseTreatment] = [
+        "contextSourceNode": .constant,
+        "containerNode": .constant,
+        "imageNode": .constant,
+        "backgroundNode": .reset,
+        "placeholderNode": .reset,
+        "imageUpdatedFirstTime": .reset,
+        "textNode": .reset,
+        "swipeToReplyNode": .reset,
+        "swipeToReplyFeedback": .reset,
+        "selectionNode": .reset,
+        "deliveryFailedNode": .reset,
+        "shareButtonNode": .reset,
+        "telegramFile": .reset,
+        "fetchDisposable": .reset,
+        "suggestedPostInfoNode": .reset,
+        "viaBotNode": .reset,
+        "dateAndStatusNode": .constant,
+        "threadInfoNode": .reset,
+        "replyInfoNode": .reset,
+        "replyBackgroundContent": .reset,
+        "forwardInfoNode": .reset,
+        "forwardBackgroundContent": .reset,
+        "forwardBackgroundMaskNode": .reset,
+        "actionButtonsNode": .reset,
+        "reactionButtonsNode": .reset,
+        "messageAccessibilityArea": .constant,
+        "highlightedState": .reset,
+        "currentSwipeToReplyTranslation": .reset,
+        "replyRecognizer": .constant,
+        "currentSwipeAction": .reset,
+        "appliedForwardInfo": .reset,
+        "enableSynchronousImageApply": .reset,
+        "wasPending": .reset,
+        "didChangeFromPendingToSent": .reset,
+        "visibilityStatus": .reset,
+        "forceStopAnimations": .reset,
+        "absoluteRect": .reset,
+        "playedSwipeToReplyHaptic": .reset
+    ]
+    
+    /// Back to the state `init(rotated:)` leaves the node in: every optional sub-node removed and dropped, the placeholder
+    /// replaced by a new one (it keeps the previous sticker's outline otherwise), the image and its subscriptions cleared, and
+    /// every flag, counter and callback target that a message sets put back. `apply` then builds the next row exactly as it
+    /// builds a first row. Refuses (the row is destroyed as before) while the node is extracted into a context menu preview.
+    override public func prepareForRowReuse() -> Bool {
+        if self.contextSourceNode.isExtractedToContextPreview {
+            return false
+        }
+        if !super.prepareForRowReuse() {
+            return false
+        }
+        
+        self.containerNode.cancelGesture()
+        self.fetchDisposable.set(nil)
+        self.telegramFile = nil
+        self.imageNode.reset()
+        self.imageNode.setOverlayColor(nil, animated: false)
+        self.imageUpdatedFirstTime = true
+        
+        self.placeholderNode.removeFromSupernode()
+        let placeholderNode = StickerShimmerEffectNode()
+        placeholderNode.isUserInteractionEnabled = false
+        self.placeholderNode = placeholderNode
+        self.contextSourceNode.contentNode.insertSubnode(placeholderNode, belowSubnode: self.imageNode)
+        self.backgroundNode = nil
+        
+        self.textNode = nil
+        self.swipeToReplyNode?.removeFromSupernode()
+        self.swipeToReplyNode = nil
+        self.swipeToReplyFeedback = nil
+        self.selectionNode?.removeFromSupernode()
+        self.selectionNode = nil
+        self.subnodeTransform = CATransform3DIdentity
+        self.deliveryFailedNode?.removeFromSupernode()
+        self.deliveryFailedNode = nil
+        self.shareButtonNode?.removeFromSupernode()
+        self.shareButtonNode = nil
+        self.suggestedPostInfoNode?.removeFromSupernode()
+        self.suggestedPostInfoNode = nil
+        self.viaBotNode?.removeFromSupernode()
+        self.viaBotNode = nil
+        self.threadInfoNode?.removeFromSupernode()
+        self.threadInfoNode = nil
+        self.replyInfoNode?.removeFromSupernode()
+        self.replyInfoNode = nil
+        self.replyBackgroundContent?.removeFromSupernode()
+        self.replyBackgroundContent = nil
+        self.forwardInfoNode?.removeFromSupernode()
+        self.forwardInfoNode = nil
+        self.forwardBackgroundContent?.removeFromSupernode()
+        self.forwardBackgroundContent = nil
+        self.forwardBackgroundMaskNode = nil
+        self.actionButtonsNode?.removeFromSupernode()
+        self.actionButtonsNode = nil
+        self.reactionButtonsNode?.removeFromSupernode()
+        self.reactionButtonsNode = nil
+        self.dateAndStatusNode.pressed = nil
+        
+        self.messageAccessibilityArea.accessibilityLabel = nil
+        self.messageAccessibilityArea.accessibilityValue = nil
+        self.messageAccessibilityArea.accessibilityHint = nil
+        self.messageAccessibilityArea.accessibilityTraits = []
+        self.messageAccessibilityArea.accessibilityCustomActions = nil
+        
+        self.highlightedState = false
+        self.currentSwipeToReplyTranslation = 0.0
+        self.currentSwipeAction = nil
+        self.appliedForwardInfo = nil
+        self.enableSynchronousImageApply = false
+        self.wasPending = false
+        self.didChangeFromPendingToSent = false
+        self.visibilityStatus = nil
+        self.forceStopAnimations = false
+        self.absoluteRect = nil
+        self.playedSwipeToReplyHaptic = false
+        
+        return true
     }
     
     private func removePlaceholder(animated: Bool) {
@@ -1619,7 +1746,7 @@ public class ChatMessageStickerItemNode: ChatMessageItemView {
         }
     }
     
-    private var playedSwipeToReplyHaptic = false
+    var playedSwipeToReplyHaptic = false
     @objc private func swipeToReplyGesture(_ recognizer: ChatSwipeToReplyRecognizer) {
         var offset: CGFloat = 0.0
         var leftOffset: CGFloat = 0.0

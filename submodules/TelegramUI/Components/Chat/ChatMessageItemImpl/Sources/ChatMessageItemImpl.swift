@@ -293,7 +293,9 @@ public final class ChatMessageItemImpl: ChatMessageItem, CustomStringConvertible
         self.headers = headers
     }
     
-    public func nodeConfiguredForParams(async: @escaping (@escaping () -> Void) -> Void, params: ListViewItemLayoutParams, synchronousLoads: Bool, neighbors: ListViewItemNeighbors, completion: @escaping (ListViewItemNode, @escaping () -> (Signal<Void, NoError>?, (ListViewItemApply) -> Void)) -> Void) {
+    /// The concrete `ChatMessageItemView` type this item is shown with. `nodeConfiguredForParams` builds exactly this type, and
+    /// the row view pool keys its views by it.
+    public func resolvedItemViewClass() -> AnyClass {
         var viewClassName: AnyClass = ChatMessageBubbleItemNode.self
         
         loop: for media in self.message.media {
@@ -366,6 +368,12 @@ public final class ChatMessageItemImpl: ChatMessageItem, CustomStringConvertible
                 }
             }
         }
+        
+        return viewClassName
+    }
+    
+    public func nodeConfiguredForParams(async: @escaping (@escaping () -> Void) -> Void, params: ListViewItemLayoutParams, synchronousLoads: Bool, neighbors: ListViewItemNeighbors, completion: @escaping (ListViewItemNode, @escaping () -> (Signal<Void, NoError>?, (ListViewItemApply) -> Void)) -> Void) {
+        let viewClassName = self.resolvedItemViewClass()
         
         let configure = {
             let node = (viewClassName as! ChatMessageItemView.Type).init(rotated: self.controllerInteraction.chatIsRotated)

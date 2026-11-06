@@ -42,3 +42,8 @@ Invariants the compiler does not check; each has a test.
   versions. Nothing is uploaded; Debug Settings ▸ Send MetricKit Reports is the only way out. Host test:
   `//submodules/CrashReporting:CrashReportingTests`.
 - **Signposts**: `PerformanceSignposts` (Display) intervals `chatHistoryEntriesForView` and `composerKeystroke`.
+- **Chat-scroll experiments** (Debug Settings ▸ Chat scroll, both off by default): "Chat rows: prepare layout ahead" and
+  "Chat rows: reuse row views". A prepared row is used only for an exactly equal `ChatRowPrepKey`; `ChatControllerInteraction`
+  properties that a row's layout reads must keep the `rowPrepEpoch` `didSet` (a new such property needs it too). A row view
+  type is pooled only when it overrides `supportsRowReuse` and `prepareForRowReuse` and its ledger test passes. Details:
+  `docs/chat/corelist-chat-history-backend.md`.

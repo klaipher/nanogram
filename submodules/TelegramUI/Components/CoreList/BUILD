@@ -115,6 +115,7 @@ swift_library(
     ) + [
         "CoreListDemoTests/ListMembershipTests.swift",
         "CoreListDemoTests/AttachmentSerialLookupTests.swift",
+        "CoreListDemoTests/RowRetirementTests.swift",
     ],
     deps = [
         ":CoreListDemoForTests",
