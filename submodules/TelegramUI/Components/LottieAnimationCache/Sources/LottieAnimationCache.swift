@@ -7,7 +7,7 @@ import LottieSettings
 import GZip
 import WebPBinding
 
-public func cacheLottieAnimation(data: Data, width: Int, height: Int, keyframeOnly: Bool, writer: AnimationCacheItemWriter, firstFrameOnly: Bool, customColor: UIColor?, lottieSettings: LottieRenderingSettings) {
+public func cacheLottieAnimation(data: Data, width: Int, height: Int, keyframeOnly: Bool, writer: AnimationCacheItemWriter, firstFrameOnly: Bool, customColor: UIColor?, lottieSettings: LottieRenderingSettings, frameSkip: Int = LottieCacheQuality.standard.frameSkip) {
     let work: () -> Void = {
         let decompressedData = TGGUnzipData(data, 2 * 1024 * 1024) ?? data
         guard let animation = makeLottieInstance(data: decompressedData, fitzModifier: .none, colorReplacements: nil, cacheKey: "", settings: lottieSettings) else {
@@ -15,19 +15,11 @@ public func cacheLottieAnimation(data: Data, width: Int, height: Int, keyframeOn
             return
         }
         
-        let frameSkip: Int = 2
-        /*if animation.frameRate >= 60 {
-            if ProcessInfo.processInfo.processorCount > 2 {
-                frameSkip = 1
-            } else {
-                frameSkip = 2
-            }
-        } else {
-            frameSkip = 1
-        }*/
+        // Every `frameSkip`-th source frame is kept (upstream: every second one, see `LottieCacheQuality`).
+        let step = max(1, frameSkip)
         
-        let frameDuration = Double(frameSkip) / Double(animation.frameRate)
-        for i in stride(from: 0, through: animation.frameCount - 1, by: frameSkip) {
+        let frameDuration = Double(step) / Double(animation.frameRate)
+        for i in stride(from: 0, through: animation.frameCount - 1, by: step) {
             if writer.isCancelled {
                 break
             }

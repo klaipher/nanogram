@@ -39,6 +39,8 @@ final class ReactionPreviewView: UIView {
                     loopMode: .forever
                 ),
                 isVisibleForAnimations: true,
+                // The one large animation of the menu: every source frame at the screen's scale.
+                fullQuality: true,
                 action: nil
             )),
             environment: {},
