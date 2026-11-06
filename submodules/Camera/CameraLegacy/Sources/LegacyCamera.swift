@@ -14,8 +14,8 @@ final class CameraSession {
     
     let hasMultiCam: Bool
         
-    init(forRoundVideo: Bool) {
-        if #available(iOS 13.0, *), legacyIsDualCameraSupported(forRoundVideo: forRoundVideo) {
+    init(forRoundVideo: Bool, allowsMultiCam: Bool = true) {
+        if #available(iOS 13.0, *), allowsMultiCam, legacyIsDualCameraSupported(forRoundVideo: forRoundVideo) {
             self.multiSession = AVCaptureMultiCamSession()
             self.singleSession = nil
             self.hasMultiCam = true
@@ -62,17 +62,20 @@ final class CameraDeviceContext {
         self.output = CameraOutput(exclusive: exclusive, ciContext: ciContext, colorSpace: colorSpace, use32BGRA: isRoundVideo)
     }
     
-    func configure(position: Camera.Position, previewView: LegacyCameraSimplePreviewView?, audio: Bool, photo: Bool, metadata: Bool, preferWide: Bool = false, preferLowerFramerate: Bool = false, switchAudio: Bool = true) {
+    func configure(position: Camera.Position, previewView: LegacyCameraSimplePreviewView?, audio: Bool, photo: Bool, metadata: Bool, preferWide: Bool = false, preferLowerFramerate: Bool = false, switchAudio: Bool = true, captureMode: CameraCaptureMode? = nil) {
         guard let session = self.session else {
             return
         }
         
         self.previewView = previewView
+        
+        let captureMode = self.exclusive && !self.additional && !self.isRoundVideo ? captureMode : nil
+        let audio = cameraAttachesAudio(captureMode: captureMode, configuredAudio: audio)
                 
         self.device.configure(for: session, position: position, dual: !self.exclusive || self.additional, switchAudio: switchAudio)
-        self.device.configureDeviceFormat(maxDimensions: self.maxDimensions(additional: self.additional, preferWide: preferWide), maxFramerate: self.preferredMaxFrameRate(useLower: preferLowerFramerate))
+        self.device.configureDeviceFormat(maxDimensions: self.maxDimensions(additional: self.additional, preferWide: preferWide), maxFramerate: self.preferredMaxFrameRate(useLower: preferLowerFramerate), captureMode: captureMode)
         self.input.configure(for: session, device: self.device, audio: audio && switchAudio)
-        self.output.configure(for: session, device: self.device, input: self.input, previewView: previewView, audio: audio && switchAudio, photo: photo, metadata: metadata)
+        self.output.configure(for: session, device: self.device, input: self.input, previewView: previewView, audio: audio && switchAudio, photo: photo, metadata: metadata, captureMode: captureMode)
         
         self.output.configureVideoStabilization()
         
@@ -122,6 +125,7 @@ private final class CameraContext {
     private var additionalDeviceContext: CameraDeviceContext?
 
     private let initialConfiguration: Camera.Configuration
+    private var captureMode: CameraCaptureMode?
     private var invalidated = false
     
     private let detectedCodesPipe = ValuePipe<[CameraCode]>()
@@ -170,6 +174,7 @@ private final class CameraContext {
         self.ciContext = CIContext(options: [.workingColorSpace : self.colorSpace])
         
         self.initialConfiguration = configuration
+        self.captureMode = configuration.captureMode
         self.simplePreviewView = previewView
         self.secondaryPreviewView = secondaryPreviewView
         
@@ -283,7 +288,7 @@ private final class CameraContext {
                 let preferWide = self.initialConfiguration.preferWide || isRoundVideo
                 let preferLowerFramerate = self.initialConfiguration.preferLowerFramerate || isRoundVideo
                 
-                mainDeviceContext.configure(position: targetPosition, previewView: self.simplePreviewView, audio: self.initialConfiguration.audio, photo: self.initialConfiguration.photo, metadata: self.initialConfiguration.metadata, preferWide: preferWide, preferLowerFramerate: preferLowerFramerate, switchAudio: !isRoundVideo)
+                mainDeviceContext.configure(position: targetPosition, previewView: self.simplePreviewView, audio: self.initialConfiguration.audio, photo: self.initialConfiguration.photo, metadata: self.initialConfiguration.metadata, preferWide: preferWide, preferLowerFramerate: preferLowerFramerate, switchAudio: !isRoundVideo, captureMode: self.captureMode)
                 if isRoundVideo {
                     mainDeviceContext.output.markPositionChange(position: targetPosition)
                 }
@@ -307,7 +312,7 @@ private final class CameraContext {
             let preferWide = self.initialConfiguration.preferWide || (self.positionValue == .front && self.initialConfiguration.isRoundVideo)
             let preferLowerFramerate = self.initialConfiguration.preferLowerFramerate || self.initialConfiguration.isRoundVideo
             
-            self.mainDeviceContext?.configure(position: position, previewView: self.simplePreviewView, audio: self.initialConfiguration.audio, photo: self.initialConfiguration.photo, metadata: self.initialConfiguration.metadata, preferWide: preferWide, preferLowerFramerate: preferLowerFramerate)
+            self.mainDeviceContext?.configure(position: position, previewView: self.simplePreviewView, audio: self.initialConfiguration.audio, photo: self.initialConfiguration.photo, metadata: self.initialConfiguration.metadata, preferWide: preferWide, preferLowerFramerate: preferLowerFramerate, captureMode: self.captureMode)
                         
             self.queue.after(0.5) {
                 self.modeChange = .none
@@ -320,6 +325,7 @@ private final class CameraContext {
     
     private var isDualCameraEnabled: Bool?
     func setDualCameraEnabled(_ enabled: Bool, change: Bool = true) {
+        let enabled = enabled && (self.initialConfiguration.captureMode == nil || self.session.supportsDualCam)
         guard enabled != self.isDualCameraEnabled else {
             return
         }
@@ -334,9 +340,11 @@ private final class CameraContext {
             self.configure {
                 self.mainDeviceContext?.invalidate()
                 self.mainDeviceContext = CameraDeviceContext(session: self.session, exclusive: false, additional: false, ciContext: self.ciContext, colorSpace: self.colorSpace, isRoundVideo: self.initialConfiguration.isRoundVideo)
+                self.mainDeviceContext?.device.queue = self.queue
                 self.mainDeviceContext?.configure(position: .back, previewView: self.simplePreviewView, audio: self.initialConfiguration.audio, photo: self.initialConfiguration.photo, metadata: self.initialConfiguration.metadata)
             
                 self.additionalDeviceContext = CameraDeviceContext(session: self.session, exclusive: false, additional: true, ciContext: self.ciContext, colorSpace: self.colorSpace, isRoundVideo: self.initialConfiguration.isRoundVideo)
+                self.additionalDeviceContext?.device.queue = self.queue
                 self.additionalDeviceContext?.configure(position: .front, previewView: self.secondaryPreviewView, audio: false, photo: true, metadata: false)
             }
             self.mainDeviceContext?.output.processSampleBuffer = { [weak self] sampleBuffer, pixelBuffer, connection in
@@ -385,7 +393,8 @@ private final class CameraContext {
                 let preferLowerFramerate = self.initialConfiguration.preferLowerFramerate || self.initialConfiguration.isRoundVideo
                 
                 self.mainDeviceContext = CameraDeviceContext(session: self.session, exclusive: true, additional: false, ciContext: self.ciContext, colorSpace: self.colorSpace, isRoundVideo: self.initialConfiguration.isRoundVideo)
-                self.mainDeviceContext?.configure(position: self.positionValue, previewView: self.simplePreviewView, audio: self.initialConfiguration.audio, photo: self.initialConfiguration.photo, metadata: self.initialConfiguration.metadata, preferWide: preferWide, preferLowerFramerate: preferLowerFramerate)
+                self.mainDeviceContext?.device.queue = self.queue
+                self.mainDeviceContext?.configure(position: self.positionValue, previewView: self.simplePreviewView, audio: self.initialConfiguration.audio, photo: self.initialConfiguration.photo, metadata: self.initialConfiguration.metadata, preferWide: preferWide, preferLowerFramerate: preferLowerFramerate, captureMode: self.captureMode)
             }
             self.mainDeviceContext?.output.processSampleBuffer = { [weak self] sampleBuffer, pixelBuffer, connection in
                 guard let self, let mainDeviceContext = self.mainDeviceContext else {
@@ -482,10 +491,93 @@ private final class CameraContext {
         }
     }
     
+    private var captureModeChangeGeneration = CameraCaptureModeChangeGeneration()
+    
+    func setCaptureMode(_ mode: CameraCaptureMode, completion: @escaping () -> Void) {
+        guard self.captureMode != mode, !self.initialConfiguration.isRoundVideo else {
+            completion()
+            return
+        }
+        if let mainDeviceContext = self.mainDeviceContext, mainDeviceContext.output.isRecording {
+            completion()
+            return
+        }
+        self.captureMode = mode
+        guard let mainDeviceContext = self.mainDeviceContext, self.additionalDeviceContext == nil else {
+            completion()
+            return
+        }
+        self.modeChange = .captureMode
+        let generation = self.captureModeChangeGeneration.next()
+        let zoomFactor = mainDeviceContext.device.zoomFactor
+        self.configure {
+            mainDeviceContext.invalidate()
+            mainDeviceContext.configure(position: self.positionValue, previewView: self.simplePreviewView, audio: self.initialConfiguration.audio, photo: self.initialConfiguration.photo, metadata: self.initialConfiguration.metadata, preferWide: self.initialConfiguration.preferWide, preferLowerFramerate: self.initialConfiguration.preferLowerFramerate, captureMode: mode)
+        }
+        if let zoomFactor {
+            mainDeviceContext.device.setZoomFactor(zoomFactor)
+        }
+        let finished = CameraOneShot()
+        let previewingDisposable = MetaDisposable()
+        let finish: () -> Void = { [weak self] in
+            guard finished.claim() else {
+                return
+            }
+            previewingDisposable.dispose()
+            if let self, self.modeChange == .captureMode, self.captureModeChangeGeneration.isCurrent(generation) {
+                self.modeChange = .none
+            }
+            completion()
+        }
+        if #available(iOS 13.0, *), let previewView = self.simplePreviewView {
+            previewingDisposable.set((previewView.isPreviewing
+            |> filter { $0 }
+            |> take(1)
+            |> delay(0.1, queue: self.queue)
+            |> deliverOn(self.queue)).startStandalone(next: { _ in
+                finish()
+            }))
+            self.queue.after(cameraCaptureModeChangeTimeout) {
+                finish()
+            }
+        } else {
+            self.queue.after(0.4) {
+                finish()
+            }
+        }
+    }
+    
+    func beginExposureTargetBiasChange() {
+        guard let device = self.mainDeviceContext?.device else {
+            return
+        }
+        device.setFocusPoint(device.focusPoint, focusMode: .locked, exposureMode: .locked, monitorSubjectAreaChange: false)
+    }
+    
+    func setExposureTargetBias(_ bias: CGFloat) {
+        self.mainDeviceContext?.device.setExposureTargetBias(Float(bias))
+    }
+    
+    func endExposureTargetBiasChange() {
+        guard let device = self.mainDeviceContext?.device else {
+            return
+        }
+        device.setFocusPoint(device.focusPoint, focusMode: .autoFocus, exposureMode: .autoExpose, monitorSubjectAreaChange: true)
+    }
+    
     private func configure(_ f: () -> Void) {
         self.session.session.beginConfiguration()
         f()
         self.session.session.commitConfiguration()
+        // A configuration that changes an input makes the previews' connections anew (the first input, camera flips,
+        // dual and mode changes), and a new connection starts in portrait, which is not the body's orientation on
+        // iPhone Duo's inner screen.
+        let previewViews = [self.simplePreviewView, self.secondaryPreviewView]
+        Queue.mainQueue().async {
+            for previewView in previewViews {
+                previewView?.updateOrientation()
+            }
+        }
     }
     
     var hasTorch: Signal<Bool, NoError> {
@@ -538,6 +630,13 @@ private final class CameraContext {
         }
     }
     
+    func setZoomScale(_ zoomScale: CGFloat) {
+        if self.initialConfiguration.isRoundVideo {
+            return
+        }
+        self.mainDeviceContext?.device.setZoomScale(zoomScale)
+    }
+
     func rampZoom(_ zoomLevel: CGFloat, rate: CGFloat) {
         if self.initialConfiguration.isRoundVideo {
             if self.positionValue == .front {
@@ -552,7 +651,11 @@ private final class CameraContext {
     
     func takePhoto() -> Signal<PhotoCaptureResult, NoError> {
         guard let mainDeviceContext = self.mainDeviceContext else {
+            #if targetEnvironment(simulator)
+            return simulatorSyntheticPhoto(position: self.positionValue)
+            #else
             return .complete()
+            #endif
         }
         let orientation = self.simplePreviewView?.videoPreviewLayer.connection?.videoOrientation ?? .portrait
         if let additionalDeviceContext = self.additionalDeviceContext {
@@ -597,7 +700,7 @@ private final class CameraContext {
         
         let orientation = self.simplePreviewView?.videoPreviewLayer.connection?.videoOrientation ?? .portrait
         if self.initialConfiguration.isRoundVideo {
-            return mainDeviceContext.output.startRecording(mode: .roundVideo, orientation: DeviceModel.current.isIpad ? orientation : .portrait, additionalOutput: self.additionalDeviceContext?.output)
+            return mainDeviceContext.output.startRecording(mode: .roundVideo, orientation: cameraRecordsRoundVideoInPreviewOrientation ? orientation : .portrait, additionalOutput: self.additionalDeviceContext?.output)
         } else {
             if let additionalDeviceContext = self.additionalDeviceContext {
                 return combineLatest(
@@ -737,7 +840,7 @@ final class LegacyCamera: CameraProtocol {
         
         self.metrics = Camera.Metrics(model: DeviceModel.current)
         
-        let session = CameraSession(forRoundVideo: configuration.isRoundVideo)
+        let session = CameraSession(forRoundVideo: configuration.isRoundVideo, allowsMultiCam: configuration.captureMode == nil)
         session.session.automaticallyConfiguresApplicationAudioSession = false
         session.session.automaticallyConfiguresCaptureDeviceForWideColor = false
         session.session.usesApplicationAudioSession = true
@@ -747,7 +850,11 @@ final class LegacyCamera: CameraProtocol {
         previewView?.connectionQueue = self.queue.queue
         secondaryPreviewView?.connectionQueue = self.queue.queue
         if let previewView {
+            previewView.sessionQueue = self.queue
             previewView.setSession(session.session, autoConnect: !session.hasMultiCam)
+        }
+        if let secondaryPreviewView {
+            secondaryPreviewView.sessionQueue = self.queue
         }
         if let secondaryPreviewView, session.hasMultiCam {
             secondaryPreviewView.setSession(session.session, autoConnect: false)
@@ -839,6 +946,47 @@ final class LegacyCamera: CameraProtocol {
         }
     }
     
+    func setCaptureMode(_ mode: CameraCaptureMode) -> Signal<Void, NoError> {
+        return Signal { subscriber in
+            self.queue.async {
+                if let context = self.contextRef?.takeUnretainedValue() {
+                    context.setCaptureMode(mode, completion: {
+                        subscriber.putNext(Void())
+                        subscriber.putCompletion()
+                    })
+                } else {
+                    subscriber.putNext(Void())
+                    subscriber.putCompletion()
+                }
+            }
+            return EmptyDisposable
+        }
+    }
+    
+    func beginExposureTargetBiasChange() {
+        self.queue.async {
+            if let context = self.contextRef?.takeUnretainedValue() {
+                context.beginExposureTargetBiasChange()
+            }
+        }
+    }
+    
+    func setExposureTargetBias(_ bias: CGFloat) {
+        self.queue.async {
+            if let context = self.contextRef?.takeUnretainedValue() {
+                context.setExposureTargetBias(bias)
+            }
+        }
+    }
+    
+    func endExposureTargetBiasChange() {
+        self.queue.async {
+            if let context = self.contextRef?.takeUnretainedValue() {
+                context.endExposureTargetBiasChange()
+            }
+        }
+    }
+    
     func takePhoto() -> Signal<PhotoCaptureResult, NoError> {
         return Signal { subscriber in
             let disposable = MetaDisposable()
@@ -868,6 +1016,34 @@ final class LegacyCamera: CameraProtocol {
                 }
             }
             return disposable
+        }
+    }
+    
+    func startRecording(captureMode: CameraCaptureMode) -> Signal<CameraRecordingData, CameraRecordingError> {
+        return Signal { subscriber in
+            let disposable = MetaDisposable()
+            let started = CameraOneShot()
+            self.queue.async {
+                guard let context = self.contextRef?.takeUnretainedValue() else {
+                    subscriber.putCompletion()
+                    return
+                }
+                context.setCaptureMode(captureMode, completion: {
+                    guard started.claim() else {
+                        subscriber.putCompletion()
+                        return
+                    }
+                    disposable.set(context.startRecording().start(next: { value in
+                        subscriber.putNext(value)
+                    }, completed: {
+                        subscriber.putCompletion()
+                    }))
+                })
+            }
+            return ActionDisposable {
+                let _ = started.claim()
+                disposable.dispose()
+            }
         }
     }
     
@@ -928,6 +1104,14 @@ final class LegacyCamera: CameraProtocol {
         }
     }
     
+    func setZoomScale(_ zoomScale: CGFloat) {
+        self.queue.async {
+            if let context = self.contextRef?.takeUnretainedValue() {
+                context.setZoomScale(zoomScale)
+            }
+        }
+    }
+
     func rampZoom(_ zoomLevel: CGFloat, rate: CGFloat) {
         self.queue.async {
             if let context = self.contextRef?.takeUnretainedValue() {

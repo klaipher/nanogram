@@ -29,6 +29,7 @@ swift_library(
         "//submodules/ImageCompression",
         "//submodules/PassRenderer:PassRenderer",
         "//submodules/ImageDecodeSizing",
+        "//submodules/HLSPlayback:HLSPlayback",
     ],
     visibility = [
         "//visibility:public",

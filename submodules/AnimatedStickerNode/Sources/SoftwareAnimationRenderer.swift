@@ -99,7 +99,10 @@ final class SoftwareAnimationRenderer: ASDisplayNode, AnimationRenderer {
         
         if templateImageSupport {
             self.setViewBlock({
-                return DirectFrameImageView()
+                let view = DirectFrameImageView()
+                view.isAccessibilityElement = false
+                view.accessibilityElementsHidden = true
+                return view
             })
         }
     }
@@ -337,7 +340,7 @@ final class SoftwareAnimationRenderer: ASDisplayNode, AnimationRenderer {
                 highlightedContentNode.alpha = 1.0
             } else {
                 let highlightedContentNode = ASDisplayNode(viewBlock: {
-                    return UIImageView()
+                    return makeAnimationRendererImageView()
                 }, didLoad: nil)
                 highlightedContentNode.displaysAsynchronously = false
                 
@@ -357,4 +360,13 @@ final class SoftwareAnimationRenderer: ASDisplayNode, AnimationRenderer {
             })
         }
     }
+}
+
+/// The view an animation renders its frames into. It is never a VoiceOver element of its own: an animation that means
+/// something is described by its owner, and an unlabelled image is noise.
+func makeAnimationRendererImageView() -> UIImageView {
+    let view = UIImageView()
+    view.isAccessibilityElement = false
+    view.accessibilityElementsHidden = true
+    return view
 }

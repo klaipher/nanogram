@@ -476,6 +476,15 @@ static NSString *ffmpegStreamInfoProbeCodecWhitelist(const AVFormatContext *cont
     return ffmpegAvcCSignalsReorderDelay(avcC.bytes, (int)avcC.length);
 }
 
+- (void)discardStreamsNotOfType:(FFMpegAVFormatStreamType)type {
+    enum AVMediaType mediaType = type == FFMpegAVFormatStreamTypeAudio ? AVMEDIA_TYPE_AUDIO : AVMEDIA_TYPE_VIDEO;
+    for (unsigned int i = 0; i < _impl->nb_streams; i++) {
+        if (_impl->streams[i]->codecpar->codec_type != mediaType) {
+            _impl->streams[i]->discard = AVDISCARD_ALL;
+        }
+    }
+}
+
 - (void)seekFrameForStreamIndex:(int32_t)streamIndex pts:(int64_t)pts positionOnKeyframe:(bool)positionOnKeyframe {
     int options = AVSEEK_FLAG_FRAME | AVSEEK_FLAG_BACKWARD;
     if (!positionOnKeyframe) {

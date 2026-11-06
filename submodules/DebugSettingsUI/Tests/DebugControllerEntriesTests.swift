@@ -27,7 +27,13 @@ final class DebugControllerEntriesTests: XCTestCase {
         settings.checkSerializedData = on
         settings.useInputDecEngine = on
         settings.forceListViewImplChatBackend = on
-        settings.forceRLottieBackend = on
+        settings.coreListScrollTrace = on
+        settings.chatMediaEditorLegacy = on
+        settings.mediaGridLegacy = on
+        settings.sharedMediaGridLegacy = on
+        settings.storyLegacyVideoWriter = on
+        settings.chatLegacyVideoWriter = on
+        settings.chatSideListLegacy = on
         settings.respectSystemMicrophone = on
         settings.springSendAnimation = on
         settings.fakeWalletTransfers = on
@@ -148,7 +154,6 @@ final class ExperimentalUISettingsCompatibilityTests: XCTestCase {
         XCTAssertTrue(settings.localTranscription)
         XCTAssertTrue(settings.disableImageContentAnalysis)
         XCTAssertTrue(settings.crashOnMemoryPressure)
-        XCTAssertTrue(settings.forceRLottieBackend)
         XCTAssertEqual(settings.useModernVideoMessagePipeline, false)
         XCTAssertEqual(settings.videoMessageCameraMode, .legacy)
         XCTAssertEqual(settings.stickerRendererMode, .gpuLarge)

@@ -4,7 +4,6 @@ import XCTest
 import SwiftSignalKit
 import AsyncDisplayKit
 import Display
-import LottieSettings
 import MediaResources
 @testable import AnimatedStickerNode
 
@@ -67,8 +66,8 @@ final class DirectStickerFirstUseTests: XCTestCase {
         var hasImage = false
     }
 
-    private func playOnce(path: String, cachePathPrefix: String, size: Int, lottieSettings: LottieRenderingSettings) -> Playback {
-        let node = DefaultAnimatedStickerNodeImpl(lottieSettings: lottieSettings)
+    private func playOnce(path: String, cachePathPrefix: String, size: Int) -> Playback {
+        let node = DefaultAnimatedStickerNodeImpl()
         node.frame = CGRect(x: 0.0, y: 0.0, width: CGFloat(size) / 2.0, height: CGFloat(size) / 2.0)
         var playback = Playback()
         node.frameUpdated = { index, _ in
@@ -91,17 +90,17 @@ final class DirectStickerFirstUseTests: XCTestCase {
         return playback
     }
 
-    private func checkFirstAndSecondUse(lottieSettings: LottieRenderingSettings) throws {
+    private func checkFirstAndSecondUse() throws {
         let path = try self.stickerPath()
-        let prefix = self.directory + "/reaction-\(lottieSettings.backend)"
+        let prefix = self.directory + "/reaction-tlottie"
         let size = 240
 
-        let first = self.playOnce(path: path, cachePathPrefix: prefix, size: size, lottieSettings: lottieSettings)
+        let first = self.playOnce(path: path, cachePathPrefix: prefix, size: size)
         // Frames are stored asynchronously; let them land before the second use.
         let _ = spin(timeout: 2.0, { false })
-        let second = self.playOnce(path: path, cachePathPrefix: prefix, size: size, lottieSettings: lottieSettings)
+        let second = self.playOnce(path: path, cachePathPrefix: prefix, size: size)
 
-        FileHandle.standardError.write(Data("FIRSTUSE \(lottieSettings.backend) first: frames=\(first.frames.count) started=\(first.started) completed=\(first.completed) image=\(first.hasImage); second: frames=\(second.frames.count) started=\(second.started) completed=\(second.completed) image=\(second.hasImage)\n".utf8))
+        FileHandle.standardError.write(Data("FIRSTUSE tlottie first: frames=\(first.frames.count) started=\(first.started) completed=\(first.completed) image=\(first.hasImage); second: frames=\(second.frames.count) started=\(second.started) completed=\(second.completed) image=\(second.hasImage)\n".utf8))
 
         XCTAssertTrue(first.started, "first use never showed a frame")
         XCTAssertTrue(first.completed, "first use never finished")
@@ -113,10 +112,6 @@ final class DirectStickerFirstUseTests: XCTestCase {
     }
 
     func testFirstAndSecondUsePlayEveryFrameWithTLottie() throws {
-        try self.checkFirstAndSecondUse(lottieSettings: LottieRenderingSettings(backend: .tlottie))
-    }
-
-    func testFirstAndSecondUsePlayEveryFrameWithRLottie() throws {
-        try self.checkFirstAndSecondUse(lottieSettings: LottieRenderingSettings(backend: .rlottie))
+        try self.checkFirstAndSecondUse()
     }
 }

@@ -1,7 +1,7 @@
 # How Nanogram for iOS differs from Telegram-iOS
 
 Upstream: https://github.com/TelegramMessenger/Telegram-iOS, imported as one snapshot commit per `release-*` tag on the
-branch `upstream` (now `release-13.1.2`, 0650eac5). Ours: `main` (443 commits ahead at 2026-11-05, 17.8k files differ,
+branch `upstream` (now `release-13.2`, 5083532f). Ours: `main` (443 commits ahead at 2026-11-05, 17.8k files differ,
 mostly the history-free import layout and generated files). Format: [docs/fork-records.md](docs/fork-records.md).
 History of builds: [CHANGELOG.md](CHANGELOG.md). Last checked against `git diff upstream..main --stat`: 2026-11-05.
 
@@ -121,3 +121,11 @@ marked (check) were not re-verified against the code; correct them on the next c
 - Upstream: `ChatHistoryNavigationButton*` and `GlassBackgroundComponent.swift` are upstream files (the container, the view init and `update` changed in a few places); the rest is new.
 - Sync: re-apply the container hosting if upstream changes how `ChatHistoryNavigationButtons` adds its buttons.
 - Not done: replacing Telegram's navigation bar, tab bar or edge effect with system ones, and the iOS 26 luma clamp, are owner decisions.
+
+### Differences added or changed by the 13.2 merge (2026-11-06)
+- rlottie: upstream removed it and `LottieSettings`; iOS now renders only with tlottie. Our rlottie fork and `submodules/rlottie` wrappers stay for the macOS app and the Watch app (`docs/mac-core-paths.txt`). Upstream: no.
+- Glass: iOS 26 keeps a fixed luma range (light 0.8/0.801, dark 0/0.15); iOS 27 takes upstream's adaptive ranges and installs the luma clamp through `UISDFBackdropView`. Where: `GlassBackgroundView.adaptiveLumaRange`, `UIViewController+Navigation.m`.
+- HLS: upstream's native player replaces the JS player we had optimised; our zero-copy `MediaBoxRanges` parts are still read by the FFmpeg reader (with `startAt`), but the native part store writes temp files (open: use our parts for cached segments).
+- State sync: the new `State/Sync/` layout is upstream's; our write reductions (`UnchangedStateUpdates`) and `StaleChannelDiagnostics` hooks are not wired into it yet.
+- Kept removed (ours): in-app updater, AppCenter, notification content extension, share-to-Telegram-team crash log.
+- Debug Settings: upstream's seven new "legacy"/trace switches added to our curated list; widget debug tools, pts-limit override and remove-models not taken.

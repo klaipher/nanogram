@@ -1,5 +1,4 @@
 import Foundation
-import LottieSettings
 import UIKit
 import Postbox
 import SwiftSignalKit
@@ -23,62 +22,6 @@ import LegacyImpl
 import UniversalMediaPlayer
 import RangeSet
 import PassRenderer
-
-// The media-representation pipeline has an Account but no AccountContext, so
-// the backend is read straight from app configuration — the same shape
-// TelegramAccountAuxiliaryMethods uses for
-// ios_killswitch_disable_modern_video_pipeline. The Debug Settings switch is
-// deliberately not consulted here: there is no SharedAccountContext on this
-// path, and a cached representation outlives the toggle anyway.
-//
-// Each conversion used to open a Postbox transaction (a write lock) just to read the app
-// configuration. The value is now kept from one live preferences view per Postbox and read from
-// memory; the view follows server changes to the killswitch.
-private final class LottieRenderingSettingsCache {
-    private final class Entry {
-        weak var postbox: Postbox?
-        let settings = Promise<LottieRenderingSettings>()
-
-        init(postbox: Postbox) {
-            self.postbox = postbox
-            self.settings.set(postbox.preferencesView(keys: [PreferencesKeys.appConfiguration])
-            |> map { view -> LottieRenderingSettings in
-                let appConfiguration = view.values[PreferencesKeys.appConfiguration]?.get(AppConfiguration.self) ?? AppConfiguration.defaultValue
-                if let data = appConfiguration.data, let _ = data["ios_killswitch_disable_tlottie"] {
-                    return LottieRenderingSettings(backend: .rlottie)
-                }
-                return LottieRenderingSettings(backend: .tlottie)
-            })
-        }
-    }
-
-    static let shared = LottieRenderingSettingsCache()
-
-    private let lock = NSLock()
-    private var entries: [ObjectIdentifier: Entry] = [:]
-
-    func settings(postbox: Postbox) -> Signal<LottieRenderingSettings, NoError> {
-        self.lock.lock()
-        // A released Postbox took its view with it; drop its entry.
-        if self.entries.values.contains(where: { $0.postbox == nil }) {
-            self.entries = self.entries.filter { $0.value.postbox != nil }
-        }
-        let key = ObjectIdentifier(postbox)
-        let entry: Entry
-        if let current = self.entries[key], current.postbox === postbox {
-            entry = current
-        } else {
-            entry = Entry(postbox: postbox)
-            self.entries[key] = entry
-        }
-        self.lock.unlock()
-        return entry.settings.get() |> take(1)
-    }
-}
-
-private func lottieRenderingSettings(postbox: Postbox) -> Signal<LottieRenderingSettings, NoError> {
-    return LottieRenderingSettingsCache.shared.settings(postbox: postbox)
-}
 
 public func fetchCachedResourceRepresentation(account: Account, resource: MediaResource, representation: CachedMediaResourceRepresentation) -> Signal<CachedMediaResourceRepresentationResult, NoError> {
     if let representation = representation as? CachedStickerAJpegRepresentation {
@@ -217,15 +160,12 @@ public func fetchCachedResourceRepresentation(account: Account, resource: MediaR
             }
         }
     } else if let representation = representation as? CachedAnimatedStickerRepresentation {
-        return lottieRenderingSettings(postbox: account.postbox)
-        |> mapToSignal { lottieSettings -> Signal<CachedMediaResourceRepresentationResult, NoError> in
-            return account.postbox.mediaBox.resourceData(resource, option: .complete(waitUntilFetchStatus: false))
-            |> mapToSignal { data -> Signal<CachedMediaResourceRepresentationResult, NoError> in
-                if !data.complete {
-                    return .complete()
-                }
-                return fetchAnimatedStickerRepresentation(resource: resource, resourceData: data, representation: representation, lottieSettings: lottieSettings)
+        return account.postbox.mediaBox.resourceData(resource, option: .complete(waitUntilFetchStatus: false))
+        |> mapToSignal { data -> Signal<CachedMediaResourceRepresentationResult, NoError> in
+            if !data.complete {
+                return .complete()
             }
+            return fetchAnimatedStickerRepresentation(resource: resource, resourceData: data, representation: representation)
         }
     } else if let representation = representation as? CachedVideoStickerRepresentation {
         return account.postbox.mediaBox.resourceData(resource, option: .complete(waitUntilFetchStatus: false))
@@ -236,15 +176,12 @@ public func fetchCachedResourceRepresentation(account: Account, resource: MediaR
             return fetchVideoStickerRepresentation(resource: resource, resourceData: data, representation: representation)
         }
     } else if let representation = representation as? CachedAnimatedStickerFirstFrameRepresentation {
-        return lottieRenderingSettings(postbox: account.postbox)
-        |> mapToSignal { lottieSettings -> Signal<CachedMediaResourceRepresentationResult, NoError> in
-            return account.postbox.mediaBox.resourceData(resource, option: .complete(waitUntilFetchStatus: false))
-            |> mapToSignal { data -> Signal<CachedMediaResourceRepresentationResult, NoError> in
-                if !data.complete {
-                    return .complete()
-                }
-                return fetchAnimatedStickerFirstFrameRepresentation(resource: resource, resourceData: data, representation: representation, lottieSettings: lottieSettings)
+        return account.postbox.mediaBox.resourceData(resource, option: .complete(waitUntilFetchStatus: false))
+        |> mapToSignal { data -> Signal<CachedMediaResourceRepresentationResult, NoError> in
+            if !data.complete {
+                return .complete()
             }
+            return fetchAnimatedStickerFirstFrameRepresentation(resource: resource, resourceData: data, representation: representation)
         }
     } else if let resource = resource as? YoutubeEmbedStoryboardMediaResource, let _ = representation as? YoutubeEmbedStoryboardMediaResourceRepresentation {
         return fetchYoutubeEmbedStoryboardResource(resource: resource)
@@ -663,10 +600,10 @@ private func fetchCachedAlbumArtworkRepresentation(resource: MediaResource, data
     }) |> runOn(Queue.concurrentDefaultQueue())
 }
 
-private func fetchAnimatedStickerFirstFrameRepresentation(resource: MediaResource, resourceData: MediaResourceData, representation: CachedAnimatedStickerFirstFrameRepresentation, lottieSettings: LottieRenderingSettings) -> Signal<CachedMediaResourceRepresentationResult, NoError> {
+private func fetchAnimatedStickerFirstFrameRepresentation(resource: MediaResource, resourceData: MediaResourceData, representation: CachedAnimatedStickerFirstFrameRepresentation) -> Signal<CachedMediaResourceRepresentationResult, NoError> {
     return Signal({ subscriber in
         if let data = try? Data(contentsOf: URL(fileURLWithPath: resourceData.path), options: [.mappedIfSafe]) {
-            return fetchCompressedLottieFirstFrameAJpeg(data: data, size: CGSize(width: CGFloat(representation.width), height: CGFloat(representation.height)), fitzModifier: representation.fitzModifier, cacheKey: "\(resource.id.stringRepresentation)-\(representation.uniqueId)", lottieSettings: lottieSettings).start(next: { file in
+            return fetchCompressedLottieFirstFrameAJpeg(data: data, size: CGSize(width: CGFloat(representation.width), height: CGFloat(representation.height)), fitzModifier: representation.fitzModifier).start(next: { file in
                 subscriber.putNext(.tempFile(file))
                 subscriber.putCompletion()
             })
@@ -677,10 +614,10 @@ private func fetchAnimatedStickerFirstFrameRepresentation(resource: MediaResourc
     |> runOn(Queue.concurrentDefaultQueue())
 }
 
-private func fetchAnimatedStickerRepresentation(resource: MediaResource, resourceData: MediaResourceData, representation: CachedAnimatedStickerRepresentation, lottieSettings: LottieRenderingSettings) -> Signal<CachedMediaResourceRepresentationResult, NoError> {
+private func fetchAnimatedStickerRepresentation(resource: MediaResource, resourceData: MediaResourceData, representation: CachedAnimatedStickerRepresentation) -> Signal<CachedMediaResourceRepresentationResult, NoError> {
     return Signal({ subscriber in
         if let data = try? Data(contentsOf: URL(fileURLWithPath: resourceData.path), options: [.mappedIfSafe]) {
-            return cacheAnimatedStickerFrames(data: data, size: CGSize(width: CGFloat(representation.width), height: CGFloat(representation.height)), fitzModifier: representation.fitzModifier, cacheKey: "\(resource.id.stringRepresentation)-\(representation.uniqueId)", lottieSettings: lottieSettings).start(next: { value in
+            return cacheAnimatedStickerFrames(data: data, size: CGSize(width: CGFloat(representation.width), height: CGFloat(representation.height)), fitzModifier: representation.fitzModifier).start(next: { value in
                 subscriber.putNext(value)
             }, completed: {
                 subscriber.putCompletion()

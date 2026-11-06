@@ -1,5 +1,4 @@
 import Foundation
-import LottieSettings
 import UIKit
 import AsyncDisplayKit
 import Display
@@ -147,6 +146,26 @@ public final class ReactionNode: ASDisplayNode, ReactionItemNode {
     
     private var starsEffectLayer: StarsButtonEffectLayer?
     
+    /// VoiceOver: a custom emoji reaction is named by its alt emoji, decoded from the file only when VoiceOver asks.
+    override public var accessibilityLabel: String? {
+        get {
+            if let label = super.accessibilityLabel, !label.isEmpty {
+                return label
+            }
+            guard case .custom = self.item.reaction.rawValue else {
+                return nil
+            }
+            for attribute in self.item.stillAnimation._parse().attributes {
+                if case let .CustomEmoji(_, _, alt, _) = attribute, !alt.isEmpty {
+                    return alt
+                }
+            }
+            return nil
+        } set(value) {
+            super.accessibilityLabel = value
+        }
+    }
+    
     private var animateInAnimationNode: AnimatedStickerNode?
     private var staticAnimationPlaceholderView: UIImageView?
     private let staticAnimationNode: AnimatedStickerNode
@@ -172,6 +191,7 @@ public final class ReactionNode: ASDisplayNode, ReactionItemNode {
     var didSetupStillAnimation: Bool = false
         
     var expandedAnimationDidBegin: (() -> Void)?
+    private(set) var didBeginExpandedAnimation: Bool = false
     
     var currentFrameIndex: Int {
         return self.staticAnimationNode.currentFrameIndex
@@ -201,11 +221,11 @@ public final class ReactionNode: ASDisplayNode, ReactionItemNode {
         self.selectionView = UIView()
         self.selectionView?.backgroundColor = theme.chat.inputMediaPanel.panelContentControlVibrantOverlayColor.mixedWith(theme.contextMenu.backgroundColor.withMultipliedAlpha(0.4), alpha: 0.5)
         
-        self.staticAnimationNode = self.useDirectRendering ? DirectAnimatedStickerNode(lottieSettings: self.context.lottieRenderingSettings) : DefaultAnimatedStickerNodeImpl(rendererMode: .reactions, lottieSettings: self.context.lottieRenderingSettings)
+        self.staticAnimationNode = self.useDirectRendering ? DirectAnimatedStickerNode() : DefaultAnimatedStickerNodeImpl(rendererMode: .reactions)
     
         if hasAppearAnimation {
             self.staticAnimationNode.isHidden = true
-            self.animateInAnimationNode = self.useDirectRendering ? DirectAnimatedStickerNode(lottieSettings: self.context.lottieRenderingSettings) : DefaultAnimatedStickerNodeImpl(rendererMode: .reactions, lottieSettings: self.context.lottieRenderingSettings)
+            self.animateInAnimationNode = self.useDirectRendering ? DirectAnimatedStickerNode() : DefaultAnimatedStickerNodeImpl(rendererMode: .reactions)
         }
         
         super.init()
@@ -352,7 +372,7 @@ public final class ReactionNode: ASDisplayNode, ReactionItemNode {
         if isExpanded && !self.hasAppearAnimation {
             self.staticAnimationNode.play(firstFrame: false, fromIndex: 0)
         } else if isExpanded, self.animationNode == nil {
-            let animationNode: AnimatedStickerNode = self.useDirectRendering ? DirectAnimatedStickerNode(lottieSettings: self.context.lottieRenderingSettings) : DefaultAnimatedStickerNodeImpl(rendererMode: .reactions, lottieSettings: self.context.lottieRenderingSettings)
+            let animationNode: AnimatedStickerNode = self.useDirectRendering ? DirectAnimatedStickerNode() : DefaultAnimatedStickerNodeImpl(rendererMode: .reactions)
             animationNode.automaticallyLoadFirstFrame = true
             self.animationNode = animationNode
             self.addSubnode(animationNode)
@@ -370,6 +390,7 @@ public final class ReactionNode: ASDisplayNode, ReactionItemNode {
                 if !didReportStarted {
                     didReportStarted = true
                     Logger.shared.log("ReactionNode", firstFrameLog.firstFrameLine(now: CFAbsoluteTimeGetCurrent()) + ", still icon hidden")
+                    self?.didBeginExpandedAnimation = true
                     self?.expandedAnimationDidBegin?()
                     self?.expandedIconHandOver.expandedAnimationStarted()
                 }
@@ -459,7 +480,7 @@ public final class ReactionNode: ASDisplayNode, ReactionItemNode {
         if self.animationNode == nil {
             if isPreviewing {
                 if self.stillAnimationNode == nil {
-                    let stillAnimationNode: AnimatedStickerNode = self.useDirectRendering ? DirectAnimatedStickerNode(lottieSettings: self.context.lottieRenderingSettings) : DefaultAnimatedStickerNodeImpl(rendererMode: .reactions, lottieSettings: self.context.lottieRenderingSettings)
+                    let stillAnimationNode: AnimatedStickerNode = self.useDirectRendering ? DirectAnimatedStickerNode() : DefaultAnimatedStickerNodeImpl(rendererMode: .reactions)
                     self.stillAnimationNode = stillAnimationNode
                     self.addSubnode(stillAnimationNode)
                     

@@ -54,7 +54,13 @@ public struct ExperimentalUISettings: Codable, Equatable {
     /// Debug Settings ▸ "Chat: old list (ListViewImpl)". A device-local opt-out of CoreList for the chat history,
     /// which uses CoreList by default. Read when a chat's history list is created.
     public var forceListViewImplChatBackend: Bool
-    public var forceRLottieBackend: Bool
+    public var coreListScrollTrace: Bool
+    public var chatMediaEditorLegacy: Bool
+    public var mediaGridLegacy: Bool
+    public var sharedMediaGridLegacy: Bool
+    public var storyLegacyVideoWriter: Bool
+    public var chatLegacyVideoWriter: Bool
+    public var chatSideListLegacy: Bool
     public var respectSystemMicrophone: Bool
     public var springSendAnimation: Bool
     /// Debug Settings ▸ "Wallet: fake transfers", offered to dev accounts only (and only honoured for them): a send
@@ -122,7 +128,13 @@ public struct ExperimentalUISettings: Codable, Equatable {
             checkSerializedData: false,
             useInputDecEngine: false,
             forceListViewImplChatBackend: false,
-            forceRLottieBackend: false,
+            coreListScrollTrace: false,
+            chatMediaEditorLegacy: false,
+            mediaGridLegacy: false,
+            sharedMediaGridLegacy: false,
+            storyLegacyVideoWriter: false,
+            chatLegacyVideoWriter: false,
+            chatSideListLegacy: false,
             respectSystemMicrophone: false,
             springSendAnimation: false,
             fakeWalletTransfers: false,
@@ -150,7 +162,13 @@ public struct ExperimentalUISettings: Codable, Equatable {
         checkSerializedData: Bool,
         useInputDecEngine: Bool,
         forceListViewImplChatBackend: Bool,
-        forceRLottieBackend: Bool,
+        coreListScrollTrace: Bool,
+        chatMediaEditorLegacy: Bool,
+        mediaGridLegacy: Bool,
+        sharedMediaGridLegacy: Bool,
+        storyLegacyVideoWriter: Bool,
+        chatLegacyVideoWriter: Bool,
+        chatSideListLegacy: Bool,
         respectSystemMicrophone: Bool,
         springSendAnimation: Bool,
         fakeWalletTransfers: Bool,
@@ -187,7 +205,13 @@ public struct ExperimentalUISettings: Codable, Equatable {
         self.checkSerializedData = checkSerializedData
         self.useInputDecEngine = useInputDecEngine
         self.forceListViewImplChatBackend = forceListViewImplChatBackend
-        self.forceRLottieBackend = forceRLottieBackend
+        self.coreListScrollTrace = coreListScrollTrace
+        self.chatMediaEditorLegacy = chatMediaEditorLegacy
+        self.mediaGridLegacy = mediaGridLegacy
+        self.sharedMediaGridLegacy = sharedMediaGridLegacy
+        self.storyLegacyVideoWriter = storyLegacyVideoWriter
+        self.chatLegacyVideoWriter = chatLegacyVideoWriter
+        self.chatSideListLegacy = chatSideListLegacy
         self.respectSystemMicrophone = respectSystemMicrophone
         self.springSendAnimation = springSendAnimation
         self.fakeWalletTransfers = fakeWalletTransfers
@@ -236,7 +260,13 @@ public struct ExperimentalUISettings: Codable, Equatable {
         // decode failure here would reset every other experimental flag the user has set.
         self.useInputDecEngine = try container.decodeIfPresent(Bool.self, forKey: "useInputDecEngine") ?? false
         self.forceListViewImplChatBackend = try container.decodeIfPresent(Bool.self, forKey: "forceListViewImplChatBackend") ?? false
-        self.forceRLottieBackend = try container.decodeIfPresent(Bool.self, forKey: "forceRLottieBackend") ?? false
+        self.coreListScrollTrace = try container.decodeIfPresent(Bool.self, forKey: "coreListScrollTrace") ?? false
+        self.chatMediaEditorLegacy = try container.decodeIfPresent(Bool.self, forKey: "chatMediaEditorLegacy") ?? false
+        self.mediaGridLegacy = try container.decodeIfPresent(Bool.self, forKey: "mediaGridLegacy") ?? false
+        self.sharedMediaGridLegacy = try container.decodeIfPresent(Bool.self, forKey: "sharedMediaGridLegacy") ?? false
+        self.storyLegacyVideoWriter = try container.decodeIfPresent(Bool.self, forKey: "storyLegacyVideoWriter") ?? false
+        self.chatLegacyVideoWriter = try container.decodeIfPresent(Bool.self, forKey: "chatLegacyVideoWriter") ?? false
+        self.chatSideListLegacy = try container.decodeIfPresent(Bool.self, forKey: "chatSideListLegacy") ?? false
         self.respectSystemMicrophone = try container.decodeIfPresent(Bool.self, forKey: "respectSystemMicrophone") ?? false
         self.springSendAnimation = try container.decodeIfPresent(Bool.self, forKey: "springSendAnimation") ?? false
         self.fakeWalletTransfers = try container.decodeIfPresent(Bool.self, forKey: "fakeWalletTransfers") ?? false
@@ -296,7 +326,13 @@ public struct ExperimentalUISettings: Codable, Equatable {
         try container.encodeIfPresent(self.checkSerializedData, forKey: "checkSerializedData")
         try container.encodeIfPresent(self.useInputDecEngine, forKey: "useInputDecEngine")
         try container.encode(self.forceListViewImplChatBackend, forKey: "forceListViewImplChatBackend")
-        try container.encodeIfPresent(self.forceRLottieBackend, forKey: "forceRLottieBackend")
+        try container.encodeIfPresent(self.coreListScrollTrace, forKey: "coreListScrollTrace")
+        try container.encodeIfPresent(self.chatMediaEditorLegacy, forKey: "chatMediaEditorLegacy")
+        try container.encodeIfPresent(self.mediaGridLegacy, forKey: "mediaGridLegacy")
+        try container.encodeIfPresent(self.sharedMediaGridLegacy, forKey: "sharedMediaGridLegacy")
+        try container.encodeIfPresent(self.storyLegacyVideoWriter, forKey: "storyLegacyVideoWriter")
+        try container.encodeIfPresent(self.chatLegacyVideoWriter, forKey: "chatLegacyVideoWriter")
+        try container.encodeIfPresent(self.chatSideListLegacy, forKey: "chatSideListLegacy")
         try container.encodeIfPresent(self.respectSystemMicrophone, forKey: "respectSystemMicrophone")
         try container.encodeIfPresent(self.springSendAnimation, forKey: "springSendAnimation")
         try container.encodeIfPresent(self.fakeWalletTransfers, forKey: "fakeWalletTransfers")

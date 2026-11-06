@@ -59,11 +59,11 @@ swift_library(
         "//submodules/AppBundle",
         "//submodules/Camera",
         "//submodules/Camera:CameraMultitaskingPolicy",
+        "//submodules/Display:Display",
         "//submodules/GZip",
         "//submodules/SSignalKit/SwiftSignalKit:SwiftSignalKit",
         "//submodules/Utils/DeviceModel",
         "//submodules/LottieBinding:LottieBinding",
-        "//submodules/LottieSettings:LottieSettings",
     ],
     visibility = [
         "//visibility:public",

@@ -88,3 +88,5 @@ submodules/TelegramApi/Tests/SwiftPMGenerated/
 # Local development (see docs/local-development.md)
 /user.bazelrc
 /build-system/dev-configuration.json
+/Telegram.app/
+build/accessibility/
