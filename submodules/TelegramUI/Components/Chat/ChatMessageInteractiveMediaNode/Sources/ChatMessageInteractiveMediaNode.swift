@@ -2329,7 +2329,15 @@ public final class ChatMessageInteractiveMediaNode: ASDisplayNode, GalleryItemTr
                             
                             if let updateImageSignal = updateImageSignal {
                                 strongSelf.imageNode.captureProtected = associatedData.isCopyProtectionEnabled || message.isCopyProtected() || isExtendedMedia
-                                strongSelf.imageNode.setSignal(updateImageSignal(synchronousLoads, false), attemptSynchronously: synchronousLoads)
+                                // A synchronous load of an undecoded photo costs 30-44 ms on main; a media-heavy first window
+                                // has several. Loads are synchronous while the burst's budget lasts, then off the main thread.
+                                let loadStart = CACurrentMediaTime()
+                                let loadSynchronously = synchronousLoads && SynchronousDecodeBudget.chatMedia.allowsSynchronousLoad(now: loadStart)
+                                strongSelf.imageNode.setSignal(updateImageSignal(loadSynchronously, false), attemptSynchronously: loadSynchronously)
+                                if loadSynchronously {
+                                    let loadEnd = CACurrentMediaTime()
+                                    SynchronousDecodeBudget.chatMedia.recordSynchronousLoad(duration: loadEnd - loadStart, now: loadEnd)
+                                }
 
                                 var imageDimensions: CGSize?
                                 if let image = media as? TelegramMediaImage, let dimensions = largestImageRepresentation(image.representations)?.dimensions {
