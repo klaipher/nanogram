@@ -78,6 +78,8 @@ class ChatHistoryNavigationButtonNode: ContextControllerSourceNode {
         
         self.badgeBackgroundView = UIView()
         self.badgeBackgroundView.layer.cornerCurve = .circular
+        // The badge is always 20 pt high: round from the start, so it does not pop in square while its corner radius animates.
+        self.badgeBackgroundView.layer.cornerRadius = 10.0
         self.badgeBackgroundView.backgroundColor = theme.chat.inputPanel.actionControlFillColor
         self.badgeBackgroundView.isUserInteractionEnabled = false
         self.badgeBackgroundView.alpha = 0.0
