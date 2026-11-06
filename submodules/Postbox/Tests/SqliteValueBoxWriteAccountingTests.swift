@@ -142,4 +142,87 @@ final class SqliteValueBoxWriteAccountingTests: XCTestCase {
             valueBox.internalClose()
         }
     }
+
+    private func writeFakeWal(path: String, pages: [UInt32], pageSize: Int = 4096) {
+        var data = Data(count: 32)
+        for page in pages {
+            var header = Data(count: 24)
+            header[0] = UInt8((page >> 24) & 0xff)
+            header[1] = UInt8((page >> 16) & 0xff)
+            header[2] = UInt8((page >> 8) & 0xff)
+            header[3] = UInt8(page & 0xff)
+            data.append(header)
+            data.append(Data(count: pageSize))
+        }
+        FileManager.default.createFile(atPath: path, contents: data)
+    }
+
+    /// A checkpoint writes the newest copy of each page once, however many frames carry that page.
+    func testCheckpointCountsDistinctPagesNotFrames() {
+        let directory = NSTemporaryDirectory() + "SqliteWalDistinct-" + UUID().uuidString
+        try? FileManager.default.createDirectory(atPath: directory, withIntermediateDirectories: true)
+        defer { let _ = try? FileManager.default.removeItem(atPath: directory) }
+        let databasePath = directory + "/db_sqlite"
+        self.writeFakeWal(path: databasePath + "-wal", pages: [1, 2, 1, 1, 3, 2, 1, 4])
+        let accounting = SqliteWalWriteAccounting(databasePath: databasePath, handle: nil)
+        let category = accounting.checkpointCategory
+        let before = DiskWriteAccounting.shared.bytesWritten(category)
+        accounting.checkpointed(backfilledFrames: 8)
+        XCTAssertEqual(DiskWriteAccounting.shared.bytesWritten(category) - before, Int64(4 * 4096))
+    }
+
+    /// Only the frames backfilled since the previous checkpoint are looked at; pages already copied are not counted
+    /// again unless a newer frame carries them.
+    func testSecondCheckpointCountsOnlyNewFrames() {
+        let directory = NSTemporaryDirectory() + "SqliteWalDelta-" + UUID().uuidString
+        try? FileManager.default.createDirectory(atPath: directory, withIntermediateDirectories: true)
+        defer { let _ = try? FileManager.default.removeItem(atPath: directory) }
+        let databasePath = directory + "/db_sqlite"
+        self.writeFakeWal(path: databasePath + "-wal", pages: [1, 2, 3, 3, 3, 9, 9])
+        let accounting = SqliteWalWriteAccounting(databasePath: databasePath, handle: nil)
+        let category = accounting.checkpointCategory
+        let before = DiskWriteAccounting.shared.bytesWritten(category)
+        accounting.checkpointed(backfilledFrames: 3)
+        XCTAssertEqual(DiskWriteAccounting.shared.bytesWritten(category) - before, Int64(3 * 4096))
+        accounting.checkpointed(backfilledFrames: 7)
+        XCTAssertEqual(DiskWriteAccounting.shared.bytesWritten(category) - before, Int64(5 * 4096))
+        accounting.checkpointed(backfilledFrames: 7)
+        XCTAssertEqual(DiskWriteAccounting.shared.bytesWritten(category) - before, Int64(5 * 4096), "nothing new to copy")
+    }
+
+    func testUnreadableWalFallsBackToTheFrameCount() {
+        let directory = NSTemporaryDirectory() + "SqliteWalMissing-" + UUID().uuidString
+        let accounting = SqliteWalWriteAccounting(databasePath: directory + "/db_sqlite", handle: nil)
+        let category = accounting.checkpointCategory
+        let before = DiskWriteAccounting.shared.bytesWritten(category)
+        accounting.checkpointed(backfilledFrames: 5)
+        XCTAssertEqual(DiskWriteAccounting.shared.bytesWritten(category) - before, Int64(5 * 4096))
+    }
+
+    /// Rewriting the same row over and over fills the WAL with copies of a few pages; the checkpoint writes those
+    /// pages once, not once per frame.
+    func testCheckpointOfARewrittenRowCountsFewPages() {
+        let queue = Queue(name: "SqliteValueBoxWriteAccountingTests.rewrite")
+        let directory = NSTemporaryDirectory() + "SqliteWalRewrite-" + UUID().uuidString
+        let basePath = directory + "/db"
+        defer { let _ = try? FileManager.default.removeItem(atPath: directory) }
+        let checkpointCategory = DiskWriteCategory.sqliteCheckpoint(database: DiskWriteCategory.databaseName(path: basePath))
+        queue.sync {
+            guard let valueBox = SqliteValueBox(basePath: basePath, queue: queue, isTemporary: true, isReadOnly: false, useCaches: true, removeDatabaseOnError: true, encryptionParameters: nil, upgradeProgress: { _ in }, inMemory: false) else {
+                XCTFail("could not open the database")
+                return
+            }
+            for i in 0 ..< 1100 {
+                valueBox.begin()
+                let key = ValueBoxKey(length: 8)
+                key.setInt64(0, value: 1)
+                valueBox.set(self.table, key: key, value: MemoryBuffer(data: Data(repeating: UInt8(i & 0xff), count: 100)))
+                valueBox.commit()
+            }
+            let bytes = DiskWriteAccounting.shared.bytesWritten(checkpointCategory)
+            XCTAssertGreaterThan(bytes, 0, "the autocheckpoint ran")
+            XCTAssertLessThanOrEqual(bytes, 20 * 4096, "about 1000 frames of a few distinct pages")
+            valueBox.internalClose()
+        }
+    }
 }
