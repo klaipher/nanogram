@@ -4,6 +4,24 @@ Newest first. Internal notes for each TestFlight build; testers see the What to 
 
 ## Unreleased
 
+## 13.1.2 (202611061452) — 2026-11-06 — 33d7d094
+
+TestFlight upload (internal testers), Enhanced Security (soft mode) on the app, NotificationService and Share (checked in the built app and in the exported App Store build). Since 202611060203 (32bafb86..33d7d094): round 4 — Debug Settings exports on a serial queue (MetricKit fix), Send Logs ▸ Call Logs, CoreList scroll path membership/attachment work, round-video recovery after the background, stale-channel diagnostics (log only), 1:1 screen share by negotiated version with thermal frame-rate steps (tgcalls 57b914d on nanogram-shared). No upstream import: release-13.2 is not published on GitHub yet (latest tag release-13.1.2). Tests: tgcalls screen_share_policy and call_system_policy, DebugSettingsUITests, CoreList ScrollPath/AttachmentFlight/IdentityScan, UniversalMediaPlayerTests, plus the pre-push hook set.
+
+> What to test in this build:
+>
+> 1. Round video messages: play one with sound, leave the app (Home or lock) for a while, come back. The picture should keep moving with the sound. Before, it could freeze on one frame until you restarted the video from the start.
+>
+> 2. Calls with a Mac: when the Mac shares its screen in a 1:1 call, small text should look sharper on the iPhone.
+>
+> 3. Scrolling long chats does a little less work per frame. Tell us if you see rows jump, date headers or avatars flicker, or anything out of place while scrolling.
+>
+> 4. Debug Settings > Send MetricKit Reports works again (it said "Could Not Prepare" in recent builds). Send Logs is more reliable too.
+>
+> 5. If some channels at the bottom of your chat list show old posts until you open them, turn on Debug Settings > Log to File, open one such channel, then send the logs: this build records what the app had before and after.
+>
+> 6. Debug Settings > Send Logs > Call Logs (new): sends the logs of your last 10 calls. After a test call with a Mac sharing its screen, send them so we can check the screen-share line.
+
 - **Debug Settings ▸ Send Logs ▸ Call Logs** (new): exports the logs of the 10 newest 1:1 calls (`<call id>_<time>.log` plus its rotated `.log.1`, without the `.log.json` stats) zipped unchanged, through the same destination picker as every other export. Before, 1:1 call logs could only leave the device through the call rating (to Telegram); the `log-` collector never matched their names. They hold the new `Call: negotiated version …, screen share mode …` line. `debugCallLogFiles` in `DebugLogExport.swift`; test `DebugLogExportTests.testCallLogFilesAreTheNewestCallsLogs`.
 
 - **Debug Settings exports no longer report "nothing to send" while files are prepared** (bcd26d3c; bug fix, since 76b150c4 on 2026-11-03): every export prepared its files after `deliverOn(Queue.concurrentDefaultQueue())`, which dispatches the files and the completion as separate blocks on a concurrent queue. The completion could overtake the files while they were still being copied and zipped; `runDebugLogExport` then took it as an empty result, showed "Could Not Prepare" and dropped the archive. It hit Send MetricKit Reports almost every time (dozens of JSON files) and could hit Send Logs, Send All Logs and Critical Logs. The four preparation sites now use one serial queue (`debugLogExportPreparationQueue`). The stored reports were never lost. Tests: `DebugLogExportTests.testPreparedFilesArriveBeforeTheCompletion`, `testMetricKitExportDeliversTheArchive` (both failed before the fix).
