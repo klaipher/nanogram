@@ -3592,7 +3592,10 @@ public final class ChatListNode: ListViewImpl {
                         options.insert(.PreferSynchronousResourceLoading)
                     }
                 }
-                self.hasAppliedFirstListTransition = true
+                // An empty or loading first update is not "the first transition": the rows that follow still load synchronously.
+                if !transition.insertItems.isEmpty {
+                    self.hasAppliedFirstListTransition = true
+                }
                 self.lastTransitionFilter = transition.chatListView.filter
                 if options.contains(.AnimateCrossfade) && !self.isDeceleratingAfterTracking {
                     options.insert(.PreferSynchronousDrawing)
