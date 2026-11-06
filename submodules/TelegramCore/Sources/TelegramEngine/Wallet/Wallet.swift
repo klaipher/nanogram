@@ -241,8 +241,35 @@ public enum WalletSendTransferError: Error, Equatable, Sendable {
     case generic
 }
 
-public enum WalletGetStateError: Error {
+public enum WalletGetStateError: Error, Equatable, Sendable {
+    /// 400 WALLET_UNAVAILABLE: the wallet feature is not available for this account.
+    case unavailable
+    /// Any other definite client-side RPC error (4xx except flood wait and authorization loss).
+    case rejected(String)
+    /// 420 FLOOD_WAIT_n: transient, with the wait the server asked for.
+    case floodWait(Int32)
+    /// 5xx, authorization trouble or an unclassified error: transient.
     case generic
+
+    init(code: Int32, description: String) {
+        if description == "WALLET_UNAVAILABLE" {
+            self = .unavailable
+        } else if description.hasPrefix("FLOOD_WAIT_"), let seconds = Int32(description.dropFirst("FLOOD_WAIT_".count)) {
+            self = .floodWait(seconds)
+        } else if code == 401 || code == 420 || code >= 500 || code < 400 {
+            self = .generic
+        } else {
+            self = .rejected(description)
+        }
+    }
+
+    /// True when the server's answer will not change by asking again.
+    public var isAuthoritative: Bool {
+        switch self {
+        case .unavailable, .rejected: return true
+        case .floodWait, .generic: return false
+        }
+    }
 }
 
 public enum WalletGetUserAddressesError: Error {
@@ -419,8 +446,8 @@ func _internal_getExistingWaltBalance(account: Account) -> Signal<WalletExisting
 
 func _internal_getWalletState(account: Account) -> Signal<WalletState, WalletGetStateError> {
     return account.network.request(Api.functions.wallet.getState())
-    |> mapError { _ -> WalletGetStateError in
-        return .generic
+    |> mapError { error -> WalletGetStateError in
+        return WalletGetStateError(code: error.errorCode, description: error.errorDescription ?? "")
     }
     |> map { result in
         return WalletState(apiState: result)
