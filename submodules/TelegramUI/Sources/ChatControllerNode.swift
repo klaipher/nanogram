@@ -4166,10 +4166,10 @@ class ChatControllerNode: ASDisplayNode, ASScrollViewDelegate {
         )
     }
     
-    private func scheduleIdleInputMediaNodeDataStart(after delay: Double) {
+    private func scheduleIdleInputMediaNodeDataStart(after seconds: Double) {
         self.inputMediaNodeDataIdleDisposable?.dispose()
         self.inputMediaNodeDataIdleDisposable = (Signal<Void, NoError>.single(Void())
-        |> delay(delay, queue: Queue.mainQueue())).startStrict(next: { [weak self] _ in
+        |> delay(seconds, queue: Queue.mainQueue())).startStrict(next: { [weak self] _ in
             guard let self else {
                 return
             }
