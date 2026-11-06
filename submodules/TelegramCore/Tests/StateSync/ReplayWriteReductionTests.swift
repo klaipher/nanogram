@@ -15,7 +15,12 @@ final class ReplayWriteReductionTests: StateSyncTestCase {
     }
 
     private func finalState(_ operations: [AccountStateMutationOperation]) -> AccountFinalState {
-        let initialState = AccountInitialState(state: self.state(pts: 100), peerIds: Set(), peerIdsRequiringLocalChatState: Set(), channelStates: [:], peerChatInfos: [:], locallyGeneratedMessageTimestamps: [:], channelsToPollExplicitely: Set())
+        // The verified replay is refused when a channel it moves has a stored state the snapshot lacks, so the snapshot carries the stored pts.
+        var snapshotChannelStates: [PeerId: AccountStateChannelState] = [:]
+        if let stored = self.channelState() {
+            snapshotChannelStates[self.channel] = AccountStateChannelState(pts: stored.pts)
+        }
+        let initialState = AccountInitialState(state: self.state(pts: 100), peerIds: Set(), peerIdsRequiringLocalChatState: Set(), channelStates: snapshotChannelStates, peerChatInfos: [:], locallyGeneratedMessageTimestamps: [:], channelsToPollExplicitely: Set())
         var state = AccountMutableState(initialState: initialState, initialPeers: [:], initialReferencedReplyMessageIds: ReferencedReplyMessageIds(), initialReferencedGeneralMessageIds: Set(), initialStoredMessages: Set(), initialStoredStories: [:], initialReadInboxMaxIds: [:], storedMessagesByPeerIdAndTimestamp: [:], initialSentScheduledMessageIds: Set())
         state.operations.append(contentsOf: operations)
         return AccountFinalState(state: state, shouldPoll: false, incomplete: false, discard: false)
