@@ -360,15 +360,11 @@ private func downloadAssetMediaData(_ asset: PHAsset) -> Signal<AssetDownloadSta
 /// The options every image request of the asset grid uses. The caching manager only serves a request from its cache
 /// when target size, content mode and options match what was passed to `startCachingImages`, so the requests and the
 /// prefetcher share this one function.
-public func assetImageRequestOptions(deliveryMode: PHImageRequestOptionsDeliveryMode, exact: Bool, synchronous: Bool, fastResize: Bool = false) -> PHImageRequestOptions {
+public func assetImageRequestOptions(deliveryMode: PHImageRequestOptionsDeliveryMode, exact: Bool, synchronous: Bool) -> PHImageRequestOptions {
     let options = PHImageRequestOptions()
     options.deliveryMode = deliveryMode
     if exact {
         options.resizeMode = .exact
-    } else if fastResize {
-        // Photos resizes efficiently to a size close to the target instead of handing back a larger stored
-        // thumbnail to decode and scale (the default `.none`).
-        options.resizeMode = .fast
     }
     options.isSynchronous = synchronous
     options.isNetworkAccessAllowed = true
@@ -388,7 +384,7 @@ public final class AssetThumbnailPrefetcher {
 
     public init(targetSize: CGSize) {
         self.targetSize = targetSize
-        self.options = assetImageRequestOptions(deliveryMode: .opportunistic, exact: false, synchronous: false, fastResize: true)
+        self.options = assetImageRequestOptions(deliveryMode: .opportunistic, exact: false, synchronous: false)
     }
 
     deinit {
@@ -449,14 +445,14 @@ private func assetsInRange(_ range: Range<Int>, of fetchResult: PHFetchResult<PH
     return fetchResult.objects(at: IndexSet(integersIn: range.lowerBound ..< upper))
 }
 
-public func assetImage(fetchResult: PHFetchResult<PHAsset>, index: Int, targetSize: CGSize, exact: Bool, deliveryMode: PHImageRequestOptionsDeliveryMode = .opportunistic, synchronous: Bool = false, fastResize: Bool = false) -> Signal<UIImage?, NoError> {
+public func assetImage(fetchResult: PHFetchResult<PHAsset>, index: Int, targetSize: CGSize, exact: Bool, deliveryMode: PHImageRequestOptionsDeliveryMode = .opportunistic, synchronous: Bool = false) -> Signal<UIImage?, NoError> {
     let asset = fetchResult[index]
-    return assetImage(asset: asset, targetSize: targetSize, exact: exact, deliveryMode: deliveryMode, synchronous: synchronous, fastResize: fastResize)
+    return assetImage(asset: asset, targetSize: targetSize, exact: exact, deliveryMode: deliveryMode, synchronous: synchronous)
 }
 
-public func assetImage(asset: PHAsset, targetSize: CGSize, exact: Bool, deliveryMode: PHImageRequestOptionsDeliveryMode = .opportunistic, synchronous: Bool = false, fastResize: Bool = false) -> Signal<UIImage?, NoError> {
+public func assetImage(asset: PHAsset, targetSize: CGSize, exact: Bool, deliveryMode: PHImageRequestOptionsDeliveryMode = .opportunistic, synchronous: Bool = false) -> Signal<UIImage?, NoError> {
     return Signal { subscriber in
-        let options = assetImageRequestOptions(deliveryMode: deliveryMode, exact: exact, synchronous: synchronous, fastResize: fastResize)
+        let options = assetImageRequestOptions(deliveryMode: deliveryMode, exact: exact, synchronous: synchronous)
         let resultHandler: (UIImage?, [AnyHashable: Any]?) -> Void = { (image, info) in
             var degraded = false
             
