@@ -18,7 +18,13 @@ public enum MessageWidgetWalletAvailability {
     private static var ready: [Int64: ObjectIdentifier?] = [:]
 
     /// `accountId`: the id of the account's own user (`EnginePeer.Id.id._internalGetInt64Value()`).
+    ///
+    /// Nanogram: also needs the local wallet switch (`MessageWidgetLocalSettings.walletEnabled`, Debug Settings), off by
+    /// default until the widget wallet path has been tested end to end on a device.
     public static func isReady(accountId: Int64) -> Bool {
+        if !MessageWidgetLocalSettings.walletEnabled() {
+            return false
+        }
         self.lock.lock()
         defer {
             self.lock.unlock()

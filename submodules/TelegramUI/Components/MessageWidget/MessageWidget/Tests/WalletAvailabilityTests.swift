@@ -4,6 +4,32 @@ import XCTest
 /// widget-sandbox v0.5.0 (the final review's #6): an account's wallet availability belongs to the host object that set it
 /// last, so an older account context released after a newer one took over does not take the wallet away from widgets.
 final class WalletAvailabilityTests: XCTestCase {
+    override func setUp() {
+        super.setUp()
+        MessageWidgetLocalSettings.setWalletEnabled(true)
+    }
+
+    override func tearDown() {
+        UserDefaults.standard.removeObject(forKey: MessageWidgetLocalSettings.walletEnabledKey)
+        super.tearDown()
+    }
+
+    /// Nanogram: the wallet stays off for widgets until the local switch is on, whatever the host says.
+    func testTheWalletIsOffWhileTheLocalSwitchIsOff() {
+        let accountId: Int64 = 9_000_003
+        let owner = NSObject()
+        MessageWidgetWalletAvailability.set(true, accountId: accountId, owner: ObjectIdentifier(owner))
+        XCTAssertTrue(MessageWidgetWalletAvailability.isReady(accountId: accountId))
+        MessageWidgetLocalSettings.setWalletEnabled(false)
+        XCTAssertFalse(MessageWidgetWalletAvailability.isReady(accountId: accountId))
+        MessageWidgetWalletAvailability.release(accountId: accountId, owner: ObjectIdentifier(owner))
+    }
+
+    func testTheWalletSwitchIsOffByDefault() {
+        UserDefaults.standard.removeObject(forKey: MessageWidgetLocalSettings.walletEnabledKey)
+        XCTAssertFalse(MessageWidgetLocalSettings.walletEnabled())
+    }
+
     func testAnOlderOwnerReleasingLeavesTheNewerOnesAnswer() {
         let accountId: Int64 = 9_000_001
         let old = NSObject()

@@ -24,6 +24,7 @@ import WalletContext
 import CpuProfiler
 import CrashReporting
 import ContextUI
+import MessageWidget
 
 private final class DebugControllerArguments {
     let sharedContext: SharedAccountContext
@@ -334,6 +335,8 @@ enum DebugControllerEntry: ItemListNodeEntry {
     case storyLegacyVideoWriter(Bool)
     case chatLegacyVideoWriter(Bool)
     case chatSideListLegacy(Bool)
+    case messageWidgets(Bool)
+    case messageWidgetWallet(Bool)
     case respectSystemMicrophone(Bool)
     case videoMessageCameraMode(ExperimentalUISettings.VideoMessageCameraMode)
     case videoMessageCloseFocus(Bool)
@@ -383,7 +386,7 @@ enum DebugControllerEntry: ItemListNodeEntry {
             return DebugControllerSection.streamsAndCalls.rawValue
         case .glassGroupsHeader, .glassGroupNavigationBar, .glassGroupInputPanel, .glassGroupFloatingButtons:
             return DebugControllerSection.glassGroups.rawValue
-        case .springSendAnimation, .fakeWalletTransfers, .stickerRendererMode, .disableImageContentAnalysis, .disableLanguageRecognition, .localTranscription, .enableVoipTcp, .tabletDisplayLinkFrameRateCap, .chatMediaEditorLegacy, .mediaGridLegacy, .sharedMediaGridLegacy, .storyLegacyVideoWriter, .chatLegacyVideoWriter, .chatSideListLegacy:
+        case .springSendAnimation, .fakeWalletTransfers, .stickerRendererMode, .disableImageContentAnalysis, .disableLanguageRecognition, .localTranscription, .enableVoipTcp, .tabletDisplayLinkFrameRateCap, .chatMediaEditorLegacy, .mediaGridLegacy, .sharedMediaGridLegacy, .storyLegacyVideoWriter, .chatLegacyVideoWriter, .chatSideListLegacy, .messageWidgets, .messageWidgetWallet:
             return DebugControllerSection.experiments.rawValue
         case .enableNetworkFramework, .enableNetworkExperiments, .rustMTProtoEngine, .networkEngineInfo:
             return DebugControllerSection.videoExperiments2.rawValue
@@ -493,6 +496,11 @@ enum DebugControllerEntry: ItemListNodeEntry {
         case .chatSideListLegacy:
             // Appended right after `tabletDisplayLinkFrameRateCap`, in this order; see the ordering note at `springSendAnimation`.
             return 87
+        case .messageWidgets:
+            // Appended right after `chatSideListLegacy`; see the ordering note at `springSendAnimation`.
+            return 88
+        case .messageWidgetWallet:
+            return 89
         case .checkSerializedData:
             return 58
         case .enableQuickReactionSwitch:
@@ -1014,6 +1022,14 @@ enum DebugControllerEntry: ItemListNodeEntry {
                     return settings
                 }).start()
             })
+        case let .messageWidgets(value):
+            return ItemListSwitchItem(presentationData: presentationData, systemStyle: .glass, title: "Message widgets", text: "A bot's widget in a message runs its own script in this app. Off (or in Lockdown Mode) a widget message shows the unsupported-content pill and runs nothing. Turning it on forgets widgets stopped after a crash.", value: value, maximumNumberOfLines: 0, sectionId: self.section, style: .blocks, updated: { value in
+                MessageWidgetLocalSettings.setWidgetsEnabled(value)
+            })
+        case let .messageWidgetWallet(value):
+            return ItemListSwitchItem(presentationData: presentationData, systemStyle: .glass, title: "Message widgets: wallet", text: "Lets a widget ask the wallet to pay or sign. Off until the path has been tested on a device with a funded test wallet.", value: value, maximumNumberOfLines: 0, sectionId: self.section, style: .blocks, updated: { value in
+                MessageWidgetLocalSettings.setWalletEnabled(value)
+            })
         case let .chatMediaEditorLegacy(value):
             return ItemListSwitchItem(presentationData: presentationData, systemStyle: .glass, title: "Chat: legacy media editor", value: value, sectionId: self.section, style: .blocks, updated: { value in
                 let _ = updateExperimentalUISettingsInteractively(accountManager: arguments.sharedContext.accountManager, { settings in
@@ -1275,6 +1291,9 @@ struct DebugControllerEntriesEnvironment {
     var modernVideoMessagePipelineKilled: Bool
     var networkEngineKind: String?
     var useBetaFeatures: Bool
+    /// This device's switches for message widgets (`MessageWidgetLocalSettings`): widgets on by default, the wallet off.
+    var messageWidgetsEnabled: Bool = true
+    var messageWidgetWalletEnabled: Bool = false
 }
 
 func debugControllerEntries(environment: DebugControllerEntriesEnvironment, theme: PresentationTheme, loggingSettings: LoggingSettings, experimentalSettings: ExperimentalUISettings, networkSettings: NetworkSettings?, networkEngineSettings: NetworkEngineSettings) -> [DebugControllerEntry] {
@@ -1347,6 +1366,8 @@ func debugControllerEntries(environment: DebugControllerEntriesEnvironment, them
         entries.append(.storyLegacyVideoWriter(experimentalSettings.storyLegacyVideoWriter))
         entries.append(.chatLegacyVideoWriter(experimentalSettings.chatLegacyVideoWriter))
         entries.append(.chatSideListLegacy(experimentalSettings.chatSideListLegacy))
+        entries.append(.messageWidgets(environment.messageWidgetsEnabled))
+        entries.append(.messageWidgetWallet(environment.messageWidgetWalletEnabled))
     }
 
     if isMainApp {
@@ -1443,7 +1464,9 @@ public func debugController(sharedContext: SharedAccountContext, context: Accoun
             isDevAccount: isDevAccount,
             modernVideoMessagePipelineKilled: context?.getAppConfigValue("ios_killswitch_disable_neo_round_camera_v2") != nil,
             networkEngineKind: context?.account.network.engineKind.rawValue,
-            useBetaFeatures: useBetaFeatures
+            useBetaFeatures: useBetaFeatures,
+            messageWidgetsEnabled: MessageWidgetLocalSettings.widgetsEnabled(),
+            messageWidgetWalletEnabled: MessageWidgetLocalSettings.walletEnabled()
         )
         
         let controllerState = ItemListControllerState(presentationData: ItemListPresentationData(presentationData), title: .text("Debug Settings"), leftNavigationButton: leftNavigationButton, rightNavigationButton: nil, backNavigationButton: ItemListBackButton(title: presentationData.strings.Common_Back))

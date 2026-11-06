@@ -12,6 +12,7 @@ import ChatMessageDateAndStatusNode
 import ChatMessageItemCommon
 import ChatControllerInteraction
 import MessageWidget
+import HardenedMedia
 import WalletContext
 import TextSelectionNode
 import UnsupportedContentPill
@@ -22,8 +23,16 @@ import UndoUI
 /// Whether widget messages render as widgets: on unless the app configuration's kill switch is engaged (on by
 /// default since 2026-10-22, when the debug flag went). Off, a widget message shows as unsupported media with its
 /// caption.
+///
+/// Nanogram adds two more offs: this device's switch for message widgets (Debug Settings, on by default;
+/// `MessageWidgetLocalSettings`) and the hardened media policy (Lockdown Mode, `HardenedMediaPolicy.allowsMessageWidgets`),
+/// since a widget is code from the sender that runs in the app's process.
 public func chatMessageWidgetRenderingEnabled() -> Bool {
-    return !MessageWidgetKillSwitch.isEngaged
+    return chatMessageWidgetRenderingEnabled(serverKillSwitchEngaged: MessageWidgetKillSwitch.isEngaged, localSwitchOn: MessageWidgetLocalSettings.widgetsEnabled(), policy: HardenedMediaPolicy.current)
+}
+
+public func chatMessageWidgetRenderingEnabled(serverKillSwitchEngaged: Bool, localSwitchOn: Bool, policy: HardenedMediaPolicy) -> Bool {
+    return !serverKillSwitchEngaged && localSwitchOn && policy.allowsMessageWidgets
 }
 
 /// One subscription for the whole process, started by the first pass that lays a widget out (on main): every widget

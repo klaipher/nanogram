@@ -47,4 +47,10 @@ public struct HardenedMediaPolicy: Equatable, Sendable {
     public var allowsMiniAppAutoOpen: Bool {
         return !self.isActive
     }
+
+    /// Whether message widgets (a bot's HTML, CSS and script, run in the app's own process when a message is opened) may
+    /// run. They are code from the sender, so Lockdown Mode shows them as the unsupported-content pill.
+    public var allowsMessageWidgets: Bool {
+        return !self.isActive
+    }
 }

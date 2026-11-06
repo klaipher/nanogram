@@ -58,12 +58,17 @@ public final class MessageWidgetRegistry {
     private let restartPolicy: MessageWidgetRestartPolicy
     /// Each running widget's key in the restart policy (its message and its source).
     private var restartKeys: [Key: MessageWidgetRestartPolicy.Key] = [:]
+    /// Nanogram: a source that was running when the app last went down starts stopped (`MessageWidgetCrashSentinel`).
+    private let crashSentinel: MessageWidgetCrashSentinel
+    /// The keys whose running widget is noted in the crash sentinel.
+    private var sentinelKeys = Set<Key>()
 
-    public init(factory: Factory? = nil, restartPolicy: MessageWidgetRestartPolicy = .shared) {
+    public init(factory: Factory? = nil, restartPolicy: MessageWidgetRestartPolicy = .shared, crashSentinel: MessageWidgetCrashSentinel = .shared) {
         self.factory = factory ?? { source, theme, label, max, locale, storage, context, state, startsStopped in
             MessageWidgetInstance(source: source, theme: theme, stoppedLabel: label, maxMessageLength: max, locale: locale, storage: storage, context: context, state: state, startsStopped: startsStopped)
         }
         self.restartPolicy = restartPolicy
+        self.crashSentinel = crashSentinel
     }
 
     deinit {
@@ -75,6 +80,9 @@ public final class MessageWidgetRegistry {
 
     /// A widget that goes without having stopped starts its restart count over (§5.7).
     private func ended(_ key: Key, _ instance: MessageWidgetInstance) {
+        if self.sentinelKeys.remove(key) != nil {
+            self.crashSentinel.end(source: key.source)
+        }
         if let restartKey = self.restartKeys.removeValue(forKey: key), instance.deadReason == nil, !instance.failedToStart {
             self.restartPolicy.noteEndedWithoutStop(restartKey)
         }
@@ -117,7 +125,7 @@ public final class MessageWidgetRegistry {
             existing.setState(self.state)
         } else {
             let restartKey = MessageWidgetRestartPolicy.Key(owner: self.ownerId ?? AnyHashable(0), source: source)
-            let startsStopped = !self.restartPolicy.allowsBoot(restartKey)
+            let startsStopped = !self.restartPolicy.allowsBoot(restartKey) || self.crashSentinel.isBlocked(source: source)
             guard let created = self.factory(source, self.theme, self.stoppedLabel, self.maxMessageLength, self.locale, self.storage, self.context, self.state, startsStopped) else {
                 self.failedKeys.insert(key)
                 self.usedInPass.insert(key)
@@ -148,6 +156,11 @@ public final class MessageWidgetRegistry {
                     restartPolicy.noteStopped(restartKey)
                 }
             }
+            if !startsStopped {
+                // Noted before the script runs: a crash from here on leaves the source in the sentinel's file.
+                self.crashSentinel.begin(source: source)
+                self.sentinelKeys.insert(key)
+            }
             created.setVisible(self.visible)
             self.instances[key] = created
             instance = created
@@ -156,6 +169,9 @@ public final class MessageWidgetRegistry {
         instance.contentSafeArea = self.contentSafeArea
         let size = instance.layout(width: width)
         if instance.failedToStart {
+            if self.sentinelKeys.remove(key) != nil {
+                self.crashSentinel.end(source: key.source)
+            }
             instance.destroy()
             self.instances[key] = nil
             self.restartKeys[key] = nil
