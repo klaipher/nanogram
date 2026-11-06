@@ -10,7 +10,7 @@ mkdir -p "$OUT"
 DATA=$(xcrun simctl get_app_container "$UDID" $ID data)
 xcrun simctl terminate "$UDID" $ID 2>/dev/null || true
 rm -f "$DATA/Documents/manifest.json"
-xcrun simctl launch "$UDID" $ID -label "$label" "$@" >/dev/null
+xcrun simctl launch "$UDID" $ID -nanogram.glass.telegramFixedLook YES -label "$label" "$@" >/dev/null
 for i in $(seq 1 40); do
     [ -f "$DATA/Documents/manifest.json" ] && break
     sleep 0.25
