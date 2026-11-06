@@ -135,7 +135,7 @@ final class StableGroupOrderTests: XCTestCase {
         var seed: UInt64 = 0x1234_5678
         func next(_ bound: Int) -> Int {
             seed = seed &* 6364136223846793005 &+ 1442695040888963407
-            return Int((seed >> 33) % UInt64(bound))
+            return Int(truncatingIfNeeded: (seed >> 33) % UInt64(bound))
         }
         for _ in 0 ..< 300 {
             var groups: [TestGroup] = []
