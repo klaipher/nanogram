@@ -230,7 +230,10 @@ final class OggOpusWriterLiveEncoderTests: XCTestCase {
         XCTAssertLessThan(difference, 100, "a flush-only pause must not disturb the join beyond the encoder's run-to-run noise")
     }
 
-    func testRestoringTheEncoderOnResumeChangesTheJoin() {
+    /// Upstream 13.2's `pause` saves the encoder's own state (`encoderData`) and `resume` copies it back, so a restored
+    /// writer continues with the warm encoder and the join stays as clean as a live pause. (Before 13.2 a resume built
+    /// a cold encoder, which made the join audible; this test pinned that.)
+    func testRestoringTheEncoderOnResumeKeepsTheJoin() {
         let uninterrupted = self.encode { writer, _ in
             write(writer, frames: 0 ..< 100)
         }
@@ -244,6 +247,6 @@ final class OggOpusWriterLiveEncoderTests: XCTestCase {
         let join = 50 * 960
         let window = (join - 960) ..< min(join + 960 * 2, uninterrupted.count)
         let difference = window.map { abs(Int(restored[$0]) - Int(uninterrupted[$0])) }.max() ?? 0
-        XCTAssertGreaterThan(difference, 500, "a cold encoder at the join is audible; the recorder keeps the live one")
+        XCTAssertLessThan(difference, 100, "the restored encoder state must carry the join beyond the encoder's run-to-run noise")
     }
 }
