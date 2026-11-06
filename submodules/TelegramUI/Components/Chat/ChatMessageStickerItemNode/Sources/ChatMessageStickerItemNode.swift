@@ -293,7 +293,12 @@ public class ChatMessageStickerItemNode: ChatMessageItemView {
         "visibilityStatus": .reset,
         "forceStopAnimations": .reset,
         "absoluteRect": .reset,
-        "playedSwipeToReplyHaptic": .reset
+        "playedSwipeToReplyHaptic": .reset,
+        "replyGlassView": .reset,
+        "forwardGlassView": .reset,
+        "bubblelessSelectionCheckCenterY": .reset,
+        "bubblelessHeaderNode": .reset,
+        "hidesStatusWithoutBubbles": .reset
     ]
     
     /// Back to the state `init(rotated:)` leaves the node in: every optional sub-node removed and dropped, the placeholder
@@ -376,6 +381,17 @@ public class ChatMessageStickerItemNode: ChatMessageItemView {
         self.forceStopAnimations = false
         self.absoluteRect = nil
         self.playedSwipeToReplyHaptic = false
+        
+        // Without bubbles: the glass plates, the header and the checkmark position belong to the previous message.
+        self.replyGlassView?.removeFromSuperview()
+        self.replyGlassView = nil
+        self.forwardGlassView?.removeFromSuperview()
+        self.forwardGlassView = nil
+        self.bubblelessSelectionCheckCenterY = nil
+        self.bubblelessHeaderNode?.removeFromSupernode()
+        self.bubblelessHeaderNode = nil
+        // The date and status node above is a new one, so the time it hid is shown again.
+        self.hidesStatusWithoutBubbles = false
         
         return true
     }

@@ -3,6 +3,7 @@ import UIKit
 import AsyncDisplayKit
 import Display
 import ChatMessageItemView
+import ChatMessageItemCommon
 @testable import ChatMessageStickerItemNode
 
 /// The sticker row is the one view type certified for "Chat rows: reuse row views". These tests keep its reset complete:
@@ -52,6 +53,8 @@ final class ChatRowReuseLedgerTests: XCTestCase {
         node.enableSynchronousImageApply = true
         node.playedSwipeToReplyHaptic = true
         node.imageUpdatedFirstTime = false
+        node.stickyHeaderBandTrim = 6.0
+        node.bubblelessRowBandInputs = ChatMessageBubblelessRowBandInputs(nameTop: 2.0, selectedAbove: true, selectedBelow: false, hasSelectionBand: true, hasHighlightBand: true)
         node.layer.add(CABasicAnimation(keyPath: "opacity"), forKey: "test")
         node.imageNode.layer.add(CABasicAnimation(keyPath: "opacity"), forKey: "test")
 
@@ -76,6 +79,8 @@ final class ChatRowReuseLedgerTests: XCTestCase {
         XCTAssertFalse(node.enableSynchronousImageApply)
         XCTAssertFalse(node.playedSwipeToReplyHaptic)
         XCTAssertTrue(node.imageUpdatedFirstTime)
+        XCTAssertEqual(node.stickyHeaderBandTrim, 0.0)
+        XCTAssertNil(node.bubblelessRowBandInputs)
         XCTAssertNil(node.telegramFile)
         XCTAssertNil(node.appliedForwardInfo)
         XCTAssertNil(node.currentSwipeAction)

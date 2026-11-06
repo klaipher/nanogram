@@ -59,6 +59,7 @@ swift_library(
         "//submodules/AsyncDisplayKit",
         "//submodules/Display",
         "//submodules/TelegramUI/Components/Chat/ChatMessageItemView",
+        "//submodules/TelegramUI/Components/Chat/ChatMessageItemCommon",
     ],
 )
 

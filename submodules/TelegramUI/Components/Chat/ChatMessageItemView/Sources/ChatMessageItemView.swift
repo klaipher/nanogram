@@ -781,7 +781,10 @@ open class ChatMessageItemView: ListViewItemNode, ChatMessageItemNodeProtocol {
         "effectAnimationNodes": .reset,
         "attachedAvatarNodeOffset": .reset,
         "attachedAvatarNodeIsHidden": .reset,
-        "attachedDateHeader": .reset
+        "attachedDateHeader": .reset,
+        "bubblelessRowBandInputs": .reset,
+        "bubblelessSelectionBandNode": .reset,
+        "bubblelessHighlightBandNode": .reset
     ]
     
     /// The same for the stored properties of `ListViewItemNode` (Display), the superclass. Under CoreList the host owns the
@@ -813,7 +816,8 @@ open class ChatMessageItemView: ListViewItemNode, ChatMessageItemNodeProtocol {
         "apparentHeight": .constant,
         "apparentHeightTransition": .constant,
         "_bounds": .constant,
-        "_position": .constant
+        "_position": .constant,
+        "stickyHeaderBandTrim": .reset
     ]
     
     /// Puts the row into the state `init(rotated:)` leaves it in, so that the next `setupItem` / `asyncLayout` / apply
@@ -850,6 +854,9 @@ open class ChatMessageItemView: ListViewItemNode, ChatMessageItemNodeProtocol {
         self.attachedDateHeader = (false, false)
         self.hostOwnsFrame = false
         self.transitionOffset = 0.0
+        self.stickyHeaderBandTrim = 0.0
+        self.bubblelessRowBandInputs = nil
+        self.removeBubblelessRowBands()
         ChatMessageItemView.removeAllAnimations(in: self.layer)
         return true
     }
