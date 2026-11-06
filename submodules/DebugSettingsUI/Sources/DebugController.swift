@@ -183,7 +183,7 @@ private enum DebugLogAction {
             return { directory, spec in
                 return Logger.shared.collectShortLogFiles()
                 |> take(1)
-                |> deliverOn(Queue.concurrentDefaultQueue())
+                |> deliverOn(debugLogExportPreparationQueue())
                 |> map { logs -> [DebugLogExportFile] in
                     return debugLogCopiedFiles(logs: logs, baseName: spec.fileBaseName, mimeType: "text/plain", in: directory)
                 }
@@ -209,7 +209,7 @@ private enum DebugLogAction {
             return { directory, spec in
                 return combineLatest(logByType)
                 |> take(1)
-                |> deliverOn(Queue.concurrentDefaultQueue())
+                |> deliverOn(debugLogExportPreparationQueue())
                 |> map { allLogs -> [DebugLogExportFile] in
                     var sources: [URL] = []
                     for (type, logItems) in allLogs {
