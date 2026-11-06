@@ -101,7 +101,7 @@ public final class Logger {
     // to file is switched off, and from `flushPendingLogs`. A crash or kill between flushes loses at most the lines
     // of the last `logFlushDelay` (1 s), or of a suspension that stops the timer.
     private let logFlushDelay: Double = 1.0
-    // Internal so tests can use a small buffer; never above `maxLogBuffer`.
+    // Internal so tests can use a small buffer.
     var logFlushSize: Int = 64 * 1024
     // Internal: schedules the one flush timer. Tests replace it with a manual clock; the callback may run on any
     // thread, it hops to the logger queue itself.
@@ -145,6 +145,11 @@ public final class Logger {
         }, sync: {
             Logger.shared.sync()
         })
+    }
+    
+    /// The shared logger, or nil before `setSharedLogger` (unlike `shared`, never a throwaway logger or an assertion).
+    public static var sharedIfInstalled: Logger? {
+        return sharedLogger
     }
     
     public static var shared: Logger {

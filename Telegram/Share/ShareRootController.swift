@@ -25,7 +25,8 @@ private final class ShareProcessActivity {
 
     deinit {
         // The extension can be gone right after: write the buffered log lines first.
-        Logger.shared.flushPendingLogsAndWait()
+        // The shared logger is installed later than this activity, and not at all on the early-return paths.
+        Logger.sharedIfInstalled?.flushPendingLogsAndWait()
         self.semaphore.signal()
     }
 }

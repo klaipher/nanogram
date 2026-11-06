@@ -250,4 +250,40 @@ final class ExtensionRequestCompletionTests: XCTestCase {
         self.wait(for: [returned], timeout: 5.0)
         activity.end()
     }
+
+    func testLogsAreFlushedWhenTheActivityEndsBeforeTheProcessMayBeSuspended() {
+        let lock = NSLock()
+        var events: [String] = []
+        let record: (String) -> Void = { event in
+            lock.lock()
+            events.append(event)
+            lock.unlock()
+        }
+        let started = self.expectation(description: "started")
+        let returned = self.expectation(description: "returned")
+        let activity = ExpiringProcessActivity(reason: "test", flushLogs: { record("flush") }, perform: { block in
+            DispatchQueue.global().async {
+                started.fulfill()
+                block(false)
+                record("activity returned")
+                returned.fulfill()
+            }
+        })
+        self.wait(for: [started], timeout: 5.0)
+        record("last log line")
+        activity.end()
+        self.wait(for: [returned], timeout: 5.0)
+        lock.lock()
+        XCTAssertEqual(events, ["last log line", "flush", "activity returned"])
+        lock.unlock()
+    }
+
+    func testLogsAreFlushedWhenAnActivityIsReleasedWithoutEnd() {
+        var flushes = 0
+        var activity: ExpiringProcessActivity? = ExpiringProcessActivity(reason: "test", flushLogs: { flushes += 1 }, perform: { _ in })
+        XCTAssertEqual(flushes, 0)
+        activity = nil
+        XCTAssertNil(activity)
+        XCTAssertEqual(flushes, 1)
+    }
 }

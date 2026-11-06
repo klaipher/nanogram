@@ -3030,7 +3030,7 @@ final class NotificationService: UNNotificationServiceExtension {
         // Keeps the process running until the databases are paused; a request replaced before
         // it finished ends its activity when released.
         let requestCompletion = ExtensionRequestCompletion(beginActivity: {
-            let activity = ExpiringProcessActivity(reason: "NotificationService request")
+            let activity = ExpiringProcessActivity(reason: "NotificationService request", flushLogs: { Logger.shared.flushPendingLogsAndWait() })
             return {
                 activity.end()
             }
@@ -3120,7 +3120,7 @@ final class NotificationService: UNNotificationServiceExtension {
         Logger.shared.log("NotificationService", "placeholder delivered \(requestIdentifier)")
         // Kept alive long enough to take the placeholder down; the next request or the app
         // clears it otherwise. The activity ends after the last attempt.
-        let activity = ExpiringProcessActivity(reason: "NotificationService placeholder removal")
+        let activity = ExpiringProcessActivity(reason: "NotificationService placeholder removal", flushLogs: { Logger.shared.flushPendingLogsAndWait() })
         let delays = ServicePushPresentation.removalDelays
         for (index, delay) in delays.enumerated() {
             DispatchQueue.global().asyncAfter(deadline: .now() + delay) {
@@ -3134,9 +3134,9 @@ final class NotificationService: UNNotificationServiceExtension {
     }
 
     private static func finish(_ requestCompletion: ExtensionRequestCompletion?, impl: QueueLocalObject<BoxedNotificationServiceHandler>?, deliverTimeout: Double, deliver: @escaping () -> Void) {
-        // The extension can be suspended or killed after delivering: write the buffered log lines first.
-        Logger.shared.flushPendingLogsAndWait()
+        // The lines logged from here on are written when the request's process activity ends.
         guard let requestCompletion else {
+            Logger.shared.flushPendingLogsAndWait()
             deliver()
             return
         }
