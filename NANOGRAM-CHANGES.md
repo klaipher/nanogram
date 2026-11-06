@@ -106,3 +106,18 @@ marked (check) were not re-verified against the code; correct them on the next c
 - Where: `submodules/TelegramCallsUI/Sources/{AudioOutputRequestPolicy,CallKitActionTarget,CallKitMuteSync,CameraFacingTracker,CallKitIntegration,PresentationCall,PresentationCallManager,PresentationGroupCall,SharedCallAudioContext}.swift`, `submodules/TelegramAudio/Sources/{ManagedAudioSession,AudioRouteClassification}.swift`.
 - Upstream: all of these are upstream code paths (`setCurrentAudioOutput`, `action.uuid`, `setCallMutedImpl`, `useFrontCamera`); expect conflicts there on import.
 - Sync: re-check the three guards when `PresentationCall.swift` / `SharedCallAudioContext.swift` change upstream.
+
+### Liquid Glass usage (iOS)
+- What: the floating chat history buttons share one `GlassBackgroundContainerView` and their badge is a tinted fill, not
+  glass on glass; the history button keeps `isInteractive` after a theme update; `GlassBackgroundContainerView.update`
+  applies size and style only when changed; the custom parts of glass (legacy fill and rim before iOS 26, custom blur
+  radius in the context menu and QR Studio) follow Reduce Transparency and Increase Contrast live (`GlassEnvironment`);
+  Debug Settings ▸ Glass groups switches (default off) replace one chat glass group with a solid fill for GPU attribution.
+- Why: Apple's Liquid Glass guidance (group glass in a container, no glass on glass, honour accessibility settings) and the
+  iOS chat-scroll GPU traces of 2026-11-06 (~5 "Read Surface" passes per frame).
+- Where: `submodules/TelegramUI/Sources/{ChatHistoryNavigationButtons,ChatHistoryNavigationButtonNode,SharedAccountContext}.swift`,
+  `submodules/TelegramUI/Components/GlassBackgroundComponent/Sources/{GlassBackgroundComponent,GlassEnvironment,GlassDebugGroups,GlassStackHostGeometry,GlassContainerUpdateGate}.swift`,
+  `NavigationBarNode.swift` and `ChatTextInputPanelNode.swift` (one `debugGroup` line each), `DebugController.swift`, `ExperimentalUISettings.swift`.
+- Upstream: `ChatHistoryNavigationButton*` and `GlassBackgroundComponent.swift` are upstream files (the container, the view init and `update` changed in a few places); the rest is new.
+- Sync: re-apply the container hosting if upstream changes how `ChatHistoryNavigationButtons` adds its buttons.
+- Not done: replacing Telegram's navigation bar, tab bar or edge effect with system ones, and the iOS 26 luma clamp, are owner decisions.
