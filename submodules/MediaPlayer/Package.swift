@@ -47,7 +47,8 @@ let package = Package(
                       "VideoPlayerProxy.swift",
                       "ChunkMediaPlayerV2.swift",
                       "ChunkMediaPlayerDirectFetchSourceImpl.swift",
-                      "MediaPlayerStatusGeneration.swift"
+                      "MediaPlayerStatusGeneration.swift",
+                      "ChunkMediaPlayerVideoRecovery.swift"
                      ]),
         .testTarget(
             name: "TelegramMediaPlayerTests",
@@ -56,7 +57,7 @@ let package = Package(
                            .product(name: "Postbox", package: "Postbox", condition: nil),
                            .product(name: "FFMpegBinding", package: "FFMpegBinding", condition: nil)],
             path: "Tests",
-            exclude: ["ChunkMediaPlayerV2LoopTests.swift", "ChunkMediaPlayerV2BackgroundTests.swift", "FFMpegLookaheadFileAccessTests.swift", "MediaPlayerStatusGenerationTests.swift"],
+            exclude: ["ChunkMediaPlayerV2LoopTests.swift", "ChunkMediaPlayerV2BackgroundTests.swift", "FFMpegLookaheadFileAccessTests.swift", "MediaPlayerStatusGenerationTests.swift", "ChunkMediaPlayerVideoRecoveryTests.swift"],
             resources: [.process("Resources")],
             linkerSettings: [
                 .unsafeFlags([

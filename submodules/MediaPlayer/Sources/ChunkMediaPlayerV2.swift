@@ -264,6 +264,7 @@ public final class ChunkMediaPlayerV2: ChunkMediaPlayer {
     private var renderSynchronizerRate: Double = 0.0
     private var renderSynchronizerRateReapplyNotBefore: Double = 0.0
     private var videoIsRequestingMediaData: Bool = false
+    private var lastVideoStarvationAt: Double?
     private var audioIsRequestingMediaData: Bool = false
     private var videoRearmNotBefore: Double = 0.0
     private var audioRearmNotBefore: Double = 0.0
@@ -422,14 +423,20 @@ public final class ChunkMediaPlayerV2: ChunkMediaPlayer {
         }
     }
 
-    private var videoLayerNeedsFlush: Bool {
+    private func currentVideoLayerState() -> ChunkMediaPlayerVideoRecovery.LayerState {
         if #available(iOS 17.0, *) {
             let renderer = self.videoRenderer.sampleBufferRenderer
-            return renderer.status == .failed || renderer.requiresFlushToResumeDecoding
+            if renderer.status == .failed {
+                return .failed
+            }
+            return renderer.requiresFlushToResumeDecoding ? .needsFlush : .healthy
         } else if #available(iOS 14.0, *) {
-            return self.videoRenderer.status == .failed || self.videoRenderer.requiresFlushToResumeDecoding
+            if self.videoRenderer.status == .failed {
+                return .failed
+            }
+            return self.videoRenderer.requiresFlushToResumeDecoding ? .needsFlush : .healthy
         } else {
-            return self.videoRenderer.status == .failed
+            return self.videoRenderer.status == .failed ? .failed : .healthy
         }
     }
 
@@ -437,21 +444,24 @@ public final class ChunkMediaPlayerV2: ChunkMediaPlayer {
     // asks to be flushed, or the reader's hardware decoder did not survive. Neither is touched by pause and play,
     // so the pipeline is rebuilt the way a seek to the current position rebuilds it.
     private func recoverVideoPipelineIfNeeded(isBuffering: Bool, effectiveRate: Double) {
-        let hasVideo = self.didNotifySentVideoFrames || self.lastVideoEnqueueTime.with({ $0 }) != nil
-        let shouldRecover = self.videoRecovery.shouldRecover(
-            now: CACurrentMediaTime(),
+        let lastVideoEnqueueAt = self.lastVideoEnqueueTime.with({ $0 })
+        let now = CACurrentMediaTime()
+        let reason = self.videoRecovery.shouldRecover(
+            now: now,
             isApplicationInBackground: self.isApplicationInBackground,
             isPlayingWithClock: effectiveRate != 0.0 && !isBuffering && !self.isSuspendedInBackground && self.pendingSeekTimestamp == nil,
-            hasVideo: hasVideo,
-            layerNeedsFlush: self.videoLayerNeedsFlush,
-            lastVideoEnqueueAt: self.lastVideoEnqueueTime.with({ $0 })
+            hasSentVideo: lastVideoEnqueueAt != nil,
+            lastVideoEnqueueAt: lastVideoEnqueueAt,
+            lastVideoStarvationAt: self.lastVideoStarvationAt,
+            layerState: { self.currentVideoLayerState() }
         )
-        if shouldRecover {
+        if let reason {
             Queue.mainQueue().async { [weak self] in
                 guard let self, self.pendingSeekTimestamp == nil else {
                     return
                 }
                 let position = self.renderSynchronizer.currentTime().seconds
+                Logger.shared.log("MediaPlayer", "video recovery reason=\(reason.rawValue) position=\(position.isFinite ? position : 0.0) sinceEnqueue=\(lastVideoEnqueueAt.map { now - $0 } ?? -1.0)")
                 self.seek(timestamp: position.isFinite ? position : 0.0, play: nil, notify: false, force: true)
             }
         }
@@ -1116,6 +1126,7 @@ public final class ChunkMediaPlayerV2: ChunkMediaPlayer {
     }
     
     public func seek(timestamp: Double, play: Bool?) {
+        self.videoRecovery.noteUserSeek()
         self.seek(timestamp: timestamp, play: play, notify: true)
     }
         
@@ -1213,6 +1224,9 @@ public final class ChunkMediaPlayerV2: ChunkMediaPlayer {
     }
 
     private func noteVideoStarvation(didEnqueue: Bool) {
+        if !didEnqueue {
+            self.lastVideoStarvationAt = CACurrentMediaTime()
+        }
         self.videoStarvationBackoff = didEnqueue ? 0.0 : (self.videoStarvationBackoff <= 0.0 ? 1.0 / 60.0 : min(self.videoStarvationBackoff * 2.0, 1.0))
         self.videoRearmNotBefore = CACurrentMediaTime() + self.videoStarvationBackoff
     }
