@@ -62,6 +62,7 @@ swift_library(
         "//submodules/TelegramCore:TelegramCore",
         "//submodules/TelegramPresentationData:TelegramPresentationData",
         "//submodules/TelegramUIPreferences:TelegramUIPreferences",
+        "//submodules/TelegramUI/Components/Chat/ChatRowPrep:ChatRowPrep",
     ],
 )
 

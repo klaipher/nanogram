@@ -60,6 +60,18 @@ final class ExperimentalUISettingsDefaultsTests: XCTestCase {
         XCTAssertFalse(try self.roundTrip(try self.roundTrip(settings).withChatOpenDeferSetup(false)).chatOpenDeferSetup)
     }
 
+    func testChatScrollExperimentsAreOffByDefaultAndTheChoiceIsKept() throws {
+        XCTAssertEqual(try self.decode("{}").chatScrollExperiments, 0)
+        XCTAssertEqual(ExperimentalUISettings.defaultSettings.chatScrollExperiments, 0)
+        var settings = ExperimentalUISettings.defaultSettings
+        settings.chatScrollExperiments = ExperimentalUISettings.chatScrollPrepareLayoutAhead | ExperimentalUISettings.chatScrollReuseRowViews
+        XCTAssertEqual(try self.roundTrip(settings).chatScrollExperiments, 3)
+        // A blob saved by a build that predates the keys keeps the other flags and gets both switches off.
+        let older = try self.decode(#"{"fakeGlass": 1, "glassDebugDisabledGroups": 2}"#)
+        XCTAssertEqual(older.chatScrollExperiments, 0)
+        XCTAssertEqual(older.glassDebugDisabledGroups, 2)
+    }
+
     func testAChoiceMadeAfterTheUpgradeIsKept() throws {
         var settings = try self.decode(#"{"compressedEmojiCache": 0, "stickerRendererMode": "cpu"}"#)
         settings.stickerRendererMode = .cpu

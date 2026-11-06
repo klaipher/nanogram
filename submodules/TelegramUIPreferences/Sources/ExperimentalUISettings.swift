@@ -109,6 +109,13 @@ public struct ExperimentalUISettings: Codable, Equatable {
     /// translation host, network-speed notices) after its first appearance instead of inside `ChatControllerImpl.init`.
     /// Read once per chat controller (the value is cached in the controller).
     public var chatOpenDeferSetup: Bool
+    /// Debug Settings ▸ "Chat scroll": bits of the chat-scroll switches that are on. 0 (default) leaves chat scrolling exactly
+    /// as it is. The bits equal `ChatScrollExperiment`'s raw values (ChatRowPrep).
+    public var chatScrollExperiments: Int32
+    /// "Chat rows: prepare layout ahead".
+    public static let chatScrollPrepareLayoutAhead: Int32 = 1
+    /// "Chat rows: reuse row views".
+    public static let chatScrollReuseRowViews: Int32 = 2
     public var stickerRendererMode: StickerRendererMode
 
     public static var defaultSettings: ExperimentalUISettings {
@@ -179,6 +186,7 @@ public struct ExperimentalUISettings: Codable, Equatable {
         glassDebugDisabledGroups: Int32 = 0,
         emojiPanelDefersHeavyWork: Bool = false
         chatOpenDeferSetup: Bool = false
+        chatScrollExperiments: Int32 = 0
     ) {
         self.keepChatNavigationStack = keepChatNavigationStack
         self.skipReadHistory = skipReadHistory
@@ -218,6 +226,7 @@ public struct ExperimentalUISettings: Codable, Equatable {
         self.glassDebugDisabledGroups = glassDebugDisabledGroups
         self.emojiPanelDefersHeavyWork = emojiPanelDefersHeavyWork
         self.chatOpenDeferSetup = chatOpenDeferSetup
+        self.chatScrollExperiments = chatScrollExperiments
     }
     
     /// Revision of Nanogram's defaults that a saved blob was written with. Revision 1 turned on large
@@ -280,6 +289,7 @@ public struct ExperimentalUISettings: Codable, Equatable {
         self.glassDebugDisabledGroups = try container.decodeIfPresent(Int32.self, forKey: "glassDebugDisabledGroups") ?? 0
         self.emojiPanelDefersHeavyWork = try container.decodeIfPresent(Bool.self, forKey: "emojiPanelDefersHeavyWork") ?? false
         self.chatOpenDeferSetup = try container.decodeIfPresent(Bool.self, forKey: "chatOpenDeferSetup") ?? false
+        self.chatScrollExperiments = try container.decodeIfPresent(Int32.self, forKey: "chatScrollExperiments") ?? 0
 
         if savedDefaultsRevision < 1 {
             // Saved before the GPU renderers became the default: both were the old CPU defaults.
@@ -331,6 +341,7 @@ public struct ExperimentalUISettings: Codable, Equatable {
         try container.encode(self.glassDebugDisabledGroups, forKey: "glassDebugDisabledGroups")
         try container.encode(self.emojiPanelDefersHeavyWork, forKey: "emojiPanelDefersHeavyWork")
         try container.encode(self.chatOpenDeferSetup, forKey: "chatOpenDeferSetup")
+        try container.encode(self.chatScrollExperiments, forKey: "chatScrollExperiments")
         try container.encode(ExperimentalUISettings.nanogramDefaultsRevision, forKey: "nanogramDefaultsRevision")
     }
 }

@@ -661,6 +661,33 @@ public final class CoreVirtualListView: UIView {
     // Internal rather than private: `CoreVirtualListView+Attachments.swift` is a different FILE, and
     // Swift's `private` is file-scoped.
     var contentWidth: CGFloat { viewportGeometry.contentWidth }
+
+    /// The width every row is measured at (`contentWidth`), for a host that prepares row layout ahead of
+    /// the list asking for it. Read-only.
+    public var currentContentWidth: CGFloat { contentWidth }
+
+    /// Offered the rows a scroll rebalance just unloaded (they left the load band). Returns `true` when it
+    /// TAKES OVER those views: `render()` then neither removes them from the container nor lets a later
+    /// `render()` do so, they are hidden, and the handler owes a `releaseRetiredRow(_:)` for each one
+    /// (after it removed the view itself, or when it hands the view to a new row). Returns `false`, or
+    /// is `nil`, for today's behaviour: `render()` removes them in the same tick. Called only from the
+    /// scroll rebalance, never from `applyChanges`, and never for a view that is a crossing carry.
+    ///
+    /// Purpose: a host that defers the teardown of unloaded rows to an idle run-loop turn, or keeps the
+    /// views to reuse them, instead of paying for the removal inside the scroll frame.
+    public var rowRetirementHandler: (([UIView & CoreListItemView]) -> Bool)?
+
+    /// Views a `rowRetirementHandler` took over and has not released yet. Weak, so a view the host
+    /// drops is simply forgotten.
+    private let retiredRowViews = NSHashTable<UIView>.weakObjects()
+
+    /// Ends the take-over of `view`: it is no longer protected from `render()`'s stale sweep, and it is
+    /// shown again. Does NOT remove it from the container; a host that wants it gone calls
+    /// `removeFromSuperview()` itself. Idempotent.
+    public func releaseRetiredRow(_ view: UIView) {
+        retiredRowViews.remove(view)
+        view.isHidden = false
+    }
     private(set) var activeWindow = Window() {
         didSet { windowRevision &+= 1 }
     }
@@ -2929,6 +2956,7 @@ public final class CoreVirtualListView: UIView {
         let absoluteBase = containerOriginY - activeWindow.minY
         var window = activeWindow
         var changed = false
+        var retiredThisTick: [UIView & CoreListItemView] = []
 
         while window.items.count > 1,
               let first = window.items.first,
@@ -2937,6 +2965,7 @@ public final class CoreVirtualListView: UIView {
                              viewportOffset: scrollY).maxY < band.lowerBound {
             animationController.unbind(identity: _items[first.index].identity,
                                        layer: first.view.layer)
+            if rowRetirementHandler != nil { retiredThisTick.append(first.view) }
             window.items.removeFirst()
             changed = true
         }
@@ -2948,6 +2977,7 @@ public final class CoreVirtualListView: UIView {
                              viewportOffset: scrollY).minY > band.upperBound {
             animationController.unbind(identity: _items[last.index].identity,
                                        layer: last.view.layer)
+            if rowRetirementHandler != nil { retiredThisTick.append(last.view) }
             window.items.removeLast()
             changed = true
         }
@@ -2998,6 +3028,7 @@ public final class CoreVirtualListView: UIView {
             applyEngineShift(newAbsoluteBase - absoluteBase)
             previousOffset = engine.offset
         }
+        offerRetiredRows(retiredThisTick)
         render()
 
         for item in window.items {
@@ -3510,6 +3541,23 @@ public final class CoreVirtualListView: UIView {
                                       bottomLoaded: window.endIndex == _items.count - 1)
     }
 
+    /// Offers the rows a rebalance unloaded to `rowRetirementHandler`; see there. Skips a view that a
+    /// crossing carry still uses.
+    private func offerRetiredRows(_ retired: [UIView & CoreListItemView]) {
+        guard !retired.isEmpty, let handler = rowRetirementHandler else { return }
+        var offered = retired
+        if !crossingCarries.isEmpty {
+            offered = retired.filter { view in !crossingCarries.values.contains(where: { $0.view === view }) }
+        }
+        guard !offered.isEmpty else { return }
+        if handler(offered) {
+            for view in offered {
+                retiredRowViews.add(view)
+                view.isHidden = true
+            }
+        }
+    }
+
     private func render() {
         let window = activeWindow
         let newOriginY = computeContainerOriginY(for: window)
@@ -3520,6 +3568,7 @@ public final class CoreVirtualListView: UIView {
                                  height: max(1, window.height))
         for subview in ListMembership.staleSubviews(in: container.subviews,
                                                     keeping: window.items.map { $0.view }) {
+            if retiredRowViews.count > 0, retiredRowViews.contains(subview) { continue }
             subview.removeFromSuperview()
         }
         for item in window.items {

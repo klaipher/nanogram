@@ -121,3 +121,19 @@ marked (check) were not re-verified against the code; correct them on the next c
 - Upstream: `ChatHistoryNavigationButton*` and `GlassBackgroundComponent.swift` are upstream files (the container, the view init and `update` changed in a few places); the rest is new.
 - Sync: re-apply the container hosting if upstream changes how `ChatHistoryNavigationButtons` adds its buttons.
 - Not done: replacing Telegram's navigation bar, tab bar or edge effect with system ones, and the iOS 26 luma clamp, are owner decisions.
+
+### Chat-scroll experiments (iOS, Debug Settings, default off)
+- What: two switches under Debug Settings ▸ Chat scroll. "Chat rows: prepare layout ahead" builds the rows just beyond the loaded
+  edge of the CoreList chat on a background queue and uses a result only for an exactly equal key. "Chat rows: reuse row views"
+  tears unloaded rows down at an idle run-loop turn and pools the sticker row view. Both off: today's code paths.
+- Why: the owner's chat-scroll traces of 2026-11-06 (row build 29 % of main during scroll, text layout ~220 ms, row teardown 76 ms).
+- Where: new module `submodules/TelegramUI/Components/Chat/ChatRowPrep`; `CoreListChatRowPrefetcher.swift` and
+  `CoreListChatHistoryBackend.swift`; `CoreVirtualListView.rowRetirementHandler` / `releaseRetiredRow` / `currentContentWidth`;
+  `ChatMessageItemView.supportsRowReuse` / `prepareForRowReuse` (sticker row overrides them);
+  `ChatMessageItemImpl.resolvedItemViewClass()` (the former inline class choice); `ChatControllerInteraction.rowPrepEpoch`
+  (`didSet` on the properties a row's layout reads); `ExperimentalUISettings.chatScrollExperiments`; `DebugController.swift`.
+  Also `Display/TransformImageNode.resetArguments()` (new, used by the pooled sticker row) and `ChatMessageStickerItemNode` (placeholder removal by node, new `dateAndStatusNode` on reset).
+- Upstream: `ChatMessageItemImpl`, `ChatMessageItemView`, `ChatMessageStickerItemNode` (the `firstTime` closure variable became a
+  member) and `ChatControllerInteraction` are upstream files with small changes; the rest is new. Not shared with the Mac (CoreList is iOS only).
+- Sync: a property added upstream to `ChatControllerInteraction` that a row's layout reads needs the `rowPrepEpoch` `didSet`; a
+  property added to `ChatMessageStickerItemNode` needs a ledger entry and a reset in `prepareForRowReuse` (the ledger test fails otherwise).

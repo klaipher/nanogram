@@ -25,6 +25,7 @@ swift_library(
         "//submodules/WallpaperBackgroundNode:WallpaperBackgroundNode",
         "//submodules/TelegramUI/Components/AnimationCache:AnimationCache",
         "//submodules/TelegramUI/Components/MultiAnimationRenderer:MultiAnimationRenderer",
+        "//submodules/TelegramUI/Components/Chat/ChatRowPrep:ChatRowPrep",
     ],
     visibility = [
         "//visibility:public",

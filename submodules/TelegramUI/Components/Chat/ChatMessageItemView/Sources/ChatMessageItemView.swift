@@ -699,6 +699,14 @@ public enum InternalBubbleTapAction {
     case openContextMenu(OpenContextMenu)
 }
 
+/// What the row-reuse reset does with one stored property of a row view.
+public enum ChatRowReuseTreatment {
+    /// Put back to its initial value (or the sub-node it holds is removed and dropped).
+    case reset
+    /// Never changes after `init`, or is owned by the host / list engine and rewritten before the next use.
+    case constant
+}
+
 open class ChatMessageItemView: ListViewItemNode, ChatMessageItemNodeProtocol {
     public let layoutConstants = (ChatMessageItemLayoutConstants.compact, ChatMessageItemLayoutConstants.regular)
     
@@ -735,6 +743,110 @@ open class ChatMessageItemView: ListViewItemNode, ChatMessageItemNodeProtocol {
         self.item = nil
         self.scrollTiltProvider = nil
         self.frame = CGRect()
+    }
+    
+    /// Whether this view type has a complete `prepareForRowReuse`. Only such types are pooled by the "Chat rows: reuse
+    /// row views" switch; every other type is created and destroyed per row as before.
+    open class var supportsRowReuse: Bool {
+        return false
+    }
+    
+    /// Stored properties of `ChatMessageItemView` itself and of `ListViewItemNode` below it, and what the reset does with
+    /// each. `ChatRowReuseLedgerTests` compares these names with the properties the class really has, so a property added
+    /// without a decision here fails the test instead of silently surviving a reuse.
+    public static let rowReuseBaseLedger: [String: ChatRowReuseTreatment] = [
+        // ChatMessageItemView
+        "layoutConstants": .constant,
+        "item": .reset,
+        "accessibilityData": .reset,
+        "safeInsets": .reset,
+        "scrollTiltProvider": .reset,
+        "awaitingAppliedReaction": .reset,
+        "fetchEffectDisposable": .reset,
+        "playedEffectAnimation": .reset,
+        "effectAnimationNodes": .reset,
+        "attachedAvatarNodeOffset": .reset,
+        "attachedAvatarNodeIsHidden": .reset,
+        "attachedDateHeader": .reset
+    ]
+    
+    /// The same for the stored properties of `ListViewItemNode` (Display), the superclass. Under CoreList the host owns the
+    /// geometry (`hostOwnsFrame`) and rewrites `insets`, `contentSize` and the frame in `rebuild` before the next use; the
+    /// list-engine fields (`index`, accessory nodes, the animation queues, the header affinities) are used only by
+    /// `ListViewImpl`, never touched by the CoreList backend, and stay at their initial values.
+    public static let listViewItemNodeLedger: [String: ChatRowReuseTreatment] = [
+        "rotated": .constant,
+        "index": .constant,
+        "appliedNeighbors": .constant,
+        "isHighlightedInOverlay": .reset,
+        "accessoryItemNode": .constant,
+        "animations": .constant,
+        "pendingControlledTransitions": .constant,
+        "controlledTransitions": .constant,
+        "tempHeaderSpaceAffinities": .constant,
+        "headerSpaceAffinities": .constant,
+        "attachedHeaderNodes": .reset,
+        "wantsTrailingItemSpaceUpdates": .constant,
+        "scrollPositioningInsets": .constant,
+        "canBeUsedAsScrollToItemAnchor": .constant,
+        "visibility": .reset,
+        "hostOwnsFrame": .reset,
+        "insets": .constant,
+        "_contentSize": .constant,
+        "contentOffset": .constant,
+        "transitionOffset": .reset,
+        "apparentHeight": .constant,
+        "apparentHeightTransition": .constant,
+        "_bounds": .constant,
+        "_position": .constant
+    ]
+    
+    /// Puts the row into the state `init(rotated:)` leaves it in, so that the next `setupItem` / `asyncLayout` / apply
+    /// builds the next message's row from scratch. Returns false when the row is in a state that cannot be reset (the caller
+    /// then destroys it as before). Subclasses override, call `super` first and return its answer when it is false.
+    ///
+    /// Clears: the item, accessibility data and any pending deferred accessibility request (it reads the data), the
+    /// message-keyed effect download, awaiting-reaction callback, scroll tilt, attached header bindings and their
+    /// offsets, highlight, visibility, frame ownership, transition offset and every layer animation in the subtree.
+    open func prepareForRowReuse() -> Bool {
+        guard type(of: self).supportsRowReuse else {
+            return false
+        }
+        // The decoration nodes of a message effect live in the transition layer, outside this node.
+        if !self.effectAnimationNodes.isEmpty {
+            return false
+        }
+        
+        // Through the normal path first: this pauses whatever the row plays.
+        self.visibility = .none
+        
+        self.fetchEffectDisposable?.dispose()
+        self.fetchEffectDisposable = nil
+        self.playedEffectAnimation = false
+        self.awaitingAppliedReaction = nil
+        self.scrollTiltProvider = nil
+        self.item = nil
+        self.accessibilityData = nil
+        self.safeInsets = UIEdgeInsets()
+        self.isHighlightedInOverlay = false
+        self.setAttachedHeaderNodes([])
+        self.attachedAvatarNodeOffset = 0.0
+        self.attachedAvatarNodeIsHidden = false
+        self.attachedDateHeader = (false, false)
+        self.hostOwnsFrame = false
+        self.transitionOffset = 0.0
+        ChatMessageItemView.removeAllAnimations(in: self.layer)
+        return true
+    }
+    
+    /// Removes the animations of `layer` and of every layer below it.
+    public static func removeAllAnimations(in layer: CALayer) {
+        layer.removeAllAnimations()
+        if let sublayers = layer.sublayers {
+            for sublayer in sublayers {
+                ChatMessageItemView.removeAllAnimations(in: sublayer)
+            }
+        }
     }
     
     open func setupItem(_ item: ChatMessageItem, synchronousLoad: Bool) {

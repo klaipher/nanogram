@@ -54,3 +54,8 @@ Invariants the compiler does not check; each has a test.
   `chatInitDeferredSetup` (the flush) and `chatFirstLayout`. Tests: `//submodules/SSignalKit/SwiftSignalKit:SwiftSignalKitTests`
   (`DeferredSetupTests`), `//submodules/DebugSettingsUI:DebugSettingsUITests` (`ChatOpenSwitchTests`),
   `//submodules/TelegramUIPreferences:TelegramUIPreferencesTests`.
+- **Chat-scroll experiments** (Debug Settings ▸ Chat scroll, both off by default): "Chat rows: prepare layout ahead" and
+  "Chat rows: reuse row views". A prepared row is used only for an exactly equal `ChatRowPrepKey`; `ChatControllerInteraction`
+  properties that a row's layout reads must keep the `rowPrepEpoch` `didSet` (a new such property needs it too). A row view
+  type is pooled only when it overrides `supportsRowReuse` and `prepareForRowReuse` and its ledger test passes. Details:
+  `docs/chat/corelist-chat-history-backend.md`.
