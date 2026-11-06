@@ -637,8 +637,12 @@ public final class FFMpegMediaVideoFrameDecoder: MediaTrackFrameDecoder {
             }
 
             base = CVPixelBufferGetBaseAddressOfPlane(pixelBuffer, 1)!
+            guard let uSourcePlane = frame.data[1], let vSourcePlane = frame.data[2] else {
+                CVPixelBufferUnlockBaseAddress(pixelBuffer, [])
+                return nil
+            }
             if bytesPerRowUV == frame.lineSize[1] * 2 {
-                fillDstPlane(base.assumingMemoryBound(to: UInt8.self), frame.data[1]!, frame.data[2]!, srcPlaneSize)
+                fillDstPlane(base.assumingMemoryBound(to: UInt8.self), uSourcePlane, vSourcePlane, srcPlaneSize)
             } else {
                 let uvPlane: UnsafeMutablePointer<UInt8>
                 if let (existingUvPlane, existingUvPlaneSize) = self.uvPlane, existingUvPlaneSize == uvPlaneSize {
@@ -647,10 +651,15 @@ public final class FFMpegMediaVideoFrameDecoder: MediaTrackFrameDecoder {
                     if let (existingDstPlane, _) = self.uvPlane {
                         free(existingDstPlane)
                     }
-                    uvPlane = malloc(uvPlaneSize)!.assumingMemoryBound(to: UInt8.self)
+                    guard let allocatedUvPlane = malloc(uvPlaneSize) else {
+                        self.uvPlane = nil
+                        CVPixelBufferUnlockBaseAddress(pixelBuffer, [])
+                        return nil
+                    }
+                    uvPlane = allocatedUvPlane.assumingMemoryBound(to: UInt8.self)
                     self.uvPlane = (uvPlane, uvPlaneSize)
                 }
-                fillDstPlane(uvPlane, frame.data[1]!, frame.data[2]!, srcPlaneSize)
+                fillDstPlane(uvPlane, uSourcePlane, vSourcePlane, srcPlaneSize)
                 var dest = base
                 var src = uvPlane
                 let lineSize = Int(frame.lineSize[1]) * 2

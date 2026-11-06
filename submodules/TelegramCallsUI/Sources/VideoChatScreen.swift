@@ -147,9 +147,9 @@ extension VideoChatCall {
     func requestVideo(capturer: OngoingCallVideoCapturer, useFrontCamera: Bool) {
         switch self {
         case let .group(groupCall):
-            (groupCall as! PresentationGroupCallImpl).requestVideo(capturer: capturer, useFrontCamera: useFrontCamera)
+            (groupCall as? PresentationGroupCallImpl)?.requestVideo(capturer: capturer, useFrontCamera: useFrontCamera)
         case let .conferenceSource(conferenceSource):
-            (conferenceSource as! PresentationCallImpl).requestVideo(capturer: capturer, useFrontCamera: useFrontCamera)
+            (conferenceSource as? PresentationCallImpl)?.requestVideo(capturer: capturer, useFrontCamera: useFrontCamera)
         }
     }
     
