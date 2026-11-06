@@ -42,6 +42,13 @@ public struct ScrollVelocityEstimator {
         self.updateState()
     }
 
+    // Forgets the fling (the scroll view was touched or came to rest).
+    public mutating func reset() {
+        self.lastOffset = nil
+        self.smoothedSpeed = 0.0
+        self.flinging = false
+    }
+
     // The smoothed speed at `time`; zero when the last sample is stale.
     public func speed(at time: Double) -> Double {
         if self.lastOffset == nil || time - self.lastTime > ScrollVelocityEstimator.staleAfter {

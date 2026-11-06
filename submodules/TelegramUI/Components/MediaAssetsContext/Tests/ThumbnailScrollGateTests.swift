@@ -19,7 +19,7 @@ final class ThumbnailScrollGateTests: XCTestCase {
             self.gate = ThumbnailScrollGate(now: { clock.time }, makeTimer: { completion in
                 storedTick = completion
                 // Never started in a test; `fireTimer` calls the completion by hand.
-                return Timer(timeout: 3600.0, repeat: false, completion: { () -> Void in }, queue: Queue.mainQueue())
+                return SwiftSignalKit.Timer(timeout: 3600.0, repeat: false, completion: { () -> Void in }, queue: Queue.mainQueue())
             })
             self.tickProvider = { storedTick }
         }
@@ -87,5 +87,17 @@ final class ThumbnailScrollGateTests: XCTestCase {
         self.wait(for: [expectation], timeout: 2.0)
         harness.scroll(speed: 100.0, ticks: 10)
         XCTAssertEqual(started, 0)
+    }
+
+    func testSettleReleasesHeldRequestsAtOnce() {
+        let harness = Harness()
+        harness.scroll(speed: 4000.0, ticks: 20)
+        var started = 0
+        let disposable = harness.gate.whenCalm().start(next: { _ in started += 1 })
+        XCTAssertEqual(started, 0)
+        harness.gate.settle()
+        XCTAssertEqual(started, 1, "a touch or the end of deceleration releases without waiting for the timer")
+        XCTAssertFalse(harness.gate.isFlinging)
+        disposable.dispose()
     }
 }

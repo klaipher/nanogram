@@ -8,19 +8,19 @@ import SwiftSignalKit
 public final class ThumbnailScrollGate {
     private var estimator = ScrollVelocityEstimator()
     private let now: () -> Double
-    private let makeTimer: (@escaping () -> Void) -> Timer
+    private let makeTimer: (@escaping () -> Void) -> SwiftSignalKit.Timer
     private let waiters = Bag<() -> Void>()
-    private var timer: Timer?
+    private var timer: SwiftSignalKit.Timer?
 
     public init() {
         self.now = { CACurrentMediaTime() }
         self.makeTimer = { completion in
-            return Timer(timeout: 0.1, repeat: true, completion: completion, queue: Queue.mainQueue())
+            return SwiftSignalKit.Timer(timeout: 0.1, repeat: true, completion: completion, queue: Queue.mainQueue())
         }
     }
 
     // For tests: a manual clock and no real timer.
-    init(now: @escaping () -> Double, makeTimer: @escaping (@escaping () -> Void) -> Timer) {
+    init(now: @escaping () -> Double, makeTimer: @escaping (@escaping () -> Void) -> SwiftSignalKit.Timer) {
         self.now = now
         self.makeTimer = makeTimer
     }
@@ -31,6 +31,13 @@ public final class ThumbnailScrollGate {
 
     public var isFlinging: Bool {
         return self.estimator.isFlinging(at: self.now())
+    }
+
+    // The user touched the grid (a fling was caught) or the scrolling ended: nothing is flying past any more, so
+    // held requests start at once instead of waiting for the stale-sample timer.
+    public func settle() {
+        self.estimator.reset()
+        self.releaseIfCalm()
     }
 
     // Call on every scroll tick with the content offset.
@@ -72,7 +79,9 @@ public final class ThumbnailScrollGate {
 
     // Wraps a request so it only starts once the grid is calm.
     public func deferred<T>(_ signal: Signal<T, NoError>) -> Signal<T, NoError> {
-        return self.whenCalm()
+        // Subscribed on the main queue: the gate is main-thread state, and the signal may be started elsewhere
+        // (edited photos emit off main).
+        return (self.whenCalm() |> runOn(Queue.mainQueue()))
         |> mapToSignal { _ in
             return signal
         }

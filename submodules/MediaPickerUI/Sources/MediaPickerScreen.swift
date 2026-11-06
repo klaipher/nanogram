@@ -562,6 +562,11 @@ public final class MediaPickerScreenImpl: ViewController, MediaPickerScreen, Att
             
             self.gridNode.scrollingInitiated = { [weak self] in
                 self?.dismissInput()
+                // A touch catches a fling: release held thumbnail requests now.
+                self?.controller?.interaction?.thumbnailGate.settle()
+            }
+            self.gridNode.scrollingCompleted = { [weak self] in
+                self?.controller?.interaction?.thumbnailGate.settle()
             }
             
             self.gridNode.visibleContentOffsetChanged = { [weak self] offset in
@@ -694,7 +699,7 @@ public final class MediaPickerScreenImpl: ViewController, MediaPickerScreen, Att
         // Asks Photos for the thumbnails of the visible cells and one screen around them, at the size the cells request.
         private func updateThumbnailPrefetching(_ visibleItems: GridNodeVisibleItems) {
             self.lastVisibleItemsForPrefetch = visibleItems
-            let gate = self.interaction?.thumbnailGate
+            let gate = self.controller?.interaction?.thumbnailGate
             gate?.noteOffset(Double(self.gridNode.scrollView.contentOffset.y))
             let suspended = gate?.isFlinging ?? false
             if suspended, let gate {
