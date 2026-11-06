@@ -13,7 +13,7 @@ enum StaleChannelDiagnostics {
         var lastDifferenceTime: Double?
     }
 
-    private static let counters = Atomic<Counters>(value: Counters())
+    nonisolated(unsafe) private static let counters = Atomic<Counters>(value: Counters())
 
     struct PollSnapshot {
         let ptsBefore: Int32?

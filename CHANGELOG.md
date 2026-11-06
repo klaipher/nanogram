@@ -4,6 +4,8 @@ Newest first. Internal notes for each TestFlight build; testers see the What to 
 
 ## Unreleased
 
+- `StaleChannelDiagnostics.counters` is `nonisolated(unsafe)` (an `Atomic`, safe across threads): the two Swift 6 warnings it added to TelegramCore on the Mac (561 -> 563) are gone.
+
 ## 13.1.2 (202611061452) — 2026-11-06 — 33d7d094
 
 TestFlight upload (internal testers), Enhanced Security (soft mode) on the app, NotificationService and Share (checked in the built app and in the exported App Store build). Since 202611060203 (32bafb86..33d7d094): round 4 — Debug Settings exports on a serial queue (MetricKit fix), Send Logs ▸ Call Logs, CoreList scroll path membership/attachment work, round-video recovery after the background, stale-channel diagnostics (log only), 1:1 screen share by negotiated version with thermal frame-rate steps (tgcalls 57b914d on nanogram-shared). No upstream import: release-13.2 is not published on GitHub yet (latest tag release-13.1.2). Tests: tgcalls screen_share_policy and call_system_policy, DebugSettingsUITests, CoreList ScrollPath/AttachmentFlight/IdentityScan, UniversalMediaPlayerTests, plus the pre-push hook set.
