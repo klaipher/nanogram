@@ -497,9 +497,18 @@ static void registerEffectViewOverrides(void) {
         }
     }
 
-    // One lookup of the private Swift class. A name that is not in the ObjC class table falls through to the Swift
-    // runtime's mangled-name scan (tens of milliseconds in +load, launch trace J), so it must not be repeated.
-    Class backdropViewClass = NSClassFromString(TGEncodeText(@"_TtC5UIKitP33_ACD4A08F4BE9D00246F2A9C24A80CA8817UISDFBackdropView", 0));
+    // One lookup of UIKit's Swift glass backdrop view, by the name of the running OS only. iOS 26 declares the class
+    // file-private (the P33_ discriminator); iOS 27 does not (UIKitCore 27.2 has only _TtC5UIKit17UISDFBackdropView,
+    // the discriminator now belongs to UISDFElementView). A name that is not in the ObjC class table falls through to
+    // the Swift runtime's mangled-name scan (45 ms in _contextDescriptorMatchesMangling in +load, launch trace J), so
+    // the other OS's name is never tried as a fallback.
+    NSString *backdropViewClassName = nil;
+    if (@available(iOS 27.0, *)) {
+        backdropViewClassName = TGEncodeText(@"_TtC5UIKit17UISDFBackdropView", 0);
+    } else {
+        backdropViewClassName = TGEncodeText(@"_TtC5UIKitP33_ACD4A08F4BE9D00246F2A9C24A80CA8817UISDFBackdropView", 0);
+    }
+    Class backdropViewClass = NSClassFromString(backdropViewClassName);
     if (backdropViewClass != nil) {
         Method moveMethod = class_getInstanceMethod(backdropViewClass, @selector(didMoveToWindow));
         if (moveMethod) {
