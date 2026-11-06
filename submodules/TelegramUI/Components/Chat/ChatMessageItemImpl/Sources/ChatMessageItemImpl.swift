@@ -373,7 +373,7 @@ public final class ChatMessageItemImpl: ChatMessageItem, CustomStringConvertible
     }
     
     public func nodeConfiguredForParams(async: @escaping (@escaping () -> Void) -> Void, params: ListViewItemLayoutParams, synchronousLoads: Bool, neighbors: ListViewItemNeighbors, completion: @escaping (ListViewItemNode, @escaping () -> (Signal<Void, NoError>?, (ListViewItemApply) -> Void)) -> Void) {
-        let viewClassName = self.resolvedItemViewClass()
+        let viewClassName: AnyClass = self.resolvedItemViewClass()
         
         let configure = {
             let node = (viewClassName as! ChatMessageItemView.Type).init(rotated: self.controllerInteraction.chatIsRotated)
