@@ -98,7 +98,7 @@ private func readPacketCallback(userData: UnsafeMutableRawPointer?, buffer: Unsa
                 fetchedData = fileData
             } else {
                 let semaphore = DispatchSemaphore(value: 0)
-                                var completedRequest = false
+                var completedRequest = false
                 let disposable = data.start(next: { result in
                     let (data, isComplete) = result
                     if data.count == readCount || isComplete {
@@ -138,7 +138,7 @@ private func readPacketCallback(userData: UnsafeMutableRawPointer?, buffer: Unsa
         } else {
             let data = postbox.mediaBox.resourceData(resourceReference.resource, pathExtension: nil, option: .complete(waitUntilFetchStatus: false))
             let semaphore = DispatchSemaphore(value: 0)
-                        let readingOffset = context.readingOffset
+            let readingOffset = context.readingOffset
             var completedRequest = false
             let disposable = data.start(next: { next in
                 if next.complete {
@@ -212,7 +212,7 @@ private func seekCallback(userData: UnsafeMutableRawPointer?, offset: Int64, whe
                 var resultSize: Int64 = Int64.max - 1
                 let data = postbox.mediaBox.resourceData(resourceReference.resource, pathExtension: nil, option: .complete(waitUntilFetchStatus: false))
                 let semaphore = DispatchSemaphore(value: 0)
-                                var completedRequest = false
+                var completedRequest = false
                 let disposable = data.start(next: { next in
                     if next.complete {
                         resultSize = next.size
@@ -414,7 +414,7 @@ final class FFMpegMediaFrameSourceContext: NSObject {
         if !streamable && isAudioVideoMessage {
             let data = postbox.mediaBox.resourceData(resourceReference.resource, pathExtension: nil, option: .complete(waitUntilFetchStatus: false))
             let semaphore = DispatchSemaphore(value: 0)
-                        var resultFilePath: String?
+            var resultFilePath: String?
             let disposable = data.start(next: { next in
                 if next.complete {
                     resultFilePath = next.path

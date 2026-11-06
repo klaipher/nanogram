@@ -178,8 +178,10 @@ public final class FFMpegMediaFrameSource: NSObject, MediaFrameSource {
                     return
                 }
                 context.cancellation.request = requestCancellation
+                defer {
+                    context.cancellation.request = nil
+                }
                 let _ = context.takeFrames(until: timestamp, types: [.audio, .video])
-                context.cancellation.request = nil
                 subscriber.putCompletion()
             })
             return disposable

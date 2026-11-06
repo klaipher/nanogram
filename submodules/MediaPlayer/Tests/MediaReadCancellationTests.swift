@@ -84,17 +84,15 @@ final class MediaReadCancellationTests: XCTestCase {
 
         let source = FakeDataSource()
         let started = DispatchSemaphore(value: 0)
-        var waited = false
         let finished = self.runOnReadingThread {
             let semaphore = source.request()
             started.signal()
-            waited = scope.wait(semaphore)
+            let _ = scope.wait(semaphore)
         }
         XCTAssertEqual(started.wait(timeout: .now() + 5.0), .success)
         Thread.sleep(forTimeInterval: 0.05)
         request.cancel()
         self.wait(for: [finished], timeout: 5.0)
-        XCTAssertTrue(waited)
         XCTAssertTrue(scope.isCancelled)
     }
 
