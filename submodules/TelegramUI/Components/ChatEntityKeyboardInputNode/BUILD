@@ -64,6 +64,7 @@ swift_library(
     srcs = glob(["Tests/**/*.swift"]),
     deps = [
         ":ChatEntityKeyboardInputNode",
+        "//submodules/Postbox:Postbox",
     ],
 )
 

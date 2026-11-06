@@ -2075,91 +2075,15 @@ public final class ChatEntityKeyboardInputNode: ChatInputNode {
     }
 
     private func processStableItemGroupList(category: EntityKeyboardComponent.ReorderCategory, itemGroups: [EmojiPagerContentComponent.ItemGroup]) -> [EmojiPagerContentComponent.ItemGroup] {
-        let nextIds: [ItemCollectionId] = itemGroups.compactMap { group -> ItemCollectionId? in
-            if group.isEmbedded {
-                return nil
-            }
-            if group.isFeatured {
-                return nil
-            }
-            if let collectionId = group.groupId.base as? ItemCollectionId {
-                return collectionId
-            } else {
-                return nil
-            }
-        }
-
-        let stableOrder = self.stableReorderableGroupOrder[category] ?? nextIds
-
-        var updatedGroups: [EmojiPagerContentComponent.ItemGroup] = []
-
-        var staticIsFirst = false
-        let topStaticGroups: [String] = [
-            "static",
-            "recent",
-            "featuredTop"
-        ]
-        for group in itemGroups {
-            var found = false
-            for topStaticGroup in topStaticGroups {
-                if group.groupId == AnyHashable(topStaticGroup) {
-                    if group.groupId == AnyHashable("static") {
-                        staticIsFirst = true
-                    }
-                    found = true
-                    break
-                }
-            }
-            if !found {
-                break
-            }
-        }
-
-        for group in itemGroups {
-            if !(group.groupId.base is ItemCollectionId) {
-                if group.groupId != AnyHashable("static") || staticIsFirst {
-                    updatedGroups.append(group)
-                }
-            } else {
-                if group.isEmbedded {
-                    continue
-                }
-                if group.isFeatured {
-                    continue
-                }
-                if !stableOrder.contains(where: { AnyHashable($0) == group.groupId }) {
-                    updatedGroups.append(group)
-                }
-            }
-        }
-        for id in stableOrder {
-            if let group = itemGroups.first(where: { $0.groupId == AnyHashable(id) }) {
-                updatedGroups.append(group)
-            }
-        }
-        for group in itemGroups {
-            if !updatedGroups.contains(where: { $0.groupId == group.groupId }) {
-                updatedGroups.append(group)
-            }
-        }
-
-        let updatedIds = updatedGroups.compactMap { group -> ItemCollectionId? in
-            if group.isEmbedded {
-                return nil
-            }
-            if group.isFeatured {
-                return nil
-            }
-            if let collectionId = group.groupId.base as? ItemCollectionId {
-                return collectionId
-            } else {
-                return nil
-            }
-        }
-
-        self.stableReorderableGroupOrder[category] = updatedIds
-
-        return updatedGroups
+        let result = StableGroupOrder.process(
+            groups: itemGroups,
+            storedOrder: self.stableReorderableGroupOrder[category],
+            id: { $0.groupId },
+            isEmbedded: { $0.isEmbedded },
+            isFeatured: { $0.isFeatured }
+        )
+        self.stableReorderableGroupOrder[category] = result.order
+        return result.groups
     }
 
     private func processInputData(inputData: InputData) -> InputData {
