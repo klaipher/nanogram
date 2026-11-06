@@ -10,6 +10,7 @@ import FFMpegBinding
 import YuvConversion
 
 private let bufferCount = 32
+private let poolAllocationAuxAttributes: CFDictionary = [kCVPixelBufferPoolAllocationThresholdKey as String: bufferCount as NSNumber] as CFDictionary
 
 
 
@@ -42,6 +43,14 @@ public final class FFMpegMediaVideoFrameDecoder: MediaTrackFrameDecoder {
     private var delayedFrames: [MediaTrackFrame] = []
     
     private var uvPlane: (UnsafeMutablePointer<UInt8>, Int)?
+    
+    private struct ColorAttachmentKey: Equatable {
+        let isUntagged: Bool
+        let matrix: Int32
+        let primaries: Int32
+        let transfer: Int32
+    }
+    private var colorAttachmentCache: (key: ColorAttachmentKey, values: [(CFString, CFString?)])?
     // Reused 420 scratch frame for `planarFrameFor420Conversion`. ARC-owned; the
     // decoder emits one size per stream, so this is allocated once.
     private var downsampled420Frame: FFMpegAVFrame?
@@ -544,8 +553,7 @@ public final class FFMpegMediaVideoFrameDecoder: MediaTrackFrameDecoder {
         }
         
         if let pixelBufferPool = self.pixelBufferPool {
-            let auxAttributes: [String: Any] = [kCVPixelBufferPoolAllocationThresholdKey as String: bufferCount as NSNumber];
-            let err = CVPixelBufferPoolCreatePixelBufferWithAuxAttributes(kCFAllocatorDefault, pixelBufferPool, auxAttributes as CFDictionary, &pixelBufferRef)
+            let err = CVPixelBufferPoolCreatePixelBufferWithAuxAttributes(kCFAllocatorDefault, pixelBufferPool, poolAllocationAuxAttributes, &pixelBufferRef)
             if err == kCVReturnWouldExceedAllocationThreshold {
                 print("kCVReturnWouldExceedAllocationThreshold, dropping frame")
                 return nil
@@ -583,19 +591,6 @@ public final class FFMpegMediaVideoFrameDecoder: MediaTrackFrameDecoder {
         } else {
             let srcPlaneSize = Int(frame.lineSize[1]) * Int(frame.height / 2)
             let uvPlaneSize = srcPlaneSize * 2
-
-            let uvPlane: UnsafeMutablePointer<UInt8>
-            if let (existingUvPlane, existingUvPlaneSize) = self.uvPlane, existingUvPlaneSize == uvPlaneSize {
-                uvPlane = existingUvPlane
-            } else {
-                if let (existingDstPlane, _) = self.uvPlane {
-                    free(existingDstPlane)
-                }
-                uvPlane = malloc(uvPlaneSize)!.assumingMemoryBound(to: UInt8.self)
-                self.uvPlane = (uvPlane, uvPlaneSize)
-            }
-                    
-            fillDstPlane(uvPlane, frame.data[1]!, frame.data[2]!, srcPlaneSize)
 
             let bytesPerRowY = CVPixelBufferGetBytesPerRowOfPlane(pixelBuffer, 0)
             let bytesPerRowUV = CVPixelBufferGetBytesPerRowOfPlane(pixelBuffer, 1)
@@ -643,8 +638,19 @@ public final class FFMpegMediaVideoFrameDecoder: MediaTrackFrameDecoder {
 
             base = CVPixelBufferGetBaseAddressOfPlane(pixelBuffer, 1)!
             if bytesPerRowUV == frame.lineSize[1] * 2 {
-                memcpy(base, uvPlane, Int(frame.height / 2) * bytesPerRowUV)
+                fillDstPlane(base.assumingMemoryBound(to: UInt8.self), frame.data[1]!, frame.data[2]!, srcPlaneSize)
             } else {
+                let uvPlane: UnsafeMutablePointer<UInt8>
+                if let (existingUvPlane, existingUvPlaneSize) = self.uvPlane, existingUvPlaneSize == uvPlaneSize {
+                    uvPlane = existingUvPlane
+                } else {
+                    if let (existingDstPlane, _) = self.uvPlane {
+                        free(existingDstPlane)
+                    }
+                    uvPlane = malloc(uvPlaneSize)!.assumingMemoryBound(to: UInt8.self)
+                    self.uvPlane = (uvPlane, uvPlaneSize)
+                }
+                fillDstPlane(uvPlane, frame.data[1]!, frame.data[2]!, srcPlaneSize)
                 var dest = base
                 var src = uvPlane
                 let lineSize = Int(frame.lineSize[1]) * 2
@@ -666,19 +672,25 @@ public final class FFMpegMediaVideoFrameDecoder: MediaTrackFrameDecoder {
     }
     
     private func applyColorAttachments(_ pixelBuffer: CVPixelBuffer, frame: FFMpegAVFrame) {
+        let cacheKey = ColorAttachmentKey(isUntagged: self.presentsUntaggedFrames, matrix: Int32(frame.colorMatrix), primaries: Int32(frame.colorPrimaries), transfer: Int32(frame.colorTransfer))
         let values: [(CFString, CFString?)]
-        if self.presentsUntaggedFrames {
-            values = [
-                (kCVImageBufferYCbCrMatrixKey, nil),
-                (kCVImageBufferColorPrimariesKey, nil),
-                (kCVImageBufferTransferFunctionKey, nil)
-            ]
+        if let cached = self.colorAttachmentCache, cached.key == cacheKey {
+            values = cached.values
         } else {
-            values = [
-                (kCVImageBufferYCbCrMatrixKey, CVYCbCrMatrixGetStringForIntegerCodePoint(Int32(frame.colorMatrix))?.takeUnretainedValue()),
-                (kCVImageBufferColorPrimariesKey, CVColorPrimariesGetStringForIntegerCodePoint(Int32(frame.colorPrimaries))?.takeUnretainedValue()),
-                (kCVImageBufferTransferFunctionKey, CVTransferFunctionGetStringForIntegerCodePoint(Int32(frame.colorTransfer))?.takeUnretainedValue())
-            ]
+            if cacheKey.isUntagged {
+                values = [
+                    (kCVImageBufferYCbCrMatrixKey, nil),
+                    (kCVImageBufferColorPrimariesKey, nil),
+                    (kCVImageBufferTransferFunctionKey, nil)
+                ]
+            } else {
+                values = [
+                    (kCVImageBufferYCbCrMatrixKey, CVYCbCrMatrixGetStringForIntegerCodePoint(cacheKey.matrix)?.takeUnretainedValue()),
+                    (kCVImageBufferColorPrimariesKey, CVColorPrimariesGetStringForIntegerCodePoint(cacheKey.primaries)?.takeUnretainedValue()),
+                    (kCVImageBufferTransferFunctionKey, CVTransferFunctionGetStringForIntegerCodePoint(cacheKey.transfer)?.takeUnretainedValue())
+                ]
+            }
+            self.colorAttachmentCache = (cacheKey, values)
         }
         for (key, value) in values {
             if let value {

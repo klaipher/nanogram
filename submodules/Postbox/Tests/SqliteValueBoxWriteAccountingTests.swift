@@ -40,6 +40,34 @@ final class SqliteValueBoxWriteAccountingTests: XCTestCase {
         XCTAssertGreaterThanOrEqual(walBytes, 10 * 4096)
     }
 
+    func testTheFramesOfTheLastCommitAreTakenOnce() {
+        let queue = Queue(name: "SqliteValueBoxWriteAccountingTests.lastCommit")
+        let basePath = NSTemporaryDirectory() + "SqliteValueBoxWriteAccountingTests-" + UUID().uuidString + "/postbox/db"
+        defer {
+            let _ = try? FileManager.default.removeItem(atPath: basePath)
+        }
+        queue.sync {
+            guard let valueBox = SqliteValueBox(basePath: basePath, queue: queue, isTemporary: true, isReadOnly: false, useCaches: true, removeDatabaseOnError: true, encryptionParameters: nil, upgradeProgress: { _ in }, inMemory: false) else {
+                XCTFail("could not open the database")
+                return
+            }
+            let _ = valueBox.takeLastCommitAppendedFrames()
+            valueBox.begin()
+            let key = ValueBoxKey(length: 8)
+            key.setInt64(0, value: 1)
+            valueBox.set(self.table, key: key, value: MemoryBuffer(data: Data(repeating: 1, count: 3000)))
+            valueBox.commit()
+            XCTAssertGreaterThanOrEqual(valueBox.takeLastCommitAppendedFrames(), 1)
+            XCTAssertEqual(valueBox.takeLastCommitAppendedFrames(), 0, "taken once")
+
+            valueBox.begin()
+            let _ = valueBox.get(self.table, key: key)
+            valueBox.commit()
+            XCTAssertEqual(valueBox.takeLastCommitAppendedFrames(), 0, "a read-only transaction appends nothing")
+            valueBox.internalClose()
+        }
+    }
+
     private func commitRows(_ valueBox: SqliteValueBox, from start: Int, count: Int) {
         for i in start ..< start + count {
             valueBox.begin()

@@ -267,6 +267,7 @@ private final class FFMpegLookaheadReader {
     }
     
     func updateCurrentTimestamp() {
+        self.params.wakeGate.beginWake()
         self.currentTimestamp = self.params.currentTimestamp.with({ $0 })
         
         self.updateReadIfNeeded()
@@ -282,8 +283,7 @@ private final class FFMpegLookaheadReader {
         
         let maxPtsSeconds = max(self.params.seekToTimestamp, currentTimestamp) + self.params.lookaheadDuration
         
-        var currentAudioPtsSecondsAdvanced: Double = 0.0
-        var currentVideoPtsSecondsAdvanced: Double = 0.0
+        var reportStep = FFMpegLookaheadReportStep()
         
         let packet = FFMpegPacket()
         while !self.isCancelled && !self.isEnded {
@@ -320,7 +320,7 @@ private final class FFMpegLookaheadReader {
             if let audioStream = self.audioStream, Int(packet.streamIndex) == audioStream.index {
                 let pts = CMTimeMake(value: packet.pts, timescale: audioStream.timeScale)
                 if let audioStreamState = self.audioStreamState {
-                    currentAudioPtsSecondsAdvanced += pts.seconds - audioStreamState.readableToTime.seconds
+                    reportStep.addAudio(pts.seconds - audioStreamState.readableToTime.seconds)
                 }
                 self.audioStreamState = FFMpegLookahead.StreamState(
                     info: audioStream,
@@ -329,7 +329,7 @@ private final class FFMpegLookaheadReader {
             } else if let videoStream = self.videoStream, Int(packet.streamIndex) == videoStream.index {
                 let pts = CMTimeMake(value: packet.pts, timescale: videoStream.timeScale)
                 if let videoStreamState = self.videoStreamState {
-                    currentVideoPtsSecondsAdvanced += pts.seconds - videoStreamState.readableToTime.seconds
+                    reportStep.addVideo(pts.seconds - videoStreamState.readableToTime.seconds)
                 }
                 self.videoStreamState = FFMpegLookahead.StreamState(
                     info: videoStream,
@@ -337,12 +337,29 @@ private final class FFMpegLookaheadReader {
                 )
             }
             
-            if min(currentAudioPtsSecondsAdvanced, currentVideoPtsSecondsAdvanced) >= 0.1 {
+            if reportStep.takeIfDue() {
                 self.reportStateIfNeeded()
             }
         }
         
         self.reportStateIfNeeded()
+        self.publishProgress()
+    }
+    
+    private func publishProgress() {
+        var readableTo: Double?
+        var hasAllStreams = true
+        for (stream, state) in [(self.audioStream, self.audioStreamState), (self.videoStream, self.videoStreamState)] {
+            if stream == nil {
+                continue
+            }
+            guard let state else {
+                hasAllStreams = false
+                break
+            }
+            readableTo = min(readableTo ?? state.readableToTime.seconds, state.readableToTime.seconds)
+        }
+        self.params.wakeGate.noteProgress(readableTo: hasAllStreams ? readableTo : nil, isEnded: self.isEnded)
     }
     
     private func reportStateIfNeeded() {
@@ -384,6 +401,7 @@ private final class FFMpegLookaheadThread: NSObject {
         let size: Int64
         let cancel: Signal<Void, NoError>
         let currentTimestamp: Atomic<Double?>
+        let wakeGate: FFMpegLookaheadWakeGate
         
         init(
             seekToTimestamp: Double,
@@ -396,7 +414,8 @@ private final class FFMpegLookaheadThread: NSObject {
             completedResourcePath: @escaping () -> String?,
             size: Int64,
             cancel: Signal<Void, NoError>,
-            currentTimestamp: Atomic<Double?>
+            currentTimestamp: Atomic<Double?>,
+            wakeGate: FFMpegLookaheadWakeGate
         ) {
             self.seekToTimestamp = seekToTimestamp
             self.lookaheadDuration = lookaheadDuration
@@ -409,6 +428,7 @@ private final class FFMpegLookaheadThread: NSObject {
             self.size = size
             self.cancel = cancel
             self.currentTimestamp = currentTimestamp
+            self.wakeGate = wakeGate
         }
     }
     
@@ -483,6 +503,9 @@ final class FFMpegLookahead {
     
     private let cancel = Promise<Void>()
     private let currentTimestamp = Atomic<Double?>(value: nil)
+    private let wakeGate = FFMpegLookaheadWakeGate()
+    private let seekToTimestamp: Double
+    private let lookaheadDuration: Double
     private let thread: Thread
     
     init(
@@ -496,6 +519,8 @@ final class FFMpegLookahead {
         completedResourcePath: @escaping () -> String?,
         size: Int64
     ) {
+        self.seekToTimestamp = seekToTimestamp
+        self.lookaheadDuration = lookaheadDuration
         self.thread = Thread(
             target: FFMpegLookaheadThread.self,
             selector: #selector(FFMpegLookaheadThread.entryPoint(_:)),
@@ -510,7 +535,8 @@ final class FFMpegLookahead {
                 completedResourcePath: completedResourcePath,
                 size: size,
                 cancel: self.cancel.get(),
-                currentTimestamp: self.currentTimestamp
+                currentTimestamp: self.currentTimestamp,
+                wakeGate: self.wakeGate
             )
         )
         self.thread.name = "FFMpegLookahead"
@@ -524,6 +550,9 @@ final class FFMpegLookahead {
     
     func updateCurrentTimestamp(timestamp: Double) {
         let _ = self.currentTimestamp.swap(timestamp)
+        if !self.wakeGate.shouldWake(position: timestamp, seekTo: self.seekToTimestamp, lookaheadDuration: self.lookaheadDuration) {
+            return
+        }
         FFMpegLookaheadThread.self.perform(#selector(FFMpegLookaheadThread.updateCurrentTimestamp), on: self.thread, with: timestamp as NSNumber, waitUntilDone: false)
     }
 }

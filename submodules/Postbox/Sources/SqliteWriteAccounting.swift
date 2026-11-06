@@ -18,6 +18,7 @@ final class SqliteWalWriteAccounting {
     let frameSize: Int
     private var lastFrames: Int32 = 0
     private var lastBackfilledFrames: Int32 = 0
+    private var lastCommitAppendedFrames: Int32 = 0
 
     init(databasePath: String, handle: OpaquePointer?) {
         let name = DiskWriteCategory.databaseName(path: (databasePath as NSString).deletingLastPathComponent)
@@ -40,9 +41,18 @@ final class SqliteWalWriteAccounting {
             self.lastBackfilledFrames = 0
         }
         self.lastFrames = walFrames
+        self.lastCommitAppendedFrames = appended
         if appended > 0 {
             DiskWriteAccounting.shared.add(self.walCategory, bytes: Int(appended) * self.frameSize)
         }
+    }
+
+    /// The frames the last commit appended, once: a second call without a commit in between gives 0. Called on the
+    /// connection's queue right after `COMMIT`, which is where the WAL hook ran.
+    func takeLastCommitAppendedFrames() -> Int {
+        let frames = Int(self.lastCommitAppendedFrames)
+        self.lastCommitAppendedFrames = 0
+        return frames
     }
 
     /// `backfilledFrames`: the WAL's total backfilled frames after a checkpoint (`sqlite3_wal_checkpoint_v2`'s

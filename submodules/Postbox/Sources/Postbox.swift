@@ -3306,12 +3306,14 @@ final class PostboxImpl {
     }
     
     let isInTransaction: Atomic<Bool>
+    private var transactionWriteAttribution = TransactionWriteAttribution()
     
     private func internalTransaction<T>(_ f: (Transaction) -> T, file: String = #file, line: Int = #line) -> (result: T, updatedTransactionStateVersion: Int64?, updatedMasterClientId: Int64?) {
         let _ = self.isInTransaction.swap(true)
         
         let startTime = CFAbsoluteTimeGetCurrent()
         
+        let _ = self.valueBox.takeLastCommitAppendedFrames()
         self.valueBox.begin()
         let transaction = Transaction(queue: self.queue, postbox: self)
         self.afterBegin(transaction: transaction)
@@ -3319,6 +3321,14 @@ final class PostboxImpl {
         let (updatedTransactionState, updatedMasterClientId) = self.beforeCommit(currentTransaction: transaction)
         transaction.disposed = true
         self.valueBox.commit()
+        
+        let appendedFrames = self.valueBox.takeLastCommitAppendedFrames()
+        if appendedFrames > 0 {
+            self.transactionWriteAttribution.note(site: TransactionWriteAttribution.siteName(file: file, line: line), frames: appendedFrames)
+            if let attributionLine = self.transactionWriteAttribution.takeLogLine(now: Date().timeIntervalSince1970) {
+                postboxLog(attributionLine)
+            }
+        }
         
         let endTime = CFAbsoluteTimeGetCurrent()
         let transactionDuration = endTime - startTime

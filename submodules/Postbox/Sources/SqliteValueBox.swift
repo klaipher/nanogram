@@ -203,7 +203,7 @@ struct SqlitePreparedStatement {
     func stringAt(_ index: Int) -> String? {
         let valueLength = sqlite3_column_bytes(statement, Int32(index))
         if let valueData = sqlite3_column_blob(statement, Int32(index)) {
-            return String(data: Data(bytes: valueData, count: Int(valueLength)), encoding: .utf8)
+            return StrictUTF8String.decode(raw: valueData, count: Int(valueLength))
         } else {
             return nil
         }
@@ -386,6 +386,11 @@ public final class SqliteValueBox: ValueBox {
     public let interruptGate = SqliteInterruptGate()
     /// The current connection's write counter (also the WAL hook's context); the idle checkpoint reports to it too.
     private var walWriteAccounting: SqliteWalWriteAccounting?
+
+    /// WAL frames the last commit on this connection appended (0 for a read-only transaction), once.
+    func takeLastCommitAppendedFrames() -> Int {
+        return self.walWriteAccounting?.takeLastCommitAppendedFrames() ?? 0
+    }
 
     /// Removes the database together with its `-wal` and `-shm`, never `db_sqlite` alone.
     /// Another process may still hold the WAL/shm pair open; a connection created at this

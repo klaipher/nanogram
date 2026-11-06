@@ -35,10 +35,33 @@
   should report to it. `sqlite3_wal_checkpoint_v2`'s `pnCkpt` is the WAL's *total* backfilled frames,
   so only its growth counts (`SqliteWalWriteAccounting`): summed per checkpoint, a WAL pinned by an
   extension's reader read 1.2 GB of checkpoints for 16 MB written.
+- **MediaBox keeps at most 17 open handles and evicts the least recently used one** (`MediaBoxFileManager`:
+  `ItemContext.lastUse` is set on open and on every `Item.access`; upstream evicts the one opened first, so a long
+  download lost its handle once 16 newer files were opened). An evicted item opens its file again on the next access
+  (`mediaBoxReopen` event, once-a-minute `MediaBoxFileManager: opened=.. reopened=..` log line). Raise the cap only
+  after that line shows many reopens and a `getrlimit(RLIMIT_NOFILE)` check: the table shares the process fd limit with
+  sockets and SQLite (`MediaBoxFileSystemEfficiencyTests`).
+- **Postbox WAL writes are attributed to transaction call sites.** `PostboxImpl.internalTransaction` takes the frames
+  the commit appended (`SqliteValueBox.takeLastCommitAppendedFrames`, set by the WAL hook) and adds them per
+  `file:line` of the `transaction` call (`TransactionWriteAttribution`); a `Postbox WAL writes by transaction: …` log
+  line, at most every 10 minutes, lists the six largest. Frames an app extension appended since this connection's
+  previous commit land on the next commit's call site, as in the `sqlite.wal.*` ledger line.
 - **The direct-fetch lookahead (`FFMpegLookahead`) reads from memory, not MediaBox, per read.** It
   answers "is it cached" from MediaBox's live range status and, once that covers the whole file,
   reads the complete file through one `pread` handle. Do not route its per-read path back through
   `MediaBox.resourceData`/`internal_*` calls (each one stat'ed and opened files: 38% of the thread).
+- **The lookahead thread is woken only when the buffer needs it.** `FFMpegLookaheadWakeGate` stores the player's
+  position on every update (about 10 Hz) but sends the `perform` to the thread only when the readable range is less
+  than the lookahead minus 2 s ahead of the position, and never while one wake is queued or after the file ended.
+  With the 10 s lookahead the buffer stays at least 8 s ahead. Do not wake the thread per position update again.
+  Within a pass the reader reports its state once per 0.1 s of media (`FFMpegLookaheadReportStep`), not once per
+  packet: each report is a main-queue hop and a full player update.
+- **`UniversalSoftwareVideoSource` reads a complete file through one handle** (`CompleteResourceFileReader`,
+  looked up once per `readImage`), straight into FFmpeg's buffer. Partial files still go through
+  `MediaBox.resourceData`.
+- **Message text and signatures are decoded from the value box memory** (`StrictUTF8String`, Postbox), not through
+  a heap `Data` copy. It must keep returning nil for invalid UTF-8 and the Foundation result for byte-order marks
+  (`StrictUTF8StringTests`).
 - **RangeSet is `@inlinable`** (clients specialize it; 57-100x faster than the unspecialized calls,
   benchmark under the deep-audit fix-bench). Its invariant check runs only with `DEBUG`. Its
   `intersects` also returns true for a range that only touches the set (pinned by

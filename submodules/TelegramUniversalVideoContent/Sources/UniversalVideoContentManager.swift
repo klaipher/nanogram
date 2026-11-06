@@ -5,6 +5,7 @@ import SwiftSignalKit
 import UniversalMediaPlayer
 import AccountContext
 import RangeSet
+import CrashReporting
 
 private final class UniversalVideoContentSubscriber {
     let id: Int32
@@ -26,7 +27,12 @@ private final class UniversalVideoContentHolder {
     let contentNode: UniversalVideoContentNode & ASDisplayNode
     
     var statusDisposable: Disposable?
-    var statusValue: MediaPlayerStatus?
+    var statusValue: MediaPlayerStatus? {
+        didSet {
+            self.updatePlaybackActivity()
+        }
+    }
+    private var playbackActivity: ActivityIntervalCounter.Token?
     
     var bufferingStatusDisposable: Disposable?
     var bufferingStatusValue: (RangeSet<Int64>, Int64)?
@@ -66,7 +72,25 @@ private final class UniversalVideoContentHolder {
         }
     }
     
+    private func updatePlaybackActivity() {
+        var isPlaying = false
+        var isBufferingWhilePlaying = false
+        if let status = self.statusValue?.status {
+            switch status {
+            case .playing:
+                isPlaying = true
+            case let .buffering(_, whilePlaying, _, _):
+                isBufferingWhilePlaying = whilePlaying
+            case .paused:
+                break
+            }
+        }
+        let isActive = VideoPlaybackActivityPolicy.isActive(isPlaying: isPlaying, isBufferingWhilePlaying: isBufferingWhilePlaying)
+        self.playbackActivity = MetricActivityIntervals.update(self.playbackActivity, .videoPlayback, active: isActive)
+    }
+    
     deinit {
+        self.playbackActivity?.end()
         self.statusDisposable?.dispose()
         self.bufferingStatusDisposable?.dispose()
         self.isNativePictureInPictureActiveDisposable?.dispose()

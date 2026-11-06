@@ -60,6 +60,7 @@ public final class MediaBoxFileManager {
         
         func access(_ f: (Accessor) throws -> Void) throws {
             if let context = self.context {
+                self.manager?.noteUse(of: context)
                 try f(Accessor(file: context.file))
             } else {
                 if let manager = self.manager {
@@ -94,6 +95,8 @@ public final class MediaBoxFileManager {
         let path: String
         let mode: Mode
         let file: ManagedFile
+        /// Position in the manager's use order; the handle with the lowest one is evicted first.
+        var lastUse: Int = 0
         
         private var isDisposed: Bool = false
         
@@ -141,6 +144,7 @@ public final class MediaBoxFileManager {
     private let queue: Queue?
     private var contexts: [Int: ItemContext] = [:]
     private var nextItemId: Int = 0
+    private var useCounter: Int = 0
     private let maxOpenFiles: Int
     /// Number of files opened so far (for tests).
     private(set) var openedFileCount: Int = 0
@@ -188,14 +192,17 @@ public final class MediaBoxFileManager {
         }
         
         if self.contexts.count > self.maxOpenFiles {
-            if let minKey = self.contexts.keys.min(), let context = self.contexts[minKey] {
-                self.discardItemContext(context: context)
+            if let leastRecentlyUsed = self.contexts.values.min(by: { $0.lastUse < $1.lastUse }) {
+                self.discardItemContext(context: leastRecentlyUsed)
             }
         }
         
         let id = self.nextItemId
         self.nextItemId += 1
         let context = ItemContext(id: id, path: path, mode: mode)
+        if let context {
+            self.noteUse(of: context)
+        }
         if context != nil {
             self.openedFileCount += 1
             self.stats.noteOpen(isReopen: isReopen)
@@ -208,6 +215,11 @@ public final class MediaBoxFileManager {
         }
         self.contexts[id] = context
         return context
+    }
+    
+    fileprivate func noteUse(of context: ItemContext) {
+        self.useCounter += 1
+        context.lastUse = self.useCounter
     }
     
     private func discardItemContext(context: ItemContext) {

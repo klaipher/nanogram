@@ -1202,7 +1202,7 @@ public final class PostboxDecoder {
                 return String(validating: UnsafeBufferPointer(start: bytes, count: count), as: UTF8.self)
             }
         }
-        return String(data: Data(bytes: bytes, count: count), encoding: .utf8)
+        return StrictUTF8String.decode(bytes, count: count)
     }
     
     public func decodeStringForKey(_ key: String, orElse: String) -> String {
