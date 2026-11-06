@@ -1,10 +1,11 @@
 import Foundation
-import Foundation
 import UIKit
 import Display
 import AsyncDisplayKit
 import TelegramPresentationData
 import WallpaperBackgroundNode
+import ComponentFlow
+import GlassBackgroundComponent
 
 final class ChatHistoryNavigationButtons: ASDisplayNode {
     struct ButtonState: Equatable {
@@ -29,6 +30,22 @@ final class ChatHistoryNavigationButtons: ASDisplayNode {
     private var preferClearGlass: Bool
     private var dateTimeFormat: PresentationDateTimeFormat
     private let isChatRotated: Bool
+    
+    /// The buttons' glass in one container (Apple: nearby glass belongs in one `UIGlassContainerEffect`, which samples the
+    /// group once and gives its members one adaptive appearance). The buttons are 12 pt apart, the container merges shapes
+    /// closer than its spacing, so at rest they stay separate.
+    private let glassContainer: GlassBackgroundContainerView
+    /// A plain view in the container's content view at the origin of this node's coordinate space, so the buttons keep the
+    /// positions `updateLayout` gives them.
+    private let glassStackView: UIView
+    private static let glassHostGeometry: GlassStackHostGeometry = {
+        // Five 40 pt buttons 52 pt apart reach 4 * 52 = 208 pt beyond the node's 40 x 88 pt frame: up (the chat's rotated
+        // list: from y = 88 - 40 - 208) or down (to y = 208 + 40). 24 pt of margin takes the scale-up of an appearing button
+        // and the badges (7 pt above a button).
+        let top: CGFloat = 88.0 - 40.0 - 208.0
+        let bottom: CGFloat = 208.0 + 40.0
+        return GlassStackHostGeometry(contentFrame: CGRect(x: 0.0, y: top, width: 40.0, height: bottom - top), margin: 24.0)
+    }()
     
     let reactionsButton: ChatHistoryNavigationButtonNode
     let pollVotesButton: ChatHistoryNavigationButtonNode
@@ -118,6 +135,10 @@ final class ChatHistoryNavigationButtons: ASDisplayNode {
         self.preferClearGlass = preferClearGlass
         self.dateTimeFormat = dateTimeFormat
         
+        self.glassContainer = GlassBackgroundContainerView()
+        self.glassContainer.debugGroup = .floatingButtons
+        self.glassStackView = UIView()
+        
         self.mentionsButton = ChatHistoryNavigationButtonNode(theme: theme, preferClearGlass: preferClearGlass, backgroundNode: backgroundNode, type: .mentions)
         self.mentionsButton.alpha = 0.0
         self.mentionsButton.isHidden = true
@@ -140,12 +161,6 @@ final class ChatHistoryNavigationButtons: ASDisplayNode {
         
         super.init()
         
-        self.addSubnode(self.reactionsButton)
-        self.addSubnode(self.pollVotesButton)
-        self.addSubnode(self.mentionsButton)
-        self.addSubnode(self.downButton)
-        self.addSubnode(self.upButton)
-        
         self.reactionsButton.tapped = { [weak self] in
             self?.reactionsPressed?()
         }
@@ -164,12 +179,34 @@ final class ChatHistoryNavigationButtons: ASDisplayNode {
     
     override func didLoad() {
         super.didLoad()
+        
+        let geometry = ChatHistoryNavigationButtons.glassHostGeometry
+        self.glassContainer.frame = geometry.hostFrame
+        self.glassContainer.update(size: geometry.hostFrame.size, isDark: self.theme.overallDarkAppearance, transition: .immediate)
+        self.view.addSubview(self.glassContainer)
+        
+        self.glassStackView.frame = CGRect(origin: geometry.stackOrigin, size: geometry.hostFrame.size)
+        self.glassContainer.contentView.addSubview(self.glassStackView)
+        
+        // Like the input panel does with its buttons: the views, not the nodes, go into the container.
+        for button in self.buttons {
+            self.glassStackView.addSubview(button.view)
+        }
+    }
+    
+    /// In z-order; `hitTest` asks them in this order too.
+    private var buttons: [ChatHistoryNavigationButtonNode] {
+        return [self.reactionsButton, self.pollVotesButton, self.mentionsButton, self.downButton, self.upButton]
     }
     
     func update(theme: PresentationTheme, preferClearGlass: Bool, dateTimeFormat: PresentationDateTimeFormat, backgroundNode: WallpaperBackgroundNode) {
         self.theme = theme
         self.preferClearGlass = preferClearGlass
         self.dateTimeFormat = dateTimeFormat
+        
+        if self.isNodeLoaded {
+            self.glassContainer.update(size: self.glassContainer.bounds.size, isDark: theme.overallDarkAppearance, transition: .immediate)
+        }
         
         self.reactionsButton.updateTheme(theme: theme, preferClearGlass: preferClearGlass, backgroundNode: backgroundNode)
         self.pollVotesButton.updateTheme(theme: theme, preferClearGlass: preferClearGlass, backgroundNode: backgroundNode)
@@ -322,14 +359,12 @@ final class ChatHistoryNavigationButtons: ASDisplayNode {
     }
     
     override func hitTest(_ point: CGPoint, with event: UIEvent?) -> UIView? {
-        if let subnodes = self.subnodes {
-            for subnode in subnodes {
-                if !subnode.isUserInteractionEnabled {
-                    continue
-                }
-                if let result = subnode.hitTest(point.offsetBy(dx: -subnode.frame.minX, dy: -subnode.frame.minY), with: event) {
-                    return result
-                }
+        for button in self.buttons {
+            if !button.isUserInteractionEnabled {
+                continue
+            }
+            if let result = button.hitTest(point.offsetBy(dx: -button.frame.minX, dy: -button.frame.minY), with: event) {
+                return result
             }
         }
         return nil

@@ -547,6 +547,7 @@ public final class SharedAccountContextImpl: SharedAccountContext {
         let _ = immediateExperimentalUISettingsValue.swap(initialPresentationDataAndSettings.experimentalUISettings)
         
         GlassBackgroundView.useCustomGlassImpl = immediateExperimentalUISettingsValue.with({ $0.fakeGlass })
+        GlassDebugGroups.setDisabledMask(immediateExperimentalUISettingsValue.with({ $0.glassDebugDisabledGroups }))
         ManagedAudioSessionImpl.respectsSystemRecordingInput = immediateExperimentalUISettingsValue.with({ $0.respectSystemMicrophone })
         // iPad audit B-1: the display-link cap A/B (Debug Settings) and its pacing log.
         SharedDisplayLinkDriver.shared.pacingLog = { line in
@@ -561,6 +562,7 @@ public final class SharedAccountContextImpl: SharedAccountContext {
                 
                 flatBuffers_checkedGet = settings.checkSerializedData
                 GlassBackgroundView.useCustomGlassImpl = settings.fakeGlass
+                GlassDebugGroups.setDisabledMask(settings.glassDebugDisabledGroups)
                 ManagedAudioSessionImpl.respectsSystemRecordingInput = settings.respectSystemMicrophone
                 SharedDisplayLinkDriver.shared.capsTabletFrameRate = settings.tabletDisplayLinkFrameRateCap
             }

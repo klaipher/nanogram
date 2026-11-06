@@ -33,6 +33,15 @@ final class ExperimentalUISettingsDefaultsTests: XCTestCase {
         XCTAssertTrue(settings.fakeGlass, "other flags are kept")
     }
 
+    func testGlassGroupsAreAllOnByDefaultAndTheChoiceIsKept() throws {
+        XCTAssertEqual(try self.decode("{}").glassDebugDisabledGroups, 0)
+        XCTAssertEqual(ExperimentalUISettings.defaultSettings.glassDebugDisabledGroups, 0)
+        var settings = ExperimentalUISettings.defaultSettings
+        settings.glassDebugDisabledGroups = ExperimentalUISettings.glassDebugInputPanel | ExperimentalUISettings.glassDebugFloatingButtons
+        let saved = try self.roundTrip(settings)
+        XCTAssertEqual(saved.glassDebugDisabledGroups, 6)
+    }
+
     func testAChoiceMadeAfterTheUpgradeIsKept() throws {
         var settings = try self.decode(#"{"compressedEmojiCache": 0, "stickerRendererMode": "cpu"}"#)
         settings.stickerRendererMode = .cpu

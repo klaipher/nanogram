@@ -678,6 +678,7 @@ public class ChatTextInputPanelNode: ChatInputPanelNode, ASEditableTextNodeDeleg
         self.inputMenu = TextInputMenu(hasSpoilers: hasSpoilers, hasQuotes: hasQuotes)
         
         self.glassBackgroundContainer = GlassBackgroundContainerView()
+        self.glassBackgroundContainer.debugGroup = .inputPanel
         
         self.textInputContainerBackgroundView = GlassBackgroundView(frame: CGRect())
         

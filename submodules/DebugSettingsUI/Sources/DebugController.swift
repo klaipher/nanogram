@@ -276,10 +276,22 @@ private enum DebugControllerSection: Int32 {
     case sticker
     case experiments
     case streamsAndCalls
+    case glassGroups
     case translation
     case web
     case videoExperiments2
     case info
+}
+
+/// One switch of the "Glass groups" section: sets or clears `bit` in `glassDebugDisabledGroups`.
+private func glassGroupSwitch(presentationData: ItemListPresentationData, arguments: DebugControllerArguments, sectionId: ItemListSectionId, title: String, text: String, bit: Int32, value: Bool) -> ListViewItem {
+    return ItemListSwitchItem(presentationData: presentationData, systemStyle: .glass, title: title, text: text, value: value, maximumNumberOfLines: 0, sectionId: sectionId, style: .blocks, updated: { value in
+        let _ = updateExperimentalUISettingsInteractively(accountManager: arguments.sharedContext.accountManager, { settings in
+            var settings = settings
+            settings.glassDebugDisabledGroups = value ? (settings.glassDebugDisabledGroups | bit) : (settings.glassDebugDisabledGroups & ~bit)
+            return settings
+        }).start()
+    })
 }
 
 enum DebugControllerEntry: ItemListNodeEntry {
@@ -332,6 +344,10 @@ enum DebugControllerEntry: ItemListNodeEntry {
     case callsAdvancedDucking(Bool)
     case callsGroupNoiseMode(Int32)
     case callsThermalVideoLadder(Bool)
+    case glassGroupsHeader(PresentationTheme)
+    case glassGroupNavigationBar(Bool)
+    case glassGroupInputPanel(Bool)
+    case glassGroupFloatingButtons(Bool)
     case enableNetworkFramework(Bool)
     case enableNetworkExperiments(Bool)
     case rustMTProtoEngine(Bool)
@@ -359,6 +375,8 @@ enum DebugControllerEntry: ItemListNodeEntry {
             return DebugControllerSection.experiments.rawValue
         case .callsHeader, .callsLivestreamHardwareDecoding, .callsNativeCapturePath, .callsSystemNoiseSuppression, .callsAdvancedDucking, .callsGroupNoiseMode, .callsThermalVideoLadder:
             return DebugControllerSection.streamsAndCalls.rawValue
+        case .glassGroupsHeader, .glassGroupNavigationBar, .glassGroupInputPanel, .glassGroupFloatingButtons:
+            return DebugControllerSection.glassGroups.rawValue
         case .springSendAnimation, .fakeWalletTransfers, .stickerRendererMode, .disableImageContentAnalysis, .disableLanguageRecognition, .localTranscription, .enableVoipTcp, .tabletDisplayLinkFrameRateCap:
             return DebugControllerSection.experiments.rawValue
         case .enableNetworkFramework, .enableNetworkExperiments, .rustMTProtoEngine, .networkEngineInfo:
@@ -473,6 +491,15 @@ enum DebugControllerEntry: ItemListNodeEntry {
             return 95
         case .callsThermalVideoLadder:
             return 97
+        case .glassGroupsHeader:
+            // Its own section, so these ids only order it inside itself.
+            return 120
+        case .glassGroupNavigationBar:
+            return 121
+        case .glassGroupInputPanel:
+            return 122
+        case .glassGroupFloatingButtons:
+            return 123
         case .springSendAnimation:
             // ItemList asserts its entries are in strictly increasing order (`<`: section, then
             // `sortIndex`, which is the stableId here; ItemListControllerNode.swift), so an id must
@@ -540,6 +567,14 @@ enum DebugControllerEntry: ItemListNodeEntry {
             return ItemListSectionHeaderItem(presentationData: presentationData, text: "EXPERIMENTAL SETTINGS", sectionId: self.section)
         case .callsHeader:
             return ItemListSectionHeaderItem(presentationData: presentationData, text: "STREAMS & CALLS", sectionId: self.section)
+        case .glassGroupsHeader:
+            return ItemListSectionHeaderItem(presentationData: presentationData, text: "GLASS GROUPS (GPU ATTRIBUTION)", sectionId: self.section)
+        case let .glassGroupNavigationBar(value):
+            return glassGroupSwitch(presentationData: presentationData, arguments: arguments, sectionId: self.section, title: "Navigation bar glass off", text: "Replaces the navigation bar's glass with a solid fill, to measure what it costs. Default: off. Applies at once.", bit: ExperimentalUISettings.glassDebugNavigationBar, value: value)
+        case let .glassGroupInputPanel(value):
+            return glassGroupSwitch(presentationData: presentationData, arguments: arguments, sectionId: self.section, title: "Input panel glass off", text: "Replaces the chat input panel's glass with a solid fill. Default: off. Applies at once.", bit: ExperimentalUISettings.glassDebugInputPanel, value: value)
+        case let .glassGroupFloatingButtons(value):
+            return glassGroupSwitch(presentationData: presentationData, arguments: arguments, sectionId: self.section, title: "Floating buttons glass off", text: "Replaces the scroll-to-bottom, mentions and reactions buttons' glass with a solid fill. Default: off. Applies at once.", bit: ExperimentalUISettings.glassDebugFloatingButtons, value: value)
         case .sendLogs:
             return ItemListActionItem(presentationData: presentationData, systemStyle: .glass, title: "Send Logs", kind: .generic, alignment: .natural, sectionId: self.section, style: .blocks, action: {
                 arguments.openLogs()
@@ -1246,6 +1281,12 @@ func debugControllerEntries(environment: DebugControllerEntriesEnvironment, them
         entries.append(.callsAdvancedDucking(experimentalSettings.callsAdvancedDucking))
         entries.append(.callsGroupNoiseMode(experimentalSettings.callsGroupNoiseMode))
         entries.append(.callsThermalVideoLadder(experimentalSettings.callsThermalVideoLadder))
+        
+        // Measurement only: each switch replaces one chat glass group with a solid fill (iOS native glass).
+        entries.append(.glassGroupsHeader(theme))
+        entries.append(.glassGroupNavigationBar(experimentalSettings.glassDebugDisabledGroups & ExperimentalUISettings.glassDebugNavigationBar != 0))
+        entries.append(.glassGroupInputPanel(experimentalSettings.glassDebugDisabledGroups & ExperimentalUISettings.glassDebugInputPanel != 0))
+        entries.append(.glassGroupFloatingButtons(experimentalSettings.glassDebugDisabledGroups & ExperimentalUISettings.glassDebugFloatingButtons != 0))
     }
 
     if isMainApp {

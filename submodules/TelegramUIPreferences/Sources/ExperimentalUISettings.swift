@@ -93,6 +93,13 @@ public struct ExperimentalUISettings: Codable, Equatable {
     /// Mode the camera picture handed to the encoder gets smaller and slower (a local output-format request;
     /// nothing is negotiated). Applies from the next level change.
     public var callsThermalVideoLadder: Bool
+    /// Debug Settings ▸ "Glass groups": bits of the chat glass groups that are replaced by their solid fallback, to attribute
+    /// GPU passes to one group per recording. 0 (default) leaves all glass as it is. The bits are `glassDebugNavigationBar`,
+    /// `glassDebugInputPanel`, `glassDebugFloatingButtons`; they equal `GlassDebugGroup`'s raw values.
+    public var glassDebugDisabledGroups: Int32
+    public static let glassDebugNavigationBar: Int32 = 1
+    public static let glassDebugInputPanel: Int32 = 2
+    public static let glassDebugFloatingButtons: Int32 = 4
     public var stickerRendererMode: StickerRendererMode
 
     public static var defaultSettings: ExperimentalUISettings {
@@ -159,7 +166,8 @@ public struct ExperimentalUISettings: Codable, Equatable {
         callsSystemNoiseSuppression: Bool = true,
         callsAdvancedDucking: Bool = false,
         callsGroupNoiseMode: Int32 = 2,
-        callsThermalVideoLadder: Bool = true
+        callsThermalVideoLadder: Bool = true,
+        glassDebugDisabledGroups: Int32 = 0
     ) {
         self.keepChatNavigationStack = keepChatNavigationStack
         self.skipReadHistory = skipReadHistory
@@ -196,6 +204,7 @@ public struct ExperimentalUISettings: Codable, Equatable {
         self.callsAdvancedDucking = callsAdvancedDucking
         self.callsGroupNoiseMode = callsGroupNoiseMode
         self.callsThermalVideoLadder = callsThermalVideoLadder
+        self.glassDebugDisabledGroups = glassDebugDisabledGroups
     }
     
     /// Revision of Nanogram's defaults that a saved blob was written with. Revision 1 turned on large
@@ -255,6 +264,7 @@ public struct ExperimentalUISettings: Codable, Equatable {
         // Same for the group noise mode (it was 0, "both", unless chosen) and the thermal ladder.
         self.callsGroupNoiseMode = try container.decodeIfPresent(Int32.self, forKey: "callsGroupNoiseModeRNNoiseDefault") ?? 2
         self.callsThermalVideoLadder = try container.decodeIfPresent(Bool.self, forKey: "callsThermalVideoLadderDefaultOn") ?? true
+        self.glassDebugDisabledGroups = try container.decodeIfPresent(Int32.self, forKey: "glassDebugDisabledGroups") ?? 0
 
         if savedDefaultsRevision < 1 {
             // Saved before the GPU renderers became the default: both were the old CPU defaults.
@@ -303,6 +313,7 @@ public struct ExperimentalUISettings: Codable, Equatable {
         try container.encode(self.callsAdvancedDucking, forKey: "callsAdvancedDuckingOptIn")
         try container.encode(self.callsGroupNoiseMode, forKey: "callsGroupNoiseModeRNNoiseDefault")
         try container.encode(self.callsThermalVideoLadder, forKey: "callsThermalVideoLadderDefaultOn")
+        try container.encode(self.glassDebugDisabledGroups, forKey: "glassDebugDisabledGroups")
         try container.encode(ExperimentalUISettings.nanogramDefaultsRevision, forKey: "nanogramDefaultsRevision")
     }
 }

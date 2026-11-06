@@ -637,10 +637,25 @@ public class GlassBackgroundView: UIView {
         if let legacyHighlightContainerView = self.legacyHighlightContainerView {
             self.addSubview(legacyHighlightContainerView)
         }
+        
+        GlassEnvironment.shared.start()
+        NotificationCenter.default.addObserver(self, selector: #selector(self.environmentDidChange), name: GlassEnvironment.didChangeNotification, object: nil)
     }
     
     required public init?(coder: NSCoder) {
         fatalError("init(coder:) has not been implemented")
+    }
+    
+    /// Reduce Transparency or Increase Contrast changed: the custom parts of the glass are drawn again for the new state
+    /// (system glass follows by itself).
+    @objc private func environmentDidChange() {
+        guard let params = self.params else {
+            self.applyNativeBlurRadius()
+            return
+        }
+        self.params = nil
+        self.update(size: self.lastUpdateSize, shape: params.shape, isDark: params.isDark, tintColor: params.tintColor, isInteractive: params.isInteractive, isVisible: params.isVisible, transition: .immediate)
+        self.applyNativeBlurRadius()
     }
     
     @objc private func onHighlightGesture(_ recognizer: GlassHighlightGestureRecognizer) {
@@ -678,7 +693,41 @@ public class GlassBackgroundView: UIView {
         self.update(size: size, shape: shape, isDark: isDark, tintColor: tintColor, isInteractive: isInteractive, isVisible: isVisible, transition: transition)
     }
 
+    private var lastUpdateSize = CGSize()
+    private var appliedSwitchedOff = false
+
+    /// Whether the last update left the glass replaced by its solid fallback (Debug Settings' glass groups).
+    var isSwitchedOffForTesting: Bool {
+        return self.appliedSwitchedOff
+    }
+
+    /// Whether the nearest `GlassBackgroundContainerView` above this view that has a debug group is in a group that Debug
+    /// Settings switched off. Costs a comparison unless some group is.
+    private func isInSwitchedOffDebugGroup() -> Bool {
+        if !GlassDebugGroups.anyDisabled {
+            return false
+        }
+        var current = self.superview
+        while let view = current {
+            if let container = view as? GlassBackgroundContainerView, let group = container.debugGroup {
+                return GlassDebugGroups.isDisabled(group)
+            }
+            current = view.superview
+        }
+        return false
+    }
+
+    override public func didMoveToWindow() {
+        super.didMoveToWindow()
+        
+        // A view that joins its container after the switch was set (a chat opened while a group is off).
+        if self.window != nil && (GlassDebugGroups.anyDisabled || self.appliedSwitchedOff) && self.isInSwitchedOffDebugGroup() != self.appliedSwitchedOff {
+            self.environmentDidChange()
+        }
+    }
+
     func update(size: CGSize, shape: Shape, isDark: Bool, tintColor: TintColor, isInteractive: Bool = false, isVisible: Bool = true, transition: ComponentTransition) {
+        self.lastUpdateSize = size
         
         if let glassHighlightRecognizer = self.glassHighlightRecognizer {
             glassHighlightRecognizer.isEnabled = isInteractive
@@ -808,11 +857,13 @@ public class GlassBackgroundView: UIView {
                         borderWidthFactor = 1.0
                     }
                 }
+                // The system's glass follows Reduce Transparency and Increase Contrast; this one is drawn here, so it does too.
+                let accessible = GlassAccessibility.legacyFill(fillColor: fillColor, borderWidthFactor: borderWidthFactor, isDark: isDark, state: GlassAccessibilityState.current)
                 switch shape {
                 case let .roundedRect(cornerRadius):
-                    foregroundView.image = GlassBackgroundView.generateLegacyGlassImage(size: CGSize(width: cornerRadius * 2.0, height: cornerRadius * 2.0), inset: shadowInset, borderWidthFactor: borderWidthFactor, isDark: isDark, fillColor: fillColor)
+                    foregroundView.image = GlassBackgroundView.generateLegacyGlassImage(size: CGSize(width: cornerRadius * 2.0, height: cornerRadius * 2.0), inset: shadowInset, borderWidthFactor: accessible.borderWidthFactor, isDark: isDark, fillColor: accessible.fillColor)
                 case let .customRoundedRect(cornerRadii):
-                    foregroundView.image = GlassBackgroundView.generateLegacyGlassImage(cornerRadii: GlassBackgroundView.clampedCornerRadii(size: size, cornerRadii: cornerRadii), inset: shadowInset, borderWidthFactor: borderWidthFactor, isDark: isDark, fillColor: fillColor)
+                    foregroundView.image = GlassBackgroundView.generateLegacyGlassImage(cornerRadii: GlassBackgroundView.clampedCornerRadii(size: size, cornerRadii: cornerRadii), inset: shadowInset, borderWidthFactor: accessible.borderWidthFactor, isDark: isDark, fillColor: accessible.fillColor)
                 }
                 #if DEBUG
                 //foregroundView.image = nil
@@ -820,10 +871,15 @@ public class GlassBackgroundView: UIView {
                 transition.setAlpha(view: foregroundView, alpha: isVisible ? 1.0 : 0.0)
             } else {
                 if let nativeView = self.nativeView {
+                    // Debug Settings can switch a group of chat glass off to attribute GPU passes to it: the glass is
+                    // replaced by its solid fallback. Never true unless a group is switched off.
+                    let isSwitchedOff = self.isInSwitchedOffDebugGroup()
+                    self.appliedSwitchedOff = isSwitchedOff
+                    nativeView.backgroundColor = isSwitchedOff ? GlassAccessibility.solidBase(isDark: isDark) : nil
                     if #available(iOS 26.0, *) {
                         var glassEffect: UIGlassEffect?
                         
-                        if isVisible {
+                        if isVisible && !isSwitchedOff {
                             let nativeTint = tintColor.nativeEffect(isDark: isDark)
                             let glassEffectValue = UIGlassEffect(style: nativeTint.isClear ? .clear : .regular)
                             glassEffectValue.tintColor = nativeTint.color
@@ -890,7 +946,7 @@ public class GlassBackgroundView: UIView {
         guard let nativeParamsView = self.nativeParamsView else {
             return
         }
-        let radius = Double(self.nativeBlurRadius ?? 0.0)
+        let radius = Double(GlassAccessibility.effectiveBlurRadius(requested: self.nativeBlurRadius, state: GlassAccessibilityState.current) ?? 0.0)
         if radius == 0.0 && nativeParamsView.glassBlurRadius == 0.0 {
             return
         }
@@ -929,6 +985,9 @@ public final class GlassBackgroundContainerView: UIView {
     /// the container's SDF smoothness: measured on iOS 27). Only native glass merges (`mergesShapes`).
     public let spacing: CGFloat
 
+    /// The chat glass group this container belongs to, for Debug Settings' per-group switches (`GlassDebugGroups`).
+    public var debugGroup: GlassDebugGroup?
+
     /// Whether containers merge the glass shapes in them: native glass does, the custom implementation (before iOS 26, or
     /// `GlassBackgroundView.useCustomGlassImpl`) only stacks them.
     public static var mergesShapes: Bool {
@@ -964,10 +1023,17 @@ public final class GlassBackgroundContainerView: UIView {
         } else if let legacyView = self.legacyView {
             self.addSubview(legacyView)
         }
+        
+        GlassEnvironment.shared.start()
+        NotificationCenter.default.addObserver(self, selector: #selector(self.environmentDidChange), name: GlassEnvironment.didChangeNotification, object: nil)
     }
     
     required public init?(coder: NSCoder) {
         fatalError("init(coder:) has not been implemented")
+    }
+    
+    @objc private func environmentDidChange() {
+        self.applyNativeBlurRadius()
     }
     
     override public func didAddSubview(_ subview: UIView) {
@@ -1042,7 +1108,7 @@ public final class GlassBackgroundContainerView: UIView {
         guard let nativeParamsView = self.nativeParamsView else {
             return
         }
-        let radius = Double(self.nativeBlurRadius ?? 0.0)
+        let radius = Double(GlassAccessibility.effectiveBlurRadius(requested: self.nativeBlurRadius, state: GlassAccessibilityState.current) ?? 0.0)
         if radius == 0.0 && nativeParamsView.glassBlurRadius == 0.0 {
             return
         }
@@ -1050,17 +1116,28 @@ public final class GlassBackgroundContainerView: UIView {
         EffectSettingsContainerView.applyGlassBlurRadius(radius, toLayerTree: nativeParamsView.layer, depth: 0)
     }
 
+    /// What `update` last applied to the effect view. The bars call `update` on every layout pass, and layouts run on every
+    /// scroll and keyboard tick; only a real change reaches the effect view (a trait change and a frame change each
+    /// invalidate the glass UIKit has sampled).
+    private var appliedNativeState: (size: CGSize, isDark: Bool)?
+
     public func update(size: CGSize, isDark: Bool, transition: ComponentTransition) {
         if let nativeParamsView = self.nativeParamsView, let nativeView = self.nativeView {
             nativeParamsView.lumaMin = isDark ? 0.0 : 0.8
             nativeParamsView.lumaMax = isDark ? 0.15 : 0.801
-            nativeView.overrideUserInterfaceStyle = isDark ? .dark : .light
             if let nativeParamsView = self.nativeParamsView {
                 transition.setFrame(view: nativeParamsView, frame: CGRect(origin: CGPoint(x: 0.0, y: 0.0), size: size))
             }
             
-            transition.animateView {
-                nativeView.frame = CGRect(origin: CGPoint(), size: size)
+            let applied = GlassContainerUpdateGate.changes(applied: self.appliedNativeState, size: size, isDark: isDark)
+            self.appliedNativeState = (size, isDark)
+            if applied.isDark {
+                nativeView.overrideUserInterfaceStyle = isDark ? .dark : .light
+            }
+            if applied.size {
+                transition.animateView {
+                    nativeView.frame = CGRect(origin: CGPoint(), size: size)
+                }
             }
         } else if let legacyView = self.legacyView {
             transition.setFrame(view: legacyView, frame: CGRect(origin: CGPoint(), size: size))
