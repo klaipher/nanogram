@@ -364,8 +364,8 @@ actor WalletContextImpl {
             self.scheduleCardStickerSave(immediate: false)
         }
         if previousWalletCount == 0 && self.walletScreenCount > 0 {
-            // A visible wallet must not wait out a background backoff.
-            self.serverStateRetryPolicy.reset()
+            // A visible wallet must not wait out a background backoff or an authoritative stop.
+            self.serverStateRetryPolicy.resetForUserDemand()
             self.serverStateRetryTask?.cancel()
             self.serverStateRetryTask = nil
         }
@@ -489,13 +489,13 @@ actor WalletContextImpl {
             self.cancelSynchronization()
             self.serverStateRetryTask?.cancel()
             self.serverStateRetryTask = nil
-            self.serverStateRetryPolicy.reset()
+            // The backoff is kept: going to the background or offline must not restart it.
             self.cancelWalletStateFallbackRefresh()
             return
         }
         self.resumeDeferredSynchronizationIfNeeded()
         if self.needsServerWalletStateRefresh {
-            self.requestServerWalletState()
+            self.requestServerWalletStateRespectingRetryPolicy()
         }
         if refreshIfPollingBecomesActive, self.hasGaslessInfoDemand {
             self.requestGaslessInfo()
@@ -528,7 +528,22 @@ actor WalletContextImpl {
         }
     }
 
+    /// Automatic entry point (foreground, network resume, subscriber demand): honours the backoff, the
+    /// authoritative stop and the hourly attempt cap instead of asking the server again right away.
+    private func requestServerWalletStateRespectingRetryPolicy() {
+        guard self.serverStateTask == nil, self.serverStateRetryTask == nil else { return }
+        switch self.serverStateRetryPolicy.gate(hasRefreshDemand: self.hasActiveWalletRefreshDemand, now: Date()) {
+        case .allow:
+            self.requestServerWalletState()
+        case let .wait(seconds):
+            self.startServerStateRetryTimer(seconds: seconds)
+        case .blocked:
+            break
+        }
+    }
+
     private func performServerWalletStateRequest() async {
+        self.serverStateRetryPolicy.recordAttempt(at: Date())
         let revision = self.serverStateMutationRevision
         let walletStateRevision = self.latestWalletStateRevision
         let generation = self.activationGeneration
@@ -596,6 +611,7 @@ actor WalletContextImpl {
         } catch is CancellationError {
         } catch {
             self.logger.error("wallet_state_failed", error)
+            self.serverStateRetryPolicy.recordFailure(Self.failureKind(error), at: Date())
             if !self.isShutdown,
                self.serverStateMutationRevision == revision,
                self.latestWalletStateRevision == walletStateRevision,
@@ -1566,11 +1582,28 @@ actor WalletContextImpl {
               self.needsServerWalletStateRefresh else {
             return
         }
-        self.serverStateRetryPolicy.recordFailure()
-        let delay = self.serverStateRetryPolicy.delay(hasRefreshDemand: self.hasActiveWalletRefreshDemand)
-        self.serverStateRetryTask = Task { [weak self] in
-            await self?.performServerStateRetryDelay(seconds: delay)
+        switch self.serverStateRetryPolicy.gate(hasRefreshDemand: self.hasActiveWalletRefreshDemand, now: Date()) {
+        case .allow:
+            self.startServerStateRetryTimer(seconds: 0)
+        case let .wait(seconds):
+            self.startServerStateRetryTimer(seconds: seconds)
+        case .blocked:
+            self.logger.log("event=wallet_state_retry_stopped")
         }
+    }
+
+    private func startServerStateRetryTimer(seconds: TimeInterval) {
+        guard self.serverStateRetryTask == nil else { return }
+        self.serverStateRetryTask = Task { [weak self] in
+            await self?.performServerStateRetryDelay(seconds: seconds)
+        }
+    }
+
+    static func failureKind(_ error: Error) -> WalletStateFailureKind {
+        guard let stateError = error as? WalletGetStateError else { return .transient(minimumDelay: 0) }
+        if stateError.isAuthoritative { return .authoritative }
+        if case let .floodWait(seconds) = stateError { return .transient(minimumDelay: TimeInterval(max(0, seconds))) }
+        return .transient(minimumDelay: 0)
     }
 
     private func performServerStateRetryDelay(seconds: TimeInterval) async {

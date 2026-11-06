@@ -4,6 +4,7 @@ Newest first. Internal notes for each TestFlight build; testers see the What to 
 
 ## Unreleased
 
+- Wallet: `wallet.getState` no longer repeats every 1-3 minutes for hours on accounts where the server answers `400 WALLET_UNAVAILABLE` (153 requests in 5 h in the owner's 13.1.2 log). Root cause: the backoff of 2e31d5c1/506047ab was reset every time the app went to the background or offline (`evaluateRuntimeDemand`), and every resume then requested the state immediately, bypassing the policy (55 restarts, longest wait reached 160 s of the 600 s ceiling). `WalletGetStateError` now carries the reason (`unavailable`, `rejected`, `floodWait`, `generic`); `WalletStateRetryPolicy` stops retrying after a definite answer until the wallet screen opens or the app relaunches, keeps its exponential backoff across foreground/network resume (only a visible wallet screen or a success resets it), honours FLOOD_WAIT, and caps attempts at 8/h (120/h with the wallet visible). The request itself is unchanged; upstream 13.1.2 retried every 5 s with no backoff at all, so this never sends more than upstream. COMMIT
 - `StaleChannelDiagnostics` keeps its counters in a small lock-guarded `@unchecked Sendable` class instead of a static `Atomic`: `Atomic` is `Sendable` in the iOS build (so `nonisolated(unsafe)` is an error there, a84d1a50 did not build) but not in the Mac package build, where the plain `let` added two Swift 6 warnings to TelegramCore (561 -> 563).
 
 ## 13.1.2 (202611061452) — 2026-11-06 — 33d7d094
