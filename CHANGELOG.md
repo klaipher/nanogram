@@ -4,6 +4,34 @@ Newest first. Internal notes for each TestFlight build; testers see the What to 
 
 ## Unreleased
 
+## 13.1.2 (202611060203) — 2026-11-06 — 32bafb86
+
+TestFlight upload (internal testers), the first with Enhanced Security (soft mode) on the app, NotificationService and Share (checked in the built app and in the exported App Store build). Since 202611052231 (9971ecaa..32bafb86): round 3 and 3b (calls fixes and audit, call defaults on with RNNoise only, CoreList scroll tick work, photo decode at display size, photo picker off main, emoji panel reuse, shared core WAL counter / MediaBox LRU / lookahead wake-ups / allocation cuts, extensions on the failable database open, glass lookup skipped on iOS 27, chat-open signposts), the speaker retry and the tg fixes. BUILD-INFO.txt is next to the dSYMs. The detailed entries are below. Mac counterpart: GitHub release 13.1.0 (see the Mac CHANGELOG). Tester notes (What to Test):
+
+> What to test in this build:
+>
+> 1. Calls: the speaker button. On phones where it did nothing, it should now switch to the speaker. If it still fails, send the call log right after the tap.
+>
+> 2. Calls: muting from the lock screen or the system call screen now mutes the call, and the app's mute button stays in sync with it.
+>
+> 3. Calls: camera flip, and the camera preview before you turn video on, behave correctly; closing the preview turns the camera off.
+>
+> 4. Calls: noise suppression in group calls uses a better filter, also with Bluetooth headsets. Live streams use less battery and stay cooler. Your video is lighter on the phone, and gets smaller when the phone is hot. Please tell us how you sound to others.
+>
+> 5. Chats scroll more smoothly, with fewer stutters when new messages come into view.
+>
+> 6. Photos in chats and in the photo picker load with less work; scrolling the picker should be smoother.
+>
+> 7. The emoji panel opens faster and uses less memory.
+>
+> 8. Video playback uses less battery.
+>
+> 9. Extra memory protection (Enhanced Security) is on in this build. Please report any crash, with the time it happened.
+>
+> 10. Sharing to Nanogram and notifications no longer crash if the app's data can't be opened.
+
+Detailed entries:
+
 - `tg testflight` no longer stops between the build and the upload when CHANGELOG.md has a long Unreleased section: `record_build_info` piped `awk` into `head -1` (and `git branch -r` into `grep -q`) under `set -o pipefail`, so the writer died of SIGPIPE (141) and `set -e` ended tg (build 202611060158 was built but not uploaded). Both now read without an early-exit reader; regression test in `test_tg.sh`.
 - **Calls: a missed loudspeaker request is applied once more** (owner report: iPhone 14, 1:1 call, no Bluetooth, the speaker button did nothing). `ManagedAudioSession.applyVoiceChatOutputModeInCurrentAudioSession` (the CallKit path every region but CN uses) re-applies `.custom(.speaker)` once, 0.3 s later, when the route still contradicts it and no newer request replaced it (`loudspeakerRequestShouldBeRetried` in `AudioRouteClassification.swift`, a generation counter; tests in `AudioRouteClassificationTests`). Complements the calls lane fixes (route read while the input list is empty, request and route log lines with "MISSED").
 ### Calls (lane ios-calls, round 3)
