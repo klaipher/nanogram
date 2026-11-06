@@ -29,6 +29,7 @@ swift_library(
     ]),
     deps = [
         ":MediaAssetsContext",
+        "//submodules/SSignalKit/SwiftSignalKit",
     ],
 )
 

@@ -50,6 +50,8 @@ final class MediaPickerInteraction {
     let editingState: TGMediaEditingContext
     var hiddenMediaId: String?
     var displayLivePhotoIcon: Bool = false
+    // Holds back grid thumbnail requests while the user flings (main thread).
+    let thumbnailGate = ThumbnailScrollGate()
         
     init(
         downloadManager: AssetDownloadManager,
@@ -389,6 +391,8 @@ public final class MediaPickerScreenImpl: ViewController, MediaPickerScreen, Att
         
         private var itemsDisposable: Disposable?
         private var thumbnailPrefetcher: (stories: Bool, prefetcher: AssetThumbnailPrefetcher)?
+        private var lastVisibleItemsForPrefetch: GridNodeVisibleItems?
+        private let prefetchResumeDisposable = MetaDisposable()
         private var memoryWarningObserver: NSObjectProtocol?
         private var selectionChangedDisposable: Disposable?
         private var itemsDimensionsUpdatedDisposable: Disposable?
@@ -667,6 +671,7 @@ public final class MediaPickerScreenImpl: ViewController, MediaPickerScreen, Att
                 NotificationCenter.default.removeObserver(memoryWarningObserver)
             }
             self.thumbnailPrefetcher?.prefetcher.stop()
+            self.prefetchResumeDisposable.dispose()
             self.itemsDisposable?.dispose()
             self.hiddenMediaDisposable?.dispose()
             self.selectionChangedDisposable?.dispose()
@@ -677,6 +682,20 @@ public final class MediaPickerScreenImpl: ViewController, MediaPickerScreen, Att
         
         // Asks Photos for the thumbnails of the visible cells and one screen around them, at the size the cells request.
         private func updateThumbnailPrefetching(_ visibleItems: GridNodeVisibleItems) {
+            self.lastVisibleItemsForPrefetch = visibleItems
+            let gate = self.interaction?.thumbnailGate
+            gate?.noteOffset(Double(self.gridNode.scrollView.contentOffset.y))
+            let suspended = gate?.isFlinging ?? false
+            if suspended, let gate {
+                // Nothing is prepared while the grid flies; one update runs when it slows down.
+                self.prefetchResumeDisposable.set(gate.whenCalm().start(next: { [weak self] _ in
+                    if let self, let visibleItems = self.lastVisibleItemsForPrefetch {
+                        self.updateThumbnailPrefetching(visibleItems)
+                    }
+                }))
+                return
+            }
+            self.prefetchResumeDisposable.set(nil)
             var fetchResult: PHFetchResult<PHAsset>?
             var stories = false
             var indices: [Int] = []

@@ -547,7 +547,8 @@ final class MediaPickerGridItemNode: GridItemNode {
                 }
             }
             
-            let originalSignal = assetImageSignal
+            // While the grid flies the request waits (the cell is reused before the image would arrive); calm: no delay.
+            let originalSignal = interaction.thumbnailGate.deferred(assetImageSignal)
             let imageSignal: Signal<UIImage?, NoError> = editedSignal
             |> mapToSignal { result in
                 if let result = result {
