@@ -520,7 +520,7 @@ final class MediaPickerGridItemNode: GridItemNode {
             
             let targetSize = MediaPickerGridItemNode.thumbnailTargetSize(stories: stories)
             
-            let assetImageSignal = assetImage(fetchResult: fetchResult, index: index, targetSize: targetSize, exact: false, deliveryMode: .opportunistic, synchronous: false)
+            let assetImageSignal = assetImage(asset: asset, targetSize: targetSize, exact: false, deliveryMode: .opportunistic, synchronous: false, fastResize: true)
 //            |> then(
 //                assetImage(fetchResult: fetchResult, index: index, targetSize: targetSize, exact: false, deliveryMode: .highQualityFormat, synchronous: false)
 //                |> delay(0.03, queue: Queue.concurrentDefaultQueue())
@@ -547,7 +547,8 @@ final class MediaPickerGridItemNode: GridItemNode {
                 }
             }
             
-            let originalSignal = assetImageSignal
+            // While the grid flies the request waits (the cell is reused before the image would arrive); calm: no delay.
+            let originalSignal = interaction.thumbnailGate.deferred(assetImageSignal)
             let imageSignal: Signal<UIImage?, NoError> = editedSignal
             |> mapToSignal { result in
                 if let result = result {

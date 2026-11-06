@@ -19,6 +19,44 @@ public enum AssetCachingWindow {
         return lower ..< upper
     }
 
+    // The window for a grid that is being scrolled: one screen ahead in the scroll direction (`direction` > 0 means
+    // towards higher indices, < 0 towards lower, 0 unknown) and half a screen behind, so a reversal still finds the
+    // cells it just left. Unknown direction: half a screen on each side. Clamped to the fetch result.
+    public static func directionalWindow(visible: ClosedRange<Int>, count: Int, direction: Int) -> Range<Int> {
+        guard count > 0 else {
+            return 0 ..< 0
+        }
+        let length = visible.upperBound - visible.lowerBound + 1
+        let half = (length + 1) / 2
+        // How far the window reaches below the first and above the last visible index.
+        let below: Int
+        let above: Int
+        if direction > 0 {
+            below = half
+            above = length
+        } else if direction < 0 {
+            below = length
+            above = half
+        } else {
+            below = half
+            above = half
+        }
+        let lower = max(0, visible.lowerBound - below)
+        let upper = min(count, visible.upperBound + 1 + above)
+        if lower >= upper {
+            return 0 ..< 0
+        }
+        return lower ..< upper
+    }
+
+    // The scroll direction in index space from the previous and the new first visible index.
+    public static func direction(previousLower: Int?, lower: Int, previousDirection: Int) -> Int {
+        guard let previousLower, previousLower != lower else {
+            return previousDirection
+        }
+        return lower > previousLower ? 1 : -1
+    }
+
     // The ranges to start and to stop when the window moves from `previous` to `next`.
     public static func diff(previous: Range<Int>?, next: Range<Int>?) -> (start: [Range<Int>], stop: [Range<Int>]) {
         let previous = previous.flatMap { $0.isEmpty ? nil : $0 }
