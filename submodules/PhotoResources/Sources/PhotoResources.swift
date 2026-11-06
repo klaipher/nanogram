@@ -21,6 +21,7 @@ import RangeSet
 import Accelerate
 import ImageCompression
 import LegacyImpl
+import ImageDecodeSizing
 
 private enum ResourceFileData {
     case data(Data)
@@ -892,9 +893,14 @@ public func chatMessagePhotoInternal(photoData: Signal<Tuple4<Data?, Data?, Chat
                 if fullSizeComplete {
                     let options = NSMutableDictionary()
                     options[kCGImageSourceShouldCache as NSString] = false as NSNumber
-                    if let imageSource = CGImageSourceCreateWithData(fullSizeData as CFData, nil), let image = CGImageSourceCreateImageAtIndex(imageSource, 0, options as CFDictionary) {
+                    if let imageSource = CGImageSourceCreateWithData(fullSizeData as CFData, nil) {
                         imageOrientation = imageOrientationFromSource(imageSource)
-                        fullSizeImage = image
+                        let targetPixelSize = photoTargetPixelSize(fittedSize: fittedSize, scale: arguments.scale ?? UIScreenScale, orientation: imageOrientation)
+                        if let image = ImageDecodeSizing.downscaledImage(source: imageSource, targetPixelSize: targetPixelSize) {
+                            fullSizeImage = image
+                        } else if let image = CGImageSourceCreateImageAtIndex(imageSource, 0, options as CFDictionary) {
+                            fullSizeImage = image
+                        }
                     }
                 } else {
                     let imageSource = CGImageSourceCreateIncremental(nil)
@@ -1128,10 +1134,6 @@ public func chatMessagePhotoThumbnail(account: Account, userLocation: MediaResou
         let fullSizeData = value._1
         let fullSizeComplete = value._2
         return { arguments in
-            guard let context = DrawingContext(size: arguments.drawingSize, scale: arguments.scale ?? 0.0, clear: true) else {
-                return nil
-            }
-            
             let drawingRect = arguments.drawingRect
             var fittedSize = arguments.imageSize
             if abs(fittedSize.width - arguments.boundingSize.width).isLessThanOrEqualTo(CGFloat(1.0)) {
@@ -1199,6 +1201,10 @@ public func chatMessagePhotoThumbnail(account: Account, userLocation: MediaResou
                 }
             }
             
+            guard let context = DrawingContext(size: arguments.drawingSize, scale: arguments.scale ?? 0.0, clear: true, colorSpace: drawingColorSpace(forSourceImage: fullSizeImage)) else {
+                return nil
+            }
+
             context.withFlippedContext { c in
                 c.setBlendMode(.copy)
                 if arguments.imageSize.width < arguments.boundingSize.width || arguments.imageSize.height < arguments.boundingSize.height {
@@ -1235,10 +1241,6 @@ public func chatMessageVideoThumbnail(account: Account, userLocation: MediaResou
         let fullSizeData = value._1
         let fullSizeComplete = value._2
         return { arguments in
-            guard let context = DrawingContext(size: arguments.drawingSize, scale: arguments.scale ?? 0.0, clear: true) else {
-                return nil
-            }
-            
             let drawingRect = arguments.drawingRect
             var fittedSize = arguments.imageSize
             if abs(fittedSize.width - arguments.boundingSize.width).isLessThanOrEqualTo(CGFloat(1.0)) {
@@ -1307,6 +1309,10 @@ public func chatMessageVideoThumbnail(account: Account, userLocation: MediaResou
                 }
             }
             
+            guard let context = DrawingContext(size: arguments.drawingSize, scale: arguments.scale ?? 0.0, clear: true, colorSpace: drawingColorSpace(forSourceImage: fullSizeImage)) else {
+                return nil
+            }
+
             context.withFlippedContext { c in
                 c.setBlendMode(.copy)
                 if arguments.imageSize.width < arguments.boundingSize.width || arguments.imageSize.height < arguments.boundingSize.height {
@@ -2428,6 +2434,16 @@ private func rotationFor(_ orientation: UIImage.Orientation) -> CGFloat {
             return -CGFloat.pi
         default:
             return 0.0
+    }
+}
+
+private func photoTargetPixelSize(fittedSize: CGSize, scale: CGFloat, orientation: UIImage.Orientation) -> CGSize {
+    let pixelSize = CGSize(width: fittedSize.width * scale, height: fittedSize.height * scale)
+    switch orientation {
+    case .left, .right, .leftMirrored, .rightMirrored:
+        return CGSize(width: pixelSize.height, height: pixelSize.width)
+    default:
+        return pixelSize
     }
 }
 

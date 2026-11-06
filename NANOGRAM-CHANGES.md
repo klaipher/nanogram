@@ -71,6 +71,8 @@ marked (check) were not re-verified against the code; correct them on the next c
   `Data` copy; the universal software video source reads complete files through one handle.
 - Where: docs/subsystems/media-io.md, docs/subsystems/media-decode-and-voice.md, docs/performance/.
 
+- Chat photos decode complete JPEGs at the drawn size (`ImageDecodeSizing`, used by `PhotoResources`), the photo picker issues thumbnail requests off the main thread, and `ChatHistoryListNode.processDisplayedItemRangeChanged` caches its whole-history scan per history view (all three differ from upstream; round 3, iOS UI performance).
+
 ### Chat features
 - What: News feed, opening a channel at a post, suspicious-peer chat gate, Postbox to TelegramEngine refactor, CoreList chat history backend. (check)
 - Where: docs/subsystems/channel-post-and-news-feed.md, docs/subsystems/suspicious-peer.md, docs/chat/.
@@ -79,6 +81,7 @@ marked (check) were not re-verified against the code; correct them on the next c
 ### Platforms
 - What: iPad (resizable chat list, window controls, Split View cameras), iPhone Duo reserved corners, iOS 26/27 window and touch handling, standalone Apple Watch client.
 - Where: docs/iphone-duo-layout.md, docs/ios27-windows-and-touches.md, `Telegram/WatchApp`.
+- iOS 27 glass backdrop overrides: `registerEffectViewOverrides` (`UIViewController+Navigation.m`) looks up `UISDFBackdropView` by the iOS 27 name `_TtC5UIKit17UISDFBackdropView` on iOS 27 and by the file-private iOS 26 name before, once, so the blur radius and luma clamp are installed on iOS 27 and +load no longer pays a failed mangled-name scan. Upstream (13.1.2): iOS 26 name only, a miss on iOS 27.
 
 ### Branding and identity
 - What: Nanogram name, icons (Sphere default), bundle names, Siri phrases, language packs; a lint keeps Telegram's name and logo out. Own bundle identifiers and team.

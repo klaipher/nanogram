@@ -303,7 +303,11 @@ container-local; `minY` may be negative, and `render()` places each view at
 Transaction windows are built once in final projected viewport coordinates against
 `-preloadMargin ... logicalSize.height + preloadMargin`. Loaded-edge constraints are resolved during
 that bounded traversal; render-time container parking is membership-neutral. User-scroll
-rebalancing uses the same projected load band. When a container rebase is required, the engine
+rebalancing uses the same projected load band. Rebalancing may fill it more slowly, never beyond it: rows whose edge is
+inside the viewport are always built in the tick, rows that only fill the preload margin count against
+`maxSpeculativeRowsPerTick` (default unlimited; the chat backend sets 1) and the rest wait for the next
+tick. Do not widen the rebalance band alone: every transaction rebuilds against `preloadMargin`, so
+rows loaded past it are dropped (or carried as old-only crossing survivors) on the next pass. When a container rebase is required, the engine
 offset and any exit-overlay children receive the same shift so their visible positions do not jump.
 For size/inset transitions, the shared anchor's old-to-new absolute content-Y delta identifies that
 coordinate-only rebase. Without an explicit `scrollTo`, a top-inset change projects the resolved anchor

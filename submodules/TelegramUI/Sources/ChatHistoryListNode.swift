@@ -374,8 +374,15 @@ private func mappedChatHistoryViewListTransition(context: AccountContext, chatLo
     return ChatHistoryListViewTransition(historyView: transition.historyView, deleteItems: transition.deleteItems, insertItems: mappedInsertEntries(context: context, chatLocation: chatLocation, associatedData: associatedData, controllerInteraction: controllerInteraction, mode: mode, lastHeaderId: lastHeaderId, isSavedMusic: isSavedMusic, canReorder: canReorder, richMessageQueueId: richMessageQueueId, entries: transition.insertEntries, systemStyle: systemStyle), updateItems: mappedUpdateEntries(context: context, chatLocation: chatLocation, associatedData: associatedData, controllerInteraction: controllerInteraction, mode: mode, lastHeaderId: lastHeaderId, isSavedMusic: isSavedMusic, canReorder: canReorder, richMessageQueueId: richMessageQueueId, entries: transition.updateEntries, systemStyle: systemStyle), options: transition.options, scrollToItem: transition.scrollToItem, stationaryItemRange: transition.stationaryItemRange, initialData: transition.initialData, keyboardButtonsMessage: transition.keyboardButtonsMessage, cachedData: transition.cachedData, cachedDataMessages: transition.cachedDataMessages, readStateData: transition.readStateData, scrolledToIndex: transition.scrolledToIndex, scrolledToSomeIndex: transition.scrolledToSomeIndex, peerType: associatedData.automaticDownloadPeerType, networkType: associatedData.automaticDownloadNetworkType, animateIn: transition.animateIn, reason: transition.reason, flashIndicators: transition.flashIndicators, animateFromPreviousFilter: animateFromPreviousFilter, pinnedAnchor: transition.pinnedAnchor, keepInPlaceAnchor: transition.keepInPlaceAnchor)
 }
 
+struct ChatHistoryWholeScan {
+    var businessBotMessageId: EngineMessage.Id?
+    var guestChatMessageId: EngineMessage.Id?
+    var possibleReactionsMessageIds: [EngineMessageAndThreadId]
+}
+
 final class ChatHistoryTransactionOpaqueState {
     let historyView: ChatHistoryView
+    var cachedWholeScan: ChatHistoryWholeScan?
     
     init(historyView: ChatHistoryView) {
         self.historyView = historyView
@@ -861,6 +868,7 @@ public final class ChatHistoryListNodeImpl: ASDisplayNode, ChatHistoryNode, Chat
         return self._isReady.get()
     }
     private var didSetReady: Bool = false
+    private var didSignpostFirstContent: Bool = false
     
     private let initTimestamp: Double
     
@@ -3085,6 +3093,33 @@ public final class ChatHistoryListNodeImpl: ASDisplayNode, ChatHistoryNode, Chat
         }
     }
     
+    private static func accumulateWholeScan(_ scan: inout ChatHistoryWholeScan, message: Message) {
+        if message.inlineBotAttribute != nil {
+            if let current = scan.businessBotMessageId {
+                if current < message.id {
+                    scan.businessBotMessageId = message.id
+                }
+            } else {
+                scan.businessBotMessageId = message.id
+            }
+        }
+        if message.id.namespace == Namespaces.Message.Cloud, message.flags.contains(.Incoming), message.guestChatAttribute != nil {
+            if let current = scan.guestChatMessageId {
+                if current < message.id {
+                    scan.guestChatMessageId = message.id
+                }
+            } else {
+                scan.guestChatMessageId = message.id
+            }
+        }
+        switch message.id.peerId.namespace {
+        case Namespaces.Peer.CloudGroup, Namespaces.Peer.CloudChannel:
+            scan.possibleReactionsMessageIds.append(MessageAndThreadId(messageId: message.id, threadId: nil))
+        default:
+            break
+        }
+    }
+    
     private func processDisplayedItemRangeChanged(displayedRange: ListViewDisplayedItemRange, transactionState: ChatHistoryTransactionOpaqueState) {
         let historyView = transactionState.historyView
         var isTopReplyThreadMessageShownValue = false
@@ -3377,65 +3412,28 @@ public final class ChatHistoryListNodeImpl: ASDisplayNode, ChatHistoryNode, Chat
                 }
             }
             
-            var messageIdsWithPossibleReactions: [MessageId] = []
-            for entry in historyView.filteredEntries {
-                switch entry {
-                case let .MessageEntry(message, _, _, _, _, _):
-                    if let _ = message.inlineBotAttribute {
-                        if let visibleBusinessBotMessageIdValue = visibleBusinessBotMessageId {
-                            if visibleBusinessBotMessageIdValue < message.id {
-                                visibleBusinessBotMessageId = message.id
-                            }
-                        } else {
-                            visibleBusinessBotMessageId = message.id
+            let wholeScan: ChatHistoryWholeScan
+            if let cachedWholeScan = transactionState.cachedWholeScan {
+                wholeScan = cachedWholeScan
+            } else {
+                var scan = ChatHistoryWholeScan(businessBotMessageId: nil, guestChatMessageId: nil, possibleReactionsMessageIds: [])
+                for entry in historyView.filteredEntries {
+                    switch entry {
+                    case let .MessageEntry(message, _, _, _, _, _):
+                        ChatHistoryListNodeImpl.accumulateWholeScan(&scan, message: message)
+                    case let .MessageGroupEntry(_, messages, _):
+                        for (message, _, _, _, _) in messages {
+                            ChatHistoryListNodeImpl.accumulateWholeScan(&scan, message: message)
                         }
-                    }
-                    if message.id.namespace == Namespaces.Message.Cloud, message.flags.contains(.Incoming), message.guestChatAttribute != nil {
-                        if let visibleGuestChatMessageIdValue = visibleGuestChatMessageId {
-                            if visibleGuestChatMessageIdValue < message.id {
-                                visibleGuestChatMessageId = message.id
-                            }
-                        } else {
-                            visibleGuestChatMessageId = message.id
-                        }
-                    }
-                    switch message.id.peerId.namespace {
-                    case Namespaces.Peer.CloudGroup, Namespaces.Peer.CloudChannel:
-                        messageIdsWithPossibleReactions.append(message.id)
                     default:
                         break
                     }
-                case let .MessageGroupEntry(_, messages, _):
-                    for (message, _, _, _, _) in messages {
-                        if let _ = message.inlineBotAttribute {
-                            if let visibleBusinessBotMessageIdValue = visibleBusinessBotMessageId {
-                                if visibleBusinessBotMessageIdValue < message.id {
-                                    visibleBusinessBotMessageId = message.id
-                                }
-                            } else {
-                                visibleBusinessBotMessageId = message.id
-                            }
-                        }
-                        if message.id.namespace == Namespaces.Message.Cloud, message.flags.contains(.Incoming), message.guestChatAttribute != nil {
-                            if let visibleGuestChatMessageIdValue = visibleGuestChatMessageId {
-                                if visibleGuestChatMessageIdValue < message.id {
-                                    visibleGuestChatMessageId = message.id
-                                }
-                            } else {
-                                visibleGuestChatMessageId = message.id
-                            }
-                        }
-                        switch message.id.peerId.namespace {
-                        case Namespaces.Peer.CloudGroup, Namespaces.Peer.CloudChannel:
-                            messageIdsWithPossibleReactions.append(message.id)
-                        default:
-                            break
-                        }
-                    }
-                default:
-                    break
                 }
+                transactionState.cachedWholeScan = scan
+                wholeScan = scan
             }
+            visibleBusinessBotMessageId = wholeScan.businessBotMessageId
+            visibleGuestChatMessageId = wholeScan.guestChatMessageId
             
             // iPad: about one more screen of media each way (3 on iPhone, as upstream).
             let mediaPrefetchLimit = chatHistoryMediaPrefetchLimit(viewportHeight: self.listView.visibleSize.height, deviceType: self.context.sharedContext.mainWindow?.deviceType ?? .phone)
@@ -3527,8 +3525,8 @@ public final class ChatHistoryListNodeImpl: ASDisplayNode, ChatHistoryNode, Chat
                     let _ = self.displayUnseenReactionAnimations(messageIds: messageIdsWithUnseenReactions)
                 }
             }
-            if !messageIdsWithPossibleReactions.isEmpty {
-                self.messageWithReactionsProcessingManager.add(messageIdsWithPossibleReactions.map { MessageAndThreadId(messageId: $0, threadId: nil) })
+            if !wholeScan.possibleReactionsMessageIds.isEmpty {
+                self.messageWithReactionsProcessingManager.add(wholeScan.possibleReactionsMessageIds)
             }
             if !downloadableResourceIds.isEmpty {
                 let _ = markRecentDownloadItemsAsSeen(postbox: self.context.account.postbox, items: downloadableResourceIds).startStandalone()
@@ -4743,6 +4741,11 @@ public final class ChatHistoryListNodeImpl: ASDisplayNode, ChatHistoryNode, Chat
                 }
                 
                 strongSelf.dequeueHistoryViewTransitions()
+                
+                if !strongSelf.didSignpostFirstContent && !transition.historyView.filteredEntries.isEmpty {
+                    strongSelf.didSignpostFirstContent = true
+                    PerformanceSignposts.event(PerformanceSignpostName.historyFirstContent)
+                }
                 
                 strongSelf._isReady.set(true)
                 

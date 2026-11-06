@@ -614,6 +614,7 @@ public final class CoreVirtualListView: UIView {
     }
 
     public var preloadMargin: CGFloat = 160
+    public var maxSpeculativeRowsPerTick: Int = .max
     public var loadedEdgeMargin: CGFloat = 0 {
         didSet {
             guard loadedEdgeMargin != oldValue else { return }
@@ -660,7 +661,11 @@ public final class CoreVirtualListView: UIView {
     // Internal rather than private: `CoreVirtualListView+Attachments.swift` is a different FILE, and
     // Swift's `private` is file-scoped.
     var contentWidth: CGFloat { viewportGeometry.contentWidth }
-    private(set) var activeWindow = Window()
+    private(set) var activeWindow = Window() {
+        didSet { windowRevision &+= 1 }
+    }
+    private var windowRevision = 0
+    private var lastScrollTickSignature: ScrollTickSignature?
     private(set) var containerOriginY: CGFloat = 0
     private var viewportCarries: [ViewportCarry] = []
     var viewportCarryViews: [UIView] { viewportCarries.map(\.view) }
@@ -2887,6 +2892,11 @@ public final class CoreVirtualListView: UIView {
         // when the window actually changed — so a scroll that leaves the window untouched would
         // otherwise never re-solve. The solve is a pure function of the settled window and the
         // offset, so running it again after a rebalance that DID render is an exact no-op.
+        let signature = currentScrollTickSignature()
+        if activeScrollFlight == nil, !rebalanceDeferredRows, signature == lastScrollTickSignature {
+            return
+        }
+        lastScrollTickSignature = signature
         renderAttachments()
         // After any rebase and before the host callback, so the host sees final row visibility
         // whether or not the loaded window changed.
@@ -2894,13 +2904,28 @@ public final class CoreVirtualListView: UIView {
         onVisibleWindowChanged?()
     }
 
+    private func currentScrollTickSignature() -> ScrollTickSignature {
+        ScrollTickSignature(offset: engine.offset,
+                            solveOffset: attachmentSolveOffset,
+                            windowRevision: windowRevision,
+                            containerOriginY: containerOriginY,
+                            logicalSize: logicalSize,
+                            insets: viewportInsets)
+    }
+
+    private var rebalanceDeferredRows = false
+
     private func rebalanceActiveWindow() {
+        rebalanceDeferredRows = false
         guard !activeWindow.isEmpty else { return }
 
         let scrollY = engine.offset
         let band = projectedLoadBand
         let width = contentWidth
-        let preRebalanceIdentities = Set(activeWindow.items.map { _items[$0.index].identity })
+        let preRebalanceStart = activeWindow.startIndex
+        let preRebalanceEnd = activeWindow.endIndex
+        var rowBudget = RebalanceRowBudget(maxSpeculativeRows: maxSpeculativeRowsPerTick)
+        defer { rebalanceDeferredRows = rowBudget.deferred }
         let absoluteBase = containerOriginY - activeWindow.minY
         var window = activeWindow
         var changed = false
@@ -2931,7 +2956,10 @@ public final class CoreVirtualListView: UIView {
               projectedFrame(first.frame,
                              contentBaseY: absoluteBase,
                              viewportOffset: scrollY).minY > band.lowerBound,
-              window.startIndex > 0 {
+              window.startIndex > 0,
+              rowBudget.admit(edgeIsInsideViewport: projectedFrame(first.frame,
+                                                                   contentBaseY: absoluteBase,
+                                                                   viewportOffset: scrollY).minY > 0) {
             prependItem(to: &window, width: width, sourceWindow: nil)
             changed = true
         }
@@ -2940,7 +2968,10 @@ public final class CoreVirtualListView: UIView {
               projectedFrame(last.frame,
                              contentBaseY: absoluteBase,
                              viewportOffset: scrollY).maxY < band.upperBound,
-              window.endIndex < _items.count - 1 {
+              window.endIndex < _items.count - 1,
+              rowBudget.admit(edgeIsInsideViewport: projectedFrame(last.frame,
+                                                                   contentBaseY: absoluteBase,
+                                                                   viewportOffset: scrollY).maxY < logicalSize.height) {
             appendItem(to: &window, width: width, sourceWindow: nil)
             changed = true
         }
@@ -2969,9 +3000,8 @@ public final class CoreVirtualListView: UIView {
         render()
 
         for item in window.items {
-            let identity = _items[item.index].identity
-            if !preRebalanceIdentities.contains(identity) {
-                attachLive(identity: identity, layer: item.view.layer)
+            if item.index < preRebalanceStart || item.index > preRebalanceEnd {
+                attachLive(identity: _items[item.index].identity, layer: item.view.layer)
             }
         }
     }
@@ -2980,7 +3010,11 @@ public final class CoreVirtualListView: UIView {
     /// one uniform rule deliver the `nil` for every way a row can leave the live window — a rebalance
     /// unload, a ghost-block member, the transient exit-overlay carry — instead of threading a call
     /// through each departure site.
-    private let visibleRectNotifiedViews = NSHashTable<UIView>.weakObjects()
+    private struct WeakNotifiedView {
+        weak var view: UIView?
+    }
+
+    private var visibleRectNotifiedViews: [WeakNotifiedView] = []
 
     /// Reports each loaded row the part of itself inside the viewport. Uses the same projection
     /// `rebalanceActiveWindow` uses, against the FULL viewport rect — insets stay visible space.
@@ -3010,14 +3044,14 @@ public final class CoreVirtualListView: UIView {
             }
         }
 
-        for view in visibleRectNotifiedViews.allObjects
-        where !visibleIDs.contains(ObjectIdentifier(view)) {
+        for entry in visibleRectNotifiedViews {
+            guard let view = entry.view, !visibleIDs.contains(ObjectIdentifier(view)) else { continue }
             (view as? CoreListItemView)?.visibleRectUpdated(nil)
         }
 
-        visibleRectNotifiedViews.removeAllObjects()
+        visibleRectNotifiedViews.removeAll(keepingCapacity: true)
         for view in visibleNow {
-            visibleRectNotifiedViews.add(view)
+            visibleRectNotifiedViews.append(WeakNotifiedView(view: view))
         }
     }
 

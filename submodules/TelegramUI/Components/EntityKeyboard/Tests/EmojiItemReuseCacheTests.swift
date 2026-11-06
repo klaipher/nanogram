@@ -72,3 +72,68 @@ final class EmojiItemReuseCacheTests: XCTestCase {
         XCTAssertTrue(result.values[0] === result.values[1])
     }
 }
+
+final class EmojiReuseIdentityFingerprintTests: XCTestCase {
+    private final class Child {
+        let id: Int
+
+        init(_ id: Int) {
+            self.id = id
+        }
+    }
+
+    private struct LooseValue: Equatable {
+        let title: String
+        let childIds: [Int]
+    }
+
+    private typealias Fingerprint = EmojiReuseIdentityFingerprint<LooseValue, Child>
+
+    func testSameChildInstancesAndEqualValueMatch() {
+        let children = [Child(1), Child(2)]
+        let lhs = Fingerprint(value: LooseValue(title: "a", childIds: [1, 2]), children: children)
+        let rhs = Fingerprint(value: LooseValue(title: "a", childIds: [1, 2]), children: children)
+        XCTAssertEqual(lhs, rhs)
+    }
+
+    func testRebuiltChildThatOnlyComparesEqualDoesNotMatch() {
+        let first = Child(1)
+        let second = Child(2)
+        let rebuiltSecond = Child(2)
+        let lhs = Fingerprint(value: LooseValue(title: "a", childIds: [1, 2]), children: [first, second])
+        let rhs = Fingerprint(value: LooseValue(title: "a", childIds: [1, 2]), children: [first, rebuiltSecond])
+        XCTAssertNotEqual(lhs, rhs)
+    }
+
+    func testChangedValueDoesNotMatch() {
+        let children = [Child(1)]
+        let lhs = Fingerprint(value: LooseValue(title: "a", childIds: [1]), children: children)
+        let rhs = Fingerprint(value: LooseValue(title: "b", childIds: [1]), children: children)
+        XCTAssertNotEqual(lhs, rhs)
+    }
+
+    func testDifferentChildCountDoesNotMatch() {
+        let child = Child(1)
+        let lhs = Fingerprint(value: LooseValue(title: "a", childIds: [1]), children: [child])
+        let rhs = Fingerprint(value: LooseValue(title: "a", childIds: [1]), children: [child, child])
+        XCTAssertNotEqual(lhs, rhs)
+    }
+
+    func testGroupWithARebuiltChildIsBuiltAgainInTheCache() {
+        let cache = EmojiItemReuseCache<String, Fingerprint, LooseValue>()
+        let first = Child(1)
+        var pass = cache.beginPass()
+        let _ = pass.value(for: "g", fingerprint: Fingerprint(value: LooseValue(title: "a", childIds: [1]), children: [first]), make: { LooseValue(title: "a", childIds: [1]) })
+        cache.commit(pass)
+
+        var samePass = cache.beginPass()
+        let _ = samePass.value(for: "g", fingerprint: Fingerprint(value: LooseValue(title: "a", childIds: [1]), children: [first]), make: { LooseValue(title: "a", childIds: [1]) })
+        XCTAssertEqual(samePass.reusedCount, 1)
+        cache.commit(samePass)
+
+        var rebuiltPass = cache.beginPass()
+        let _ = rebuiltPass.value(for: "g", fingerprint: Fingerprint(value: LooseValue(title: "a", childIds: [1]), children: [Child(1)]), make: { LooseValue(title: "a", childIds: [1]) })
+        XCTAssertEqual(rebuiltPass.builtCount, 1)
+        XCTAssertEqual(rebuiltPass.reusedCount, 0)
+    }
+}

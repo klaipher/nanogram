@@ -431,7 +431,7 @@ public func assetImage(fetchResult: PHFetchResult<PHAsset>, index: Int, targetSi
 public func assetImage(asset: PHAsset, targetSize: CGSize, exact: Bool, deliveryMode: PHImageRequestOptionsDeliveryMode = .opportunistic, synchronous: Bool = false) -> Signal<UIImage?, NoError> {
     return Signal { subscriber in
         let options = assetImageRequestOptions(deliveryMode: deliveryMode, exact: exact, synchronous: synchronous)
-        let token = imageManager.requestImage(for: asset, targetSize: targetSize, contentMode: .aspectFill, options: options) { (image, info) in
+        let resultHandler: (UIImage?, [AnyHashable: Any]?) -> Void = { (image, info) in
             var degraded = false
             
             if let info = info {
@@ -454,8 +454,24 @@ public func assetImage(asset: PHAsset, targetSize: CGSize, exact: Bool, delivery
                 subscriber.putCompletion()
             }
         }
+        if synchronous {
+            let token = imageManager.requestImage(for: asset, targetSize: targetSize, contentMode: .aspectFill, options: options, resultHandler: resultHandler)
+            return ActionDisposable {
+                imageManager.cancelImageRequest(token)
+            }
+        }
+        let deferred = DeferredAssetRequest<PHImageRequestID>()
+        assetsQueue.async {
+            deferred.start(request: {
+                return imageManager.requestImage(for: asset, targetSize: targetSize, contentMode: .aspectFill, options: options, resultHandler: resultHandler)
+            }, cancelRequest: { token in
+                imageManager.cancelImageRequest(token)
+            })
+        }
         return ActionDisposable {
-            imageManager.cancelImageRequest(token)
+            deferred.cancel(cancelRequest: { token in
+                imageManager.cancelImageRequest(token)
+            })
         }
     }
 }

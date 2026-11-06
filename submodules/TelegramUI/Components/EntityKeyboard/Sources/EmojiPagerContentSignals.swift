@@ -203,6 +203,7 @@ public extension EmojiPagerContentComponent {
         // every item of every pack, so only a changed input goes on.
         let hasPremiumSignal: Signal<Bool, NoError> = forceHasPremium ? .single(true) : hasPremium(context: context, chatPeerId: chatPeerId, premiumIfSavedMessages: premiumIfSavedMessages)
         let itemReuseCache = EmojiItemReuseCache<EmojiPanelItemKey, EmojiPanelItemFingerprint, EmojiPagerContentComponent.Item>()
+        let groupReuseCache = EmojiItemReuseCache<AnyHashable, EmojiReuseIdentityFingerprint<EmojiPagerContentComponent.ItemGroup, EmojiPagerContentComponent.Item>, EmojiPagerContentComponent.ItemGroup>()
         
         // Typed one by one: inline, the overloads of distinctUntilChanged inside the eight-way combineLatest and its
         // long map closure are more than the type checker finishes in time.
@@ -1564,6 +1565,7 @@ public extension EmojiPagerContentComponent {
             
             itemReuseCache.commit(itemReusePass)
             
+            var groupReusePass = groupReuseCache.beginPass()
             let allItemGroups = itemGroups.map { group -> EmojiPagerContentComponent.ItemGroup in
                 var hasClear = group.isClearable
                 var isEmbedded = false
@@ -1589,7 +1591,7 @@ public extension EmojiPagerContentComponent {
                     }
                 }
                 
-                return EmojiPagerContentComponent.ItemGroup(
+                let candidateGroup = EmojiPagerContentComponent.ItemGroup(
                     supergroupId: group.supergroupId,
                     groupId: group.id,
                     title: group.title,
@@ -1608,7 +1610,9 @@ public extension EmojiPagerContentComponent {
                     customTintColor: backgroundIconColor,
                     items: group.items
                 )
+                return groupReusePass.value(for: group.id, fingerprint: EmojiReuseIdentityFingerprint(value: candidateGroup, children: group.items), make: { candidateGroup })
             }
+            groupReuseCache.commit(groupReusePass)
             
             let warpContentsOnEdges = [.reaction(onlyTop: true), .reaction(onlyTop: false), .quickReaction, .status, .channelStatus, .profilePhoto, .groupPhoto, .backgroundIcon, .messageTag].contains(subject)
             let enableLongPress = [.reaction(onlyTop: true), .reaction(onlyTop: false), .status, .channelStatus].contains(subject)
