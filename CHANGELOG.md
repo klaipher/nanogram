@@ -4,6 +4,9 @@ Newest first. Internal notes for each TestFlight build; testers see the What to 
 
 ## Unreleased
 
+- CoreList scroll path, no behaviour change (branch perf/chat-scroll). `render()` removed stale rows with a nested `contains` (O(n^2) per window change); it now uses an identity set (`ListMembership.staleSubviews`), same removals and same z-order. The rebalance no longer hashes the whole window for crossing carries when there are none (`ListMembership.promotedIdentities`). (ab2ad724)
+- `resolveAttachments` (every row a scroll loads) no longer builds an identity-to-index dictionary over the whole collection: only the previous runs' members are looked up, and only while each is still at its old index, otherwise the full map is used (`sameIndexLookup`, `AttachmentRuns.assignSerials(newIndexOfIdentity:)`). (759cbca1)
+
 ## 13.1.2 (202611060203) — 2026-11-06 — 32bafb86
 
 TestFlight upload (internal testers), the first with Enhanced Security (soft mode) on the app, NotificationService and Share (checked in the built app and in the exported App Store build). Since 202611052231 (9971ecaa..32bafb86): round 3 and 3b (calls fixes and audit, call defaults on with RNNoise only, CoreList scroll tick work, photo decode at display size, photo picker off main, emoji panel reuse, shared core WAL counter / MediaBox LRU / lookahead wake-ups / allocation cuts, extensions on the failable database open, glass lookup skipped on iOS 27, chat-open signposts), the speaker retry and the tg fixes. BUILD-INFO.txt is next to the dSYMs. The detailed entries are below. Mac counterpart: GitHub release 13.1.0 (see the Mac CHANGELOG). Tester notes (What to Test):
