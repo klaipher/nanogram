@@ -351,6 +351,8 @@ public final class InlineStickerItemLayer: MultiAnimationRenderTarget {
     private let arguments: Arguments?
     
     private var isDisplayingPlaceholder: Bool = false
+    /// Invalidates a placeholder that is still being drawn when the item is reloaded. Main thread only.
+    private var placeholderGeneration: Int = 0
     private var didProcessTintColor: Bool = false
     
     private var isSettingPlaceholderContents: Bool = false
@@ -471,6 +473,23 @@ public final class InlineStickerItemLayer: MultiAnimationRenderTarget {
                 }
             }
         }
+    }
+    
+    func beginPlaceholderGeneration() -> Int {
+        self.placeholderGeneration += 1
+        return self.placeholderGeneration
+    }
+    
+    /// Shows a placeholder that was drawn off the main thread, unless the item was reloaded in the meantime or
+    /// its real frame has already arrived. Internal for tests.
+    func applyDeferredPlaceholder(_ image: CGImage?, generation: Int) -> Bool {
+        guard generation == self.placeholderGeneration, !self.hasDisplayedContent else {
+            return false
+        }
+        self.setPlaceholderContents(image)
+        self.isDisplayingPlaceholder = true
+        self.updateTintColor()
+        return true
     }
     
     /// Shows the sticker's silhouette placeholder, which does not count as content. Internal for tests.
@@ -844,11 +863,22 @@ public final class InlineStickerItemLayer: MultiAnimationRenderTarget {
         self.loadDisposable?.dispose()
         
         if attemptSynchronousLoad {
+            let placeholderGeneration = self.beginPlaceholderGeneration()
             if !arguments.renderer.loadFirstFrameSynchronously(target: self, cache: arguments.cache, itemId: file.resource.id.stringRepresentation, size: arguments.pixelSize) {
-                if let image = generateStickerPlaceholderImage(data: file.immediateThumbnailData, size: arguments.pointSize, imageSize: file.dimensions?.cgSize ?? CGSize(width: 512.0, height: 512.0), backgroundColor: nil, foregroundColor: arguments.placeholderColor) {
-                    self.setPlaceholderContents(image.cgImage)
-                    self.isDisplayingPlaceholder = true
-                    self.updateTintColor()
+                // Not in the cache: the silhouette placeholder used to be drawn here, on the main thread, for
+                // every such item of a panel that was opening. It is drawn on the first-frame queue now (as in
+                // the asynchronous branch below) and lands a frame or two later, unless the real frame came first.
+                let pointSize = arguments.pointSize
+                let placeholderColor = arguments.placeholderColor
+                let immediateThumbnailData = file.immediateThumbnailData
+                let imageSize = file.dimensions?.cgSize ?? CGSize(width: 512.0, height: 512.0)
+                DCTMultiAnimationRendererImpl.firstFrameQueue.async { [weak self] in
+                    let image = generateStickerPlaceholderImage(data: immediateThumbnailData, size: pointSize, scale: min(2.0, UIScreenScale), imageSize: imageSize, backgroundColor: nil, foregroundColor: placeholderColor)
+                    DispatchQueue.main.async { [weak self] in
+                        if let strongSelf = self, let image {
+                            let _ = strongSelf.applyDeferredPlaceholder(image.cgImage, generation: placeholderGeneration)
+                        }
+                    }
                 }
             } else {
                 self.updateTintColor()

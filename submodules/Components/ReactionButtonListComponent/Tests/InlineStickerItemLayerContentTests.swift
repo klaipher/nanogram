@@ -57,4 +57,24 @@ final class InlineStickerItemLayerContentTests: XCTestCase {
         layer.contents = nil
         XCTAssertFalse(layer.hasDisplayedContent)
     }
+
+    // A placeholder drawn off the main thread lands only if nothing newer happened to the layer.
+    func testADeferredPlaceholderLandsOnlyWhileItIsCurrentAndNoFrameShowed() {
+        let layer = self.makeLayer()
+        let generation = layer.beginPlaceholderGeneration()
+        XCTAssertTrue(layer.applyDeferredPlaceholder(self.makeImage(), generation: generation))
+        XCTAssertNotNil(layer.contents)
+        XCTAssertFalse(layer.hasDisplayedContent)
+
+        let reloaded = self.makeLayer()
+        let stale = reloaded.beginPlaceholderGeneration()
+        let _ = reloaded.beginPlaceholderGeneration()
+        XCTAssertFalse(reloaded.applyDeferredPlaceholder(self.makeImage(), generation: stale), "the item was reloaded")
+        XCTAssertNil(reloaded.contents)
+
+        let shown = self.makeLayer()
+        let current = shown.beginPlaceholderGeneration()
+        shown.contents = self.makeImage()
+        XCTAssertFalse(shown.applyDeferredPlaceholder(self.makeImage(), generation: current), "the real frame came first")
+    }
 }
