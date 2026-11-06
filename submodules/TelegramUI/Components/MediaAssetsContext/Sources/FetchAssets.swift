@@ -372,7 +372,8 @@ public func assetImageRequestOptions(deliveryMode: PHImageRequestOptionsDelivery
 }
 
 /// Asks Photos to prepare the thumbnails of the visible grid cells and one screen around them (PHCachingImageManager),
-/// with the exact size and options the cells request. Main thread only.
+/// with the exact size and options the cells request. The window bookkeeping is main thread only; reading the fetch
+/// result and calling the caching manager run in order on the assets queue, so no scroll tick pays for them.
 public final class AssetThumbnailPrefetcher {
     private let targetSize: CGSize
     private let options: PHImageRequestOptions
@@ -396,31 +397,42 @@ public final class AssetThumbnailPrefetcher {
         self.fetchResult = fetchResult
         let next = visible.map { AssetCachingWindow.window(visible: $0, count: fetchResult.count) }
         let diff = AssetCachingWindow.diff(previous: self.window, next: next)
-        for range in diff.stop {
-            imageManager.stopCachingImages(for: self.assets(in: range, of: fetchResult), targetSize: self.targetSize, contentMode: .aspectFill, options: self.options)
-        }
-        for range in diff.start {
-            imageManager.startCachingImages(for: self.assets(in: range, of: fetchResult), targetSize: self.targetSize, contentMode: .aspectFill, options: self.options)
-        }
         self.window = next.flatMap { $0.isEmpty ? nil : $0 }
+        if diff.stop.isEmpty && diff.start.isEmpty {
+            return
+        }
+        let targetSize = self.targetSize
+        let options = self.options
+        assetsQueue.async {
+            for range in diff.stop {
+                imageManager.stopCachingImages(for: assetsInRange(range, of: fetchResult), targetSize: targetSize, contentMode: .aspectFill, options: options)
+            }
+            for range in diff.start {
+                imageManager.startCachingImages(for: assetsInRange(range, of: fetchResult), targetSize: targetSize, contentMode: .aspectFill, options: options)
+            }
+        }
     }
 
     /// Stops what this prefetcher started (the screen is gone, or memory is low).
     public func stop() {
         if let fetchResult = self.fetchResult, let window = self.window {
-            imageManager.stopCachingImages(for: self.assets(in: window, of: fetchResult), targetSize: self.targetSize, contentMode: .aspectFill, options: self.options)
+            let targetSize = self.targetSize
+            let options = self.options
+            assetsQueue.async {
+                imageManager.stopCachingImages(for: assetsInRange(window, of: fetchResult), targetSize: targetSize, contentMode: .aspectFill, options: options)
+            }
         }
         self.window = nil
         self.fetchResult = nil
     }
+}
 
-    private func assets(in range: Range<Int>, of fetchResult: PHFetchResult<PHAsset>) -> [PHAsset] {
-        let upper = min(range.upperBound, fetchResult.count)
-        guard range.lowerBound < upper else {
-            return []
-        }
-        return fetchResult.objects(at: IndexSet(integersIn: range.lowerBound ..< upper))
+private func assetsInRange(_ range: Range<Int>, of fetchResult: PHFetchResult<PHAsset>) -> [PHAsset] {
+    let upper = min(range.upperBound, fetchResult.count)
+    guard range.lowerBound < upper else {
+        return []
     }
+    return fetchResult.objects(at: IndexSet(integersIn: range.lowerBound ..< upper))
 }
 
 public func assetImage(fetchResult: PHFetchResult<PHAsset>, index: Int, targetSize: CGSize, exact: Bool, deliveryMode: PHImageRequestOptionsDeliveryMode = .opportunistic, synchronous: Bool = false) -> Signal<UIImage?, NoError> {
