@@ -4,6 +4,7 @@ import TelegramCore
 import SwiftSignalKit
 import AccountContext
 import ChatListUI
+import AvatarNode
 
 // One selection shared by the grid, recommendations, folders and search results.
 struct ShareScreenSelection {
@@ -213,6 +214,7 @@ final class ShareScreenState {
 
     private var generation = 0
     private let peersDisposable = MetaDisposable()
+    private let avatarPrewarmDisposable = MetaDisposable()
     private let detailsDisposable = MetaDisposable()
     private let filtersDisposable = MetaDisposable()
     private let recommendationsDisposable = MetaDisposable()
@@ -270,6 +272,7 @@ final class ShareScreenState {
         self.topicsDisposable.dispose()
         self.pendingForumTimer.dispose()
         self.peersDisposable.dispose()
+        self.avatarPrewarmDisposable.dispose()
         self.detailsDisposable.dispose()
         self.filtersDisposable.dispose()
         self.recommendationsDisposable.dispose()
@@ -559,6 +562,17 @@ final class ShareScreenState {
         return result
     }
 
+    /// Rows below the first screen are decoded in the background, so scrolling to them finds the
+    /// avatars in the render cache instead of decoding them as the rows appear.
+    private func prewarmAvatarsBelowTheFold() {
+        let rows = self.peers.dropFirst(ShareScreenAvatarPrewarm.firstScreenCount).prefix(ShareScreenAvatarPrewarm.maximumCount).map { peer -> (peer: EnginePeer, clipStyle: AvatarNodeClipStyle) in
+            let isMonoforum = peer._asPeer().isMonoForum
+            let isForum = !isMonoforum && peer._asPeer().isForumOrMonoForum
+            return (peer: self.displayPeer(peer), clipStyle: isMonoforum ? .bubble : (isForum ? .roundedRect : .round))
+        }
+        self.avatarPrewarmDisposable.set(prewarmPeerAvatarImages(context: self.context, peers: Array(rows)))
+    }
+
     private func reload(keepPeers: Bool = false, animated: Bool = false) {
         self.generation += 1
         let generation = self.generation
@@ -578,6 +592,7 @@ final class ShareScreenState {
                 self.emptyQueryPeers[self.filterId] = self.peers
             }
             self.updateMessagingRequirements()
+            self.prewarmAvatarsBelowTheFold()
             self.isLoading = false
             if !self.didCompleteFirstLoad {
                 self.didCompleteFirstLoad = true
@@ -600,4 +615,11 @@ final class ShareScreenState {
             }))
         }))
     }
+}
+
+
+enum ShareScreenAvatarPrewarm {
+    /// Rows the sheet shows right away (about five rows of four); they are drawn at once.
+    static let firstScreenCount = 20
+    static let maximumCount = 40
 }
