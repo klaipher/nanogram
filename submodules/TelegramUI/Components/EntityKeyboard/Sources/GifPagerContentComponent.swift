@@ -710,12 +710,51 @@ public final class GifPagerContentComponent: Component {
             self.updateVisibleItems(attemptSynchronousLoads: false, transition: transition, fromScrolling: true)
         }
         
+        /// Set one run-loop turn after the pane enters a window (the synchronous panel build is over by then). Only read when
+        /// the "Emoji panel: defer ..." switch is on.
+        private var isPaneSettled: Bool = false
+        private var deferredTilePassScheduled: Bool = false
+        
+        override public func didMoveToWindow() {
+            super.didMoveToWindow()
+            
+            if self.window != nil {
+                if EmojiPanelOpenTuning.defersHeavyWork && !self.isPaneSettled {
+                    self.scheduleDeferredTilePass()
+                }
+            } else {
+                self.isPaneSettled = false
+            }
+        }
+        
+        private func scheduleDeferredTilePass() {
+            if self.deferredTilePassScheduled {
+                return
+            }
+            self.deferredTilePassScheduled = true
+            DispatchQueue.main.async { [weak self] in
+                guard let self else {
+                    return
+                }
+                self.deferredTilePassScheduled = false
+                if self.window == nil {
+                    return
+                }
+                self.isPaneSettled = true
+                PerformanceSignposts.interval(EmojiPanelOpenSignpost.deferredGifTiles) {
+                    self.updateVisibleItems(attemptSynchronousLoads: false, transition: .immediate, fromScrolling: false)
+                }
+            }
+        }
+        
         private func updateVisibleItems(attemptSynchronousLoads: Bool, transition: ComponentTransition, fromScrolling: Bool) {
             guard let component = self.component, let itemLayout = self.itemLayout else {
                 return
             }
             
             var validIds = Set<ItemKey>()
+            var createdTilesInThisPass = 0
+            var hasDeferredTiles = false
             
             var searchInset: CGFloat = 0.0
             if let _ = component.displaySearchWithPlaceholder {
@@ -760,6 +799,17 @@ public final class GifPagerContentComponent: Component {
                     if let current = self.visibleItemLayers[itemId] {
                         itemLayer = current
                     } else {
+                        // Debug Settings "Emoji panel: defer ..." (off by default): create the tiles' display layers only once the
+                        // pane is on screen, a few per run-loop turn. With the switch off this check is always true.
+                        if !LazyGifTilePlan.mayCreateTile(switchEnabled: EmojiPanelOpenTuning.defersHeavyWork, paneSettled: self.isPaneSettled, createdInThisPass: createdTilesInThisPass) {
+                            hasDeferredTiles = true
+                            continue
+                        }
+                        createdTilesInThisPass += 1
+                        let layerCreateSignpost = PerformanceSignposts.begin(EmojiPanelOpenSignpost.gifLayerCreate)
+                        defer {
+                            PerformanceSignposts.end(EmojiPanelOpenSignpost.gifLayerCreate, layerCreateSignpost)
+                        }
                         updateItemLayerPlaceholder = true
                         itemTransition = .immediate
                         
@@ -839,6 +889,10 @@ public final class GifPagerContentComponent: Component {
                 }
             }
 
+            if hasDeferredTiles {
+                self.scheduleDeferredTilePass()
+            }
+            
             var removedIds: [ItemKey] = []
             for (id, itemLayer) in self.visibleItemLayers {
                 if !validIds.contains(id) {
