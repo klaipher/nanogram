@@ -383,6 +383,8 @@ public final class AssetThumbnailPrefetcher {
     private let options: PHImageRequestOptions
     private var fetchResult: PHFetchResult<PHAsset>?
     private var window: Range<Int>?
+    private var lastLower: Int?
+    private var direction: Int = 0
 
     public init(targetSize: CGSize) {
         self.targetSize = targetSize
@@ -393,13 +395,19 @@ public final class AssetThumbnailPrefetcher {
         self.stop()
     }
 
-    /// `visible` holds the fetch-result indices on screen, nil when nothing is.
+    /// `visible` holds the fetch-result indices on screen, nil when nothing is. The window reaches a screen ahead in the
+    /// scroll direction and half a screen behind (`AssetCachingWindow.directionalWindow`).
     public func update(fetchResult: PHFetchResult<PHAsset>, visible: ClosedRange<Int>?) {
         if let current = self.fetchResult, current !== fetchResult {
             self.stop()
         }
         self.fetchResult = fetchResult
-        let next = visible.map { AssetCachingWindow.window(visible: $0, count: fetchResult.count) }
+        if let visible {
+            self.direction = AssetCachingWindow.direction(previousLower: self.lastLower, lower: visible.lowerBound, previousDirection: self.direction)
+            self.lastLower = visible.lowerBound
+        }
+        let direction = self.direction
+        let next = visible.map { AssetCachingWindow.directionalWindow(visible: $0, count: fetchResult.count, direction: direction) }
         let diff = AssetCachingWindow.diff(previous: self.window, next: next)
         self.window = next.flatMap { $0.isEmpty ? nil : $0 }
         if diff.stop.isEmpty && diff.start.isEmpty {
@@ -428,6 +436,8 @@ public final class AssetThumbnailPrefetcher {
         }
         self.window = nil
         self.fetchResult = nil
+        self.lastLower = nil
+        self.direction = 0
     }
 }
 

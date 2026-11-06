@@ -49,4 +49,24 @@ final class AssetCachingWindowTests: XCTestCase {
         XCTAssertTrue(result.start.isEmpty)
         XCTAssertEqual(result.stop, [80 ..< 140])
     }
+
+    func testDirectionalWindowReachesAScreenAheadAndHalfBehind() {
+        XCTAssertEqual(AssetCachingWindow.directionalWindow(visible: 100 ... 119, count: 1000, direction: 1), 90 ..< 140)
+        XCTAssertEqual(AssetCachingWindow.directionalWindow(visible: 100 ... 119, count: 1000, direction: -1), 80 ..< 130)
+        XCTAssertEqual(AssetCachingWindow.directionalWindow(visible: 100 ... 119, count: 1000, direction: 0), 90 ..< 130)
+    }
+
+    func testDirectionalWindowIsClamped() {
+        XCTAssertEqual(AssetCachingWindow.directionalWindow(visible: 0 ... 19, count: 1000, direction: -1), 0 ..< 30)
+        XCTAssertEqual(AssetCachingWindow.directionalWindow(visible: 990 ... 999, count: 1000, direction: 1), 985 ..< 1000)
+        XCTAssertEqual(AssetCachingWindow.directionalWindow(visible: 0 ... 5, count: 0, direction: 1), 0 ..< 0)
+        XCTAssertEqual(AssetCachingWindow.directionalWindow(visible: 50 ... 60, count: 10, direction: 1), 0 ..< 0)
+    }
+
+    func testDirectionFollowsTheFirstVisibleIndex() {
+        XCTAssertEqual(AssetCachingWindow.direction(previousLower: nil, lower: 10, previousDirection: 0), 0)
+        XCTAssertEqual(AssetCachingWindow.direction(previousLower: 10, lower: 14, previousDirection: 0), 1)
+        XCTAssertEqual(AssetCachingWindow.direction(previousLower: 14, lower: 9, previousDirection: 1), -1)
+        XCTAssertEqual(AssetCachingWindow.direction(previousLower: 9, lower: 9, previousDirection: -1), -1)
+    }
 }
