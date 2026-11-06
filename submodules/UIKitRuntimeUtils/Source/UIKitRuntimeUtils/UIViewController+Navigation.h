@@ -110,5 +110,16 @@ void snapshotViewByDrawingInContext(UIView * _Nonnull view);
 
 @property (class, nonatomic) double morphGlassBlurRadius;
 
+/// The NSUserDefaults key of the "Glass: Telegram fixed look" switch (Debug Settings). Read once in +load, so a change
+/// applies at the next launch. Absent or NO (the default): the system's own adaptive glass.
+@property (class, nonatomic, readonly, copy) NSString * _Nonnull telegramFixedLookDefaultsKey;
+
+/// Whether `defaults` ask for Telegram's fixed glass look.
++ (BOOL)isTelegramFixedLookRequestedInDefaults:(NSUserDefaults * _Nonnull)defaults NS_SWIFT_NAME(isTelegramFixedLookRequested(in:));
+
+/// Whether this launch installed the `backdropLayer:didChangeLuma:` clamp (decided in +load, never changes afterwards).
+/// Only with the fixed look requested, on iOS 26 or later, and when UIKit's backdrop class was found.
+@property (class, nonatomic, readonly) BOOL isLumaClampInstalled;
+
 @end
 

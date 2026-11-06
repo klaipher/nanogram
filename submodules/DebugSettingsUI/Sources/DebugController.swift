@@ -25,6 +25,7 @@ import CpuProfiler
 import CrashReporting
 import ContextUI
 import MessageWidget
+import GlassBackgroundComponent
 
 private final class DebugControllerArguments {
     let sharedContext: SharedAccountContext
@@ -368,6 +369,7 @@ enum DebugControllerEntry: ItemListNodeEntry {
     case callsGroupNoiseMode(Int32)
     case callsThermalVideoLadder(Bool)
     case glassGroupsHeader(PresentationTheme)
+    case glassTelegramFixedLook(Bool)
     case glassGroupNavigationBar(Bool)
     case glassGroupInputPanel(Bool)
     case glassGroupFloatingButtons(Bool)
@@ -405,7 +407,7 @@ enum DebugControllerEntry: ItemListNodeEntry {
             return DebugControllerSection.experiments.rawValue
         case .callsHeader, .callsLivestreamHardwareDecoding, .callsNativeCapturePath, .callsSystemNoiseSuppression, .callsAdvancedDucking, .callsGroupNoiseMode, .callsThermalVideoLadder:
             return DebugControllerSection.streamsAndCalls.rawValue
-        case .glassGroupsHeader, .glassGroupNavigationBar, .glassGroupInputPanel, .glassGroupFloatingButtons:
+        case .glassGroupsHeader, .glassTelegramFixedLook, .glassGroupNavigationBar, .glassGroupInputPanel, .glassGroupFloatingButtons:
             return DebugControllerSection.glassGroups.rawValue
         case .emojiPanelHeader, .emojiPanelDefersHeavyWork:
             return DebugControllerSection.emojiPanelOpen.rawValue
@@ -554,6 +556,8 @@ enum DebugControllerEntry: ItemListNodeEntry {
         case .glassGroupsHeader:
             // Its own section, so these ids only order it inside itself.
             return 120
+        case .glassTelegramFixedLook:
+            return 124
         case .glassGroupNavigationBar:
             return 121
         case .glassGroupInputPanel:
@@ -655,6 +659,10 @@ enum DebugControllerEntry: ItemListNodeEntry {
                     settings.emojiPanelDefersHeavyWork = value
                     return settings
                 }).start()
+            })
+        case let .glassTelegramFixedLook(value):
+            return ItemListSwitchItem(presentationData: presentationData, systemStyle: .glass, title: "Glass: Telegram fixed look", text: "Off (default): glass adapts to what is behind it, as the system's own does. On: Telegram's look, where the glass stays light or dark with the theme (the static bubble-free glass was captured this way). Takes effect after the app is restarted.", value: value, maximumNumberOfLines: 0, sectionId: self.section, style: .blocks, updated: { value in
+                GlassFixedLook.setRequested(value)
             })
         case let .glassGroupNavigationBar(value):
             return glassGroupSwitch(presentationData: presentationData, arguments: arguments, sectionId: self.section, title: "Navigation bar glass off", text: "Replaces the navigation bar's glass with a solid fill, to measure what it costs. Default: off. Applies at once.", bit: ExperimentalUISettings.glassDebugNavigationBar, value: value)
@@ -1452,6 +1460,7 @@ func debugControllerEntries(environment: DebugControllerEntriesEnvironment, them
         
         // Measurement only: each switch replaces one chat glass group with a solid fill (iOS native glass).
         entries.append(.glassGroupsHeader(theme))
+        entries.append(.glassTelegramFixedLook(GlassFixedLook.isRequested()))
         entries.append(.glassGroupNavigationBar(experimentalSettings.glassDebugDisabledGroups & ExperimentalUISettings.glassDebugNavigationBar != 0))
         entries.append(.glassGroupInputPanel(experimentalSettings.glassDebugDisabledGroups & ExperimentalUISettings.glassDebugInputPanel != 0))
         entries.append(.glassGroupFloatingButtons(experimentalSettings.glassDebugDisabledGroups & ExperimentalUISettings.glassDebugFloatingButtons != 0))

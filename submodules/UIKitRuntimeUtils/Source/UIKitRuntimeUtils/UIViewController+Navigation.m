@@ -476,6 +476,9 @@ static void replacement_filterSetValueForKey(NSObject *self, SEL selector, id va
     original_filterSetValueForKey(self, selector, value, key);
 }
 
+static NSString *const NanogramGlassTelegramFixedLookKey = @"nanogram.glass.telegramFixedLook";
+static BOOL lumaClampInstalled = NO;
+
 static void registerEffectViewOverrides(void) {
     glassBackgroundFilterName = TGEncodeText(@"hmbttCbdlhspvoe", -1);
     inputBlurRadiusKey = TGEncodeText(@"joqvuCmvsSbejvt", -1);
@@ -497,17 +500,23 @@ static void registerEffectViewOverrides(void) {
         }
     }
 
+    // Nanogram: the glass uses the system's own adaptive behaviour (the luma clamp is Telegram's fixed look). The clamp is
+    // installed only when "Glass: Telegram fixed look" is on (NSUserDefaults, read here once, so it applies at the next
+    // launch). iOS 27 needs the class for nothing else, so with the switch off the lookup is skipped there altogether.
+    // iOS 26 still needs the class for the didMoveToWindow blur-radius hook, so it keeps its single lookup.
+    //
     // One lookup of UIKit's Swift glass backdrop view, by the name of the running OS only. iOS 26 declares the class
     // file-private (the P33_ discriminator); iOS 27 does not (UIKitCore 27.2 has only _TtC5UIKit17UISDFBackdropView,
     // the discriminator now belongs to UISDFElementView). A name that is not in the ObjC class table falls through to
     // the Swift runtime's mangled-name scan (45 ms in _contextDescriptorMatchesMangling in +load, launch trace J), so
-    // the other OS's name is never tried as a fallback.
-    // iOS 27: the luma limits are installed there too (upstream 13.2; its static glass assets were captured with the clamp
-    // on, so live glass must be clamped the same way). The blur-radius hook on didMoveToWindow stays iOS 26 only, as
-    // upstream has it.
+    // the other OS's name is never tried as a fallback. The blur-radius hook on didMoveToWindow stays iOS 26 only.
+    BOOL wantsLumaClamp = [EffectSettingsContainerView isTelegramFixedLookRequestedInDefaults:[NSUserDefaults standardUserDefaults]];
     BOOL isBackdropViewModuleLevel = NO;
     NSString *backdropViewClassName = nil;
     if (@available(iOS 27.0, *)) {
+        if (!wantsLumaClamp) {
+            return;
+        }
         isBackdropViewModuleLevel = YES;
         backdropViewClassName = TGEncodeText(@"_TtC5UIKit17UISDFBackdropView", 0);
     } else {
@@ -523,13 +532,16 @@ static void registerEffectViewOverrides(void) {
             }
         }
 
-        NSString *selectorString = [@"backdropLayer" stringByAppendingString:@":didChangeLuma:"];
-        Method method = (Method)[RuntimeUtils getMethodOfClass:backdropViewClass selector:NSSelectorFromString(selectorString)];
-        if (method) {
-            const char *typeEncoding = method_getTypeEncoding(method);
-            if (strcmp(typeEncoding, "v32@0:8@16d24") == 0) {
-                original_backdropLayerDidChangeLuma = (id (*)(id, SEL, CALayer *, double))method_getImplementation(method);
-                [RuntimeUtils replaceMethodImplementationOfClass:backdropViewClass selector:NSSelectorFromString(selectorString) replacement:(IMP)&replacement_backdropLayerDidChangeLuma];
+        if (wantsLumaClamp) {
+            NSString *selectorString = [@"backdropLayer" stringByAppendingString:@":didChangeLuma:"];
+            Method method = (Method)[RuntimeUtils getMethodOfClass:backdropViewClass selector:NSSelectorFromString(selectorString)];
+            if (method) {
+                const char *typeEncoding = method_getTypeEncoding(method);
+                if (strcmp(typeEncoding, "v32@0:8@16d24") == 0) {
+                    original_backdropLayerDidChangeLuma = (id (*)(id, SEL, CALayer *, double))method_getImplementation(method);
+                    [RuntimeUtils replaceMethodImplementationOfClass:backdropViewClass selector:NSSelectorFromString(selectorString) replacement:(IMP)&replacement_backdropLayerDidChangeLuma];
+                    lumaClampInstalled = YES;
+                }
             }
         }
     }
@@ -943,6 +955,18 @@ void snapshotViewByDrawingInContext(UIView * _Nonnull view) {
         _lumaMax = 1.0;
     }
     return self;
+}
+
++ (NSString *)telegramFixedLookDefaultsKey {
+    return NanogramGlassTelegramFixedLookKey;
+}
+
++ (BOOL)isTelegramFixedLookRequestedInDefaults:(NSUserDefaults *)defaults {
+    return [defaults boolForKey:NanogramGlassTelegramFixedLookKey];
+}
+
++ (BOOL)isLumaClampInstalled {
+    return lumaClampInstalled;
 }
 
 + (double)morphGlassBlurRadius {

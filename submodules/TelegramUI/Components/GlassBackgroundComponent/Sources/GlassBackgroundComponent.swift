@@ -589,6 +589,7 @@ public class GlassBackgroundView: UIView {
 
     public static var useCustomGlassImpl: Bool = false
 
+    /// Telegram's fixed look (only with "Glass: Telegram fixed look" on, see `GlassFixedLook`; native glass is not clamped).
     /// The backdrop luminance native glass sees (`EffectSettingsContainerView`'s limits, applied to every luma UIKit
     /// reports by the `backdropLayer:didChangeLuma:` override in UIKitRuntimeUtils): the whole range on the theme's
     /// side of the luminance at which UIKit would flip the glass to the other appearance, so it adapts to its
@@ -778,7 +779,7 @@ public class GlassBackgroundView: UIView {
         // UIKit can sample backdrop luminance synchronously while changing
         // appearance or effect. Install the new limits before either update.
         if let nativeParamsView = self.nativeParamsView {
-            let lumaRange = GlassBackgroundView.adaptiveLumaRange(isDark: isDark)
+            let lumaRange = GlassFixedLook.lumaRange(isDark: isDark)
             nativeParamsView.lumaMin = lumaRange.min
             nativeParamsView.lumaMax = lumaRange.max
         }
@@ -1166,7 +1167,7 @@ public final class GlassBackgroundContainerView: UIView {
 
     public func update(size: CGSize, isDark: Bool, transition: ComponentTransition) {
         if let nativeParamsView = self.nativeParamsView, let nativeView = self.nativeView {
-            let lumaRange = GlassBackgroundView.adaptiveLumaRange(isDark: isDark)
+            let lumaRange = GlassFixedLook.lumaRange(isDark: isDark)
             nativeParamsView.lumaMin = lumaRange.min
             nativeParamsView.lumaMax = lumaRange.max
             if let nativeParamsView = self.nativeParamsView {

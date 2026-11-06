@@ -33,6 +33,7 @@ swift_library(
     ]),
     deps = [
         ":GlassBackgroundComponent",
+        "//submodules/UIKitRuntimeUtils",
     ],
 )
 
