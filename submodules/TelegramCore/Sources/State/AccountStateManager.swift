@@ -959,6 +959,7 @@ public final class AccountStateManager {
                         return
                     }
                     if resetState {
+                        StaleChannelDiagnostics.noteDifference(kind: "tooLong")
                         let _ = (_internal_resetAccountState(postbox: postbox, network: network, accountPeerId: accountPeerId)
                         |> deliverOn(strongSelf.queue)).start(completed: {
                             guard let strongSelf = self else {
@@ -979,8 +980,15 @@ public final class AccountStateManager {
                             if let difference = difference {
                                 switch difference {
                                 case .differenceSlice:
+                                    StaleChannelDiagnostics.noteDifference(kind: "slice")
                                     strongSelf.addOperation(.pollDifference(strongSelf.getNextId(), events), position: .first)
                                 default:
+                                    switch difference {
+                                    case .differenceEmpty:
+                                        StaleChannelDiagnostics.noteDifference(kind: "empty")
+                                    default:
+                                        StaleChannelDiagnostics.noteDifference(kind: "difference")
+                                    }
                                     if let currentChannelOperationsContext = strongSelf.currentChannelOperationsContext {
                                         currentChannelOperationsContext.canComplete = true
                                         currentChannelOperationsContext.events = currentChannelOperationsContext.events.union(with: events)
