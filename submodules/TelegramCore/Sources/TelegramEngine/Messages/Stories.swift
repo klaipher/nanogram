@@ -2664,7 +2664,7 @@ final class PeerStoryPollLease {
     private let peerId: PeerId
 
     init(postbox: Postbox, peerId: PeerId, items: [StoryItemsTableEntry]) {
-        self.context = StoryResolutionContextRegistry.shared.pollContext(for: postbox, create: true)!
+        self.context = StoryResolutionContextRegistry.shared.pollContext(for: postbox, create: true) ?? PeerStoryPollContext()
         self.peerId = peerId
         self.context.begin(peerId: peerId, id: self.id, items: items)
     }
@@ -2681,7 +2681,7 @@ final class StoryResolutionLease {
     let request: StoryRefreshContext.Request
 
     init(postbox: Postbox, peerId: PeerId, snapshots: [Int32: StoryRefreshSnapshot]) {
-        self.context = StoryResolutionContextRegistry.shared.context(for: postbox, create: true)!
+        self.context = StoryResolutionContextRegistry.shared.context(for: postbox, create: true) ?? StoryRefreshContext()
         self.request = StoryRefreshContext.Request(storyIds: snapshots.keys.map { StoryId(peerId: peerId, id: $0) })
         self.context.begin(self.request)
         self.context.prepare(self.request, snapshots: snapshots)
@@ -3582,7 +3582,7 @@ func _internal_applyStoryUpdate(transaction: Transaction, peerId: PeerId, story:
 func _internal_applyStoryReaction(transaction: Transaction, peerId: PeerId, id: Int32, reaction: MessageReaction.Reaction?, expectedReaction: MessageReaction.Reaction?? = nil) -> Stories.StoredItem? {
     var updatedItemValue: Stories.StoredItem?
     func updated(_ item: Stories.Item) -> Stories.StoredItem? {
-        guard item.id == id, item.myReaction != reaction, expectedReaction == nil || item.myReaction == expectedReaction! else { return nil }
+        guard item.id == id, item.myReaction != reaction, expectedReaction == nil || item.myReaction == expectedReaction else { return nil }
         return .item(_internal_storyWithReaction(item, isChannel: peerId.namespace == Namespaces.Peer.CloudChannel, reaction: reaction))
     }
     var currentItems = transaction.getStoryItems(peerId: peerId)

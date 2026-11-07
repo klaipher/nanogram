@@ -1052,7 +1052,10 @@ public final class ChatMediaEditorScreen: ViewController, ChatMediaGalleryContro
     private(set) var isDismissing = false
 
     var node: Node {
-        return self.displayNode as! Node
+        guard let node = self.displayNode as? Node else {
+            preconditionFailure("displayNode is not a Node")
+        }
+        return node
     }
 
     public init(

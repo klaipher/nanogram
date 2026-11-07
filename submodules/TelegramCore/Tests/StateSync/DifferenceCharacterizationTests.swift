@@ -11,7 +11,7 @@ final class DifferenceCharacterizationTests: StateSyncTestCase {
     func testLaunchWithEmptyDifference() {
         self.fixture.seedAccount(state: self.state(pts: 100, qts: 5, seq: 10))
         self.makeStateManager()
-        self.server.on(Name.getDifference, .result(StateSyncApi.differenceEmpty(date: self.baseDate + 60, seq: 11)))
+        self.server.on(Name.getDifference, .result(StateSyncApi.differenceEmpty(date: self.baseDateOffset(by: 60), seq: 11)))
         self.fixture.resetStateManager()
 
         self.isUpdating.wait { $0 == [true, false] }
@@ -20,7 +20,7 @@ final class DifferenceCharacterizationTests: StateSyncTestCase {
 
         XCTAssertEqual(self.server.requestNames, [Name.getDifference])
         self.assertGetDifference(0, pts: 100, date: self.baseDate, qts: 5)
-        XCTAssertEqual(self.fixture.accountState()?.state, self.state(pts: 100, qts: 5, date: self.baseDate + 60, seq: 11))
+        XCTAssertEqual(self.fixture.accountState()?.state, self.state(pts: 100, qts: 5, date: self.baseDateOffset(by: 60), seq: 11))
         XCTAssertEqual(self.notifiedMessageIds(), [])
     }
 
@@ -32,7 +32,7 @@ final class DifferenceCharacterizationTests: StateSyncTestCase {
         self.server.on(Name.getDifference, .result(StateSyncApi.difference(
             newMessages: [self.incomingMessage(101, from: 200)],
             users: [StateSyncApi.user(id: 200, firstName: "U200")],
-            state: StateSyncApi.state(pts: 101, qts: 5, date: self.baseDate + 30, seq: 10)
+            state: StateSyncApi.state(pts: 101, qts: 5, date: self.baseDateOffset(by: 30), seq: 10)
         )))
         self.fixture.resetStateManager()
 
@@ -42,7 +42,7 @@ final class DifferenceCharacterizationTests: StateSyncTestCase {
 
         XCTAssertEqual(self.server.requestNames, [Name.getDifference])
         XCTAssertNotNil(self.fixture.message(self.messageId(user, 101)))
-        XCTAssertEqual(self.fixture.accountState()?.state, self.state(pts: 101, qts: 5, date: self.baseDate + 30, seq: 10))
+        XCTAssertEqual(self.fixture.accountState()?.state, self.state(pts: 101, qts: 5, date: self.baseDateOffset(by: 30), seq: 10))
         XCTAssertEqual(self.notifiedMessageIds(), [[self.messageId(user, 101)]])
     }
 
@@ -55,12 +55,12 @@ final class DifferenceCharacterizationTests: StateSyncTestCase {
         self.server.on(Name.getDifference, .result(StateSyncApi.differenceSlice(
             newMessages: [self.incomingMessage(101, from: 200)],
             users: [StateSyncApi.user(id: 200, firstName: "U200")],
-            intermediateState: StateSyncApi.state(pts: 150, qts: 5, date: self.baseDate + 10, seq: 10)
+            intermediateState: StateSyncApi.state(pts: 150, qts: 5, date: self.baseDateOffset(by: 10), seq: 10)
         )))
         self.server.on(Name.getDifference, .result(StateSyncApi.difference(
             newMessages: [self.incomingMessage(102, from: 200)],
             users: [StateSyncApi.user(id: 200, firstName: "U200")],
-            state: StateSyncApi.state(pts: 200, qts: 5, date: self.baseDate + 20, seq: 10)
+            state: StateSyncApi.state(pts: 200, qts: 5, date: self.baseDateOffset(by: 20), seq: 10)
         )))
         self.fixture.resetStateManager()
 
@@ -69,8 +69,8 @@ final class DifferenceCharacterizationTests: StateSyncTestCase {
         self.drainOperationQueue()
 
         XCTAssertEqual(self.server.requestNames, [Name.getDifference, Name.getDifference])
-        self.assertGetDifference(1, pts: 150, date: self.baseDate + 10, qts: 5)
-        XCTAssertEqual(self.fixture.accountState()?.state, self.state(pts: 200, qts: 5, date: self.baseDate + 20, seq: 10))
+        self.assertGetDifference(1, pts: 150, date: self.baseDateOffset(by: 10), qts: 5)
+        XCTAssertEqual(self.fixture.accountState()?.state, self.state(pts: 200, qts: 5, date: self.baseDateOffset(by: 20), seq: 10))
         XCTAssertEqual(self.notifiedMessageIds(), [[self.messageId(user, 101), self.messageId(user, 102)]])
     }
 
@@ -80,7 +80,7 @@ final class DifferenceCharacterizationTests: StateSyncTestCase {
         self.fixture.seedAccount(state: nil)
         self.makeStateManager()
         self.server.on(Name.getState, .result(StateSyncApi.state(pts: 300, qts: 7, date: self.baseDate, seq: 20)))
-        self.server.on(Name.getDifference, .result(StateSyncApi.differenceEmpty(date: self.baseDate + 5, seq: 20)))
+        self.server.on(Name.getDifference, .result(StateSyncApi.differenceEmpty(date: self.baseDateOffset(by: 5), seq: 20)))
         self.fixture.resetStateManager()
 
         self.isUpdating.wait { $0 == [true, false] }
@@ -88,7 +88,7 @@ final class DifferenceCharacterizationTests: StateSyncTestCase {
 
         XCTAssertEqual(self.server.requestNames, [Name.getState, Name.getDifference])
         self.assertGetDifference(1, pts: 300, date: self.baseDate, qts: 7)
-        XCTAssertEqual(self.fixture.accountState()?.state, self.state(pts: 300, qts: 7, date: self.baseDate + 5, seq: 20))
+        XCTAssertEqual(self.fixture.accountState()?.state, self.state(pts: 300, qts: 7, date: self.baseDateOffset(by: 5), seq: 20))
     }
 
     /// Flow 3 (spec section 3 points 1 and 5; G10, Q1). differenceTooLong(pts 999) resets the account without
@@ -100,7 +100,7 @@ final class DifferenceCharacterizationTests: StateSyncTestCase {
         self.makeStateManager()
         self.server.on(Name.getDifference, .hold)
         self.server.on(Name.getDialogs, .result(StateSyncApi.dialogs()))
-        self.server.on(Name.getPinnedDialogs, .result(StateSyncApi.peerDialogs(state: StateSyncApi.state(pts: 999, qts: 9, date: self.baseDate + 100, seq: 30))))
+        self.server.on(Name.getPinnedDialogs, .result(StateSyncApi.peerDialogs(state: StateSyncApi.state(pts: 999, qts: 9, date: self.baseDateOffset(by: 100), seq: 30))))
         self.server.on(Name.getDifference, .hold)
         self.fixture.resetStateManager()
 
@@ -116,7 +116,7 @@ final class DifferenceCharacterizationTests: StateSyncTestCase {
         XCTAssertEqual(self.fixture.accountState()?.state, self.state(pts: 999, qts: 5, date: self.baseDate, seq: 10))
         XCTAssertEqual(self.isUpdating.values, [true])
         XCTAssertEqual(self.significantUpdates.values.count, 0)
-        XCTAssertTrue(self.server.release(Name.getDifference, with: .result(StateSyncApi.differenceEmpty(date: self.baseDate + 120, seq: 11))))
+        XCTAssertTrue(self.server.release(Name.getDifference, with: .result(StateSyncApi.differenceEmpty(date: self.baseDateOffset(by: 120), seq: 11))))
 
         // The barrier sits behind the running poll and completes once the follow-up ended the cycle.
         self.drainOperationQueue()
@@ -127,7 +127,7 @@ final class DifferenceCharacterizationTests: StateSyncTestCase {
         XCTAssertEqual(Set(names.dropFirst().prefix(2)), [Name.getDialogs, Name.getPinnedDialogs])
         XCTAssertFalse(names.contains(Name.getState))
         self.assertGetDifference(3, pts: 999, date: self.baseDate, qts: 5)
-        XCTAssertEqual(self.fixture.accountState()?.state, self.state(pts: 999, qts: 5, date: self.baseDate + 120, seq: 11))
+        XCTAssertEqual(self.fixture.accountState()?.state, self.state(pts: 999, qts: 5, date: self.baseDateOffset(by: 120), seq: 11))
         XCTAssertEqual(self.isUpdating.values, [true, false])
         XCTAssertEqual(self.significantUpdates.values.count, 1)
     }
@@ -142,10 +142,10 @@ final class DifferenceCharacterizationTests: StateSyncTestCase {
         self.makeStateManager()
         self.server.on(Name.getDifference, .result(StateSyncApi.differenceTooLong(pts: 999)))
         self.server.on(Name.getDialogs, .result(StateSyncApi.dialogs()))
-        self.server.on(Name.getPinnedDialogs, .result(StateSyncApi.peerDialogs(state: StateSyncApi.state(pts: 999, qts: 9, date: self.baseDate + 100, seq: 10))))
+        self.server.on(Name.getPinnedDialogs, .result(StateSyncApi.peerDialogs(state: StateSyncApi.state(pts: 999, qts: 9, date: self.baseDateOffset(by: 100), seq: 10))))
         self.server.on(Name.getDifference, .result(StateSyncApi.difference(
-            newEncryptedMessages: [StateSyncApi.encryptedServiceMessage(chatId: 77, randomId: 4242, date: self.baseDate + 50)],
-            state: StateSyncApi.state(pts: 999, qts: 6, date: self.baseDate + 60, seq: 10)
+            newEncryptedMessages: [StateSyncApi.encryptedServiceMessage(chatId: 77, randomId: 4242, date: self.baseDateOffset(by: 50))],
+            state: StateSyncApi.state(pts: 999, qts: 6, date: self.baseDateOffset(by: 60), seq: 10)
         )))
         self.fixture.resetStateManager()
 
@@ -156,7 +156,7 @@ final class DifferenceCharacterizationTests: StateSyncTestCase {
         XCTAssertEqual(names.count, 4, "log: \(names)")
         XCTAssertFalse(names.contains(Name.getState))
         self.assertGetDifference(3, pts: 999, date: self.baseDate, qts: 5)
-        XCTAssertEqual(self.fixture.accountState()?.state, self.state(pts: 999, qts: 6, date: self.baseDate + 60, seq: 10))
+        XCTAssertEqual(self.fixture.accountState()?.state, self.state(pts: 999, qts: 6, date: self.baseDateOffset(by: 60), seq: 10))
         let secretChatId = PeerId(namespace: Namespaces.Peer.SecretChat, id: PeerId.Id._internalFromInt64Value(77))
         let queued = self.fixture.transaction { transaction -> [Int64] in
             var randomIds: [Int64] = []
@@ -181,12 +181,12 @@ final class DifferenceCharacterizationTests: StateSyncTestCase {
         self.server.on(Name.getDifference, .result(StateSyncApi.differenceSlice(
             newMessages: [self.incomingMessage(101, from: 200)],
             users: [StateSyncApi.user(id: 200, firstName: "U200")],
-            intermediateState: StateSyncApi.state(pts: 150, qts: 5, date: self.baseDate + 10, seq: 10)
+            intermediateState: StateSyncApi.state(pts: 150, qts: 5, date: self.baseDateOffset(by: 10), seq: 10)
         )))
         self.server.on(Name.getDifference, .result(StateSyncApi.differenceTooLong(pts: 999)))
         self.server.on(Name.getDialogs, .result(StateSyncApi.dialogs()))
-        self.server.on(Name.getPinnedDialogs, .result(StateSyncApi.peerDialogs(state: StateSyncApi.state(pts: 999, qts: 5, date: self.baseDate + 10, seq: 10))))
-        self.server.on(Name.getDifference, .result(StateSyncApi.differenceEmpty(date: self.baseDate + 120, seq: 10)))
+        self.server.on(Name.getPinnedDialogs, .result(StateSyncApi.peerDialogs(state: StateSyncApi.state(pts: 999, qts: 5, date: self.baseDateOffset(by: 10), seq: 10))))
+        self.server.on(Name.getDifference, .result(StateSyncApi.differenceEmpty(date: self.baseDateOffset(by: 120), seq: 10)))
         self.fixture.resetStateManager()
 
         self.waitForNotification(of: self.messageId(user, 101))
@@ -197,10 +197,10 @@ final class DifferenceCharacterizationTests: StateSyncTestCase {
         XCTAssertEqual(Array(names.prefix(2)), [Name.getDifference, Name.getDifference])
         XCTAssertEqual(Set(names.dropFirst(2).prefix(2)), [Name.getDialogs, Name.getPinnedDialogs])
         XCTAssertFalse(names.contains(Name.getState))
-        self.assertGetDifference(1, pts: 150, date: self.baseDate + 10, qts: 5)
-        self.assertGetDifference(4, pts: 999, date: self.baseDate + 10, qts: 5)
+        self.assertGetDifference(1, pts: 150, date: self.baseDateOffset(by: 10), qts: 5)
+        self.assertGetDifference(4, pts: 999, date: self.baseDateOffset(by: 10), qts: 5)
         XCTAssertNotNil(self.fixture.message(self.messageId(user, 101)))
-        XCTAssertEqual(self.fixture.accountState()?.state, self.state(pts: 999, qts: 5, date: self.baseDate + 120, seq: 10))
+        XCTAssertEqual(self.fixture.accountState()?.state, self.state(pts: 999, qts: 5, date: self.baseDateOffset(by: 120), seq: 10))
         XCTAssertEqual(self.notifiedMessageIds(), [[self.messageId(user, 101)]])
         XCTAssertEqual(self.isUpdating.values, [true, false])
         XCTAssertEqual(self.significantUpdates.values.count, 1)
@@ -254,7 +254,7 @@ final class DifferenceCharacterizationTests: StateSyncTestCase {
         XCTAssertTrue(self.server.release(Name.getDifference, with: .result(StateSyncApi.difference(
             newMessages: [self.incomingMessage(101, from: 200)],
             users: [StateSyncApi.user(id: 200, firstName: "U200")],
-            state: StateSyncApi.state(pts: 101, qts: 5, date: self.baseDate + 2, seq: 10)
+            state: StateSyncApi.state(pts: 101, qts: 5, date: self.baseDateOffset(by: 2), seq: 10)
         ))))
 
         // The fresh poll is sent from the state written meanwhile; the first answer was not applied, and the cycle
@@ -265,14 +265,14 @@ final class DifferenceCharacterizationTests: StateSyncTestCase {
         XCTAssertEqual(self.fixture.accountState()?.state, changedState)
         XCTAssertEqual(self.isUpdating.values, [true])
         XCTAssertEqual(self.significantUpdates.values.count, 0)
-        XCTAssertTrue(self.server.release(Name.getDifference, with: .result(StateSyncApi.differenceEmpty(date: self.baseDate + 3, seq: 10))))
+        XCTAssertTrue(self.server.release(Name.getDifference, with: .result(StateSyncApi.differenceEmpty(date: self.baseDateOffset(by: 3), seq: 10))))
 
         self.isUpdating.wait { $0 == [true, false] }
         self.drainOperationQueue()
 
         XCTAssertEqual(self.server.requestNames, [Name.getDifference, Name.getDifference])
         self.assertGetDifference(0, pts: 100, date: self.baseDate, qts: 5)
-        XCTAssertEqual(self.fixture.accountState()?.state, self.state(pts: 150, date: self.baseDate + 3))
+        XCTAssertEqual(self.fixture.accountState()?.state, self.state(pts: 150, date: self.baseDateOffset(by: 3)))
         XCTAssertNil(self.fixture.message(self.messageId(user, 101)))
         XCTAssertEqual(self.notifiedMessageIds(), [])
         XCTAssertEqual(self.significantUpdates.values.count, 1)
@@ -293,7 +293,7 @@ final class DifferenceCharacterizationTests: StateSyncTestCase {
         self.server.on(Name.getDifference, .result(StateSyncApi.differenceTooLong(pts: 999)))
         self.server.on(Name.getDialogs, .result(StateSyncApi.dialogs()))
         self.server.on(Name.getPinnedDialogs, .result(self.emptyPinnedDialogs()))
-        self.server.on(Name.getDifference, .result(StateSyncApi.differenceEmpty(date: self.baseDate + 120, seq: 10)))
+        self.server.on(Name.getDifference, .result(StateSyncApi.differenceEmpty(date: self.baseDateOffset(by: 120), seq: 10)))
         self.fixture.resetStateManager()
 
         // The barrier sits behind the running poll and completes once the cycle ended.
@@ -306,7 +306,7 @@ final class DifferenceCharacterizationTests: StateSyncTestCase {
         // The reset that got dialogsNotModified wrote nothing: the second poll asks from pts 100 again.
         self.assertGetDifference(3, pts: 100, date: self.baseDate, qts: 5)
         self.assertGetDifference(6, pts: 999, date: self.baseDate, qts: 5)
-        XCTAssertEqual(self.fixture.accountState()?.state, self.state(pts: 999, qts: 5, date: self.baseDate + 120, seq: 10))
+        XCTAssertEqual(self.fixture.accountState()?.state, self.state(pts: 999, qts: 5, date: self.baseDateOffset(by: 120), seq: 10))
         XCTAssertEqual(delays.with { $0 }, [1, 2])
         XCTAssertEqual(self.isUpdating.values, [true, false])
         XCTAssertEqual(self.significantUpdates.values.count, 1)
@@ -326,7 +326,7 @@ final class DifferenceCharacterizationTests: StateSyncTestCase {
         self.server.on(Name.getDifference, .result(StateSyncApi.differenceTooLong(pts: 999)))
         self.server.on(Name.getDialogs, .result(StateSyncApi.dialogs()))
         self.server.on(Name.getPinnedDialogs, .result(self.emptyPinnedDialogs()))
-        self.server.on(Name.getDifference, .result(StateSyncApi.differenceEmpty(date: self.baseDate + 120, seq: 10)))
+        self.server.on(Name.getDifference, .result(StateSyncApi.differenceEmpty(date: self.baseDateOffset(by: 120), seq: 10)))
         self.fixture.resetStateManager()
 
         // The second answer is handed over and handled on the manager queue; its reset is now waiting 1 s.
@@ -348,7 +348,7 @@ final class DifferenceCharacterizationTests: StateSyncTestCase {
         self.assertGetDifference(0, pts: 100, date: self.baseDate, qts: 5)
         self.assertGetDifference(3, pts: 500, date: self.baseDate, qts: 5)
         self.assertGetDifference(6, pts: 999, date: self.baseDate, qts: 5)
-        XCTAssertEqual(self.fixture.accountState()?.state, self.state(pts: 999, qts: 5, date: self.baseDate + 120, seq: 10))
+        XCTAssertEqual(self.fixture.accountState()?.state, self.state(pts: 999, qts: 5, date: self.baseDateOffset(by: 120), seq: 10))
         XCTAssertEqual(delays.with { $0 }, [1, 2])
         XCTAssertEqual(self.isUpdating.values, [true, false])
         XCTAssertEqual(self.significantUpdates.values.count, 1)
@@ -365,12 +365,12 @@ final class DifferenceCharacterizationTests: StateSyncTestCase {
         self.server.on(Name.getDialogs, .result(StateSyncApi.dialogs()))
         self.server.on(Name.getPinnedDialogs, .result(self.emptyPinnedDialogs()))
         self.server.on(Name.getDifference, .result(StateSyncApi.differenceSlice(
-            intermediateState: StateSyncApi.state(pts: 600, qts: 5, date: self.baseDate + 10, seq: 10)
+            intermediateState: StateSyncApi.state(pts: 600, qts: 5, date: self.baseDateOffset(by: 10), seq: 10)
         )))
         self.server.on(Name.getDifference, .result(StateSyncApi.differenceTooLong(pts: 999)))
         self.server.on(Name.getDialogs, .result(StateSyncApi.dialogs()))
         self.server.on(Name.getPinnedDialogs, .result(self.emptyPinnedDialogs()))
-        self.server.on(Name.getDifference, .result(StateSyncApi.differenceEmpty(date: self.baseDate + 120, seq: 10)))
+        self.server.on(Name.getDifference, .result(StateSyncApi.differenceEmpty(date: self.baseDateOffset(by: 120), seq: 10)))
         self.fixture.resetStateManager()
 
         // The barrier sits behind the running poll and completes once the cycle ended.
@@ -380,9 +380,9 @@ final class DifferenceCharacterizationTests: StateSyncTestCase {
         XCTAssertEqual(names.count, 8, "log: \(names)")
         XCTAssertEqual(names.indices.filter { names[$0] == Name.getDifference }, [0, 3, 4, 7], "log: \(names)")
         self.assertGetDifference(3, pts: 500, date: self.baseDate, qts: 5)
-        self.assertGetDifference(4, pts: 600, date: self.baseDate + 10, qts: 5)
-        self.assertGetDifference(7, pts: 999, date: self.baseDate + 10, qts: 5)
-        XCTAssertEqual(self.fixture.accountState()?.state, self.state(pts: 999, qts: 5, date: self.baseDate + 120, seq: 10))
+        self.assertGetDifference(4, pts: 600, date: self.baseDateOffset(by: 10), qts: 5)
+        self.assertGetDifference(7, pts: 999, date: self.baseDateOffset(by: 10), qts: 5)
+        XCTAssertEqual(self.fixture.accountState()?.state, self.state(pts: 999, qts: 5, date: self.baseDateOffset(by: 120), seq: 10))
         XCTAssertEqual(delays.with { $0 }, [1, 1])
         XCTAssertEqual(self.isUpdating.values, [true, false])
         XCTAssertEqual(self.significantUpdates.values.count, 1)
@@ -428,18 +428,18 @@ final class DifferenceCharacterizationTests: StateSyncTestCase {
         self.fixture.resetStateManager()
         XCTAssertTrue(self.server.waitForRequest(Name.getDifference))
 
-        self.server.push(StateSyncApi.updateShortMessage(id: 201, userId: 200, pts: 201, date: self.baseDate + 30))
+        self.server.push(StateSyncApi.updateShortMessage(id: 201, userId: 200, pts: 201, date: self.baseDateOffset(by: 30)))
         self.server.flush()
-        self.server.on(Name.getDifference, .result(StateSyncApi.difference(state: StateSyncApi.state(pts: 200, qts: 5, date: self.baseDate + 20, seq: 10))))
+        self.server.on(Name.getDifference, .result(StateSyncApi.difference(state: StateSyncApi.state(pts: 200, qts: 5, date: self.baseDateOffset(by: 20), seq: 10))))
         XCTAssertTrue(self.server.release(Name.getDifference, with: .result(StateSyncApi.differenceSlice(
-            intermediateState: StateSyncApi.state(pts: 150, qts: 5, date: self.baseDate + 10, seq: 10)
+            intermediateState: StateSyncApi.state(pts: 150, qts: 5, date: self.baseDateOffset(by: 10), seq: 10)
         ))))
 
         self.waitForNotification(of: self.messageId(user, 201))
         self.drainOperationQueue()
 
         XCTAssertEqual(self.server.requestNames, [Name.getDifference, Name.getDifference])
-        self.assertGetDifference(1, pts: 150, date: self.baseDate + 10, qts: 5)
+        self.assertGetDifference(1, pts: 150, date: self.baseDateOffset(by: 10), qts: 5)
         XCTAssertNotNil(self.fixture.message(self.messageId(user, 201)))
         XCTAssertEqual(self.fixture.accountState()?.state?.pts, 201)
         XCTAssertEqual(self.isUpdating.values, [true, false])
@@ -457,17 +457,17 @@ final class DifferenceCharacterizationTests: StateSyncTestCase {
         self.server.on(Name.getDifference, .result(StateSyncApi.differenceTooLong(pts: 999)))
         self.server.on(Name.getDialogs, .hold)
         self.server.on(Name.getPinnedDialogs, .result(self.emptyPinnedDialogs()))
-        self.server.on(Name.getDifference, .result(StateSyncApi.difference(state: StateSyncApi.state(pts: 1005, qts: 5, date: self.baseDate + 20, seq: 10))))
+        self.server.on(Name.getDifference, .result(StateSyncApi.difference(state: StateSyncApi.state(pts: 1005, qts: 5, date: self.baseDateOffset(by: 20), seq: 10))))
         self.fixture.resetStateManager()
         XCTAssertTrue(self.server.waitForRequest(Name.getDialogs))
 
-        self.server.push(StateSyncApi.updateShortMessage(id: 1006, userId: 200, pts: 1006, date: self.baseDate + 30))
+        self.server.push(StateSyncApi.updateShortMessage(id: 1006, userId: 200, pts: 1006, date: self.baseDateOffset(by: 30)))
         self.server.flush()
         self.managerQueueRoundTrip()
         // The chat stays in the chat list the reset rebuilds, so the push needs no messages.getPeerDialogs.
         XCTAssertTrue(self.server.release(Name.getDialogs, with: .result(StateSyncApi.dialogs(
             dialogs: [StateSyncApi.dialog(peer: StateSyncApi.peerUser(200), topMessage: 10)],
-            messages: [self.incomingMessage(10, from: 200, date: self.baseDate + 10)],
+            messages: [self.incomingMessage(10, from: 200, date: self.baseDateOffset(by: 10))],
             users: [StateSyncApi.user(id: 200, firstName: "U200")]
         ))))
 
@@ -489,8 +489,8 @@ final class DifferenceCharacterizationTests: StateSyncTestCase {
         let user = self.seedUserChat(200)
         self.fixture.seedAccount(state: self.state(pts: 100))
         self.makeStateManager()
-        self.fixture.addUpdates(StateSyncApi.updateShortMessage(id: 101, userId: 200, pts: 101, date: self.baseDate + 5))
-        self.server.on(Name.getDifference, .result(StateSyncApi.differenceEmpty(date: self.baseDate + 1, seq: 10)))
+        self.fixture.addUpdates(StateSyncApi.updateShortMessage(id: 101, userId: 200, pts: 101, date: self.baseDateOffset(by: 5)))
+        self.server.on(Name.getDifference, .result(StateSyncApi.differenceEmpty(date: self.baseDateOffset(by: 1), seq: 10)))
         self.fixture.resetStateManager()
 
         self.isUpdating.wait { $0 == [true, false] }
@@ -520,12 +520,12 @@ final class NotificationExtensionPollCharacterizationTests: StateSyncTestCase {
         self.server.on(Name.getDifference, .result(StateSyncApi.differenceSlice(
             newMessages: [self.incomingMessage(101, from: 200)],
             users: [StateSyncApi.user(id: 200, firstName: "U200")],
-            intermediateState: StateSyncApi.state(pts: 150, qts: 6, date: self.baseDate + 10, seq: 11)
+            intermediateState: StateSyncApi.state(pts: 150, qts: 6, date: self.baseDateOffset(by: 10), seq: 11)
         )))
         self.server.on(Name.getDifference, .result(StateSyncApi.difference(
             newMessages: [self.incomingMessage(102, from: 200)],
             users: [StateSyncApi.user(id: 200, firstName: "U200")],
-            state: StateSyncApi.state(pts: 200, qts: 7, date: self.baseDate + 20, seq: 12)
+            state: StateSyncApi.state(pts: 200, qts: 7, date: self.baseDateOffset(by: 20), seq: 12)
         )))
 
         XCTAssertEqual(self.fixture.wait(self.stateManager.standalonePollDifference()), false)

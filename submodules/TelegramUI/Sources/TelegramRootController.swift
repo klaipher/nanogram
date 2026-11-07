@@ -263,7 +263,9 @@ public final class TelegramRootController: NavigationController, TelegramRootCon
         if showNewsTab, let newsController = self.newsController {
             controllers.append(newsController)
         }
-        controllers.append(self.chatListController!)
+        if let chatListController = self.chatListController {
+            controllers.append(chatListController)
+        }
         controllers.append(self.accountSettingsController!)
 
         // A removed selected tab would otherwise fall back to index 0: select Chats instead.

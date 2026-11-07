@@ -24,7 +24,7 @@ final class RecentEditTests: StateSyncTestCase {
     private func pushEdit(_ message: Api.Message, userId: Int64 = 500, pts: Int32, file: StaticString = #filePath, line: UInt = #line) {
         self.server.push(StateSyncApi.updates([
             .updateEditMessage(.init(message: message, pts: pts, ptsCount: 1))
-        ], users: [StateSyncApi.user(id: userId, firstName: "U\(userId)")], date: self.baseDate + 20, seq: 0))
+        ], users: [StateSyncApi.user(id: userId, firstName: "U\(userId)")], date: self.baseDateOffset(by: 20), seq: 0))
         self.drainOperationQueue(file: file, line: line)
         XCTAssertEqual(self.fixture.accountState()?.state?.pts, pts, "precondition: the edit was replayed", file: file, line: line)
     }
@@ -42,11 +42,11 @@ final class RecentEditTests: StateSyncTestCase {
         let results = self.fixture.observe(self.historyFill(peerInput: .direct(peerId: peerId, threadId: nil), direction: self.downwardFillDirection(peerId)))
 
         XCTAssertTrue(self.server.waitForRequest(getHistory), "no fill was sent: \(self.server.requestNames)")
-        self.pushEdit(StateSyncApi.privateMessage(id: 12, peerUserId: 500, fromUserId: 500, date: self.baseDate + 12, text: "edited"), pts: 101)
+        self.pushEdit(StateSyncApi.privateMessage(id: 12, peerUserId: 500, fromUserId: 500, date: self.baseDateOffset(by: 12), text: "edited"), pts: 101)
         XCTAssertNil(self.fixture.message(self.messageId(peerId, 12)), "precondition: the edit had no stored message to apply to")
         XCTAssertTrue(self.server.release(getHistory, with: .result(StateSyncApi.messages([
-            StateSyncApi.privateMessage(id: 12, peerUserId: 500, fromUserId: 500, date: self.baseDate + 12, text: "original"),
-            StateSyncApi.privateMessage(id: 10, peerUserId: 500, fromUserId: 500, date: self.baseDate + 10, text: "original")
+            StateSyncApi.privateMessage(id: 12, peerUserId: 500, fromUserId: 500, date: self.baseDateOffset(by: 12), text: "original"),
+            StateSyncApi.privateMessage(id: 10, peerUserId: 500, fromUserId: 500, date: self.baseDateOffset(by: 10), text: "original")
         ]))))
         results.wait { !$0.isEmpty }
 
@@ -67,13 +67,13 @@ final class RecentEditTests: StateSyncTestCase {
 
         XCTAssertTrue(self.server.waitForRequest(getHistory), "no fill was sent: \(self.server.requestNames)")
         self.server.push(StateSyncApi.updates([
-            .updateEditChannelMessage(.init(message: StateSyncApi.channelPost(id: 12, channelId: 310, date: self.baseDate + 12, text: "edited"), pts: 21, ptsCount: 1))
-        ], chats: [StateSyncApi.broadcastChannel(id: 310)], date: self.baseDate + 20, seq: 0))
+            .updateEditChannelMessage(.init(message: StateSyncApi.channelPost(id: 12, channelId: 310, date: self.baseDateOffset(by: 12), text: "edited"), pts: 21, ptsCount: 1))
+        ], chats: [StateSyncApi.broadcastChannel(id: 310)], date: self.baseDateOffset(by: 20), seq: 0))
         self.drainOperationQueue()
         XCTAssertEqual(self.fixture.channelState(channelId)?.pts, 21, "precondition: the edit was replayed")
         XCTAssertTrue(self.server.release(getHistory, with: .result(StateSyncApi.channelMessages(pts: 20, [
-            StateSyncApi.channelPost(id: 12, channelId: 310, date: self.baseDate + 12, text: "original"),
-            StateSyncApi.channelPost(id: 10, channelId: 310, date: self.baseDate + 10, text: "original")
+            StateSyncApi.channelPost(id: 12, channelId: 310, date: self.baseDateOffset(by: 12), text: "original"),
+            StateSyncApi.channelPost(id: 10, channelId: 310, date: self.baseDateOffset(by: 10), text: "original")
         ]))))
         results.wait { !$0.isEmpty }
 
@@ -87,10 +87,10 @@ final class RecentEditTests: StateSyncTestCase {
         let peerId = self.seedUserChat(500)
         self.launchIdle()
         self.addHistoryFillHole(peerId)
-        self.pushEdit(StateSyncApi.privateMessage(id: 12, peerUserId: 500, fromUserId: 500, date: self.baseDate + 12, text: "edited"), pts: 101)
+        self.pushEdit(StateSyncApi.privateMessage(id: 12, peerUserId: 500, fromUserId: 500, date: self.baseDateOffset(by: 12), text: "edited"), pts: 101)
         self.server.on(getHistory, .result(StateSyncApi.messages([
-            StateSyncApi.privateMessage(id: 12, peerUserId: 500, fromUserId: 500, date: self.baseDate + 12, text: "edited twice"),
-            StateSyncApi.privateMessage(id: 10, peerUserId: 500, fromUserId: 500, date: self.baseDate + 10, text: "original")
+            StateSyncApi.privateMessage(id: 12, peerUserId: 500, fromUserId: 500, date: self.baseDateOffset(by: 12), text: "edited twice"),
+            StateSyncApi.privateMessage(id: 10, peerUserId: 500, fromUserId: 500, date: self.baseDateOffset(by: 10), text: "original")
         ])))
 
         let _ = self.runHistoryFill(peerInput: .direct(peerId: peerId, threadId: nil), direction: self.downwardFillDirection(peerId))
@@ -108,14 +108,14 @@ final class RecentEditTests: StateSyncTestCase {
         self.addHistoryFillHole(peerId)
         self.server.on(getHistory, .hold)
         self.server.on(getHistory, .result(StateSyncApi.messages([
-            StateSyncApi.privateMessage(id: 12, peerUserId: 500, fromUserId: 500, date: self.baseDate + 12, text: "edited twice"),
-            StateSyncApi.privateMessage(id: 10, peerUserId: 500, fromUserId: 500, date: self.baseDate + 10, text: "original")
+            StateSyncApi.privateMessage(id: 12, peerUserId: 500, fromUserId: 500, date: self.baseDateOffset(by: 12), text: "edited twice"),
+            StateSyncApi.privateMessage(id: 10, peerUserId: 500, fromUserId: 500, date: self.baseDateOffset(by: 10), text: "original")
         ])))
 
         let results = self.fixture.observe(self.historyFill(peerInput: .direct(peerId: peerId, threadId: nil), direction: self.downwardFillDirection(peerId)))
 
         XCTAssertTrue(self.server.waitForRequest(getHistory), "no fill was sent: \(self.server.requestNames)")
-        self.pushEdit(StateSyncApi.privateMessage(id: 12, peerUserId: 500, fromUserId: 500, date: self.baseDate + 12, text: "edited"), pts: 101)
+        self.pushEdit(StateSyncApi.privateMessage(id: 12, peerUserId: 500, fromUserId: 500, date: self.baseDateOffset(by: 12), text: "edited"), pts: 101)
         XCTAssertTrue(self.server.release(getHistory, with: .error(code: 500, text: "INTERNAL_SERVER_ERROR")))
         results.wait { !$0.isEmpty }
 
@@ -131,16 +131,16 @@ final class RecentEditTests: StateSyncTestCase {
         self.launchIdle()
         self.addHistoryFillHole(peerId)
         self.server.on(getHistory, .result(StateSyncApi.messages([
-            StateSyncApi.privateMessage(id: 10, peerUserId: 500, fromUserId: 500, date: self.baseDate + 10, replyToMessageId: 5)
+            StateSyncApi.privateMessage(id: 10, peerUserId: 500, fromUserId: 500, date: self.baseDateOffset(by: 10), replyToMessageId: 5)
         ])))
         self.server.on(getMessages, .hold)
 
         let _ = self.runHistoryFill(peerInput: .direct(peerId: peerId, threadId: nil), direction: self.downwardFillDirection(peerId))
 
         XCTAssertTrue(self.server.waitForRequest(getMessages), "the follow-up did not ask for the reply target: \(self.server.requestNames)")
-        self.pushEdit(StateSyncApi.privateMessage(id: 5, peerUserId: 500, fromUserId: 500, date: self.baseDate + 5, text: "edited"), pts: 101)
+        self.pushEdit(StateSyncApi.privateMessage(id: 5, peerUserId: 500, fromUserId: 500, date: self.baseDateOffset(by: 5), text: "edited"), pts: 101)
         XCTAssertTrue(self.server.release(getMessages, with: .result(StateSyncApi.messages([
-            StateSyncApi.privateMessage(id: 5, peerUserId: 500, fromUserId: 500, date: self.baseDate + 5, text: "original")
+            StateSyncApi.privateMessage(id: 5, peerUserId: 500, fromUserId: 500, date: self.baseDateOffset(by: 5), text: "original")
         ], users: [StateSyncApi.user(id: 500, firstName: "From the follow-up")]))))
         self.fixture.eventually {
             return (self.fixture.peer(peerId) as? TelegramUser)?.firstName == "From the follow-up"
@@ -164,11 +164,11 @@ final class RecentEditTests: StateSyncTestCase {
         let results = self.fixture.observe(self.historyFill(peerInput: .direct(peerId: peerId, threadId: nil), direction: self.downwardFillDirection(peerId)))
 
         XCTAssertTrue(self.server.waitForRequest(getHistory), "no fill was sent: \(self.server.requestNames)")
-        self.pushEdit(StateSyncApi.privateMessage(id: 12, peerUserId: 500, fromUserId: 500, date: self.baseDate + 12, text: "edited"), pts: 101)
+        self.pushEdit(StateSyncApi.privateMessage(id: 12, peerUserId: 500, fromUserId: 500, date: self.baseDateOffset(by: 12), text: "edited"), pts: 101)
         XCTAssertEqual(self.fixture.message(self.messageId(peerId, 12))?.text, "edited", "precondition: the replay edited the stored message")
         XCTAssertTrue(self.server.release(getHistory, with: .result(StateSyncApi.messages([
-            StateSyncApi.privateMessage(id: 12, peerUserId: 500, fromUserId: 500, date: self.baseDate + 12, text: "original"),
-            StateSyncApi.privateMessage(id: 10, peerUserId: 500, fromUserId: 500, date: self.baseDate + 10, text: "original")
+            StateSyncApi.privateMessage(id: 12, peerUserId: 500, fromUserId: 500, date: self.baseDateOffset(by: 12), text: "original"),
+            StateSyncApi.privateMessage(id: 10, peerUserId: 500, fromUserId: 500, date: self.baseDateOffset(by: 10), text: "original")
         ]))))
         results.wait { !$0.isEmpty }
 
@@ -182,7 +182,7 @@ final class RecentEditTests: StateSyncTestCase {
     /// old text. The fill stores the edit as the chat's top message.
     func testChatListFillStoresATopMessageEditedWhileThePageWasInFlight() {
         let user = self.seedUserChat(200)
-        self.fixture.storeMessage(peerId: user, id: 9, timestamp: self.baseDate + 9, authorId: user, text: "older")
+        self.fixture.storeMessage(peerId: user, id: 9, timestamp: self.baseDateOffset(by: 9), authorId: user, text: "older")
         self.launchIdle()
         self.server.on(Name.getDialogs, .hold)
         self.server.on(Name.getPinnedDialogs, .result(StateSyncApi.peerDialogs(state: StateSyncApi.state(pts: 100, qts: 5, date: self.baseDate, seq: 10))))
@@ -192,11 +192,11 @@ final class RecentEditTests: StateSyncTestCase {
         |> then(Signal<Bool, NoError>.single(true)))
 
         XCTAssertTrue(self.server.waitForRequest(Name.getDialogs), "the fill did not ask for the page: \(self.server.requestNames)")
-        self.pushEdit(StateSyncApi.privateMessage(id: 10, peerUserId: 200, fromUserId: 200, date: self.baseDate + 10, text: "edited"), userId: 200, pts: 101)
+        self.pushEdit(StateSyncApi.privateMessage(id: 10, peerUserId: 200, fromUserId: 200, date: self.baseDateOffset(by: 10), text: "edited"), userId: 200, pts: 101)
         XCTAssertNil(self.fixture.message(self.messageId(user, 10)), "precondition: the edit had no stored message to apply to")
         XCTAssertTrue(self.server.release(Name.getDialogs, with: .result(StateSyncApi.dialogs(
             dialogs: [StateSyncApi.dialog(peer: StateSyncApi.peerUser(200), topMessage: 10)],
-            messages: [StateSyncApi.privateMessage(id: 10, peerUserId: 200, fromUserId: 200, date: self.baseDate + 10, text: "original")],
+            messages: [StateSyncApi.privateMessage(id: 10, peerUserId: 200, fromUserId: 200, date: self.baseDateOffset(by: 10), text: "original")],
             users: [StateSyncApi.user(id: 200, firstName: "U200")]
         ))))
         finished.wait { $0.contains(true) }
@@ -211,17 +211,17 @@ final class RecentEditTests: StateSyncTestCase {
     /// produced before the edit, names it with its old text. The reset stores the edit as the chat's top message.
     func testResetStoresATopMessageEditedWhileTheDialogsWereInFlight() {
         let user = self.seedUserChat(200)
-        self.fixture.storeMessage(peerId: user, id: 9, timestamp: self.baseDate + 9, authorId: user, text: "older")
+        self.fixture.storeMessage(peerId: user, id: 9, timestamp: self.baseDateOffset(by: 9), authorId: user, text: "older")
         self.fixture.seedAccount(state: self.state(pts: 100))
         self.makeStateManager()
         self.server.on(Name.getDifference, .result(StateSyncApi.differenceTooLong(pts: 999)))
         self.server.on(Name.getDialogs, .hold)
         self.server.on(Name.getPinnedDialogs, .result(StateSyncApi.peerDialogs(state: StateSyncApi.state(pts: 999, qts: 5, date: self.baseDate, seq: 10))))
-        self.server.on(Name.getDifference, .result(StateSyncApi.differenceEmpty(date: self.baseDate + 120, seq: 10)))
+        self.server.on(Name.getDifference, .result(StateSyncApi.differenceEmpty(date: self.baseDateOffset(by: 120), seq: 10)))
         self.fixture.resetStateManager()
 
         XCTAssertTrue(self.server.waitForRequest(Name.getDialogs), "the reset did not ask for the dialogs: \(self.server.requestNames)")
-        guard let edit = StoreMessage(apiMessage: StateSyncApi.privateMessage(id: 10, peerUserId: 200, fromUserId: 200, date: self.baseDate + 10, text: "edited"), accountPeerId: StateSyncFixture.accountPeerId, peerIsForum: false) else {
+        guard let edit = StoreMessage(apiMessage: StateSyncApi.privateMessage(id: 10, peerUserId: 200, fromUserId: 200, date: self.baseDateOffset(by: 10), text: "edited"), accountPeerId: StateSyncFixture.accountPeerId, peerIsForum: false) else {
             XCTFail("the edit did not parse")
             return
         }
@@ -230,7 +230,7 @@ final class RecentEditTests: StateSyncTestCase {
         }
         XCTAssertTrue(self.server.release(Name.getDialogs, with: .result(StateSyncApi.dialogs(
             dialogs: [StateSyncApi.dialog(peer: StateSyncApi.peerUser(200), topMessage: 10)],
-            messages: [StateSyncApi.privateMessage(id: 10, peerUserId: 200, fromUserId: 200, date: self.baseDate + 10, text: "original")],
+            messages: [StateSyncApi.privateMessage(id: 10, peerUserId: 200, fromUserId: 200, date: self.baseDateOffset(by: 10), text: "original")],
             users: [StateSyncApi.user(id: 200, firstName: "U200")]
         ))))
         // The barrier sits behind the running poll and completes once the follow-up ended the cycle.

@@ -45,7 +45,7 @@ final class ArchivedDialogGhostTailTests: StateSyncTestCase {
         self.server.on(Name.getDialogs, .result(root))
         self.server.on(Name.getDialogs, .result(archive))
         self.server.on(Name.getPinnedDialogs, .result(self.emptyPinnedDialogs()))
-        self.server.on(Name.getDifference, .result(StateSyncApi.differenceEmpty(date: self.baseDate + 120, seq: 10)))
+        self.server.on(Name.getDifference, .result(StateSyncApi.differenceEmpty(date: self.baseDateOffset(by: 120), seq: 10)))
         self.fixture.resetStateManager()
     }
 
@@ -55,10 +55,10 @@ final class ArchivedDialogGhostTailTests: StateSyncTestCase {
     func testResetDeletesTheStoredHistoryOfAnArchivedDialogWithoutATopMessage() {
         let cleared = self.seedUserChat(201)
         let kept = self.seedUserChat(203)
-        self.fixture.storeMessage(peerId: cleared, id: 5, timestamp: self.baseDate + 5, authorId: cleared, text: "cleared")
-        self.fixture.storeMessage(peerId: cleared, id: 6, timestamp: self.baseDate + 6, authorId: cleared, text: "cleared")
-        self.fixture.storeMessage(peerId: kept, id: 11, timestamp: self.baseDate + 11, authorId: kept, text: "older")
-        self.fixture.storeMessage(peerId: kept, id: 12, timestamp: self.baseDate + 12, authorId: kept, text: "top")
+        self.fixture.storeMessage(peerId: cleared, id: 5, timestamp: self.baseDateOffset(by: 5), authorId: cleared, text: "cleared")
+        self.fixture.storeMessage(peerId: cleared, id: 6, timestamp: self.baseDateOffset(by: 6), authorId: cleared, text: "cleared")
+        self.fixture.storeMessage(peerId: kept, id: 11, timestamp: self.baseDateOffset(by: 11), authorId: kept, text: "older")
+        self.fixture.storeMessage(peerId: kept, id: 12, timestamp: self.baseDateOffset(by: 12), authorId: kept, text: "top")
         self.fixture.seedAccount(state: self.state(pts: 100))
         self.startAccountResetWithArchive(
             root: self.rootPageReferencingTheArchive(peer: StateSyncApi.peerUser(201)),
@@ -67,7 +67,7 @@ final class ArchivedDialogGhostTailTests: StateSyncTestCase {
                     StateSyncApi.dialog(peer: StateSyncApi.peerUser(201), topMessage: 0),
                     StateSyncApi.dialog(peer: StateSyncApi.peerUser(203), topMessage: 12)
                 ],
-                messages: [StateSyncApi.privateMessage(id: 12, peerUserId: 203, fromUserId: 203, date: self.baseDate + 12, text: "top")],
+                messages: [StateSyncApi.privateMessage(id: 12, peerUserId: 203, fromUserId: 203, date: self.baseDateOffset(by: 12), text: "top")],
                 users: [StateSyncApi.user(id: 201, firstName: "U201"), StateSyncApi.user(id: 203, firstName: "U203")]
             )
         )
@@ -92,8 +92,8 @@ final class ArchivedDialogGhostTailTests: StateSyncTestCase {
     /// their tops being merged: that reads this dialog as top 0 and deletes its whole history.
     func testResetLeavesAnArchivedDialogWhoseTopMessageThePageDoesNotCarry() {
         let user = self.seedUserChat(202)
-        self.fixture.storeMessage(peerId: user, id: 9, timestamp: self.baseDate + 9, authorId: user, text: "older")
-        self.fixture.storeMessage(peerId: user, id: 10, timestamp: self.baseDate + 10, authorId: user, text: "top")
+        self.fixture.storeMessage(peerId: user, id: 9, timestamp: self.baseDateOffset(by: 9), authorId: user, text: "older")
+        self.fixture.storeMessage(peerId: user, id: 10, timestamp: self.baseDateOffset(by: 10), authorId: user, text: "top")
         self.fixture.seedAccount(state: self.state(pts: 100))
         self.startAccountResetWithArchive(
             root: self.rootPageReferencingTheArchive(peer: StateSyncApi.peerUser(202)),
@@ -119,8 +119,8 @@ final class ArchivedDialogGhostTailTests: StateSyncTestCase {
     func testRootChatListFillLeavesTheStoredHistoryOfAnArchivedDialogWithoutATopMessage() {
         self.fixture.seedAccount(state: self.state(pts: 100))
         let user = self.seedUserChat(201)
-        self.fixture.storeMessage(peerId: user, id: 5, timestamp: self.baseDate + 5, authorId: user, text: "cleared")
-        self.fixture.storeMessage(peerId: user, id: 6, timestamp: self.baseDate + 6, authorId: user, text: "cleared")
+        self.fixture.storeMessage(peerId: user, id: 5, timestamp: self.baseDateOffset(by: 5), authorId: user, text: "cleared")
+        self.fixture.storeMessage(peerId: user, id: 6, timestamp: self.baseDateOffset(by: 6), authorId: user, text: "cleared")
         self.server.on(Name.getDialogs, .result(self.rootPageReferencingTheArchive(peer: StateSyncApi.peerUser(201))))
         self.server.on(Name.getDialogs, .result(StateSyncApi.dialogs(
             dialogs: [StateSyncApi.dialog(peer: StateSyncApi.peerUser(201), topMessage: 0)],

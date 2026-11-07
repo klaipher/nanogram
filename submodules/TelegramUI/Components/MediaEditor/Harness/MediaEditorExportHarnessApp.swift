@@ -41,7 +41,7 @@ enum MediaEditorExportHarness {
         let logHandle = try? FileHandle(forWritingTo: logURL)
         let log: (String) -> Void = { line in
             print(line)
-            logHandle?.write((line + "\n").data(using: .utf8)!)
+            logHandle?.write(Data((line + "\n").utf8))
         }
 
         let only = arguments.firstIndex(of: "--only").flatMap { $0 + 1 < arguments.count ? arguments[$0 + 1] : nil }

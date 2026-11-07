@@ -34,8 +34,8 @@ final class ConfirmationDeletionEventTests: StateSyncTestCase {
     /// kept top message (10) is not.
     func testResetGhostTailDeletionFiresTheReceivedDeletionEventsOnce() {
         let user = self.seedUserChat(200)
-        self.fixture.storeMessage(peerId: user, id: 10, timestamp: self.baseDate + 10, authorId: user, text: "top")
-        self.fixture.storeMessage(peerId: user, id: 11, timestamp: self.baseDate + 11, authorId: user, text: "deleted during the gap")
+        self.fixture.storeMessage(peerId: user, id: 10, timestamp: self.baseDateOffset(by: 10), authorId: user, text: "top")
+        self.fixture.storeMessage(peerId: user, id: 11, timestamp: self.baseDateOffset(by: 11), authorId: user, text: "deleted during the gap")
         self.fixture.seedAccount(state: self.state(pts: 100))
         // `startAccountReset` makes the manager and starts it in one step; the observer must subscribe in between.
         self.makeStateManager()
@@ -43,11 +43,11 @@ final class ConfirmationDeletionEventTests: StateSyncTestCase {
         self.server.on(Name.getDifference, .result(StateSyncApi.differenceTooLong(pts: 999)))
         self.server.on(Name.getDialogs, .result(StateSyncApi.dialogs(
             dialogs: [StateSyncApi.dialog(peer: StateSyncApi.peerUser(200), topMessage: 10)],
-            messages: [StateSyncApi.privateMessage(id: 10, peerUserId: 200, fromUserId: 200, date: self.baseDate + 10, text: "top")],
+            messages: [StateSyncApi.privateMessage(id: 10, peerUserId: 200, fromUserId: 200, date: self.baseDateOffset(by: 10), text: "top")],
             users: [StateSyncApi.user(id: 200, firstName: "U200")]
         )))
         self.server.on(Name.getPinnedDialogs, .result(StateSyncApi.peerDialogs(state: StateSyncApi.state(pts: 999, qts: 5, date: self.baseDate, seq: 10))))
-        self.server.on(Name.getDifference, .result(StateSyncApi.differenceEmpty(date: self.baseDate + 120, seq: 10)))
+        self.server.on(Name.getDifference, .result(StateSyncApi.differenceEmpty(date: self.baseDateOffset(by: 120), seq: 10)))
         self.fixture.resetStateManager()
 
         // The barrier sits behind the running poll and completes once the follow-up ended the cycle.
@@ -65,7 +65,7 @@ final class ConfirmationDeletionEventTests: StateSyncTestCase {
     /// as `.messageId`, the way the replay names a channel deletion.
     func testResetChannelGhostTailDeletionFiresTheReceivedDeletionEventsOnce() {
         let channel = self.seedChannel(300, pts: 60, storedMessageId: 20)
-        self.fixture.storeMessage(peerId: channel, id: 21, timestamp: self.baseDate + 1, authorId: nil, text: "deleted")
+        self.fixture.storeMessage(peerId: channel, id: 21, timestamp: self.baseDateOffset(by: 1), authorId: nil, text: "deleted")
         self.fixture.seedAccount(state: self.state(pts: 100))
         self.makeStateManager()
         let deleted = self.observeDeletedMessages()
@@ -76,7 +76,7 @@ final class ConfirmationDeletionEventTests: StateSyncTestCase {
             chats: [StateSyncApi.broadcastChannel(id: 300, title: "C300")]
         )))
         self.server.on(Name.getPinnedDialogs, .result(StateSyncApi.peerDialogs(state: StateSyncApi.state(pts: 999, qts: 5, date: self.baseDate, seq: 10))))
-        self.server.on(Name.getDifference, .result(StateSyncApi.differenceEmpty(date: self.baseDate + 120, seq: 10)))
+        self.server.on(Name.getDifference, .result(StateSyncApi.differenceEmpty(date: self.baseDateOffset(by: 120), seq: 10)))
         self.fixture.resetStateManager()
 
         self.drainOperationQueue()
@@ -99,11 +99,11 @@ final class ConfirmationDeletionEventTests: StateSyncTestCase {
         self.makeStateManager()
         let deleted = self.observeDeletedMessages()
         self.server.on("messages.getHistory", .result(StateSyncApi.messages([
-            StateSyncApi.privateMessage(id: 12, peerUserId: 500, fromUserId: 500, date: self.baseDate + 12, text: "new"),
-            StateSyncApi.privateMessage(id: 10, peerUserId: 500, fromUserId: 500, date: self.baseDate + 10, text: "new")
+            StateSyncApi.privateMessage(id: 12, peerUserId: 500, fromUserId: 500, date: self.baseDateOffset(by: 12), text: "new"),
+            StateSyncApi.privateMessage(id: 10, peerUserId: 500, fromUserId: 500, date: self.baseDateOffset(by: 10), text: "new")
         ])))
         self.server.on(Name.messagesGetMessages, .result(StateSyncApi.messages([
-            StateSyncApi.privateMessage(id: 11, peerUserId: 500, fromUserId: 500, date: self.baseDate + 11, text: "edited")
+            StateSyncApi.privateMessage(id: 11, peerUserId: 500, fromUserId: 500, date: self.baseDateOffset(by: 11), text: "edited")
         ] + StateSyncApi.deletedMessages([13]))))
 
         let _ = self.runHistoryFill(peerInput: .direct(peerId: peerId, threadId: nil), direction: self.downwardFillDirection(peerId))
@@ -125,7 +125,7 @@ final class ConfirmationDeletionEventTests: StateSyncTestCase {
     func testConfirmationDeletionIsDeliveredOnlyOnceItsTransactionHasCommitted() {
         self.fixture.seedAccount(state: self.state(pts: 100))
         let user = self.seedUserChat(200)
-        self.fixture.storeMessage(peerId: user, id: 11, timestamp: self.baseDate + 11, authorId: user, text: "deleted")
+        self.fixture.storeMessage(peerId: user, id: 11, timestamp: self.baseDateOffset(by: 11), authorId: user, text: "deleted")
         self.makeStateManager()
         let deleted = self.observeDeletedMessages()
         let deletedId = self.messageId(user, 11)
@@ -172,8 +172,8 @@ final class ConfirmationDeletionEventTests: StateSyncTestCase {
         let user = self.seedUserChat(200)
         otherFixture.seedPeers([StateSyncFixture.makeUser(id: user, accessHash: 1, firstName: "U200")])
         otherFixture.seedChat(peerId: user)
-        self.fixture.storeMessage(peerId: user, id: 11, timestamp: self.baseDate + 11, authorId: user, text: "deleted")
-        otherFixture.storeMessage(peerId: user, id: 11, timestamp: self.baseDate + 11, authorId: user, text: "kept")
+        self.fixture.storeMessage(peerId: user, id: 11, timestamp: self.baseDateOffset(by: 11), authorId: user, text: "deleted")
+        otherFixture.storeMessage(peerId: user, id: 11, timestamp: self.baseDateOffset(by: 11), authorId: user, text: "kept")
 
         self.makeStateManager()
         let otherManager = otherFixture.makeStateManager(network: otherNetwork)

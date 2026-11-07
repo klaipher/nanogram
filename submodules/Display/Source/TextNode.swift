@@ -1234,7 +1234,7 @@ private func addEmbeddedItem(item: AnyHashable, line: TextNodeLine, ascent: CGFl
 /// touches a run of the other direction, those offsets lie on the line's or the other run's edge.
 private func attachmentOffsets(line: CTLine, startIndex: Int, endIndex: Int) -> (left: CGFloat, right: CGFloat) {
     var glyphExtent: (minX: CGFloat, maxX: CGFloat)?
-    for run in CTLineGetGlyphRuns(line) as! [CTRun] {
+    for run in (CTLineGetGlyphRuns(line) as? [CTRun]) ?? [] {
         let runRange = CTRunGetStringRange(run)
         let glyphCount = CTRunGetGlyphCount(run)
         if glyphCount == 0 || runRange.location >= endIndex || runRange.location + runRange.length <= startIndex {

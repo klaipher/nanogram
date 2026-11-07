@@ -48,7 +48,9 @@ private final class MediaGridPaneShimmerImage {
             let peakColor = colors.foreground.cgColor
             var locations: [CGFloat] = [0.0, 0.5, 1.0]
             let gradientColors: [CGColor] = [transparentColor, peakColor, transparentColor]
-            let gradient = CGGradient(colorsSpace: CGColorSpaceCreateDeviceRGB(), colors: gradientColors as CFArray, locations: &locations)!
+            guard let gradient = CGGradient(colorsSpace: CGColorSpaceCreateDeviceRGB(), colors: gradientColors as CFArray, locations: &locations) else {
+                return
+            }
             context.drawLinearGradient(gradient, start: CGPoint(x: 0.0, y: 0.0), end: CGPoint(x: 0.0, y: size.height), options: CGGradientDrawingOptions())
         })?.cgImage
         return self.image

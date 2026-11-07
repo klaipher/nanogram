@@ -13,7 +13,7 @@ final class ShortSentMessageTests: StateSyncTestCase {
     func testShortSentMessageMovesPts() {
         self.launchIdle()
 
-        self.fixture.addUpdates(StateSyncApi.updateShortSentMessage(id: 101, pts: 101, date: self.baseDate + 2))
+        self.fixture.addUpdates(StateSyncApi.updateShortSentMessage(id: 101, pts: 101, date: self.baseDateOffset(by: 2)))
         self.drainOperationQueue()
 
         XCTAssertEqual(self.server.requestNames, [Name.getDifference])
@@ -24,7 +24,7 @@ final class ShortSentMessageTests: StateSyncTestCase {
     func testASupplementaryAccountIgnoresShortSentMessages() {
         self.launchIdle(ignoresShortSentMessages: true)
 
-        self.fixture.addUpdates(StateSyncApi.updateShortSentMessage(id: 101, pts: 101, date: self.baseDate + 2))
+        self.fixture.addUpdates(StateSyncApi.updateShortSentMessage(id: 101, pts: 101, date: self.baseDateOffset(by: 2)))
         self.drainOperationQueue()
 
         XCTAssertEqual(self.server.requestNames, [Name.getDifference])

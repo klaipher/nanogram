@@ -17,7 +17,7 @@ extension UpdateInterpreter {
         let (userId, topMsgId, type) = (updateUserTypingData.userId, updateUserTypingData.topMsgId, updateUserTypingData.action)
         let threadId = topMsgId.flatMap { Int64($0) }
 
-        if let date = updatesDate, date + 60 > serverTime {
+        if let date = updatesDate, Int64(date) + 60 > Int64(serverTime) {
             var typingDraftData: (randomId: Int64, canStop: Bool, keepOnStop: Bool, text: TypingDraftText)?
 
             if case let .sendMessageTextDraftAction(sendMessageTextDraftActionData) = type {
@@ -61,7 +61,7 @@ extension UpdateInterpreter {
     
     mutating func applyChatUserTyping(_ updateChatUserTyping: Api.Update.Cons_updateChatUserTyping) {
         let (chatId, userId, type) = (updateChatUserTyping.chatId, updateChatUserTyping.fromId, updateChatUserTyping.action)
-        if let date = updatesDate, date + 60 > serverTime {
+        if let date = updatesDate, Int64(date) + 60 > Int64(serverTime) {
             let activity = PeerInputActivity(apiType: type, peerId: nil, timestamp: date)
             var category: PeerActivitySpace.Category = .global
             if case .speakingInGroupCall = activity {
@@ -74,7 +74,7 @@ extension UpdateInterpreter {
     
     mutating func applyChannelUserTyping(_ updateChannelUserTypingData: Api.Update.Cons_updateChannelUserTyping) {
         let (channelId, topMsgId, userId, type) = (updateChannelUserTypingData.channelId, updateChannelUserTypingData.topMsgId, updateChannelUserTypingData.fromId, updateChannelUserTypingData.action)
-        if let date = updatesDate, date + 60 > serverTime {
+        if let date = updatesDate, Int64(date) + 60 > Int64(serverTime) {
             let channelPeerId = PeerId(namespace: Namespaces.Peer.CloudChannel, id: PeerId.Id._internalFromInt64Value(channelId))
             let threadId = topMsgId.flatMap { Int64($0) }
 
@@ -107,7 +107,7 @@ extension UpdateInterpreter {
     }
     
     mutating func applyEncryptedChatTyping(_ updateEncryptedChatTypingData: Api.Update.Cons_updateEncryptedChatTyping) {
-        if let date = updatesDate, date + 60 > serverTime {
+        if let date = updatesDate, Int64(date) + 60 > Int64(serverTime) {
             updatedState.addPeerInputActivity(chatPeerId: PeerActivitySpace(peerId: PeerId(namespace: Namespaces.Peer.SecretChat, id: PeerId.Id._internalFromInt64Value(Int64(updateEncryptedChatTypingData.chatId))), category: .global), peerId: nil, activity: .typingText)
         }
     }

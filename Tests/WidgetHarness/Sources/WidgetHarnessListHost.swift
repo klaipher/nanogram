@@ -190,7 +190,7 @@ public final class WidgetHarnessListHost {
 
         var messages: [EngineRawMessage] = []
         var paths: [EngineMessage.Id: String] = [:]
-        var timestamp = Int32(Date().timeIntervalSince1970) - 10_000
+        var timestamp = Int32(clamping: Int64(Date().timeIntervalSince1970) - 10_000)
         var takenIds = Set<Int32>()
         func append(text: String, media: EngineRawMedia, path: String, captionAbove: Bool = false) {
             let stableId = WidgetHarnessListHost.nextStableId
@@ -203,7 +203,7 @@ public final class WidgetHarnessListHost {
             }
             takenIds.insert(messageId)
             let id = EngineMessage.Id(peerId: WidgetHarnessListHost.chatPeer.id, namespace: Namespaces.Message.Cloud, id: messageId)
-            timestamp += 1
+            timestamp = Int32(clamping: Int64(timestamp) + 1)
             messages.append(EngineRawMessage(stableId: stableId, stableVersion: 0, id: id, globallyUniqueId: nil, groupingKey: nil, groupInfo: nil, threadId: nil, timestamp: timestamp, flags: incoming ? [.Incoming] : [], tags: [], globalTags: [], localTags: [], customTags: [], forwardInfo: nil, author: incoming ? self.otherPeer : accountPeer, text: text, attributes: captionAbove ? [InvertMediaMessageAttribute()] : [], media: [media], peers: peers, associatedMessages: EngineSimpleDictionary(), associatedMessageIds: [], associatedMedia: [:], associatedThreadInfo: nil, associatedStories: [:]))
             paths[id] = path
         }

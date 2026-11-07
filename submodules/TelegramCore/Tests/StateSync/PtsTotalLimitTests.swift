@@ -43,10 +43,10 @@ final class PtsTotalLimitTests: StateSyncTestCase {
         self.fixture.seedAccount(state: self.state(pts: 100))
         self.makeStateManager()
         self.server.on(Name.getDifference, .result(StateSyncApi.differenceSlice(
-            intermediateState: StateSyncApi.state(pts: 150, qts: 5, date: self.baseDate + 10, seq: 10)
+            intermediateState: StateSyncApi.state(pts: 150, qts: 5, date: self.baseDateOffset(by: 10), seq: 10)
         )))
         self.server.on(Name.getDifference, .result(StateSyncApi.difference(
-            state: StateSyncApi.state(pts: 200, qts: 5, date: self.baseDate + 20, seq: 10)
+            state: StateSyncApi.state(pts: 200, qts: 5, date: self.baseDateOffset(by: 20), seq: 10)
         )))
         self.fixture.resetStateManager()
 
@@ -55,8 +55,8 @@ final class PtsTotalLimitTests: StateSyncTestCase {
 
         XCTAssertEqual(self.server.requestNames, [Name.getDifference, Name.getDifference])
         self.assertGetDifference(0, pts: 100, date: self.baseDate, qts: 5, ptsTotalLimit: 500)
-        self.assertGetDifference(1, pts: 150, date: self.baseDate + 10, qts: 5, ptsTotalLimit: 500)
-        XCTAssertEqual(self.fixture.accountState()?.state, self.state(pts: 200, qts: 5, date: self.baseDate + 20, seq: 10))
+        self.assertGetDifference(1, pts: 150, date: self.baseDateOffset(by: 10), qts: 5, ptsTotalLimit: 500)
+        XCTAssertEqual(self.fixture.accountState()?.state, self.state(pts: 200, qts: 5, date: self.baseDateOffset(by: 20), seq: 10))
     }
 
     /// Each poll reads the value again, so a changed app configuration applies from the next poll on.
@@ -65,14 +65,14 @@ final class PtsTotalLimitTests: StateSyncTestCase {
         self.launchIdle()
 
         self.fixture.seedAppConfiguration(["pts_total_limit": 700])
-        self.server.on(Name.getDifference, .result(StateSyncApi.differenceEmpty(date: self.baseDate + 2, seq: 10)))
+        self.server.on(Name.getDifference, .result(StateSyncApi.differenceEmpty(date: self.baseDateOffset(by: 2), seq: 10)))
         self.fixture.resetStateManager()
         XCTAssertTrue(self.server.waitForRequest(Name.getDifference, count: 2))
         self.drainOperationQueue()
 
         XCTAssertEqual(self.server.requestNames, [Name.getDifference, Name.getDifference])
         self.assertGetDifference(0, pts: 100, date: self.baseDate, qts: 5, ptsTotalLimit: 500)
-        self.assertGetDifference(1, pts: 100, date: self.baseDate + 1, qts: 5, ptsTotalLimit: 700)
+        self.assertGetDifference(1, pts: 100, date: self.baseDateOffset(by: 1), qts: 5, ptsTotalLimit: 700)
     }
 
     /// App-configuration numbers arrive as Double. A fraction is rounded toward zero, anything below 1 sends no limit,
@@ -91,11 +91,11 @@ final class PtsTotalLimitTests: StateSyncTestCase {
         for (offset, item) in cases.enumerated() {
             let index = offset + 1
             self.fixture.seedAppConfiguration(["pts_total_limit": item.value])
-            self.server.on(Name.getDifference, .result(StateSyncApi.differenceEmpty(date: self.baseDate + 1, seq: 10)))
+            self.server.on(Name.getDifference, .result(StateSyncApi.differenceEmpty(date: self.baseDateOffset(by: 1), seq: 10)))
             self.fixture.resetStateManager()
             XCTAssertTrue(self.server.waitForRequest(Name.getDifference, count: index + 1))
             self.drainOperationQueue()
-            self.assertGetDifference(index, pts: 100, date: self.baseDate + 1, qts: 5, ptsTotalLimit: item.expected)
+            self.assertGetDifference(index, pts: 100, date: self.baseDateOffset(by: 1), qts: 5, ptsTotalLimit: item.expected)
         }
         XCTAssertEqual(self.server.requestNames.count, cases.count + 1)
     }
@@ -114,7 +114,7 @@ final class PtsTotalLimitNotificationExtensionTests: StateSyncTestCase {
         self.fixture.seedAccount(state: self.state(pts: 100, qts: 5, seq: 10))
         self.makeStateManager()
         self.server.on(Name.getDifference, .result(StateSyncApi.difference(
-            state: StateSyncApi.state(pts: 150, qts: 5, date: self.baseDate + 10, seq: 10)
+            state: StateSyncApi.state(pts: 150, qts: 5, date: self.baseDateOffset(by: 10), seq: 10)
         )))
 
         XCTAssertEqual(self.fixture.wait(self.stateManager.standalonePollDifference()), true)
@@ -129,10 +129,10 @@ final class PtsTotalLimitNotificationExtensionTests: StateSyncTestCase {
         self.fixture.seedAccount(state: self.state(pts: 100, qts: 5, seq: 10))
         self.makeStateManager()
         self.server.on(Name.getDifference, .result(StateSyncApi.differenceSlice(
-            intermediateState: StateSyncApi.state(pts: 150, qts: 6, date: self.baseDate + 10, seq: 11)
+            intermediateState: StateSyncApi.state(pts: 150, qts: 6, date: self.baseDateOffset(by: 10), seq: 11)
         )))
         self.server.on(Name.getDifference, .result(StateSyncApi.difference(
-            state: StateSyncApi.state(pts: 200, qts: 7, date: self.baseDate + 20, seq: 12)
+            state: StateSyncApi.state(pts: 200, qts: 7, date: self.baseDateOffset(by: 20), seq: 12)
         )))
 
         XCTAssertEqual(self.fixture.wait(self.stateManager.standalonePollDifference()), false)
@@ -149,7 +149,7 @@ final class PtsTotalLimitNotificationExtensionTests: StateSyncTestCase {
         self.fixture.seedAccount(state: self.state(pts: 100, qts: 5, seq: 10))
         self.makeStateManager()
         self.server.on(Name.getDifference, .result(StateSyncApi.difference(
-            state: StateSyncApi.state(pts: 150, qts: 5, date: self.baseDate + 10, seq: 10)
+            state: StateSyncApi.state(pts: 150, qts: 5, date: self.baseDateOffset(by: 10), seq: 10)
         )))
 
         XCTAssertEqual(self.fixture.wait(self.stateManager.standalonePollDifference()), true)

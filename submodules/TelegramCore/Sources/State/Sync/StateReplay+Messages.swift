@@ -86,13 +86,13 @@ extension ReplayContext {
                     if updatedTypingActivities[PeerActivitySpace(peerId: chatPeerId, category: .global)] == nil {
                         updatedTypingActivities[PeerActivitySpace(peerId: chatPeerId, category: .global)] = [authorId: activityValue]
                     } else {
-                        updatedTypingActivities[PeerActivitySpace(peerId: chatPeerId, category: .global)]![authorId] = activityValue
+                        updatedTypingActivities[PeerActivitySpace(peerId: chatPeerId, category: .global), default: [:]][authorId] = activityValue
                     }
                     if let threadId = message.threadId {
                         if updatedTypingActivities[PeerActivitySpace(peerId: chatPeerId, category: .thread(threadId))] == nil {
                             updatedTypingActivities[PeerActivitySpace(peerId: chatPeerId, category: .thread(threadId))] = [authorId: activityValue]
                         } else {
-                            updatedTypingActivities[PeerActivitySpace(peerId: chatPeerId, category: .thread(threadId))]![authorId] = activityValue
+                            updatedTypingActivities[PeerActivitySpace(peerId: chatPeerId, category: .thread(threadId)), default: [:]][authorId] = activityValue
                         }
 
                     }

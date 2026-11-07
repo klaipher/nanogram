@@ -47,8 +47,8 @@ final class ResetGhostTailTests: StateSyncTestCase {
     /// own; the top message becomes the chat's newest again.
     func testResetDeletesAStoredMessageAboveTheTopWithoutAsking() {
         let user = self.seedUserChat(200)
-        self.fixture.storeMessage(peerId: user, id: 10, timestamp: self.baseDate + 10, authorId: user, text: "top")
-        self.fixture.storeMessage(peerId: user, id: 11, timestamp: self.baseDate + 11, authorId: user, text: "deleted during the gap")
+        self.fixture.storeMessage(peerId: user, id: 10, timestamp: self.baseDateOffset(by: 10), authorId: user, text: "top")
+        self.fixture.storeMessage(peerId: user, id: 11, timestamp: self.baseDateOffset(by: 11), authorId: user, text: "deleted during the gap")
         self.fixture.seedAccount(state: self.state(pts: 100))
         self.startAccountReset(dialogs: self.userDialogs(200, topMessage: 10))
 
@@ -72,17 +72,17 @@ final class ResetGhostTailTests: StateSyncTestCase {
     /// 999, which precedes the answer, so the difference from 999 carries the reply again and the replay stores it.
     func testResetDeletesAMessageNewerThanTheAnswerAndTheFollowUpDifferenceBringsItBack() {
         let user = self.seedUserChat(200)
-        self.fixture.storeMessage(peerId: user, id: 10, timestamp: self.baseDate + 10, authorId: user, text: "top")
-        self.fixture.storeMessage(peerId: user, id: 12, timestamp: self.baseDate + 12, authorId: StateSyncFixture.accountPeerId, text: "sent during the reset", incoming: false)
+        self.fixture.storeMessage(peerId: user, id: 10, timestamp: self.baseDateOffset(by: 10), authorId: user, text: "top")
+        self.fixture.storeMessage(peerId: user, id: 12, timestamp: self.baseDateOffset(by: 12), authorId: StateSyncFixture.accountPeerId, text: "sent during the reset", incoming: false)
         self.fixture.seedAccount(state: self.state(pts: 100))
         self.makeStateManager()
         self.server.on(Name.getDifference, .result(StateSyncApi.differenceTooLong(pts: 999)))
         self.server.on(Name.getDialogs, .result(self.userDialogs(200, topMessage: 10)))
         self.server.on(Name.getPinnedDialogs, .result(StateSyncApi.peerDialogs(state: StateSyncApi.state(pts: 999, qts: 5, date: self.baseDate, seq: 10))))
         self.server.on(Name.getDifference, .result(StateSyncApi.difference(
-            newMessages: [StateSyncApi.privateMessage(id: 12, peerUserId: 200, fromUserId: 1000, date: self.baseDate + 12, text: "from the difference", outgoing: true)],
+            newMessages: [StateSyncApi.privateMessage(id: 12, peerUserId: 200, fromUserId: 1000, date: self.baseDateOffset(by: 12), text: "from the difference", outgoing: true)],
             users: [StateSyncApi.user(id: 200, firstName: "U200")],
-            state: StateSyncApi.state(pts: 1000, qts: 5, date: self.baseDate + 120, seq: 10)
+            state: StateSyncApi.state(pts: 1000, qts: 5, date: self.baseDateOffset(by: 120), seq: 10)
         )))
         self.fixture.resetStateManager()
 
@@ -99,7 +99,7 @@ final class ResetGhostTailTests: StateSyncTestCase {
     /// A channel post above the top is deleted the same way, with no channels.getMessages.
     func testResetDeletesAChannelPostAboveTheTopWithoutAsking() {
         let channel = self.seedChannel(300, pts: 50, storedMessageId: 20)
-        self.fixture.storeMessage(peerId: channel, id: 21, timestamp: self.baseDate + 21, authorId: nil, text: "deleted during the gap")
+        self.fixture.storeMessage(peerId: channel, id: 21, timestamp: self.baseDateOffset(by: 21), authorId: nil, text: "deleted during the gap")
         self.fixture.seedAccount(state: self.state(pts: 100))
         self.startAccountReset(dialogs: self.channelDialogs(300, topMessage: 20, pts: 50))
 
@@ -118,8 +118,8 @@ final class ResetGhostTailTests: StateSyncTestCase {
     /// last message as the preview.
     func testResetDeletesTheWholeStoredHistoryOfADialogWithoutATopMessage() {
         let user = self.seedUserChat(200)
-        self.fixture.storeMessage(peerId: user, id: 5, timestamp: self.baseDate + 5, authorId: user, text: "cleared")
-        self.fixture.storeMessage(peerId: user, id: 6, timestamp: self.baseDate + 6, authorId: user, text: "cleared")
+        self.fixture.storeMessage(peerId: user, id: 5, timestamp: self.baseDateOffset(by: 5), authorId: user, text: "cleared")
+        self.fixture.storeMessage(peerId: user, id: 6, timestamp: self.baseDateOffset(by: 6), authorId: user, text: "cleared")
         self.fixture.seedAccount(state: self.state(pts: 100))
         XCTAssertEqual(self.chatListIndexMessageId(user), self.messageId(user, 6), "precondition: the stored last message is the preview")
         self.startAccountReset(dialogs: StateSyncApi.dialogs(
@@ -143,8 +143,8 @@ final class ResetGhostTailTests: StateSyncTestCase {
     /// With nothing stored above any fetched top message, the normal case, the reset deletes nothing.
     func testResetWithNothingAboveTheTopDeletesNothing() {
         let user = self.seedUserChat(200)
-        self.fixture.storeMessage(peerId: user, id: 9, timestamp: self.baseDate + 9, authorId: user, text: "older")
-        self.fixture.storeMessage(peerId: user, id: 10, timestamp: self.baseDate + 10, authorId: user, text: "top")
+        self.fixture.storeMessage(peerId: user, id: 9, timestamp: self.baseDateOffset(by: 9), authorId: user, text: "older")
+        self.fixture.storeMessage(peerId: user, id: 10, timestamp: self.baseDateOffset(by: 10), authorId: user, text: "top")
         self.fixture.seedAccount(state: self.state(pts: 100))
         self.startAccountReset(dialogs: self.userDialogs(200, topMessage: 10))
 
@@ -166,7 +166,7 @@ final class ResetGhostTailTests: StateSyncTestCase {
         }
         StoredMessageConfirmation.ghostTailPageLimit = 2
         let user = self.seedUserChat(200)
-        self.fixture.storeMessage(peerId: user, id: 10, timestamp: self.baseDate + 10, authorId: user, text: "top")
+        self.fixture.storeMessage(peerId: user, id: 10, timestamp: self.baseDateOffset(by: 10), authorId: user, text: "top")
         for id in Int32(11) ... Int32(15) {
             self.fixture.storeMessage(peerId: user, id: id, timestamp: self.baseDate + id, authorId: user, text: "deleted")
         }
@@ -188,10 +188,10 @@ final class ResetGhostTailTests: StateSyncTestCase {
         let user = self.seedUserChat(200)
         let other = self.seedUserChat(201)
         // Id 9 is the oldest message by date, as an imported one is.
-        self.fixture.storeMessage(peerId: user, id: 9, timestamp: self.baseDate - 100, authorId: user, text: "imported")
+        self.fixture.storeMessage(peerId: user, id: 9, timestamp: self.baseDateOffset(by: -100), authorId: user, text: "imported")
         self.fixture.storeMessage(peerId: user, id: 3, timestamp: self.baseDate, authorId: user, text: "a")
-        self.fixture.storeMessage(peerId: user, id: 5, timestamp: self.baseDate + 1, authorId: user, text: "b")
-        self.fixture.storeMessage(peerId: other, id: 4, timestamp: self.baseDate + 2, authorId: other, text: "another chat")
+        self.fixture.storeMessage(peerId: user, id: 5, timestamp: self.baseDateOffset(by: 1), authorId: user, text: "b")
+        self.fixture.storeMessage(peerId: other, id: 4, timestamp: self.baseDateOffset(by: 2), authorId: other, text: "another chat")
 
         let read = self.fixture.transaction { transaction -> [[Int32]] in
             return [

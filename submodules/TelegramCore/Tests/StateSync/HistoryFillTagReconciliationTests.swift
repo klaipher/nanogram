@@ -26,7 +26,7 @@ final class HistoryFillTagReconciliationTests: StateSyncTestCase {
         self.addHistoryFillHole(peerId)
         self.server.on(search, .result(StateSyncApi.messages([])))
         self.server.on(getMessages, .result(StateSyncApi.messages([
-            StateSyncApi.privateMessage(id: 7, peerUserId: 500, fromUserId: 500, date: self.baseDate + 7, text: "pinned once")
+            StateSyncApi.privateMessage(id: 7, peerUserId: 500, fromUserId: 500, date: self.baseDateOffset(by: 7), text: "pinned once")
         ])))
 
         let result = self.runHistoryFill(peerInput: .direct(peerId: peerId, threadId: nil), direction: self.downwardFillDirection(peerId), space: .tag(.pinned))
@@ -53,7 +53,7 @@ final class HistoryFillTagReconciliationTests: StateSyncTestCase {
         self.addHistoryFillHole(groupId)
         self.server.on(getUnreadMentions, .result(StateSyncApi.messages([])))
         self.server.on(getMessages, .result(StateSyncApi.messages([
-            HistoryFillApi.groupMessage(id: 9, chatId: 800, fromUserId: 500, date: self.baseDate + 9, text: "@account", mentioned: true, mediaUnread: false)
+            HistoryFillApi.groupMessage(id: 9, chatId: 800, fromUserId: 500, date: self.baseDateOffset(by: 9), text: "@account", mentioned: true, mediaUnread: false)
         ])))
 
         let _ = self.runHistoryFill(peerInput: .direct(peerId: groupId, threadId: nil), direction: self.downwardFillDirection(groupId), space: .tag(.unseenPersonalMessage))

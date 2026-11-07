@@ -187,7 +187,7 @@ public final class ChatMediaSendGifConverter: ChatMediaSendGifConverting {
             created = promise
             current[identifier] = promise
             return current
-        }[identifier]!
+        }[identifier] ?? Promise<ChatMediaSendConvertedGif?>()
         if let created {
             let results = self.results
             let pending = self.pending

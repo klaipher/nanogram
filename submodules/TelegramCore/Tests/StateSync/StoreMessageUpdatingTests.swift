@@ -12,7 +12,7 @@ final class StoreMessageUpdatingTests: StateSyncTestCase {
         let author = self.seedUserChat(2000)
         let forwardAuthor = self.seedUserChat(2001)
         let id = self.messageId(channel, 10)
-        let forwardInfo = StoreMessageForwardInfo(authorId: forwardAuthor, sourceId: channel, sourceMessageId: self.messageId(channel, 5), date: self.baseDate - 10, authorSignature: "signature", psaType: "psa", flags: [])
+        let forwardInfo = StoreMessageForwardInfo(authorId: forwardAuthor, sourceId: channel, sourceMessageId: self.messageId(channel, 5), date: self.baseDateOffset(by: -10), authorSignature: "signature", psaType: "psa", flags: [])
         let stored = StoreMessage(id: id, customStableId: nil, globallyUniqueId: 77, groupingKey: 88, threadId: 1, timestamp: self.baseDate, flags: [.Incoming], tags: [.file], globalTags: [.Calls], localTags: [.OutgoingDeliveredToServer], forwardInfo: forwardInfo, authorId: author, text: "text", attributes: [ViewCountMessageAttribute(count: 5)], media: [TelegramMediaAction(action: .historyCleared)])
         // Stored and read back in one transaction, so that the forward info's author and the message's author resolve
         // to the seeded peers.
@@ -69,7 +69,7 @@ final class StoreMessageUpdatingTests: StateSyncTestCase {
         XCTAssertEqual(updatedForwardInfo.sourceMessageId, fullForwardInfo.sourceMessageId)
         XCTAssertEqual(updatedForwardInfo.sourceMessageId, self.messageId(channel, 5))
         XCTAssertEqual(updatedForwardInfo.date, fullForwardInfo.date)
-        XCTAssertEqual(updatedForwardInfo.date, self.baseDate - 10)
+        XCTAssertEqual(updatedForwardInfo.date, self.baseDateOffset(by: -10))
         XCTAssertEqual(updatedForwardInfo.authorSignature, fullForwardInfo.authorSignature)
         XCTAssertEqual(updatedForwardInfo.authorSignature, "signature")
         XCTAssertEqual(updatedForwardInfo.psaType, fullForwardInfo.psaType)

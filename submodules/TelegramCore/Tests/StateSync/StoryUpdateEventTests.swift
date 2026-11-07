@@ -24,14 +24,14 @@ final class StoryUpdateEventTests: StateSyncTestCase {
         let views: Api.StoryViews? = viewsCount.map { count -> Api.StoryViews in
             return .storyViews(.init(flags: 0, viewsCount: count, forwardsCount: nil, reactions: nil, reactionsCount: nil, recentViewers: nil))
         }
-        return .storyItem(.init(flags: flags, id: id, date: self.baseDate, fromId: nil, fwdFrom: nil, expireDate: self.baseDate + 86400, caption: nil, entities: nil, media: .messageMediaUnsupported, mediaAreas: nil, privacy: nil, views: views, sentReaction: nil, albums: nil, music: nil))
+        return .storyItem(.init(flags: flags, id: id, date: self.baseDate, fromId: nil, fwdFrom: nil, expireDate: self.baseDateOffset(by: 86400), caption: nil, entities: nil, media: .messageMediaUnsupported, mediaAreas: nil, privacy: nil, views: views, sentReaction: nil, albums: nil, music: nil))
     }
 
     /// A date group (no pts), as the server pushes `updateStory`.
     private func push(story: Api.StoryItem, of userId: Int64) {
         self.server.push(StateSyncApi.updates([
             .updateStory(.init(peer: StateSyncApi.peerUser(userId), story: story))
-        ], date: self.baseDate + 2, seq: 0))
+        ], date: self.baseDateOffset(by: 2), seq: 0))
     }
 
     private func addedItems(_ batches: [[InternalStoryUpdate]], peerId: PeerId, id: Int32) -> [Stories.Item] {

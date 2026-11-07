@@ -37,7 +37,7 @@ final class PinnedForumTopicsPeerTests: StateSyncTestCase {
 
         self.server.push(StateSyncApi.updates([
             StateSyncApi.updatePinnedForumTopics(peer: StateSyncApi.peerChannel(337))
-        ], date: self.baseDate + 2, seq: 0))
+        ], date: self.baseDateOffset(by: 2), seq: 0))
         self.drainOperationQueue()
 
         XCTAssertEqual(self.server.requestNames, [Name.getDifference, Name.getChannelDifference], "the channel was not polled: the batch did not load its peer")
@@ -57,14 +57,14 @@ final class PinnedForumTopicsPeerTests: StateSyncTestCase {
         self.makeStateManager()
         self.server.on(Name.getDifference, .result(StateSyncApi.difference(
             otherUpdates: [StateSyncApi.updatePinnedForumTopics(peer: StateSyncApi.peerChannel(338))],
-            state: StateSyncApi.state(pts: 100, qts: 5, date: self.baseDate + 1, seq: 10)
+            state: StateSyncApi.state(pts: 100, qts: 5, date: self.baseDateOffset(by: 1), seq: 10)
         )))
         // A second getDifference would be the refused replay's poll; it has no answer here.
         self.fixture.resetStateManager()
 
         self.isUpdating.wait { $0 == [true, false] }
         XCTAssertEqual(self.server.requestNames, [Name.getDifference], "the difference's replay was refused and polled again")
-        XCTAssertEqual(self.fixture.accountState()?.state?.date, self.baseDate + 1, "the difference was not replayed")
+        XCTAssertEqual(self.fixture.accountState()?.state?.date, self.baseDateOffset(by: 1), "the difference was not replayed")
     }
 
     /// A pushed `updatePinnedForumTopics` with an order, for a channel that is neither stored nor in the container's
@@ -77,7 +77,7 @@ final class PinnedForumTopicsPeerTests: StateSyncTestCase {
 
         self.server.push(StateSyncApi.updates([
             StateSyncApi.updatePinnedForumTopics(peer: StateSyncApi.peerChannel(338), order: [5, 3])
-        ], date: self.baseDate + 2, seq: 0))
+        ], date: self.baseDateOffset(by: 2), seq: 0))
         self.drainOperationQueue()
 
         XCTAssertEqual(self.server.requestNames, [Name.getDifference], "the push's replay was refused and polled again")

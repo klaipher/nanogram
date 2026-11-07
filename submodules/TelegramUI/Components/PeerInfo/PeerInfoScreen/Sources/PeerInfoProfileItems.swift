@@ -339,7 +339,7 @@ func infoItems(
                 }
                 
                 if hasAgentKeyButton {
-                    items[currentPeerInfoSection]!.append(PeerInfoScreenCommentItem(id: ItemAgentInfo, text: presentationData.strings.Agent_AddKeyInfo))
+                    items[currentPeerInfoSection, default: []].append(PeerInfoScreenCommentItem(id: ItemAgentInfo, text: presentationData.strings.Agent_AddKeyInfo))
                     
                     currentPeerInfoSection = .peerInfoTrailing
                 } else if let botInfo = user.botInfo, botInfo.flags.contains(.canEdit) {
@@ -365,7 +365,7 @@ func infoItems(
                     for key in agentKeys {
                         let provider = providers.first(where: { $0.id == key.provider }) ?? EngineAgentProvider(id: key.provider, title: key.provider, vendor: "", keyUrl: "", modelsSearchable: false, iconEmojiId: nil)
                         let isActive = agentKeys.count > 1 && data.agentState?.settings?.activeProvider == key.provider
-                        items[.agentProviders]!.append(PeerInfoScreenAgentProviderItem(id: "agent_\(key.provider)", context: context, provider: provider, isActive: isActive, action: agentKeys.count > 1 ? {
+                        items[.agentProviders, default: []].append(PeerInfoScreenAgentProviderItem(id: "agent_\(key.provider)", context: context, provider: provider, isActive: isActive, action: agentKeys.count > 1 ? {
                             interaction.setAgentActiveProvider(key.provider)
                         } : nil, contextAction: { node, gesture in
                             interaction.openAgentProviderContextMenu(key.provider, node, gesture)
@@ -373,11 +373,11 @@ func infoItems(
                     }
                     let connectedIds = Set(agentKeys.map(\.provider))
                     if providers.contains(where: { !connectedIds.contains($0.id) }) {
-                        items[.agentProviders]!.append(PeerInfoScreenActionItem(id: ItemAgentAddProvider, text: presentationData.strings.Agent_AddAnotherProvider, color: .accent, icon: generateTintedImage(image: UIImage(bundleImageName: "Chat/Input/Text/InputAIIcon"), color: presentationData.theme.list.itemAccentColor), alignment: .peerList, action: {
+                        items[.agentProviders, default: []].append(PeerInfoScreenActionItem(id: ItemAgentAddProvider, text: presentationData.strings.Agent_AddAnotherProvider, color: .accent, icon: generateTintedImage(image: UIImage(bundleImageName: "Chat/Input/Text/InputAIIcon"), color: presentationData.theme.list.itemAccentColor), alignment: .peerList, action: {
                             interaction.openAgentConnect()
                         }))
                     }
-                    items[.agentProviders]!.append(PeerInfoScreenCommentItem(id: ItemAgentProvidersInfo, text: presentationData.strings.Agent_ProvidersInfo))
+                    items[.agentProviders, default: []].append(PeerInfoScreenCommentItem(id: ItemAgentProvidersInfo, text: presentationData.strings.Agent_ProvidersInfo))
                     
                     currentPeerInfoSection = .peerInfoTrailing
                 }
@@ -485,7 +485,7 @@ func infoItems(
                     isSecretChat = true
                 }
                 if !peerInfoUserHeaderHasMore(user, isSecretChat: isSecretChat, isContact: data.isContact) && peerInfoCanReportUser(user, accountPeerId: context.account.peerId) {
-                    items[currentPeerInfoSection]!.append(PeerInfoScreenActionItem(id: ItemReport, text: presentationData.strings.ReportPeer_Report, action: {
+                    items[currentPeerInfoSection, default: []].append(PeerInfoScreenActionItem(id: ItemReport, text: presentationData.strings.ReportPeer_Report, action: {
                         interaction.openReport(.default)
                     }))
                 }

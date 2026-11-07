@@ -207,7 +207,7 @@ func resetChannels(accountPeerId: PeerId, postbox: Postbox, network: Network, pe
                         if readStates[peerId] == nil {
                             readStates[peerId] = [:]
                         }
-                        readStates[peerId]![Namespaces.Message.Cloud] = .idBased(maxIncomingReadId: apiReadInboxMaxId, maxOutgoingReadId: apiReadOutboxMaxId, maxKnownId: apiTopMessage, count: apiUnreadCount, markedUnread: apiMarkedUnread)
+                        readStates[peerId, default: [:]][Namespaces.Message.Cloud] = .idBased(maxIncomingReadId: apiReadInboxMaxId, maxOutgoingReadId: apiReadOutboxMaxId, maxKnownId: apiTopMessage, count: apiUnreadCount, markedUnread: apiMarkedUnread)
                         
                         if apiTopMessage != 0 {
                             mentionTagSummaries[peerId] = [

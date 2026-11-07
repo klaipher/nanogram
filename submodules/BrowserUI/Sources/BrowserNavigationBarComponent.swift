@@ -214,7 +214,7 @@ final class BrowserNavigationBarComponent: Component {
                 } else {
                     rightItemsBackgroundTransition = .immediate
                     rightItemsBackground = GlassBackgroundView()
-                    rightItemsBackground!.morphsIntoContextMenu = true
+                    rightItemsBackground?.morphsIntoContextMenu = true
                     self.containerView.contentView.addSubview(rightItemsBackground!)
                     self.rightItemsBackground = rightItemsBackground
                     

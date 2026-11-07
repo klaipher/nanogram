@@ -170,8 +170,11 @@ public func staticGlassCutPixels(_ pixels: Data, width: Int, height: Int, frame:
         var result = Data(count: (topRows + bottomRows) * rowBytes)
         result.withUnsafeMutableBytes { (target: UnsafeMutableRawBufferPointer) in
             pixels.withUnsafeBytes { (source: UnsafeRawBufferPointer) in
-                target.baseAddress!.copyMemory(from: source.baseAddress!, byteCount: topRows * rowBytes)
-                target.baseAddress!.advanced(by: topRows * rowBytes).copyMemory(from: source.baseAddress!.advanced(by: (height - bottomRows) * rowBytes), byteCount: bottomRows * rowBytes)
+                guard let targetBase = target.baseAddress, let sourceBase = source.baseAddress else {
+                    return
+                }
+                targetBase.copyMemory(from: sourceBase, byteCount: topRows * rowBytes)
+                targetBase.advanced(by: topRows * rowBytes).copyMemory(from: sourceBase.advanced(by: (height - bottomRows) * rowBytes), byteCount: bottomRows * rowBytes)
             }
         }
         return (width, topRows + bottomRows, CGRect(x: frame.minX, y: frame.minY, width: frame.width, height: CGFloat(shapeLength)), result)
@@ -182,9 +185,12 @@ public func staticGlassCutPixels(_ pixels: Data, width: Int, height: Int, frame:
         var result = Data(count: resultWidth * height * 4)
         result.withUnsafeMutableBytes { (target: UnsafeMutableRawBufferPointer) in
             pixels.withUnsafeBytes { (source: UnsafeRawBufferPointer) in
+                guard let targetBase = target.baseAddress, let sourceBase = source.baseAddress else {
+                    return
+                }
                 for y in 0 ..< height {
-                    let sourceRow = source.baseAddress!.advanced(by: y * width * 4)
-                    let targetRow = target.baseAddress!.advanced(by: y * resultWidth * 4)
+                    let sourceRow = sourceBase.advanced(by: y * width * 4)
+                    let targetRow = targetBase.advanced(by: y * resultWidth * 4)
                     targetRow.copyMemory(from: sourceRow, byteCount: leftColumns * 4)
                     targetRow.advanced(by: leftColumns * 4).copyMemory(from: sourceRow.advanced(by: (width - rightColumns) * 4), byteCount: rightColumns * 4)
                 }

@@ -62,16 +62,16 @@ final class BranchMergePushTests: StateSyncTestCase {
         let alerts = self.fixture.observe(self.stateManager.displayAlerts)
         self.managerQueueRoundTrip()
         self.server.on(Name.getChannelDifference, .result(StateSyncApi.channelDifference(pts: 52, newMessages: [
-            StateSyncApi.channelPost(id: 11, channelId: 300, date: self.baseDate + 2),
-            StateSyncApi.channelPost(id: 12, channelId: 300, date: self.baseDate + 2)
+            StateSyncApi.channelPost(id: 11, channelId: 300, date: self.baseDateOffset(by: 2)),
+            StateSyncApi.channelPost(id: 12, channelId: 300, date: self.baseDateOffset(by: 2))
         ])))
 
         // `popup` (flags.0); no `inbox_date`, so nothing is stored in the service chat.
         let popup: Api.Update = .updateServiceNotification(.init(flags: 1 << 0, inboxDate: nil, type: "TEST_POPUP", message: "alert", media: .messageMediaEmpty, entities: []))
         self.server.push(StateSyncApi.updates([
             popup,
-            StateSyncApi.updateNewChannelMessage(StateSyncApi.channelPost(id: 12, channelId: 300, date: self.baseDate + 2), pts: 52)
-        ], date: self.baseDate + 2, seq: 0))
+            StateSyncApi.updateNewChannelMessage(StateSyncApi.channelPost(id: 12, channelId: 300, date: self.baseDateOffset(by: 2)), pts: 52)
+        ], date: self.baseDateOffset(by: 2), seq: 0))
         self.drainOperationQueue()
 
         // Control: the batch polled the channel once and applied what the poll returned.

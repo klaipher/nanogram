@@ -31,7 +31,7 @@ final class ResetBackoffTeardownTests: StateSyncTestCase {
         self.server.on(Name.getDifference, .result(StateSyncApi.differenceTooLong(pts: 999)))
         self.server.on(Name.getDialogs, .result(StateSyncApi.dialogs()))
         self.server.on(Name.getPinnedDialogs, .result(emptyPinnedDialogs))
-        self.server.on(Name.getDifference, .result(StateSyncApi.differenceEmpty(date: self.baseDate + 120, seq: 10)))
+        self.server.on(Name.getDifference, .result(StateSyncApi.differenceEmpty(date: self.baseDateOffset(by: 120), seq: 10)))
 
         // Built here, not with `makeStateManager`: the fixture keeps the manager it makes until `close()`, and this
         // test must hold the only reference.

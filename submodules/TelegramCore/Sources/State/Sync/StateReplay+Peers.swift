@@ -52,7 +52,7 @@ extension ReplayContext {
                     switch status.status {
                     case let .userStatusOnline(userStatusOnlineData):
                         let timestamp = userStatusOnlineData.expires
-                        delayNotificatonsUntil = timestamp + 30
+                        delayNotificatonsUntil = Int32(clamping: Int64(timestamp) + 30)
                     case let .userStatusOffline(userStatusOfflineData):
                         let timestamp = userStatusOfflineData.wasOnline
                         delayNotificatonsUntil = timestamp

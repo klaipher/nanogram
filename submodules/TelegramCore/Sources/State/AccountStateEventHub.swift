@@ -268,7 +268,7 @@ final class AccountStateEventHub {
         })
 
         let timestamp = Int32(Date().timeIntervalSince1970)
-        let minReactionTimestamp = timestamp - 20
+        let minReactionTimestamp = Int32(clamping: Int64(timestamp) - 20)
         let reactionEvents = events.addedReactionEvents.compactMap { event -> (reactionAuthor: Peer, reaction: MessageReaction.Reaction, message: Message, timestamp: Int32)? in
             if event.timestamp >= minReactionTimestamp {
                 return (event.reactionAuthor, event.reaction, event.message, event.timestamp)

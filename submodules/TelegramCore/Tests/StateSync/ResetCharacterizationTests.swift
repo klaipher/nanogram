@@ -15,7 +15,7 @@ extension StateSyncTestCase {
         self.server.on(Name.getDifference, .result(StateSyncApi.differenceTooLong(pts: 999)))
         self.server.on(Name.getDialogs, .result(dialogs))
         self.server.on(Name.getPinnedDialogs, .result(StateSyncApi.peerDialogs(state: StateSyncApi.state(pts: 999, qts: 5, date: self.baseDate, seq: 10))))
-        self.server.on(Name.getDifference, .result(StateSyncApi.differenceEmpty(date: self.baseDate + 120, seq: 10)))
+        self.server.on(Name.getDifference, .result(StateSyncApi.differenceEmpty(date: self.baseDateOffset(by: 120), seq: 10)))
         self.fixture.resetStateManager()
     }
 }
@@ -37,8 +37,8 @@ final class ResetCharacterizationTests: StateSyncTestCase {
                 StateSyncApi.dialog(peer: StateSyncApi.peerChannel(301), topMessage: 20, pts: 70)
             ],
             messages: [
-                StateSyncApi.channelPost(id: 10, channelId: 300, date: self.baseDate + 10),
-                StateSyncApi.channelPost(id: 20, channelId: 301, date: self.baseDate + 20)
+                StateSyncApi.channelPost(id: 10, channelId: 300, date: self.baseDateOffset(by: 10)),
+                StateSyncApi.channelPost(id: 20, channelId: 301, date: self.baseDateOffset(by: 20))
             ],
             chats: [
                 StateSyncApi.broadcastChannel(id: 300, title: "C300"),
@@ -66,7 +66,7 @@ final class ResetCharacterizationTests: StateSyncTestCase {
         self.fixture.seedAccount(state: self.state(pts: 100))
         self.startAccountReset(dialogs: StateSyncApi.dialogs(
             dialogs: [StateSyncApi.dialog(peer: StateSyncApi.peerChannel(300), topMessage: 10, pts: 60)],
-            messages: [StateSyncApi.channelPost(id: 10, channelId: 300, date: self.baseDate + 10)],
+            messages: [StateSyncApi.channelPost(id: 10, channelId: 300, date: self.baseDateOffset(by: 10))],
             chats: [StateSyncApi.broadcastChannel(id: 300, title: "C300")]
         ))
 

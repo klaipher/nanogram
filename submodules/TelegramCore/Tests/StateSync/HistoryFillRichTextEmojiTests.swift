@@ -35,7 +35,7 @@ final class HistoryFillRichTextEmojiTests: StateSyncTestCase {
         let fileId: Int64 = 777
         let mediaId = MediaId(namespace: Namespaces.Media.CloudFile, id: fileId)
         self.server.on(getHistory, .result(StateSyncApi.messages([
-            RichTextEmojiApi.richMessage(id: 10, peerUserId: 500, date: self.baseDate + 10, fileId: fileId)
+            RichTextEmojiApi.richMessage(id: 10, peerUserId: 500, date: self.baseDateOffset(by: 10), fileId: fileId)
         ])))
         self.server.on(getCustomEmojiDocuments, .hold)
 
@@ -66,7 +66,7 @@ final class HistoryFillRichTextEmojiTests: StateSyncTestCase {
             transaction.storeMediaIfNotPresent(media: file)
         }
         self.server.on(getHistory, .result(StateSyncApi.messages([
-            RichTextEmojiApi.richMessage(id: 10, peerUserId: 500, date: self.baseDate + 10, fileId: fileId)
+            RichTextEmojiApi.richMessage(id: 10, peerUserId: 500, date: self.baseDateOffset(by: 10), fileId: fileId)
         ])))
 
         let _ = self.runHistoryFill(peerInput: .direct(peerId: peerId, threadId: nil), direction: self.downwardFillDirection(peerId))

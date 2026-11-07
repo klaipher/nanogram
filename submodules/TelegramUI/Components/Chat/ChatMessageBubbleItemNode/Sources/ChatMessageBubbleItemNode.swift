@@ -2322,7 +2322,10 @@ public class ChatMessageBubbleItemNode: ChatMessageItemView, ChatMessagePreviewI
                 }
             }
             if !found {
-                let contentNode = (contentNodeItem.type as! ChatMessageBubbleContentNode.Type).init()                
+                guard let contentNodeType = contentNodeItem.type as? ChatMessageBubbleContentNode.Type else {
+                    continue
+                }
+                let contentNode = contentNodeType.init()                
                 contentNode.index = contentNodeItem.bubbleAttributes.index
                 contentPropertiesAndPrepareLayouts.append((contentNodeItem.message, contentNode.supportsMosaic, contentNodeItem.attributes, contentNodeItem.bubbleAttributes, contentNode.asyncLayoutContent()))
                 if addedContentNodes == nil {
@@ -9181,7 +9184,7 @@ private final class ChatMessageBubblelessPaneView: UIView {
     }
     
     private var shapeLayer: CAShapeLayer {
-        return self.layer as! CAShapeLayer
+        return (self.layer as? CAShapeLayer) ?? CAShapeLayer()
     }
     
     func update(size: CGSize, radii: ChatMessageBubblelessCornerRadii, color: UIColor, transition: ComponentTransition) {

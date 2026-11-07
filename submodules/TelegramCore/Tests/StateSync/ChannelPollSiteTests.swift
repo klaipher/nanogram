@@ -47,7 +47,7 @@ final class ChannelPollSiteTests: StateSyncTestCase {
 
         self.server.push(StateSyncApi.updates([
             StateSyncApi.updatePinnedForumTopics(peer: StateSyncApi.peerChannel(331))
-        ], chats: [StateSyncApi.broadcastChannel(id: 331, title: "C331")], date: self.baseDate + 2, seq: 0))
+        ], chats: [StateSyncApi.broadcastChannel(id: 331, title: "C331")], date: self.baseDateOffset(by: 2), seq: 0))
         self.drainOperationQueue()
 
         XCTAssertEqual(self.server.requestNames, [Name.getDifference, Name.getChannelDifference])
@@ -69,7 +69,7 @@ final class ChannelPollSiteTests: StateSyncTestCase {
 
         self.server.push(StateSyncApi.updates([
             .updateEditChannelMessage(.init(message: edited, pts: 51, ptsCount: 1))
-        ], date: self.baseDate + 2, seq: 0))
+        ], date: self.baseDateOffset(by: 2), seq: 0))
         self.drainOperationQueue()
 
         XCTAssertEqual(self.server.requestNames, [Name.getDifference, Name.getChannelDifference])
@@ -89,7 +89,7 @@ final class ChannelPollSiteTests: StateSyncTestCase {
 
         self.server.push(StateSyncApi.updates([
             self.channelWebPage(channelId: 333, pts: 52)
-        ], date: self.baseDate + 2, seq: 0))
+        ], date: self.baseDateOffset(by: 2), seq: 0))
         self.drainOperationQueue()
 
         XCTAssertEqual(self.server.requestNames, [Name.getDifference, Name.getChannelDifference])
@@ -107,7 +107,7 @@ final class ChannelPollSiteTests: StateSyncTestCase {
 
         self.server.push(StateSyncApi.updates([
             self.channelWebPage(channelId: 334, pts: 51)
-        ], date: self.baseDate + 2, seq: 0))
+        ], date: self.baseDateOffset(by: 2), seq: 0))
         self.drainOperationQueue()
 
         XCTAssertEqual(self.server.requestNames, [Name.getDifference, Name.getChannelDifference])
@@ -126,7 +126,7 @@ final class ChannelPollSiteTests: StateSyncTestCase {
         // `pinned` (flags.0).
         self.server.push(StateSyncApi.updates([
             .updatePinnedChannelMessages(.init(flags: 1 << 0, channelId: 335, messages: [10], pts: 51, ptsCount: 1))
-        ], date: self.baseDate + 2, seq: 0))
+        ], date: self.baseDateOffset(by: 2), seq: 0))
         self.drainOperationQueue()
 
         XCTAssertEqual(self.server.requestNames, [Name.getDifference, Name.getChannelDifference])
@@ -146,14 +146,14 @@ final class ChannelPollSiteTests: StateSyncTestCase {
             return transaction.getTopPeerMessageIndex(peerId: channel, namespace: Namespaces.Message.Cloud)
         } ?? nil
         XCTAssertNil(topMessage, "precondition: no stored message, so the batch's chats make it an explicit poll")
-        let post = StateSyncApi.channelPost(id: 11, channelId: 336, date: self.baseDate + 2)
+        let post = StateSyncApi.channelPost(id: 11, channelId: 336, date: self.baseDateOffset(by: 2))
         self.server.always(Name.getChannelDifference, { _ in
             return .result(StateSyncApi.channelDifference(pts: 51, newMessages: [post]))
         })
 
         self.server.push(StateSyncApi.updates([
             StateSyncApi.updateNewChannelMessage(post, pts: 51)
-        ], chats: [StateSyncApi.broadcastChannel(id: 336, title: "C336")], date: self.baseDate + 2, seq: 0))
+        ], chats: [StateSyncApi.broadcastChannel(id: 336, title: "C336")], date: self.baseDateOffset(by: 2), seq: 0))
         self.drainOperationQueue()
 
         XCTAssertEqual(self.server.requestNames, [Name.getDifference, Name.getChannelDifference])

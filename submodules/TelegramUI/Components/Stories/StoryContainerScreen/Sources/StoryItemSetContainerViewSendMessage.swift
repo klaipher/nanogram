@@ -3138,7 +3138,7 @@ final class StoryItemSetContainerSendMessage: @unchecked(Sendable) {
         guard let component = view.component else {
             return
         }
-        self.enqueuePreparedMediaMessages(view: view, peer: peer, replyToMessageId: replyToMessageId, replyToStoryId: replyToStoryId, messages: legacyAssetPickerEnqueueMessages(context: component.context, account: component.context.account, signals: signals!), silentPosting: silentPosting, scheduleTime: scheduleTime, parameters: parameters, getAnimatedTransitionSource: getAnimatedTransitionSource, completion: completion)
+        self.enqueuePreparedMediaMessages(view: view, peer: peer, replyToMessageId: replyToMessageId, replyToStoryId: replyToStoryId, messages: legacyAssetPickerEnqueueMessages(context: component.context, account: component.context.account, signals: signals ?? []), silentPosting: silentPosting, scheduleTime: scheduleTime, parameters: parameters, getAnimatedTransitionSource: getAnimatedTransitionSource, completion: completion)
     }
 
     private func enqueuePreparedMediaMessages(view: StoryItemSetContainerComponent.View, peer: EnginePeer, replyToMessageId: EngineMessage.Id?, replyToStoryId: EngineStoryId?, messages: Signal<[LegacyAssetPickerEnqueueMessage], Void>, silentPosting: Bool, scheduleTime: Int32? = nil, parameters: ChatSendMessageActionSheetController.SendParameters? = nil, getAnimatedTransitionSource: ((String) -> UIView?)? = nil, completion: @escaping () -> Void = {}) {

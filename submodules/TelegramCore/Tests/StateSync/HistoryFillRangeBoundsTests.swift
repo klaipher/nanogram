@@ -20,10 +20,10 @@ final class HistoryFillRangeBoundsTests: StateSyncTestCase {
         let peerId = self.seedUserChat(500)
         // As the reset stores a dialog's top: Postbox gives the chat's first message a hole over its whole history,
         // and `.UpperHistoryBlock` removes it from 2 up, leaving `1 ... 1`.
-        self.fixture.storeMessage(peerId: peerId, id: 2, timestamp: self.baseDate + 2, authorId: peerId, text: "top", location: .UpperHistoryBlock)
+        self.fixture.storeMessage(peerId: peerId, id: 2, timestamp: self.baseDateOffset(by: 2), authorId: peerId, text: "top", location: .UpperHistoryBlock)
         XCTAssertEqual(self.fixture.holes(peerId: peerId), IndexSet(integer: 1), "precondition: the hole is 1 ... 1")
         self.server.on(getHistory, .result(StateSyncApi.messages([
-            StateSyncApi.privateMessage(id: 1, peerUserId: 500, fromUserId: 500, date: self.baseDate + 1)
+            StateSyncApi.privateMessage(id: 1, peerUserId: 500, fromUserId: 500, date: self.baseDateOffset(by: 1))
         ])))
 
         let _ = self.runHistoryFill(peerInput: .direct(peerId: peerId, threadId: nil), direction: .range(start: self.messageId(peerId, 1), end: self.messageId(peerId, 1)))

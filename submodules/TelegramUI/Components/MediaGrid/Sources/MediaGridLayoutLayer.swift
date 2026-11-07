@@ -29,7 +29,9 @@ final class MediaGridLayoutLayer: CALayer {
     }
 
     override init(layer: Any) {
-        let other = layer as! MediaGridLayoutLayer
+        guard let other = layer as? MediaGridLayoutLayer else {
+            preconditionFailure("CALayer copies a layer into one of its own class")
+        }
         self.dataSource = other.dataSource
         self.pool = other.pool
         super.init(layer: layer)

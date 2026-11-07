@@ -47,17 +47,17 @@ final class PushOrderingPinTests: StateSyncTestCase {
         let user = self.seedUserChat(200)
         self.launchIdle()
         // Only a regression sends it (after the gap wait); answered so that it fails on the log, not a hang.
-        self.server.on(Name.getDifference, .result(StateSyncApi.differenceEmpty(date: self.baseDate + 3, seq: 10)))
+        self.server.on(Name.getDifference, .result(StateSyncApi.differenceEmpty(date: self.baseDateOffset(by: 3), seq: 10)))
 
         self.pushAndSettle(StateSyncApi.updates([
             StateSyncApi.updateNewMessage(self.incomingMessage(102, from: 200), pts: 102),
             StateSyncApi.updateNewMessage(self.incomingMessage(101, from: 200), pts: 101)
-        ], date: self.baseDate + 2, seq: 0))
+        ], date: self.baseDateOffset(by: 2), seq: 0))
 
         XCTAssertEqual(self.server.requestNames, [Name.getDifference], "the out-of-order batch was treated as a pts hole")
         XCTAssertNotNil(self.fixture.message(self.messageId(user, 101)))
         XCTAssertNotNil(self.fixture.message(self.messageId(user, 102)))
-        XCTAssertEqual(self.fixture.accountState()?.state, self.state(pts: 102, qts: 5, date: self.baseDate + 1, seq: 10))
+        XCTAssertEqual(self.fixture.accountState()?.state, self.state(pts: 102, qts: 5, date: self.baseDateOffset(by: 1), seq: 10))
         let notified = self.notifiedMessageIds()
         XCTAssertEqual(notified.count, 1, "notified: \(notified)")
         XCTAssertEqual(Set(notified.flatMap { $0 }), Set([self.messageId(user, 101), self.messageId(user, 102)]))
@@ -71,15 +71,15 @@ final class PushOrderingPinTests: StateSyncTestCase {
     func testOutOfOrderQtsUpdatesInOneBatchAreAppliedInQtsOrder() {
         self.launchIdle(state: self.state(pts: 100, qts: 5))
         // Only a regression sends it (after the gap wait); answered so that it fails on the log, not a hang.
-        self.server.on(Name.getDifference, .result(StateSyncApi.differenceEmpty(date: self.baseDate + 3, seq: 10)))
+        self.server.on(Name.getDifference, .result(StateSyncApi.differenceEmpty(date: self.baseDateOffset(by: 3), seq: 10)))
 
         self.pushAndSettle(StateSyncApi.updates([
-            StateSyncApi.updateNewEncryptedMessage(chatId: 1, randomId: 7, date: self.baseDate + 2, qts: 7),
-            StateSyncApi.updateNewEncryptedMessage(chatId: 1, randomId: 6, date: self.baseDate + 2, qts: 6)
-        ], date: self.baseDate + 2, seq: 0))
+            StateSyncApi.updateNewEncryptedMessage(chatId: 1, randomId: 7, date: self.baseDateOffset(by: 2), qts: 7),
+            StateSyncApi.updateNewEncryptedMessage(chatId: 1, randomId: 6, date: self.baseDateOffset(by: 2), qts: 6)
+        ], date: self.baseDateOffset(by: 2), seq: 0))
 
         XCTAssertEqual(self.server.requestNames, [Name.getDifference], "the out-of-order batch was treated as a qts hole, or acknowledged without online presence")
-        XCTAssertEqual(self.fixture.accountState()?.state, self.state(pts: 100, qts: 7, date: self.baseDate + 1, seq: 10))
+        XCTAssertEqual(self.fixture.accountState()?.state, self.state(pts: 100, qts: 7, date: self.baseDateOffset(by: 1), seq: 10))
         XCTAssertEqual(self.queuedEncryptedRandomIds(chatId: 1), [6, 7])
         XCTAssertEqual(self.isUpdating.values, [true, false])
     }
@@ -93,8 +93,8 @@ final class PushOrderingPinTests: StateSyncTestCase {
         let deliveriesBefore = self.notifications.values.count
 
         self.pushAndSettle(StateSyncApi.updates([
-            .updateUserStatus(.init(userId: self.accountUserId, status: .userStatusOnline(.init(expires: self.baseDate + 300))))
-        ], date: self.baseDate + 2, seq: 0))
+            .updateUserStatus(.init(userId: self.accountUserId, status: .userStatusOnline(.init(expires: self.baseDateOffset(by: 300)))))
+        ], date: self.baseDateOffset(by: 2), seq: 0))
 
         XCTAssertEqual(self.server.requestNames, [Name.getDifference])
         XCTAssertEqual(self.notifications.values.count, deliveriesBefore + 1, "an own-presence-only batch queued no processEvents")
@@ -110,8 +110,8 @@ final class PushOrderingPinTests: StateSyncTestCase {
         let deliveriesBefore = self.notifications.values.count
 
         self.pushAndSettle(StateSyncApi.updates([
-            .updateUserStatus(.init(userId: 200, status: .userStatusOnline(.init(expires: self.baseDate + 300))))
-        ], date: self.baseDate + 2, seq: 0))
+            .updateUserStatus(.init(userId: 200, status: .userStatusOnline(.init(expires: self.baseDateOffset(by: 300)))))
+        ], date: self.baseDateOffset(by: 2), seq: 0))
 
         XCTAssertEqual(self.server.requestNames, [Name.getDifference])
         XCTAssertEqual(self.notifications.values.count, deliveriesBefore)
@@ -125,7 +125,7 @@ final class PushOrderingPinTests: StateSyncTestCase {
     func testAppliedQtsIsAcknowledgedWithOneReceivedQueue() {
         self.fixture.seedAccount(state: self.state(pts: 100, qts: 5))
         self.makeStateManager(shouldKeepOnlinePresence: .single(true))
-        self.server.on(Name.getDifference, .result(StateSyncApi.differenceEmpty(date: self.baseDate + 1, seq: 10)))
+        self.server.on(Name.getDifference, .result(StateSyncApi.differenceEmpty(date: self.baseDateOffset(by: 1), seq: 10)))
         // `messages.receivedQueue` returns `Vector<long>`; every one is answered, so a repeat shows in the log.
         self.server.always(Name.receivedQueue, { _ in
             return .result([Int64]())
@@ -136,15 +136,15 @@ final class PushOrderingPinTests: StateSyncTestCase {
         XCTAssertEqual(self.server.requestNames, [Name.getDifference], "precondition: the launch applied no qts")
 
         self.pushAndSettle(StateSyncApi.updates([
-            StateSyncApi.updateNewEncryptedMessage(chatId: 1, randomId: 6, date: self.baseDate + 2, qts: 6)
-        ], date: self.baseDate + 2, seq: 0))
+            StateSyncApi.updateNewEncryptedMessage(chatId: 1, randomId: 6, date: self.baseDateOffset(by: 2), qts: 6)
+        ], date: self.baseDateOffset(by: 2), seq: 0))
         XCTAssertTrue(self.server.waitForRequest(Name.receivedQueue), "the applied qts was not acknowledged: \(self.server.requestNames)")
         // The same qts again: already applied, skipped, nothing new to acknowledge. The acknowledgement runs
         // through `appliedQtsPromise`, off the operation queue that `pushAndSettle` drains, so a second one is
         // waited for over a short window.
         self.pushAndSettle(StateSyncApi.updates([
-            StateSyncApi.updateNewEncryptedMessage(chatId: 1, randomId: 6, date: self.baseDate + 2, qts: 6)
-        ], date: self.baseDate + 2, seq: 0))
+            StateSyncApi.updateNewEncryptedMessage(chatId: 1, randomId: 6, date: self.baseDateOffset(by: 2), qts: 6)
+        ], date: self.baseDateOffset(by: 2), seq: 0))
         XCTAssertFalse(self.server.waitForRequest(Name.receivedQueue, count: 2, timeout: 0.5), "the duplicate qts was acknowledged again: \(self.server.requestNames)")
 
         XCTAssertEqual(self.server.requestNames, [Name.getDifference, Name.receivedQueue])

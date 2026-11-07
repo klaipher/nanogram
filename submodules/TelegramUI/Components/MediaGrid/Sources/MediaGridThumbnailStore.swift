@@ -712,7 +712,7 @@ public final class MediaGridThumbnailStore {
             var url: URL?
             if let stamp {
                 url = self.pageURL(directory: directory, page: page, stamp: stamp)
-                if let data = try? Data(contentsOf: url!), let decoded = MediaGridThumbnailStore.decodePage(data), decoded.width == self.pagePixelSize, decoded.height == self.pagePixelSize {
+                if let url, let data = try? Data(contentsOf: url), let decoded = MediaGridThumbnailStore.decodePage(data), decoded.width == self.pagePixelSize, decoded.height == self.pagePixelSize {
                     image = decoded
                 }
             }

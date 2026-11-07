@@ -874,9 +874,12 @@ private func peerInfoPersonalOrLinkedChannel(context: AccountContext, peerId: En
 /// Whether Settings ▸ Contacts shows "!": contacts access is neither allowed nor limited while contacts sync is on,
 /// and the permission warning has not been dismissed (it was the Contacts tab's badge).
 private func contactsPermissionWarning(context: AccountContext) -> Signal<Bool, NoError> {
+    guard let noticeKey = ApplicationSpecificNotice.permissionWarningKey(permission: .contacts) else {
+        return .single(false)
+    }
     return combineLatest(
         DeviceAccess.authorizationStatus(subject: .contacts),
-        context.sharedContext.accountManager.noticeEntry(key: ApplicationSpecificNotice.permissionWarningKey(permission: .contacts)!),
+        context.sharedContext.accountManager.noticeEntry(key: noticeKey),
         context.engine.data.subscribe(TelegramEngine.EngineData.Item.Configuration.ApplicationSpecificPreference(key: PreferencesKeys.contactsSettings))
     )
     |> map { status, noticeView, preferences -> Bool in

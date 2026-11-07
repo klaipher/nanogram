@@ -58,16 +58,16 @@ final class ReplayPrepassTests: StateSyncTestCase {
 
     func testPrepareListsOnlyIncomingTopMessagesThatAreNotStored() {
         let user = self.seedUserChat(2000)
-        self.fixture.storeMessage(peerId: user, id: 10, timestamp: self.baseDate + 3, authorId: user, text: "stored")
+        self.fixture.storeMessage(peerId: user, id: 10, timestamp: self.baseDateOffset(by: 3), authorId: user, text: "stored")
         let finalState = self.finalState([
             .AddMessages([
-                self.message(user, 9, timestamp: self.baseDate + 2, authorId: user, incoming: true),
-                self.message(user, 10, timestamp: self.baseDate + 3, authorId: user, incoming: true),
-                self.message(user, 11, timestamp: self.baseDate + 1, authorId: user, incoming: true),
-                self.message(user, 12, timestamp: self.baseDate + 4, authorId: StateSyncFixture.accountPeerId, incoming: false)
+                self.message(user, 9, timestamp: self.baseDateOffset(by: 2), authorId: user, incoming: true),
+                self.message(user, 10, timestamp: self.baseDateOffset(by: 3), authorId: user, incoming: true),
+                self.message(user, 11, timestamp: self.baseDateOffset(by: 1), authorId: user, incoming: true),
+                self.message(user, 12, timestamp: self.baseDateOffset(by: 4), authorId: StateSyncFixture.accountPeerId, incoming: false)
             ], .UpperHistoryBlock),
             // Not at the top of its history: neither scanned for activity nor reported.
-            .AddMessages([self.message(user, 13, timestamp: self.baseDate + 5, authorId: user, incoming: true)], .Random)
+            .AddMessages([self.message(user, 13, timestamp: self.baseDateOffset(by: 5), authorId: user, incoming: true)], .Random)
         ])
 
         let prepass = self.prepare(finalState)
@@ -76,7 +76,7 @@ final class ReplayPrepassTests: StateSyncTestCase {
         // The author's activity is the highest timestamp of its three messages at the top: the stored message
         // 10's +3 raises the earlier 9's +2 (a message already stored still counts), and the later 11's +1 does not
         // lower it.
-        XCTAssertEqual(prepass?.peerActivityTimestamps, [user: self.baseDate + 3])
+        XCTAssertEqual(prepass?.peerActivityTimestamps, [user: self.baseDateOffset(by: 3)])
     }
 
     func testPrepareStartsEachPreviousStateHoleAboveTheSynchronizedOrStoredTop() {

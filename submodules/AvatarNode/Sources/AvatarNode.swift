@@ -282,7 +282,9 @@ public func avatarNodePeerState(peer: EnginePeer?, representation: TelegramMedia
 /// `ContentNode`'s drawing (the placeholder: gradient, letters or icon, clip and cutout) into the current context, in
 /// UIKit orientation. Shared with `AvatarComponent`.
 public func drawAvatarNodeContent(bounds: CGRect, parameters: Any?, isRasterizing: Bool) {
-    let context = UIGraphicsGetCurrentContext()!
+    guard let context = UIGraphicsGetCurrentContext() else {
+        return
+    }
     
     if !isRasterizing {
         context.setBlendMode(.copy)
@@ -336,7 +338,9 @@ public func drawAvatarNodeContent(bounds: CGRect, parameters: Any?, isRasterizin
     var locations: [CGFloat] = [1.0, 0.0]
     
     let colorSpace = CGColorSpaceCreateDeviceRGB()
-    let gradient = CGGradient(colorsSpace: colorSpace, colors: colorsArray, locations: &locations)!
+    guard let gradient = CGGradient(colorsSpace: colorSpace, colors: colorsArray, locations: &locations) else {
+        return
+    }
     
     if diagonal {
         context.drawLinearGradient(gradient, start: CGPoint(x: 0.0, y: bounds.size.height), end: CGPoint(x: bounds.size.width, y: 0.0), options: CGGradientDrawingOptions())
@@ -354,7 +358,7 @@ public func drawAvatarNodeContent(bounds: CGRect, parameters: Any?, isRasterizin
             context.translateBy(x: -bounds.size.width / 2.0, y: -bounds.size.height / 2.0)
             
             if let deletedIcon = deletedIcon {
-                context.draw(deletedIcon.cgImage!, in: CGRect(origin: CGPoint(x: floor((bounds.size.width - deletedIcon.size.width) / 2.0), y: floor((bounds.size.height - deletedIcon.size.height) / 2.0)), size: deletedIcon.size))
+                if let cgImage = deletedIcon.cgImage { context.draw(cgImage, in: CGRect(origin: CGPoint(x: floor((bounds.size.width - deletedIcon.size.width) / 2.0), y: floor((bounds.size.height - deletedIcon.size.height) / 2.0)), size: deletedIcon.size)) }
             }
         } else if case .phoneIcon = parameters.icon {
             let factor: CGFloat = 1.0
@@ -363,7 +367,7 @@ public func drawAvatarNodeContent(bounds: CGRect, parameters: Any?, isRasterizin
             context.translateBy(x: -bounds.size.width / 2.0, y: -bounds.size.height / 2.0)
             
             if let phoneIcon = phoneIcon {
-                context.draw(phoneIcon.cgImage!, in: CGRect(origin: CGPoint(x: floor((bounds.size.width - phoneIcon.size.width) / 2.0), y: floor((bounds.size.height - phoneIcon.size.height) / 2.0)), size: phoneIcon.size))
+                if let cgImage = phoneIcon.cgImage { context.draw(cgImage, in: CGRect(origin: CGPoint(x: floor((bounds.size.width - phoneIcon.size.width) / 2.0), y: floor((bounds.size.height - phoneIcon.size.height) / 2.0)), size: phoneIcon.size)) }
             }
         } else if case .savedMessagesIcon = parameters.icon {
             let factor = bounds.size.width / 60.0
@@ -372,7 +376,7 @@ public func drawAvatarNodeContent(bounds: CGRect, parameters: Any?, isRasterizin
             context.translateBy(x: -bounds.size.width / 2.0, y: -bounds.size.height / 2.0)
             
             if let savedMessagesIcon = savedMessagesIcon {
-                context.draw(savedMessagesIcon.cgImage!, in: CGRect(origin: CGPoint(x: floor((bounds.size.width - savedMessagesIcon.size.width) / 2.0), y: floor((bounds.size.height - savedMessagesIcon.size.height) / 2.0)), size: savedMessagesIcon.size))
+                if let cgImage = savedMessagesIcon.cgImage { context.draw(cgImage, in: CGRect(origin: CGPoint(x: floor((bounds.size.width - savedMessagesIcon.size.width) / 2.0), y: floor((bounds.size.height - savedMessagesIcon.size.height) / 2.0)), size: savedMessagesIcon.size)) }
             }
         } else if case .repostIcon = parameters.icon {
             if !"".isEmpty {
@@ -382,7 +386,7 @@ public func drawAvatarNodeContent(bounds: CGRect, parameters: Any?, isRasterizin
                 context.translateBy(x: -bounds.size.width / 2.0, y: -bounds.size.height / 2.0)
                 
                 if let repostStoryIcon = repostStoryIcon {
-                    context.draw(repostStoryIcon.cgImage!, in: CGRect(origin: CGPoint(x: floor((bounds.size.width - repostStoryIcon.size.width) / 2.0), y: floor((bounds.size.height - repostStoryIcon.size.height) / 2.0)), size: repostStoryIcon.size))
+                    if let cgImage = repostStoryIcon.cgImage { context.draw(cgImage, in: CGRect(origin: CGPoint(x: floor((bounds.size.width - repostStoryIcon.size.width) / 2.0), y: floor((bounds.size.height - repostStoryIcon.size.height) / 2.0)), size: repostStoryIcon.size)) }
                 }
             }
         } else if case .repliesIcon = parameters.icon {
@@ -392,7 +396,7 @@ public func drawAvatarNodeContent(bounds: CGRect, parameters: Any?, isRasterizin
             context.translateBy(x: -bounds.size.width / 2.0, y: -bounds.size.height / 2.0)
             
             if let repliesIcon = repliesIcon {
-                context.draw(repliesIcon.cgImage!, in: CGRect(origin: CGPoint(x: floor((bounds.size.width - repliesIcon.size.width) / 2.0), y: floor((bounds.size.height - repliesIcon.size.height) / 2.0)), size: repliesIcon.size))
+                if let cgImage = repliesIcon.cgImage { context.draw(cgImage, in: CGRect(origin: CGPoint(x: floor((bounds.size.width - repliesIcon.size.width) / 2.0), y: floor((bounds.size.height - repliesIcon.size.height) / 2.0)), size: repliesIcon.size)) }
             }
         } else if case let .anonymousSavedMessagesIcon(isColored) = parameters.icon {
             let factor = bounds.size.width / 60.0
@@ -402,11 +406,11 @@ public func drawAvatarNodeContent(bounds: CGRect, parameters: Any?, isRasterizin
             
             if let theme = parameters.theme, theme.overallDarkAppearance, !isColored {
                 if let anonymousSavedMessagesDarkIcon = anonymousSavedMessagesDarkIcon {
-                    context.draw(anonymousSavedMessagesDarkIcon.cgImage!, in: CGRect(origin: CGPoint(x: floor((bounds.size.width - anonymousSavedMessagesDarkIcon.size.width) / 2.0), y: floor((bounds.size.height - anonymousSavedMessagesDarkIcon.size.height) / 2.0)), size: anonymousSavedMessagesDarkIcon.size))
+                    if let cgImage = anonymousSavedMessagesDarkIcon.cgImage { context.draw(cgImage, in: CGRect(origin: CGPoint(x: floor((bounds.size.width - anonymousSavedMessagesDarkIcon.size.width) / 2.0), y: floor((bounds.size.height - anonymousSavedMessagesDarkIcon.size.height) / 2.0)), size: anonymousSavedMessagesDarkIcon.size)) }
                 }
             } else {
                 if let anonymousSavedMessagesIcon = anonymousSavedMessagesIcon {
-                    context.draw(anonymousSavedMessagesIcon.cgImage!, in: CGRect(origin: CGPoint(x: floor((bounds.size.width - anonymousSavedMessagesIcon.size.width) / 2.0), y: floor((bounds.size.height - anonymousSavedMessagesIcon.size.height) / 2.0)), size: anonymousSavedMessagesIcon.size))
+                    if let cgImage = anonymousSavedMessagesIcon.cgImage { context.draw(cgImage, in: CGRect(origin: CGPoint(x: floor((bounds.size.width - anonymousSavedMessagesIcon.size.width) / 2.0), y: floor((bounds.size.height - anonymousSavedMessagesIcon.size.height) / 2.0)), size: anonymousSavedMessagesIcon.size)) }
                 }
             }
         } else if case .myNotesIcon = parameters.icon {
@@ -416,7 +420,7 @@ public func drawAvatarNodeContent(bounds: CGRect, parameters: Any?, isRasterizin
             context.translateBy(x: -bounds.size.width / 2.0, y: -bounds.size.height / 2.0)
             
             if let myNotesIcon = myNotesIcon {
-                context.draw(myNotesIcon.cgImage!, in: CGRect(origin: CGPoint(x: floor((bounds.size.width - myNotesIcon.size.width) / 2.0), y: floor((bounds.size.height - myNotesIcon.size.height) / 2.0)), size: myNotesIcon.size))
+                if let cgImage = myNotesIcon.cgImage { context.draw(cgImage, in: CGRect(origin: CGPoint(x: floor((bounds.size.width - myNotesIcon.size.width) / 2.0), y: floor((bounds.size.height - myNotesIcon.size.height) / 2.0)), size: myNotesIcon.size)) }
             }
         } else if case .cameraIcon = parameters.icon {
             let factor = bounds.size.width / 40.0
@@ -425,7 +429,7 @@ public func drawAvatarNodeContent(bounds: CGRect, parameters: Any?, isRasterizin
             context.translateBy(x: -bounds.size.width / 2.0, y: -bounds.size.height / 2.0)
             
             if let cameraIcon = cameraIcon {
-                context.draw(cameraIcon.cgImage!, in: CGRect(origin: CGPoint(x: floor((bounds.size.width - cameraIcon.size.width) / 2.0), y: floor((bounds.size.height - cameraIcon.size.height) / 2.0)), size: cameraIcon.size))
+                if let cgImage = cameraIcon.cgImage { context.draw(cgImage, in: CGRect(origin: CGPoint(x: floor((bounds.size.width - cameraIcon.size.width) / 2.0), y: floor((bounds.size.height - cameraIcon.size.height) / 2.0)), size: cameraIcon.size)) }
             }
         } else if case .storyIcon = parameters.icon {
             let factor = bounds.size.width / 60.0
@@ -434,7 +438,7 @@ public func drawAvatarNodeContent(bounds: CGRect, parameters: Any?, isRasterizin
             context.translateBy(x: -bounds.size.width / 2.0, y: -bounds.size.height / 2.0)
             
             if let storyIcon = storyIcon {
-                context.draw(storyIcon.cgImage!, in: CGRect(origin: CGPoint(x: floor((bounds.size.width - storyIcon.size.width) / 2.0), y: floor((bounds.size.height - storyIcon.size.height) / 2.0)), size: storyIcon.size))
+                if let cgImage = storyIcon.cgImage { context.draw(cgImage, in: CGRect(origin: CGPoint(x: floor((bounds.size.width - storyIcon.size.width) / 2.0), y: floor((bounds.size.height - storyIcon.size.height) / 2.0)), size: storyIcon.size)) }
             }
         } else if case .editAvatarIcon = parameters.icon, let theme = parameters.theme, !parameters.hasImage {
             context.translateBy(x: bounds.size.width / 2.0, y: bounds.size.height / 2.0)
@@ -442,9 +446,9 @@ public func drawAvatarNodeContent(bounds: CGRect, parameters: Any?, isRasterizin
             context.translateBy(x: -bounds.size.width / 2.0, y: -bounds.size.height / 2.0)
             
             if bounds.width > 90.0, let editAvatarIcon = generateTintedImage(image: UIImage(bundleImageName: "Avatar/EditAvatarIconLarge"), color: theme.list.itemAccentColor) {
-                context.draw(editAvatarIcon.cgImage!, in: CGRect(origin: CGPoint(x: floor((bounds.size.width - editAvatarIcon.size.width) / 2.0) + 0.5, y: floor((bounds.size.height - editAvatarIcon.size.height) / 2.0) + 1.0), size: editAvatarIcon.size))
+                if let cgImage = editAvatarIcon.cgImage { context.draw(cgImage, in: CGRect(origin: CGPoint(x: floor((bounds.size.width - editAvatarIcon.size.width) / 2.0) + 0.5, y: floor((bounds.size.height - editAvatarIcon.size.height) / 2.0) + 1.0), size: editAvatarIcon.size)) }
             } else if let editAvatarIcon = generateTintedImage(image: UIImage(bundleImageName: "Avatar/EditAvatarIcon"), color: theme.list.itemAccentColor) {
-                context.draw(editAvatarIcon.cgImage!, in: CGRect(origin: CGPoint(x: floor((bounds.size.width - editAvatarIcon.size.width) / 2.0) + 0.5, y: floor((bounds.size.height - editAvatarIcon.size.height) / 2.0) + 1.0), size: editAvatarIcon.size))
+                if let cgImage = editAvatarIcon.cgImage { context.draw(cgImage, in: CGRect(origin: CGPoint(x: floor((bounds.size.width - editAvatarIcon.size.width) / 2.0) + 0.5, y: floor((bounds.size.height - editAvatarIcon.size.height) / 2.0) + 1.0), size: editAvatarIcon.size)) }
             }
         } else if case .archivedChatsIcon = parameters.icon {
             let factor = bounds.size.width / 60.0
@@ -453,7 +457,7 @@ public func drawAvatarNodeContent(bounds: CGRect, parameters: Any?, isRasterizin
             context.translateBy(x: -bounds.size.width / 2.0, y: -bounds.size.height / 2.0)
             
             if let archivedChatsIcon = generateTintedImage(image: archivedChatsIcon, color: iconColor) {
-                context.draw(archivedChatsIcon.cgImage!, in: CGRect(origin: CGPoint(x: floor((bounds.size.width - archivedChatsIcon.size.width) / 2.0), y: floor((bounds.size.height - archivedChatsIcon.size.height) / 2.0)), size: archivedChatsIcon.size))
+                if let cgImage = archivedChatsIcon.cgImage { context.draw(cgImage, in: CGRect(origin: CGPoint(x: floor((bounds.size.width - archivedChatsIcon.size.width) / 2.0), y: floor((bounds.size.height - archivedChatsIcon.size.height) / 2.0)), size: archivedChatsIcon.size)) }
             }
         } else {
             var letters = parameters.letters
@@ -557,11 +561,11 @@ public final class AvatarEditOverlayNode: ASDisplayNode {
         
         if bounds.width > 90.0 {
             if let editAvatarIcon = generateTintedImage(image: UIImage(bundleImageName: "Avatar/EditAvatarIconLarge"), color: .white) {
-                context.draw(editAvatarIcon.cgImage!, in: CGRect(origin: CGPoint(x: floor((bounds.size.width - editAvatarIcon.size.width) / 2.0) + 0.5, y: floor((bounds.size.height - editAvatarIcon.size.height) / 2.0) + 1.0), size: editAvatarIcon.size))
+                if let cgImage = editAvatarIcon.cgImage { context.draw(cgImage, in: CGRect(origin: CGPoint(x: floor((bounds.size.width - editAvatarIcon.size.width) / 2.0) + 0.5, y: floor((bounds.size.height - editAvatarIcon.size.height) / 2.0) + 1.0), size: editAvatarIcon.size)) }
             }
         } else {
             if let editAvatarIcon = generateTintedImage(image: UIImage(bundleImageName: "Avatar/EditAvatarIcon"), color: .white) {
-                context.draw(editAvatarIcon.cgImage!, in: CGRect(origin: CGPoint(x: floor((bounds.size.width - editAvatarIcon.size.width) / 2.0) + 0.5, y: floor((bounds.size.height - editAvatarIcon.size.height) / 2.0) + 1.0), size: editAvatarIcon.size))
+                if let cgImage = editAvatarIcon.cgImage { context.draw(cgImage, in: CGRect(origin: CGPoint(x: floor((bounds.size.width - editAvatarIcon.size.width) / 2.0) + 0.5, y: floor((bounds.size.height - editAvatarIcon.size.height) / 2.0) + 1.0), size: editAvatarIcon.size)) }
             }
         }
     }

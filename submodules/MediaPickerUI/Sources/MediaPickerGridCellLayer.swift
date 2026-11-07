@@ -121,7 +121,7 @@ private func gridCellImage(of contents: Any?) -> CGImage? {
     guard CFGetTypeID(object) == CGImage.typeID else {
         return nil
     }
-    return (object as! CGImage)
+    return (object as? CGImage)
 }
 
 private func gridCellVisibleImage(contents: Any?, contentsRect: CGRect) -> UIImage? {

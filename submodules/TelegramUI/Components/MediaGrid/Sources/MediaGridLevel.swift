@@ -26,7 +26,7 @@ public enum MediaGridLevel: Int, CaseIterable, Comparable {
     }
 
     private var index: Int {
-        return MediaGridLevel.allCases.firstIndex(of: self)!
+        return MediaGridLevel.allCases.firstIndex(of: self) ?? 0
     }
 
     public var zoomedIn: MediaGridLevel? {

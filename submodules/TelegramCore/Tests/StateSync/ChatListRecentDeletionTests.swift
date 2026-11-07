@@ -72,14 +72,14 @@ final class ChatListRecentDeletionTests: StateSyncTestCase {
     /// runs in.
     func testResetDoesNotStoreATopMessageDeletedWhileTheDialogsWereInFlight() {
         let user = self.seedUserChat(200)
-        self.fixture.storeMessage(peerId: user, id: 9, timestamp: self.baseDate + 9, authorId: user, text: "older")
-        self.fixture.storeMessage(peerId: user, id: 10, timestamp: self.baseDate + 10, authorId: user, text: "top")
+        self.fixture.storeMessage(peerId: user, id: 9, timestamp: self.baseDateOffset(by: 9), authorId: user, text: "older")
+        self.fixture.storeMessage(peerId: user, id: 10, timestamp: self.baseDateOffset(by: 10), authorId: user, text: "top")
         self.fixture.seedAccount(state: self.state(pts: 100))
         self.makeStateManager()
         self.server.on(Name.getDifference, .result(StateSyncApi.differenceTooLong(pts: 999)))
         self.server.on(Name.getDialogs, .hold)
         self.server.on(Name.getPinnedDialogs, .result(self.pinnedDialogs(pts: 999)))
-        self.server.on(Name.getDifference, .result(StateSyncApi.differenceEmpty(date: self.baseDate + 120, seq: 10)))
+        self.server.on(Name.getDifference, .result(StateSyncApi.differenceEmpty(date: self.baseDateOffset(by: 120), seq: 10)))
         self.fixture.resetStateManager()
 
         XCTAssertTrue(self.server.waitForRequest(Name.getDialogs), "the reset did not ask for the dialogs: \(self.server.requestNames)")
@@ -104,8 +104,8 @@ final class ChatListRecentDeletionTests: StateSyncTestCase {
     /// names it. The fill does not store it again, and the chat's chat-list entry takes its index from 9.
     func testChatListFillDoesNotStoreATopMessageAPushDeletedWhileThePageWasInFlight() {
         let user = self.seedUserChat(200)
-        self.fixture.storeMessage(peerId: user, id: 9, timestamp: self.baseDate + 9, authorId: user, text: "older")
-        self.fixture.storeMessage(peerId: user, id: 10, timestamp: self.baseDate + 10, authorId: user, text: "top")
+        self.fixture.storeMessage(peerId: user, id: 9, timestamp: self.baseDateOffset(by: 9), authorId: user, text: "older")
+        self.fixture.storeMessage(peerId: user, id: 10, timestamp: self.baseDateOffset(by: 10), authorId: user, text: "top")
         self.launchIdle()
         self.server.on(Name.getDialogs, .hold)
         self.server.on(Name.getPinnedDialogs, .result(self.pinnedDialogs(pts: 100)))
@@ -115,7 +115,7 @@ final class ChatListRecentDeletionTests: StateSyncTestCase {
         XCTAssertTrue(self.server.waitForRequest(Name.getDialogs), "the fill did not ask for the page: \(self.server.requestNames)")
         self.server.push(StateSyncApi.updates([
             .updateDeleteMessages(.init(messages: [10], pts: 101, ptsCount: 1))
-        ], date: self.baseDate + 2, seq: 0))
+        ], date: self.baseDateOffset(by: 2), seq: 0))
         self.drainOperationQueue()
         XCTAssertEqual(self.fixture.accountState()?.state?.pts, 101, "precondition: the push was applied")
         XCTAssertNil(self.fixture.message(self.messageId(user, 10)), "precondition: the push deleted 10")
@@ -139,8 +139,8 @@ final class ChatListRecentDeletionTests: StateSyncTestCase {
         }
         let askedDelays = self.recordStaleRestartDelays { _ in 0.0 }
         let user = self.seedUserChat(200)
-        self.fixture.storeMessage(peerId: user, id: 10, timestamp: self.baseDate + 10, authorId: user, text: "top")
-        self.fixture.storeMessage(peerId: user, id: 11, timestamp: self.baseDate + 11, authorId: user, text: "deleted during the gap")
+        self.fixture.storeMessage(peerId: user, id: 10, timestamp: self.baseDateOffset(by: 10), authorId: user, text: "top")
+        self.fixture.storeMessage(peerId: user, id: 11, timestamp: self.baseDateOffset(by: 11), authorId: user, text: "deleted during the gap")
         self.fixture.seedAccount(state: self.state(pts: 100))
         self.makeStateManager()
         self.server.on(Name.getDifference, .result(StateSyncApi.differenceTooLong(pts: 999)))
@@ -148,7 +148,7 @@ final class ChatListRecentDeletionTests: StateSyncTestCase {
         self.server.on(Name.getDialogs, .hold)
         self.server.on(Name.getPinnedDialogs, .hold)
         self.server.on(Name.getPinnedDialogs, .result(self.pinnedDialogs(pts: 999)))
-        self.server.on(Name.getDifference, .result(StateSyncApi.differenceEmpty(date: self.baseDate + 120, seq: 10)))
+        self.server.on(Name.getDifference, .result(StateSyncApi.differenceEmpty(date: self.baseDateOffset(by: 120), seq: 10)))
         FetchedAnswerAge.maximum = 0.2
         self.fixture.resetStateManager()
 
@@ -183,7 +183,7 @@ final class ChatListRecentDeletionTests: StateSyncTestCase {
         let askedDelays = self.recordStaleRestartDelays { _ in 0.0 }
         self.fixture.seedAccount(state: self.state(pts: 100))
         let user = self.seedUserChat(200)
-        self.fixture.storeMessage(peerId: user, id: 10, timestamp: self.baseDate + 10, authorId: user, text: "top")
+        self.fixture.storeMessage(peerId: user, id: 10, timestamp: self.baseDateOffset(by: 10), authorId: user, text: "top")
         self.server.on(Name.getDialogs, .result(self.userDialogs(200, topMessage: 10)))
         self.server.on(Name.getDialogs, .hold)
         self.server.on(Name.getPinnedDialogs, .hold)
@@ -223,8 +223,8 @@ final class ChatListRecentDeletionTests: StateSyncTestCase {
         XCTAssertEqual([1, 2, 3, 4, 5, 6, 7, 8, 1000].map(FetchedAnswerAge.staleRestartDelay), [1.0, 2.0, 4.0, 8.0, 16.0, 32.0, 60.0, 60.0, 60.0])
         let askedDelays = self.recordStaleRestartDelays { n in 0.25 * Double(n) }
         let user = self.seedUserChat(200)
-        self.fixture.storeMessage(peerId: user, id: 10, timestamp: self.baseDate + 10, authorId: user, text: "top")
-        self.fixture.storeMessage(peerId: user, id: 11, timestamp: self.baseDate + 11, authorId: user, text: "deleted during the gap")
+        self.fixture.storeMessage(peerId: user, id: 10, timestamp: self.baseDateOffset(by: 10), authorId: user, text: "top")
+        self.fixture.storeMessage(peerId: user, id: 11, timestamp: self.baseDateOffset(by: 11), authorId: user, text: "deleted during the gap")
         self.fixture.seedAccount(state: self.state(pts: 100))
         self.makeStateManager()
         let page = self.userDialogs(200, topMessage: 10)
@@ -248,7 +248,7 @@ final class ChatListRecentDeletionTests: StateSyncTestCase {
         self.server.on(Name.getPinnedDialogs, .hold)
         self.server.on(Name.getPinnedDialogs, .result(self.pinnedDialogs(pts: 999)))
         self.server.on(Name.getPinnedDialogs, .result(self.pinnedDialogs(pts: 999)))
-        self.server.on(Name.getDifference, .result(StateSyncApi.differenceEmpty(date: self.baseDate + 120, seq: 10)))
+        self.server.on(Name.getDifference, .result(StateSyncApi.differenceEmpty(date: self.baseDateOffset(by: 120), seq: 10)))
         FetchedAnswerAge.maximum = 0.2
         self.fixture.resetStateManager()
 

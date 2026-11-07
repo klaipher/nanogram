@@ -107,7 +107,7 @@ extension ReplayContext {
                                             if indexKeysByFile[mediaId] == nil {
                                                 indexKeysByFile[mediaId] = [key]
                                             } else {
-                                                indexKeysByFile[mediaId]!.append(key)
+                                                indexKeysByFile[mediaId, default: []].append(key)
                                             }
                                         }
                                         break
@@ -123,7 +123,7 @@ extension ReplayContext {
                                             if indexKeysByFile[mediaId] == nil {
                                                 indexKeysByFile[mediaId] = [key]
                                             } else {
-                                                indexKeysByFile[mediaId]!.append(key)
+                                                indexKeysByFile[mediaId, default: []].append(key)
                                             }
                                         }
                                     }
@@ -162,7 +162,7 @@ extension ReplayContext {
                                     continue loop
                                 }
 
-                                var updatedInfos = transaction.getItemCollectionsInfos(namespace: info.id.namespace).map { $0.1 as! StickerPackCollectionInfo }
+                                var updatedInfos = transaction.getItemCollectionsInfos(namespace: info.id.namespace).compactMap { $0.1 as? StickerPackCollectionInfo }
                                 if let index = updatedInfos.firstIndex(where: { $0.id == info.id }) {
                                     let currentInfo = updatedInfos[index]
                                     updatedInfos.remove(at: index)
@@ -183,7 +183,7 @@ extension ReplayContext {
                                 case .emoji:
                                     collectionNamespace = Namespaces.ItemCollection.CloudEmojiPacks
                             }
-                            let currentInfos = transaction.getItemCollectionsInfos(namespace: collectionNamespace).map { $0.1 as! StickerPackCollectionInfo }
+                            let currentInfos = transaction.getItemCollectionsInfos(namespace: collectionNamespace).compactMap { $0.1 as? StickerPackCollectionInfo }
                             if Set(currentInfos.map { $0.id.id }) != Set(ids) {
                                 switch namespace {
                                     case .stickers:
@@ -200,7 +200,9 @@ extension ReplayContext {
                                 }
                                 var updatedInfos: [StickerPackCollectionInfo] = []
                                 for id in ids {
-                                    let currentInfo = currentDict[ItemCollectionId(namespace: collectionNamespace, id: id)]!
+                                    guard let currentInfo = currentDict[ItemCollectionId(namespace: collectionNamespace, id: id)] else {
+                                        continue
+                                    }
                                     updatedInfos.append(currentInfo)
                                 }
                                 transaction.replaceItemCollectionInfos(namespace: collectionNamespace, itemCollectionInfos: updatedInfos.map { ($0.id, $0) })
@@ -215,7 +217,7 @@ extension ReplayContext {
                             case .emoji:
                                 collectionNamespace = Namespaces.ItemCollection.CloudEmojiPacks
                             }
-                            let currentInfos = transaction.getItemCollectionsInfos(namespace: collectionNamespace).map { $0.1 as! StickerPackCollectionInfo }
+                            let currentInfos = transaction.getItemCollectionsInfos(namespace: collectionNamespace).compactMap { $0.1 as? StickerPackCollectionInfo }
 
                             var currentDict: [ItemCollectionId: StickerPackCollectionInfo] = [:]
                             for info in currentInfos {
@@ -339,7 +341,7 @@ extension ReplayContext {
                 if updatedTypingActivities[PeerActivitySpace(peerId: chatPeerId, category: .global)] == nil {
                     updatedTypingActivities[PeerActivitySpace(peerId: chatPeerId, category: .global)] = [authorId: activityValue]
                 } else {
-                    updatedTypingActivities[PeerActivitySpace(peerId: chatPeerId, category: .global)]![authorId] = activityValue
+                    updatedTypingActivities[PeerActivitySpace(peerId: chatPeerId, category: .global), default: [:]][authorId] = activityValue
                 }
             }
         }
@@ -396,7 +398,7 @@ extension ReplayContext {
             if updatedTypingActivities[PeerActivitySpace(peerId: chatPeerId, category: .global)] == nil {
                 updatedTypingActivities[PeerActivitySpace(peerId: chatPeerId, category: .global)] = [authorId: activityValue]
             } else {
-                updatedTypingActivities[PeerActivitySpace(peerId: chatPeerId, category: .global)]![authorId] = activityValue
+                updatedTypingActivities[PeerActivitySpace(peerId: chatPeerId, category: .global), default: [:]][authorId] = activityValue
             }
         }
     }
@@ -445,8 +447,10 @@ extension ReplayContext {
     func applyUpdatedThemes() {
         if !updatedThemes.isEmpty {
             let entries = transaction.getOrderedListItems(collectionId: Namespaces.OrderedItemList.CloudThemes)
-            let themes = entries.map { entry -> TelegramTheme in
-                let theme = entry.contents.get(TelegramThemeNativeCodable.self)!
+            let themes = entries.compactMap { entry -> TelegramTheme? in
+                guard let theme = entry.contents.get(TelegramThemeNativeCodable.self) else {
+                    return nil
+                }
                 if let updatedTheme = updatedThemes[theme.value.id] {
                     return updatedTheme
                 } else {

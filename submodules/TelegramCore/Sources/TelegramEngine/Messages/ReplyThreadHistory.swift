@@ -725,9 +725,9 @@ private func cachedDiscussionThreadId(transaction: Transaction, commentsPeerId: 
     let messages = transaction.getMessages(
         peerId: commentsPeerId,
         namespace: Namespaces.Message.Cloud,
-        from: MessageIndex(id: MessageId(peerId: commentsPeerId, namespace: Namespaces.Message.Cloud, id: 0), timestamp: post.timestamp - 1),
+        from: MessageIndex(id: MessageId(peerId: commentsPeerId, namespace: Namespaces.Message.Cloud, id: 0), timestamp: Int32(clamping: Int64(post.timestamp) - 1)),
         includeFrom: true,
-        to: MessageIndex(id: MessageId(peerId: commentsPeerId, namespace: Namespaces.Message.Cloud, id: Int32.max), timestamp: post.timestamp + 60),
+        to: MessageIndex(id: MessageId(peerId: commentsPeerId, namespace: Namespaces.Message.Cloud, id: Int32.max), timestamp: Int32(clamping: Int64(post.timestamp) + 60)),
         limit: 20
     )
     for message in messages {

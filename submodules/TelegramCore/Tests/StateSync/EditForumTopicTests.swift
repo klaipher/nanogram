@@ -70,7 +70,7 @@ final class EditForumTopicTests: StateSyncTestCase {
         }
         let replyHeader: Api.MessageReplyHeader = .messageReplyHeader(.init(flags: (1 << 3) | (1 << 4), replyToMsgId: topicId, replyToPeerId: nil, replyFrom: nil, replyMedia: nil, replyToTopId: nil, quoteText: nil, quoteEntities: nil, quoteOffset: nil, todoItemId: nil, pollOption: nil, quoteRich: nil))
         let action: Api.MessageAction = .messageActionTopicEdit(.init(flags: actionFlags, title: title, iconEmojiId: iconEmojiId, closed: closed.map { $0 ? .boolTrue : .boolFalse }, hidden: nil))
-        return .messageService(.init(flags: 1 << 3, id: id, fromId: nil, peerId: StateSyncApi.peerChannel(channelId), savedPeerId: nil, replyTo: replyHeader, date: self.baseDate + 2, action: action, reactions: nil, ttlPeriod: nil))
+        return .messageService(.init(flags: 1 << 3, id: id, fromId: nil, peerId: StateSyncApi.peerChannel(channelId), savedPeerId: nil, replyTo: replyHeader, date: self.baseDateOffset(by: 2), action: action, reactions: nil, ttlPeriod: nil))
     }
 
     /// A reply target the batch's resolution asks for (the topic's root, here) is answered empty.
@@ -79,7 +79,7 @@ final class EditForumTopicTests: StateSyncTestCase {
     }
 
     private func push(_ update: Api.Update) {
-        self.server.push(StateSyncApi.updates([update], date: self.baseDate + 2, seq: 0))
+        self.server.push(StateSyncApi.updates([update], date: self.baseDateOffset(by: 2), seq: 0))
         self.drainOperationQueue()
     }
 
@@ -195,7 +195,7 @@ final class EditForumTopicTests: StateSyncTestCase {
         self.server.push(StateSyncApi.updates([
             StateSyncApi.updateNewChannelMessage(self.topicEditServiceMessage(id: 21, channelId: 345, topicId: 5, title: "Renamed", closed: true), pts: 51),
             self.updateEditForumTopic(peer: StateSyncApi.peerChannel(345), topicId: 5, title: "Renamed", closed: true)
-        ], date: self.baseDate + 2, seq: 0))
+        ], date: self.baseDateOffset(by: 2), seq: 0))
         self.drainOperationQueue()
 
         XCTAssertNotNil(self.fixture.message(self.messageId(forum, 21)))
@@ -214,7 +214,7 @@ final class EditForumTopicTests: StateSyncTestCase {
         self.makeStateManager()
         self.server.on(Name.getDifference, .result(StateSyncApi.difference(
             otherUpdates: [self.updateEditForumTopic(peer: StateSyncApi.peerChannel(343), topicId: 5, title: "From the difference", hidden: true)],
-            state: StateSyncApi.state(pts: 100, qts: 5, date: self.baseDate + 1, seq: 10)
+            state: StateSyncApi.state(pts: 100, qts: 5, date: self.baseDateOffset(by: 1), seq: 10)
         )))
         self.fixture.resetStateManager()
         self.isUpdating.wait { $0 == [true, false] }
