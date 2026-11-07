@@ -589,7 +589,7 @@ public class GlassBackgroundView: UIView {
 
     public static var useCustomGlassImpl: Bool = false
 
-    /// Telegram's fixed look (only with "Glass: Telegram fixed look" on, see `GlassFixedLook`; native glass is not clamped).
+    /// Telegram 13.2's look (the default; with "Glass: native (no Telegram clamp)" on, see `GlassFixedLook`, nothing is clamped).
     /// The backdrop luminance native glass sees (`EffectSettingsContainerView`'s limits, applied to every luma UIKit
     /// reports by the `backdropLayer:didChangeLuma:` override in UIKitRuntimeUtils): the whole range on the theme's
     /// side of the luminance at which UIKit would flip the glass to the other appearance, so it adapts to its
@@ -600,15 +600,15 @@ public class GlassBackgroundView: UIView {
     /// iOS 26.5, read in the simulators), after quantizing the luminance to `min(31, floor(luma * 32)) / 31`
     /// (`GlassGroupLayerView`). 0.125 quantizes to 0.129 and 0.874 to 0.871; iOS 26's 0.22 clears 0.2 either way.
     static func adaptiveLumaRange(isDark: Bool) -> (min: Double, max: Double) {
-        // Nanogram: iOS 27 takes upstream's adaptive ranges (its static glass assets were captured with this clamp on).
-        // iOS 26 keeps the fixed look it had here before 13.2: light glass pinned at luma 0.8, dark at 0 ... 0.15.
-        guard #available(iOS 27.0, *) else {
-            return isDark ? (0.0, 0.15) : (0.8, 0.801)
-        }
+        // Same ranges as upstream 13.2 (5083532f): iOS 26 light 0.22 ... 1.0, iOS 27 light 0.125 ... 1.0, dark 0 ... 0.874.
         if isDark {
             return (0.0, 0.874)
         }
-        return (0.125, 1.0)
+        if #available(iOS 27.0, *) {
+            return (0.125, 1.0)
+        } else {
+            return (0.22, 1.0)
+        }
     }
 
     public override init(frame: CGRect) {

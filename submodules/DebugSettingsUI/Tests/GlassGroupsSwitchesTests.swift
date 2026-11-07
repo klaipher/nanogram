@@ -36,7 +36,7 @@ final class GlassGroupsSwitchesTests: XCTestCase {
     }
 
     func testTheSectionIsBehindItsHeaderAndSeparateFromTheCallsSection() {
-        let expected: [DebugControllerEntry] = [.glassGroupsHeader(defaultPresentationTheme), .glassGroupNavigationBar(false), .glassGroupInputPanel(false), .glassGroupFloatingButtons(false), .glassTelegramFixedLook(false)]
+        let expected: [DebugControllerEntry] = [.glassGroupsHeader(defaultPresentationTheme), .glassGroupNavigationBar(false), .glassGroupInputPanel(false), .glassGroupFloatingButtons(false), .glassNativeNoClamp(false)]
         let all = self.entries(isMainApp: true, settings: .defaultSettings)
         guard let start = all.firstIndex(where: { $0.stableId == expected[0].stableId && $0.section == expected[0].section }) else {
             XCTFail("no Glass groups header")
