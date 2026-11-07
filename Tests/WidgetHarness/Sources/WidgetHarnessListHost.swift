@@ -190,7 +190,10 @@ public final class WidgetHarnessListHost {
 
         var messages: [EngineRawMessage] = []
         var paths: [EngineMessage.Id: String] = [:]
-        var timestamp = Int32(clamping: Int64(Date().timeIntervalSince1970) - 10_000)
+        // Starts on a whole minute, so posts one second apart show the same time (a time like "7:59" next to "8:00" is
+        // drawn at another width and moved the safe-area tests' corner by a point).
+        let start = Int64(Date().timeIntervalSince1970) - 10_000
+        var timestamp = Int32(clamping: start - start % 60)
         var takenIds = Set<Int32>()
         func append(text: String, media: EngineRawMedia, path: String, captionAbove: Bool = false) {
             let stableId = WidgetHarnessListHost.nextStableId
