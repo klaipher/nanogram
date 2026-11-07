@@ -76,6 +76,10 @@ marked (check) were not re-verified against the code; correct them on the next c
   which transaction call sites append the most WAL frames; the direct-fetch lookahead thread is woken only when its
   buffer needs a refill (upstream: on every position update); Postbox decodes message text from memory without a
   `Data` copy; the universal software video source reads complete files through one handle.
+  Gift grids (store, profile, options) cache their animations at the pixels the cell shows, not four pixels per displayed point,
+  and start the conversion only for a cell that stays 0.35 s (`AnimationCacheWritePolicy`; upstream converts at
+  once at 2x the displayed size); Postbox stores a preference or cache entry only when its bytes changed and checkpoints
+  the WAL at 3000 frames (upstream: SQLite's 1000), `journal_size_limit` 24 MB.
 - Where: docs/subsystems/media-io.md, docs/subsystems/media-decode-and-voice.md, docs/performance/.
 
 - Chat photos decode complete JPEGs at the drawn size (`ImageDecodeSizing`, used by `PhotoResources`), the photo picker issues thumbnail requests off the main thread, and `ChatHistoryListNode.processDisplayedItemRangeChanged` caches its whole-history scan per history view (all three differ from upstream; round 3, iOS UI performance).

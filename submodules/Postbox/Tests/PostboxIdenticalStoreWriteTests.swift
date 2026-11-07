@@ -21,7 +21,7 @@ final class PostboxIdenticalStoreWriteTests: XCTestCase {
 
     private func key(_ name: String) -> ValueBoxKey {
         let key = ValueBoxKey(length: 1)
-        key.setUInt8(0, value: UInt8(name.utf8.first ?? 0))
+        key.setUInt8(0, value: name.utf8.first ?? 0)
         return key
     }
 
