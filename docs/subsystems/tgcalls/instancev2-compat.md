@@ -114,6 +114,10 @@ finds the transceiver by receiver, and it reads `network_reflector_resolve_remot
 default on there since 2026-10-12; tgcalls `CLAUDE.md` "Do not implement" for CompatImpl) and `network_reference_allow_hostname_ice_servers` (`SocketAddress::IsComplete()`
 is already true for a hostname with a port, so the gate it lifts never dropped a hostname).
 
+13.2 sync (2026-11-07): under `network_signaling_nosctp` CompatImpl uses `ExternalSignalingConnection` instead of SCTP (framing unchanged), as `InstanceV2Impl`
+does and as Android's 14.0.0 always does. Mute sets the audio sender's `encodings[0].active` (re-applied after every negotiation step) besides
+disabling the track, so a muted call stops sending. Not ported: Telegram's 7.0.0/8.0.0/9.0.0 framing (the app registers `InstanceV2Impl` for those first).
+
 Key files:
 - `tgcalls/v2/InstanceV2CompatImpl.h/.cpp` — engine, negotiation queue, glare rules
 - `tgcalls/v2/SignalingTranslator.h/.cpp` — the 13.0.0 protocol ↔ JSEP mapping
