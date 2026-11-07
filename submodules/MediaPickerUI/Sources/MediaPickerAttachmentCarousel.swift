@@ -75,7 +75,7 @@ public final class MediaPickerAttachmentCarouselView: UIView, UICollectionViewDa
         self.context = context
         self.policy = policy
         self.theme = context.sharedContext.currentPresentationData.with { $0 }.theme
-        self.selectionContext = TGMediaSelectionContext(groupingAllowed: false, selectionLimit: Int32(policy.allowsSelection ? policy.selectionLimit : 1))!
+        self.selectionContext = TGMediaSelectionContext(groupingAllowed: false, selectionLimit: Int32(policy.allowsSelection ? policy.selectionLimit : 1))
         self.editingContext = TGMediaEditingContext()
         self.itemStore = ChatMediaEditorItemStore()
         self.mediaAssetsContext = MediaAssetsContext(assetType: policy.photoOnly ? .image : nil)
@@ -350,7 +350,9 @@ public final class MediaPickerAttachmentCarouselView: UIView, UICollectionViewDa
     }
 
     public func collectionView(_ collectionView: UICollectionView, cellForItemAt indexPath: IndexPath) -> UICollectionViewCell {
-        let cell = collectionView.dequeueReusableCell(withReuseIdentifier: "cell", for: indexPath) as! MediaPickerAttachmentCarouselCell
+        guard let cell = collectionView.dequeueReusableCell(withReuseIdentifier: "cell", for: indexPath) as? MediaPickerAttachmentCarouselCell else {
+            return UICollectionViewCell()
+        }
         if let fetchResult = self.fetchResult, let interaction = self.interaction, indexPath.item < self.assetIndices.count {
             cell.itemNode.setup(interaction: interaction, fetchResult: fetchResult, index: self.assetIndices[indexPath.item], theme: self.theme, selectable: self.policy.allowsSelection, enableAnimations: true, stories: false)
             cell.itemNode.updateSelectionState()

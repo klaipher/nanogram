@@ -1770,8 +1770,9 @@ func v2TableColumnWidths(
         finalColumnWidths = minColumnWidths
         var distributedWidth = availableWidth
         for i in 0 ..< finalColumnWidths.count {
-            var width = finalColumnWidths[i]!
-            let maxWidth = maxColumnWidths[i]!
+            guard var width = finalColumnWidths[i], let maxWidth = maxColumnWidths[i] else {
+                continue
+            }
             let growth = min(round(availableWidth * maxWidth / maxTotalWidth), distributedWidth)
             width += growth
             distributedWidth -= growth

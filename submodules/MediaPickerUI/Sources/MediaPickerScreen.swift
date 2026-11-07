@@ -2561,7 +2561,7 @@ public final class MediaPickerScreenImpl: ViewController, MediaPickerScreen, Att
             })
             
             if let avatarEditorPreviewView = self.avatarEditorPreviewView {
-                self.gridHost.updateAccessoryFrame(avatarEditorPreviewView, frame: CGRect(origin: CGPoint(x: cameraRect != nil ? cameraRect!.maxX + itemSpacing : layout.safeInsets.left, y: 0.0), size: CGSize(width: itemWidth, height: itemWidth)))
+                self.gridHost.updateAccessoryFrame(avatarEditorPreviewView, frame: CGRect(origin: CGPoint(x: cameraRect.map({ $0.maxX + itemSpacing }) ?? layout.safeInsets.left, y: 0.0), size: CGSize(width: itemWidth, height: itemWidth)))
             }
             
             if let selectionNode = self.selectionNode, let controller = self.controller {
@@ -2808,7 +2808,7 @@ public final class MediaPickerScreenImpl: ViewController, MediaPickerScreen, Att
         
         let selectionContext = selectionContext ?? TGMediaSelectionContext(groupingAllowed: false, selectionLimit: Int32(enableMultiselection ? (selectionLimit ?? 100) : 1))!
         self.explicitMultipleSelection = forCollage && selectionContext.selectionLimit > 1
-        let editingContext = editingContext ?? (subject.isFile(filePickerOn: self.routesFilePicker) ? TGMediaEditingContext.forCaptionsOnly() : TGMediaEditingContext())!
+        let editingContext = editingContext ?? (subject.isFile(filePickerOn: self.routesFilePicker) ? TGMediaEditingContext.forCaptionsOnly() : TGMediaEditingContext()) ?? TGMediaEditingContext()
         
         self.titleView = MediaPickerTitleView(theme: self.presentationData.theme, glass: style == .glass, segments: [self.presentationData.strings.Attachment_AllMedia, self.presentationData.strings.Attachment_SelectedMedia(1)], selectedIndex: 0)
         
@@ -4490,7 +4490,7 @@ public func passportMediaPickerController(
 ) -> ViewController {
     let presentationData = context.sharedContext.currentPresentationData.with({ $0 })
     let updatedPresentationData: (PresentationData, Signal<PresentationData, NoError>) = (presentationData, context.sharedContext.presentationData)
-    let selectionContext = TGMediaSelectionContext(groupingAllowed: false, selectionLimit: Int32(multiple ? passportSelectionLimit : 1))!
+    let selectionContext: TGMediaSelectionContext = TGMediaSelectionContext(groupingAllowed: false, selectionLimit: Int32(multiple ? passportSelectionLimit : 1))
     let controller = AttachmentController(context: context, updatedPresentationData: updatedPresentationData, chatLocation: nil, buttons: [.standalone], initialButton: .standalone, fromMenu: false, hasTextInput: false, makeEntityInputView: {
         return nil
     })
@@ -4527,7 +4527,7 @@ public func fileMediaPickerController(
     if case .secretChat = peer {
         isSecretChat = true
     }
-    let selectionContext = TGMediaSelectionContext(groupingAllowed: false, selectionLimit: Int32(chatMediaFilePickerSelectionLimit(isSlowMode: isSlowMode, isEditingMessage: isEditingMessage)))!
+    let selectionContext: TGMediaSelectionContext = TGMediaSelectionContext(groupingAllowed: false, selectionLimit: Int32(chatMediaFilePickerSelectionLimit(isSlowMode: isSlowMode, isEditingMessage: isEditingMessage)))
     selectionContext.selectionLimitExceeded = {
         presentSelectionLimitExceeded()
     }
