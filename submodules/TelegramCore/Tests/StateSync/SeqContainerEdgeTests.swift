@@ -24,13 +24,13 @@ final class SeqContainerEdgeTests: StateSyncTestCase {
     func testUpdatesCombinedOverlappingTheLocalSeqIsAHole() {
         self.seedUserChat(200)
         self.launchIdle(state: self.state(pts: 100, seq: 10))
-        self.server.on(Name.getDifference, .result(StateSyncApi.differenceEmpty(date: self.baseDate + 3, seq: 11)))
+        self.server.on(Name.getDifference, .result(StateSyncApi.differenceEmpty(date: self.baseDateOffset(by: 3), seq: 11)))
 
-        self.pushHoleAndSettle(StateSyncApi.updatesCombined([StateSyncApi.updateUserTyping(userId: 200)], date: self.baseDate + 2, seqStart: 10, seq: 11))
+        self.pushHoleAndSettle(StateSyncApi.updatesCombined([StateSyncApi.updateUserTyping(userId: 200)], date: self.baseDateOffset(by: 2), seqStart: 10, seq: 11))
 
         XCTAssertEqual(self.server.requestNames, [Name.getDifference, Name.getDifference])
-        self.assertGetDifference(1, pts: 100, date: self.baseDate + 1, qts: 5)
-        XCTAssertEqual(self.fixture.accountState()?.state, self.state(pts: 100, qts: 5, date: self.baseDate + 3, seq: 11))
+        self.assertGetDifference(1, pts: 100, date: self.baseDateOffset(by: 1), qts: 5)
+        XCTAssertEqual(self.fixture.accountState()?.state, self.state(pts: 100, qts: 5, date: self.baseDateOffset(by: 3), seq: 11))
     }
 
     /// `seq_start == 0` with `seq == 11` and local seq 10: the range is `(11, 12)`, so `10 == 11 - 12` fails and
@@ -39,12 +39,12 @@ final class SeqContainerEdgeTests: StateSyncTestCase {
     func testUpdatesCombinedWithSeqStartZeroIsAHole() {
         self.seedUserChat(200)
         self.launchIdle(state: self.state(pts: 100, seq: 10))
-        self.server.on(Name.getDifference, .result(StateSyncApi.differenceEmpty(date: self.baseDate + 3, seq: 11)))
+        self.server.on(Name.getDifference, .result(StateSyncApi.differenceEmpty(date: self.baseDateOffset(by: 3), seq: 11)))
 
-        self.pushHoleAndSettle(StateSyncApi.updatesCombined([StateSyncApi.updateUserTyping(userId: 200)], date: self.baseDate + 2, seqStart: 0, seq: 11))
+        self.pushHoleAndSettle(StateSyncApi.updatesCombined([StateSyncApi.updateUserTyping(userId: 200)], date: self.baseDateOffset(by: 2), seqStart: 0, seq: 11))
 
         XCTAssertEqual(self.server.requestNames, [Name.getDifference, Name.getDifference])
-        self.assertGetDifference(1, pts: 100, date: self.baseDate + 1, qts: 5)
-        XCTAssertEqual(self.fixture.accountState()?.state, self.state(pts: 100, qts: 5, date: self.baseDate + 3, seq: 11))
+        self.assertGetDifference(1, pts: 100, date: self.baseDateOffset(by: 1), qts: 5)
+        XCTAssertEqual(self.fixture.accountState()?.state, self.state(pts: 100, qts: 5, date: self.baseDateOffset(by: 3), seq: 11))
     }
 }

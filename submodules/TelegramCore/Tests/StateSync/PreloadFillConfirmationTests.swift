@@ -28,7 +28,7 @@ final class PreloadFillConfirmationTests: StateSyncTestCase {
         self.storeHistoryFillMessages(peerId: peerId, ids: [10, 11])
         self.addHistoryFillHole(peerId)
         self.server.onWorker(getHistory, .result(StateSyncApi.messages([
-            StateSyncApi.privateMessage(id: 10, peerUserId: 500, fromUserId: 500, date: self.baseDate + 10)
+            StateSyncApi.privateMessage(id: 10, peerUserId: 500, fromUserId: 500, date: self.baseDateOffset(by: 10))
         ])))
         self.server.onWorker(getMessages, .result(StateSyncApi.everythingGone()))
         guard let download = self.makeDownload() else {

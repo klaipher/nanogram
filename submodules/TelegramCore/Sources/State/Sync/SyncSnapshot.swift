@@ -195,7 +195,7 @@ private func locallyGeneratedMessageTimestampsFromUpdateGroups(_ groups: [Update
                         if messageTimestamps[peerId] == nil {
                             messageTimestamps[peerId] = [(Namespaces.Message.Local, date)]
                         } else {
-                            messageTimestamps[peerId]!.append((Namespaces.Message.Local, date))
+                            messageTimestamps[peerId, default: []].append((Namespaces.Message.Local, date))
                         }
                     }
                 default:
@@ -389,7 +389,7 @@ private func locallyGeneratedMessageTimestampsFromDifference(_ difference: Api.u
                         if messageTimestamps[peerId] == nil {
                             messageTimestamps[peerId] = [(Namespaces.Message.Local, date)]
                         } else {
-                            messageTimestamps[peerId]!.append((Namespaces.Message.Local, date))
+                            messageTimestamps[peerId, default: []].append((Namespaces.Message.Local, date))
                         }
                     }
                 default:
@@ -458,7 +458,7 @@ func initialStateWithPeerIds(_ transaction: Transaction, peerIds: Set<PeerId>, l
                     if storedMessagesByPeerIdAndTimestamp[peerId] == nil {
                         storedMessagesByPeerIdAndTimestamp[peerId] = Set([MessageIndex(id: messageId, timestamp: timestamp)])
                     } else {
-                        storedMessagesByPeerIdAndTimestamp[peerId]!.insert(MessageIndex(id: messageId, timestamp: timestamp))
+                        storedMessagesByPeerIdAndTimestamp[peerId, default: []].insert(MessageIndex(id: messageId, timestamp: timestamp))
                     }
                 }
             }
@@ -512,7 +512,11 @@ func initialStateWithPeerIds(_ transaction: Transaction, peerIds: Set<PeerId>, l
         }
     }
     
-    let state = AccountMutableState(initialState: AccountInitialState(state: (transaction.getState() as? AuthorizedAccountState)!.state!, peerIds: peerIds, peerIdsRequiringLocalChatState: peerIdsRequiringLocalChatState, channelStates: channelStates, peerChatInfos: peerChatInfos, locallyGeneratedMessageTimestamps: locallyGeneratedMessageTimestamps, channelsToPollExplicitely: channelsToPollExplicitely), initialPeers: peers, initialReferencedReplyMessageIds: referencedReplyMessageIds, initialReferencedGeneralMessageIds: referencedGeneralMessageIds, initialStoredMessages: storedMessages, initialStoredStories: storedStories, initialReadInboxMaxIds: readInboxMaxIds, storedMessagesByPeerIdAndTimestamp: storedMessagesByPeerIdAndTimestamp, initialSentScheduledMessageIds: Set())
+    let storedAccountState = (transaction.getState() as? AuthorizedAccountState)?.state
+    if storedAccountState == nil {
+        assertionFailure()
+    }
+    let state = AccountMutableState(initialState: AccountInitialState(state: storedAccountState ?? AuthorizedAccountState.State(pts: 0, qts: 0, date: 0, seq: 0), peerIds: peerIds, peerIdsRequiringLocalChatState: peerIdsRequiringLocalChatState, channelStates: channelStates, peerChatInfos: peerChatInfos, locallyGeneratedMessageTimestamps: locallyGeneratedMessageTimestamps, channelsToPollExplicitely: channelsToPollExplicitely), initialPeers: peers, initialReferencedReplyMessageIds: referencedReplyMessageIds, initialReferencedGeneralMessageIds: referencedGeneralMessageIds, initialStoredMessages: storedMessages, initialStoredStories: storedStories, initialReadInboxMaxIds: readInboxMaxIds, storedMessagesByPeerIdAndTimestamp: storedMessagesByPeerIdAndTimestamp, initialSentScheduledMessageIds: Set())
     return state
 }
 

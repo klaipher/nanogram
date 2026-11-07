@@ -30,23 +30,23 @@ final class EventDeliveryOrderTests: StateSyncTestCase {
 
         // One batch behind the barrier: a message and a session reset, which forces a poll once the batch is
         // committed.
-        self.server.push(StateSyncApi.updateShortMessage(id: 101, userId: 200, pts: 101, date: self.baseDate + 2))
+        self.server.push(StateSyncApi.updateShortMessage(id: 101, userId: 200, pts: 101, date: self.baseDateOffset(by: 2)))
         self.server.pushSessionReset()
         self.server.flush()
         self.managerQueueRoundTrip()
         // The forced poll brings a newer message.
         self.server.on(Name.getDifference, .result(StateSyncApi.difference(
-            newMessages: [self.incomingMessage(102, from: 200, date: self.baseDate + 3)],
+            newMessages: [self.incomingMessage(102, from: 200, date: self.baseDateOffset(by: 3))],
             users: [StateSyncApi.user(id: 200, firstName: "U200")],
-            state: StateSyncApi.state(pts: 102, qts: 5, date: self.baseDate + 3, seq: 10)
+            state: StateSyncApi.state(pts: 102, qts: 5, date: self.baseDateOffset(by: 3), seq: 10)
         )))
-        XCTAssertTrue(self.server.release(Name.getDifference, with: .result(StateSyncApi.differenceEmpty(date: self.baseDate + 1, seq: 10))))
+        XCTAssertTrue(self.server.release(Name.getDifference, with: .result(StateSyncApi.differenceEmpty(date: self.baseDateOffset(by: 1), seq: 10))))
 
         barrier.wait { $0.count == 1 }
         self.drainOperationQueue()
 
         XCTAssertEqual(self.server.requestNames, [Name.getDifference, Name.getDifference, Name.helpTest])
-        self.assertGetDifference(1, pts: 101, date: self.baseDate + 1, qts: 5)
+        self.assertGetDifference(1, pts: 101, date: self.baseDateOffset(by: 1), qts: 5)
         XCTAssertEqual(self.fixture.accountState()?.state?.pts, 102)
         // Q4, today: the poll's newer event first, the batch's older one after it, each delivered once.
         XCTAssertEqual(self.notifiedMessageIds(), [[self.messageId(user, 102)], [self.messageId(user, 101)]])
@@ -68,7 +68,7 @@ final class EventDeliveryOrderTests: StateSyncTestCase {
         let channelTooLong = StateSyncApi.difference(
             otherUpdates: [StateSyncApi.updateChannelTooLong(channelId: 302, pts: 60)],
             chats: [StateSyncApi.broadcastChannel(id: 302, title: "C302")],
-            state: StateSyncApi.state(pts: 100, qts: 5, date: self.baseDate + 1, seq: 10)
+            state: StateSyncApi.state(pts: 100, qts: 5, date: self.baseDateOffset(by: 1), seq: 10)
         )
         self.server.on(Name.getDifference, .result(channelTooLong))
         self.server.on(Name.getPeerDialogs, .hold)
@@ -79,7 +79,7 @@ final class EventDeliveryOrderTests: StateSyncTestCase {
         XCTAssertEqual(self.isUpdating.values, [true])
 
         self.server.on(Name.getDifference, .result(channelTooLong))
-        self.server.on(Name.getDifference, .result(StateSyncApi.differenceEmpty(date: self.baseDate + 1, seq: 10)))
+        self.server.on(Name.getDifference, .result(StateSyncApi.differenceEmpty(date: self.baseDateOffset(by: 1), seq: 10)))
         self.fixture.resetStateManager()
         self.fixture.resetStateManager()
         XCTAssertTrue(self.server.waitForRequest(Name.getDifference, count: 3))
@@ -96,9 +96,9 @@ final class EventDeliveryOrderTests: StateSyncTestCase {
 
         XCTAssertTrue(self.server.release(Name.getPeerDialogs, with: .result(StateSyncApi.peerDialogs(
             dialogs: [StateSyncApi.dialog(peer: StateSyncApi.peerChannel(302), topMessage: 15, pts: 60)],
-            messages: [StateSyncApi.channelPost(id: 15, channelId: 302, date: self.baseDate + 3)],
+            messages: [StateSyncApi.channelPost(id: 15, channelId: 302, date: self.baseDateOffset(by: 3))],
             chats: [StateSyncApi.broadcastChannel(id: 302, title: "C302")],
-            state: StateSyncApi.state(pts: 100, qts: 5, date: self.baseDate + 1, seq: 10)
+            state: StateSyncApi.state(pts: 100, qts: 5, date: self.baseDateOffset(by: 1), seq: 10)
         ))))
         self.isUpdating.wait { $0 == [true, false] }
         self.waitForNotification(of: self.messageId(channel, 15))

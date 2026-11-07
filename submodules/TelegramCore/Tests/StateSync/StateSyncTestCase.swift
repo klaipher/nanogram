@@ -19,6 +19,11 @@ class StateSyncTestCase: XCTestCase {
     /// An arbitrary epoch for message and state dates.
     let baseDate: Int32 = 1_700_000_000
 
+    /// `baseDate` shifted by `seconds`, computed in 64 bits and clamped so it can never trap.
+    func baseDateOffset(by seconds: Int64) -> Int32 {
+        return Int32(clamping: Int64(self.baseDate) + seconds)
+    }
+
     var fixture: StateSyncFixture!
     var server: ScriptedServer!
     var network: Network!
@@ -93,7 +98,7 @@ class StateSyncTestCase: XCTestCase {
         let state = state ?? self.state(pts: 100)
         self.fixture.seedAccount(state: state)
         self.makeStateManager(ignoresShortSentMessages: ignoresShortSentMessages)
-        self.server.on(Name.getDifference, .result(StateSyncApi.differenceEmpty(date: self.baseDate + 1, seq: state.seq)))
+        self.server.on(Name.getDifference, .result(StateSyncApi.differenceEmpty(date: self.baseDateOffset(by: 1), seq: state.seq)))
         self.fixture.resetStateManager()
         self.isUpdating.wait { $0.last == false }
         self.drainOperationQueue()
@@ -132,7 +137,7 @@ class StateSyncTestCase: XCTestCase {
 
     /// An incoming private message from user `userId` in the chat with them.
     func incomingMessage(_ id: Int32, from userId: Int64, date: Int32? = nil) -> Api.Message {
-        return StateSyncApi.privateMessage(id: id, peerUserId: userId, fromUserId: userId, date: date ?? (self.baseDate + 2))
+        return StateSyncApi.privateMessage(id: id, peerUserId: userId, fromUserId: userId, date: date ?? (self.baseDateOffset(by: 2)))
     }
 
     // MARK: - Waiting and observing

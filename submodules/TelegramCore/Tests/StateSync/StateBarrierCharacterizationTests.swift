@@ -37,7 +37,7 @@ final class StateBarrierCharacterizationTests: StateSyncTestCase {
         XCTAssertTrue(self.server.release(Name.getDifference, with: .result(StateSyncApi.difference(
             newMessages: [self.incomingMessage(101, from: 200)],
             users: [StateSyncApi.user(id: 200, firstName: "U200")],
-            state: StateSyncApi.state(pts: 101, qts: 5, date: self.baseDate + 1, seq: 10)
+            state: StateSyncApi.state(pts: 101, qts: 5, date: self.baseDateOffset(by: 1), seq: 10)
         ))))
 
         barrier.wait { $0.count == 1 }

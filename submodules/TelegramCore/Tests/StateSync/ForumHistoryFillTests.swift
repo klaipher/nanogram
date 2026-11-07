@@ -45,7 +45,7 @@ final class ForumHistoryFillTests: StateSyncTestCase {
             ForumFillApi.groupMessage(id: 11, channelId: 310, fromUserId: 400, date: self.baseDate, replyToMessageId: 6)
         ], users: [StateSyncApi.user(id: 400, firstName: "Replier")])))
         self.server.on(Name.channelsGetMessages, .result(StateSyncApi.channelMessages(pts: 20, [
-            ForumFillApi.groupMessage(id: 6, channelId: 310, fromUserId: 500, date: self.baseDate - 100)
+            ForumFillApi.groupMessage(id: 6, channelId: 310, fromUserId: 500, date: self.baseDateOffset(by: -100))
         ], users: [StateSyncApi.user(id: 500, firstName: "Author")])))
         self.server.on(getForumTopicsByID, .result(StateSyncApi.forumTopics(pts: 20)))
 
@@ -101,7 +101,7 @@ final class ForumHistoryFillTests: StateSyncTestCase {
         // The resolution outlasts the (shortened) bound.
         Thread.sleep(forTimeInterval: 0.4)
         XCTAssertTrue(self.server.release(Name.channelsGetMessages, with: .result(StateSyncApi.channelMessages(pts: 20, [
-            ForumFillApi.groupMessage(id: 6, channelId: 310, fromUserId: 500, date: self.baseDate - 100)
+            ForumFillApi.groupMessage(id: 6, channelId: 310, fromUserId: 500, date: self.baseDateOffset(by: -100))
         ], users: [StateSyncApi.user(id: 500, firstName: "Author")]))))
         results.wait { !$0.isEmpty }
 

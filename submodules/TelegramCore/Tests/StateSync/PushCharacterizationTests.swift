@@ -13,13 +13,13 @@ final class PushCharacterizationTests: StateSyncTestCase {
         let user = self.seedUserChat(200)
         self.launchIdle()
 
-        self.server.push(StateSyncApi.updateShortMessage(id: 101, userId: 200, pts: 101, date: self.baseDate + 2))
+        self.server.push(StateSyncApi.updateShortMessage(id: 101, userId: 200, pts: 101, date: self.baseDateOffset(by: 2)))
         self.waitForNotification(of: self.messageId(user, 101))
         self.drainOperationQueue()
 
         XCTAssertEqual(self.server.requestNames, [Name.getDifference])
         XCTAssertNotNil(self.fixture.message(self.messageId(user, 101)))
-        XCTAssertEqual(self.fixture.accountState()?.state, self.state(pts: 101, qts: 5, date: self.baseDate + 1, seq: 10))
+        XCTAssertEqual(self.fixture.accountState()?.state, self.state(pts: 101, qts: 5, date: self.baseDateOffset(by: 1), seq: 10))
         XCTAssertEqual(self.isUpdating.values, [true, false])
     }
 
@@ -34,7 +34,7 @@ final class PushCharacterizationTests: StateSyncTestCase {
         self.server.push(StateSyncApi.updates([
             StateSyncApi.updateDialogPinned(StateSyncApi.dialogPeerFolder(), pinned: true),
             StateSyncApi.updateDialogPinned(StateSyncApi.dialogPeerUser(200), pinned: true)
-        ], date: self.baseDate + 2, seq: 0))
+        ], date: self.baseDateOffset(by: 2), seq: 0))
         self.drainOperationQueue()
 
         let pinned = self.fixture.transaction { transaction -> [PinnedItemId] in
@@ -65,7 +65,7 @@ final class PushCharacterizationTests: StateSyncTestCase {
                 StateSyncApi.dialogPeerUser(201),
                 StateSyncApi.dialogPeerUser(200)
             ])
-        ], date: self.baseDate + 2, seq: 0))
+        ], date: self.baseDateOffset(by: 2), seq: 0))
         self.drainOperationQueue()
 
         let pinned = self.fixture.transaction { transaction -> [PinnedItemId] in
@@ -83,20 +83,20 @@ final class PushCharacterizationTests: StateSyncTestCase {
         self.server.on(Name.getDifference, .result(StateSyncApi.difference(
             newMessages: [self.incomingMessage(103, from: 200)],
             users: [StateSyncApi.user(id: 200, firstName: "U200")],
-            state: StateSyncApi.state(pts: 103, qts: 5, date: self.baseDate + 3, seq: 10)
+            state: StateSyncApi.state(pts: 103, qts: 5, date: self.baseDateOffset(by: 3), seq: 10)
         )))
 
         self.server.push(StateSyncApi.updates([
             StateSyncApi.updateNewMessage(self.incomingMessage(101, from: 200), pts: 101),
             StateSyncApi.updateNewMessage(self.incomingMessage(103, from: 200), pts: 103)
-        ], date: self.baseDate + 2, seq: 0))
+        ], date: self.baseDateOffset(by: 2), seq: 0))
 
         self.isUpdating.wait { $0 == [true, false, true, false] }
         self.waitForNotification(of: self.messageId(user, 103))
         self.drainOperationQueue()
 
         XCTAssertEqual(self.server.requestNames, [Name.getDifference, Name.getDifference])
-        self.assertGetDifference(1, pts: 101, date: self.baseDate + 1, qts: 5)
+        self.assertGetDifference(1, pts: 101, date: self.baseDateOffset(by: 1), qts: 5)
         XCTAssertNotNil(self.fixture.message(self.messageId(user, 101)))
         XCTAssertNotNil(self.fixture.message(self.messageId(user, 103)))
         XCTAssertEqual(self.fixture.accountState()?.state?.pts, 103)
@@ -111,7 +111,7 @@ final class PushCharacterizationTests: StateSyncTestCase {
         let user = self.seedUserChat(200)
         let channel = self.seedChannel(300, pts: 50, storedMessageId: 10)
         self.launchIdle()
-        self.server.on(Name.getDifference, .result(StateSyncApi.differenceEmpty(date: self.baseDate + 3, seq: 10)))
+        self.server.on(Name.getDifference, .result(StateSyncApi.differenceEmpty(date: self.baseDateOffset(by: 3), seq: 10)))
 
         // dispatchEvents for the prefix runs after the gap wait was queued behind it; its notification is
         // delivered on the manager's queue, where pushInline's groups join the queue at once.
@@ -119,8 +119,8 @@ final class PushCharacterizationTests: StateSyncTestCase {
         let pushedIntoGap = Atomic<Bool>(value: false)
         let server: ScriptedServer = self.server
         let channelPost = StateSyncApi.updates([
-            StateSyncApi.updateNewChannelMessage(StateSyncApi.channelPost(id: 11, channelId: 300, date: self.baseDate + 2), pts: 51)
-        ], date: self.baseDate + 2, seq: 0)
+            StateSyncApi.updateNewChannelMessage(StateSyncApi.channelPost(id: 11, channelId: 300, date: self.baseDateOffset(by: 2)), pts: 51)
+        ], date: self.baseDateOffset(by: 2), seq: 0)
         let trigger = self.stateManager.notificationMessages.start(next: { batch in
             let isPrefix = batch.contains(where: { entry in entry.0.contains(where: { $0.id == prefixId }) })
             if isPrefix && !pushedIntoGap.swap(true) {
@@ -134,7 +134,7 @@ final class PushCharacterizationTests: StateSyncTestCase {
         self.server.push(StateSyncApi.updates([
             StateSyncApi.updateNewMessage(self.incomingMessage(101, from: 200), pts: 101),
             StateSyncApi.updateNewMessage(self.incomingMessage(103, from: 200), pts: 103)
-        ], date: self.baseDate + 2, seq: 0))
+        ], date: self.baseDateOffset(by: 2), seq: 0))
 
         self.isUpdating.wait { $0 == [true, false, true, false] }
         self.drainOperationQueue()
@@ -153,14 +153,14 @@ final class PushCharacterizationTests: StateSyncTestCase {
     func testQtsDuplicateIsSkipped() {
         self.launchIdle(state: self.state(pts: 100, qts: 5))
         // Only a regression sends it (after the gap wait); answered so that it fails on the log, not a hang.
-        self.server.on(Name.getDifference, .result(StateSyncApi.differenceEmpty(date: self.baseDate + 3, seq: 10)))
+        self.server.on(Name.getDifference, .result(StateSyncApi.differenceEmpty(date: self.baseDateOffset(by: 3), seq: 10)))
 
         self.pushAndSettle(StateSyncApi.updates([
-            StateSyncApi.updateNewEncryptedMessage(chatId: 1, randomId: 1, date: self.baseDate + 2, qts: 5)
-        ], date: self.baseDate + 2, seq: 0))
+            StateSyncApi.updateNewEncryptedMessage(chatId: 1, randomId: 1, date: self.baseDateOffset(by: 2), qts: 5)
+        ], date: self.baseDateOffset(by: 2), seq: 0))
 
         XCTAssertEqual(self.server.requestNames, [Name.getDifference])
-        XCTAssertEqual(self.fixture.accountState()?.state, self.state(pts: 100, qts: 5, date: self.baseDate + 1, seq: 10))
+        XCTAssertEqual(self.fixture.accountState()?.state, self.state(pts: 100, qts: 5, date: self.baseDateOffset(by: 1), seq: 10))
         XCTAssertEqual(self.isUpdating.values, [true, false])
     }
 
@@ -172,12 +172,12 @@ final class PushCharacterizationTests: StateSyncTestCase {
         self.seedUserChat(200)
         self.launchIdle(state: self.state(pts: 100, seq: 10))
         // Only a regression sends it (after the gap wait); its date differs from the container's.
-        self.server.on(Name.getDifference, .result(StateSyncApi.differenceEmpty(date: self.baseDate + 3, seq: 11)))
+        self.server.on(Name.getDifference, .result(StateSyncApi.differenceEmpty(date: self.baseDateOffset(by: 3), seq: 11)))
 
-        self.pushAndSettle(StateSyncApi.updatesCombined([StateSyncApi.updateUserTyping(userId: 200)], date: self.baseDate + 2, seqStart: 11, seq: 11))
+        self.pushAndSettle(StateSyncApi.updatesCombined([StateSyncApi.updateUserTyping(userId: 200)], date: self.baseDateOffset(by: 2), seqStart: 11, seq: 11))
 
         XCTAssertEqual(self.server.requestNames, [Name.getDifference])
-        XCTAssertEqual(self.fixture.accountState()?.state, self.state(pts: 100, qts: 5, date: self.baseDate + 2, seq: 11))
+        XCTAssertEqual(self.fixture.accountState()?.state, self.state(pts: 100, qts: 5, date: self.baseDateOffset(by: 2), seq: 11))
         XCTAssertEqual(self.isUpdating.values, [true, false])
     }
 
@@ -188,12 +188,12 @@ final class PushCharacterizationTests: StateSyncTestCase {
         self.seedUserChat(200)
         self.launchIdle(state: self.state(pts: 100, seq: 10))
         // Only a regression sends it (after the gap wait); its date differs from the container's.
-        self.server.on(Name.getDifference, .result(StateSyncApi.differenceEmpty(date: self.baseDate + 3, seq: 12)))
+        self.server.on(Name.getDifference, .result(StateSyncApi.differenceEmpty(date: self.baseDateOffset(by: 3), seq: 12)))
 
-        self.pushAndSettle(StateSyncApi.updatesCombined([StateSyncApi.updateUserTyping(userId: 200)], date: self.baseDate + 2, seqStart: 11, seq: 12))
+        self.pushAndSettle(StateSyncApi.updatesCombined([StateSyncApi.updateUserTyping(userId: 200)], date: self.baseDateOffset(by: 2), seqStart: 11, seq: 12))
 
         XCTAssertEqual(self.server.requestNames, [Name.getDifference])
-        XCTAssertEqual(self.fixture.accountState()?.state, self.state(pts: 100, qts: 5, date: self.baseDate + 2, seq: 12))
+        XCTAssertEqual(self.fixture.accountState()?.state, self.state(pts: 100, qts: 5, date: self.baseDateOffset(by: 2), seq: 12))
         XCTAssertEqual(self.isUpdating.values, [true, false])
     }
 
@@ -204,12 +204,12 @@ final class PushCharacterizationTests: StateSyncTestCase {
         self.seedUserChat(200)
         self.launchIdle(state: self.state(pts: 100, seq: 10))
         // Only a regression sends it (after the gap wait); its date differs from the stored one.
-        self.server.on(Name.getDifference, .result(StateSyncApi.differenceEmpty(date: self.baseDate + 3, seq: 10)))
+        self.server.on(Name.getDifference, .result(StateSyncApi.differenceEmpty(date: self.baseDateOffset(by: 3), seq: 10)))
 
-        self.pushAndSettle(StateSyncApi.updates([StateSyncApi.updateUserTyping(userId: 200)], date: self.baseDate + 2, seq: 10))
+        self.pushAndSettle(StateSyncApi.updates([StateSyncApi.updateUserTyping(userId: 200)], date: self.baseDateOffset(by: 2), seq: 10))
 
         XCTAssertEqual(self.server.requestNames, [Name.getDifference])
-        XCTAssertEqual(self.fixture.accountState()?.state, self.state(pts: 100, qts: 5, date: self.baseDate + 1, seq: 10))
+        XCTAssertEqual(self.fixture.accountState()?.state, self.state(pts: 100, qts: 5, date: self.baseDateOffset(by: 1), seq: 10))
         XCTAssertEqual(self.isUpdating.values, [true, false])
     }
 
@@ -219,12 +219,12 @@ final class PushCharacterizationTests: StateSyncTestCase {
         self.seedUserChat(200)
         self.launchIdle(state: self.state(pts: 100, seq: 10))
         // Only a regression sends it (after the gap wait); its date differs from the container's.
-        self.server.on(Name.getDifference, .result(StateSyncApi.differenceEmpty(date: self.baseDate + 3, seq: 11)))
+        self.server.on(Name.getDifference, .result(StateSyncApi.differenceEmpty(date: self.baseDateOffset(by: 3), seq: 11)))
 
-        self.pushAndSettle(StateSyncApi.updates([StateSyncApi.updateUserTyping(userId: 200)], date: self.baseDate + 2, seq: 11))
+        self.pushAndSettle(StateSyncApi.updates([StateSyncApi.updateUserTyping(userId: 200)], date: self.baseDateOffset(by: 2), seq: 11))
 
         XCTAssertEqual(self.server.requestNames, [Name.getDifference])
-        XCTAssertEqual(self.fixture.accountState()?.state, self.state(pts: 100, qts: 5, date: self.baseDate + 2, seq: 11))
+        XCTAssertEqual(self.fixture.accountState()?.state, self.state(pts: 100, qts: 5, date: self.baseDateOffset(by: 2), seq: 11))
         XCTAssertEqual(self.isUpdating.values, [true, false])
     }
 
@@ -252,17 +252,17 @@ final class PushCharacterizationTests: StateSyncTestCase {
         XCTAssertTrue(self.server.waitForRequest(Name.getDifference))
 
         // Both land in one batch behind the running poll.
-        self.server.push(StateSyncApi.updateShortMessage(id: 101, userId: 200, pts: 101, date: self.baseDate + 2))
+        self.server.push(StateSyncApi.updateShortMessage(id: 101, userId: 200, pts: 101, date: self.baseDateOffset(by: 2)))
         self.server.pushSessionReset()
         self.server.flush()
-        self.server.on(Name.getDifference, .result(StateSyncApi.differenceEmpty(date: self.baseDate + 3, seq: 10)))
-        XCTAssertTrue(self.server.release(Name.getDifference, with: .result(StateSyncApi.differenceEmpty(date: self.baseDate + 1, seq: 10))))
+        self.server.on(Name.getDifference, .result(StateSyncApi.differenceEmpty(date: self.baseDateOffset(by: 3), seq: 10)))
+        XCTAssertTrue(self.server.release(Name.getDifference, with: .result(StateSyncApi.differenceEmpty(date: self.baseDateOffset(by: 1), seq: 10))))
 
         self.isUpdating.wait { $0 == [true, false, true, false] }
         self.drainOperationQueue()
 
         XCTAssertEqual(self.server.requestNames, [Name.getDifference, Name.getDifference])
-        self.assertGetDifference(1, pts: 101, date: self.baseDate + 1, qts: 5)
+        self.assertGetDifference(1, pts: 101, date: self.baseDateOffset(by: 1), qts: 5)
         XCTAssertNotNil(self.fixture.message(self.messageId(user, 101)))
         XCTAssertEqual(self.fixture.accountState()?.state?.pts, 101)
         // Q4: stored and notified once.

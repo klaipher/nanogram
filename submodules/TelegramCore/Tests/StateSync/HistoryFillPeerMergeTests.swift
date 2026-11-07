@@ -42,10 +42,10 @@ final class HistoryFillPeerMergeTests: StateSyncTestCase {
         self.storeHistoryFillMessages(peerId: peerId, ids: [10, 11])
         self.addHistoryFillHole(peerId)
         self.server.on(getHistory, .result(StateSyncApi.messages([
-            StateSyncApi.privateMessage(id: 10, peerUserId: 500, fromUserId: 500, date: self.baseDate + 10)
+            StateSyncApi.privateMessage(id: 10, peerUserId: 500, fromUserId: 500, date: self.baseDateOffset(by: 10))
         ], chats: [StateSyncApi.broadcastChannel(id: 900, accessHash: 77, title: "From the fill")], users: [StateSyncApi.user(id: 500, accessHash: 77, firstName: "From the fill")])))
         self.server.on(getMessages, .result(StateSyncApi.messages([
-            StateSyncApi.privateMessage(id: 11, peerUserId: 500, fromUserId: 500, date: self.baseDate + 11)
+            StateSyncApi.privateMessage(id: 11, peerUserId: 500, fromUserId: 500, date: self.baseDateOffset(by: 11))
         ], chats: [PeerMergeApi.minBroadcastChannel(id: 900, accessHash: 99, title: "From the confirmation")], users: [PeerMergeApi.minUser(id: 500, accessHash: 99, firstName: "From the confirmation")])))
 
         let _ = self.runHistoryFill(peerInput: .direct(peerId: peerId, threadId: nil), direction: self.downwardFillDirection(peerId))
@@ -74,10 +74,10 @@ final class HistoryFillPeerMergeTests: StateSyncTestCase {
         self.storeHistoryFillMessages(peerId: peerId, ids: [10, 11])
         self.addHistoryFillHole(peerId)
         self.server.on(getHistory, .result(StateSyncApi.messages([
-            StateSyncApi.privateMessage(id: 10, peerUserId: 500, fromUserId: 500, date: self.baseDate + 10)
+            StateSyncApi.privateMessage(id: 10, peerUserId: 500, fromUserId: 500, date: self.baseDateOffset(by: 10))
         ])))
         self.server.on(getMessages, .result(StateSyncApi.messages([
-            StateSyncApi.privateMessage(id: 11, peerUserId: 500, fromUserId: 500, date: self.baseDate + 11)
+            StateSyncApi.privateMessage(id: 11, peerUserId: 500, fromUserId: 500, date: self.baseDateOffset(by: 11))
         ], chats: [PeerMergeApi.minBroadcastChannel(id: 900, accessHash: 99, title: "From the confirmation")])))
 
         let _ = self.runHistoryFill(peerInput: .direct(peerId: peerId, threadId: nil), direction: self.downwardFillDirection(peerId))
@@ -96,10 +96,10 @@ final class HistoryFillPeerMergeTests: StateSyncTestCase {
         self.storeHistoryFillMessages(peerId: peerId, ids: [10, 11])
         self.addHistoryFillHole(peerId)
         self.server.on(getHistory, .result(StateSyncApi.messages([
-            StateSyncApi.privateMessage(id: 10, peerUserId: 500, fromUserId: 500, date: self.baseDate + 10)
+            StateSyncApi.privateMessage(id: 10, peerUserId: 500, fromUserId: 500, date: self.baseDateOffset(by: 10))
         ], users: [PeerMergeApi.minUser(id: 500, accessHash: 77, firstName: "From the fill")])))
         self.server.on(getMessages, .result(StateSyncApi.messages([
-            StateSyncApi.privateMessage(id: 11, peerUserId: 500, fromUserId: 500, date: self.baseDate + 11)
+            StateSyncApi.privateMessage(id: 11, peerUserId: 500, fromUserId: 500, date: self.baseDateOffset(by: 11))
         ], users: [StateSyncApi.user(id: 500, accessHash: 99, firstName: "From the confirmation")])))
 
         let _ = self.runHistoryFill(peerInput: .direct(peerId: peerId, threadId: nil), direction: self.downwardFillDirection(peerId))

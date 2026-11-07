@@ -25,7 +25,7 @@ final class HistoryFillRequestErrorTests: StateSyncTestCase {
         self.server.on(getHistory, .error(code: 500, text: "INTERNAL_SERVER_ERROR"))
         self.server.on(getHistory, .error(code: 500, text: "INTERNAL_SERVER_ERROR"))
         self.server.on(getHistory, .result(StateSyncApi.messages([
-            StateSyncApi.privateMessage(id: 10, peerUserId: 500, fromUserId: 500, date: self.baseDate + 10)
+            StateSyncApi.privateMessage(id: 10, peerUserId: 500, fromUserId: 500, date: self.baseDateOffset(by: 10))
         ])))
 
         let result = self.runHistoryFill(peerInput: .direct(peerId: peerId, threadId: nil), direction: self.downwardFillDirection(peerId))
@@ -44,7 +44,7 @@ final class HistoryFillRequestErrorTests: StateSyncTestCase {
         self.addHistoryFillHole(peerId)
         self.server.on(getHistory, .error(code: 420, text: "FLOOD_WAIT_3"))
         self.server.on(getHistory, .result(StateSyncApi.messages([
-            StateSyncApi.privateMessage(id: 10, peerUserId: 500, fromUserId: 500, date: self.baseDate + 10)
+            StateSyncApi.privateMessage(id: 10, peerUserId: 500, fromUserId: 500, date: self.baseDateOffset(by: 10))
         ])))
 
         let result = self.runHistoryFill(peerInput: .direct(peerId: peerId, threadId: nil), direction: self.downwardFillDirection(peerId))
@@ -80,7 +80,7 @@ final class HistoryFillRequestErrorTests: StateSyncTestCase {
         self.addHistoryFillHole(peerId)
         self.server.on(getHistory, .result(StateSyncApi.boolTrue()))
         self.server.always(getHistory, { _ in .result(StateSyncApi.messages([
-            StateSyncApi.privateMessage(id: 10, peerUserId: 500, fromUserId: 500, date: self.baseDate + 10)
+            StateSyncApi.privateMessage(id: 10, peerUserId: 500, fromUserId: 500, date: self.baseDateOffset(by: 10))
         ])) })
 
         let result = self.runHistoryFill(peerInput: .direct(peerId: peerId, threadId: nil), direction: self.downwardFillDirection(peerId))

@@ -74,7 +74,7 @@ final class WidgetPublicDataPollingTests: StateSyncTestCase {
         self.fixture.eventually { self.publicData(self.messageId(peerId, 12)) == Data("new".utf8) }
 
         XCTAssertTrue(self.server.release("messages.getHistory", with: .result(StateSyncApi.messages([
-            StateSyncApi.privateMessage(id: 12, peerUserId: 500, fromUserId: 500, date: self.baseDate + 12, text: "", media: StateSyncApi.widgetMedia(chatData: nil, publicData: "old", publicDataHash: 1, widgetId: 42))
+            StateSyncApi.privateMessage(id: 12, peerUserId: 500, fromUserId: 500, date: self.baseDateOffset(by: 12), text: "", media: StateSyncApi.widgetMedia(chatData: nil, publicData: "old", publicDataHash: 1, widgetId: 42))
         ]))))
         results.wait { !$0.isEmpty }
 

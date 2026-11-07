@@ -283,7 +283,7 @@ final class RecentlyDeletedMessagesTests: XCTestCase {
         let movedId = self.id(1)
         fixture.transaction { transaction -> Void in
             transaction.updateMessage(movedId, update: { message in
-                return .update(StoreMessage(id: message.id, customStableId: nil, globallyUniqueId: nil, groupingKey: nil, threadId: nil, timestamp: message.timestamp + 100, flags: StoreMessageFlags(message.flags), tags: message.tags, globalTags: message.globalTags, localTags: message.localTags, forwardInfo: nil, authorId: nil, text: message.text, attributes: [], media: []))
+                return .update(StoreMessage(id: message.id, customStableId: nil, globallyUniqueId: nil, groupingKey: nil, threadId: nil, timestamp: Int32(clamping: Int64(message.timestamp) + 100), flags: StoreMessageFlags(message.flags), tags: message.tags, globalTags: message.globalTags, localTags: message.localTags, forwardInfo: nil, authorId: nil, text: message.text, attributes: [], media: []))
             })
         }
         self.store(fixture, [2])

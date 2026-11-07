@@ -129,8 +129,8 @@ final class HistoryFillReconciliationTests: StateSyncTestCase {
         self.storeHistoryFillMessages(peerId: peerId, ids: [5, 10, 12])
         self.addHistoryFillHole(peerId)
         self.server.on(getHistory, .result(StateSyncApi.messages([
-            StateSyncApi.privateMessage(id: 12, peerUserId: 500, fromUserId: 500, date: self.baseDate + 12),
-            StateSyncApi.privateMessage(id: 10, peerUserId: 500, fromUserId: 500, date: self.baseDate + 10)
+            StateSyncApi.privateMessage(id: 12, peerUserId: 500, fromUserId: 500, date: self.baseDateOffset(by: 12)),
+            StateSyncApi.privateMessage(id: 10, peerUserId: 500, fromUserId: 500, date: self.baseDateOffset(by: 10))
         ])))
 
         let result = self.runHistoryFill(peerInput: .direct(peerId: peerId, threadId: nil), direction: self.downwardFillDirection(peerId))
@@ -150,11 +150,11 @@ final class HistoryFillReconciliationTests: StateSyncTestCase {
         self.storeHistoryFillMessages(peerId: peerId, ids: [10, 11, 12, 13], text: "old")
         self.addHistoryFillHole(peerId)
         self.server.on(getHistory, .result(StateSyncApi.messages([
-            StateSyncApi.privateMessage(id: 12, peerUserId: 500, fromUserId: 500, date: self.baseDate + 12, text: "new"),
-            StateSyncApi.privateMessage(id: 10, peerUserId: 500, fromUserId: 500, date: self.baseDate + 10, text: "new")
+            StateSyncApi.privateMessage(id: 12, peerUserId: 500, fromUserId: 500, date: self.baseDateOffset(by: 12), text: "new"),
+            StateSyncApi.privateMessage(id: 10, peerUserId: 500, fromUserId: 500, date: self.baseDateOffset(by: 10), text: "new")
         ])))
         self.server.on(getMessages, .result(StateSyncApi.messages([
-            StateSyncApi.privateMessage(id: 11, peerUserId: 500, fromUserId: 500, date: self.baseDate + 11, text: "edited")
+            StateSyncApi.privateMessage(id: 11, peerUserId: 500, fromUserId: 500, date: self.baseDateOffset(by: 11), text: "edited")
         ] + StateSyncApi.deletedMessages([13]))))
 
         let result = self.runHistoryFill(peerInput: .direct(peerId: peerId, threadId: nil), direction: self.downwardFillDirection(peerId))
@@ -178,7 +178,7 @@ final class HistoryFillReconciliationTests: StateSyncTestCase {
         self.storeHistoryFillMessages(peerId: groupId, ids: [20, 21], authorId: authorId)
         self.addHistoryFillHole(groupId)
         self.server.on(getHistory, .result(StateSyncApi.messages([
-            HistoryFillApi.groupMessage(id: 20, chatId: 800, fromUserId: 500, date: self.baseDate + 20)
+            HistoryFillApi.groupMessage(id: 20, chatId: 800, fromUserId: 500, date: self.baseDateOffset(by: 20))
         ])))
         self.server.on(getMessages, .result(StateSyncApi.everythingGone()))
 
@@ -280,8 +280,8 @@ final class HistoryFillReconciliationTests: StateSyncTestCase {
         self.storeHistoryFillMessages(peerId: peerId, ids: [10, 11])
         self.addHistoryFillHole(peerId)
         self.server.on(getHistory, .result(StateSyncApi.messages([
-            StateSyncApi.privateMessage(id: 12, peerUserId: 500, fromUserId: 500, date: self.baseDate + 12),
-            StateSyncApi.privateMessage(id: 10, peerUserId: 500, fromUserId: 500, date: self.baseDate + 10)
+            StateSyncApi.privateMessage(id: 12, peerUserId: 500, fromUserId: 500, date: self.baseDateOffset(by: 12)),
+            StateSyncApi.privateMessage(id: 10, peerUserId: 500, fromUserId: 500, date: self.baseDateOffset(by: 10))
         ])))
         self.server.on(getMessages, .error(code: 500, text: "INTERNAL_SERVER_ERROR"))
         self.server.on(getMessages, .hold)
@@ -313,7 +313,7 @@ final class HistoryFillReconciliationTests: StateSyncTestCase {
         self.storeHistoryFillMessages(peerId: peerId, ids: [10, 11], text: "old")
         self.addHistoryFillHole(peerId)
         self.server.on(getHistory, .result(StateSyncApi.messages([
-            StateSyncApi.privateMessage(id: 10, peerUserId: 500, fromUserId: 500, date: self.baseDate + 10, text: "old")
+            StateSyncApi.privateMessage(id: 10, peerUserId: 500, fromUserId: 500, date: self.baseDateOffset(by: 10), text: "old")
         ])))
         self.server.on(getMessages, .hold)
 
@@ -341,8 +341,8 @@ final class HistoryFillReconciliationTests: StateSyncTestCase {
         self.storeHistoryFillMessages(peerId: peerId, ids: [10, 11, 12], text: "old")
         self.addHistoryFillHole(peerId)
         self.server.on(getHistory, .result(StateSyncApi.messages([
-            StateSyncApi.privateMessage(id: 12, peerUserId: 500, fromUserId: 500, date: self.baseDate + 12, text: "answer"),
-            StateSyncApi.privateMessage(id: 10, peerUserId: 500, fromUserId: 500, date: self.baseDate + 10, text: "answer")
+            StateSyncApi.privateMessage(id: 12, peerUserId: 500, fromUserId: 500, date: self.baseDateOffset(by: 12), text: "answer"),
+            StateSyncApi.privateMessage(id: 10, peerUserId: 500, fromUserId: 500, date: self.baseDateOffset(by: 10), text: "answer")
         ])))
         self.server.on(getMessages, .hold)
 
@@ -376,13 +376,13 @@ final class HistoryFillReconciliationTests: StateSyncTestCase {
         self.storeHistoryFillMessages(peerId: peerId, ids: [10, 11])
         self.addHistoryFillHole(peerId)
         self.server.on(getHistory, .result(StateSyncApi.messages([
-            StateSyncApi.privateMessage(id: 10, peerUserId: 500, fromUserId: 500, date: self.baseDate + 10, replyToMessageId: 5)
+            StateSyncApi.privateMessage(id: 10, peerUserId: 500, fromUserId: 500, date: self.baseDateOffset(by: 10), replyToMessageId: 5)
         ], users: [StateSyncApi.user(id: 500, firstName: "From the fill")])))
         self.server.on(getMessages, .result(StateSyncApi.messages([
-            StateSyncApi.privateMessage(id: 11, peerUserId: 500, fromUserId: 500, date: self.baseDate + 11)
+            StateSyncApi.privateMessage(id: 11, peerUserId: 500, fromUserId: 500, date: self.baseDateOffset(by: 11))
         ], users: [StateSyncApi.user(id: 500, firstName: "From the confirmation")])))
         self.server.on(getMessages, .result(StateSyncApi.messages([
-            StateSyncApi.privateMessage(id: 5, peerUserId: 500, fromUserId: 500, date: self.baseDate + 5)
+            StateSyncApi.privateMessage(id: 5, peerUserId: 500, fromUserId: 500, date: self.baseDateOffset(by: 5))
         ])))
 
         let _ = self.runHistoryFill(peerInput: .direct(peerId: peerId, threadId: nil), direction: self.downwardFillDirection(peerId))
@@ -404,8 +404,8 @@ final class HistoryFillReconciliationTests: StateSyncTestCase {
         self.storeHistoryFillMessages(peerId: peerId, ids: [10, 11])
         self.addHistoryFillHole(peerId)
         self.server.on(getHistory, .result(StateSyncApi.messages([
-            StateSyncApi.privateMessage(id: 12, peerUserId: 500, fromUserId: 500, date: self.baseDate + 12),
-            StateSyncApi.privateMessage(id: 10, peerUserId: 500, fromUserId: 500, date: self.baseDate + 10)
+            StateSyncApi.privateMessage(id: 12, peerUserId: 500, fromUserId: 500, date: self.baseDateOffset(by: 12)),
+            StateSyncApi.privateMessage(id: 10, peerUserId: 500, fromUserId: 500, date: self.baseDateOffset(by: 10))
         ])))
         self.server.on(getMessages, .hold)
 
@@ -462,7 +462,7 @@ final class HistoryFillReconciliationTests: StateSyncTestCase {
         self.storeHistoryFillMessages(peerId: accountPeerId, ids: [20, 21], authorId: accountPeerId)
         self.addHistoryFillHole(accountPeerId)
         self.server.on(getHistory, .result(StateSyncApi.messages([
-            StateSyncApi.privateMessage(id: 20, peerUserId: accountUserId, fromUserId: accountUserId, date: self.baseDate + 20, outgoing: true)
+            StateSyncApi.privateMessage(id: 20, peerUserId: accountUserId, fromUserId: accountUserId, date: self.baseDateOffset(by: 20), outgoing: true)
         ])))
         self.server.on(getMessages, .result(StateSyncApi.everythingGone()))
 
@@ -509,10 +509,10 @@ final class HistoryFillReconciliationTests: StateSyncTestCase {
         self.storeHistoryFillMessages(peerId: peerId, ids: [10, 11], text: "old")
         self.addHistoryFillHole(peerId)
         self.server.on(getHistory, .result(StateSyncApi.messages([
-            StateSyncApi.privateMessage(id: 10, peerUserId: 500, fromUserId: 500, date: self.baseDate + 10, text: "old")
+            StateSyncApi.privateMessage(id: 10, peerUserId: 500, fromUserId: 500, date: self.baseDateOffset(by: 10), text: "old")
         ])))
         self.server.on(getMessages, .result(StateSyncApi.messages([
-            StateSyncApi.privateMessage(id: 11, peerUserId: 600, fromUserId: 600, date: self.baseDate + 11, text: "other chat")
+            StateSyncApi.privateMessage(id: 11, peerUserId: 600, fromUserId: 600, date: self.baseDateOffset(by: 11), text: "other chat")
         ])))
 
         let _ = self.runHistoryFill(peerInput: .direct(peerId: peerId, threadId: nil), direction: self.downwardFillDirection(peerId))
@@ -528,11 +528,11 @@ final class HistoryFillReconciliationTests: StateSyncTestCase {
     func testChannelFillIsUnchanged() {
         self.fixture.seedAccount(state: self.state(pts: 100))
         let channelId = self.seedChannel(310, pts: 20, storedMessageId: nil)
-        self.fixture.storeMessage(peerId: channelId, id: 10, timestamp: self.baseDate + 10, authorId: nil, text: "stored", location: .Random)
-        self.fixture.storeMessage(peerId: channelId, id: 11, timestamp: self.baseDate + 11, authorId: nil, text: "stored", location: .Random)
+        self.fixture.storeMessage(peerId: channelId, id: 10, timestamp: self.baseDateOffset(by: 10), authorId: nil, text: "stored", location: .Random)
+        self.fixture.storeMessage(peerId: channelId, id: 11, timestamp: self.baseDateOffset(by: 11), authorId: nil, text: "stored", location: .Random)
         self.addHistoryFillHole(channelId)
         self.server.on(getHistory, .result(StateSyncApi.channelMessages(pts: 20, [
-            StateSyncApi.channelPost(id: 10, channelId: 310, date: self.baseDate + 10)
+            StateSyncApi.channelPost(id: 10, channelId: 310, date: self.baseDateOffset(by: 10))
         ])))
 
         let result = self.runHistoryFill(peerInput: .direct(peerId: channelId, threadId: nil), direction: self.downwardFillDirection(channelId))

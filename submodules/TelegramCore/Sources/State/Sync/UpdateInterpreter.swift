@@ -16,42 +16,42 @@ private func sortedUpdates(_ updates: [Api.Update]) -> [Api.Update] {
                 if updatesByChannel[peerId] == nil {
                     updatesByChannel[peerId] = [update]
                 } else {
-                    updatesByChannel[peerId]!.append(update)
+                    updatesByChannel[peerId, default: []].append(update)
                 }
             case let .updatePinnedForumTopic(updatePinnedForumTopicData):
                 let peerId = updatePinnedForumTopicData.peer.peerId
                 if updatesByChannel[peerId] == nil {
                     updatesByChannel[peerId] = [update]
                 } else {
-                    updatesByChannel[peerId]!.append(update)
+                    updatesByChannel[peerId, default: []].append(update)
                 }
             case let .updatePinnedForumTopics(updatePinnedForumTopicsData):
                 let peerId = updatePinnedForumTopicsData.peer.peerId
                 if updatesByChannel[peerId] == nil {
                     updatesByChannel[peerId] = [update]
                 } else {
-                    updatesByChannel[peerId]!.append(update)
+                    updatesByChannel[peerId, default: []].append(update)
                 }
             case let .updateDeleteChannelMessages(updateDeleteChannelMessagesData):
                 let peerId = PeerId(namespace: Namespaces.Peer.CloudChannel, id: PeerId.Id._internalFromInt64Value(updateDeleteChannelMessagesData.channelId))
                 if updatesByChannel[peerId] == nil {
                     updatesByChannel[peerId] = [update]
                 } else {
-                    updatesByChannel[peerId]!.append(update)
+                    updatesByChannel[peerId, default: []].append(update)
                 }
             case let .updatePinnedChannelMessages(updatePinnedChannelMessagesData):
                 let peerId = PeerId(namespace: Namespaces.Peer.CloudChannel, id: PeerId.Id._internalFromInt64Value(updatePinnedChannelMessagesData.channelId))
                 if updatesByChannel[peerId] == nil {
                     updatesByChannel[peerId] = [update]
                 } else {
-                    updatesByChannel[peerId]!.append(update)
+                    updatesByChannel[peerId, default: []].append(update)
                 }
             case let .updateNewChannelMessage(updateNewChannelMessageData):
                 if let peerId = apiMessagePeerId(updateNewChannelMessageData.message) {
                     if updatesByChannel[peerId] == nil {
                         updatesByChannel[peerId] = [update]
                     } else {
-                        updatesByChannel[peerId]!.append(update)
+                        updatesByChannel[peerId, default: []].append(update)
                     }
                 } else {
                     otherUpdates.append(update)
@@ -61,7 +61,7 @@ private func sortedUpdates(_ updates: [Api.Update]) -> [Api.Update] {
                     if updatesByChannel[peerId] == nil {
                         updatesByChannel[peerId] = [update]
                     } else {
-                        updatesByChannel[peerId]!.append(update)
+                        updatesByChannel[peerId, default: []].append(update)
                     }
                 } else {
                     otherUpdates.append(update)
@@ -71,14 +71,14 @@ private func sortedUpdates(_ updates: [Api.Update]) -> [Api.Update] {
                 if updatesByChannel[peerId] == nil {
                     updatesByChannel[peerId] = [update]
                 } else {
-                    updatesByChannel[peerId]!.append(update)
+                    updatesByChannel[peerId, default: []].append(update)
                 }
             case let .updateChannelAvailableMessages(updateChannelAvailableMessagesData):
                 let peerId = PeerId(namespace: Namespaces.Peer.CloudChannel, id: PeerId.Id._internalFromInt64Value(updateChannelAvailableMessagesData.channelId))
                 if updatesByChannel[peerId] == nil {
                     updatesByChannel[peerId] = [update]
                 } else {
-                    updatesByChannel[peerId]!.append(update)
+                    updatesByChannel[peerId, default: []].append(update)
                 }
             default:
                 otherUpdates.append(update)

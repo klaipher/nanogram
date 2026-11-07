@@ -40,8 +40,8 @@ final class HistoryFillRecentDeletionTests: StateSyncTestCase {
         XCTAssertTrue(self.server.waitForRequest(getHistory), "no fill was sent: \(self.server.requestNames)")
         self.deleteWithGlobalIds([12])
         XCTAssertTrue(self.server.release(getHistory, with: .result(StateSyncApi.messages([
-            StateSyncApi.privateMessage(id: 12, peerUserId: 500, fromUserId: 500, date: self.baseDate + 12),
-            StateSyncApi.privateMessage(id: 10, peerUserId: 500, fromUserId: 500, date: self.baseDate + 10)
+            StateSyncApi.privateMessage(id: 12, peerUserId: 500, fromUserId: 500, date: self.baseDateOffset(by: 12)),
+            StateSyncApi.privateMessage(id: 10, peerUserId: 500, fromUserId: 500, date: self.baseDateOffset(by: 10))
         ]))))
         results.wait { !$0.isEmpty }
 
@@ -61,8 +61,8 @@ final class HistoryFillRecentDeletionTests: StateSyncTestCase {
         self.storeHistoryFillMessages(peerId: peerId, ids: [10, 11])
         self.addHistoryFillHole(peerId)
         self.server.on(getHistory, .result(StateSyncApi.messages([
-            StateSyncApi.privateMessage(id: 12, peerUserId: 500, fromUserId: 500, date: self.baseDate + 12),
-            StateSyncApi.privateMessage(id: 10, peerUserId: 500, fromUserId: 500, date: self.baseDate + 10)
+            StateSyncApi.privateMessage(id: 12, peerUserId: 500, fromUserId: 500, date: self.baseDateOffset(by: 12)),
+            StateSyncApi.privateMessage(id: 10, peerUserId: 500, fromUserId: 500, date: self.baseDateOffset(by: 10))
         ])))
         self.server.on(getMessages, .hold)
 
@@ -98,8 +98,8 @@ final class HistoryFillRecentDeletionTests: StateSyncTestCase {
             _internal_deleteMessages(transaction: transaction, mediaBox: mediaBox, ids: [deletedId])
         }
         XCTAssertTrue(self.server.release(getHistory, with: .result(StateSyncApi.channelMessages(pts: 20, [
-            StateSyncApi.channelPost(id: 12, channelId: 310, date: self.baseDate + 12),
-            StateSyncApi.channelPost(id: 10, channelId: 310, date: self.baseDate + 10)
+            StateSyncApi.channelPost(id: 12, channelId: 310, date: self.baseDateOffset(by: 12)),
+            StateSyncApi.channelPost(id: 10, channelId: 310, date: self.baseDateOffset(by: 10))
         ]))))
         results.wait { !$0.isEmpty }
 
@@ -117,7 +117,7 @@ final class HistoryFillRecentDeletionTests: StateSyncTestCase {
         let peerId = self.seedUserChat(500)
         self.addHistoryFillHole(peerId)
         self.server.on(getHistory, .result(StateSyncApi.messages([
-            StateSyncApi.privateMessage(id: 10, peerUserId: 500, fromUserId: 500, date: self.baseDate + 10, replyToMessageId: 5)
+            StateSyncApi.privateMessage(id: 10, peerUserId: 500, fromUserId: 500, date: self.baseDateOffset(by: 10), replyToMessageId: 5)
         ])))
         self.server.on(getMessages, .hold)
 
@@ -127,7 +127,7 @@ final class HistoryFillRecentDeletionTests: StateSyncTestCase {
         XCTAssertEqual(self.server.requests.last?.payload, Api.functions.messages.getMessages(id: [Api.InputMessage.inputMessageReplyTo(.init(id: 10))]).1.makeData())
         self.deleteWithGlobalIds([5])
         XCTAssertTrue(self.server.release(getMessages, with: .result(StateSyncApi.messages([
-            StateSyncApi.privateMessage(id: 5, peerUserId: 500, fromUserId: 500, date: self.baseDate + 5)
+            StateSyncApi.privateMessage(id: 5, peerUserId: 500, fromUserId: 500, date: self.baseDateOffset(by: 5))
         ], users: [StateSyncApi.user(id: 500, firstName: "From the follow-up")]))))
         self.fixture.eventually {
             return (self.fixture.peer(peerId) as? TelegramUser)?.firstName == "From the follow-up"
@@ -151,7 +151,7 @@ final class HistoryFillRecentDeletionTests: StateSyncTestCase {
         let peerId = self.seedUserChat(500)
         self.addHistoryFillHole(peerId)
         self.server.on(getHistory, .result(StateSyncApi.messages([
-            StateSyncApi.privateMessage(id: 10, peerUserId: 500, fromUserId: 500, date: self.baseDate + 10, replyToMessageId: 5)
+            StateSyncApi.privateMessage(id: 10, peerUserId: 500, fromUserId: 500, date: self.baseDateOffset(by: 10), replyToMessageId: 5)
         ])))
         self.server.on(getMessages, .hold)
         self.server.on(getMessages, .hold)
@@ -165,7 +165,7 @@ final class HistoryFillRecentDeletionTests: StateSyncTestCase {
         // The follow-up outlasts the (shortened) bound.
         Thread.sleep(forTimeInterval: 0.4)
         XCTAssertTrue(self.server.release(getMessages, with: .result(StateSyncApi.messages([
-            StateSyncApi.privateMessage(id: 5, peerUserId: 500, fromUserId: 500, date: self.baseDate + 5, text: "stale")
+            StateSyncApi.privateMessage(id: 5, peerUserId: 500, fromUserId: 500, date: self.baseDateOffset(by: 5), text: "stale")
         ], users: [StateSyncApi.user(id: 500, firstName: "From the stale follow-up")]))))
 
         // Sent after the stale answer's transaction stored nothing.
@@ -176,7 +176,7 @@ final class HistoryFillRecentDeletionTests: StateSyncTestCase {
 
         FetchedAnswerAge.maximum = defaultMaximum
         XCTAssertTrue(self.server.release(getMessages, with: .result(StateSyncApi.messages([
-            StateSyncApi.privateMessage(id: 5, peerUserId: 500, fromUserId: 500, date: self.baseDate + 5, text: "fresh")
+            StateSyncApi.privateMessage(id: 5, peerUserId: 500, fromUserId: 500, date: self.baseDateOffset(by: 5), text: "fresh")
         ], users: [StateSyncApi.user(id: 500, firstName: "From the fresh follow-up")]))))
         self.fixture.eventually {
             return (self.fixture.peer(peerId) as? TelegramUser)?.firstName == "From the fresh follow-up"
@@ -206,8 +206,8 @@ final class HistoryFillRecentDeletionTests: StateSyncTestCase {
         self.storeHistoryFillMessages(peerId: peerId, ids: [10, 11])
         self.addHistoryFillHole(peerId)
         self.server.on(getHistory, .result(StateSyncApi.messages([
-            StateSyncApi.privateMessage(id: 12, peerUserId: 500, fromUserId: 500, date: self.baseDate + 12, text: "first answer"),
-            StateSyncApi.privateMessage(id: 10, peerUserId: 500, fromUserId: 500, date: self.baseDate + 10, text: "first answer")
+            StateSyncApi.privateMessage(id: 12, peerUserId: 500, fromUserId: 500, date: self.baseDateOffset(by: 12), text: "first answer"),
+            StateSyncApi.privateMessage(id: 10, peerUserId: 500, fromUserId: 500, date: self.baseDateOffset(by: 10), text: "first answer")
         ])))
         self.server.on(getMessages, .hold)
 
@@ -230,8 +230,8 @@ final class HistoryFillRecentDeletionTests: StateSyncTestCase {
         // settled 11, so nothing is left to confirm.
         FetchedAnswerAge.maximum = defaultMaximum
         self.server.on(getHistory, .result(StateSyncApi.messages([
-            StateSyncApi.privateMessage(id: 12, peerUserId: 500, fromUserId: 500, date: self.baseDate + 12, text: "second answer"),
-            StateSyncApi.privateMessage(id: 10, peerUserId: 500, fromUserId: 500, date: self.baseDate + 10, text: "second answer")
+            StateSyncApi.privateMessage(id: 12, peerUserId: 500, fromUserId: 500, date: self.baseDateOffset(by: 12), text: "second answer"),
+            StateSyncApi.privateMessage(id: 10, peerUserId: 500, fromUserId: 500, date: self.baseDateOffset(by: 10), text: "second answer")
         ])))
         let second = self.runHistoryFill(peerInput: .direct(peerId: peerId, threadId: nil), direction: self.downwardFillDirection(peerId))
 

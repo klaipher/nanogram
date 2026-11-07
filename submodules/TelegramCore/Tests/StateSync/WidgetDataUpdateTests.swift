@@ -21,13 +21,13 @@ final class WidgetDataUpdateTests: StateSyncTestCase {
     }
 
     private func push(_ update: Api.Update) {
-        self.server.push(StateSyncApi.updates([update], users: [StateSyncApi.user(id: 500, firstName: "U500")], date: self.baseDate + 20, seq: 0))
+        self.server.push(StateSyncApi.updates([update], users: [StateSyncApi.user(id: 500, firstName: "U500")], date: self.baseDateOffset(by: 20), seq: 0))
         self.drainOperationQueue()
     }
 
     func testAPushEditsTheStoredWidgetInSequence() {
         let peerId = self.seedUserChat(500)
-        self.fixture.storeMessage(peerId: peerId, id: 12, timestamp: self.baseDate + 12, authorId: peerId, text: "", media: [self.widget(chatData: "c1", publicData: "p1")])
+        self.fixture.storeMessage(peerId: peerId, id: 12, timestamp: self.baseDateOffset(by: 12), authorId: peerId, text: "", media: [self.widget(chatData: "c1", publicData: "p1")])
         self.launchIdle()
 
         self.push(StateSyncApi.updateMessageWidgetData(userId: 500, msgId: 12, chatData: "c2", publicData: nil, pts: 101))
@@ -44,7 +44,7 @@ final class WidgetDataUpdateTests: StateSyncTestCase {
     /// absent one leaves it.
     func testAnEmptyFieldClearsAndAnAbsentOneIsUnchanged() {
         let peerId = self.seedUserChat(500)
-        self.fixture.storeMessage(peerId: peerId, id: 12, timestamp: self.baseDate + 12, authorId: peerId, text: "", media: [self.widget(chatData: "c1", publicData: "p1")])
+        self.fixture.storeMessage(peerId: peerId, id: 12, timestamp: self.baseDateOffset(by: 12), authorId: peerId, text: "", media: [self.widget(chatData: "c1", publicData: "p1")])
         self.launchIdle()
 
         self.push(StateSyncApi.updateMessageWidgetData(userId: 500, msgId: 12, chatData: nil, publicData: "", pts: 101))
@@ -59,7 +59,7 @@ final class WidgetDataUpdateTests: StateSyncTestCase {
     /// of a shared widget starts from it.
     func testThePushedSharedStateKeepsItsHash() {
         let peerId = self.seedUserChat(500)
-        self.fixture.storeMessage(peerId: peerId, id: 12, timestamp: self.baseDate + 12, authorId: peerId, text: "", media: [self.widget(chatData: "c1", publicData: "p1")])
+        self.fixture.storeMessage(peerId: peerId, id: 12, timestamp: self.baseDateOffset(by: 12), authorId: peerId, text: "", media: [self.widget(chatData: "c1", publicData: "p1")])
         self.launchIdle()
 
         self.push(StateSyncApi.updateMessageWidgetData(userId: 500, msgId: 12, chatData: nil, publicData: "p2", publicDataHash: 77, pts: 101))
@@ -73,7 +73,7 @@ final class WidgetDataUpdateTests: StateSyncTestCase {
     /// A push for a message that is not stored, or that has no widget, changes nothing but the pts: no gap, no request.
     func testAPushForAMessageNotStoredOrWithoutAWidgetOnlyAdvances() {
         let peerId = self.seedUserChat(500)
-        self.fixture.storeMessage(peerId: peerId, id: 13, timestamp: self.baseDate + 13, authorId: peerId, text: "plain")
+        self.fixture.storeMessage(peerId: peerId, id: 13, timestamp: self.baseDateOffset(by: 13), authorId: peerId, text: "plain")
         self.launchIdle()
 
         self.push(StateSyncApi.updateMessageWidgetData(userId: 500, msgId: 99, chatData: "c2", publicData: nil, pts: 101))
@@ -91,7 +91,7 @@ final class WidgetDataUpdateTests: StateSyncTestCase {
     /// the edit.
     func testAFillInFlightDoesNotOverwriteThePushedState() {
         let peerId = self.seedUserChat(500)
-        self.fixture.storeMessage(peerId: peerId, id: 12, timestamp: self.baseDate + 12, authorId: peerId, text: "", media: [self.widget(chatData: "c1", publicData: "p1")])
+        self.fixture.storeMessage(peerId: peerId, id: 12, timestamp: self.baseDateOffset(by: 12), authorId: peerId, text: "", media: [self.widget(chatData: "c1", publicData: "p1")])
         self.launchIdle()
         self.addHistoryFillHole(peerId)
         self.server.on(getHistory, .hold)
@@ -102,8 +102,8 @@ final class WidgetDataUpdateTests: StateSyncTestCase {
         self.push(StateSyncApi.updateMessageWidgetData(userId: 500, msgId: 12, chatData: "c2", publicData: nil, pts: 101))
         XCTAssertEqual(self.storedWidget(self.messageId(peerId, 12))?.chatData, Data("c2".utf8), "precondition: the replay edited the stored widget")
         XCTAssertTrue(self.server.release(getHistory, with: .result(StateSyncApi.messages([
-            StateSyncApi.privateMessage(id: 12, peerUserId: 500, fromUserId: 500, date: self.baseDate + 12, text: "", media: StateSyncApi.widgetMedia(chatData: "c1", publicData: "p1")),
-            StateSyncApi.privateMessage(id: 10, peerUserId: 500, fromUserId: 500, date: self.baseDate + 10, text: "original")
+            StateSyncApi.privateMessage(id: 12, peerUserId: 500, fromUserId: 500, date: self.baseDateOffset(by: 12), text: "", media: StateSyncApi.widgetMedia(chatData: "c1", publicData: "p1")),
+            StateSyncApi.privateMessage(id: 10, peerUserId: 500, fromUserId: 500, date: self.baseDateOffset(by: 10), text: "original")
         ]))))
         results.wait { !$0.isEmpty }
 

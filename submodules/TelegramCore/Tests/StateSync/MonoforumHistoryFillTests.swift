@@ -52,7 +52,7 @@ final class MonoforumHistoryFillTests: StateSyncTestCase {
             MonoforumFillApi.message(id: 11, channelId: 320, fromUserId: 400, savedPeerUserId: 400, date: self.baseDate, replyToMessageId: 6)
         ], users: [StateSyncApi.user(id: 400, firstName: "Sender")])))
         self.server.on(Name.channelsGetMessages, .result(StateSyncApi.channelMessages(pts: 20, [
-            MonoforumFillApi.message(id: 6, channelId: 320, fromUserId: 500, savedPeerUserId: 400, date: self.baseDate - 100)
+            MonoforumFillApi.message(id: 6, channelId: 320, fromUserId: 500, savedPeerUserId: 400, date: self.baseDateOffset(by: -100))
         ], users: [StateSyncApi.user(id: 500, firstName: "Author")])))
         self.server.on(getSavedDialogsByID, .hold)
 

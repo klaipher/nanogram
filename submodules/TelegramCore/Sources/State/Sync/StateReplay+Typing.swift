@@ -12,7 +12,7 @@ extension ReplayContext {
             if updatedTypingActivities[chatPeerId] == nil {
                 updatedTypingActivities[chatPeerId] = [peerId: activity]
             } else {
-                updatedTypingActivities[chatPeerId]![peerId] = activity
+                updatedTypingActivities[chatPeerId, default: [:]][peerId] = activity
             }
         } else if chatPeerId.peerId.namespace == Namespaces.Peer.SecretChat {
             updatedSecretChatTypingActivities.insert(chatPeerId.peerId)

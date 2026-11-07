@@ -215,7 +215,7 @@ final class StoredMessageConfirmationTests: StateSyncTestCase {
     func testApplyDeletesMissingAndRestoresExisting() {
         let user = self.seedUserChat(200)
         self.fixture.storeMessage(peerId: user, id: 30, timestamp: self.baseDate, authorId: user, text: "stale")
-        self.fixture.storeMessage(peerId: user, id: 31, timestamp: self.baseDate + 1, authorId: user, text: "deleted")
+        self.fixture.storeMessage(peerId: user, id: 31, timestamp: self.baseDateOffset(by: 1), authorId: user, text: "deleted")
         let versions = self.storedVersions([self.messageId(user, 30), self.messageId(user, 31)])
         guard let fresh = self.freshPrivateMessage(30, text: "fresh") else {
             XCTFail("the message does not parse")
@@ -236,10 +236,10 @@ final class StoredMessageConfirmationTests: StateSyncTestCase {
     func testApplyLeavesACandidateThatChangedSinceTheReadAlone() {
         let user = self.seedUserChat(200)
         self.fixture.storeMessage(peerId: user, id: 40, timestamp: self.baseDate, authorId: user, text: "stale")
-        self.fixture.storeMessage(peerId: user, id: 41, timestamp: self.baseDate + 1, authorId: user, text: "stale")
+        self.fixture.storeMessage(peerId: user, id: 41, timestamp: self.baseDateOffset(by: 1), authorId: user, text: "stale")
         let versions = self.storedVersions([self.messageId(user, 40), self.messageId(user, 41)])
         self.fixture.storeMessage(peerId: user, id: 40, timestamp: self.baseDate, authorId: user, text: "edited", location: .Random)
-        self.fixture.storeMessage(peerId: user, id: 41, timestamp: self.baseDate + 1, authorId: user, text: "edited", location: .Random)
+        self.fixture.storeMessage(peerId: user, id: 41, timestamp: self.baseDateOffset(by: 1), authorId: user, text: "edited", location: .Random)
         XCTAssertNotEqual(self.storedVersions([self.messageId(user, 40)])[self.messageId(user, 40)], versions[self.messageId(user, 40)])
         guard let fresh = self.freshPrivateMessage(40, text: "fresh") else {
             XCTFail("the message does not parse")

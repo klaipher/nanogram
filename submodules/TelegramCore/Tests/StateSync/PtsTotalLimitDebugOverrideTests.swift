@@ -71,7 +71,7 @@ final class PtsTotalLimitDebugOverrideNotificationExtensionTests: StateSyncTestC
         self.fixture.seedAccount(state: self.state(pts: 100, qts: 5, seq: 10))
         self.makeStateManager()
         self.server.on(Name.getDifference, .result(StateSyncApi.difference(
-            state: StateSyncApi.state(pts: 150, qts: 5, date: self.baseDate + 10, seq: 10)
+            state: StateSyncApi.state(pts: 150, qts: 5, date: self.baseDateOffset(by: 10), seq: 10)
         )))
 
         XCTAssertEqual(self.fixture.wait(self.stateManager.standalonePollDifference()), true)

@@ -151,7 +151,7 @@ final class TruthSessionTests: XCTestCase {
         driver.fixture.transaction { transaction -> Void in
             transaction.setPeerChatState(peerId, state: ChannelState(pts: pts, invalidatedPts: pts, synchronizedUntilMessageId: nil))
         }
-        driver.fixture.storeMessage(peerId: peerId, id: 999, timestamp: self.baseDate + 999, authorId: nil, text: "deleted on the server", location: .Random)
+        driver.fixture.storeMessage(peerId: peerId, id: 999, timestamp: self.baseDateOffset(by: 999), authorId: nil, text: "deleted on the server", location: .Random)
         let top = driver.world.existing(chat).last?.id ?? 0
         XCTAssertEqual(driver.compare(), [
             TruthDiscrepancy(kind: .ghost, chat: chat, ids: [999], note: ""),

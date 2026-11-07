@@ -1112,7 +1112,7 @@ struct AccountFinalStateEvents {
     func union(with other: AccountFinalStateEvents) -> AccountFinalStateEvents {
         var delayNotificatonsUntil = self.delayNotificatonsUntil
         if let otherDelayNotificatonsUntil = other.delayNotificatonsUntil {
-            if delayNotificatonsUntil == nil || otherDelayNotificatonsUntil > delayNotificatonsUntil! {
+            if delayNotificatonsUntil == nil || otherDelayNotificatonsUntil > (delayNotificatonsUntil ?? Int32.min) {
                 delayNotificatonsUntil = otherDelayNotificatonsUntil
             }
         }

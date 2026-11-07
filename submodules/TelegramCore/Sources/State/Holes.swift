@@ -1124,7 +1124,7 @@ func fetchMessageHistoryHole(accountPeerId: PeerId, source: FetchMessageHistoryH
                         filledRange = minMaxRange
                         strictFilledIndices = IndexSet()
                     } else {
-                        let messageRange = ids.min()! ... ids.max()!
+                        let messageRange = (ids.min() ?? 0) ... (ids.max() ?? 0)
                         switch direction {
                         case let .aroundId(aroundId):
                             // The server's position facts behind aroundHoleFillRange were measured for

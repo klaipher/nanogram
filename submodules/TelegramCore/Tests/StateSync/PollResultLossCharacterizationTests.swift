@@ -35,7 +35,7 @@ final class PollResultLossCharacterizationTests: StateSyncTestCase {
         self.server.on(Name.getDifference, .result(StateSyncApi.differenceTooLong(pts: 999)))
         self.server.on(Name.getDialogs, .result(StateSyncApi.dialogs()))
         self.server.on(Name.getPinnedDialogs, .result(StateSyncApi.peerDialogs(state: StateSyncApi.state(pts: 999, qts: 5, date: self.baseDate, seq: 10))))
-        self.server.on(Name.getDifference, .result(StateSyncApi.differenceEmpty(date: self.baseDate + 100, seq: 10)))
+        self.server.on(Name.getDifference, .result(StateSyncApi.differenceEmpty(date: self.baseDateOffset(by: 100), seq: 10)))
         // The transaction's completion is queued on the manager's queue once its block has finished.
         self.server.answerBeforeCallerContinues(Name.getDifference, after: {
             Postbox.sharedQueue.sync {
@@ -55,15 +55,15 @@ final class PollResultLossCharacterizationTests: StateSyncTestCase {
         XCTAssertEqual(names.first, Name.getDifference)
         XCTAssertEqual(Set(names.dropFirst().prefix(2)), [Name.getDialogs, Name.getPinnedDialogs])
         self.assertGetDifference(3, pts: 999, date: self.baseDate, qts: 5)
-        XCTAssertEqual(self.fixture.accountState()?.state, self.state(pts: 999, qts: 5, date: self.baseDate + 100, seq: 10))
+        XCTAssertEqual(self.fixture.accountState()?.state, self.state(pts: 999, qts: 5, date: self.baseDateOffset(by: 100), seq: 10))
 
         // Nothing is left running at the head: reset() polls again, from the state the cycle stored.
-        self.server.on(Name.getDifference, .result(StateSyncApi.differenceEmpty(date: self.baseDate + 101, seq: 10)))
+        self.server.on(Name.getDifference, .result(StateSyncApi.differenceEmpty(date: self.baseDateOffset(by: 101), seq: 10)))
         self.fixture.resetStateManager()
         XCTAssertTrue(self.server.waitForRequest(Name.getDifference, count: 3))
         self.drainOperationQueue()
         XCTAssertEqual(self.server.requestNames.count, 5)
-        self.assertGetDifference(4, pts: 999, date: self.baseDate + 100, qts: 5)
+        self.assertGetDifference(4, pts: 999, date: self.baseDateOffset(by: 100), qts: 5)
     }
 }
 

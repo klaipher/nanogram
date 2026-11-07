@@ -215,7 +215,7 @@ final class TruthWorld {
         guard var message = self.messagesByChat[chat]?[id] else {
             preconditionFailure("truth world: edit of \(chat) \(id), which does not exist")
         }
-        self.date += 1
+        self.date = Int32(clamping: Int64(self.date) + 1)
         message.text = text
         message.editDate = self.date
         self.messagesByChat[chat]![id] = message
@@ -258,7 +258,7 @@ final class TruthWorld {
 
     private func addMessage(in chat: TruthPeer, fromUserId: Int64?, outgoing: Bool, text: String) -> TruthLogEntry {
         if !self.holdsClock {
-            self.date += 1
+            self.date = Int32(clamping: Int64(self.date) + 1)
         }
         let id: Int32
         if case let .channel(channelId) = chat {

@@ -28,7 +28,9 @@ extension ReplayContext {
     }
     
     func applyUpdateState(_ innerState: AuthorizedAccountState.State) {
-        let currentState = transaction.getState() as! AuthorizedAccountState
+        guard let currentState = transaction.getState() as? AuthorizedAccountState else {
+            return
+        }
         var updatedInnerState = innerState
         if policy.keepsStoredDate, let previousInnerState = currentState.state {
             updatedInnerState = AuthorizedAccountState.State(pts: updatedInnerState.pts, qts: updatedInnerState.qts, date: previousInnerState.date, seq: updatedInnerState.seq)

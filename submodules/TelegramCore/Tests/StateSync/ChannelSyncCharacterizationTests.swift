@@ -14,8 +14,8 @@ final class ChannelSyncCharacterizationTests: StateSyncTestCase {
         self.launchIdle()
 
         self.server.push(StateSyncApi.updates([
-            StateSyncApi.updateNewChannelMessage(StateSyncApi.channelPost(id: 11, channelId: 300, date: self.baseDate + 2), pts: 51)
-        ], date: self.baseDate + 2, seq: 0))
+            StateSyncApi.updateNewChannelMessage(StateSyncApi.channelPost(id: 11, channelId: 300, date: self.baseDateOffset(by: 2)), pts: 51)
+        ], date: self.baseDateOffset(by: 2), seq: 0))
         self.drainOperationQueue()
 
         XCTAssertEqual(self.server.requestNames, [Name.getDifference])
@@ -29,13 +29,13 @@ final class ChannelSyncCharacterizationTests: StateSyncTestCase {
         let channel = self.seedChannel(300, pts: 50, storedMessageId: 10)
         self.launchIdle()
         self.server.on(Name.getChannelDifference, .result(StateSyncApi.channelDifference(pts: 52, newMessages: [
-            StateSyncApi.channelPost(id: 11, channelId: 300, date: self.baseDate + 2),
-            StateSyncApi.channelPost(id: 12, channelId: 300, date: self.baseDate + 2)
+            StateSyncApi.channelPost(id: 11, channelId: 300, date: self.baseDateOffset(by: 2)),
+            StateSyncApi.channelPost(id: 12, channelId: 300, date: self.baseDateOffset(by: 2))
         ])))
 
         self.server.push(StateSyncApi.updates([
-            StateSyncApi.updateNewChannelMessage(StateSyncApi.channelPost(id: 12, channelId: 300, date: self.baseDate + 2), pts: 52)
-        ], date: self.baseDate + 2, seq: 0))
+            StateSyncApi.updateNewChannelMessage(StateSyncApi.channelPost(id: 12, channelId: 300, date: self.baseDateOffset(by: 2)), pts: 52)
+        ], date: self.baseDateOffset(by: 2), seq: 0))
         self.drainOperationQueue()
 
         XCTAssertEqual(self.server.requestNames, [Name.getDifference, Name.getChannelDifference])
@@ -57,23 +57,23 @@ final class ChannelSyncCharacterizationTests: StateSyncTestCase {
         let channel = self.seedChannel(307, pts: 50, storedMessageId: 10)
         self.launchIdle()
         self.server.on(Name.getChannelDifference, .error(code: 400, text: "CHANNEL_PRIVATE"))
-        self.server.on(Name.getDifference, .result(StateSyncApi.differenceEmpty(date: self.baseDate + 3, seq: 10)))
+        self.server.on(Name.getDifference, .result(StateSyncApi.differenceEmpty(date: self.baseDateOffset(by: 3), seq: 10)))
 
         self.server.push(StateSyncApi.updates([
             StateSyncApi.updateNewMessage(self.incomingMessage(101, from: 200), pts: 101),
-            StateSyncApi.updateNewChannelMessage(StateSyncApi.channelPost(id: 12, channelId: 307, date: self.baseDate + 2), pts: 52)
-        ], date: self.baseDate + 2, seq: 0))
+            StateSyncApi.updateNewChannelMessage(StateSyncApi.channelPost(id: 12, channelId: 307, date: self.baseDateOffset(by: 2)), pts: 52)
+        ], date: self.baseDateOffset(by: 2), seq: 0))
 
         self.isUpdating.wait { $0 == [true, false, true, false] }
         self.waitForNotification(of: self.messageId(user, 101))
         self.drainOperationQueue()
 
         XCTAssertEqual(self.server.requestNames, [Name.getDifference, Name.getChannelDifference, Name.getDifference])
-        self.assertGetDifference(2, pts: 101, date: self.baseDate + 1, qts: 5)
+        self.assertGetDifference(2, pts: 101, date: self.baseDateOffset(by: 1), qts: 5)
         XCTAssertNotNil(self.fixture.message(self.messageId(user, 101)))
         XCTAssertNil(self.fixture.message(self.messageId(channel, 12)))
         XCTAssertEqual(self.fixture.channelState(channel)?.pts, 50)
-        XCTAssertEqual(self.fixture.accountState()?.state, self.state(pts: 101, date: self.baseDate + 3))
+        XCTAssertEqual(self.fixture.accountState()?.state, self.state(pts: 101, date: self.baseDateOffset(by: 3)))
         XCTAssertEqual(self.notifiedMessageIds(), [[self.messageId(user, 101)]])
     }
 
@@ -92,8 +92,8 @@ final class ChannelSyncCharacterizationTests: StateSyncTestCase {
 
         self.server.push(StateSyncApi.updates([
             StateSyncApi.updateNewMessage(self.incomingMessage(101, from: 200), pts: 101),
-            StateSyncApi.updateNewChannelMessage(StateSyncApi.channelPost(id: 12, channelId: 308, date: self.baseDate + 2), pts: 52)
-        ], date: self.baseDate + 2, seq: 0))
+            StateSyncApi.updateNewChannelMessage(StateSyncApi.channelPost(id: 12, channelId: 308, date: self.baseDateOffset(by: 2)), pts: 52)
+        ], date: self.baseDateOffset(by: 2), seq: 0))
 
         self.waitForNotification(of: self.messageId(user, 101))
         self.drainOperationQueue()
@@ -118,12 +118,12 @@ final class ChannelSyncCharacterizationTests: StateSyncTestCase {
         let channel = self.seedChannel(301, pts: nil, storedMessageId: 10)
         self.launchIdle()
         self.server.on(Name.getChannelDifference, .result(StateSyncApi.channelDifference(pts: 51, newMessages: [
-            StateSyncApi.channelPost(id: 11, channelId: 301, date: self.baseDate + 2)
+            StateSyncApi.channelPost(id: 11, channelId: 301, date: self.baseDateOffset(by: 2))
         ])))
 
         self.server.push(StateSyncApi.updates([
-            StateSyncApi.updateNewChannelMessage(StateSyncApi.channelPost(id: 11, channelId: 301, date: self.baseDate + 2), pts: 51)
-        ], date: self.baseDate + 2, seq: 0))
+            StateSyncApi.updateNewChannelMessage(StateSyncApi.channelPost(id: 11, channelId: 301, date: self.baseDateOffset(by: 2)), pts: 51)
+        ], date: self.baseDateOffset(by: 2), seq: 0))
         self.drainOperationQueue()
 
         XCTAssertEqual(self.server.requestNames, [Name.getDifference, Name.getChannelDifference])
@@ -153,7 +153,7 @@ final class ChannelSyncCharacterizationTests: StateSyncTestCase {
 
         self.server.push(StateSyncApi.updates([
             StateSyncApi.updateDeleteChannelMessages(channelId: 304, messages: [10], pts: 51, ptsCount: 1)
-        ], date: self.baseDate + 2, seq: 0))
+        ], date: self.baseDateOffset(by: 2), seq: 0))
         self.drainOperationQueue()
 
         XCTAssertEqual(self.server.requestNames, [Name.getDifference, Name.getChannelDifference])
@@ -171,15 +171,15 @@ final class ChannelSyncCharacterizationTests: StateSyncTestCase {
         self.fixture.seedAccount(state: self.state(pts: 100))
         self.makeStateManager()
         self.server.on(Name.getDifference, .result(StateSyncApi.difference(
-            otherUpdates: [StateSyncApi.updateNewChannelMessage(StateSyncApi.channelPost(id: 11, channelId: 305, date: self.baseDate + 2), pts: 51)],
+            otherUpdates: [StateSyncApi.updateNewChannelMessage(StateSyncApi.channelPost(id: 11, channelId: 305, date: self.baseDateOffset(by: 2)), pts: 51)],
             chats: [StateSyncApi.broadcastChannel(id: 305, title: "C305")],
-            state: StateSyncApi.state(pts: 100, qts: 5, date: self.baseDate + 1, seq: 10)
+            state: StateSyncApi.state(pts: 100, qts: 5, date: self.baseDateOffset(by: 1), seq: 10)
         )))
         self.server.on(Name.getPeerDialogs, .result(StateSyncApi.peerDialogs(
             dialogs: [StateSyncApi.dialog(peer: StateSyncApi.peerChannel(305), topMessage: 11, pts: 51)],
-            messages: [StateSyncApi.channelPost(id: 11, channelId: 305, date: self.baseDate + 2)],
+            messages: [StateSyncApi.channelPost(id: 11, channelId: 305, date: self.baseDateOffset(by: 2))],
             chats: [StateSyncApi.broadcastChannel(id: 305, title: "C305")],
-            state: StateSyncApi.state(pts: 100, qts: 5, date: self.baseDate + 1, seq: 10)
+            state: StateSyncApi.state(pts: 100, qts: 5, date: self.baseDateOffset(by: 1), seq: 10)
         )))
         self.fixture.resetStateManager()
 
@@ -210,12 +210,12 @@ final class ChannelSyncCharacterizationTests: StateSyncTestCase {
         self.server.on(Name.getDifference, .result(StateSyncApi.difference(
             otherUpdates: [StateSyncApi.updatePinnedForumTopics(peer: StateSyncApi.peerUser(777))],
             users: [StateSyncApi.user(id: 777, firstName: "Bot")],
-            state: StateSyncApi.state(pts: 100, qts: 5, date: self.baseDate + 1, seq: 10)
+            state: StateSyncApi.state(pts: 100, qts: 5, date: self.baseDateOffset(by: 1), seq: 10)
         )))
         // The chat-info fetch; a second request would be the reset, which has no answer here.
         self.server.on(Name.getPeerDialogs, .result(StateSyncApi.peerDialogs(
             users: [StateSyncApi.user(id: 777, firstName: "Bot")],
-            state: StateSyncApi.state(pts: 100, qts: 5, date: self.baseDate + 1, seq: 10)
+            state: StateSyncApi.state(pts: 100, qts: 5, date: self.baseDateOffset(by: 1), seq: 10)
         )))
         self.fixture.resetStateManager()
 
@@ -239,7 +239,7 @@ final class ChannelSyncCharacterizationTests: StateSyncTestCase {
         self.server.on(Name.getDifference, .result(StateSyncApi.difference(
             otherUpdates: [StateSyncApi.updateChannelTooLong(channelId: 302, pts: 60)],
             chats: [StateSyncApi.broadcastChannel(id: 302, title: "C302")],
-            state: StateSyncApi.state(pts: 100, qts: 5, date: self.baseDate + 1, seq: 10)
+            state: StateSyncApi.state(pts: 100, qts: 5, date: self.baseDateOffset(by: 1), seq: 10)
         )))
         self.server.on(Name.getPeerDialogs, .hold)
         self.fixture.resetStateManager()
@@ -247,7 +247,7 @@ final class ChannelSyncCharacterizationTests: StateSyncTestCase {
         XCTAssertTrue(self.server.waitForRequest(Name.getPeerDialogs))
         // The difference itself completes while the reset is held.
         self.drainOperationQueue()
-        XCTAssertEqual(self.fixture.accountState()?.state?.date, self.baseDate + 1)
+        XCTAssertEqual(self.fixture.accountState()?.state?.date, self.baseDateOffset(by: 1))
         XCTAssertEqual(self.isUpdating.values, [true])
         self.fixture.eventually {
             return self.fixture.accountState()?.invalidatedChannels.map { $0.peerId } == [channel]
@@ -255,9 +255,9 @@ final class ChannelSyncCharacterizationTests: StateSyncTestCase {
 
         XCTAssertTrue(self.server.release(Name.getPeerDialogs, with: .result(StateSyncApi.peerDialogs(
             dialogs: [StateSyncApi.dialog(peer: StateSyncApi.peerChannel(302), topMessage: 15, pts: 60)],
-            messages: [StateSyncApi.channelPost(id: 15, channelId: 302, date: self.baseDate + 3)],
+            messages: [StateSyncApi.channelPost(id: 15, channelId: 302, date: self.baseDateOffset(by: 3))],
             chats: [StateSyncApi.broadcastChannel(id: 302, title: "C302")],
-            state: StateSyncApi.state(pts: 100, qts: 5, date: self.baseDate + 1, seq: 10)
+            state: StateSyncApi.state(pts: 100, qts: 5, date: self.baseDateOffset(by: 1), seq: 10)
         ))))
 
         self.isUpdating.wait { $0 == [true, false] }
@@ -283,10 +283,10 @@ final class ChannelSyncCharacterizationTests: StateSyncTestCase {
         let channel = self.seedChannel(303, pts: 50, storedMessageId: 10)
         self.launchIdle()
         self.server.on(Name.getChannelDifference, .result(StateSyncApi.channelDifference(pts: 51, newMessages: [
-            StateSyncApi.channelPost(id: 11, channelId: 303, date: self.baseDate + 2, replyToMessageId: 6)
+            StateSyncApi.channelPost(id: 11, channelId: 303, date: self.baseDateOffset(by: 2), replyToMessageId: 6)
         ])))
         self.server.on(Name.channelsGetMessages, .result(StateSyncApi.channelMessages(pts: 51, [
-            StateSyncApi.channelPost(id: 6, channelId: 303, date: self.baseDate - 100)
+            StateSyncApi.channelPost(id: 6, channelId: 303, date: self.baseDateOffset(by: -100))
         ])))
 
         let timeout = self.fixture.wait(pollChannelOnce(accountPeerId: StateSyncFixture.accountPeerId, postbox: self.fixture.postbox, network: self.network, peerId: channel, stateManager: self.stateManager, delayCompletion: false))
@@ -308,10 +308,10 @@ final class ChannelSyncCharacterizationTests: StateSyncTestCase {
         let channel = self.seedChannel(304, pts: 50, storedMessageId: 10)
         self.launchIdle()
         self.server.on(Name.getChannelDifference, .result(StateSyncApi.channelDifference(pts: 51, newMessages: [
-            StateSyncApi.channelPost(id: 11, channelId: 304, date: self.baseDate + 2, replyToMessageId: 6)
+            StateSyncApi.channelPost(id: 11, channelId: 304, date: self.baseDateOffset(by: 2), replyToMessageId: 6)
         ])))
         self.server.on(Name.channelsGetMessages, .result(StateSyncApi.channelMessages(pts: 51, [
-            StateSyncApi.channelPost(id: 6, channelId: 304, date: self.baseDate - 100)
+            StateSyncApi.channelPost(id: 6, channelId: 304, date: self.baseDateOffset(by: -100))
         ])))
 
         // Completes after the replay transaction has committed.
@@ -334,16 +334,16 @@ final class ChannelSyncCharacterizationTests: StateSyncTestCase {
         self.server.on(Name.getDifference, .result(StateSyncApi.difference(
             otherUpdates: [StateSyncApi.updateChannelTooLong(channelId: 305, pts: 60)],
             chats: [StateSyncApi.broadcastChannel(id: 305, title: "C305")],
-            state: StateSyncApi.state(pts: 100, qts: 5, date: self.baseDate + 1, seq: 10)
+            state: StateSyncApi.state(pts: 100, qts: 5, date: self.baseDateOffset(by: 1), seq: 10)
         )))
         self.server.on(Name.getPeerDialogs, .result(StateSyncApi.peerDialogs(
             dialogs: [StateSyncApi.dialog(peer: StateSyncApi.peerChannel(305), topMessage: 15, pts: 60)],
-            messages: [StateSyncApi.channelPost(id: 15, channelId: 305, date: self.baseDate + 3, replyToMessageId: 6)],
+            messages: [StateSyncApi.channelPost(id: 15, channelId: 305, date: self.baseDateOffset(by: 3), replyToMessageId: 6)],
             chats: [StateSyncApi.broadcastChannel(id: 305, title: "C305")],
-            state: StateSyncApi.state(pts: 100, qts: 5, date: self.baseDate + 1, seq: 10)
+            state: StateSyncApi.state(pts: 100, qts: 5, date: self.baseDateOffset(by: 1), seq: 10)
         )))
         self.server.on(Name.channelsGetMessages, .result(StateSyncApi.channelMessages(pts: 60, [
-            StateSyncApi.channelPost(id: 6, channelId: 305, date: self.baseDate - 100)
+            StateSyncApi.channelPost(id: 6, channelId: 305, date: self.baseDateOffset(by: -100))
         ])))
         self.fixture.resetStateManager()
 
@@ -374,16 +374,16 @@ final class ChannelSyncCharacterizationTests: StateSyncTestCase {
         self.server.on(Name.getDifference, .result(StateSyncApi.difference(
             otherUpdates: [StateSyncApi.updateChannelTooLong(channelId: 306, pts: 60)],
             chats: [StateSyncApi.broadcastChannel(id: 306, title: "C306")],
-            state: StateSyncApi.state(pts: 100, qts: 5, date: self.baseDate + 1, seq: 10)
+            state: StateSyncApi.state(pts: 100, qts: 5, date: self.baseDateOffset(by: 1), seq: 10)
         )))
         self.server.on(Name.getPeerDialogs, .result(StateSyncApi.peerDialogs(
             dialogs: [StateSyncApi.dialog(peer: StateSyncApi.peerChannel(306), topMessage: 15, pts: 60)],
-            messages: [StateSyncApi.channelPost(id: 15, channelId: 306, date: self.baseDate + 3, replyToMessageId: 6)],
+            messages: [StateSyncApi.channelPost(id: 15, channelId: 306, date: self.baseDateOffset(by: 3), replyToMessageId: 6)],
             chats: [StateSyncApi.broadcastChannel(id: 306, title: "C306")],
-            state: StateSyncApi.state(pts: 100, qts: 5, date: self.baseDate + 1, seq: 10)
+            state: StateSyncApi.state(pts: 100, qts: 5, date: self.baseDateOffset(by: 1), seq: 10)
         )))
         // Every request for the target is answered, so a repeated one shows in the log instead of hanging.
-        let target = StateSyncApi.channelPost(id: 6, channelId: 306, date: self.baseDate - 100)
+        let target = StateSyncApi.channelPost(id: 6, channelId: 306, date: self.baseDateOffset(by: -100))
         self.server.always(Name.channelsGetMessages, { _ in
             return .result(StateSyncApi.channelMessages(pts: 60, [target]))
         })

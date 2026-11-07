@@ -83,7 +83,7 @@ extension ReplayContext {
             if langPackDifferences[langCode] == nil {
                 langPackDifferences[langCode] = []
             }
-            langPackDifferences[langCode]!.append(difference)
+            langPackDifferences[langCode, default: []].append(difference)
         } else {
             pollLangPacks.insert(langCode)
         }

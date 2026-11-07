@@ -54,9 +54,9 @@ final class ChatListHoleFillTests: StateSyncTestCase {
         let cleared = self.seedUserChat(201)
         let channel = self.seedChannel(300, pts: 60, storedMessageId: 20)
         self.fixture.storeMessage(peerId: user, id: 10, timestamp: self.baseDate, authorId: user, text: "top")
-        self.fixture.storeMessage(peerId: user, id: 11, timestamp: self.baseDate + 1, authorId: user, text: "above the top")
-        self.fixture.storeMessage(peerId: cleared, id: 5, timestamp: self.baseDate - 2, authorId: cleared, text: "above top 0")
-        self.fixture.storeMessage(peerId: channel, id: 21, timestamp: self.baseDate + 1, authorId: nil, text: "above the top")
+        self.fixture.storeMessage(peerId: user, id: 11, timestamp: self.baseDateOffset(by: 1), authorId: user, text: "above the top")
+        self.fixture.storeMessage(peerId: cleared, id: 5, timestamp: self.baseDateOffset(by: -2), authorId: cleared, text: "above top 0")
+        self.fixture.storeMessage(peerId: channel, id: 21, timestamp: self.baseDateOffset(by: 1), authorId: nil, text: "above the top")
         self.scriptPage(
             dialogs: [
                 StateSyncApi.dialog(peer: StateSyncApi.peerUser(200), topMessage: 10),
@@ -89,7 +89,7 @@ final class ChatListHoleFillTests: StateSyncTestCase {
         self.fixture.seedAccount(state: self.state(pts: 100))
         let user = self.seedUserChat(200)
         self.fixture.storeMessage(peerId: user, id: 10, timestamp: self.baseDate, authorId: user, text: "top", location: .UpperHistoryBlock)
-        self.fixture.storeMessage(peerId: user, id: 11, timestamp: self.baseDate + 1, authorId: user, text: "deleted on the server")
+        self.fixture.storeMessage(peerId: user, id: 11, timestamp: self.baseDateOffset(by: 1), authorId: user, text: "deleted on the server")
         XCTAssertFalse(self.fixture.holes(peerId: user).contains(11), "precondition: 11 is not under a hole")
         self.scriptPage(
             dialogs: [StateSyncApi.dialog(peer: StateSyncApi.peerUser(200), topMessage: 10)],
@@ -117,7 +117,7 @@ final class ChatListHoleFillTests: StateSyncTestCase {
         self.fixture.seedAccount(state: self.state(pts: 100))
         let channel = self.seedChannel(300, pts: 60, storedMessageId: nil)
         self.fixture.storeMessage(peerId: channel, id: 20, timestamp: self.baseDate, authorId: nil, text: "top", location: .UpperHistoryBlock)
-        self.fixture.storeMessage(peerId: channel, id: 21, timestamp: self.baseDate + 1, authorId: nil, text: "above the top")
+        self.fixture.storeMessage(peerId: channel, id: 21, timestamp: self.baseDateOffset(by: 1), authorId: nil, text: "above the top")
         self.scriptPage(
             dialogs: [StateSyncApi.dialog(peer: StateSyncApi.peerChannel(300), topMessage: 20, pts: 60)],
             messages: [StateSyncApi.channelPost(id: 20, channelId: 300, date: self.baseDate)],
