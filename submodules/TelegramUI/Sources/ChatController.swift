@@ -9533,10 +9533,10 @@ public final class ChatControllerImpl: TelegramBaseController, ChatController, G
                 guard let self else {
                     return
                 }
-                self.commitEnqueueMediaMessages(messages: legacyAssetPickerEnqueueMessages(context: self.context, account: self.context.account, signals: signals!, originalMediaReference: nil), silentPosting: silentPosting, scheduleTime: scheduleTime, postpone: postpone, parameters: parameters, getAnimatedTransitionSource: getAnimatedTransitionSource, completion: completion)
+                self.commitEnqueueMediaMessages(messages: legacyAssetPickerEnqueueMessages(context: self.context, account: self.context.account, signals: signals ?? [], originalMediaReference: nil), silentPosting: silentPosting, scheduleTime: scheduleTime, postpone: postpone, parameters: parameters, getAnimatedTransitionSource: getAnimatedTransitionSource, completion: completion)
             })
         } else {
-            self.commitEnqueueMediaMessages(messages: legacyAssetPickerEnqueueMessages(context: self.context, account: self.context.account, signals: signals!, originalMediaReference: originalMediaReference), silentPosting: silentPosting, scheduleTime: scheduleTime, replyToSubject: replyToSubject, parameters: parameters, getAnimatedTransitionSource: getAnimatedTransitionSource, completion: completion)
+            self.commitEnqueueMediaMessages(messages: legacyAssetPickerEnqueueMessages(context: self.context, account: self.context.account, signals: signals ?? [], originalMediaReference: originalMediaReference), silentPosting: silentPosting, scheduleTime: scheduleTime, replyToSubject: replyToSubject, parameters: parameters, getAnimatedTransitionSource: getAnimatedTransitionSource, completion: completion)
         }
     }
     

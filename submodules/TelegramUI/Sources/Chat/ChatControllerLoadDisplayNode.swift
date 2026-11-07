@@ -5582,7 +5582,9 @@ extension ChatControllerImpl {
                 // Bubble-free mode: the panel holding the "next channel" island (nil without one).
                 let overscrollIslandPanel = snapshotState.inputPanelOverscrollIslandHandOver != nil ? strongSelf.chatDisplayNode.inputPanelNode : nil
                 strongSelf.context.sharedContext.navigateToChatController(NavigateToChatControllerParams(navigationController: navigationController, context: strongSelf.context, chatLocation: chatLocation, animated: false, chatListFilter: nextFolderId, chatNavigationStack: updatedChatNavigationStack, completion: { nextController in
-                    let nextController = nextController as! ChatControllerImpl
+                    guard let nextController = nextController as? ChatControllerImpl else {
+                        return
+                    }
                     if let overscrollIslandPanel, nextController.didAppear {
                         // The next chat is already on screen: this controller switched in place (a forum's next
                         // topic), or one deeper in the stack was popped to. Its snapshot will not animate until a
