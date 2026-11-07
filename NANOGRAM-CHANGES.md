@@ -80,6 +80,8 @@ marked (check) were not re-verified against the code; correct them on the next c
 
 - Chat photos decode complete JPEGs at the drawn size (`ImageDecodeSizing`, used by `PhotoResources`), the photo picker issues thumbnail requests off the main thread, and `ChatHistoryListNode.processDisplayedItemRangeChanged` caches its whole-history scan per history view (all three differ from upstream; round 3, iOS UI performance).
 
+- The new photo picker grid (MediaGrid, Telegram 13.2) runs with the iCloud thumbnail lane off, a background thumbnail filler that runs only while a library picker is open (foreground, not in Low Power Mode or at serious thermal state, 4 requests at a time), a 60,000 thumbnail cap on the store, requests issued off the main thread, a single image delivery for cells under 512 px, and a store that Storage Usage's "Clear cache" empties; upstream's grid runs unpaced with the iCloud lane on (`MediaGridPhotoLibraryServices.applyAppPacing`, `ThumbnailFillPacing`).
+
 ### Chat features
 - What: News feed, opening a channel at a post, suspicious-peer chat gate, Postbox to TelegramEngine refactor, CoreList chat history backend. (check)
 - Where: docs/subsystems/channel-post-and-news-feed.md, docs/subsystems/suspicious-peer.md, docs/chat/.

@@ -2,6 +2,46 @@ import Foundation
 import UIKit
 import MediaGrid
 
+/// A PhotoKit request that is issued off the main thread: the token arrives later than the
+/// cancellation may. Whichever comes second cancels the request.
+final class ImageRequestHandle {
+    private let lock = NSLock()
+    private var token: Int32?
+    private(set) var isCancelled = false
+    private var cancelRequest: ((Int32) -> Void)?
+
+    init(cancelRequest: @escaping (Int32) -> Void) {
+        self.cancelRequest = cancelRequest
+    }
+
+    func attach(token: Int32) {
+        self.lock.lock()
+        self.token = token
+        let cancel = self.isCancelled ? self.cancelRequest : nil
+        self.lock.unlock()
+        cancel?(token)
+    }
+
+    func cancel() {
+        self.lock.lock()
+        self.isCancelled = true
+        let token = self.token
+        let cancel = self.cancelRequest
+        self.lock.unlock()
+        if let token {
+            cancel?(token)
+        }
+    }
+
+    var hasStarted: Bool {
+        self.lock.lock()
+        defer {
+            self.lock.unlock()
+        }
+        return self.token != nil
+    }
+}
+
 final class ImageLoadScheduler<Key: Hashable, PrefetchKey: Hashable, Payload> {
     enum JobState {
         case pending
@@ -38,7 +78,7 @@ final class ImageLoadScheduler<Key: Hashable, PrefetchKey: Hashable, Payload> {
             }
         }
         fileprivate var restarts = 0
-        var token: Int32?
+        var handle: ImageRequestHandle?
         private let lock = NSLock()
         private var deliverableAttempt: Int?
 
@@ -290,7 +330,7 @@ final class ImageLoadScheduler<Key: Hashable, PrefetchKey: Hashable, Payload> {
         }
         self.localLane.running -= 1
         job.state = .pending
-        job.token = nil
+        job.handle = nil
         job.usesNetwork = true
         self.push(job)
         self.pump()
@@ -309,7 +349,7 @@ final class ImageLoadScheduler<Key: Hashable, PrefetchKey: Hashable, Payload> {
         job.restarts += 1
         self.lane(for: job).running -= 1
         job.state = .pending
-        job.token = nil
+        job.handle = nil
         self.push(job)
         self.pump()
     }

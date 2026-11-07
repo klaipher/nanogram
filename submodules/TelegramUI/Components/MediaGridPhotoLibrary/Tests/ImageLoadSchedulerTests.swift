@@ -1,5 +1,7 @@
 import XCTest
 import MediaGrid
+import Photos
+import UIKit
 @testable import MediaGridPhotoLibrary
 
 final class ImageLoadSchedulerTests: XCTestCase {
@@ -403,5 +405,34 @@ final class ImageLoadSchedulerTests: XCTestCase {
         XCTAssertEqual(job.state, .running)
         XCTAssertEqual(result.prepared, 0)
         XCTAssertNotNil(result.delivered)
+    }
+
+    func testHandleCancelledBeforeTheTokenArrivesCancelsOnAttach() {
+        var cancelled: [Int32] = []
+        let handle = ImageRequestHandle(cancelRequest: { cancelled.append($0) })
+        handle.cancel()
+        XCTAssertTrue(cancelled.isEmpty)
+        handle.attach(token: 7)
+        XCTAssertEqual(cancelled, [7])
+    }
+
+    func testHandleCancelledAfterTheTokenArrivesCancelsAtOnce() {
+        var cancelled: [Int32] = []
+        let handle = ImageRequestHandle(cancelRequest: { cancelled.append($0) })
+        handle.attach(token: 3)
+        XCTAssertTrue(handle.hasStarted)
+        XCTAssertTrue(cancelled.isEmpty)
+        handle.cancel()
+        XCTAssertEqual(cancelled, [3])
+        XCTAssertTrue(handle.isCancelled)
+    }
+
+    func testRequestDeliveryModeAndLimits() {
+        XCTAssertEqual(MediaGridPhotoLibraryDataSource.deliveryMode(for: CGSize(width: 393, height: 393)), .highQualityFormat)
+        XCTAssertEqual(MediaGridPhotoLibraryDataSource.deliveryMode(for: CGSize(width: 236, height: 236)), .highQualityFormat)
+        XCTAssertEqual(MediaGridPhotoLibraryDataSource.deliveryMode(for: CGSize(width: 1179, height: 786)), .opportunistic)
+        XCTAssertEqual(MediaGridPhotoLibraryDataSource.deliveryMode(for: CGSize(width: 512, height: 300)), .opportunistic)
+        XCTAssertLessThanOrEqual(MediaGridPhotoLibraryDataSource.localRequestLimit, 8)
+        XCTAssertLessThan(MediaGridPhotoLibraryDataSource.prefetchRequestLimit, MediaGridPhotoLibraryDataSource.localRequestLimit)
     }
 }

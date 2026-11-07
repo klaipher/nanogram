@@ -28,6 +28,7 @@ import BottomButtonPanelComponent
 import GlassBackgroundComponent
 import EdgeEffect
 import MessageWidgetStorage
+import MediaGridPhotoLibrary
 
 #if DEBUG
 import os.signpost
@@ -2963,6 +2964,11 @@ final class StorageUsageScreenComponent: Component {
             // SDK v1 §5.4: "Clear cache" also deletes every message widget's storage, which Storage Usage does not list.
             if MessageWidgetStorageStore.clearsWidgetStorage(chatScoped: aggregatedData.peerId != nil, clearingCategories: fromCategories) {
                 let _ = MessageWidgetStorageStore.shared.clearAll(accountPeerId: component.context.account.peerId, writer: MessageWidgetEngineStorageWriter(engine: component.context.engine)).startStandalone()
+            }
+            
+            // The photo picker's thumbnail store (Caches/MediaGridThumbnails) is not in Storage Usage's totals either.
+            if MediaGridPhotoLibraryServices.clearsThumbnailCache(chatScoped: aggregatedData.peerId != nil, clearingCategories: fromCategories) {
+                MediaGridPhotoLibraryServices.shared.clearCaches()
             }
             
             if let _ = aggregatedData.peerId {

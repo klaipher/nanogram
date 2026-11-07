@@ -597,4 +597,78 @@ final class ThumbnailFillerTests: XCTestCase {
         XCTAssertEqual(made.segments, [ThumbnailLaunchSnapshot.Segment(start: 0, ids: ["a", "x"]), ThumbnailLaunchSnapshot.Segment(start: 5, ids: ["f", "g"])])
         XCTAssertNil(ThumbnailLaunchSnapshot.decode(Data([1, 2, 3])))
     }
+
+    func testHaltedFillerStartsNothingAndResumesWhenReleased() {
+        let (filler, source) = self.makeFiller()
+        filler.isHalted = true
+        filler.install(filler.makePlan(for: self.catalog(10)))
+        XCTAssertTrue(source.requests.isEmpty)
+        filler.isHalted = false
+        XCTAssertEqual(source.requests.count, 10)
+    }
+
+    func testHaltingLetsInFlightRequestsFinishButStartsNoMore() {
+        let (filler, source) = self.makeFiller()
+        filler.install(filler.makePlan(for: self.catalog(100)))
+        XCTAssertEqual(source.requests.count, 16)
+        filler.isHalted = true
+        source.completeFirst(.image(self.image))
+        XCTAssertEqual(source.requests.count, 15)
+        XCTAssertEqual(filler.inFlightCount, 15)
+        filler.isHalted = false
+        XCTAssertEqual(filler.inFlightCount, 16)
+    }
+
+    func testHaltedFillerCancelsRunningNetworkRequests() {
+        let (filler, source) = self.makeFiller()
+        filler.networkGate = { true }
+        filler.install(filler.makePlan(for: self.catalog(4)))
+        source.drainLocal { _ in .unavailable }
+        XCTAssertFalse(source.networkRequests.isEmpty)
+        let running = source.requests.filter { $0.network }.map(\.request)
+        filler.isHalted = true
+        XCTAssertTrue(running.allSatisfy { $0.isCancelled })
+        XCTAssertEqual(filler.networkInFlightCount, 0)
+    }
+
+    func testInFlightLimitsAreConfigurable() {
+        let (filler, source) = self.makeFiller()
+        filler.idleInFlightLimit = ThumbnailFiller.pacedIdleLimit
+        filler.fastInFlightLimit = ThumbnailFiller.pacedFastLimit
+        filler.install(filler.makePlan(for: self.catalog(100)))
+        XCTAssertEqual(source.requests.count, 4)
+        filler.isMovingFast = true
+        source.completeFirst(.image(self.image))
+        source.completeFirst(.image(self.image))
+        XCTAssertEqual(filler.inFlightCount, 2)
+        XCTAssertEqual(ThumbnailFiller.pacedIdleLimit, 4)
+        XCTAssertEqual(ThumbnailFiller.pacedFastLimit, 2)
+    }
+
+    func testStoredLimitStopsNewRequests() {
+        let (filler, source) = self.makeFiller()
+        filler.storedLimit = 5
+        filler.install(filler.makePlan(for: self.catalog(100)))
+        XCTAssertEqual(source.requests.count, 5)
+        source.drainLocal { _ in .image(self.image) }
+        XCTAssertEqual(source.log.count, 5)
+        XCTAssertEqual(filler.filledCount, 5)
+        XCTAssertTrue(filler.isAtStoredLimit)
+        XCTAssertEqual(filler.inFlightCount, 0)
+    }
+
+    func testStoredLimitAlsoRefusesSharpImageHarvests() {
+        let store = MediaGridThumbnailStore(directory: nil)
+        let (filler, source) = self.makeFiller(store: store)
+        filler.storedLimit = 1
+        filler.install(filler.makePlan(for: self.catalog(3)))
+        XCTAssertEqual(source.requests.count, 1)
+        let requested = source.localRequests
+        source.drainLocal { _ in .image(self.image) }
+        for id in ["p0", "p1", "p2"] where !requested.contains(id) {
+            filler.harvest(id: id, version: "1", image: self.image)
+            XCTAssertNil(store.version(for: id))
+        }
+        XCTAssertEqual(store.storedIds().count, 1)
+    }
 }

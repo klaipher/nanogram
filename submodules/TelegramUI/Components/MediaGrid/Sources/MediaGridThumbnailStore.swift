@@ -358,6 +358,76 @@ public final class MediaGridThumbnailStore {
         }
     }
 
+    /// "Clear cache": forgets every thumbnail and deletes the page files that held them. The
+    /// completion runs on the main queue once the emptied index is on disk.
+    public func removeAll(completion: (() -> Void)? = nil) {
+        self.load { [weak self] in
+            guard let self else {
+                completion?()
+                return
+            }
+            self.queue.async {
+                self.resetAllOnQueue(completion: completion)
+            }
+        }
+    }
+
+    private func resetAllOnQueue(completion: (() -> Void)?) {
+        self.lock.lock()
+        let ids = Array(self.index.keys)
+        let emptiedFiles = self.pageFiles
+        self.index = [:]
+        self.slotIds = [:]
+        self.freeSlots = []
+        self.nextSlot = 0
+        self.pageFiles = [:]
+        self.indexVersion += 1
+        self.lock.unlock()
+        for page in Array(self.contexts.keys) {
+            self.bumpGeneration(page: page)
+        }
+        self.lock.lock()
+        for (page, generation) in self.pageGenerations {
+            self.diskGenerations[page] = generation
+        }
+        self.lock.unlock()
+        self.contexts.removeAll()
+        self.contextUses.removeAll()
+        self.dirtyPages.removeAll()
+        self.stashedImages.removeAll()
+        self.pendingSnapshots.removeAll()
+        self.retryPages.removeAll()
+        self.encodeFailures.removeAll()
+        self.pendingPlacements.removeAll()
+        self.pendingRemovals.formUnion(ids)
+        self.schedulePublish()
+        let directory = self.directory
+        self.ioQueue.async {
+            if let directory {
+                for (page, stamp) in emptiedFiles {
+                    self.supersededFiles.append(self.pageURL(directory: directory, page: page, stamp: stamp))
+                }
+            }
+            self.pageFilesChangedSinceIndex = true
+            self.failedPages.removeAll()
+        }
+        DispatchQueue.main.async {
+            self.placements.removeAll()
+            self.slotOwners.removeAll()
+            self.pageImages.removeAll()
+            self.pageUses.removeAll()
+            self.decodeStack.removeAll()
+            self.preparedPageList = []
+            self.preparedPages = []
+            self.lastTouchedPage = nil
+        }
+        self.requestDiskFlush(includeIndex: true, completion: {
+            if let completion {
+                DispatchQueue.main.async(execute: completion)
+            }
+        })
+    }
+
     public func load(completion: @escaping () -> Void) {
         self.lock.lock()
         if self.isLoaded {

@@ -20,6 +20,10 @@ Sources import only UIKit, QuartzCore, Foundation, Photos and CoreList. No Displ
 
 The PhotoKit loading stack (`ImageLoadScheduler`, `MediaGridPhotoLibraryDataSource`, the filler, the launch-match glue) is the sibling module `../MediaGridPhotoLibrary` (Bazel target and an xcodegen framework target here, with its own `MediaGridPhotoLibraryTests`). `MediaGridPhotoLibraryServices.shared` owns the app-session store, filler and launch cache under `<Caches>/MediaGridThumbnails/`; tests inject temporary directories and never touch `shared`. A data source maps grid index `i` to fetch index `count - 1 - i` when `reversed` (Recents, newest first; the demo) and to `i` otherwise (an album). Only a data source given the filler (`isLibrary`) drives it: its catalog decides which stored ids are orphans, so never give the filler an album's data source.
 
+## App pacing (Nanogram)
+
+`MediaGridPhotoLibraryServices.shared` calls `filler.applyAppPacing()`: iCloud lane off, 4 local filler requests (2 while moving fast), at most 60,000 stored thumbnails. The filler runs only while a library data source exists (a lease taken in its `init`, given back in `deinit`), the app is in the foreground, Low Power Mode is off and the thermal state is nominal or fair (`ThumbnailFillPacing` in `MediaGridPhotoLibrary`); the demo, which uses `shared`, therefore runs paced too. PhotoKit image requests are issued on a serial queue (`ImageRequestHandle` carries a cancel that arrives before the token); targets under 512 px use `.highQualityFormat`. `MediaGridPhotoLibraryServices.clearCaches()` (Storage Usage's "Clear cache") empties the store, retry registry, launch snapshot and launch cache.
+
 ## Stage 2: the app's photo picker
 
 The chat attachment menu's photo picker runs on this grid (see `submodules/MediaPickerUI/CLAUDE.md` for the seam and the killswitch). Host API it relies on:
