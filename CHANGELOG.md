@@ -4,6 +4,13 @@ Newest first. Internal notes for each TestFlight build; testers see the What to 
 
 ## Unreleased
 
+## 13.2 (202611072118) — 2026-11-07 — 6ac2025b
+
+TestFlight build. Previous TestFlight build: 202611071437 (f059025a); changes since are `git log f059025a..6ac2025b`: the
+native-glass switch removed (d2d465e2), the list-scroll A/B switches and scroll pacing log (950a43e0), and the Display
+accessibility test host fix (6ac2025b), all below. What to Test: the chat-list scroll A/B (three runs, send logs) and the
+single glass look.
+
 - **Test infrastructure: the Display accessibility test host is uninstalled from every `BAZEL_TEST_` simulator before a run** (branch perf/list-scroll-ab). `uninstall_test_host.sh` still matched "BAZEL_TEST_iPhone 17_26.5" after the runners moved to iOS 27.2, so it uninstalled nothing and `DisplayAccessibilityTests` ran the new test bundle against the previous host build; with `ListViewImpl` gaining a stored property the stale host crashed ("Index out of range" in `ListViewImpl.neighbors(at:)`, 3 tests). Now any `BAZEL_TEST_` simulator matches, so a runtime change in `test_simulator.bzl` cannot silently disable it again.
 
 - **List scroll A/B against Telegram: three Debug Settings switches, all off by default** (owner request 2026-11-07, chat-list scrolling feels short of 120 Hz; branch perf/list-scroll-ab). A read-only comparison of everything on the chat-list scroll path against 13.2 (5083532f) found ListView's scroll path identical (31-line diff: `transferVelocity` at display rate) and our data, row and glass changes lighter than upstream; the only two of ours that act during a scroll are the shared display link's 60/30 Hz rule (3cd4aadf) and deferred row accessibility strings. "Display link: Telegram's rate" switches the first to upstream's rule (`sharedDisplayLinkFrameRateRange(…, followsUpstreamRate:)` → `upstreamSharedDisplayLinkFrameRateRange`; also starts the existing pacing log, now with `upstreamRate=`). "List rows: accessibility text at once" sets `ListViewDeferredAccessibility.forcesImmediate`. "List scroll: log frame rate" adds `ListViewScrollPacing`: per ListView gesture (drag begin → drag end or deceleration end) it counts `scrollViewDidScroll` intervals as frames (a gap over 100 ms is a finger rest, not a late frame) and logs `ListView scroll pacing: list=<type> frames avgHz late longestMs`. Settings keys `displayLinkUpstreamRate`, `listAccessibilityImmediate`, `listScrollPacingLog`. Tests: `TabletSecondBatchRulesTests` (upstream rule, ours kept when off), `ListViewDeferredAccessibilityTests.test_forcesImmediateRunsAtOnce`, new `ListViewScrollPacingTests`, `ExperimentalUISettingsDefaultsTests` (off by default, round trip), `DebugControllerEntriesTests` (order with all on).
