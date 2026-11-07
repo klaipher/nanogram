@@ -38,6 +38,10 @@ final class MediaEditorVignetteCodingTests: XCTestCase {
 }
 
 final class MediaEditorVignetteRenderTests: XCTestCase {
+    override func setUpWithError() throws {
+        try skipUnlessMetalIsAvailable()
+    }
+
     private func run(_ name: String) {
         let result = MediaEditorVignetteSuite().run(name)
         for measurement in result.measurements {

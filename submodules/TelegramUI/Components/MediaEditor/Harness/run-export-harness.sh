@@ -7,13 +7,16 @@ ONLY="${3:-}"
 TIMEOUT="${MEDIA_EDITOR_EXPORT_TIMEOUT:-5400}"
 
 ROOT="$(cd "$(dirname "$0")/../../../../.." && pwd)"
-BAZEL="$ROOT/build-input/bazel-9.2.0-darwin-arm64"
+BAZEL="${MEDIA_EDITOR_EXPORT_BAZEL:-$(ls "$ROOT"/build-input/bazel-*-darwin-arm64 | tail -n 1)}"
 TARGET="//submodules/TelegramUI/Components/MediaEditor:MediaEditorExportHarness"
 IPA="$ROOT/bazel-bin/submodules/TelegramUI/Components/MediaEditor/MediaEditorExportHarness.ipa"
 BUNDLE="org.telegram.MediaEditorExportHarness"
-DEVICE_NAME="MediaEditorExportHarness iPhone 18 Pro 27.0"
+# The simulator OS every test runner uses (build-system/bazel-utils/test_simulator.bzl), so the harness runs on an
+# installed runtime.
+OS_VERSION="${MEDIA_EDITOR_EXPORT_OS:-$(sed -n 's/^TEST_SIMULATOR_OS = "\(.*\)"$/\1/p' "$ROOT/build-system/bazel-utils/test_simulator.bzl")}"
+DEVICE_NAME="MediaEditorExportHarness iPhone 18 Pro $OS_VERSION"
 DEVICE_TYPE="com.apple.CoreSimulator.SimDeviceType.iPhone-18-Pro"
-RUNTIME="com.apple.CoreSimulator.SimRuntime.iOS-27-0"
+RUNTIME="com.apple.CoreSimulator.SimRuntime.iOS-${OS_VERSION//./-}"
 
 case "$MODE" in
   all|export|benchmark|compositor|entities|composer|photo|vignette) ;;
@@ -21,7 +24,10 @@ case "$MODE" in
 esac
 
 cd "$ROOT"
-"$BAZEL" build --disk_cache="$HOME/telegram-bazel-cache" -c dbg --ios_multi_cpus=sim_arm64 --define=buildNumber=10000 "$TARGET"
+# The flags `tg test` passes, so the build reuses its outputs and disk cache.
+"$BAZEL" build --disk_cache="$HOME/.cache/telegram-ios/bazel-disk-cache" -c dbg --ios_multi_cpus=sim_arm64 \
+  --watchos_cpus=arm64_32 --define=buildNumber=10000 --features=swift.use_global_module_cache \
+  --@build_bazel_rules_swift//swift:copt=-j --@build_bazel_rules_swift//swift:copt=8 "$TARGET"
 
 UDID="$(xcrun simctl list devices -j | python3 -c '
 import json, sys

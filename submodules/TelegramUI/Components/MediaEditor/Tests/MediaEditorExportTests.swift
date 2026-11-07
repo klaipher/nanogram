@@ -1,8 +1,22 @@
 import Foundation
+import Metal
 import XCTest
 @testable import MediaEditorExportTestSupport
 
+
+/// These suites render with Metal. rules_apple's `ios_test_runner` starts xctest through `simctl spawn -s`, which gives
+/// the process no Metal device (`MTLCreateSystemDefaultDevice()` is nil), so under that runner they cannot run at all;
+/// they are skipped there and run through `Harness/run-export-harness.sh`, where the device exists. Where Metal is
+/// available they run and fail as usual.
+func skipUnlessMetalIsAvailable() throws {
+    try XCTSkipIf(MTLCreateSystemDefaultDevice() == nil, "no Metal device in this test process (simctl spawn -s); run Harness/run-export-harness.sh")
+}
+
 final class MediaEditorExportTests: XCTestCase {
+    override func setUpWithError() throws {
+        try skipUnlessMetalIsAvailable()
+    }
+
     private func makeSuite() throws -> MediaEditorExportSuite {
         self.continueAfterFailure = true
         return try XCTUnwrap(MediaEditorExportSuite(), "cannot open a temporary Postbox")
@@ -34,6 +48,10 @@ final class MediaEditorExportTests: XCTestCase {
 }
 
 final class MediaEditorFrameCompositorTests: XCTestCase {
+    override func setUpWithError() throws {
+        try skipUnlessMetalIsAvailable()
+    }
+
     private func run(_ name: String) throws {
         let suite = try XCTUnwrap(MediaEditorFrameCompositorSuite(), "no Metal device or compositor")
         let result = suite.run(name)
@@ -79,6 +97,10 @@ final class MediaEditorFrameCompositorTests: XCTestCase {
 }
 
 final class MediaEditorComposerEntityFrameTests: XCTestCase {
+    override func setUpWithError() throws {
+        try skipUnlessMetalIsAvailable()
+    }
+
     private func run(_ name: String) throws {
         let suite = try XCTUnwrap(MediaEditorComposerEntityFrameSuite(), "no Metal device, compositor or Postbox")
         let result = suite.run(name)
@@ -130,7 +152,8 @@ final class MediaEditorComposerTests: XCTestCase {
         }
     }
 
-    func testNilEntityFrameStillCompletesFrame() {
+    func testNilEntityFrameStillCompletesFrame() throws {
+        try skipUnlessMetalIsAvailable()
         self.run("testNilEntityFrameStillCompletesFrame")
     }
 
@@ -140,6 +163,10 @@ final class MediaEditorComposerTests: XCTestCase {
 }
 
 final class MediaEditorPhotoCompositionTests: XCTestCase {
+    override func setUpWithError() throws {
+        try skipUnlessMetalIsAvailable()
+    }
+
     private func run(_ name: String) {
         let result = MediaEditorPhotoCompositionSuite().run(name)
         for measurement in result.measurements {

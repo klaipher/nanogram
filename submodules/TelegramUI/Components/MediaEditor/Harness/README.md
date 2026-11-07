@@ -1,7 +1,8 @@
 # Media editor export harness
 
 Benchmark and export runs for the media editor's export paths, on the iPhone 18 Pro simulator
-(iOS 27.0).
+(the iOS version in `build-system/bazel-utils/test_simulator.bzl`). The `MediaEditorExportTests` label skips these
+Metal suites: its runner starts xctest without a Metal device.
 
 ```sh
 submodules/TelegramUI/Components/MediaEditor/Harness/run-export-harness.sh [all|export|benchmark|compositor|entities|composer|photo|vignette] [host output dir] [scenario id]
@@ -9,7 +10,7 @@ submodules/TelegramUI/Components/MediaEditor/Harness/run-export-harness.sh [all|
 
 The script builds `//submodules/TelegramUI/Components/MediaEditor:MediaEditorExportHarness`
 (`-c dbg`, so Swift is `-Onone`, like `Make.py test`). It then reuses or creates the simulator
-`MediaEditorExportHarness iPhone 18 Pro 27.0`, reinstalls the app and launches it. It waits for
+`MediaEditorExportHarness iPhone 18 Pro <os>`, reinstalls the app and launches it. It waits for
 `status.txt`, then copies the app's `tmp/MediaEditorExportTests` directory to the host output
 directory, which defaults to `$TMPDIR/MediaEditorExportOutput`.
 
