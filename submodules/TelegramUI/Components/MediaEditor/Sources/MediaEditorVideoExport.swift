@@ -1125,9 +1125,17 @@ public final class MediaEditorVideoExport {
                 // Appending to an input that has been finished or cancelled raises, so a frame
                 // abandoned by the timeout below must not append afterwards. The check and the
                 // append share this lock, and the timeout takes it before finishing the input.
+                guard let mainInput else {
+                    // No source produced a frame (an image that could not become a texture, a sticker frame
+                    // that never arrived). Fail the export through the frame-failure path instead of trapping.
+                    Logger.shared.log("VideoExport", "No main input for the frame")
+                    self.frameProductionTimedOut = true
+                    writer.markVideoAsFinished()
+                    return false
+                }
                 let frameAbandoned = Atomic<Bool>(value: false)
                 composer.process(
-                    main: mainInput!,
+                    main: mainInput,
                     additional: additionalInput,
                     timestamp: timestamp,
                     pool: writer.pixelBufferPool,
