@@ -17,6 +17,7 @@ final class MediaEditorExportConfigurationColorTests: XCTestCase {
             cropRotation: 0.0,
             cropMirroring: false,
             cropOrientation: nil,
+            cropPerspective: .zero,
             gradientColors: nil,
             videoTrimRange: nil,
             videoBounce: false,
