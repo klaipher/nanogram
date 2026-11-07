@@ -10,6 +10,7 @@ import AccountContext
 import MultilineTextComponent
 import MultilineTextWithEntitiesComponent
 import EmojiTextAttachmentView
+import LottieAnimationCache
 import TextFormat
 import ItemShimmeringLoadingComponent
 import AvatarNode
@@ -838,6 +839,15 @@ public final class GiftItemComponent: Component {
                         animationLayer.removeFromSuperlayer()
                     }
                 }
+                // Cells of a grid are cached at the pixels they show and converted only once they have stayed (see
+                // `AnimationCacheWritePolicy`); the large single items keep the size and the start they had.
+                let cacheSurface: AnimationCacheWritePolicy.Surface
+                switch component.mode {
+                case .generic, .profile, .select, .thumbnail, .grid, .preview:
+                    cacheSurface = .scrollingGrid
+                case .header, .upgradePreview, .buttonIcon, .tableIcon:
+                    cacheSurface = .single
+                }
                 let animationLayer = InlineStickerItemLayer(
                     context: .account(component.context),
                     userLocation: .other,
@@ -849,7 +859,9 @@ public final class GiftItemComponent: Component {
                     unique: false,
                     placeholderColor: placeholderColor,
                     pointSize: CGSize(width: iconSize.width * 2.0, height: iconSize.height * 2.0),
-                    loopCount: 1
+                    loopCount: 1,
+                    displayPointSize: cacheSurface == .scrollingGrid ? iconSize : nil,
+                    cacheStartDelay: AnimationCacheWritePolicy.startDelay(for: cacheSurface)
                 )
                 animationLayer.isVisibleForAnimations = component.allowAnimations
                 self.animationLayer = animationLayer
