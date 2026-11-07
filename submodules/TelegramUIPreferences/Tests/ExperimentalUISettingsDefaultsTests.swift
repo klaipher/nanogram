@@ -101,14 +101,6 @@ final class ExperimentalUISettingsDefaultsTests: XCTestCase {
         XCTAssertEqual(settings.stickerRendererMode, .gpuAll)
         XCTAssertTrue(settings.compressedEmojiCache)
     }
-}
-
-private extension ExperimentalUISettings {
-    func withChatOpenDeferSetup(_ value: Bool) -> ExperimentalUISettings {
-        var settings = self
-        settings.chatOpenDeferSetup = value
-        return settings
-    }
 
     func testListScrollABSwitchesAreOffByDefaultAndTheChoiceIsKept() throws {
         for settings in [ExperimentalUISettings.defaultSettings, try self.decode("{}"), try self.decode(#"{"glassDebugDisabledGroups": 2}"#)] {
@@ -124,5 +116,13 @@ private extension ExperimentalUISettings {
         XCTAssertTrue(saved.displayLinkUpstreamRate)
         XCTAssertTrue(saved.listAccessibilityImmediate)
         XCTAssertTrue(saved.listScrollPacingLog)
+    }
+}
+
+private extension ExperimentalUISettings {
+    func withChatOpenDeferSetup(_ value: Bool) -> ExperimentalUISettings {
+        var settings = self
+        settings.chatOpenDeferSetup = value
+        return settings
     }
 }
