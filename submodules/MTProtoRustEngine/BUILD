@@ -35,6 +35,9 @@ swift_library(
 swift_test(
     name = "MTProtoRustEngineMappingTests",
     srcs = glob(["Tests/MTProtoRustEngineMappingTests/**/*.swift"]),
+    # `testEveryBridgeQueueIsRecognized` scans the bridge sources for queue labels; Bazel's runfiles hold only
+    # what is declared, so without this it finds no files.
+    data = glob(["Sources/MTProtoRustEngine/**/*.swift"]),
     copts = [
         "-warnings-as-errors",
     ],
