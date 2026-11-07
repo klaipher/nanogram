@@ -1080,3 +1080,8 @@ it puts the panel state back, since the next layout pass reads it from the inter
   first version (before it put the panel state back): 866 run, failures only in the 6 legacy-by-design tests
   (`HarnessLegacyAutocorrectFormattingTests` 3, `HarnessLegacyCrossBlockEditUndoTests` 3), which fail alone too. The
   final version passes with `HarnessInputDelegateContractTests`, the next class, in one process.
+
+2026-11-07, 13.2 release push: the push check now runs `ComposerHarnessTests`, so the 6 legacy-by-design cases
+(`HarnessLegacyAutocorrectFormattingTests` 3, `HarnessLegacyCrossBlockEditUndoTests` 3) are wrapped in a strict
+`XCTExpectFailure` around the bug's own assertion only (preconditions still fail normally). The bugs stay open and pinned;
+a fix makes the expectation fail, which is the cue to remove the wrapper.

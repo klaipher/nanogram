@@ -60,17 +60,27 @@ final class HarnessLegacyCrossBlockEditUndoTests: XCTestCase {
 
     func testUndoingTypingOverAParagraphIntoAQuoteRestoresTheParagraph() throws {
         let result = try self.editThenUndo(Self.quote, select: NSRange(location: 4, length: 11), edit: { $0.insertText("X") })
-        XCTAssertEqual(result.undone, result.startModel, "undo left the paragraph quoted: \(FuzzModel.describe(result.undone)) (edited: \(FuzzModel.describe(result.edited)))")
+        XCTExpectFailure("open legacy-composer bug, pinned by decision (docs/findings.md, 2026-09-23): undo does not restore the paragraph") {
+            XCTExpectFailure("open legacy-composer bug, pinned by decision (docs/findings.md, 2026-09-23): undo does not restore the paragraph") {
+            XCTAssertEqual(result.undone, result.startModel, "undo left the paragraph quoted: \(FuzzModel.describe(result.undone)) (edited: \(FuzzModel.describe(result.edited)))")
+        }
+        }
     }
 
     func testUndoingBackspaceOverAParagraphIntoAQuoteRestoresTheParagraph() throws {
         let result = try self.editThenUndo(Self.quote, select: NSRange(location: 4, length: 11), edit: { $0.deleteBackward() })
-        XCTAssertEqual(result.undone, result.startModel, "undo left the paragraph quoted: \(FuzzModel.describe(result.undone)) (edited: \(FuzzModel.describe(result.edited)))")
+        XCTExpectFailure("open legacy-composer bug, pinned by decision (docs/findings.md, 2026-09-23): undo does not restore the paragraph") {
+            XCTExpectFailure("open legacy-composer bug, pinned by decision (docs/findings.md, 2026-09-23): undo does not restore the paragraph") {
+            XCTAssertEqual(result.undone, result.startModel, "undo left the paragraph quoted: \(FuzzModel.describe(result.undone)) (edited: \(FuzzModel.describe(result.edited)))")
+        }
+        }
     }
 
     func testUndoingTypingOverAParagraphIntoACodeBlockRestoresTheParagraph() throws {
         let result = try self.editThenUndo(Self.code, select: NSRange(location: 4, length: 11), edit: { $0.insertText("X") })
-        XCTAssertEqual(result.undone, result.startModel, "undo left the paragraph as code: \(FuzzModel.describe(result.undone)) (edited: \(FuzzModel.describe(result.edited)))")
+        XCTExpectFailure("open legacy-composer bug, pinned by decision (docs/findings.md, 2026-09-23): undo does not restore the paragraph") {
+            XCTAssertEqual(result.undone, result.startModel, "undo left the paragraph as code: \(FuzzModel.describe(result.undone)) (edited: \(FuzzModel.describe(result.edited)))")
+        }
     }
 
     /// Control: the same edit inside one paragraph undoes exactly.

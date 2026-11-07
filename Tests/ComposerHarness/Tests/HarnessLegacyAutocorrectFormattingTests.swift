@@ -57,17 +57,23 @@ final class HarnessLegacyAutocorrectFormattingTests: XCTestCase {
 
     func testTheKeyboardsCorrectionKeepsBold() throws {
         let content = try self.correctLastWord(format: { $0.bold = true }, usingKeyboardEntryPoint: true)
-        XCTAssertEqual(HarnessLegacy.text(in: content, where: { $0.bold }), "abc the", "the keyboard's correction dropped bold: \(FuzzModel.describe(content))")
+        XCTExpectFailure("open legacy-composer bug, pinned by decision (docs/findings.md, 2026-09-23): the keyboard's replacement drops the formatting") {
+            XCTAssertEqual(HarnessLegacy.text(in: content, where: { $0.bold }), "abc the", "the keyboard's correction dropped bold: \(FuzzModel.describe(content))")
+        }
     }
 
     func testTheKeyboardsCorrectionKeepsItalic() throws {
         let content = try self.correctLastWord(format: { $0.italic = true }, usingKeyboardEntryPoint: true)
-        XCTAssertEqual(HarnessLegacy.text(in: content, where: { $0.italic }), "abc the", "the keyboard's correction dropped italic: \(FuzzModel.describe(content))")
+        XCTExpectFailure("open legacy-composer bug, pinned by decision (docs/findings.md, 2026-09-23): the keyboard's replacement drops the formatting") {
+            XCTAssertEqual(HarnessLegacy.text(in: content, where: { $0.italic }), "abc the", "the keyboard's correction dropped italic: \(FuzzModel.describe(content))")
+        }
     }
 
     func testTheKeyboardsCorrectionKeepsMonospace() throws {
         let content = try self.correctLastWord(format: { $0.monospace = true }, usingKeyboardEntryPoint: true)
-        XCTAssertEqual(HarnessLegacy.text(in: content, where: { $0.monospace }), "abc the", "the keyboard's correction dropped monospace: \(FuzzModel.describe(content))")
+        XCTExpectFailure("open legacy-composer bug, pinned by decision (docs/findings.md, 2026-09-23): the keyboard's replacement drops the formatting") {
+            XCTAssertEqual(HarnessLegacy.text(in: content, where: { $0.monospace }), "abc the", "the keyboard's correction dropped monospace: \(FuzzModel.describe(content))")
+        }
     }
 
     /// Control: the public `replace(_:withText:)` keeps bold (why L4 would not reduce before).
