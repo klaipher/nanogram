@@ -55,6 +55,7 @@ swift_library(
         "//submodules/TelegramUI/Components/Chat/MessageHaptics",
         "//submodules/TelegramUI/Components/Chat/ChatMessageTransitionNode",
         "//submodules/TelegramUI/Components/Chat/ChatMessageSuggestedPostInfoNode",
+        "//submodules/TelegramUI/Components/Chat/StickerPlaybackPolicy",
     ],
     visibility = [
         "//visibility:public",
