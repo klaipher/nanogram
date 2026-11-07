@@ -476,7 +476,7 @@ static void replacement_filterSetValueForKey(NSObject *self, SEL selector, id va
     original_filterSetValueForKey(self, selector, value, key);
 }
 
-static NSString *const NanogramGlassTelegramFixedLookKey = @"nanogram.glass.telegramFixedLook";
+static NSString *const NanogramGlassNativeNoClampKey = @"nanogram.glass.nativeNoClamp";
 static BOOL lumaClampInstalled = NO;
 
 static void registerEffectViewOverrides(void) {
@@ -500,21 +500,21 @@ static void registerEffectViewOverrides(void) {
         }
     }
 
-    // Nanogram: the glass uses the system's own adaptive behaviour (the luma clamp is Telegram's fixed look). The clamp is
-    // installed only when "Glass: Telegram fixed look" is on (NSUserDefaults, read here once, so it applies at the next
-    // launch). iOS 27 needs the class for nothing else, so with the switch off the lookup is skipped there altogether.
-    // iOS 26 still needs the class for the didMoveToWindow blur-radius hook, so it keeps its single lookup.
+    // Nanogram: Telegram 13.2's glass look is the default (the luma clamp on UIKit's glass backdrop view). Only the Debug
+    // Settings switch "Glass: native (no Telegram clamp)" leaves the clamp out (NSUserDefaults, read here once, so it
+    // applies at the next launch). The didMoveToWindow blur-radius hook stays iOS 26 only, as before.
     //
-    // One lookup of UIKit's Swift glass backdrop view, by the name of the running OS only. iOS 26 declares the class
-    // file-private (the P33_ discriminator); iOS 27 does not (UIKitCore 27.2 has only _TtC5UIKit17UISDFBackdropView,
-    // the discriminator now belongs to UISDFElementView). A name that is not in the ObjC class table falls through to
-    // the Swift runtime's mangled-name scan (45 ms in _contextDescriptorMatchesMangling in +load, launch trace J), so
-    // the other OS's name is never tried as a fallback. The blur-radius hook on didMoveToWindow stays iOS 26 only.
-    BOOL wantsLumaClamp = [EffectSettingsContainerView isTelegramFixedLookRequestedInDefaults:[NSUserDefaults standardUserDefaults]];
+    // One lookup of UIKit's Swift glass backdrop view, by the name of the running OS only (upstream 13.2 loops over both
+    // names). iOS 26 declares the class file-private (the P33_ discriminator); iOS 27 does not (UIKitCore 27.2 has only
+    // _TtC5UIKit17UISDFBackdropView, the discriminator now belongs to UISDFElementView). A name that is not in the ObjC
+    // class table falls through to the Swift runtime's mangled-name scan (45 ms in _contextDescriptorMatchesMangling in
+    // +load, launch trace J), so the other OS's name is never tried as a fallback.
+    BOOL wantsLumaClamp = ![EffectSettingsContainerView isNativeNoClampRequestedInDefaults:[NSUserDefaults standardUserDefaults]];
     BOOL isBackdropViewModuleLevel = NO;
     NSString *backdropViewClassName = nil;
     if (@available(iOS 27.0, *)) {
         if (!wantsLumaClamp) {
+            // Native switch on: iOS 27 needs the class for nothing else, so no lookup at all.
             return;
         }
         isBackdropViewModuleLevel = YES;
@@ -957,12 +957,12 @@ void snapshotViewByDrawingInContext(UIView * _Nonnull view) {
     return self;
 }
 
-+ (NSString *)telegramFixedLookDefaultsKey {
-    return NanogramGlassTelegramFixedLookKey;
++ (NSString *)nativeNoClampDefaultsKey {
+    return NanogramGlassNativeNoClampKey;
 }
 
-+ (BOOL)isTelegramFixedLookRequestedInDefaults:(NSUserDefaults *)defaults {
-    return [defaults boolForKey:NanogramGlassTelegramFixedLookKey];
++ (BOOL)isNativeNoClampRequestedInDefaults:(NSUserDefaults *)defaults {
+    return [defaults boolForKey:NanogramGlassNativeNoClampKey];
 }
 
 + (BOOL)isLumaClampInstalled {

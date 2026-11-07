@@ -11,28 +11,33 @@ final class GlassFixedLookTests: XCTestCase {
         return defaults
     }
 
-    func testNativeIsTheDefault() {
-        XCTAssertFalse(GlassFixedLook.isRequested(in: self.makeDefaults()))
+    func testTelegramsLookIsTheDefault() {
+        XCTAssertFalse(GlassFixedLook.isNativeRequested(in: self.makeDefaults()))
     }
 
     func testTheSwitchIsReadFromTheDefaultsKey() {
         let defaults = self.makeDefaults()
-        GlassFixedLook.setRequested(true, in: defaults)
-        XCTAssertTrue(GlassFixedLook.isRequested(in: defaults))
-        XCTAssertTrue(defaults.bool(forKey: EffectSettingsContainerView.telegramFixedLookDefaultsKey))
-        GlassFixedLook.setRequested(false, in: defaults)
-        XCTAssertFalse(GlassFixedLook.isRequested(in: defaults))
+        GlassFixedLook.setNativeRequested(true, in: defaults)
+        XCTAssertTrue(GlassFixedLook.isNativeRequested(in: defaults))
+        XCTAssertTrue(defaults.bool(forKey: EffectSettingsContainerView.nativeNoClampDefaultsKey))
+        GlassFixedLook.setNativeRequested(false, in: defaults)
+        XCTAssertFalse(GlassFixedLook.isNativeRequested(in: defaults))
     }
 
     /// The key is what the Debug Settings switch writes and +load reads; renaming it silently turns the switch off.
     func testTheKeyIsTheContract() {
-        XCTAssertEqual(EffectSettingsContainerView.telegramFixedLookDefaultsKey, "nanogram.glass.telegramFixedLook")
+        XCTAssertEqual(EffectSettingsContainerView.nativeNoClampDefaultsKey, "nanogram.glass.nativeNoClamp")
     }
 
-    /// The test host never sets the key, so +load must not have installed the luma clamp.
-    func testTheClampIsNotInstalledByDefault() {
-        XCTAssertFalse(EffectSettingsContainerView.isLumaClampInstalled)
-        XCTAssertFalse(GlassFixedLook.isActive)
+    /// The test host never sets the key, so +load must have installed the luma clamp (when UIKit's class is found, so
+    /// only asserted where the host runs iOS 26 or later; the clamp is never installed with the switch on).
+    func testTheClampIsInstalledByDefaultOnIOS26AndLater() {
+        if #available(iOS 26.0, *) {
+            XCTAssertTrue(EffectSettingsContainerView.isLumaClampInstalled)
+            XCTAssertTrue(GlassFixedLook.isActive)
+        } else {
+            XCTAssertFalse(GlassFixedLook.isActive)
+        }
     }
 
     func testWithoutTheClampTheViewPassesEveryLumaThrough() {
@@ -49,6 +54,19 @@ final class GlassFixedLookTests: XCTestCase {
             let telegram = GlassBackgroundView.adaptiveLumaRange(isDark: isDark)
             XCTAssertEqual(range.min, telegram.min)
             XCTAssertEqual(range.max, telegram.max)
+        }
+    }
+
+    func testTelegramsRangesMatchUpstream13_2() {
+        let dark = GlassBackgroundView.adaptiveLumaRange(isDark: true)
+        XCTAssertEqual(dark.min, 0.0)
+        XCTAssertEqual(dark.max, 0.874)
+        let light = GlassBackgroundView.adaptiveLumaRange(isDark: false)
+        XCTAssertEqual(light.max, 1.0)
+        if #available(iOS 27.0, *) {
+            XCTAssertEqual(light.min, 0.125)
+        } else {
+            XCTAssertEqual(light.min, 0.22)
         }
     }
 
