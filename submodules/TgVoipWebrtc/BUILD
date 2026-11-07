@@ -367,7 +367,6 @@ cc_test(
         "-Ithird-party/webrtc/absl",
         "-Ithird-party/libyuv",
         "-DRTC_ENABLE_VP9",
-        "-DNDEBUG",
         "-std=c++17",
         "-w",
     ] + select({
