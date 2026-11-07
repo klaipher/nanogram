@@ -1,5 +1,7 @@
 import XCTest
 import MediaGrid
+import Photos
+import UIKit
 @testable import MediaGridPhotoLibrary
 
 final class ImageLoadSchedulerTests: XCTestCase {
@@ -403,5 +405,30 @@ final class ImageLoadSchedulerTests: XCTestCase {
         XCTAssertEqual(job.state, .running)
         XCTAssertEqual(result.prepared, 0)
         XCTAssertNotNil(result.delivered)
+    }
+
+    func testHandleCancelledBeforeTheTokenArrivesCancelsOnAttach() {
+        var cancelled: [Int32] = []
+        let handle = ImageRequestHandle(cancelRequest: { cancelled.append($0) })
+        handle.cancel()
+        XCTAssertTrue(cancelled.isEmpty)
+        handle.attach(token: 7)
+        XCTAssertEqual(cancelled, [7])
+    }
+
+    func testHandleCancelledAfterTheTokenArrivesCancelsAtOnce() {
+        var cancelled: [Int32] = []
+        let handle = ImageRequestHandle(cancelRequest: { cancelled.append($0) })
+        handle.attach(token: 3)
+        XCTAssertTrue(handle.hasStarted)
+        XCTAssertTrue(cancelled.isEmpty)
+        handle.cancel()
+        XCTAssertEqual(cancelled, [3])
+        XCTAssertTrue(handle.isCancelled)
+    }
+
+    func testRequestLimits() {
+        XCTAssertLessThanOrEqual(MediaGridPhotoLibraryDataSource.localRequestLimit, 8)
+        XCTAssertLessThan(MediaGridPhotoLibraryDataSource.prefetchRequestLimit, MediaGridPhotoLibraryDataSource.localRequestLimit)
     }
 }

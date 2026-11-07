@@ -243,6 +243,9 @@ final class ThumbnailFiller {
     static let networkLimit = 2
     static let backoff: [Double] = [30.0, 120.0, 600.0]
     static let launchRetryDelay: Double = 30.0
+    static let pacedIdleLimit = 4
+    static let pacedFastLimit = 2
+    static let pacedStoredLimit = 60_000
     static let launchRetryBatch = 256
     static let launchRetryInterval: Double = 1.0
 
@@ -314,6 +317,27 @@ final class ThumbnailFiller {
         }
     }
 
+    /// Set by the pacing policy (`ThumbnailFillPacing`): no picker is open, the app is in the
+    /// background, Low Power Mode is on or the device is hot. Requests already in flight finish;
+    /// nothing new is started, local or network.
+    var isHalted = false {
+        didSet {
+            if self.isHalted != oldValue {
+                self.pump()
+            }
+        }
+    }
+
+    /// In-flight local requests while the grid is calm / moving fast.
+    var idleInFlightLimit = ThumbnailFiller.idleLimit
+    var fastInFlightLimit = ThumbnailFiller.fastLimit
+    /// No new thumbnails once this many catalog items have one (the disk cap of the store).
+    var storedLimit = Int.max
+
+    var isAtStoredLimit: Bool {
+        return self.filledCount >= self.storedLimit
+    }
+
     var inFlightCount: Int {
         return self.inFlight.count
     }
@@ -327,7 +351,7 @@ final class ThumbnailFiller {
     }
 
     var limit: Int {
-        return self.isMovingFast ? ThumbnailFiller.fastLimit : ThumbnailFiller.idleLimit
+        return self.isMovingFast ? self.fastInFlightLimit : self.idleInFlightLimit
     }
 
     init(store: MediaGridThumbnailStore, source: ThumbnailImageSource, registry: ThumbnailRetryRegistry, clock: @escaping () -> Double = { CACurrentMediaTime() }, schedule: @escaping (Double, @escaping () -> Void) -> Void = { delay, body in DispatchQueue.main.asyncAfter(deadline: .now() + delay, execute: body) }) {
@@ -431,6 +455,9 @@ final class ThumbnailFiller {
             return
         }
         if self.store.version(for: id) != version {
+            if self.isAtStoredLimit {
+                return
+            }
             self.store.write(image, id: id, version: version)
         }
         guard self.store.version(for: id) == version else {
@@ -650,11 +677,11 @@ final class ThumbnailFiller {
             return
         }
         self.pumpNetwork()
-        guard !self.isPaused else {
+        guard !self.isPaused, !self.isHalted else {
             return
         }
         var exhausted = false
-        while self.inFlight.count < self.limit {
+        while self.inFlight.count < self.limit, self.filledCount + self.inFlight.count < self.storedLimit {
             guard let index = self.nextCandidate() else {
                 exhausted = true
                 break
@@ -685,7 +712,7 @@ final class ThumbnailFiller {
     }
 
     private func pumpNetwork() {
-        guard !self.isPaused, !self.isMovingFast, self.networkGate() else {
+        guard !self.isPaused, !self.isHalted, !self.isMovingFast, self.networkGate() else {
             if !self.networkInFlight.isEmpty {
                 let running = self.networkInFlight
                 self.networkInFlight.removeAll()
@@ -698,7 +725,7 @@ final class ThumbnailFiller {
             }
             return
         }
-        while self.networkInFlight.count < ThumbnailFiller.networkLimit, let index = self.nearest(in: self.networkEligible, radius: nil) {
+        while self.networkInFlight.count < ThumbnailFiller.networkLimit, !self.isAtStoredLimit, let index = self.nearest(in: self.networkEligible, radius: nil) {
             let id = self.catalog.ids[index]
             let version = self.catalog.versions[index]
             self.networkEligible.remove(index)

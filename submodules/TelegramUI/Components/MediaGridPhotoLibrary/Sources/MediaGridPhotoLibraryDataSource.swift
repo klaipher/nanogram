@@ -27,6 +27,11 @@ public final class MediaGridPhotoLibraryDataSource: NSObject, MediaGridDataSourc
 
     typealias Scheduler = ImageLoadScheduler<ImageKey, PrefetchKey, Load>
 
+    /// PhotoKit requests in flight: visible cells, of which prefetch may use some, and the iCloud lane.
+    static let localRequestLimit = 8
+    static let prefetchRequestLimit = 4
+    static let networkRequestLimit = 2
+    static let imageCacheCostLimit = 80 * 1024 * 1024
     static let preparePageLimit = 32
     static let unknownPage: Int32 = -2
 
@@ -48,12 +53,13 @@ public final class MediaGridPhotoLibraryDataSource: NSObject, MediaGridDataSourc
     private(set) var planInstallCount = 0
     private var isSharpNetworkIdle = true
     private var backgroundObserver: NSObjectProtocol?
+    private var memoryWarningObserver: NSObjectProtocol?
     private var revisions: [String: Int] = [:]
     private var revisionBase = 0
     public var onChange: ((MediaGridChanges?) -> Void)?
     private let manager = PHImageManager.default()
     private let cache = NSCache<NSString, UIImage>()
-    private let scheduler = Scheduler(localLimit: 12, localPrefetchLimit: 6, networkLimit: 4)
+    private let scheduler = Scheduler(localLimit: MediaGridPhotoLibraryDataSource.localRequestLimit, localPrefetchLimit: MediaGridPhotoLibraryDataSource.prefetchRequestLimit, networkLimit: MediaGridPhotoLibraryDataSource.networkRequestLimit)
     public let launchKeeper: MediaGridLaunchCacheKeeper?
     let launchMatch: MediaGridLaunchMatch?
     private let launchFetchResult: PHFetchResult<PHAsset>
@@ -77,6 +83,7 @@ public final class MediaGridPhotoLibraryDataSource: NSObject, MediaGridDataSourc
         }
         self.store.hookOwner = self
         if let filler {
+            filler.acquirePickerLease()
             filler.source.fetchResult = fetchResult
             filler.source.reversed = reversed
             filler.filler.onProgress = { [weak self] in
@@ -99,15 +106,17 @@ public final class MediaGridPhotoLibraryDataSource: NSObject, MediaGridDataSourc
         self.backgroundObserver = NotificationCenter.default.addObserver(forName: UIApplication.didEnterBackgroundNotification, object: nil, queue: .main, using: { [weak self] _ in
             self?.saveLaunchSnapshot()
             self?.launchKeeper?.refreshIfResting()
+            self?.cache.removeAllObjects()
         })
-        self.cache.totalCostLimit = 80 * 1024 * 1024
+        self.memoryWarningObserver = NotificationCenter.default.addObserver(forName: UIApplication.didReceiveMemoryWarningNotification, object: nil, queue: .main, using: { [weak self] _ in
+            self?.cache.removeAllObjects()
+        })
+        self.cache.totalCostLimit = MediaGridPhotoLibraryDataSource.imageCacheCostLimit
         self.scheduler.startJob = { [weak self] job in
             self?.start(job)
         }
-        self.scheduler.cancelJob = { [weak self] job in
-            if let token = job.token {
-                self?.manager.cancelImageRequest(token)
-            }
+        self.scheduler.cancelJob = { job in
+            job.handle?.cancel()
         }
         self.scheduler.resolvePrefetch = { [weak self] key in
             guard let self, let asset = self.asset(at: key.index) else {
@@ -509,12 +518,16 @@ public final class MediaGridPhotoLibraryDataSource: NSObject, MediaGridDataSourc
     }
 
     deinit {
+        self.filler?.releasePickerLease()
         if self.store.hookOwner == nil {
             self.store.onThumbnailsChanged = nil
         }
         PHPhotoLibrary.shared().unregisterChangeObserver(self)
         if let backgroundObserver = self.backgroundObserver {
             NotificationCenter.default.removeObserver(backgroundObserver)
+        }
+        if let memoryWarningObserver = self.memoryWarningObserver {
+            NotificationCenter.default.removeObserver(memoryWarningObserver)
         }
     }
 
@@ -770,34 +783,47 @@ public final class MediaGridPhotoLibraryDataSource: NSObject, MediaGridDataSourc
         return indices.map { PrefetchKey(index: $0, width: width, height: height) }
     }
 
+    static let requestQueue = DispatchQueue(label: "org.telegram.MediaGridPhotoLibrary.imageRequests", qos: .userInitiated)
+
     private func start(_ job: Scheduler.Job) {
         let attempt = job.attempt
-        let options = PHImageRequestOptions()
-        options.deliveryMode = .opportunistic
-        options.resizeMode = .fast
-        options.isNetworkAccessAllowed = job.usesNetwork
-        let token = self.manager.requestImage(for: job.payload.asset, targetSize: job.payload.targetSize, contentMode: .aspectFill, options: options, resultHandler: { [weak self, weak job] image, info in
-            let isDegraded = (info?[PHImageResultIsDegradedKey] as? Bool) ?? false
-            let isCancelled = (info?[PHImageCancelledKey] as? Bool) ?? false
-            let isInCloud = (info?[PHImageResultIsInCloudKey] as? Bool) ?? false
-            let handle: (UIImage?) -> Void = { image in
-                guard let self, let job else {
-                    return
-                }
-                self.handle(job, attempt: attempt, image: image, isDegraded: isDegraded, isCancelled: isCancelled, isInCloud: isInCloud)
-            }
-            if let image, !isDegraded, Thread.isMainThread, let job, job.hasConsumers(running: attempt), MediaGridPhotoLibraryDataSource.needsPreparation(image) {
-                MediaGridPhotoLibraryDataSource.enqueuePreparation(image, job: job, attempt: attempt, queue: MediaGridPhotoLibraryDataSource.preparationQueue, prepare: MediaGridPhotoLibraryDataSource.prepare, deliver: handle)
-            } else if Thread.isMainThread {
-                handle(image)
-            } else {
-                DispatchQueue.main.async {
-                    handle(image)
-                }
-            }
+        let manager = self.manager
+        let requestHandle = ImageRequestHandle(cancelRequest: { token in
+            manager.cancelImageRequest(token)
         })
-        if job.state == .running && job.attempt == attempt {
-            job.token = token
+        job.handle = requestHandle
+        let asset = job.payload.asset
+        let targetSize = job.payload.targetSize
+        let usesNetwork = job.usesNetwork
+        MediaGridPhotoLibraryDataSource.requestQueue.async { [weak self, weak job] in
+            guard !requestHandle.isCancelled else {
+                return
+            }
+            let options = PHImageRequestOptions()
+            options.deliveryMode = .opportunistic
+            options.resizeMode = .fast
+            options.isNetworkAccessAllowed = usesNetwork
+            let token = manager.requestImage(for: asset, targetSize: targetSize, contentMode: .aspectFill, options: options, resultHandler: { image, info in
+                let isDegraded = (info?[PHImageResultIsDegradedKey] as? Bool) ?? false
+                let isCancelled = (info?[PHImageCancelledKey] as? Bool) ?? false
+                let isInCloud = (info?[PHImageResultIsInCloudKey] as? Bool) ?? false
+                let handle: (UIImage?) -> Void = { image in
+                    guard let self, let job else {
+                        return
+                    }
+                    self.handle(job, attempt: attempt, image: image, isDegraded: isDegraded, isCancelled: isCancelled, isInCloud: isInCloud)
+                }
+                if let image, !isDegraded, Thread.isMainThread, let job, job.hasConsumers(running: attempt), MediaGridPhotoLibraryDataSource.needsPreparation(image) {
+                    MediaGridPhotoLibraryDataSource.enqueuePreparation(image, job: job, attempt: attempt, queue: MediaGridPhotoLibraryDataSource.preparationQueue, prepare: MediaGridPhotoLibraryDataSource.prepare, deliver: handle)
+                } else if Thread.isMainThread {
+                    handle(image)
+                } else {
+                    DispatchQueue.main.async {
+                        handle(image)
+                    }
+                }
+            })
+            requestHandle.attach(token: token)
         }
     }
 

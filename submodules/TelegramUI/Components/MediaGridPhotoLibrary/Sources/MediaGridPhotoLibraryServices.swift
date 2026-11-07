@@ -32,9 +32,15 @@ public final class MediaGridPhotoLibraryFiller {
         self.init(store: store, source: PhotoKitThumbnailSource(fetchResult: PHFetchResult<PHAsset>(), reversed: true), registry: ThumbnailRetryRegistry(url: retryRegistryURL))
     }
 
-    init(store: MediaGridThumbnailStore, source: PhotoKitThumbnailSource, registry: ThumbnailRetryRegistry) {
+    private var pacer: ThumbnailFillPacer?
+
+    init(store: MediaGridThumbnailStore, source: PhotoKitThumbnailSource, registry: ThumbnailRetryRegistry, pacingEnvironment: ThumbnailFillPacer.Environment = .live) {
         self.source = source
         self.filler = ThumbnailFiller(store: store, source: source, registry: registry)
+        self.filler.isHalted = true
+        self.pacer = ThumbnailFillPacer(environment: pacingEnvironment, onChange: { [weak self] isAllowed in
+            self?.filler.isHalted = !isAllowed
+        })
         store.onWritabilityChanged = { [weak self] isWritable in
             self?.filler.isPaused = !isWritable
         }
@@ -63,6 +69,35 @@ public final class MediaGridPhotoLibraryFiller {
                 self?.onLog?(message)
             }
         }
+    }
+
+    /// Whether the pacing policy lets the filler run right now.
+    public var isFillingAllowed: Bool {
+        return self.pacer?.isAllowed ?? false
+    }
+
+    /// A library picker is open: the filler may run (unless the app is in the background, Low Power
+    /// Mode is on or the device is hot). Balanced by `releasePickerLease()`; main thread only.
+    public func acquirePickerLease() {
+        self.pacer?.pickerOpened()
+    }
+
+    public func releasePickerLease() {
+        if Thread.isMainThread {
+            self.pacer?.pickerClosed()
+        } else {
+            DispatchQueue.main.async { [weak self] in
+                self?.pacer?.pickerClosed()
+            }
+        }
+    }
+
+    /// The app's settings: a few requests at a time, a cap on the store, no iCloud lane.
+    public func applyAppPacing() {
+        self.isNetworkLaneEnabled = false
+        self.filler.idleInFlightLimit = ThumbnailFiller.pacedIdleLimit
+        self.filler.fastInFlightLimit = ThumbnailFiller.pacedFastLimit
+        self.filler.storedLimit = ThumbnailFiller.pacedStoredLimit
     }
 
     public var filledCount: Int {
@@ -99,7 +134,11 @@ public final class MediaGridPhotoLibraryFiller {
 }
 
 public final class MediaGridPhotoLibraryServices {
-    public static let shared = MediaGridPhotoLibraryServices(directory: MediaGridPhotoLibraryServices.defaultDirectory, launchDirectory: MediaGridLaunchCache.defaultDirectory, retryRegistryURL: MediaGridPhotoLibraryServices.defaultRetryRegistryURL, snapshotURL: MediaGridPhotoLibraryServices.defaultSnapshotURL)
+    public static let shared: MediaGridPhotoLibraryServices = {
+        let services = MediaGridPhotoLibraryServices(directory: MediaGridPhotoLibraryServices.defaultDirectory, launchDirectory: MediaGridLaunchCache.defaultDirectory, retryRegistryURL: MediaGridPhotoLibraryServices.defaultRetryRegistryURL, snapshotURL: MediaGridPhotoLibraryServices.defaultSnapshotURL)
+        services.filler.applyAppPacing()
+        return services
+    }()
 
     public static var defaultDirectory: URL {
         return FileManager.default.urls(for: .cachesDirectory, in: .userDomainMask)[0].appendingPathComponent("MediaGridThumbnails", isDirectory: true)
@@ -148,6 +187,34 @@ public final class MediaGridPhotoLibraryServices {
         }
         self.launchCoverage = coverage
         return true
+    }
+
+    /// Storage Usage's "Clear cache" clears the whole cache, not a single chat's media.
+    public static func clearsThumbnailCache(chatScoped: Bool, clearingCategories: Bool) -> Bool {
+        return !chatScoped && clearingCategories
+    }
+
+    /// Deletes the thumbnail pages and index, the launch cache, the launch snapshot and the retry
+    /// registry. Thumbnails of an open picker are rebuilt by its filler; with no picker open
+    /// nothing is rebuilt until the next one opens. The completion runs on the main queue.
+    public func clearCaches(completion: (() -> Void)? = nil) {
+        self.store.removeAll(completion: completion)
+        self.filler.filler.registry.remove(ids: self.filler.filler.registry.ids())
+        self.cachedLaunchCache?.releaseImages()
+        let snapshotURL = self.snapshotURL
+        let launchDirectory = self.launchDirectory
+        DispatchQueue.global(qos: .utility).async {
+            var urls: [URL] = []
+            if let snapshotURL {
+                urls.append(snapshotURL)
+            }
+            if let launchDirectory, let names = try? FileManager.default.contentsOfDirectory(at: launchDirectory, includingPropertiesForKeys: nil) {
+                urls.append(contentsOf: names)
+            }
+            for url in urls {
+                try? FileManager.default.removeItem(at: url)
+            }
+        }
     }
 
     public func startLaunchLoading() {

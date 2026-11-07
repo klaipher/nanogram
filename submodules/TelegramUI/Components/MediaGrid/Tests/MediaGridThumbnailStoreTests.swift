@@ -1490,4 +1490,47 @@ final class MediaGridThumbnailStoreTests: XCTestCase {
         self.write(store, [("257", self.makeImage(width: 10, height: 10, top: .green), "v257")])
         XCTAssertEqual(store.version(for: "257"), "v257")
     }
+
+    func testRemoveAllDeletesPageFilesAndForgetsEverything() {
+        let directory = self.makeDirectory()
+        let store = MediaGridThumbnailStore(directory: directory)
+        self.load(store)
+        var items: [(String, CGImage, String)] = []
+        for i in 0 ..< 300 {
+            items.append(("\(i)", self.makeImage(width: 10, height: 10, top: self.color(i)), "v\(i)"))
+        }
+        self.write(store, items)
+        self.flush(store)
+        XCTAssertEqual(self.pageFiles(directory).count, 2)
+
+        let cleared = self.expectation(description: "cleared")
+        store.removeAll(completion: {
+            cleared.fulfill()
+        })
+        self.wait(for: [cleared], timeout: 5.0)
+        XCTAssertTrue(store.storedIds().isEmpty)
+        XCTAssertNil(store.version(for: "17"))
+        XCTAssertNil(store.thumbnail(for: "17"))
+        XCTAssertEqual(self.pageFiles(directory).count, 0)
+
+        let reopened = MediaGridThumbnailStore(directory: directory)
+        self.load(reopened)
+        XCTAssertTrue(reopened.storedIds().isEmpty)
+    }
+
+    func testStoreAcceptsThumbnailsAfterRemoveAll() {
+        let directory = self.makeDirectory()
+        let store = MediaGridThumbnailStore(directory: directory)
+        self.load(store)
+        self.write(store, [("a", self.makeImage(width: 10, height: 10, top: .red), "1")])
+        let cleared = self.expectation(description: "cleared")
+        store.removeAll(completion: {
+            cleared.fulfill()
+        })
+        self.wait(for: [cleared], timeout: 5.0)
+        self.write(store, [("b", self.makeImage(width: 10, height: 10, top: .green), "2")])
+        XCTAssertEqual(store.version(for: "b"), "2")
+        XCTAssertNil(store.version(for: "a"))
+        self.assertRect(store.thumbnail(for: "b")!.contentsRect, CGRect(x: 0.0, y: 0.0, width: 48.0 * self.unit, height: 48.0 * self.unit))
+    }
 }
