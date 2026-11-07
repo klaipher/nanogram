@@ -19,6 +19,7 @@ final class DebugControllerEntriesTests: XCTestCase {
         settings.chatOpenDeferSetup = on
         settings.compressedEmojiCache = on
         settings.chatListLazyRareSubnodes = on
+        settings.chatListRowReuse = on
         settings.localTranscription = on
         settings.disableQuickReaction = on
         settings.disableLanguageRecognition = on

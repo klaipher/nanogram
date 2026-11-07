@@ -384,6 +384,7 @@ enum DebugControllerEntry: ItemListNodeEntry {
     case listAccessibilityImmediate(Bool)
     case listScrollPacingLog(Bool)
     case chatListLazyRareSubnodes(Bool)
+    case chatListRowReuse(Bool)
     case enableNetworkFramework(Bool)
     case enableNetworkExperiments(Bool)
     case rustMTProtoEngine(Bool)
@@ -419,7 +420,7 @@ enum DebugControllerEntry: ItemListNodeEntry {
             return DebugControllerSection.chatOpen.rawValue
         case .chatScrollHeader, .chatScrollPrepareLayoutAhead, .chatScrollReuseRowViews:
             return DebugControllerSection.chatScroll.rawValue
-        case .listScrollHeader, .displayLinkUpstreamRate, .listAccessibilityImmediate, .listScrollPacingLog, .chatListLazyRareSubnodes:
+        case .listScrollHeader, .displayLinkUpstreamRate, .listAccessibilityImmediate, .listScrollPacingLog, .chatListLazyRareSubnodes, .chatListRowReuse:
             return DebugControllerSection.listScroll.rawValue
         case .springSendAnimation, .fakeWalletTransfers, .stickerRendererMode, .disableImageContentAnalysis, .disableLanguageRecognition, .localTranscription, .enableVoipTcp, .tabletDisplayLinkFrameRateCap, .chatMediaEditorLegacy, .mediaGridLegacy, .sharedMediaGridLegacy, .storyLegacyVideoWriter, .chatLegacyVideoWriter, .chatSideListLegacy, .messageWidgets, .messageWidgetWallet:
             return DebugControllerSection.experiments.rawValue
@@ -597,6 +598,9 @@ enum DebugControllerEntry: ItemListNodeEntry {
         case .chatListLazyRareSubnodes:
             // Appended right after `listScrollPacingLog`; see the ordering note at `springSendAnimation`.
             return 141
+        case .chatListRowReuse:
+            // Appended right after `chatListLazyRareSubnodes`; see the ordering note at `springSendAnimation`.
+            return 142
         case .springSendAnimation:
             // ItemList asserts its entries are in strictly increasing order (`<`: section, then
             // `sortIndex`, which is the stableId here; ItemListControllerNode.swift), so an id must
@@ -730,6 +734,14 @@ enum DebugControllerEntry: ItemListNodeEntry {
                 let _ = updateExperimentalUISettingsInteractively(accountManager: arguments.sharedContext.accountManager, { settings in
                     var settings = settings
                     settings.chatListLazyRareSubnodes = value
+                    return settings
+                }).start()
+            })
+        case let .chatListRowReuse(value):
+            return ItemListSwitchItem(presentationData: presentationData, systemStyle: .glass, title: "Chat list rows: reuse rows", text: "Off (default): every row that scrolls into a chat list is built new, as Telegram does. On: up to 8 ordinary chat rows that scrolled out of a chat list are reset and reused for the next ones; forum, community, archive, editing, swiped, highlighted or context-menu rows are never reused. Applies to rows that leave the list from now on.", value: value, maximumNumberOfLines: 0, sectionId: self.section, style: .blocks, updated: { value in
+                let _ = updateExperimentalUISettingsInteractively(accountManager: arguments.sharedContext.accountManager, { settings in
+                    var settings = settings
+                    settings.chatListRowReuse = value
                     return settings
                 }).start()
             })
@@ -1530,6 +1542,7 @@ func debugControllerEntries(environment: DebugControllerEntriesEnvironment, them
         entries.append(.listAccessibilityImmediate(experimentalSettings.listAccessibilityImmediate))
         entries.append(.listScrollPacingLog(experimentalSettings.listScrollPacingLog))
         entries.append(.chatListLazyRareSubnodes(experimentalSettings.chatListLazyRareSubnodes))
+        entries.append(.chatListRowReuse(experimentalSettings.chatListRowReuse))
     }
 
     if isMainApp {

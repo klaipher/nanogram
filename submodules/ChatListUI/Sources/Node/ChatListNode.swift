@@ -134,6 +134,8 @@ public final class ChatListNodeInteraction {
     var isSearchMode: Bool = false
     
     var isInlineMode: Bool = false
+    /// The list's pool of rows that left it and may be reused (nil unless the list supports row reuse). Main thread.
+    weak var rowPool: ListRowPool<ChatListItemNode>?
     /// The list hosted by the chat side list (`ChatListControllerImpl.isSideList`).
     var isSideListMode: Bool = false
     var openSideListAllThreads: (() -> Void)?
@@ -1229,6 +1231,8 @@ public final class ChatListNode: ListViewImpl {
     }
     
     private let fillPreloadItems: Bool
+    private var rowPool: ListRowPool<ChatListItemNode>?
+    private var rowPoolObservers: [NSObjectProtocol] = []
     private let context: AccountContext
     private let location: ChatListControllerLocation
     private let mode: ChatListNodeMode
@@ -2798,6 +2802,40 @@ public final class ChatListNode: ListViewImpl {
         
         self.interaction = nodeInteraction
         
+        if ChatListNode.supportsRowReuse(mode: mode, location: location, isSideList: isSideList, previewing: previewing, isInlineMode: isInlineMode) {
+            // Rows that scroll out of this list wait here, reset, for the next rows of the same list (Debug Settings,
+            // off by default). The pool is checked again when a row is taken, so the switch can be turned off live.
+            let pool = ListRowPool<ChatListItemNode>(capacity: 8, schedule: { block in
+                Queue.mainQueue().async(block)
+            }, prepare: { [weak self] node in
+                guard let self, ChatListRowExperiments.rowReuse, node.supernode == nil, !self.containsItemNode(node) else {
+                    return false
+                }
+                return node.prepareForRowReuse()
+            })
+            self.rowPool = pool
+            nodeInteraction.rowPool = pool
+            self.itemNodeRemovedObserver = { [weak self] node in
+                guard let self, let pool = self.rowPool else {
+                    return
+                }
+                guard ChatListRowExperiments.rowReuse else {
+                    pool.drain()
+                    return
+                }
+                if let node = node as? ChatListItemNode, node.rowReuseRefusal() == nil {
+                    pool.offer(node)
+                }
+            }
+            let center = NotificationCenter.default
+            self.rowPoolObservers.append(center.addObserver(forName: UIApplication.didReceiveMemoryWarningNotification, object: nil, queue: OperationQueue.main, using: { [weak self] _ in
+                self?.rowPool?.drain()
+            }))
+            self.rowPoolObservers.append(center.addObserver(forName: UIApplication.didEnterBackgroundNotification, object: nil, queue: OperationQueue.main, using: { [weak self] _ in
+                self?.rowPool?.drain()
+            }))
+        }
+        
         self.chatListDisposable.set(appliedTransition.startStrict())
         
         let initialLocation: ChatListNodeLocation
@@ -3254,6 +3292,9 @@ public final class ChatListNode: ListViewImpl {
     }
     
     deinit {
+        for observer in self.rowPoolObservers {
+            NotificationCenter.default.removeObserver(observer)
+        }
         self.chatListDisposable.dispose()
         self.activityStatusesDisposable?.dispose()
         self.updatedFilterDisposable.dispose()
@@ -3363,6 +3404,8 @@ public final class ChatListNode: ListViewImpl {
     }
     
     public func updateThemeAndStrings(theme: PresentationTheme, fontSize: PresentationFontSize, strings: PresentationStrings, dateTimeFormat: PresentationDateTimeFormat, nameSortOrder: PresentationPersonNameOrder, nameDisplayOrder: PresentationPersonNameOrder, disableAnimations: Bool) {
+        // Pooled rows were built with the previous theme, strings and font size.
+        self.rowPool?.drain()
         if theme !== self.currentState.presentationData.theme || strings !== self.currentState.presentationData.strings || dateTimeFormat != self.currentState.presentationData.dateTimeFormat {
             self.theme = theme
             if self.keepTopItemOverscrollBackground != nil {

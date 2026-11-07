@@ -138,6 +138,15 @@ final class ExperimentalUISettingsDefaultsTests: XCTestCase {
         settings.chatListLazyRareSubnodes = false
         XCTAssertFalse(try self.roundTrip(settings).chatListLazyRareSubnodes)
     }
+
+    func testChatListRowReuseIsOffByDefaultAndTheChoiceIsKept() throws {
+        for settings in [ExperimentalUISettings.defaultSettings, try self.decode("{}"), try self.decode(#"{"glassDebugDisabledGroups": 2}"#)] {
+            XCTAssertFalse(settings.chatListRowReuse)
+        }
+        var settings = ExperimentalUISettings.defaultSettings
+        settings.chatListRowReuse = true
+        XCTAssertTrue(try self.roundTrip(settings).chatListRowReuse)
+    }
 }
 
 private extension ExperimentalUISettings {

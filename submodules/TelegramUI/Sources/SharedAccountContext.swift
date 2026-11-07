@@ -594,6 +594,7 @@ public final class SharedAccountContextImpl: SharedAccountContext {
         ListViewDeferredAccessibility.shared.forcesImmediate = immediateExperimentalUISettingsValue.with({ $0.listAccessibilityImmediate })
         ListViewScrollPacing.isEnabled = immediateExperimentalUISettingsValue.with({ $0.listScrollPacingLog })
         ChatListRowExperiments.lazyRareSubnodes = immediateExperimentalUISettingsValue.with({ $0.chatListLazyRareSubnodes })
+        ChatListRowExperiments.rowReuse = immediateExperimentalUISettingsValue.with({ $0.chatListRowReuse })
         MediaEditorVideoExport.forceLegacyStoryWriter = immediateExperimentalUISettingsValue.with({ $0.storyLegacyVideoWriter })
         MediaEditorVideoExport.forceLegacyChatWriter = immediateExperimentalUISettingsValue.with({ $0.chatLegacyVideoWriter })
         
@@ -613,6 +614,7 @@ public final class SharedAccountContextImpl: SharedAccountContext {
                 ListViewDeferredAccessibility.shared.forcesImmediate = settings.listAccessibilityImmediate
                 ListViewScrollPacing.isEnabled = settings.listScrollPacingLog
                 ChatListRowExperiments.lazyRareSubnodes = settings.chatListLazyRareSubnodes
+                ChatListRowExperiments.rowReuse = settings.chatListRowReuse
                 MediaEditorVideoExport.forceLegacyStoryWriter = settings.storyLegacyVideoWriter
                 MediaEditorVideoExport.forceLegacyChatWriter = settings.chatLegacyVideoWriter
             }

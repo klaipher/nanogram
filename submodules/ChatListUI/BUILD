@@ -161,6 +161,9 @@ swift_library(
         "//submodules/TextFormat:TextFormat",
         "//submodules/AppBundle:AppBundle",
         "//submodules/AsyncDisplayKit:AsyncDisplayKit",
+        "//submodules/ItemListUI:ItemListUI",
+        "//submodules/AvatarNode:AvatarNode",
+        "//submodules/AccountContext:AccountContext",
     ],
 )
 

@@ -588,6 +588,27 @@ public class ChatListItem: ListViewItem {
     }
     
     public func nodeConfiguredForParams(async: @escaping (@escaping () -> Void) -> Void, params: ListViewItemLayoutParams, synchronousLoads: Bool, neighbors: ListViewItemNeighbors, completion: @escaping (ListViewItemNode, @escaping () -> (Signal<Void, NoError>?, (ListViewItemApply) -> Void)) -> Void) {
+        // Row reuse (Debug Settings, off by default): an eligible item takes a pooled row of its list when there is one.
+        if ChatListRowExperiments.rowReuse, ChatListRowReuseFacts(item: self).isEligible, self.interaction.rowPool != nil {
+            let run: () -> Void = {
+                if let pool = self.interaction.rowPool, let node = pool.take(where: { $0.usesLazySubnodesMatchesCurrentFlag && $0.supernode == nil }) {
+                    self.configureReusedNode(node, async: async, params: params, synchronousLoads: synchronousLoads, neighbors: neighbors, completion: completion)
+                } else {
+                    self.configureNewNode(async: async, params: params, synchronousLoads: synchronousLoads, neighbors: neighbors, completion: completion)
+                }
+            }
+            // The pool is owned by the main thread; a row created off it does the pool lookup on main.
+            if Thread.isMainThread {
+                run()
+            } else {
+                Queue.mainQueue().async(run)
+            }
+            return
+        }
+        self.configureNewNode(async: async, params: params, synchronousLoads: synchronousLoads, neighbors: neighbors, completion: completion)
+    }
+    
+    private func configureNewNode(async: @escaping (@escaping () -> Void) -> Void, params: ListViewItemLayoutParams, synchronousLoads: Bool, neighbors: ListViewItemNeighbors, completion: @escaping (ListViewItemNode, @escaping () -> (Signal<Void, NoError>?, (ListViewItemApply) -> Void)) -> Void) {
         async {
             let node = ChatListItemNode()
             let mergeType = ChatListItem.mergeType(item: self, neighbors: neighbors)
@@ -608,6 +629,41 @@ public class ChatListItem: ListViewItem {
             node.contentSize = nodeLayout.contentSize
             
             Queue.mainQueue().async {
+                completion(node, {
+                    return (nil, { _ in
+                        node.nextSideListHighlightKey = nextSideListHighlightKey
+                        node.setupItem(item: self, synchronousLoads: synchronousLoads)
+                        apply(synchronousLoads, false)
+                        node.updateIsHighlighted(transition: .immediate)
+                    })
+                })
+            }
+        }
+    }
+    
+    /// Configures a row taken from the pool. It goes through the new-node path (`layoutParams == nil`, not animated), so
+    /// it renders as a row that was just created.
+    private func configureReusedNode(_ node: ChatListItemNode, async: @escaping (@escaping () -> Void) -> Void, params: ListViewItemLayoutParams, synchronousLoads: Bool, neighbors: ListViewItemNeighbors, completion: @escaping (ListViewItemNode, @escaping () -> (Signal<Void, NoError>?, (ListViewItemApply) -> Void)) -> Void) {
+        let mergeType = ChatListItem.mergeType(item: self, neighbors: neighbors)
+        let first = mergeType.first
+        var last = mergeType.last
+        let firstWithHeader = mergeType.firstWithHeader
+        let nextIsPinned = mergeType.nextIsPinned
+        let nextHasActiveRevealControls = mergeType.nextHasActiveRevealControls
+        if self.useCommunityViewLayout {
+            last = true
+        }
+        node.insets = ChatListItemNode.insets(first: first, last: last, firstWithHeader: firstWithHeader)
+        let nextSideListHighlightKey = neighbors.next?.base(ChatListNeighborFacet.self)?.sideListHighlightKey
+        let layout = node.asyncLayout()
+        
+        async {
+            let (nodeLayout, apply) = layout(self, params, first, last, firstWithHeader, nextIsPinned, nextHasActiveRevealControls)
+            
+            Queue.mainQueue().async {
+                node.insets = nodeLayout.insets
+                node.contentSize = nodeLayout.contentSize
+                
                 completion(node, {
                     return (nil, { _ in
                         node.nextSideListHighlightKey = nextSideListHighlightKey
@@ -1285,6 +1341,10 @@ public class ChatListItemNode: ItemListRevealOptionsItemNode {
         var topicNodes: [Int64: TopicItemNode] = [:]
         var topicNodeOrder: [Int64] = []
         
+        var hasTopicNodes: Bool {
+            return !self.topicNodes.isEmpty
+        }
+        
         public var visibilityStatus: Bool = false {
             didSet {
                 if self.visibilityStatus != oldValue {
@@ -1531,11 +1591,11 @@ public class ChatListItemNode: ItemListRevealOptionsItemNode {
     
     private var hierarchyTrackingLayer: HierarchyTrackingLayer?
     private var cachedDataDisposable = MetaDisposable()
-    private var cachedDataPeerId: EnginePeer.Id?
+    var cachedDataPeerId: EnginePeer.Id?
     private var cachedDataLoopEmoji = false
     private var cachedDataPeer: EnginePeer?
     
-    private var currentTextLeftCutout: CGFloat = 0.0
+    var currentTextLeftCutout: CGFloat = 0.0
     private var currentMediaPreviewSpecs: [ContentImageSpec] = []
     private var mediaPreviewNodes: [EngineMedia.Id: ChatListMediaPreviewNode] = [:]
     
@@ -1556,13 +1616,20 @@ public class ChatListItemNode: ItemListRevealOptionsItemNode {
     private let usesLazySubnodes: Bool
     private var attachedLazySubnodes: ChatListLazySubnodeSet
     
+    /// Set when the row did something `prepareForRowReuse` cannot undo (a context menu, an opened story, a flash
+    /// highlight). A tainted row is destroyed as before.
+    var isRowReuseTainted = false
+    /// The fixed subnodes' values as `init` leaves them. Captured only when `ChatListRowExperiments.rowReuse` is on at
+    /// creation, so a row created with the switch off costs nothing and is never reused.
+    private var subnodeDefaults: [ChatListRowSubnodeDefault]?
+    
     private var isHighlighted: Bool = false
     private var nextHasActiveRevealControls: Bool = false
     private var skipFadeout: Bool = false
     private var customAnimationInProgress: Bool = false
     
-    private var onlineIsVoiceChat: Bool = false
-    private var currentOnline: Bool?
+    var onlineIsVoiceChat: Bool = false
+    var currentOnline: Bool?
     
     /// State the row shows only as icons (pin, muted bell), read out after the title.
     private var accessibilityIsPinned: Bool = false
@@ -2104,6 +2171,7 @@ public class ChatListItemNode: ItemListRevealOptionsItemNode {
                     threadId = topicItem.id
                 }
             }
+            strongSelf.isRowReuseTainted = true
             item.interaction.activateChatPreview?(item, threadId, strongSelf.contextContainer, gesture, nil)
         }
         
@@ -2115,6 +2183,27 @@ public class ChatListItemNode: ItemListRevealOptionsItemNode {
             self.avatarTapRecognizer = avatarTapRecognizer
             self.avatarNode.view.addGestureRecognizer(avatarTapRecognizer)
         }
+        
+        if ChatListRowExperiments.rowReuse {
+            let fixedNodes: [ASDisplayNode] = [
+                self.backgroundNode, self.highlightedBackgroundNode, self.contextContainer, self.mainContentContainerNode,
+                self.avatarContainerNode, self.communityAvatarShadowNode, self.avatarNode, self.titleNode, self.authorNode,
+                self.forwardedIconNode, self.textNode.textNode, self.inputActivitiesNode, self.dateNode, self.separatorNode,
+                self.statusNode, self.badgeNode, self.mentionBadgeNode, self.onlineNode, self.pinnedIconNode,
+                self.hiddenPeerIconNode, self.mutedIconNode
+            ]
+            self.subnodeDefaults = fixedNodes.map { node in
+                return ChatListRowSubnodeDefault(
+                    node: node,
+                    alpha: node.alpha,
+                    isHidden: node.isHidden,
+                    transform: node.transform,
+                    subnodeTransform: node.subnodeTransform,
+                    frame: node.frame,
+                    isImageNode: node is ASImageNode
+                )
+            }
+        }
     }
 
     deinit {
@@ -2125,6 +2214,7 @@ public class ChatListItemNode: ItemListRevealOptionsItemNode {
         guard let item = self.item else {
             return
         }
+        self.isRowReuseTainted = true
         item.interaction.activateChatPreview?(item, nil, self.contextContainer, nil, point)
     }
     
@@ -6311,6 +6401,7 @@ public class ChatListItemNode: ItemListRevealOptionsItemNode {
     }
     
     func flashHighlight() {
+        self.isRowReuseTainted = true
         if self.highlightedBackgroundNode.supernode == nil {
             self.insertSubnode(self.highlightedBackgroundNode, aboveSubnode: self.separatorNode)
             self.highlightedBackgroundNode.alpha = 0.0
@@ -6406,13 +6497,386 @@ public class ChatListItemNode: ItemListRevealOptionsItemNode {
                 if let peer = peerData.peer.peer, let linkedCommunityId = peer.containerPeerId {
                     item.interaction.openCommunity(linkedCommunityId)
                 } else {
+                    self.isRowReuseTainted = true
                     item.interaction.openStories(.peer(peerData.peer.peerId), self)
                 }
             case .groupReference:
+                self.isRowReuseTainted = true
                 item.interaction.openStories(.archive, self)
             }
         }
     }
+}
+
+// MARK: - Row reuse (Debug Settings ▸ List scroll ▸ Chat list rows: reuse rows)
+
+extension ChatListItemNode {
+    /// True when the node was created in the same lazy-subnode mode as the current setting, so reusing it keeps an A/B
+    /// of the lazy switch pure.
+    var usesLazySubnodesMatchesCurrentFlag: Bool {
+        return self.usesLazySubnodes == ChatListRowExperiments.lazyRareSubnodes
+    }
+    
+    /// Why this row must not go back into the pool, or nil when it can. Pure: reads state, changes nothing, and does
+    /// not load a view.
+    func rowReuseRefusal() -> ChatListRowReuseRefusal? {
+        return self.rowReuseRefusal(ignoringEligibility: false)
+    }
+    
+    /// Test seam: the refusal without the check that needs a fully built item.
+    func rowReuseRefusalIgnoringEligibilityForTesting() -> ChatListRowReuseRefusal? {
+        return self.rowReuseRefusal(ignoringEligibility: true)
+    }
+    
+    /// Test seam: the checks of `prepareForRowReuse` without the one that needs a fully built item.
+    func prepareForRowReuseIgnoringEligibilityForTesting() -> Bool {
+        if self.rowReuseRefusal(ignoringEligibility: true) != nil {
+            return false
+        }
+        self.resetForRowReuse()
+        return true
+    }
+    
+    private func rowReuseRefusal(ignoringEligibility: Bool) -> ChatListRowReuseRefusal? {
+        if self.subnodeDefaults == nil {
+            return .createdWithReuseOff
+        }
+        if self.isRowReuseTainted {
+            return .tainted
+        }
+        if !ignoringEligibility {
+            guard let item = self.item, ChatListRowReuseFacts(item: item).isEligible else {
+                return .notEligible
+            }
+        }
+        if self.avatarVideoNode != nil || self.hierarchyTrackingLayer != nil || self.trackingIsInHierarchy {
+            return .videoAvatar
+        }
+        if self.compoundTextButtonNode != nil || self.compoundHighlightingNode != nil || self.textArrowNode != nil || self.authorNode.hasTopicNodes {
+            return .topics
+        }
+        if self.placeholderNode != nil || self.selectableControlNode != nil || self.reorderControlNode != nil || self.inlineNavigationMarkLayer != nil || !self.avatarNode.canPrepareForReuse {
+            return .exoticChild
+        }
+        if self.skipFadeout || self.customAnimationInProgress {
+            return .removalAnimation
+        }
+        if self.isHighlighted || self.highlightedBackgroundNode.supernode != nil {
+            return .highlighted
+        }
+        if self.isRevealOptionsActive || self.isDisplayingRevealedOptions || self.revealOffset != 0.0 || self.isNextRevealOptionsActive || self.revealOptionsSeparatorAlpha != 1.0 || self.nextRevealOptionsSeparatorAlpha != 1.0 {
+            return .reveal
+        }
+        if self.inputActivitiesNode.supernode != nil {
+            return .typing
+        }
+        if self.zPosition != 0.0 || !CATransform3DIsIdentity(self.subnodeTransform) || self.clipsToBounds {
+            return .nodeState
+        }
+        if self.isNodeLoaded && ChatListItemNode.layerSubtreeHasAnimations(self.layer) {
+            return .animating
+        }
+        return nil
+    }
+    
+    private static func layerSubtreeHasAnimations(_ layer: CALayer) -> Bool {
+        if let keys = layer.animationKeys(), !keys.isEmpty {
+            return true
+        }
+        if let sublayers = layer.sublayers {
+            for sublayer in sublayers {
+                if ChatListItemNode.layerSubtreeHasAnimations(sublayer) {
+                    return true
+                }
+            }
+        }
+        return false
+    }
+    
+    /// Puts the row into the state a new `ChatListItemNode` is in, so that the next `asyncLayout`, `setupItem` and
+    /// apply (the new-node path: `layoutParams == nil`, not animated) build the next chat's row. Returns false, and
+    /// changes nothing, when the row is in a state that cannot be reset. Main thread.
+    func prepareForRowReuse() -> Bool {
+        if self.rowReuseRefusal() != nil {
+            return false
+        }
+        self.resetForRowReuse()
+        return true
+    }
+    
+    private func resetForRowReuse() {
+        // The list-engine state of the row (index, animations, header bindings, visibility, ...).
+        self.prepareForPoolReuse()
+        
+        self.cachedDataDisposable.set(nil)
+        self.cachedDataPeerId = nil
+        self.cachedDataLoopEmoji = false
+        self.cachedDataPeer = nil
+        self.peerPresenceManager?.cancel()
+        
+        // Views and nodes the apply adds for some chats only.
+        self.communityAvatarBadgeBackgroundView?.removeFromSuperview()
+        self.communityAvatarBadgeBackgroundView = nil
+        self.communityAvatarBadgeIconView?.removeFromSuperview()
+        self.communityAvatarBadgeIconView = nil
+        self.avatarIconView?.removeFromSuperview()
+        self.avatarIconView = nil
+        self.avatarIconComponent = nil
+        self.avatarMediaNode?.removeFromSupernode()
+        self.avatarMediaNode = nil
+        if let titleBadge = self.titleBadge {
+            titleBadge.backgroundView.removeFromSuperview()
+            titleBadge.textNode.removeFromSupernode()
+        }
+        self.titleBadge = nil
+        self.trailingTextBadgeNode?.removeFromSupernode()
+        self.trailingTextBadgeNode = nil
+        self.trailingTextBadgeBackground?.removeFromSuperview()
+        self.trailingTextBadgeBackground = nil
+        self.dustNode?.removeFromSupernode()
+        self.dustNode = nil
+        self.dateStatusIconNode?.removeFromSupernode()
+        self.dateStatusIconNode = nil
+        self.dateDisclosureIconView?.removeFromSuperview()
+        self.dateDisclosureIconView = nil
+        self.avatarBadgeNode?.removeFromSupernode()
+        self.avatarBadgeNode = nil
+        self.avatarBadgeBackground?.removeFromSupernode()
+        self.avatarBadgeBackground = nil
+        self.avatarTimerBadge?.removeFromSuperview()
+        self.avatarTimerBadge = nil
+        self.avatarNode.badgeView = nil
+        self.starView?.removeFromSuperview()
+        self.starView = nil
+        if let avatarLiveBadge = self.avatarLiveBadge {
+            avatarLiveBadge.outline.removeFromSuperview()
+            avatarLiveBadge.foreground.removeFromSuperview()
+        }
+        self.avatarLiveBadge = nil
+        self.secretIconNode?.removeFromSupernode()
+        self.secretIconNode = nil
+        self.verifiedIconView?.removeFromSuperview()
+        self.verifiedIconView = nil
+        self.verifiedIconComponent = nil
+        self.credibilityIconView?.removeFromSuperview()
+        self.credibilityIconView = nil
+        self.credibilityIconComponent = nil
+        self.statusIconView?.removeFromSuperview()
+        self.statusIconView = nil
+        self.statusIconComponent = nil
+        self.itemTagList?.view?.removeFromSuperview()
+        self.itemTagList = nil
+        self.actionButtonTitleNode?.removeFromSupernode()
+        self.actionButtonTitleNode = nil
+        self.actionButtonBackgroundView?.removeFromSuperview()
+        self.actionButtonBackgroundView = nil
+        self.actionButtonNode?.removeFromSupernode()
+        self.actionButtonNode = nil
+        for (_, mediaPreviewNode) in self.mediaPreviewNodes {
+            mediaPreviewNode.removeFromSupernode()
+        }
+        self.mediaPreviewNodes = [:]
+        self.forwardedIconNode.removeFromSupernode()
+        
+        self.avatarNode.prepareForReuse()
+        
+        // The fixed subnodes go back to the values `init` left them with. Plain writes: the row is out of the window.
+        if let subnodeDefaults = self.subnodeDefaults {
+            for subnodeDefault in subnodeDefaults {
+                let node = subnodeDefault.node
+                node.transform = subnodeDefault.transform
+                node.subnodeTransform = subnodeDefault.subnodeTransform
+                node.frame = subnodeDefault.frame
+                node.alpha = subnodeDefault.alpha
+                node.isHidden = subnodeDefault.isHidden
+                if subnodeDefault.isImageNode {
+                    (node as? ASImageNode)?.image = nil
+                }
+            }
+        }
+        
+        self.contextContainer.targetNodeForActivationProgress = nil
+        self.contextContainer.additionalActivationProgressLayer = nil
+        
+        self.currentItemHeight = nil
+        self.currentTextLeftCutout = 0.0
+        self.currentMediaPreviewSpecs = []
+        self.cachedChatListText = nil
+        self.cachedChatListSearchResult = nil
+        self.cachedChatListQuoteSearchResult = nil
+        self.cachedCustomTextEntities = nil
+        self.nextHasActiveRevealControls = false
+        self.onlineIsVoiceChat = false
+        self.currentOnline = nil
+        self.absoluteLocation = nil
+        self.accessibilityIsPinned = false
+        self.accessibilityIsMuted = false
+        self.accessibilityCredibilityText = nil
+        self.accessibilityDateText = nil
+        self.accessibilityDraftText = nil
+        self.accessibilityActivityText = nil
+        self.accessibilityCustomActionsKey = nil
+        self.nextSideListHighlightKey = nil
+        self.separatorBaseIsHidden = false
+        
+        if self.isNodeLoaded {
+            self.view.accessibilityLabel = nil
+            self.view.accessibilityValue = nil
+            self.view.accessibilityCustomActions = nil
+        }
+        
+        self.item = nil
+        self.layoutParams = nil
+    }
+    
+    /// One decision for every stored property of `ChatListItemNode` (a Mirror test compares the key set), so a property
+    /// added by an upstream sync cannot be forgotten by the reset.
+    static let rowReuseLedger: [String: ChatListRowReuseTreatment] = [
+        "item": .reset,
+        "backgroundNode": .restoredDefault,
+        "highlightedBackgroundNode": .restoredDefault,
+        "contextContainer": .restoredDefault,
+        "mainContentContainerNode": .restoredDefault,
+        "avatarContainerNode": .restoredDefault,
+        "communityAvatarShadowNode": .restoredDefault,
+        "communityAvatarBadgeBackgroundView": .removeAndNil,
+        "communityAvatarBadgeIconView": .removeAndNil,
+        "avatarNode": .restoredDefault,
+        "avatarIconView": .removeAndNil,
+        "avatarIconComponent": .removeAndNil,
+        "avatarVideoNode": .refuse,
+        "avatarTapRecognizer": .constant,
+        "avatarMediaNode": .removeAndNil,
+        "inlineNavigationMarkLayer": .refuse,
+        "titleNode": .restoredDefault,
+        "titleBadge": .removeAndNil,
+        "authorNode": .restoredDefault,
+        "compoundHighlightingNode": .refuse,
+        "textArrowNode": .refuse,
+        "compoundTextButtonNode": .refuse,
+        "measureNode": .constant,
+        "currentItemHeight": .reset,
+        "forwardedIconNode": .restoredDefault,
+        "textNode": .restoredDefault,
+        "trailingTextBadgeNode": .removeAndNil,
+        "trailingTextBadgeBackground": .removeAndNil,
+        "dustNode": .removeAndNil,
+        "inputActivitiesNode": .restoredDefault,
+        "dateNode": .restoredDefault,
+        "dateStatusIconNode": .removeAndNil,
+        "dateDisclosureIconView": .removeAndNil,
+        "separatorNode": .restoredDefault,
+        "statusNode": .restoredDefault,
+        "badgeNode": .restoredDefault,
+        "mentionBadgeNode": .restoredDefault,
+        "avatarBadgeNode": .removeAndNil,
+        "avatarBadgeBackground": .removeAndNil,
+        "onlineNode": .restoredDefault,
+        "avatarTimerBadge": .removeAndNil,
+        "starView": .removeAndNil,
+        "avatarLiveBadge": .removeAndNil,
+        "pinnedIconNode": .restoredDefault,
+        "secretIconNode": .removeAndNil,
+        "verifiedIconView": .removeAndNil,
+        "verifiedIconComponent": .removeAndNil,
+        "credibilityIconView": .removeAndNil,
+        "credibilityIconComponent": .removeAndNil,
+        "statusIconView": .removeAndNil,
+        "statusIconComponent": .removeAndNil,
+        "hiddenPeerIconNode": .restoredDefault,
+        "mutedIconNode": .restoredDefault,
+        "itemTagList": .removeAndNil,
+        "actionButtonTitleNode": .removeAndNil,
+        "actionButtonBackgroundView": .removeAndNil,
+        "actionButtonNode": .removeAndNil,
+        "placeholderNode": .refuse,
+        "absoluteLocation": .reset,
+        "hierarchyTrackingLayer": .refuse,
+        "cachedDataDisposable": .reset,
+        "cachedDataPeerId": .reset,
+        "cachedDataLoopEmoji": .reset,
+        "cachedDataPeer": .reset,
+        "currentTextLeftCutout": .reset,
+        "currentMediaPreviewSpecs": .reset,
+        "mediaPreviewNodes": .removeAndNil,
+        "selectableControlNode": .refuse,
+        "reorderControlNode": .refuse,
+        "peerPresenceManager": .reset,
+        "cachedChatListText": .reset,
+        "cachedChatListSearchResult": .reset,
+        "cachedChatListQuoteSearchResult": .reset,
+        "cachedCustomTextEntities": .reset,
+        "layoutParams": .reset,
+        "usesLazySubnodes": .constant,
+        "attachedLazySubnodes": .constant,
+        "isRowReuseTainted": .refuse,
+        "subnodeDefaults": .constant,
+        "isHighlighted": .refuse,
+        "nextHasActiveRevealControls": .reset,
+        "skipFadeout": .refuse,
+        "customAnimationInProgress": .refuse,
+        "onlineIsVoiceChat": .reset,
+        "currentOnline": .reset,
+        "accessibilityIsPinned": .reset,
+        "accessibilityIsMuted": .reset,
+        "accessibilityCredibilityText": .reset,
+        "accessibilityDateText": .reset,
+        "accessibilityDraftText": .reset,
+        "accessibilityActivityText": .reset,
+        "accessibilityCustomActionsKey": .reset,
+        "visibilityStatus": .reset,
+        "trackingIsInHierarchy": .refuse,
+        "nextSideListHighlightKey": .reset,
+        "separatorBaseIsHidden": .reset
+    ]
+    
+    /// One decision for every stored property of `ItemListRevealOptionsItemNode` (ItemListUI keeps them private).
+    /// `.refuse` fields are covered by the `.reveal` refusal (only a row at rest is reused), `.rewrittenByApply` fields
+    /// are written by the next apply, `.constant` ones are nil or idle at rest.
+    static let revealOptionsLedger: [String: ChatListRowReuseTreatment] = [
+        "validLayout": .rewrittenByApply,
+        "leftRevealNode": .constant,
+        "rightRevealNode": .constant,
+        "revealOptions": .rewrittenByApply,
+        "enableAnimations": .rewrittenByApply,
+        "motion": .refuse,
+        "revealDirection": .refuse,
+        "animationLink": .constant,
+        "previousAnimationTime": .constant,
+        "animationCompletion": .constant,
+        "suppressGestureEvents": .constant,
+        "deliveringAction": .constant,
+        "holdsRevealOptionsUntilClosed": .refuse,
+        "lastSurfaceProgress": .refuse,
+        "revealOffset": .refuse,
+        "isRevealOptionsActive": .refuse,
+        "isNextRevealOptionsActive": .refuse,
+        "revealOptionsSeparatorAlpha": .refuse,
+        "nextRevealOptionsSeparatorAlpha": .refuse,
+        "revealOptionsActivePreviousItemNode": .constant,
+        "revealOptionsTopSeparatorNode": .rewrittenByApply,
+        "revealOptionsBottomSeparatorNode": .rewrittenByApply,
+        "revealOptionsTopSeparatorBaseIsHidden": .rewrittenByApply,
+        "revealOptionsBottomSeparatorBaseIsHidden": .rewrittenByApply,
+        "revealOptionsTopSeparatorHiddenByPreviousRevealOptions": .rewrittenByApply,
+        "revealOptionsBottomSeparatorHiddenByNextRevealOptions": .rewrittenByApply,
+        "revealOptionsHighlightedBackgroundNode": .rewrittenByApply,
+        "revealOptionsHighlightedBackgroundBaseFrame": .rewrittenByApply,
+        "revealOptionsHighlightedBackgroundTracksRevealOffset": .rewrittenByApply,
+        "revealOptionsHighlightedBackgroundActiveCornerRadius": .rewrittenByApply,
+        "revealOptionsAllowsHighlight": .rewrittenByApply,
+        "revealOptionsBaseHighlightAlpha": .rewrittenByApply,
+        "selectionHighlightEndTime": .constant,
+        "highlightFadeGeneration": .constant,
+        "revealOptionsHighlightAnchor": .rewrittenByApply,
+        "recognizer": .constant,
+        "scrollRecognizer": .constant,
+        "tapRecognizer": .constant,
+        "hapticFeedback": .constant,
+        "allowAnyDirection": .constant,
+        "revealOptionsHighlightedBackgroundRestingCornerRadius": .rewrittenByApply,
+        "revealOptionsAccessibilityCache": .constant
+    ]
 }
 
 private class StarView: UIView {

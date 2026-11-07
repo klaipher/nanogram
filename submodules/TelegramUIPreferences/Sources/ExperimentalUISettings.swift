@@ -89,6 +89,8 @@ public struct ExperimentalUISettings: Codable, Equatable {
     public var listScrollPacingLog: Bool
     /// Debug Settings ▸ List scroll ▸ Chat list rows: lazy rare subnodes. On by default. Applies to rows created from now on.
     public var chatListLazyRareSubnodes: Bool
+    /// Debug Settings ▸ List scroll ▸ Chat list rows: reuse rows. Off by default. Applies to rows that leave the list from now on.
+    public var chatListRowReuse: Bool
     /// Debug Settings ▸ "Calls: livestream hardware decoding". On by default (owner decision, 2026-11). Live stream video is decoded
     /// with VideoToolbox instead of FFmpeg's software decoders (at most 2 sessions, per-stream fallback to
     /// software on any error). Local only: nothing is negotiated or sent. Read when a call starts.
@@ -211,6 +213,7 @@ public struct ExperimentalUISettings: Codable, Equatable {
         listAccessibilityImmediate: Bool = false,
         listScrollPacingLog: Bool = false,
         chatListLazyRareSubnodes: Bool = true,
+        chatListRowReuse: Bool = false,
         callsLivestreamHardwareDecoding: Bool = true,
         callsNativeCapturePath: Bool = true,
         callsSystemNoiseSuppression: Bool = true,
@@ -261,6 +264,7 @@ public struct ExperimentalUISettings: Codable, Equatable {
         self.listAccessibilityImmediate = listAccessibilityImmediate
         self.listScrollPacingLog = listScrollPacingLog
         self.chatListLazyRareSubnodes = chatListLazyRareSubnodes
+        self.chatListRowReuse = chatListRowReuse
         self.callsLivestreamHardwareDecoding = callsLivestreamHardwareDecoding
         self.callsNativeCapturePath = callsNativeCapturePath
         self.callsSystemNoiseSuppression = callsSystemNoiseSuppression
@@ -327,6 +331,7 @@ public struct ExperimentalUISettings: Codable, Equatable {
         self.listAccessibilityImmediate = try container.decodeIfPresent(Bool.self, forKey: "listAccessibilityImmediate") ?? false
         self.listScrollPacingLog = try container.decodeIfPresent(Bool.self, forKey: "listScrollPacingLog") ?? false
         self.chatListLazyRareSubnodes = try container.decodeIfPresent(Bool.self, forKey: "chatListLazyRareSubnodes") ?? true
+        self.chatListRowReuse = try container.decodeIfPresent(Bool.self, forKey: "chatListRowReuse") ?? false
         // These four defaulted to off and became on (owner decision, 2026-11). The whole struct is saved on every change, so
         // an install that ever opened Debug Settings holds an explicit `false` under the old keys that the user never
         // chose. They are read from new keys (as with advanced ducking): only a choice made after the change counts.
@@ -399,6 +404,7 @@ public struct ExperimentalUISettings: Codable, Equatable {
         try container.encode(self.listAccessibilityImmediate, forKey: "listAccessibilityImmediate")
         try container.encode(self.listScrollPacingLog, forKey: "listScrollPacingLog")
         try container.encode(self.chatListLazyRareSubnodes, forKey: "chatListLazyRareSubnodes")
+        try container.encode(self.chatListRowReuse, forKey: "chatListRowReuse")
         try container.encode(self.callsLivestreamHardwareDecoding, forKey: "callsLivestreamHardwareDecodingDefaultOn")
         try container.encode(self.callsNativeCapturePath, forKey: "callsNativeCapturePathDefaultOn")
         try container.encode(self.callsSystemNoiseSuppression, forKey: "callsSystemNoiseSuppressionDefaultOn")
