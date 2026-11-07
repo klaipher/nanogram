@@ -26,7 +26,7 @@ ios_test_runner(
     name = "WidgetHarnessUITestRunner",
     pre_action = ":UninstallWidgetHarnessFromTestSims",
     device_type = TEST_SIMULATOR_DEVICE,
-    os_version = "27.0",
+    os_version = TEST_SIMULATOR_OS,
 )
 
 plist_fragment(

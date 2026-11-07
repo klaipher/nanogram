@@ -232,7 +232,7 @@ ios_unit_test(
 ios_test_runner(
     name = "MediaEditorExportTestRunner",
     device_type = "iPhone 18 Pro",
-    os_version = "27.0",
+    os_version = TEST_SIMULATOR_OS,
 )
 
 ios_unit_test(
