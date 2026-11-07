@@ -35,7 +35,12 @@ Default signaling SCTP timer values (set in `SignalingSctpConnection::Options`):
 
 Retry pattern: 400ms, 750ms, 750ms, 750ms... (~18 attempts in 15s). At 30% loss, 100% success rate over 5000 runs.
 
-These values are configurable via JSON custom parameters (passed to `InstanceV2Impl` via `config.customParameters`):
+These values are configurable via JSON custom parameters (`config.customParameters`), read by every engine whose signaling runs over SCTP
+(`InstanceV2Impl` 12/13, `InstanceV2ReferenceImpl` 11.0.0, `InstanceV2CompatImpl` 14.0.0, `CallCoreHost` 18/19) through
+`SignalingSctpConnection::Options::fromCustomParameters` (13.2 sync, 2026-11-07). A value outside 1-60000 ms, a non-number or a number beyond
+int keeps the default; each connection logs its values. Host test: `//submodules/TgVoipWebrtc:signaling_sctp_options_test`.
+`network_signaling_nosctp` replaces the SCTP connection with `ExternalSignalingConnection` (same gzip + `encryptRawPacket` framing) in
+`InstanceV2Impl` and, since the same sync, in `InstanceV2CompatImpl`; Android's 14.0.0 always uses it.
 - `network_sctp_t1_init_ms` — T1-init timeout (0 = use default 400ms)
 - `network_sctp_t1_cookie_ms` — T1-cookie timeout (0 = use default 400ms)
 - `network_sctp_max_backoff_ms` — max timer backoff cap (0 = use default 750ms)
@@ -43,4 +48,4 @@ These values are configurable via JSON custom parameters (passed to `InstanceV2I
 Key files:
 - `tgcalls/v2/CustomDcSctpSocket.h/.cpp` — patched `DcSctpSocket` copy
 - `tgcalls/v2/SignalingSctpConnection.cpp` — `CustomDcSctpSocketFactory`, timer option plumbing
-- `tgcalls/v2/InstanceV2Impl.cpp` — reads JSON params, passes `Options` to `SignalingSctpConnection`
+- `tgcalls/v2/SignalingSctpConnection.h/.cpp` — `Options::fromCustomParameters`; every engine passes its result to the constructor (no default)

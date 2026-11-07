@@ -52,7 +52,7 @@ marked (check) were not re-verified against the code; correct them on the next c
   `klaipher/webrtc` `nanogram-security-fixes`, runtime switches (`CallsRuntimeSwitches`), CallKit/Siri call-back fixes,
   Phone Recents switch.
 - Where: `submodules/TgVoipWebrtc/`, `third-party/webrtc/`, `.gitmodules`. Records of the forks live in the forks.
-- Upstream: partly. Sync: `tools/dev/tgcalls-port`, `submodules/TgVoipWebrtc/CLAUDE.md`.
+- Upstream: partly. Sync: `tools/dev/tgcalls-port`, `submodules/TgVoipWebrtc/CLAUDE.md`. Both forks contain Telegram 13.2's engine changes (webrtc 590a8b23 merged; tgcalls c1de0882 ported, see the forks' NANOGRAM-CHANGES.md); the superproject BUILD carries Telegram's `content_negotiation_test` and `signaling_sctp_options_test`.
 
 ### Rust MTProto engine, network
 - What: the MTProto transport runs on the Rust `mtproto-engine`; network telemetry, WEB proxy carrier, MultipartUpload
