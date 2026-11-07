@@ -1198,7 +1198,9 @@ public final class InteractiveTextNodeLayout: NSObject {
 private func truncatedLineEnd(_ line: CTLine) -> (lastIndex: Int, trailingEdge: CGFloat)? {
     var result: (lastIndex: Int, trailingEdge: CGFloat)?
     for run in CTLineGetGlyphRuns(line) as NSArray {
-        let run = run as! CTRun
+        guard let run = run as? CTRun else {
+            continue
+        }
         let glyphCount = CTRunGetGlyphCount(run)
         if glyphCount == 0 {
             continue

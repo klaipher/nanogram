@@ -72,7 +72,7 @@ public func staticGlassAssetChoice(size: CGSize, cornerRadius: CGFloat, isMedia:
         }
         return StaticGlassAssetChoice(shape: .circleR15, scale: size.height / 30.0)
     }
-    let shape = [StaticGlassAssetShape.capsuleR10, .capsuleR15, .capsuleR21].min(by: { abs(size.height - $0.shapeHeight) < abs(size.height - $1.shapeHeight) })!
+    let shape = [StaticGlassAssetShape.capsuleR10, .capsuleR15, .capsuleR21].min(by: { abs(size.height - $0.shapeHeight) < abs(size.height - $1.shapeHeight) }) ?? .capsuleR15
     return StaticGlassAssetChoice(shape: shape, scale: size.height / shape.shapeHeight)
 }
 

@@ -346,7 +346,7 @@ final class ShareScreenSendCoordinator {
             |> mapToSignal { message, status -> Signal<(EngineMessage.Id, Bool, PendingMessageFailureReason?), NoError> in
                 if let message, message.flags.contains(.Failed) {
                     return .single((id, true, status.1))
-                } else if message == nil || !message!.flags.contains(.Unsent) {
+                } else if message == nil || !(message?.flags.contains(.Unsent) ?? false) {
                     return .single((id, false, nil))
                 } else {
                     return .complete()

@@ -39,7 +39,7 @@ private let counterBackgroundImage: UIImage = {
         context.setLineWidth(UIScreenScale >= 3.0 ? 5.0 / 3.0 : 1.5)
         context.setStrokeColor(UIColor.white.cgColor)
         context.strokeEllipse(in: CGRect(x: 3.0, y: 1.0, width: 31.0, height: 31.0))
-    })!
+    }) ?? UIImage()
 }()
 
 private let counterCrossImage: UIImage = {
@@ -53,7 +53,7 @@ private let counterCrossImage: UIImage = {
         context.move(to: CGPoint(x: size.width - 1.0, y: 1.0))
         context.addLine(to: CGPoint(x: 1.0, y: size.height - 1.0))
         context.strokePath()
-    })!
+    }) ?? UIImage()
 }()
 
 private let deleteButtonImage: UIImage = {
@@ -75,7 +75,7 @@ private let deleteButtonImage: UIImage = {
         context.move(to: CGPoint(x: size.width - crossInset, y: crossInset))
         context.addLine(to: CGPoint(x: crossInset, y: size.height - crossInset))
         context.strokePath()
-    })!
+    }) ?? UIImage()
 }()
 
 private let cellGradientImage: UIImage = {
@@ -83,9 +83,11 @@ private let cellGradientImage: UIImage = {
         context.clear(CGRect(origin: .zero, size: size))
         let colors = [UIColor(white: 0.0, alpha: 0.0).cgColor, UIColor(white: 0.0, alpha: 0.8).cgColor] as CFArray
         var locations: [CGFloat] = [0.0, 1.0]
-        let gradient = CGGradient(colorsSpace: CGColorSpaceCreateDeviceRGB(), colors: colors, locations: &locations)!
+        guard let gradient = CGGradient(colorsSpace: CGColorSpaceCreateDeviceRGB(), colors: colors, locations: &locations) else {
+            return
+        }
         context.drawLinearGradient(gradient, start: CGPoint(x: 0.0, y: size.height), end: CGPoint(x: 0.0, y: 0.0), options: [])
-    })!
+    }) ?? UIImage()
 }()
 
 final class CameraBatchCounterView: UIControl {

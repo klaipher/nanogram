@@ -12,7 +12,7 @@ import TelegramAnimatedStickerNode
 import YuvConversion
 import StickerResources
 
-private func prerenderTextTransformations(entity: DrawingEntity, image: UIImage, textScale: CGFloat, colorSpace: CGColorSpace) -> MediaEditorComposerStaticEntity {
+private func prerenderTextTransformations(entity: DrawingEntity, image: UIImage, textScale: CGFloat, colorSpace: CGColorSpace) -> MediaEditorComposerStaticEntity? {
     let imageSize = image.size
     
     let angle: CGFloat
@@ -65,7 +65,10 @@ private func prerenderTextTransformations(entity: DrawingEntity, image: UIImage,
         }
     }, scale: 1.0)!
     
-    return MediaEditorComposerStaticEntity(image: composerEntityImage(newImage, colorSpace: colorSpace)!, position: position, scale: 1.0, rotation: 0.0, baseSize: nil, baseDrawingSize: CGSize(width: 1080, height: 1920), mirrored: false)
+    guard let composedImage = composerEntityImage(newImage, colorSpace: colorSpace) else {
+        return nil
+    }
+    return MediaEditorComposerStaticEntity(image: composedImage, position: position, scale: 1.0, rotation: 0.0, baseSize: nil, baseDrawingSize: CGSize(width: 1080, height: 1920), mirrored: false)
 }
 
 func mediaEditorAnimatedStickerDurations(postbox: Postbox, entities: [DrawingEntity]) -> Signal<[Double], NoError> {
@@ -167,7 +170,9 @@ func composerEntitiesForDrawingEntity(postbox: Postbox, textScale: CGFloat, enti
             return [MediaEditorComposerStaticEntity(image: image, position: CGPoint(x: entity.drawingSize.width * 0.5, y: entity.drawingSize.height * 0.5), scale: 1.0, rotation: 0.0, baseSize: entity.drawingSize, mirrored: false)]
         } else if let entity = entity as? DrawingTextEntity {
             var entities: [MediaEditorComposerEntity] = []
-            entities.append(prerenderTextTransformations(entity: entity, image: renderImage, textScale: textScale, colorSpace: colorSpace))
+            if let prerenderedEntity = prerenderTextTransformations(entity: entity, image: renderImage, textScale: textScale, colorSpace: colorSpace) {
+                entities.append(prerenderedEntity)
+            }
             if let renderSubEntities = entity.renderSubEntities {
                 for subEntity in renderSubEntities {
                     entities.append(contentsOf: composerEntitiesForDrawingEntity(postbox: postbox, textScale: textScale, entity: subEntity, colorSpace: colorSpace, tintColor: entity.color.toUIColor()))
@@ -175,11 +180,11 @@ func composerEntitiesForDrawingEntity(postbox: Postbox, textScale: CGFloat, enti
             }
             return entities
         } else if let entity = entity as? DrawingLocationEntity {
-            return [prerenderTextTransformations(entity: entity, image: renderImage, textScale: textScale, colorSpace: colorSpace)]
+            return prerenderTextTransformations(entity: entity, image: renderImage, textScale: textScale, colorSpace: colorSpace).map({ [$0 as MediaEditorComposerEntity] }) ?? []
         } else if let entity = entity as? DrawingLinkEntity {
-            return [prerenderTextTransformations(entity: entity, image: renderImage, textScale: textScale, colorSpace: colorSpace)]
+            return prerenderTextTransformations(entity: entity, image: renderImage, textScale: textScale, colorSpace: colorSpace).map({ [$0 as MediaEditorComposerEntity] }) ?? []
         } else if let entity = entity as? DrawingWeatherEntity {
-            return [prerenderTextTransformations(entity: entity, image: renderImage, textScale: textScale, colorSpace: colorSpace)]
+            return prerenderTextTransformations(entity: entity, image: renderImage, textScale: textScale, colorSpace: colorSpace).map({ [$0 as MediaEditorComposerEntity] }) ?? []
         }
     }
     return []
@@ -334,8 +339,12 @@ final class MediaEditorComposerStickerEntity: MediaEditorComposerEntity {
                                     
                                     strongSelf.videoFrameSource.set(.single(frameSource))
                                 } else {
+                                    // Created here, on the queue the object lives on (this callback is delivered on it).
+                                    guard let directFrameSource = AnimatedStickerDirectFrameSource(queue: queue, data: data, width: Int(fittedDimensions.width), height: Int(fittedDimensions.height), cachePathPrefix: pathPrefix, useMetalCache: false, fitzModifier: nil) else {
+                                        return
+                                    }
                                     let frameSource = QueueLocalObject<AnimatedStickerDirectFrameSource>(queue: queue, generate: {
-                                        return AnimatedStickerDirectFrameSource(queue: queue, data: data, width: Int(fittedDimensions.width), height: Int(fittedDimensions.height), cachePathPrefix: pathPrefix, useMetalCache: false, fitzModifier: nil)!
+                                        return directFrameSource
                                     })
                                     frameSource.syncWith { frameSource in
                                         strongSelf.frameCount = frameSource.frameCount

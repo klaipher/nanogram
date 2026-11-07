@@ -45,7 +45,7 @@ struct MediaGridThumbnailIndexFile {
         append32(UInt32(self.pages.count))
         for page in self.pages.keys.sorted() {
             append32(UInt32(page))
-            append64(self.pages[page]!)
+            append64(self.pages[page] ?? 0)
         }
         append32(UInt32(self.entries.count))
         for entry in self.entries {

@@ -763,7 +763,9 @@ final class ChatMediaEditorStripView: UIView, UICollectionViewDataSource, UIColl
     }
 
     func collectionView(_ collectionView: UICollectionView, cellForItemAt indexPath: IndexPath) -> UICollectionViewCell {
-        let cell = collectionView.dequeueReusableCell(withReuseIdentifier: "cell", for: indexPath) as! ChatMediaEditorStripCell
+        guard let cell = collectionView.dequeueReusableCell(withReuseIdentifier: "cell", for: indexPath) as? ChatMediaEditorStripCell else {
+            return UICollectionViewCell()
+        }
         if indexPath.item < self.items.count {
             let uniqueId = self.items[indexPath.item]
             cell.setup(uniqueId: uniqueId, info: self.itemInfo?(uniqueId), isChecked: self.isItemChecked?(uniqueId) ?? false, fillColor: self.fillColor, foregroundColor: self.foregroundColor)

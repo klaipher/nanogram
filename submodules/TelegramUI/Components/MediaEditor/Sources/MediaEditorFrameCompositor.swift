@@ -92,7 +92,9 @@ private func makeComposeRenderPipelines(device: MTLDevice, library: MTLLibrary, 
         guard descriptor.vertexFunction != nil, descriptor.fragmentFunction != nil else {
             return nil
         }
-        let attachment = descriptor.colorAttachments[0]!
+        guard let attachment = descriptor.colorAttachments[0] else {
+            return nil
+        }
         attachment.pixelFormat = pixelFormat
         attachment.isBlendingEnabled = true
         attachment.rgbBlendOperation = .add
@@ -330,7 +332,10 @@ final class MediaEditorFrameCompositor {
             if layer.perspective != nil {
                 let xs = projectedCorners.map(\.x)
                 let ys = projectedCorners.map(\.y)
-                projectedBounds = CGRect(x: xs.min()!, y: ys.min()!, width: xs.max()! - xs.min()!, height: ys.max()! - ys.min()!)
+                guard let minX = xs.min(), let maxX = xs.max(), let minY = ys.min(), let maxY = ys.max() else {
+                    continue
+                }
+                projectedBounds = CGRect(x: minX, y: minY, width: maxX - minX, height: maxY - minY)
             } else {
                 projectedBounds = layerRect.applying(transform)
             }
@@ -501,8 +506,11 @@ final class MediaEditorFrameCompositor {
         let bytesPerRow = width * 4
         var data = Data(count: bytesPerRow * height)
         data.withUnsafeMutableBytes { buffer in
+            guard let destination = buffer.baseAddress else {
+                return
+            }
             for row in 0 ..< height {
-                memcpy(buffer.baseAddress! + row * bytesPerRow, baseAddress + row * sourceBytesPerRow, bytesPerRow)
+                memcpy(destination + row * bytesPerRow, baseAddress + row * sourceBytesPerRow, bytesPerRow)
             }
         }
         guard let provider = CGDataProvider(data: data as CFData) else {
@@ -635,7 +643,10 @@ final class MediaEditorFrameCompositor {
             return nil
         }
         bytes.withUnsafeBytes { buffer in
-            texture.replace(region: MTLRegionMake2D(0, 0, width, height), mipmapLevel: 0, withBytes: buffer.baseAddress!, bytesPerRow: bytesPerRow)
+            guard let source = buffer.baseAddress else {
+                return
+            }
+            texture.replace(region: MTLRegionMake2D(0, 0, width, height), mipmapLevel: 0, withBytes: source, bytesPerRow: bytesPerRow)
         }
         return texture
     }
@@ -712,7 +723,10 @@ final class MediaEditorFrameCompositor {
         let bytesPerRow = width * 4
         var bytes = [UInt8](repeating: 0, count: bytesPerRow * height)
         bytes.withUnsafeMutableBytes { buffer in
-            output.getBytes(buffer.baseAddress!, bytesPerRow: bytesPerRow, from: MTLRegionMake2D(0, 0, width, height), mipmapLevel: 0)
+            guard let destination = buffer.baseAddress else {
+                return
+            }
+            output.getBytes(destination, bytesPerRow: bytesPerRow, from: MTLRegionMake2D(0, 0, width, height), mipmapLevel: 0)
         }
         guard let provider = CGDataProvider(data: Data(bytes) as CFData), let image = CGImage(width: width, height: height, bitsPerComponent: 8, bitsPerPixel: 32, bytesPerRow: bytesPerRow, space: coreGraphicsSource, bitmapInfo: CGBitmapInfo(rawValue: CGBitmapInfo.byteOrder32Little.rawValue | CGImageAlphaInfo.premultipliedFirst.rawValue), provider: provider, decode: nil, shouldInterpolate: false, intent: .defaultIntent) else {
             return nil
@@ -722,7 +736,7 @@ final class MediaEditorFrameCompositor {
 
     private func sourceColorSpace(for pixelBuffer: CVPixelBuffer, pixelFormat: OSType) -> CGColorSpace? {
         if pixelFormat == kCVPixelFormatType_32BGRA, let attachment = CVBufferCopyAttachment(pixelBuffer, kCVImageBufferCGColorSpaceKey, nil), CFGetTypeID(attachment) == CGColorSpace.typeID {
-            return (attachment as! CGColorSpace)
+            return (attachment as? CGColorSpace)
         }
         guard let attachments = CVBufferCopyAttachments(pixelBuffer, .shouldPropagate) else {
             return nil
@@ -805,7 +819,7 @@ final class MediaEditorFrameCompositor {
         for index in 0 ..< zeroIndex {
             curve[index] = Float(index - zeroIndex) * step * toeSlope
         }
-        guard let curveBuffer = curve.withUnsafeBytes({ self.device.makeBuffer(bytes: $0.baseAddress!, length: $0.count, options: .storageModeShared) }) else {
+        guard let curveBuffer = curve.withUnsafeBytes({ buffer in buffer.baseAddress.flatMap({ self.device.makeBuffer(bytes: $0, length: buffer.count, options: .storageModeShared) }) }) else {
             return nil
         }
         let model = MediaEditorComposeColorModel(curve: curve, parameters: MediaEditorComposeColorConversion(column0: column0, column1: column1, column2: column2, domain: SIMD4<Float>(domain.lowerBound, domain.upperBound, Float(size), 0.0)), curveBuffer: curveBuffer)

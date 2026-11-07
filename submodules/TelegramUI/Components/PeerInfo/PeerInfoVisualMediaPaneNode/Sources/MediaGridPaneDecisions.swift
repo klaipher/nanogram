@@ -69,10 +69,10 @@ func mediaGridPaneDateIndex(at index: Int, anchors: [(index: Int, timestamp: Int
     var above: (index: Int, timestamp: Int32)?
     for anchor in anchors {
         if anchor.index <= index {
-            if below == nil || anchor.index > below!.index {
+            if below == nil || anchor.index > (below?.index ?? Int.min) {
                 below = anchor
             }
-        } else if above == nil || anchor.index < above!.index {
+        } else if above == nil || anchor.index < (above?.index ?? Int.max) {
             above = anchor
         }
     }

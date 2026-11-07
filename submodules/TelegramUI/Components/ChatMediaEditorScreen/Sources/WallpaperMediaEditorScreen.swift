@@ -405,7 +405,10 @@ public final class WallpaperMediaEditorScreen: ViewController {
     fileprivate let referenceSnapshotView: UIView?
 
     private var node: Node {
-        return self.displayNode as! Node
+        guard let node = self.displayNode as? Node else {
+            preconditionFailure("displayNode is not a Node")
+        }
+        return node
     }
 
     public init(context: AccountContext, asset: PHAsset, screenImage: UIImage, cropRect: CGRect, previousState: Any?, referenceView: UIView, apply: @escaping (UIImage?, Any?) -> Void, fullSizeApply: @escaping (UIImage?) -> Void, beginTransitionOut: @escaping (Bool) -> Void, finishTransitionOut: @escaping () -> Void) {

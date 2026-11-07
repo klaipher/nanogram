@@ -62,8 +62,8 @@ final class SyntheticDataSource: MediaGridDataSource {
         components.month = 10
         components.day = 1
         var calendar = Calendar(identifier: .gregorian)
-        calendar.timeZone = TimeZone(identifier: "UTC")!
-        var time = calendar.date(from: components)!.timeIntervalSince1970
+        calendar.timeZone = TimeZone(identifier: "UTC") ?? TimeZone(secondsFromGMT: 0) ?? .current
+        var time = calendar.date(from: components)?.timeIntervalSince1970 ?? 1_790_812_800.0
         let choices: [CGFloat] = [0.3, 0.5, 0.75, 1.0, 1.33, 1.78, 3.0]
         var dates: [Date] = []
         var aspects: [CGFloat] = []

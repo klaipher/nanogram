@@ -158,7 +158,7 @@ public final class MessageWidgetView: UIView {
     /// Tests only: the pixels held by every tile's backing image.
     var backingPixelCount: Int {
         return self.tiles.values.reduce(0) { total, layer in
-            guard let image = layer.contents.map({ $0 as! CGImage }) else {
+            guard let image = layer.contents.flatMap({ $0 as? CGImage }) else {
                 return total
             }
             return total + image.width * image.height

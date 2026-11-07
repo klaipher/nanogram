@@ -395,8 +395,8 @@ func mediaEditorEntityFrameCIImage(_ frame: MediaEditorComposerEntityFrame, colo
     case let .pixelBuffer(pixelBuffer):
         if CVPixelBufferGetPixelFormatType(pixelBuffer) == kCVPixelFormatType_32BGRA {
             var imageColorSpace = colorSpace
-            if let attachment = CVBufferCopyAttachment(pixelBuffer, kCVImageBufferCGColorSpaceKey, nil), CFGetTypeID(attachment) == CGColorSpace.typeID {
-                imageColorSpace = attachment as! CGColorSpace
+            if let attachment = CVBufferCopyAttachment(pixelBuffer, kCVImageBufferCGColorSpaceKey, nil), CFGetTypeID(attachment) == CGColorSpace.typeID, let attachmentColorSpace = attachment as? CGColorSpace {
+                imageColorSpace = attachmentColorSpace
             }
             image = CIImage(cvPixelBuffer: pixelBuffer, options: [.colorSpace: imageColorSpace])
         } else {

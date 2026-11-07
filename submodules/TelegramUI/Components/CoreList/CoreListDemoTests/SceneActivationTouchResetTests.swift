@@ -98,11 +98,15 @@ final class SceneActivationTouchResetTests: XCTestCase {
         if let existing = NSClassFromString(name) {
             subclass = existing
         } else {
-            subclass = objc_allocateClassPair(base, name, 0)!
+            guard let allocated = objc_allocateClassPair(base, name, 0) else {
+                XCTFail("could not allocate the velocity subclass")
+                return
+            }
+            subclass = allocated
             let selector = #selector(UIPanGestureRecognizer.velocity(in:))
             let block: @convention(block) (AnyObject, UIView?) -> CGPoint = { _, _ in CGPoint(x: 0, y: 3000) }
             class_addMethod(subclass, selector, imp_implementationWithBlock(block),
-                            method_getTypeEncoding(class_getInstanceMethod(base, selector)!))
+                            class_getInstanceMethod(base, selector).flatMap { method_getTypeEncoding($0) })
             objc_registerClassPair(subclass)
         }
         object_setClass(pan, subclass)

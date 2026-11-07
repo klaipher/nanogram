@@ -93,7 +93,7 @@ public final class ChatMediaEditorCaptureSession {
     private var legacyItems: [String: ChatMediaEditorCapturedLegacyItem] = [:]
 
     public init(selectionLimit: Int, allowsGrouping: Bool, editingContext: TGMediaEditingContext?) {
-        self.selectionContext = TGMediaSelectionContext(groupingAllowed: allowsGrouping, selectionLimit: Int32(selectionLimit))!
+        self.selectionContext = TGMediaSelectionContext(groupingAllowed: allowsGrouping, selectionLimit: Int32(selectionLimit))
         if allowsGrouping {
             self.selectionContext.grouping = true
         }
