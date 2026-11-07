@@ -6060,6 +6060,7 @@ public class ChatListItemNode: ItemListRevealOptionsItemNode {
                                 guard let strongSelf, let item = strongSelf.item, let activateChatPreview = item.interaction.activateChatPreview else {
                                     return false
                                 }
+                                strongSelf.isRowReuseTainted = true
                                 activateChatPreview(item, nil, strongSelf.contextContainer, nil, nil)
                                 return true
                             }))
