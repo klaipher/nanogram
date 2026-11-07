@@ -698,6 +698,7 @@ enum DebugControllerEntry: ItemListNodeEntry {
             return ItemListSectionHeaderItem(presentationData: presentationData, text: "LIST SCROLL (A/B VS TELEGRAM)", sectionId: self.section)
         case let .displayLinkUpstreamRate(value):
             return ItemListSwitchItem(presentationData: presentationData, systemStyle: .glass, title: "Display link: Telegram's rate", text: "Off (default): the app's animation timer asks for 60 or 30 Hz when only slow animations run, which saves battery. On: Telegram's rule, up to 120 Hz whenever anything animates. Compare scroll smoothness, mostly at the start of a scroll. Default: off. Applies at once.", value: value, maximumNumberOfLines: 0, sectionId: self.section, style: .blocks, updated: { value in
+                SharedDisplayLinkDriver.shared.startPacingLog()
                 let _ = updateExperimentalUISettingsInteractively(accountManager: arguments.sharedContext.accountManager, { settings in
                     var settings = settings
                     settings.displayLinkUpstreamRate = value
@@ -1126,8 +1127,9 @@ enum DebugControllerEntry: ItemListNodeEntry {
                 }).start()
             })
         case let .tabletDisplayLinkFrameRateCap(value):
-            // iPad audit B-1: the measurement switch for the shared display link's 120 Hz override. Off = upstream.
-            return ItemListSwitchItem(presentationData: presentationData, systemStyle: .glass, title: "iPad: Display Link 120 Hz Cap", text: "Animations run at the rate they ask for instead of always 120 Hz. Toggling logs frame pacing (\"SharedDisplayLink pacing\") every 10 s.", value: value, sectionId: self.section, style: .blocks, updated: { value in
+            // iPad audit B-1: the shared display link's 120 Hz override. On by default (owner, 2026-11-07); off = upstream.
+            return ItemListSwitchItem(presentationData: presentationData, systemStyle: .glass, title: "iPad: Display Link 120 Hz Cap", text: "Animations run at the rate they ask for instead of always 120 Hz. Toggling logs frame pacing (\"SharedDisplayLink pacing\") every 10 s. Default: on.", value: value, sectionId: self.section, style: .blocks, updated: { value in
+                SharedDisplayLinkDriver.shared.startPacingLog()
                 let _ = updateExperimentalUISettingsInteractively(accountManager: arguments.sharedContext.accountManager, { settings in
                     var settings = settings
                     settings.tabletDisplayLinkFrameRateCap = value

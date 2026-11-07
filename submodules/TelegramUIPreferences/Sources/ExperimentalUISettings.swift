@@ -74,8 +74,9 @@ public struct ExperimentalUISettings: Codable, Equatable {
     /// with the 1x framing kept (`Camera.RoundVideoCloseFocus`). Read when the camera screen opens.
     public var videoMessageCloseFocus: Bool
     public var videoMessageCameraMatrix: RoundVideoCameraMatrix
-    /// Debug Settings ▸ "iPad: Display Link 120 Hz Cap" (audit B-1, off by default): an iPad's shared display link
-    /// follows the rate its animations ask for instead of always 120 Hz; toggling it starts a frame-pacing log.
+    /// Debug Settings ▸ "iPad: Display Link 120 Hz Cap" (audit B-1; on by default since 2026-11-07, owner decision after
+    /// checking it on an iPad): an iPad's shared display link follows the rate its animations ask for instead of always
+    /// 120 Hz; changing it in Debug Settings starts a frame-pacing log. No effect on an iPhone.
     public var tabletDisplayLinkFrameRateCap: Bool
     /// Debug Settings ▸ "List scroll (A/B vs Telegram)" ▸ "Display link: Telegram's rate". Off by default: the shared
     /// display link asks only for the rate its animations need (60 or 30 Hz). On: upstream's rule. Applies at once.
@@ -203,7 +204,7 @@ public struct ExperimentalUISettings: Codable, Equatable {
         showCrashReportAlerts: Bool? = nil,
         videoMessageCloseFocus: Bool = true,
         videoMessageCameraMatrix: RoundVideoCameraMatrix = .bt709,
-        tabletDisplayLinkFrameRateCap: Bool = false,
+        tabletDisplayLinkFrameRateCap: Bool = true,
         displayLinkUpstreamRate: Bool = false,
         listAccessibilityImmediate: Bool = false,
         listScrollPacingLog: Bool = false,
@@ -316,7 +317,8 @@ public struct ExperimentalUISettings: Codable, Equatable {
         self.videoMessageCloseFocus = try container.decodeIfPresent(Bool.self, forKey: "videoMessageCloseFocusOn") ?? true
         // A new key: blobs saved before it existed (and unknown values) get the BT.709 default.
         self.videoMessageCameraMatrix = (try container.decodeIfPresent(String.self, forKey: "videoMessageCameraMatrix")).flatMap(RoundVideoCameraMatrix.init(rawValue:)) ?? .bt709
-        self.tabletDisplayLinkFrameRateCap = try container.decodeIfPresent(Bool.self, forKey: "tabletDisplayLinkFrameRateCap") ?? false
+        // On by default since 2026-11-07 under a new key: blobs saved before hold `false` under the old one unchosen.
+        self.tabletDisplayLinkFrameRateCap = try container.decodeIfPresent(Bool.self, forKey: "tabletDisplayLinkFrameRateCapDefaultOn") ?? true
         self.displayLinkUpstreamRate = try container.decodeIfPresent(Bool.self, forKey: "displayLinkUpstreamRate") ?? false
         self.listAccessibilityImmediate = try container.decodeIfPresent(Bool.self, forKey: "listAccessibilityImmediate") ?? false
         self.listScrollPacingLog = try container.decodeIfPresent(Bool.self, forKey: "listScrollPacingLog") ?? false
@@ -387,7 +389,7 @@ public struct ExperimentalUISettings: Codable, Equatable {
         try container.encode(self.stickerRendererMode.rawValue, forKey: "stickerRendererMode")
         try container.encode(self.videoMessageCloseFocus, forKey: "videoMessageCloseFocusOn")
         try container.encode(self.videoMessageCameraMatrix.rawValue, forKey: "videoMessageCameraMatrix")
-        try container.encode(self.tabletDisplayLinkFrameRateCap, forKey: "tabletDisplayLinkFrameRateCap")
+        try container.encode(self.tabletDisplayLinkFrameRateCap, forKey: "tabletDisplayLinkFrameRateCapDefaultOn")
         try container.encode(self.displayLinkUpstreamRate, forKey: "displayLinkUpstreamRate")
         try container.encode(self.listAccessibilityImmediate, forKey: "listAccessibilityImmediate")
         try container.encode(self.listScrollPacingLog, forKey: "listScrollPacingLog")

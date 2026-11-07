@@ -99,13 +99,13 @@ public final class SharedDisplayLinkDriver {
     private var isProcessingEvent: Bool = false
     private var isUpdateRequested: Bool = false
 
-    /// iPad audit B-1 (Debug Settings ▸ "iPad: Display Link 120 Hz Cap", off by default): an iPad's shared link
-    /// follows the rate its links ask for instead of always 120 Hz (`sharedDisplayLinkFrameRateRange`). Turning it on
-    /// or off also starts a pacing log (`pacingLog`), so a run with each setting can be compared.
+    /// iPad audit B-1 (Debug Settings ▸ "iPad: Display Link 120 Hz Cap", on by default since 2026-11-07, owner decision
+    /// after checking it on an iPad): an iPad's shared link follows the rate its links ask for instead of always 120 Hz
+    /// (`sharedDisplayLinkFrameRateRange`). The app sets it at launch; only a change from Debug Settings starts the pacing
+    /// log (`startPacingLog`), so the launch value does not log every 10 s.
     public var capsTabletFrameRate: Bool = false {
         didSet {
             if self.capsTabletFrameRate != oldValue {
-                self.pacingLogEnabled = true
                 self.flushPacingStats(force: true)
                 self.update()
             }
@@ -113,18 +113,24 @@ public final class SharedDisplayLinkDriver {
     }
     /// Debug Settings ▸ "Display link: Telegram's rate" (off by default): the shared link asks for upstream's rates
     /// (`upstreamSharedDisplayLinkFrameRateRange`), so a 120 Hz screen is not held at 60 Hz or 30 Hz while only slow
-    /// animations run. A scroll-smoothness A/B; turning it on or off also starts the pacing log.
+    /// animations run. A scroll-smoothness A/B; switching it in Debug Settings also starts the pacing log.
     public var followsUpstreamFrameRate: Bool = false {
         didSet {
             if self.followsUpstreamFrameRate != oldValue {
-                self.pacingLogEnabled = true
                 self.flushPacingStats(force: true)
                 self.update()
             }
         }
     }
-    /// Receives one frame-pacing line per 10 s of display-link frames (`DisplayLinkPacingStats`) once the cap has
-    /// been set from Debug Settings this launch. Set by the app (to its logger).
+
+    /// Starts the frame-pacing log for the rest of this launch: called by the Debug Settings switches of the rate rules,
+    /// so a run with each setting can be compared. Main thread.
+    public func startPacingLog() {
+        self.pacingLogEnabled = true
+        self.flushPacingStats(force: true)
+    }
+    /// Receives one frame-pacing line per 10 s of display-link frames (`DisplayLinkPacingStats`) once a rate switch has
+    /// been changed in Debug Settings this launch (`startPacingLog`). Set by the app (to its logger).
     public var pacingLog: ((String) -> Void)?
     private var pacingLogEnabled: Bool = false
     private var pacingStats = DisplayLinkPacingStats()

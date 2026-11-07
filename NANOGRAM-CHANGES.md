@@ -98,6 +98,9 @@ marked (check) were not re-verified against the code; correct them on the next c
 ### Platforms
 - What: iPad (resizable chat list, window controls, Split View cameras), iPhone Duo reserved corners, iOS 26/27 window and touch handling, standalone Apple Watch client.
 - Where: docs/iphone-duo-layout.md, docs/ios27-windows-and-touches.md, `Telegram/WatchApp`.
+- iPad display link: upstream always runs the shared display link at up to 120 Hz on an iPad; ours asks only for the rate the active
+  animations need, as on the iPhone (Debug Settings "iPad: Display Link 120 Hz Cap", on by default since 2026-11-07). Where:
+  `TabletEnergyRules.swift` (`sharedDisplayLinkFrameRateRange`), `SharedDisplayLinkDriver.capsTabletFrameRate`.
 - iOS 27 glass backdrop overrides: `registerEffectViewOverrides` (`UIViewController+Navigation.m`) skips the `UISDFBackdropView` lookup on iOS 27 (upstream 13.1.2 looks it up by the iOS 26 name, misses, and pays a failed mangled-name scan of about 45 ms in +load). Still true: one lookup per OS, by the running OS's name.
 
 ### Branding and identity
