@@ -409,13 +409,25 @@ public final class SqliteValueBox: ValueBox {
     /// SQLITE_BUSY. Tests shorten it to simulate a database that stays locked.
     nonisolated(unsafe) static var busyTimeoutMilliseconds: Int32 = 5 * 1000
 
-    /// WAL frames after which a commit checkpoints (SQLite's default). The app and its extensions
-    /// share the WAL and all use this value: an extension with a lower one would take over the
-    /// checkpoints (two full fsyncs each) inside its short time budget.
-    static let walAutocheckpointFrames: Int32 = 1000
+    /// WAL frames after which a commit checkpoints. SQLite's default, and upstream's, is 1000 (about 4 MB).
+    /// A checkpoint copies the newest version of each page in the WAL into the database file once, so the pages
+    /// that most commits touch again (the transaction-state counter, the chat-list and peer-state pages, the
+    /// busy history leaves) are copied once per checkpoint, not once per commit: a longer WAL copies them fewer
+    /// times per day, and runs the checkpoint's two full fsyncs less often. 3000 frames (about 12 MB) is three
+    /// times the window. The app and its extensions share the WAL and all use this value: an extension with a
+    /// lower one would take over the checkpoints (two full fsyncs each) inside its short time budget.
+    ///
+    /// Durability is unchanged in kind. The WAL is still `synchronous=NORMAL`: a commit is not synced, the
+    /// checkpoint syncs the WAL and then the database (checkpoint_fullfsync). An app crash, a jetsam kill or a
+    /// suspension loses nothing, the written WAL belongs to the kernel and recovery replays it at the next open.
+    /// Only a power loss or kernel panic can drop commits, and those the ones written since the last checkpoint:
+    /// with 1000 frames that was the last ~1000 pages of commits, now the last ~3000 (the database stays
+    /// consistent at an earlier commit either way). A WAL that is up to three times longer is also read three
+    /// times longer when an unclean exit leaves it to be recovered (about 12 MB, tens of milliseconds).
+    static let walAutocheckpointFrames: Int32 = 3000
     /// A WAL that grew past this in a burst is cut back to it when it next restarts. About twice
     /// what the autocheckpoint lets it reach, so the steady state is never truncated.
-    static let walJournalSizeLimit: Int = 8 * 1024 * 1024
+    static let walJournalSizeLimit: Int = 24 * 1024 * 1024
 
     private static func openFailuresPath(databasePath: String) -> String {
         return databasePath + "-open-failures"

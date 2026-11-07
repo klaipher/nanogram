@@ -294,9 +294,22 @@ final class SqliteValueBoxConnectionTests: XCTestCase {
 
     func testAutocheckpointRunsPastTheThreshold() {
         let box = self.open()
-        // ~1500 frames in one commit: past the 1000-frame threshold.
-        self.fill(box, table: self.int64Table, count: 1500, valueSize: 4000)
+        // ~3500 frames in one commit: past the 3000-frame threshold.
+        self.fill(box, table: self.int64Table, count: Int(SqliteValueBox.walAutocheckpointFrames) + 500, valueSize: 4000)
         XCTAssertGreaterThan(self.fileSize(self.databasePath), 5_000_000)
+    }
+
+    // The old threshold of 1000 frames no longer checkpoints: the pages stay in the WAL until 3000.
+    func testNoCheckpointBelowTheThreshold() {
+        let box = self.open()
+        let before = self.fileSize(self.databasePath)
+        self.fill(box, table: self.int64Table, count: 1500, valueSize: 4000)
+        XCTAssertLessThan(self.fileSize(self.databasePath), before + 1_000_000)
+        XCTAssertGreaterThan(self.fileSize(self.databasePath + "-wal"), 5_000_000)
+    }
+
+    func testTheJournalSizeLimitLeavesRoomForTheWalToReachTheThreshold() {
+        XCTAssertGreaterThanOrEqual(SqliteValueBox.walJournalSizeLimit, Int(SqliteValueBox.walAutocheckpointFrames) * 4120 * 2)
     }
 
     func testWalShrinksToTheJournalSizeLimitAfterABurst() {
