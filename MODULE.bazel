@@ -199,11 +199,16 @@ archive_override(
 # rules_apple's ios_test_runner drives xcodebuild through xctestrunner, which passes
 # `-collect-test-diagnostics=never`. xcodebuild ignores that spelling (it needs the value as a separate
 # argument), so every FAILING test run then waits in `simctl diagnose` for up to 600 s (longer if the Mac
-# sleeps). The patch passes the two arguments. Bumping xctestrunner means re-checking the patch.
+# sleeps). The patch passes the two arguments. The second patch keeps a test with an expected failure
+# (XCTExpectFailure) from failing the run while its attachments are exported. Bumping xctestrunner means
+# re-checking both patches.
 single_version_override(
     module_name = "xctestrunner",
     patch_strip = 1,
-    patches = ["//build-system/bazel-patches:xctestrunner-collect-test-diagnostics.patch"],
+    patches = [
+        "//build-system/bazel-patches:xctestrunner-collect-test-diagnostics.patch",
+        "//build-system/bazel-patches:xctestrunner-xcresult-expected-failures.patch",
+    ],
 )
 
 bazel_dep(name = "rules_swift", version = "4.2.2", repo_name = "build_bazel_rules_swift")

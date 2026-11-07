@@ -1,0 +1,19 @@
+--- a/xctestrunner/test_runner/xcresult_util.py
++++ b/xctestrunner/test_runner/xcresult_util.py
+@@ -79,11 +79,14 @@
+     if 'activitySummaries' not in test_summary_result:
+       continue
+ 
+-    activity_summaries = test_summary_result['activitySummaries']['_values']
++    # A test with an expected failure (XCTExpectFailure) can carry
++    # `activitySummaries` or `attachments` with no `_values`; they hold nothing
++    # to expose (telegram-ios patch: the KeyError failed a passing run).
++    activity_summaries = test_summary_result['activitySummaries'].get('_values', [])
+     for activity_summary in activity_summaries:
+       if 'attachments' in activity_summary:
+         test_identifier = test_summary_result['identifier']['_value']
+-        for attachment in activity_summary['attachments']['_values']:
++        for attachment in activity_summary['attachments'].get('_values', []):
+           file_name = attachment['filename']['_value']
+           target_file_dir = os.path.join(output_path, 'Attachments',
+                                          test_identifier)
