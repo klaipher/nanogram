@@ -1460,10 +1460,10 @@ func debugControllerEntries(environment: DebugControllerEntriesEnvironment, them
         
         // Measurement only: each switch replaces one chat glass group with a solid fill (iOS native glass).
         entries.append(.glassGroupsHeader(theme))
-        entries.append(.glassTelegramFixedLook(GlassFixedLook.isRequested()))
         entries.append(.glassGroupNavigationBar(experimentalSettings.glassDebugDisabledGroups & ExperimentalUISettings.glassDebugNavigationBar != 0))
         entries.append(.glassGroupInputPanel(experimentalSettings.glassDebugDisabledGroups & ExperimentalUISettings.glassDebugInputPanel != 0))
         entries.append(.glassGroupFloatingButtons(experimentalSettings.glassDebugDisabledGroups & ExperimentalUISettings.glassDebugFloatingButtons != 0))
+        entries.append(.glassTelegramFixedLook(GlassFixedLook.isRequested()))
         
         // Performance switch (off by default): the emoji / sticker / GIF panel open hang.
         entries.append(.emojiPanelHeader(theme))
