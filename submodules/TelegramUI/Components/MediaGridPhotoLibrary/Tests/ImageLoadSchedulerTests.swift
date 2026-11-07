@@ -427,7 +427,11 @@ final class ImageLoadSchedulerTests: XCTestCase {
         XCTAssertTrue(handle.isCancelled)
     }
 
-    func testRequestLimits() {
+    func testRequestDeliveryModeAndLimits() {
+        XCTAssertEqual(MediaGridPhotoLibraryDataSource.deliveryMode(for: CGSize(width: 393, height: 393)), .highQualityFormat)
+        XCTAssertEqual(MediaGridPhotoLibraryDataSource.deliveryMode(for: CGSize(width: 236, height: 236)), .highQualityFormat)
+        XCTAssertEqual(MediaGridPhotoLibraryDataSource.deliveryMode(for: CGSize(width: 1179, height: 786)), .opportunistic)
+        XCTAssertEqual(MediaGridPhotoLibraryDataSource.deliveryMode(for: CGSize(width: 512, height: 300)), .opportunistic)
         XCTAssertLessThanOrEqual(MediaGridPhotoLibraryDataSource.localRequestLimit, 8)
         XCTAssertLessThan(MediaGridPhotoLibraryDataSource.prefetchRequestLimit, MediaGridPhotoLibraryDataSource.localRequestLimit)
     }

@@ -785,6 +785,15 @@ public final class MediaGridPhotoLibraryDataSource: NSObject, MediaGridDataSourc
 
     static let requestQueue = DispatchQueue(label: "org.telegram.MediaGridPhotoLibrary.imageRequests", qos: .userInitiated)
 
+    /// `.opportunistic` delivers a degraded image first and the final one after it, each through the
+    /// main queue. A cell below this size already shows the 48 px thumbnail while it waits, so it
+    /// asks for the final image only; larger targets (level 1) keep the quick degraded one.
+    static let opportunisticMinPixels = 512
+
+    static func deliveryMode(for targetSize: CGSize) -> PHImageRequestOptionsDeliveryMode {
+        return max(targetSize.width, targetSize.height) >= CGFloat(MediaGridPhotoLibraryDataSource.opportunisticMinPixels) ? .opportunistic : .highQualityFormat
+    }
+
     private func start(_ job: Scheduler.Job) {
         let attempt = job.attempt
         let manager = self.manager
@@ -800,7 +809,7 @@ public final class MediaGridPhotoLibraryDataSource: NSObject, MediaGridDataSourc
                 return
             }
             let options = PHImageRequestOptions()
-            options.deliveryMode = .opportunistic
+            options.deliveryMode = MediaGridPhotoLibraryDataSource.deliveryMode(for: targetSize)
             options.resizeMode = .fast
             options.isNetworkAccessAllowed = usesNetwork
             let token = manager.requestImage(for: asset, targetSize: targetSize, contentMode: .aspectFill, options: options, resultHandler: { image, info in
