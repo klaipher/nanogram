@@ -4,6 +4,7 @@ load("@build_bazel_rules_apple//apple:resources.bzl", "apple_resource_group")
 load("//build-system/bazel-utils:plist_fragment.bzl", "plist_fragment")
 load("@build_bazel_rules_apple//apple/testing/default_runner:ios_test_runner.bzl", "ios_test_runner")
 load("@rules_shell//shell:sh_binary.bzl", "sh_binary")
+load("//build-system/bazel-utils:test_simulator.bzl", "TEST_SIMULATOR_DEVICE", "TEST_SIMULATOR_OS")
 
 # The widget harness: the REAL chat bubbles hosting message widgets, over the composer harness's synthetic app
 # context (Tests/ComposerHarness/AppContext). Its operating manual is CLAUDE.md here.
@@ -17,14 +18,14 @@ sh_binary(
 ios_test_runner(
     name = "WidgetHarnessTestRunner",
     pre_action = ":UninstallWidgetHarnessFromTestSims",
-    device_type = "iPhone 17",
-    os_version = "26.5",
+    device_type = TEST_SIMULATOR_DEVICE,
+    os_version = TEST_SIMULATOR_OS,
 )
 
 ios_test_runner(
     name = "WidgetHarnessUITestRunner",
     pre_action = ":UninstallWidgetHarnessFromTestSims",
-    device_type = "iPhone 18 Pro",
+    device_type = TEST_SIMULATOR_DEVICE,
     os_version = "27.0",
 )
 

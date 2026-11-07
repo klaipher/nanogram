@@ -269,8 +269,8 @@ sh_binary(
 ios_test_runner(
     name = "DisplayAccessibilityTestRunner",
     pre_action = ":UninstallDisplayAccessibilityTestHost",
-    device_type = "iPhone 17",
-    os_version = "26.5",
+    device_type = TEST_SIMULATOR_DEVICE,
+    os_version = TEST_SIMULATOR_OS,
 )
 
 ios_unit_test(

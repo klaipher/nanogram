@@ -114,8 +114,8 @@ swift_library(
 # device and the test process exits 15. Matches //submodules/TelegramPresentationData:TelegramPresentationDataTests.
 ios_test_runner(
     name = "ReactionContextGeometryTestRunner",
-    device_type = "iPhone 17",
-    os_version = "26.5",
+    device_type = TEST_SIMULATOR_DEVICE,
+    os_version = TEST_SIMULATOR_OS,
 )
 
 ios_unit_test(
