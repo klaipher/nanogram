@@ -87,6 +87,8 @@ public class ChatMessageInteractiveInstantVideoNode: ASDisplayNode {
     }
     
     private var videoNode: UniversalVideoNode?
+    /// Nanogram: a collapse that starts before the expand animation finished must not be undone by its completion.
+    private var fileTransitionGate = InstantVideoFileTransitionGate()
     private let secretVideoPlaceholderBackground: ASImageNode
     private let secretVideoPlaceholder: TransformImageNode
     
@@ -2050,6 +2052,7 @@ public class ChatMessageInteractiveInstantVideoNode: ASDisplayNode {
     
     public func animateTo(_ animateToFile: AnimateFileNodeDescription, animator: ControlledTransitionAnimator) {
         let duration: Double = 0.2
+        let transitionToken = self.fileTransitionGate.begin()
         
         animateToFile.node.alpha = 1.0
         if animateToFile.node.supernode == nil {
@@ -2070,7 +2073,10 @@ public class ChatMessageInteractiveInstantVideoNode: ASDisplayNode {
             })
             
             let targetFrame = targetNode.view.convert(targetNode.bounds, to: self.view)
-            animator.animatePosition(layer: videoNode.layer, from: videoNode.position, to: targetFrame.center, completion: { _ in
+            animator.animatePosition(layer: videoNode.layer, from: videoNode.position, to: targetFrame.center, completion: { [weak self] _ in
+                guard let self, self.fileTransitionGate.isCurrent(transitionToken) else {
+                    return
+                }
                 self.isHidden = true
                 self.canAttachContent = true
             })
@@ -2166,6 +2172,7 @@ public class ChatMessageInteractiveInstantVideoNode: ASDisplayNode {
     
     public func animateFrom(_ animateFromFile: AnimateFileNodeDescription, animator: ControlledTransitionAnimator) {
         let duration: Double = 0.2
+        let _ = self.fileTransitionGate.begin()
         
         self.alpha = 1.0
         self.isHidden = false
