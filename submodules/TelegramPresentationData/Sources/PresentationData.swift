@@ -600,22 +600,34 @@ public func automaticEnergyUsageBatteryConditionNow(settings: MediaAutoDownloadS
     return automaticEnergySavingBatteryConditionIsOn(activationThreshold: settings.energyUsageSettings.activationThreshold, batteryLevel: UIDevice.current.batteryLevel)
 }
 
-public func automaticEnergyUsageShouldBeOn(settings: MediaAutoDownloadSettings) -> Signal<Bool, NoError> {
+/// The notifications after which Power Saving's automatic rule is read again although the battery level did not
+/// notify: the app was suspended while the battery changed (charging in the background), and the system sends no
+/// battery notification for the missed changes. Upstream has the same gap (Power Saving stayed on after charging
+/// past the threshold until the next 1 % step).
+public let automaticEnergyUsageForegroundNotifications: [Notification.Name] = [UIApplication.didBecomeActiveNotification, UIApplication.willEnterForegroundNotification]
+
+public func automaticEnergyUsageShouldBeOn(settings: MediaAutoDownloadSettings, notificationCenter: NotificationCenter = .default, evaluate: @escaping (MediaAutoDownloadSettings) -> Bool = automaticEnergyUsageShouldBeOnNow) -> Signal<Bool, NoError> {
     if settings.energyUsageSettings.activationThreshold <= 4 {
         return .single(false)
     } else if settings.energyUsageSettings.activationThreshold >= 96 {
         return .single(true)
     } else if !SystemEnergyConditionsMonitor.shared.observesSystemConditions {
-        // Not observing the system (app extensions, review I5): upstream's battery signal, unchanged.
+        // Not observing the system (app extensions, review I5): upstream's battery signal, unchanged, plus a read when
+        // the app comes back to the foreground.
         return Signal { subscriber in
-            subscriber.putNext(automaticEnergyUsageShouldBeOnNow(settings: settings))
+            subscriber.putNext(evaluate(settings))
             
-            let observer = NotificationCenter.default.addObserver(forName: UIDevice.batteryLevelDidChangeNotification, object: nil, queue: OperationQueue.main, using: { _ in
-                subscriber.putNext(automaticEnergyUsageShouldBeOnNow(settings: settings))
-            })
+            let names = [UIDevice.batteryLevelDidChangeNotification] + automaticEnergyUsageForegroundNotifications
+            let observers = names.map { name in
+                return notificationCenter.addObserver(forName: name, object: nil, queue: OperationQueue.main, using: { _ in
+                    subscriber.putNext(evaluate(settings))
+                })
+            }
             
             return ActionDisposable {
-                NotificationCenter.default.removeObserver(observer)
+                for observer in observers {
+                    notificationCenter.removeObserver(observer)
+                }
             }
         }
         |> runOn(Queue.mainQueue())
@@ -626,18 +638,23 @@ public func automaticEnergyUsageShouldBeOn(settings: MediaAutoDownloadSettings) 
         let battery = Signal<Void, NoError> { subscriber in
             subscriber.putNext(Void())
             
-            let observer = NotificationCenter.default.addObserver(forName: UIDevice.batteryLevelDidChangeNotification, object: nil, queue: OperationQueue.main, using: { _ in
-                subscriber.putNext(Void())
-            })
+            let names = [UIDevice.batteryLevelDidChangeNotification] + automaticEnergyUsageForegroundNotifications
+            let observers = names.map { name in
+                return notificationCenter.addObserver(forName: name, object: nil, queue: OperationQueue.main, using: { _ in
+                    subscriber.putNext(Void())
+                })
+            }
             
             return ActionDisposable {
-                NotificationCenter.default.removeObserver(observer)
+                for observer in observers {
+                    notificationCenter.removeObserver(observer)
+                }
             }
         }
         let system = SystemEnergyConditionsMonitor.shared.requestsEnergySavingUpdates()
         return combineLatest(battery, system |> deliverOnMainQueue)
         |> map { _, _ -> Bool in
-            return automaticEnergyUsageShouldBeOnNow(settings: settings)
+            return evaluate(settings)
         }
         |> runOn(Queue.mainQueue())
         |> distinctUntilChanged

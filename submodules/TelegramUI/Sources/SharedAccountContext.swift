@@ -291,7 +291,15 @@ public final class SharedAccountContextImpl: SharedAccountContext {
         return self._automaticMediaDownloadSettings.get()
     }
     
-    public private(set) var energyUsageSettings: EnergyUsageSettings
+    public private(set) var energyUsageSettings: EnergyUsageSettings {
+        didSet {
+            self.energyUsageSettingsPromise.set(self.energyUsageSettings)
+        }
+    }
+    private let energyUsageSettingsPromise = ValuePromise<EnergyUsageSettings>(ignoreRepeated: true)
+    public var energyUsageSettingsUpdates: Signal<EnergyUsageSettings, NoError> {
+        return self.energyUsageSettingsPromise.get()
+    }
     
     public let currentAutodownloadSettings: Atomic<AutodownloadSettings>
     private let _autodownloadSettings = Promise<AutodownloadSettings>()
@@ -401,6 +409,7 @@ public final class SharedAccountContextImpl: SharedAccountContext {
         } else {
             self.energyUsageSettings = self.currentAutomaticMediaDownloadSettings.energyUsageSettings
         }
+        self.energyUsageSettingsPromise.set(self.energyUsageSettings)
         
         let presentationData: Signal<PresentationData, NoError> = .single(initialPresentationDataAndSettings.presentationData)
         |> then(

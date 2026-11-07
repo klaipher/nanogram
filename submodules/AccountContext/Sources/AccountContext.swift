@@ -1502,6 +1502,8 @@ public protocol SharedAccountContext: AnyObject {
     var currentChatSettings: Atomic<ChatSettings> { get }
     
     var energyUsageSettings: EnergyUsageSettings { get }
+    /// The effective energy settings now and whenever they change (Power Saving turning on or off included).
+    var energyUsageSettingsUpdates: Signal<EnergyUsageSettings, NoError> { get }
     
     var applicationBindings: TelegramApplicationBindings { get }
     
@@ -2321,6 +2323,12 @@ public protocol WalletCollectibleStickerHost: AnyObject {
 public extension SharedAccountContext {
     func makePremiumGiftController(context: AccountContext, source: PremiumGiftSource, completion: (([EnginePeer.Id]) -> Signal<Never, TransferStarGiftError>)?) -> ViewController {
         return self.makePremiumGiftController(context: context, source: source, completion: completion, withdraw: nil)
+    }
+}
+
+public extension SharedAccountContext {
+    var energyUsageSettingsUpdates: Signal<EnergyUsageSettings, NoError> {
+        return .single(self.energyUsageSettings)
     }
 }
 

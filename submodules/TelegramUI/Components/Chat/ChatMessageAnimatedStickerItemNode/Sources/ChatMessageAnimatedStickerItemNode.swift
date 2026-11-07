@@ -10,6 +10,7 @@ import TelegramPresentationData
 import Compression
 import TextFormat
 import AccountContext
+import StickerPlaybackPolicy
 import MediaResources
 import StickerResources
 import ContextUI
@@ -170,6 +171,7 @@ public class ChatMessageAnimatedStickerItemNode: ChatMessageItemView {
     private var haptic: EmojiHaptic?
     private var mediaPlayer: MediaPlayer?
     private let mediaStatusDisposable = MetaDisposable()
+    private let loopStickersDisposable = MetaDisposable()
     
     private var currentSwipeToReplyTranslation: CGFloat = 0.0
     
@@ -290,6 +292,7 @@ public class ChatMessageAnimatedStickerItemNode: ChatMessageItemView {
         self.disposable.dispose()
         self.disposables.dispose()
         self.mediaStatusDisposable.set(nil)
+        self.loopStickersDisposable.dispose()
         self.additionalAnimationsCommitTimer?.invalidate()
     }
     
@@ -573,6 +576,7 @@ public class ChatMessageAnimatedStickerItemNode: ChatMessageItemView {
             } else if self.emojiFile?.id != emojiFile?.id {
                 if self.emojiFile != nil {
                     self.didSetUpAnimationNode = false
+                    self.loopStickersDisposable.set(nil)
                     item.controllerInteraction.seenOneTimeAnimatedMedia.remove(item.message.id)
                     
                     self.animationNode?.removeFromSupernode()
@@ -639,19 +643,18 @@ public class ChatMessageAnimatedStickerItemNode: ChatMessageItemView {
         var isEmoji = false
         var fitzModifier: EmojiFitzModifier?
         
+        let loopStickers = item.context.sharedContext.energyUsageSettings.loopStickers
         if let telegramFile = self.telegramFile {
             file = telegramFile
-            if !item.context.sharedContext.energyUsageSettings.loopStickers {
-                playbackMode = .once
-            }
+            playbackMode = ChatMessageAnimatedStickerItemNode.playbackMode(for: stickerPlaybackDecision(kind: .sticker, loopStickers: loopStickers))
         } else if let emojiFile = self.emojiFile {
             file = emojiFile
             
             if emojiFile.isCustomEmoji {
-                playbackMode = .loop
+                playbackMode = ChatMessageAnimatedStickerItemNode.playbackMode(for: stickerPlaybackDecision(kind: .customEmoji, loopStickers: loopStickers))
             } else {
                 isEmoji = true
-                playbackMode = .still(.end)
+                playbackMode = ChatMessageAnimatedStickerItemNode.playbackMode(for: stickerPlaybackDecision(kind: .animatedEmoji, loopStickers: loopStickers))
                 
                 let (_, fitz) = item.message.text.basicEmoji
                 if let fitz = fitz {
@@ -698,6 +701,7 @@ public class ChatMessageAnimatedStickerItemNode: ChatMessageItemView {
                 
                 if self.isPlaying && !self.didSetUpAnimationNode {
                     self.didSetUpAnimationNode = true
+                    self.observeLoopStickers()
 
                     if let file = file {
                         var dimensions = file.dimensions ?? PixelDimensions(width: 512, height: 512)
@@ -773,6 +777,61 @@ public class ChatMessageAnimatedStickerItemNode: ChatMessageItemView {
             if !effectAlreadySeen {
                 self.playMessageEffect(force: false)
             }
+        }
+    }
+    
+    private static func playbackMode(for decision: StickerPlaybackDecision) -> AnimatedStickerPlaybackMode {
+        switch decision {
+        case .loop:
+            return .loop
+        case .once:
+            return .once
+        case .stillEnd:
+            return .still(.end)
+        }
+    }
+    
+    /// The loop/once choice was made at setup; Power Saving can turn on or off while the sticker stays on screen
+    /// (heat, Low Power Mode, charging), so a visible sticker follows the setting from then on.
+    private func observeLoopStickers() {
+        guard let item = self.item, self.telegramFile != nil else {
+            self.loopStickersDisposable.set(nil)
+            return
+        }
+        self.loopStickersDisposable.set((item.context.sharedContext.energyUsageSettingsUpdates
+        |> map { $0.loopStickers }
+        |> distinctUntilChanged
+        |> deliverOnMainQueue).startStrict(next: { [weak self] loopStickers in
+            self?.applyLoopStickers(loopStickers)
+        }))
+    }
+    
+    private func applyLoopStickers(_ loopStickers: Bool) {
+        guard self.telegramFile != nil, self.didSetUpAnimationNode, let animationNode = self.animationNode as? AnimatedStickerNode else {
+            return
+        }
+        var currentlyLooping = false
+        if case .loop = animationNode.playbackMode {
+            currentlyLooping = true
+        }
+        let action = stickerLoopChangeAction(kind: .sticker, loopStickers: loopStickers, currentlyLooping: currentlyLooping, isPlaying: animationNode.isPlaying)
+        switch action {
+        case .none:
+            break
+        case .switchToLoop:
+            animationNode.playbackMode = .loop
+        case .switchToOnce:
+            // The current pass finishes, then the node stops at its last frame.
+            animationNode.playbackMode = .once
+        case .resumeLooping:
+            // Stopped at its end: only start again while the sticker is on screen.
+            guard self.isPlaying else {
+                animationNode.playbackMode = .loop
+                return
+            }
+            animationNode.playbackMode = .loop
+            animationNode.isPlaying = true
+            animationNode.play()
         }
     }
     
