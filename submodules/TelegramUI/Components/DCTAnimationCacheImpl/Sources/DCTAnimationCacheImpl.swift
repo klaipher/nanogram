@@ -613,6 +613,13 @@ private final class AnimationCacheItemWriterImpl: AnimationCacheItemWriter {
                 self.isFinished = true
                 shouldComplete = true
                 
+                // The subscribers are gone: this partial item is dropped, not finished, and its temporary file is removed
+                // below (it was left behind before).
+                if self.isCancelledValue {
+                    self.isFailed = true
+                    return
+                }
+                
                 guard let contentLengthOffset = self.contentLengthOffset, let file = self.file, let compressedWriter = self.compressedWriter else {
                     self.isFailed = true
                     return
@@ -1923,6 +1930,11 @@ public final class DCTAnimationCacheImpl: AnimationCache {
                 guard let writer = AnimationCacheItemWriterImpl(queue: fetchQueue, allocateTempFile: self.allocateTempFile, completion: { [weak self, weak itemContext] result in
                     queue.async {
                         guard let strongSelf = self, let itemContext = itemContext, itemContext === strongSelf.itemContexts[key] else {
+                            // Nobody waits for this item any more (it was cancelled and finished anyway): the
+                            // temporary file would stay in the temp directory until the next launch.
+                            if let result {
+                                let _ = try? FileManager.default.removeItem(atPath: result.animationPath)
+                            }
                             return
                         }
                         
