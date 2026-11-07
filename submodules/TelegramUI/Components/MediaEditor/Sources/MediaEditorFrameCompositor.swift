@@ -736,7 +736,7 @@ final class MediaEditorFrameCompositor {
 
     private func sourceColorSpace(for pixelBuffer: CVPixelBuffer, pixelFormat: OSType) -> CGColorSpace? {
         if pixelFormat == kCVPixelFormatType_32BGRA, let attachment = CVBufferCopyAttachment(pixelBuffer, kCVImageBufferCGColorSpaceKey, nil), CFGetTypeID(attachment) == CGColorSpace.typeID {
-            return (attachment as? CGColorSpace)
+            return unsafeBitCast(attachment, to: CGColorSpace.self)
         }
         guard let attachments = CVBufferCopyAttachments(pixelBuffer, .shouldPropagate) else {
             return nil
