@@ -22,10 +22,10 @@ final class ChatScrollSwitchesTests: XCTestCase {
         }
     }
 
-    func testTheSwitchesAreOffByDefault() {
-        XCTAssertEqual(ExperimentalUISettings.defaultSettings.chatScrollExperiments, 0)
+    func testTheSwitchesAreOnByDefault() {
+        XCTAssertEqual(ExperimentalUISettings.defaultSettings.chatScrollExperiments, 3)
         let all = self.entries(isMainApp: true, settings: .defaultSettings)
-        XCTAssertEqual(all.compactMap { self.isOn($0) }, [false, false])
+        XCTAssertEqual(all.compactMap { self.isOn($0) }, [true, true])
     }
 
     func testEachSwitchShowsItsBit() {

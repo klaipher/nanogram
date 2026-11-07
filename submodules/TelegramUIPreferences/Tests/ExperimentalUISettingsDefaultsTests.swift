@@ -42,33 +42,36 @@ final class ExperimentalUISettingsDefaultsTests: XCTestCase {
         XCTAssertEqual(saved.glassDebugDisabledGroups, 6)
     }
 
-    func testEmojiPanelDeferralIsOffByDefaultAndTheChoiceIsKept() throws {
-        XCTAssertFalse(try self.decode("{}").emojiPanelDefersHeavyWork)
-        XCTAssertFalse(ExperimentalUISettings.defaultSettings.emojiPanelDefersHeavyWork)
+    func testEmojiPanelDeferralIsOnByDefaultAndTheChoiceIsKept() throws {
+        XCTAssertTrue(try self.decode("{}").emojiPanelDefersHeavyWork)
+        XCTAssertTrue(ExperimentalUISettings.defaultSettings.emojiPanelDefersHeavyWork)
+        XCTAssertTrue(try self.decode(#"{"emojiPanelDefersHeavyWork": 0}"#).emojiPanelDefersHeavyWork, "the off-by-default key is not read")
         var settings = ExperimentalUISettings.defaultSettings
-        settings.emojiPanelDefersHeavyWork = true
-        XCTAssertTrue(try self.roundTrip(settings).emojiPanelDefersHeavyWork)
+        settings.emojiPanelDefersHeavyWork = false
+        XCTAssertFalse(try self.roundTrip(settings).emojiPanelDefersHeavyWork)
     }
 
-    func testChatOpenDeferSetupIsOffByDefaultAndTheChoiceIsKept() throws {
-        XCTAssertFalse(ExperimentalUISettings.defaultSettings.chatOpenDeferSetup)
-        XCTAssertFalse(try self.decode("{}").chatOpenDeferSetup)
-        XCTAssertFalse(try self.decode(#"{"glassDebugDisabledGroups": 2}"#).chatOpenDeferSetup, "blobs of older builds have no key")
+    func testChatOpenDeferSetupIsOnByDefaultAndTheChoiceIsKept() throws {
+        XCTAssertTrue(ExperimentalUISettings.defaultSettings.chatOpenDeferSetup)
+        XCTAssertTrue(try self.decode("{}").chatOpenDeferSetup)
+        XCTAssertTrue(try self.decode(#"{"glassDebugDisabledGroups": 2, "chatOpenDeferSetup": 0}"#).chatOpenDeferSetup, "blobs of older builds follow the new default")
         var settings = ExperimentalUISettings.defaultSettings
-        settings.chatOpenDeferSetup = true
-        XCTAssertTrue(try self.roundTrip(settings).chatOpenDeferSetup)
-        XCTAssertFalse(try self.roundTrip(try self.roundTrip(settings).withChatOpenDeferSetup(false)).chatOpenDeferSetup)
+        settings.chatOpenDeferSetup = false
+        XCTAssertFalse(try self.roundTrip(settings).chatOpenDeferSetup)
+        XCTAssertTrue(try self.roundTrip(try self.roundTrip(settings).withChatOpenDeferSetup(true)).chatOpenDeferSetup)
     }
 
-    func testChatScrollExperimentsAreOffByDefaultAndTheChoiceIsKept() throws {
-        XCTAssertEqual(try self.decode("{}").chatScrollExperiments, 0)
-        XCTAssertEqual(ExperimentalUISettings.defaultSettings.chatScrollExperiments, 0)
+    func testChatScrollExperimentsAreOnByDefaultAndTheChoiceIsKept() throws {
+        XCTAssertEqual(try self.decode("{}").chatScrollExperiments, 3)
+        XCTAssertEqual(ExperimentalUISettings.defaultSettings.chatScrollExperiments, 3)
         var settings = ExperimentalUISettings.defaultSettings
-        settings.chatScrollExperiments = ExperimentalUISettings.chatScrollPrepareLayoutAhead | ExperimentalUISettings.chatScrollReuseRowViews
-        XCTAssertEqual(try self.roundTrip(settings).chatScrollExperiments, 3)
-        // A blob saved by a build that predates the keys keeps the other flags and gets both switches off.
-        let older = try self.decode(#"{"fakeGlass": 1, "glassDebugDisabledGroups": 2}"#)
-        XCTAssertEqual(older.chatScrollExperiments, 0)
+        settings.chatScrollExperiments = ExperimentalUISettings.chatScrollReuseRowViews
+        XCTAssertEqual(try self.roundTrip(settings).chatScrollExperiments, 2)
+        settings.chatScrollExperiments = 0
+        XCTAssertEqual(try self.roundTrip(settings).chatScrollExperiments, 0)
+        // A blob saved while the switches were off by default keeps the other flags and gets both switches on.
+        let older = try self.decode(#"{"fakeGlass": 1, "glassDebugDisabledGroups": 2, "chatScrollExperiments": 0}"#)
+        XCTAssertEqual(older.chatScrollExperiments, 3)
         XCTAssertEqual(older.glassDebugDisabledGroups, 2)
     }
 

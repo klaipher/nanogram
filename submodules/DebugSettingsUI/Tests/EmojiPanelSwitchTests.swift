@@ -21,15 +21,15 @@ final class EmojiPanelSwitchTests: XCTestCase {
         }
     }
 
-    func testTheSwitchIsOffByDefault() {
-        XCTAssertFalse(ExperimentalUISettings.defaultSettings.emojiPanelDefersHeavyWork)
-        XCTAssertEqual(self.switchValues(self.entries(isMainApp: true, settings: .defaultSettings)), [false])
+    func testTheSwitchIsOnByDefault() {
+        XCTAssertTrue(ExperimentalUISettings.defaultSettings.emojiPanelDefersHeavyWork)
+        XCTAssertEqual(self.switchValues(self.entries(isMainApp: true, settings: .defaultSettings)), [true])
     }
 
     func testTheSwitchShowsItsValue() {
         var settings = ExperimentalUISettings.defaultSettings
-        settings.emojiPanelDefersHeavyWork = true
-        XCTAssertEqual(self.switchValues(self.entries(isMainApp: true, settings: settings)), [true])
+        settings.emojiPanelDefersHeavyWork = false
+        XCTAssertEqual(self.switchValues(self.entries(isMainApp: true, settings: settings)), [false])
     }
 
     func testTheSwitchHasItsOwnSectionBehindAHeader() {

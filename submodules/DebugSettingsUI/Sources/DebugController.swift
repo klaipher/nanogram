@@ -665,7 +665,7 @@ enum DebugControllerEntry: ItemListNodeEntry {
         case .emojiPanelHeader:
             return ItemListSectionHeaderItem(presentationData: presentationData, text: "EMOJI PANEL (OPEN HANG)", sectionId: self.section)
         case let .emojiPanelDefersHeavyWork(value):
-            return ItemListSwitchItem(presentationData: presentationData, systemStyle: .glass, title: "Emoji panel: defer first-responder handoff / heavy layers", text: "Opening the panel builds it first and only then swaps the keyboard's input view and first responder; GIF tiles get their display layers after the pane is on screen, a few per frame. The panel can show empty GIF cells for a moment. Default: off. Applies at once.", value: value, maximumNumberOfLines: 0, sectionId: self.section, style: .blocks, updated: { value in
+            return ItemListSwitchItem(presentationData: presentationData, systemStyle: .glass, title: "Emoji panel: defer first-responder handoff / heavy layers", text: "Opening the panel builds it first and only then swaps the keyboard's input view and first responder; GIF tiles get their display layers after the pane is on screen, a few per frame. The panel can show empty GIF cells for a moment. Default: on. Applies at once.", value: value, maximumNumberOfLines: 0, sectionId: self.section, style: .blocks, updated: { value in
                 let _ = updateExperimentalUISettingsInteractively(accountManager: arguments.sharedContext.accountManager, { settings in
                     var settings = settings
                     settings.emojiPanelDefersHeavyWork = value
@@ -679,7 +679,7 @@ enum DebugControllerEntry: ItemListNodeEntry {
         case .chatOpenHeader:
             return ItemListSectionHeaderItem(presentationData: presentationData, text: "CHAT OPEN (PERFORMANCE)", sectionId: self.section)
         case let .chatOpenDeferSetup(value):
-            return ItemListSwitchItem(presentationData: presentationData, systemStyle: .glass, title: "Chat open: defer non-visible setup", text: "Starts the send-as list, the account colour, the recorder and activity listeners, the media and call panels, the on-device translation host and the network-speed notices after the chat has appeared instead of while it opens. They show up a moment later (panels slide in after the open animation). Default: off. Applies to chats opened afterwards.", value: value, maximumNumberOfLines: 0, sectionId: self.section, style: .blocks, updated: { value in
+            return ItemListSwitchItem(presentationData: presentationData, systemStyle: .glass, title: "Chat open: defer non-visible setup", text: "Starts the send-as list, the account colour, the recorder and activity listeners, the media and call panels, the on-device translation host and the network-speed notices after the chat has appeared instead of while it opens. They show up a moment later (panels slide in after the open animation). Default: on. Applies to chats opened afterwards.", value: value, maximumNumberOfLines: 0, sectionId: self.section, style: .blocks, updated: { value in
                 let _ = updateExperimentalUISettingsInteractively(accountManager: arguments.sharedContext.accountManager, { settings in
                     var settings = settings
                     settings.chatOpenDeferSetup = value
@@ -691,9 +691,9 @@ enum DebugControllerEntry: ItemListNodeEntry {
         case .chatScrollHeader:
             return ItemListSectionHeaderItem(presentationData: presentationData, text: "CHAT SCROLL (EXPERIMENTS)", sectionId: self.section)
         case let .chatScrollPrepareLayoutAhead(value):
-            return chatScrollSwitch(presentationData: presentationData, arguments: arguments, sectionId: self.section, title: "Chat rows: prepare layout ahead", text: "Lays out the rows that are about to scroll into view on a background queue, so the scroll frame only applies them. A prepared row is used only when everything it depends on is unchanged; otherwise it is laid out as before. Default: off. Applies at once.", bit: ExperimentalUISettings.chatScrollPrepareLayoutAhead, value: value)
+            return chatScrollSwitch(presentationData: presentationData, arguments: arguments, sectionId: self.section, title: "Chat rows: prepare layout ahead", text: "Lays out the rows that are about to scroll into view on a background queue, so the scroll frame only applies them. A prepared row is used only when everything it depends on is unchanged; otherwise it is laid out as before. Default: on. Applies at once.", bit: ExperimentalUISettings.chatScrollPrepareLayoutAhead, value: value)
         case let .chatScrollReuseRowViews(value):
-            return chatScrollSwitch(presentationData: presentationData, arguments: arguments, sectionId: self.section, title: "Chat rows: reuse row views", text: "Tears down the rows that scrolled out of the loaded range when the app is idle instead of inside the scroll frame, and reuses the views of sticker rows. Default: off. Applies to rows that leave the range from now on.", bit: ExperimentalUISettings.chatScrollReuseRowViews, value: value)
+            return chatScrollSwitch(presentationData: presentationData, arguments: arguments, sectionId: self.section, title: "Chat rows: reuse row views", text: "Tears down the rows that scrolled out of the loaded range when the app is idle instead of inside the scroll frame, and reuses the views of sticker rows. Default: on. Applies to rows that leave the range from now on.", bit: ExperimentalUISettings.chatScrollReuseRowViews, value: value)
         case .listScrollHeader:
             return ItemListSectionHeaderItem(presentationData: presentationData, text: "LIST SCROLL (A/B VS TELEGRAM)", sectionId: self.section)
         case let .displayLinkUpstreamRate(value):
@@ -1255,7 +1255,7 @@ enum DebugControllerEntry: ItemListNodeEntry {
                 }).start()
             })
         case let .callsAdvancedDucking(value):
-            return ItemListSwitchItem(presentationData: presentationData, systemStyle: .glass, title: "Advanced ducking (iOS 17)", text: "Other audio is lowered only while someone speaks, and only a little. Default: off. Applies to the next call.", value: value, maximumNumberOfLines: 0, sectionId: self.section, style: .blocks, updated: { value in
+            return ItemListSwitchItem(presentationData: presentationData, systemStyle: .glass, title: "Advanced ducking (iOS 17)", text: "Other audio is lowered only while someone speaks, and only a little. Default: on. Applies to the next call.", value: value, maximumNumberOfLines: 0, sectionId: self.section, style: .blocks, updated: { value in
                 let _ = updateExperimentalUISettingsInteractively(accountManager: arguments.sharedContext.accountManager, { settings in
                     var settings = settings
                     settings.callsAdvancedDucking = value

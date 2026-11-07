@@ -105,8 +105,9 @@ marked (check) were not re-verified against the code; correct them on the next c
 ### Call switch defaults (iOS)
 - What: livestream hardware decoding, native camera frames, system noise suppression, the thermal video ladder and group
   noise = RNNoise only are on by default and stay switchable in Debug Settings; each has a new storage key so earlier saved
-  values do not count. Advanced ducking, the reference engine, VoIP TCP and on-device translation stay off.
-- Why: owner decision, 2026-11-06 (measured wins, local only, nothing on the wire).
+  values do not count. Advanced ducking is on by default too since 2026-11-07 (key `callsAdvancedDuckingDefaultOn`). The reference
+  engine, VoIP TCP and on-device translation stay off.
+- Why: owner decision, 2026-11-06 (measured wins, local only, nothing on the wire); ducking, owner decision 2026-11-07.
 - Where: `submodules/TelegramUIPreferences/Sources/ExperimentalUISettings.swift`, `docs/subsystems/tgcalls/call-switches-and-review-fixes.md`.
 - Upstream: no (the switches are ours).
 - Sync: none.
@@ -136,7 +137,10 @@ marked (check) were not re-verified against the code; correct them on the next c
 - Sync: re-apply the container hosting if upstream changes how `ChatHistoryNavigationButtons` adds its buttons.
 - Not done: replacing Telegram's navigation bar, tab bar or edge effect with system ones, and the iOS 26 luma clamp, are owner decisions.
 
-### Chat-scroll experiments (iOS, Debug Settings, default off)
+### Chat-scroll, chat-open and emoji-panel switches (iOS, Debug Settings, on by default since 2026-11-07)
+- Default: owner decision 2026-11-07 after using them on device: "Chat rows: prepare layout ahead", "Chat rows: reuse row views",
+  "Chat open: defer non-visible setup" and "Emoji panel: defer first-responder handoff / heavy layers" are on by default, under new
+  storage keys (`…DefaultOn`) so an off saved while they were off by default does not count. Each stays switchable.
 - What: two switches under Debug Settings ▸ Chat scroll. "Chat rows: prepare layout ahead" builds the rows just beyond the loaded
   edge of the CoreList chat on a background queue and uses a result only for an exactly equal key. "Chat rows: reuse row views"
   tears unloaded rows down at an idle run-loop turn and pools the sticker row view. Both off: today's code paths.

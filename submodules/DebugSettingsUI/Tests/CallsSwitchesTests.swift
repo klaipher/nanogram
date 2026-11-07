@@ -41,7 +41,7 @@ final class CallsSwitchesTests: XCTestCase {
         XCTAssertTrue(settings.callsSystemNoiseSuppression)
         XCTAssertTrue(settings.callsThermalVideoLadder)
         XCTAssertEqual(settings.callsGroupNoiseMode, 2)
-        XCTAssertFalse(settings.callsAdvancedDucking)
+        XCTAssertTrue(settings.callsAdvancedDucking)
     }
 
     func testSettingsFromBeforeTheSwitchesDecodeAsTheDefaults() throws {
@@ -51,7 +51,7 @@ final class CallsSwitchesTests: XCTestCase {
         XCTAssertTrue(settings.callsSystemNoiseSuppression)
         XCTAssertTrue(settings.callsThermalVideoLadder)
         XCTAssertEqual(settings.callsGroupNoiseMode, 2)
-        XCTAssertFalse(settings.callsAdvancedDucking)
+        XCTAssertTrue(settings.callsAdvancedDucking)
     }
 
     /// The whole struct is saved on every change, so an install that ever touched Debug Settings holds `false` (and
@@ -91,17 +91,19 @@ final class CallsSwitchesTests: XCTestCase {
         XCTAssertEqual(decoded.callsGroupNoiseMode, 0)
     }
 
-    /// Advanced ducking first shipped on by default and every settings blob saved since holds `true` under its
-    /// old key whether or not the user touched the switch. That value must not turn it on.
-    func testDuckingSavedAsOnBeforeItWasMadeOptInStaysOff() throws {
-        struct OldOnBlob: Encodable {
+    /// Advanced ducking is on by default again (owner decision 2026-11-07). Blobs saved while it was opt-in hold `false`
+    /// under "callsAdvancedDuckingOptIn" (and the first builds `true` under "callsAdvancedDucking") whether or not the user
+    /// touched the switch; neither old key decides it.
+    func testDuckingSavedUnderTheOldKeysFollowsTheNewDefault() throws {
+        struct OldBlob: Encodable {
             func encode(to encoder: Encoder) throws {
                 var container = encoder.container(keyedBy: StringCodingKey.self)
                 try container.encode(true, forKey: "callsAdvancedDucking")
+                try container.encode(false, forKey: "callsAdvancedDuckingOptIn")
             }
         }
-        let settings = try EngineDecoder.decode(ExperimentalUISettings.self, from: try EngineEncoder.encode(OldOnBlob()))
-        XCTAssertFalse(settings.callsAdvancedDucking)
+        let settings = try EngineDecoder.decode(ExperimentalUISettings.self, from: try EngineEncoder.encode(OldBlob()))
+        XCTAssertTrue(settings.callsAdvancedDucking)
     }
 
     /// Switches that became always-on keep their keys in old blobs; reading such a blob must work and keep the
@@ -114,10 +116,10 @@ final class CallsSwitchesTests: XCTestCase {
 
     func testSwitchesRoundTripAndDoNotDisturbEachOther() throws {
         var settings = ExperimentalUISettings.defaultSettings
-        settings.callsAdvancedDucking = true
+        settings.callsAdvancedDucking = false
         settings.callsGroupNoiseMode = 1
         let decoded = try EngineDecoder.decode(ExperimentalUISettings.self, from: try EngineEncoder.encode(settings))
-        XCTAssertTrue(decoded.callsAdvancedDucking)
+        XCTAssertFalse(decoded.callsAdvancedDucking)
         XCTAssertEqual(decoded.callsGroupNoiseMode, 1)
         XCTAssertTrue(decoded.callsLivestreamHardwareDecoding)
         XCTAssertTrue(decoded.callsNativeCapturePath)

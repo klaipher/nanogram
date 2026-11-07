@@ -18,11 +18,11 @@ final class ChatOpenSwitchTests: XCTestCase {
         return nil
     }
 
-    func testTheSwitchIsOffByDefaultAndShowsTheSetting() {
-        XCTAssertEqual(self.entries(isMainApp: true, settings: .defaultSettings).compactMap { self.value($0) }, [false])
+    func testTheSwitchIsOnByDefaultAndShowsTheSetting() {
+        XCTAssertEqual(self.entries(isMainApp: true, settings: .defaultSettings).compactMap { self.value($0) }, [true])
         var settings = ExperimentalUISettings.defaultSettings
-        settings.chatOpenDeferSetup = true
-        XCTAssertEqual(self.entries(isMainApp: true, settings: settings).compactMap { self.value($0) }, [true])
+        settings.chatOpenDeferSetup = false
+        XCTAssertEqual(self.entries(isMainApp: true, settings: settings).compactMap { self.value($0) }, [false])
     }
 
     func testTheSwitchHasItsOwnSectionBehindItsHeader() {
