@@ -1,0 +1,49 @@
+stop -
+drive idle
+bridge ready []
+refused-loads 0
+
+== dom
+<html><head><meta charset="utf-8"><meta name="tw-bot" content="shop">
+<style></style></head>
+<body>
+<h3>Corner café</h3>
+<div id="items"></div>
+<div id="note">No wallet here: pay in the bot.</div>
+<button id="terms">Sign the terms</button>
+<div id="paid"></div>
+<script></script>
+
+</body></html>
+
+== layout
+html 0 0 360 112.48
+  head 0 0 0 0
+    style 0 0 0 0
+  body 12 8 336 96.48
+    h3 12 8 336 20.0625
+    div 12 32.0625 336 0
+    div 12 40.0625 336 17.6175
+    button 26 73.68 112 16.8
+    div 12 104.48 336 0
+
+== paint
+root 360x112.48 items=13
+  text bounds=(4,2,64,32) pos=(12,10,48,16) color=#000000ff text="Corner" font=f1 glyphs=6 advance=48
+  text bounds=(60,2,56,32) pos=(68,10,40,16) color=#000000ff text="café" font=f1 glyphs=5 advance=40
+  text bounds=(4,32,32,32) pos=(12,40,16,16) color=#707579ff text="No" font=f2 glyphs=2 advance=16
+  text bounds=(28,32,64,32) pos=(36,40,48,16) color=#707579ff text="wallet" font=f2 glyphs=6 advance=48
+  text bounds=(84,32,56,32) pos=(92,40,40,16) color=#707579ff text="here:" font=f2 glyphs=5 advance=40
+  text bounds=(132,32,40,32) pos=(140,40,24,16) color=#707579ff text="pay" font=f2 glyphs=3 advance=24
+  text bounds=(164,32,32,32) pos=(172,40,16,16) color=#707579ff text="in" font=f2 glyphs=2 advance=16
+  text bounds=(188,32,40,32) pos=(196,40,24,16) color=#707579ff text="the" font=f2 glyphs=3 advance=24
+  text bounds=(220,32,48,32) pos=(228,40,32,16) color=#707579ff text="bot." font=f2 glyphs=4 advance=32
+  solid-fill bounds=(12,66,140,32) layer=(border=(12,66,140,32),radius=(8,8,8,8,8,8,8,8),clip=(12,66,140,32),origin=(0,0,0,0),attachment=0,repeat=0,root=0) color=#3390ec1f
+  text bounds=(18,66,48,32) pos=(26,74,32,16) color=#000000ff text="Sign" font=f3 glyphs=4 advance=32
+  text bounds=(58,66,40,32) pos=(66,74,24,16) color=#000000ff text="the" font=f3 glyphs=3 advance=24
+  text bounds=(90,66,56,32) pos=(98,74,40,16) color=#000000ff text="terms" font=f3 glyphs=5 advance=40
+
+== fonts
+f1 (family="system-ui,sans-serif",size=16.05,style=0,weight=600,decoration=(0,predef0,0,#000000ff!current),emphasis=("",#000000ff,0),letter-spacing=0,smoothing=0,shadow=(0,0,0,#00000000),extra-shadows=(),tabular=0)
+f2 (family="system-ui,sans-serif",size=13.05,style=0,weight=400,decoration=(0,predef0,0,#000000ff!current),emphasis=("",#000000ff,0),letter-spacing=0,smoothing=0,shadow=(0,0,0,#00000000),extra-shadows=(),tabular=0)
+f3 (family="system-ui,sans-serif",size=14,style=0,weight=500,decoration=(0,predef0,0,#000000ff!current),emphasis=("",#000000ff,0),letter-spacing=0,smoothing=0,shadow=(0,0,0,#00000000),extra-shadows=(),tabular=0)
