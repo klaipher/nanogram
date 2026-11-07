@@ -254,10 +254,12 @@ WR_TEST(testCompareDocumentPositionAndContains) {
 
 namespace {
 
-/// The least thread CPU time of three runs of emptying a node of `children` children by `how`, each in a fresh document.
+/// The least thread CPU time of five runs of emptying a node of `children` children by `how`, each in a fresh document.
+/// (Three runs let one slow outlier of the 40,000-children case, 2.8 ms against 0.6 ms for 20,000, fail the ratio when
+/// the machine was busy; the test passes alone, so it is the measurement and not the algorithm.)
 double cpuToRemoveAll(int children, const char* how) {
     double least = 1e300;
-    for (int run = 0; run < 3; run++) {
+    for (int run = 0; run < 5; run++) {
         DOMEnv env;
         const std::string n = std::to_string(children);
         env.eval("var p = document.createElement('p'), q = document.createElement('q'), f = new DocumentFragment();"
