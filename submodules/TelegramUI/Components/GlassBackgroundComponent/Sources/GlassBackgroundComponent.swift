@@ -589,7 +589,7 @@ public class GlassBackgroundView: UIView {
 
     public static var useCustomGlassImpl: Bool = false
 
-    /// Telegram 13.2's look (the default; with "Glass: native (no Telegram clamp)" on, see `GlassFixedLook`, nothing is clamped).
+    /// Telegram 13.2's look (see `GlassFixedLook`; nothing is clamped only where the clamp could not be installed).
     /// The backdrop luminance native glass sees (`EffectSettingsContainerView`'s limits, applied to every luma UIKit
     /// reports by the `backdropLayer:didChangeLuma:` override in UIKitRuntimeUtils): the whole range on the theme's
     /// side of the luminance at which UIKit would flip the glass to the other appearance, so it adapts to its

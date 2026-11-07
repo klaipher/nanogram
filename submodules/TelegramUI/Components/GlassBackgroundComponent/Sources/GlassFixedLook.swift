@@ -2,22 +2,12 @@ import Foundation
 import UIKit
 import UIKitRuntimeUtils
 
-/// Nanogram: glass looks as Telegram 13.2's does by default. Telegram pins the backdrop luminance native glass sees to a
+/// Nanogram: glass looks as Telegram 13.2's does, always. Telegram pins the backdrop luminance native glass sees to a
 /// range per theme (the luma clamp, `backdropLayer:didChangeLuma:` in UIKitRuntimeUtils, ranges in
-/// `GlassBackgroundView.adaptiveLumaRange`), so its glass does not flip light or dark over the content behind it.
-/// Apple's fully native glass, without the clamp, is behind one switch: Debug Settings "Glass: native (no Telegram
-/// clamp)", default OFF. The clamp is installed once in `+load`, so the switch applies at the next launch; `isActive` is
-/// what this launch really did.
+/// `GlassBackgroundView.adaptiveLumaRange`), so its glass does not flip light or dark over the content behind it. The
+/// clamp is installed once in `+load`; `isActive` is what this launch really did. (Apple's fully native glass had a
+/// Debug Settings switch until 2026-11-07; the owner removed it, as it saves no battery.)
 public enum GlassFixedLook {
-    /// Whether the native switch is on in `defaults` (the key UIKitRuntimeUtils reads in `+load`).
-    public static func isNativeRequested(in defaults: UserDefaults = .standard) -> Bool {
-        return EffectSettingsContainerView.isNativeNoClampRequested(in: defaults)
-    }
-
-    public static func setNativeRequested(_ requested: Bool, in defaults: UserDefaults = .standard) {
-        defaults.set(requested, forKey: EffectSettingsContainerView.nativeNoClampDefaultsKey)
-    }
-
     /// Whether the clamp is installed in this process. Fixed for the life of the process.
     public static var isActive: Bool {
         return EffectSettingsContainerView.isLumaClampInstalled

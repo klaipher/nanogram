@@ -4,6 +4,8 @@ Newest first. Internal notes for each TestFlight build; testers see the What to 
 
 ## Unreleased
 
+- **Glass: the "Glass: native (no Telegram clamp)" Debug Settings switch is removed; Telegram 13.2's look is the only one** (owner decision 2026-11-07, branch fix/remove-native-glass-switch). The switch only changed the look: both modes run the same blur and refraction, and the clamp is one clamp of a number in UIKit's luma callback, so the native mode saved no battery or GPU. `+load` now always installs the luma clamp (iOS 26 and 27, when UIKit's backdrop class is found); `EffectSettingsContainerView.nativeNoClampDefaultsKey` / `isNativeNoClampRequested(in:)` and `GlassFixedLook.isNativeRequested` / `setNativeRequested` are gone, as is DebugSettingsUI's dependency on GlassBackgroundComponent. A stale `nanogram.glass.nativeNoClamp = YES` in a tester's defaults is ignored. The "…glass off" measurement switches stay. Tests: `GlassFixedLookTests` (switch tests removed), `GlassGroupsSwitchesTests` (section without the switch); GlassCapture no longer passes the key.
+
 ## 13.2 (202611071437) — 2026-11-07 — f059025a
 
 TestFlight build of the Telegram-iOS 13.2 merge. Previous TestFlight build: 202611061452 (33d7d094); changes since are

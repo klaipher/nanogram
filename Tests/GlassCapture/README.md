@@ -9,7 +9,7 @@ and a 120×80 rectangle of radius 12 over a page colour and writes `Documents/ma
 glass has rendered. Launch arguments: `-page RRGGBB`, `-dark 0|1`, `-tint panel|media|RRGGBB` (`media` is the chat's
 dark glass over media; a colour is a styled tint at `-tintAlpha`, 0.85 by default), `-interactive 0|1`,
 `-label <name>`, `-mode static` (the shipped images, `StaticGlassBackgroundView`, at the same frames, for comparing with
-the glass). `capture.sh` always launches with `-nanogram.glass.nativeNoClamp NO`: the shipped assets are Telegram's clamped look (also the default), and `+load` reads that switch.
+the glass). The shipped assets are Telegram's clamped look, the app's only glass look.
 
 ## Regenerating the assets (a new iOS, a new shape)
 

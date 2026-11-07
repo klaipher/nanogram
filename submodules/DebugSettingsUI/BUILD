@@ -38,7 +38,6 @@ swift_library(
         "//submodules/TelegramVoip",
         "//submodules/ComponentFlow",
         "//submodules/TelegramUI/Components/AlertComponent",
-        "//submodules/TelegramUI/Components/GlassBackgroundComponent",
         "//submodules/TelegramUI/Components/AlertComponent/AlertCheckComponent",
         "//submodules/WalletContext",
         "//submodules/CpuProfiler:CpuProfiler",

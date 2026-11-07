@@ -4,34 +4,9 @@ import UIKitRuntimeUtils
 @testable import GlassBackgroundComponent
 
 final class GlassFixedLookTests: XCTestCase {
-    private func makeDefaults() -> UserDefaults {
-        let name = "GlassFixedLookTests.\(UUID().uuidString)"
-        let defaults = UserDefaults(suiteName: name) ?? UserDefaults()
-        defaults.removePersistentDomain(forName: name)
-        return defaults
-    }
-
-    func testTelegramsLookIsTheDefault() {
-        XCTAssertFalse(GlassFixedLook.isNativeRequested(in: self.makeDefaults()))
-    }
-
-    func testTheSwitchIsReadFromTheDefaultsKey() {
-        let defaults = self.makeDefaults()
-        GlassFixedLook.setNativeRequested(true, in: defaults)
-        XCTAssertTrue(GlassFixedLook.isNativeRequested(in: defaults))
-        XCTAssertTrue(defaults.bool(forKey: EffectSettingsContainerView.nativeNoClampDefaultsKey))
-        GlassFixedLook.setNativeRequested(false, in: defaults)
-        XCTAssertFalse(GlassFixedLook.isNativeRequested(in: defaults))
-    }
-
-    /// The key is what the Debug Settings switch writes and +load reads; renaming it silently turns the switch off.
-    func testTheKeyIsTheContract() {
-        XCTAssertEqual(EffectSettingsContainerView.nativeNoClampDefaultsKey, "nanogram.glass.nativeNoClamp")
-    }
-
-    /// The test host never sets the key, so +load must have installed the luma clamp (when UIKit's class is found, so
-    /// only asserted where the host runs iOS 26 or later; the clamp is never installed with the switch on).
-    func testTheClampIsInstalledByDefaultOnIOS26AndLater() {
+    /// +load always installs the luma clamp where UIKit's class is found, so it is asserted where the host runs iOS 26
+    /// or later.
+    func testTheClampIsInstalledOnIOS26AndLater() {
         if #available(iOS 26.0, *) {
             XCTAssertTrue(EffectSettingsContainerView.isLumaClampInstalled)
             XCTAssertTrue(GlassFixedLook.isActive)
