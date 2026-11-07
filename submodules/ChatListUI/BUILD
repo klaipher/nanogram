@@ -160,6 +160,7 @@ swift_library(
         "//submodules/TelegramStringFormatting:TelegramStringFormatting",
         "//submodules/TextFormat:TextFormat",
         "//submodules/AppBundle:AppBundle",
+        "//submodules/AsyncDisplayKit:AsyncDisplayKit",
     ],
 )
 

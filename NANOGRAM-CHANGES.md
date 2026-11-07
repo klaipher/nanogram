@@ -177,6 +177,13 @@ marked (check) were not re-verified against the code; correct them on the next c
   `ExperimentalUISettings`, `SharedAccountContext`, `DebugController.swift`. Not shared with the Mac.
 - Upstream: all off is our behaviour; all on is upstream's (except the log).
 
+### Chat list rows (iOS, Debug Settings)
+- What: "Chat list rows: lazy rare subnodes" (on by default). A `ChatListItemNode` adds its rarely shown parts (community shadow, status, pinned / hidden-peer / muted icons, badge, mention badge, online dot) to its node hierarchy only when the row first shows them, at the same z-position as in `init`. Pixels and animations are identical.
+- Why: the owner's iPhone misses frames at 120 Hz when rows enter; a CPU profile showed the row's whole subnode tree materializing views/layers on the main thread at its first `.layer` touch, and the Core Animation commit growing with layers per row (commit COMMIT1).
+- Where: `ChatListRowExperiments.swift`, `ChatListLazySubnodes.swift` (pure placement), `ChatListItem.swift` (`ChatListItemNode.init`, `showLazySubnode`, `updateLazyFrame`/`updateLazyAlpha`, `subnodeLedger`, call sites in the apply closure and `setupItem`), `ExperimentalUISettings.chatListLazyRareSubnodes`, `DebugController.swift` (id 141), `SharedAccountContext.swift`. Not shared with the Mac.
+- Upstream: switch off = upstream's tree (same `addSubnode` order as 13.2).
+- Sync: a child added to `ChatListItemNode.init` needs a `subnodeLedger` decision (the test fails otherwise). A new `transition.update*` or `.layer` touch of a lazy node must use the lazy helpers or follow `showLazySubnode`. Any new `avatarNode` overlay needs the `showLazySubnode(.onlineDot)` gate before it. Keep every plain write on lazy nodes.
+
 ### Differences added or changed by the 13.2 merge (2026-11-06)
 - rlottie: upstream removed it and `LottieSettings`; iOS now renders only with tlottie. Our rlottie fork and `submodules/rlottie` wrappers stay for the macOS app and the Watch app (`docs/mac-core-paths.txt`). Upstream: no.
 - Glass: matches upstream 13.2 by default (owner decision, revised). The luma clamp is installed on iOS 26 and 27 with upstream's ranges (`GlassBackgroundView.adaptiveLumaRange`: dark 0-0.874; light 0.22-1.0 on iOS 26, 0.125-1.0 on iOS 27). The Debug Settings switch for Apple's fully native glass was removed on 2026-11-07 (owner: it saves no battery; the clamp is one number per luma callback), so the clamp is always installed. Where: `GlassFixedLook`, `UIViewController+Navigation.m`. Upstream: same look; the only difference is that `registerEffectViewOverrides` does one class lookup for the running OS instead of upstream's loop over both names (keeps the launch-time gain). Sync: keep the single lookup when merging upstream's loop.

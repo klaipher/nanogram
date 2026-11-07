@@ -129,6 +129,15 @@ final class ExperimentalUISettingsDefaultsTests: XCTestCase {
         XCTAssertTrue(saved.listAccessibilityImmediate)
         XCTAssertTrue(saved.listScrollPacingLog)
     }
+
+    func testChatListLazyRareSubnodesIsOnByDefaultAndTheChoiceIsKept() throws {
+        for settings in [ExperimentalUISettings.defaultSettings, try self.decode("{}"), try self.decode(#"{"glassDebugDisabledGroups": 2}"#)] {
+            XCTAssertTrue(settings.chatListLazyRareSubnodes)
+        }
+        var settings = ExperimentalUISettings.defaultSettings
+        settings.chatListLazyRareSubnodes = false
+        XCTAssertFalse(try self.roundTrip(settings).chatListLazyRareSubnodes)
+    }
 }
 
 private extension ExperimentalUISettings {

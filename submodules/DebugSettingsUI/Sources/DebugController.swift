@@ -383,6 +383,7 @@ enum DebugControllerEntry: ItemListNodeEntry {
     case displayLinkUpstreamRate(Bool)
     case listAccessibilityImmediate(Bool)
     case listScrollPacingLog(Bool)
+    case chatListLazyRareSubnodes(Bool)
     case enableNetworkFramework(Bool)
     case enableNetworkExperiments(Bool)
     case rustMTProtoEngine(Bool)
@@ -418,7 +419,7 @@ enum DebugControllerEntry: ItemListNodeEntry {
             return DebugControllerSection.chatOpen.rawValue
         case .chatScrollHeader, .chatScrollPrepareLayoutAhead, .chatScrollReuseRowViews:
             return DebugControllerSection.chatScroll.rawValue
-        case .listScrollHeader, .displayLinkUpstreamRate, .listAccessibilityImmediate, .listScrollPacingLog:
+        case .listScrollHeader, .displayLinkUpstreamRate, .listAccessibilityImmediate, .listScrollPacingLog, .chatListLazyRareSubnodes:
             return DebugControllerSection.listScroll.rawValue
         case .springSendAnimation, .fakeWalletTransfers, .stickerRendererMode, .disableImageContentAnalysis, .disableLanguageRecognition, .localTranscription, .enableVoipTcp, .tabletDisplayLinkFrameRateCap, .chatMediaEditorLegacy, .mediaGridLegacy, .sharedMediaGridLegacy, .storyLegacyVideoWriter, .chatLegacyVideoWriter, .chatSideListLegacy, .messageWidgets, .messageWidgetWallet:
             return DebugControllerSection.experiments.rawValue
@@ -593,6 +594,9 @@ enum DebugControllerEntry: ItemListNodeEntry {
             return 139
         case .listScrollPacingLog:
             return 140
+        case .chatListLazyRareSubnodes:
+            // Appended right after `listScrollPacingLog`; see the ordering note at `springSendAnimation`.
+            return 141
         case .springSendAnimation:
             // ItemList asserts its entries are in strictly increasing order (`<`: section, then
             // `sortIndex`, which is the stableId here; ItemListControllerNode.swift), so an id must
@@ -718,6 +722,14 @@ enum DebugControllerEntry: ItemListNodeEntry {
                 let _ = updateExperimentalUISettingsInteractively(accountManager: arguments.sharedContext.accountManager, { settings in
                     var settings = settings
                     settings.listScrollPacingLog = value
+                    return settings
+                }).start()
+            })
+        case let .chatListLazyRareSubnodes(value):
+            return ItemListSwitchItem(presentationData: presentationData, systemStyle: .glass, title: "Chat list rows: lazy rare subnodes", text: "On (default): a chat list row adds its rarely shown parts (pin, mute and hidden icons, unread and mention badges, online dot, message status, community shadow) only when it first shows them, so a row entering the screen builds fewer views and layers. Off: every row builds them all up front, as Telegram does. Applies to rows created from now on.", value: value, maximumNumberOfLines: 0, sectionId: self.section, style: .blocks, updated: { value in
+                let _ = updateExperimentalUISettingsInteractively(accountManager: arguments.sharedContext.accountManager, { settings in
+                    var settings = settings
+                    settings.chatListLazyRareSubnodes = value
                     return settings
                 }).start()
             })
@@ -1517,6 +1529,7 @@ func debugControllerEntries(environment: DebugControllerEntriesEnvironment, them
         entries.append(.displayLinkUpstreamRate(experimentalSettings.displayLinkUpstreamRate))
         entries.append(.listAccessibilityImmediate(experimentalSettings.listAccessibilityImmediate))
         entries.append(.listScrollPacingLog(experimentalSettings.listScrollPacingLog))
+        entries.append(.chatListLazyRareSubnodes(experimentalSettings.chatListLazyRareSubnodes))
     }
 
     if isMainApp {

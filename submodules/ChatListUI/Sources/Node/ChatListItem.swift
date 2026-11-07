@@ -1472,7 +1472,7 @@ public class ChatListItemNode: ItemListRevealOptionsItemNode {
     let mainContentContainerNode: ASDisplayNode
     
     public let avatarContainerNode: ASDisplayNode
-    private let communityAvatarShadowNode: ASImageNode
+    let communityAvatarShadowNode: ASImageNode
     private var communityAvatarBadgeBackgroundView: GlassBackgroundView?
     private var communityAvatarBadgeIconView: GlassBackgroundView.ContentImageView?
     public let avatarNode: AvatarNode
@@ -1550,6 +1550,11 @@ public class ChatListItemNode: ItemListRevealOptionsItemNode {
     private var cachedCustomTextEntities: CachedCustomTextEntities?
     
     var layoutParams: (ChatListItem, first: Bool, last: Bool, firstWithHeader: Bool, nextIsPinned: Bool, nextHasActiveRevealControls: Bool, ListViewItemLayoutParams, countersSize: CGFloat)?
+    
+    /// Fixed when the node is created (`ChatListRowExperiments.lazyRareSubnodes`). When true, the rarely shown parts
+    /// (see `ChatListLazySubnode`) join the node hierarchy only when the row first needs them visible.
+    private let usesLazySubnodes: Bool
+    private var attachedLazySubnodes: ChatListLazySubnodeSet
     
     private var isHighlighted: Bool = false
     private var nextHasActiveRevealControls: Bool = false
@@ -1808,6 +1813,147 @@ public class ChatListItemNode: ItemListRevealOptionsItemNode {
         }
     }
     
+    /// Every ChatListItemNode stored property that is an ASDisplayNode, with how it joins the row's hierarchy. A
+    /// test compares this with the node's stored properties, so a child added to `init` needs a decision here.
+    static let subnodeLedger: [String: ChatListSubnodeDecision] = [
+        "backgroundNode": .eager,
+        "separatorNode": .eager,
+        "contextContainer": .eager,
+        "mainContentContainerNode": .eager,
+        "avatarContainerNode": .eager,
+        "avatarNode": .eager,
+        "titleNode": .eager,
+        "authorNode": .eager,
+        "dateNode": .eager,
+        "communityAvatarShadowNode": .lazy,
+        "statusNode": .lazy,
+        "pinnedIconNode": .lazy,
+        "badgeNode": .lazy,
+        "mentionBadgeNode": .lazy,
+        "hiddenPeerIconNode": .lazy,
+        "mutedIconNode": .lazy,
+        "onlineNode": .lazy,
+        "inputActivitiesNode": .attachedOnDemand,
+        "forwardedIconNode": .attachedOnDemand,
+        "highlightedBackgroundNode": .attachedOnDemand,
+        "measureNode": .neverInHierarchy
+    ]
+    
+    func isLazySubnodeAttached(_ subnode: ChatListLazySubnode) -> Bool {
+        return self.attachedLazySubnodes.contains(ChatListLazySubnodeSet(subnode))
+    }
+    
+    private func lazySubnode(_ subnode: ChatListLazySubnode) -> ASDisplayNode {
+        switch subnode {
+        case .communityShadow:
+            return self.communityAvatarShadowNode
+        case .status:
+            return self.statusNode
+        case .pinnedIcon:
+            return self.pinnedIconNode
+        case .badge:
+            return self.badgeNode
+        case .mentionBadge:
+            return self.mentionBadgeNode
+        case .hiddenPeerIcon:
+            return self.hiddenPeerIconNode
+        case .mutedIcon:
+            return self.mutedIconNode
+        case .onlineDot:
+            return self.onlineNode
+        }
+    }
+    
+    private func mainContentChildNode(_ child: ChatListMainContentChild) -> ASDisplayNode {
+        switch child {
+        case .title:
+            return self.titleNode
+        case .author:
+            return self.authorNode
+        case .text:
+            return self.textNode.textNode
+        case .date:
+            return self.dateNode
+        case .status:
+            return self.statusNode
+        case .pinnedIcon:
+            return self.pinnedIconNode
+        case .badge:
+            return self.badgeNode
+        case .mentionBadge:
+            return self.mentionBadgeNode
+        case .hiddenPeerIcon:
+            return self.hiddenPeerIconNode
+        case .mutedIcon:
+            return self.mutedIconNode
+        }
+    }
+    
+    /// Adds a rarely shown part to the hierarchy at the z-position it has when added eagerly in `init`. Idempotent.
+    /// Main thread.
+    func showLazySubnode(_ subnode: ChatListLazySubnode) {
+        if self.isLazySubnodeAttached(subnode) {
+            return
+        }
+        let node = self.lazySubnode(subnode)
+        if let child = subnode.mainContentChild {
+            var attached: Set<ChatListMainContentChild> = [.title, .author, .text, .date]
+            for candidate in ChatListLazySubnode.allCases {
+                if let candidateChild = candidate.mainContentChild, self.isLazySubnodeAttached(candidate) {
+                    attached.insert(candidateChild)
+                }
+            }
+            switch chatListLazyPlacement(for: child, attached: attached) {
+            case let .above(anchor):
+                self.mainContentContainerNode.insertSubnode(node, aboveSubnode: self.mainContentChildNode(anchor))
+            case .first:
+                self.mainContentContainerNode.insertSubnode(node, at: 0)
+            }
+        } else {
+            switch subnode {
+            case .communityShadow:
+                self.avatarContainerNode.insertSubnode(self.communityAvatarShadowNode, belowSubnode: self.avatarNode)
+            case .onlineDot:
+                self.avatarNode.addSubnode(self.onlineNode)
+            default:
+                break
+            }
+        }
+        self.attachedLazySubnodes.insert(ChatListLazySubnodeSet(subnode))
+    }
+    
+    func updateLazyFrame(_ subnode: ChatListLazySubnode, frame: CGRect, transition: ContainedViewLayoutTransition) {
+        let node = self.lazySubnode(subnode)
+        if self.isLazySubnodeAttached(subnode) {
+            transition.updateFrame(node: node, frame: frame)
+            return
+        }
+        // Same validity checks as `ContainedViewLayoutTransition.updateFrame(node:)`. A detached node has no layer
+        // to animate, so the frame goes to the node's pending state.
+        if frame.origin.x.isNaN || frame.origin.y.isNaN || frame.size.width.isNaN || frame.size.height.isNaN {
+            return
+        }
+        if frame.size.width < 0.0 || frame.size.height < 0.0 {
+            return
+        }
+        if !ASIsCGRectValidForLayout(CGRect(origin: CGPoint(), size: frame.size)) {
+            return
+        }
+        if !ASIsCGPositionValidForLayout(frame.origin) {
+            return
+        }
+        node.frame = frame
+    }
+    
+    func updateLazyAlpha(_ subnode: ChatListLazySubnode, alpha: CGFloat, transition: ContainedViewLayoutTransition) {
+        let node = self.lazySubnode(subnode)
+        if self.isLazySubnodeAttached(subnode) {
+            transition.updateAlpha(node: node, alpha: alpha)
+        } else {
+            node.alpha = alpha
+        }
+    }
+    
     required init() {
         self.backgroundNode = ASDisplayNode()
         self.backgroundNode.isLayerBacked = true
@@ -1880,6 +2026,10 @@ public class ChatListItemNode: ItemListRevealOptionsItemNode {
         self.separatorNode = ASDisplayNode()
         self.separatorNode.isLayerBacked = true
         
+        let usesLazySubnodes = ChatListRowExperiments.lazyRareSubnodes
+        self.usesLazySubnodes = usesLazySubnodes
+        self.attachedLazySubnodes = usesLazySubnodes ? [] : .all
+        
         super.init(layerBacked: false, rotated: false, seeThrough: false)
         
         self.isAccessibilityElement = true
@@ -1890,22 +2040,28 @@ public class ChatListItemNode: ItemListRevealOptionsItemNode {
         self.addSubnode(self.contextContainer)
         self.contextContainer.addSubnode(self.mainContentContainerNode)
         
-        self.avatarContainerNode.addSubnode(self.communityAvatarShadowNode)
+        if !self.usesLazySubnodes {
+            self.avatarContainerNode.addSubnode(self.communityAvatarShadowNode)
+        }
         self.avatarContainerNode.addSubnode(self.avatarNode)
 
         self.contextContainer.addSubnode(self.avatarContainerNode)
-        self.avatarNode.addSubnode(self.onlineNode)
+        if !self.usesLazySubnodes {
+            self.avatarNode.addSubnode(self.onlineNode)
+        }
         
         self.mainContentContainerNode.addSubnode(self.titleNode)
         self.mainContentContainerNode.addSubnode(self.authorNode)
         self.mainContentContainerNode.addSubnode(self.textNode.textNode)
         self.mainContentContainerNode.addSubnode(self.dateNode)
-        self.mainContentContainerNode.addSubnode(self.statusNode)
-        self.mainContentContainerNode.addSubnode(self.pinnedIconNode)
-        self.mainContentContainerNode.addSubnode(self.badgeNode)
-        self.mainContentContainerNode.addSubnode(self.mentionBadgeNode)
-        self.mainContentContainerNode.addSubnode(self.hiddenPeerIconNode)
-        self.mainContentContainerNode.addSubnode(self.mutedIconNode)
+        if !self.usesLazySubnodes {
+            self.mainContentContainerNode.addSubnode(self.statusNode)
+            self.mainContentContainerNode.addSubnode(self.pinnedIconNode)
+            self.mainContentContainerNode.addSubnode(self.badgeNode)
+            self.mainContentContainerNode.addSubnode(self.mentionBadgeNode)
+            self.mainContentContainerNode.addSubnode(self.hiddenPeerIconNode)
+            self.mainContentContainerNode.addSubnode(self.mutedIconNode)
+        }
         
         // The row shows only the online dot, so refresh only when online state flips.
         self.peerPresenceManager = PeerPresenceStatusManager(mode: .onlineState, update: { [weak self] in
@@ -2035,6 +2191,7 @@ public class ChatListItemNode: ItemListRevealOptionsItemNode {
         
         if let stats = storyState?.stats, stats.hasLiveItems {
             if self.avatarLiveBadge == nil {
+                self.showLazySubnode(.onlineDot)
                 let avatarLiveBadge: (outline: UIImageView, foreground: UIImageView) = (UIImageView(), UIImageView())
                 self.avatarLiveBadge = avatarLiveBadge
                 self.avatarNode.view.addSubview(avatarLiveBadge.outline)
@@ -4430,10 +4587,10 @@ public class ChatListItemNode: ItemListRevealOptionsItemNode {
                             if let dateStatusIconNode = strongSelf.dateStatusIconNode {
                                 transition.updateAlpha(node: dateStatusIconNode, alpha: 0.0)
                             }
-                            transition.updateAlpha(node: strongSelf.badgeNode, alpha: 0.0)
-                            transition.updateAlpha(node: strongSelf.mentionBadgeNode, alpha: 0.0)
-                            transition.updateAlpha(node: strongSelf.pinnedIconNode, alpha: 0.0)
-                            transition.updateAlpha(node: strongSelf.statusNode, alpha: 0.0)
+                            strongSelf.updateLazyAlpha(.badge, alpha: 0.0, transition: transition)
+                            strongSelf.updateLazyAlpha(.mentionBadge, alpha: 0.0, transition: transition)
+                            strongSelf.updateLazyAlpha(.pinnedIcon, alpha: 0.0, transition: transition)
+                            strongSelf.updateLazyAlpha(.status, alpha: 0.0, transition: transition)
                         } else if let reorderControlNode = strongSelf.reorderControlNode {
                             let _ = reorderControlSizeAndApply.1(layout.contentSize.height, false, .immediate)
                             transition.updateFrame(node: reorderControlNode, frame: reorderControlFrame)
@@ -4448,10 +4605,10 @@ public class ChatListItemNode: ItemListRevealOptionsItemNode {
                         if let dateStatusIconNode = strongSelf.dateStatusIconNode {
                             transition.updateAlpha(node: dateStatusIconNode, alpha: 1.0)
                         }
-                        transition.updateAlpha(node: strongSelf.badgeNode, alpha: 1.0)
-                        transition.updateAlpha(node: strongSelf.mentionBadgeNode, alpha: 1.0)
-                        transition.updateAlpha(node: strongSelf.pinnedIconNode, alpha: 1.0)
-                        transition.updateAlpha(node: strongSelf.statusNode, alpha: 1.0)
+                        strongSelf.updateLazyAlpha(.badge, alpha: 1.0, transition: transition)
+                        strongSelf.updateLazyAlpha(.mentionBadge, alpha: 1.0, transition: transition)
+                        strongSelf.updateLazyAlpha(.pinnedIcon, alpha: 1.0, transition: transition)
+                        strongSelf.updateLazyAlpha(.status, alpha: 1.0, transition: transition)
                     }
                     
                     let contentRect = rawContentRect.offsetBy(dx: editingOffset + leftInset + revealOffset, dy: 0.0)
@@ -4474,6 +4631,7 @@ public class ChatListItemNode: ItemListRevealOptionsItemNode {
                     transition.updateFrame(node: strongSelf.avatarContainerNode, frame: avatarFrame)
 
                     if useChatListLayout && isCommunity && avatarContentImageSpec == nil && !item.isSideListCompactPeerRow, let shadowImage = UIImage(bundleImageName: "Components/CommunityShadow") {
+                        strongSelf.showLazySubnode(.communityShadow)
                         strongSelf.communityAvatarShadowNode.isHidden = false
                         strongSelf.communityAvatarShadowNode.image = generateTintedImage(image: shadowImage, color: theme.titleColor.withAlphaComponent(0.9))
 
@@ -4576,6 +4734,7 @@ public class ChatListItemNode: ItemListRevealOptionsItemNode {
                         } else {
                             avatarBadgeBackground = ASImageNode()
                             strongSelf.avatarBadgeBackground = avatarBadgeBackground
+                            strongSelf.showLazySubnode(.onlineDot)
                             strongSelf.avatarNode.addSubnode(avatarBadgeBackground)
                         }
                         
@@ -4589,6 +4748,7 @@ public class ChatListItemNode: ItemListRevealOptionsItemNode {
                             avatarBadgeNode = ChatListBadgeNode()
                             avatarBadgeNode.disableBounce = true
                             strongSelf.avatarBadgeNode = avatarBadgeNode
+                            strongSelf.showLazySubnode(.onlineDot)
                             strongSelf.avatarNode.addSubnode(avatarBadgeNode)
                         }
                         
@@ -4682,7 +4842,10 @@ public class ChatListItemNode: ItemListRevealOptionsItemNode {
                     } else {
                         onlineFrame = CGRect(origin: CGPoint(x: avatarFrame.width - onlineLayout.width - 2.0, y: avatarFrame.height - onlineLayout.height - 2.0), size: onlineLayout)
                     }
-                    transition.updateFrame(node: strongSelf.onlineNode, frame: onlineFrame)
+                    if online {
+                        strongSelf.showLazySubnode(.onlineDot)
+                    }
+                    strongSelf.updateLazyFrame(.onlineDot, frame: onlineFrame, transition: transition)
                     
                     if let avatarLiveBadge = strongSelf.avatarLiveBadge, let iconImage = avatarLiveBadge.foreground.image, let outlineImage = avatarLiveBadge.outline.image {
                         let outlineInset = (outlineImage.size.height - iconImage.size.height) * 0.5
@@ -4703,7 +4866,7 @@ public class ChatListItemNode: ItemListRevealOptionsItemNode {
                     }
                     
                     let onlineInlineNavigationFraction: CGFloat = item.interaction.inlineNavigationLocation?.progress ?? 0.0
-                    transition.updateAlpha(node: strongSelf.onlineNode, alpha: 1.0 - onlineInlineNavigationFraction)
+                    strongSelf.updateLazyAlpha(.onlineDot, alpha: 1.0 - onlineInlineNavigationFraction, transition: transition)
                     transition.updateSublayerTransformScale(node: strongSelf.onlineNode, scale: (1.0 - onlineInlineNavigationFraction) * 1.0 + onlineInlineNavigationFraction * 0.00001)
                     
                     let onlineIcon: UIImage?
@@ -4758,6 +4921,7 @@ public class ChatListItemNode: ItemListRevealOptionsItemNode {
                             avatarTimerTransition = .immediate
                             avatarTimerBadge = AvatarBadgeView(frame: CGRect())
                             strongSelf.avatarTimerBadge = avatarTimerBadge
+                            strongSelf.showLazySubnode(.onlineDot)
                             strongSelf.avatarNode.view.addSubview(avatarTimerBadge)
                         }
                         let avatarBadgeSize = CGSize(width: avatarTimerBadgeDiameter, height: avatarTimerBadgeDiameter)
@@ -4804,9 +4968,17 @@ public class ChatListItemNode: ItemListRevealOptionsItemNode {
                     }
                     
                     let _ = titleApply()
+                    if !badgeContent.isEmpty {
+                        strongSelf.showLazySubnode(.badge)
+                    }
                     let _ = badgeApply(animateBadges, !isMuted)
+                    if !mentionBadgeContent.isEmpty {
+                        strongSelf.showLazySubnode(.mentionBadge)
+                    }
                     let _ = mentionBadgeApply(animateBadges, true)
-                    let _ = onlineApply(animateContent && animateOnline)
+                    if online || strongSelf.isLazySubnodeAttached(.onlineDot) {
+                        let _ = onlineApply(animateContent && animateOnline)
+                    }
                     
                     var dateFrame = CGRect(origin: CGPoint(x: contentRect.maxX - dateLayout.size.width, y: contentRect.origin.y + 2.0), size: dateLayout.size)
                     
@@ -4870,6 +5042,9 @@ public class ChatListItemNode: ItemListRevealOptionsItemNode {
                     
                     strongSelf.statusNode.frame = CGRect(origin: CGPoint(x: statusX, y: contentRect.origin.y + 2.0 - UIScreenPixel + floor((dateLayout.size.height - statusSize.height) / 2.0)), size: statusSize)
                     strongSelf.statusNode.fontSize = item.presentationData.fontSize.itemListBaseFontSize
+                    if statusState != .none {
+                        strongSelf.showLazySubnode(.status)
+                    }
                     let _ = strongSelf.statusNode.transitionToState(statusState, animated: animateContent)
                     
                     let rightAccessoryVerticalOffset: CGFloat = floorToScreenPixels(-4.0 * min(1.0, item.presentationData.fontSize.itemListBaseFontSize / 17.0))
@@ -4877,10 +5052,10 @@ public class ChatListItemNode: ItemListRevealOptionsItemNode {
                     if let _ = currentBadgeBackgroundImage {
                         let badgeFrame = CGRect(x: nextBadgeX - badgeLayout.width, y: contentRect.maxY - badgeLayout.height + rightAccessoryVerticalOffset, width: badgeLayout.width, height: badgeLayout.height)
                         
-                        transition.updateFrame(node: strongSelf.badgeNode, frame: badgeFrame)
+                        strongSelf.updateLazyFrame(.badge, frame: badgeFrame, transition: transition)
                         nextBadgeX -= badgeLayout.width + 6.0
                         
-                        if item.useCommunityViewLayout {
+                        if item.useCommunityViewLayout && strongSelf.isLazySubnodeAttached(.badge) {
                             strongSelf.badgeNode.layer.rasterizationScale = UIScreenScale
                             strongSelf.badgeNode.layer.shouldRasterize = true
                         }
@@ -4889,16 +5064,17 @@ public class ChatListItemNode: ItemListRevealOptionsItemNode {
                     if currentMentionBadgeImage != nil || currentBadgeBackgroundImage != nil {
                         let badgeFrame = CGRect(x: nextBadgeX - mentionBadgeLayout.width, y: contentRect.maxY - mentionBadgeLayout.height + rightAccessoryVerticalOffset, width: mentionBadgeLayout.width, height: mentionBadgeLayout.height)
                         
-                        transition.updateFrame(node: strongSelf.mentionBadgeNode, frame: badgeFrame)
+                        strongSelf.updateLazyFrame(.mentionBadge, frame: badgeFrame, transition: transition)
                         nextBadgeX -= mentionBadgeLayout.width + 6.0
                         
-                        if item.useCommunityViewLayout {
+                        if item.useCommunityViewLayout && strongSelf.isLazySubnodeAttached(.mentionBadge) {
                             strongSelf.mentionBadgeNode.layer.rasterizationScale = UIScreenScale
                             strongSelf.mentionBadgeNode.layer.shouldRasterize = true
                         }
                     }
                     
                     if let currentPinnedIconImage = currentPinnedIconImage {
+                        strongSelf.showLazySubnode(.pinnedIcon)
                         strongSelf.pinnedIconNode.image = currentPinnedIconImage
                         strongSelf.pinnedIconNode.isHidden = false
                         
@@ -5570,6 +5746,7 @@ public class ChatListItemNode: ItemListRevealOptionsItemNode {
                     }
                     
                     if let currentHiddenIconImage = currentHiddenIconImage {
+                        strongSelf.showLazySubnode(.hiddenPeerIcon)
                         strongSelf.hiddenPeerIconNode.image = currentHiddenIconImage
                         strongSelf.hiddenPeerIconNode.isHidden = false
                         let hiddenIconFrame = CGRect(origin: CGPoint(x: nextTitleIconOrigin + 1.0, y: floorToScreenPixels(titleFrame.maxY - lastLineRect.height * 0.5 - currentHiddenIconImage.size.height / 2.0)), size: currentHiddenIconImage.size)
@@ -5581,6 +5758,7 @@ public class ChatListItemNode: ItemListRevealOptionsItemNode {
                     }
 
                     if let currentMutedIconImage = currentMutedIconImage {
+                        strongSelf.showLazySubnode(.mutedIcon)
                         strongSelf.mutedIconNode.image = currentMutedIconImage
                         strongSelf.mutedIconNode.isHidden = false
                         let mutedIconOriginX = currentHiddenIconImage != nil ? nextTitleIconOrigin : nextTitleIconOrigin - 5.0
