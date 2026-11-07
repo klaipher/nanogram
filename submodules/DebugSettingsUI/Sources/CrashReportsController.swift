@@ -15,9 +15,7 @@ import OverlayStatusController
 import UndoUI
 import ContextUI
 import BuildConfig
-#if DEBUG
 import AppBundle
-#endif
 
 private let crashReportWorkQueue = DispatchQueue(label: "org.telegram.crash-report-ui", qos: .utility)
 
