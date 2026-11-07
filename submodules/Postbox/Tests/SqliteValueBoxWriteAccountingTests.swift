@@ -212,7 +212,8 @@ final class SqliteValueBoxWriteAccountingTests: XCTestCase {
                 XCTFail("could not open the database")
                 return
             }
-            for i in 0 ..< 1100 {
+            // Past the autocheckpoint threshold, whatever it is set to.
+            for i in 0 ..< Int(SqliteValueBox.walAutocheckpointFrames) + 100 {
                 valueBox.begin()
                 let key = ValueBoxKey(length: 8)
                 key.setInt64(0, value: 1)
@@ -221,7 +222,7 @@ final class SqliteValueBoxWriteAccountingTests: XCTestCase {
             }
             let bytes = DiskWriteAccounting.shared.bytesWritten(checkpointCategory)
             XCTAssertGreaterThan(bytes, 0, "the autocheckpoint ran")
-            XCTAssertLessThanOrEqual(bytes, 20 * 4096, "about 1000 frames of a few distinct pages")
+            XCTAssertLessThanOrEqual(bytes, 20 * 4096, "a full WAL of a few distinct pages")
             valueBox.internalClose()
         }
     }
