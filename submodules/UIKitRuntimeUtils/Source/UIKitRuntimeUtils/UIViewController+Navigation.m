@@ -513,6 +513,10 @@ static void registerEffectViewOverrides(void) {
     BOOL isBackdropViewModuleLevel = NO;
     NSString *backdropViewClassName = nil;
     if (@available(iOS 27.0, *)) {
+        if (!wantsLumaClamp) {
+            // Native switch on: iOS 27 needs the class for nothing else, so no lookup at all.
+            return;
+        }
         isBackdropViewModuleLevel = YES;
         backdropViewClassName = TGEncodeText(@"_TtC5UIKit17UISDFBackdropView", 0);
     } else {
