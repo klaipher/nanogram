@@ -1255,7 +1255,7 @@ enum DebugControllerEntry: ItemListNodeEntry {
                 }).start()
             })
         case let .callsAdvancedDucking(value):
-            return ItemListSwitchItem(presentationData: presentationData, systemStyle: .glass, title: "Advanced ducking (iOS 17)", text: "Other audio is lowered only while someone speaks, and only a little. Default: on. Applies to the next call.", value: value, maximumNumberOfLines: 0, sectionId: self.section, style: .blocks, updated: { value in
+            return ItemListSwitchItem(presentationData: presentationData, systemStyle: .glass, title: "Advanced ducking (iOS 17)", text: "Other audio is lowered only while someone speaks, and only a little. Default: off. Applies to the next call.", value: value, maximumNumberOfLines: 0, sectionId: self.section, style: .blocks, updated: { value in
                 let _ = updateExperimentalUISettingsInteractively(accountManager: arguments.sharedContext.accountManager, { settings in
                     var settings = settings
                     settings.callsAdvancedDucking = value

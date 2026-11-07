@@ -105,9 +105,9 @@ marked (check) were not re-verified against the code; correct them on the next c
 ### Call switch defaults (iOS)
 - What: livestream hardware decoding, native camera frames, system noise suppression, the thermal video ladder and group
   noise = RNNoise only are on by default and stay switchable in Debug Settings; each has a new storage key so earlier saved
-  values do not count. Advanced ducking is on by default too since 2026-11-07 (key `callsAdvancedDuckingDefaultOn`). The reference
-  engine, VoIP TCP and on-device translation stay off.
-- Why: owner decision, 2026-11-06 (measured wins, local only, nothing on the wire); ducking, owner decision 2026-11-07.
+  values do not count. Advanced ducking (other apps' audio may reach the peer; unchecked on a call), the reference engine, VoIP TCP
+  and on-device translation stay off.
+- Why: owner decision, 2026-11-06 (measured wins, local only, nothing on the wire).
 - Where: `submodules/TelegramUIPreferences/Sources/ExperimentalUISettings.swift`, `docs/subsystems/tgcalls/call-switches-and-review-fixes.md`.
 - Upstream: no (the switches are ours).
 - Sync: none.

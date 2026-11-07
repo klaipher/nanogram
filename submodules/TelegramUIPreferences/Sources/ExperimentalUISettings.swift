@@ -98,7 +98,7 @@ public struct ExperimentalUISettings: Codable, Equatable {
     /// WebRTC's own noise suppression and high-pass filter are dropped from the outgoing audio instead of
     /// running a second time. Kept whenever the system unit is not in use. Local only.
     public var callsSystemNoiseSuppression: Bool
-    /// Debug Settings ▸ "Calls: advanced ducking". On by default (owner decision, 2026-11-07). iOS 17+: the voice-processing unit lowers
+    /// Debug Settings ▸ "Calls: advanced ducking". Off by default (no device evidence yet). iOS 17+: the voice-processing unit lowers
     /// other audio only while someone speaks and by the smallest amount. Local audio-unit setting.
     public var callsAdvancedDucking: Bool
     /// Debug Settings ▸ "Streams & Calls" ▸ "Group noise suppression". 0 runs WebRTC's suppressor and
@@ -210,7 +210,7 @@ public struct ExperimentalUISettings: Codable, Equatable {
         callsLivestreamHardwareDecoding: Bool = true,
         callsNativeCapturePath: Bool = true,
         callsSystemNoiseSuppression: Bool = true,
-        callsAdvancedDucking: Bool = true,
+        callsAdvancedDucking: Bool = false,
         callsGroupNoiseMode: Int32 = 2,
         callsThermalVideoLadder: Bool = true,
         glassDebugDisabledGroups: Int32 = 0,
@@ -328,9 +328,7 @@ public struct ExperimentalUISettings: Codable, Equatable {
         self.callsSystemNoiseSuppression = try container.decodeIfPresent(Bool.self, forKey: "callsSystemNoiseSuppressionDefaultOn") ?? true
         // A new key: it defaulted to on at first, so every blob saved under "callsAdvancedDucking" holds `true`
         // whether or not the user touched the switch. That value is ignored; the switch is off until A/B-tested.
-        // On by default since 2026-11-07 (owner decision), under a new key again: blobs saved before hold `false` under
-        // "callsAdvancedDuckingOptIn" whether or not the user chose it.
-        self.callsAdvancedDucking = try container.decodeIfPresent(Bool.self, forKey: "callsAdvancedDuckingDefaultOn") ?? true
+        self.callsAdvancedDucking = try container.decodeIfPresent(Bool.self, forKey: "callsAdvancedDuckingOptIn") ?? false
         // The keys of the removed switches (low-latency encoder, narrowband processing, keep audio mode, background video drop)
         // are simply no longer read: those behaviours are always on.
         // Same for the group noise mode (it was 0, "both", unless chosen) and the thermal ladder.
@@ -396,7 +394,7 @@ public struct ExperimentalUISettings: Codable, Equatable {
         try container.encode(self.callsLivestreamHardwareDecoding, forKey: "callsLivestreamHardwareDecodingDefaultOn")
         try container.encode(self.callsNativeCapturePath, forKey: "callsNativeCapturePathDefaultOn")
         try container.encode(self.callsSystemNoiseSuppression, forKey: "callsSystemNoiseSuppressionDefaultOn")
-        try container.encode(self.callsAdvancedDucking, forKey: "callsAdvancedDuckingDefaultOn")
+        try container.encode(self.callsAdvancedDucking, forKey: "callsAdvancedDuckingOptIn")
         try container.encode(self.callsGroupNoiseMode, forKey: "callsGroupNoiseModeRNNoiseDefault")
         try container.encode(self.callsThermalVideoLadder, forKey: "callsThermalVideoLadderDefaultOn")
         try container.encode(self.glassDebugDisabledGroups, forKey: "glassDebugDisabledGroups")
