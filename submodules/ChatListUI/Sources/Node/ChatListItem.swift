@@ -6695,6 +6695,9 @@ extension ChatListItemNode {
             }
         }
         
+        self.badgeNode.resetForRowReuse()
+        self.mentionBadgeNode.resetForRowReuse()
+        
         self.contextContainer.targetNodeForActivationProgress = nil
         self.contextContainer.additionalActivationProgressLayer = nil
         

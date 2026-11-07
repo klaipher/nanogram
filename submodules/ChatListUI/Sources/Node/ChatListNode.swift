@@ -2806,7 +2806,9 @@ public final class ChatListNode: ListViewImpl {
             // Rows that scroll out of this list wait here, reset, for the next rows of the same list (Debug Settings,
             // off by default). The pool is checked again when a row is taken, so the switch can be turned off live.
             let pool = ListRowPool<ChatListItemNode>(capacity: 8, schedule: { block in
-                Queue.mainQueue().async(block)
+                // Not `Queue.mainQueue().async`: that runs the block inline on the main thread, and a node removed in a
+                // replay may be inserted again by a later operation of the same replay.
+                DispatchQueue.main.async(execute: block)
             }, prepare: { [weak self] node in
                 guard let self, ChatListRowExperiments.rowReuse, node.supernode == nil, !self.containsItemNode(node) else {
                     return false

@@ -68,6 +68,27 @@ final class ChatListBadgeNode: ASDisplayNode {
         self.containerNode.addSubnode(self.textNode)
     }
     
+    /// Puts the badge back into the state `init` left it in, for a row that is reused for another chat: without the
+    /// stored content the next apply cannot take its `content == currentContent` early return and so sets visibility,
+    /// text and frames afresh.
+    func resetForRowReuse() {
+        self.content = nil
+        self.text = nil
+        self.isHiddenInternal = false
+        self.isHidden = false
+        self.containerNode.layer.removeAllAnimations()
+        self.backgroundNode.layer.removeAllAnimations()
+        self.textNode.layer.removeAllAnimations()
+        self.containerNode.position = CGPoint()
+        self.containerNode.bounds = CGRect()
+        self.backgroundNode.image = nil
+        self.backgroundNode.position = CGPoint()
+        self.backgroundNode.bounds = CGRect()
+        self.textNode.alpha = 1.0
+        self.textNode.position = CGPoint()
+        self.textNode.bounds = CGRect()
+    }
+    
     func asyncLayout() -> (CGSize, CGFloat, UIFont, UIImage?, ChatListBadgeContent) -> (CGSize, (Bool, Bool) -> Void) {
         let textLayout = TextNode.asyncLayout(self.textNode)
         let measureTextLayout = TextNode.asyncLayout(self.measureTextNode)
