@@ -162,8 +162,8 @@ final class NavigationExpansionRendererTests: XCTestCase {
         XCTAssertEqual(mask.cornerRadius, 22.0, accuracy: 1e-6)
         XCTAssertEqual(renderer.labelHostCentersForTesting.first ?? CGPoint(), g.labels[0].sourceCenter)
         XCTAssertEqual(renderer.destinationLabelAlphasForTesting, [0.0, 0.0])
-        XCTAssertEqual(destination.buttons.map { $0.alpha }, [0.0, 0.0, 0.0, 0.0])
-        XCTAssertEqual(destination.list.alpha, 0.0)
+        XCTAssertEqual(destination.buttons.map { shownOpacity($0) }, [0.0, 0.0, 0.0, 0.0])
+        XCTAssertEqual(shownOpacity(destination.list), 0.0)
     }
 
     // A modal's root container is shifted by its sublayer transform (scaled about its centre, moved down), and a pop
@@ -296,8 +296,8 @@ final class NavigationExpansionRendererTests: XCTestCase {
     func test_platters_appearWithTheirButtons() {
         let (renderer, _, _, _, destination) = self.make()
         for (button, platter) in zip(destination.buttons, destination.platters) {
-            XCTAssertEqual(button.alpha, 0.0)
-            XCTAssertEqual(platter.alpha, button.alpha)
+            XCTAssertEqual(shownOpacity(button), 0.0)
+            XCTAssertEqual(shownOpacity(platter), shownOpacity(button))
             XCTAssertTrue(CATransform3DEqualToTransform(platter.layer.transform, button.layer.transform))
         }
         renderer.end(atTop: true)
@@ -409,7 +409,10 @@ final class NavigationExpansionRendererTests: XCTestCase {
     // square for two frames when the tint applied the drop view's own corner radius (0) to the glass.
     func test_models_areTheLastKeyframes_afterTheTint() {
         for (isOpening, screenCornerRadii) in [(true, CornerRadii(uniform: 62.0)), (false, CornerRadii(uniform: 62.0)), (true, duoCoverScreenCornerRadii), (false, duoCoverScreenCornerRadii)] {
-            let (renderer, container, top, _, _) = self.make(configure: { $0.screenCornerRadii = screenCornerRadii })
+            let (renderer, container, top, _, destination) = self.make(configure: { $0.screenCornerRadii = screenCornerRadii })
+            // The upper screen's own parts keep their model opacity: their opacity is held by the animation alone
+            // (holdOpacity), so that ending the expansion only removes it.
+            let heldLayers = (destination.buttons + destination.platters + [destination.background, destination.list]).map { $0.layer }
             let timing = NavigationKeyframeTiming(origin: .explicit(CACurrentMediaTime()), duration: 0.5, factor: 1.0)
             let times = timing.sampleTimes.map { t -> CGFloat in
                 let u = CGFloat(t / 0.5)
@@ -419,7 +422,7 @@ final class NavigationExpansionRendererTests: XCTestCase {
             renderer.applyTint(atAnimationTime: 0.5)
             var checked = 0
             for root in [container.layer, renderer.view.layer, renderer.underView.layer, top.layer] {
-                checked += assertModelsAreLastKeyframes(root)
+                checked += assertModelsAreLastKeyframes(root, heldLayers: heldLayers)
             }
             XCTAssertGreaterThan(checked, 10)
         }
@@ -1058,7 +1061,10 @@ final class NavigationExpansionRendererTests: XCTestCase {
 }
 
 /// Compares every keyframe animation in `layer`'s tree with the model value it lands on; returns how many it checked.
-private func assertModelsAreLastKeyframes(_ layer: CALayer, file: StaticString = #filePath, line: UInt = #line) -> Int {
+///
+/// A layer in `heldLayers` has its opacity held by the animation alone (the renderer never writes its model, so that the
+/// end only has to remove the animation): its opacity is not compared with the model.
+private func assertModelsAreLastKeyframes(_ layer: CALayer, heldLayers: [CALayer] = [], file: StaticString = #filePath, line: UInt = #line) -> Int {
     var checked = 0
     var layers: [CALayer] = [layer]
     if let mask = layer.mask {
@@ -1085,6 +1091,9 @@ private func assertModelsAreLastKeyframes(_ layer: CALayer, file: StaticString =
             case current.cornerRadiiKeyPath:
                 XCTAssertEqual(current.cornerRadii, CornerRadii(boxedValue: last as! NSValue), name, file: file, line: line)
             case "opacity":
+                if heldLayers.contains(where: { $0 === current }) {
+                    break
+                }
                 XCTAssertEqual(Double(current.opacity), (last as! NSNumber).doubleValue, accuracy: 0.001, name, file: file, line: line)
             case "transform":
                 XCTAssertTrue(CATransform3DEqualToTransform(current.transform, (last as! NSValue).caTransform3DValue), name, file: file, line: line)
@@ -1094,12 +1103,26 @@ private func assertModelsAreLastKeyframes(_ layer: CALayer, file: StaticString =
         }
     }
     for sublayer in layer.sublayers ?? [] {
-        checked += assertModelsAreLastKeyframes(sublayer, file: file, line: line)
+        checked += assertModelsAreLastKeyframes(sublayer, heldLayers: heldLayers, file: file, line: line)
     }
     if let mask = layer.mask {
         for sublayer in mask.sublayers ?? [] {
-            checked += assertModelsAreLastKeyframes(sublayer, file: file, line: line)
+            checked += assertModelsAreLastKeyframes(sublayer, heldLayers: heldLayers, file: file, line: line)
         }
     }
     return checked
+}
+
+/// The opacity a view shows while the renderer holds it: the renderer never writes a held view's model opacity (the
+/// animation under `navigationExpansion.opacity` carries it, and removing it at the end restores the rest value), so
+/// the view's own `alpha` still reads its rest value.
+private func shownOpacity(_ view: UIView) -> Float {
+    let layer = view.layer
+    if let basic = layer.animation(forKey: "navigationExpansion.opacity") as? CABasicAnimation, let from = basic.fromValue as? NSNumber {
+        return from.floatValue
+    }
+    if let keyframes = layer.animation(forKey: "navigationExpansion.opacity") as? CAKeyframeAnimation, let last = keyframes.values?.last as? NSNumber {
+        return last.floatValue
+    }
+    return layer.opacity
 }
