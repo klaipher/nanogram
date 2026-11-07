@@ -65,8 +65,24 @@ final class ItemCacheTable: Table {
         return key
     }
 
-    func put(id: ItemCacheEntryId, entry: CodableEntry, metaTable: ItemCacheMetaTable) {
-        self.valueBox.set(self.table, key: self.itemKey(id: id), value: ReadBuffer(data: entry.data))
+    /// Stores `entry`. Returns false, and writes nothing, when the stored bytes are already exactly these (a
+    /// cache refreshed with the same answer): the row stays as it is and the caller reports no change.
+    @discardableResult
+    func put(id: ItemCacheEntryId, entry: CodableEntry, metaTable: ItemCacheMetaTable) -> Bool {
+        let key = self.itemKey(id: id)
+        if let current = self.valueBox.get(self.table, key: key), current.length == entry.data.count {
+            let isIdentical = entry.data.withUnsafeBytes { bytes -> Bool in
+                guard let base = bytes.baseAddress else {
+                    return true
+                }
+                return memcmp(current.memory, base, current.length) == 0
+            }
+            if isIdentical {
+                return false
+            }
+        }
+        self.valueBox.set(self.table, key: key, value: ReadBuffer(data: entry.data))
+        return true
     }
 
     func retrieve(id: ItemCacheEntryId, metaTable: ItemCacheMetaTable) -> CodableEntry? {

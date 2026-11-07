@@ -49,6 +49,12 @@ final class PreferencesTable: Table {
     }
     
     func set(key: ValueBoxKey, value: PreferencesEntry?, operations: inout [PreferencesOperation]) {
+        // Storing what is already stored (a refresh that brought the same value) rewrote the row, made the
+        // transaction non-empty for every view and bumped the transaction state version. The comparison is with
+        // the latest value of this transaction, so A -> B -> A inside one transaction still stores A.
+        if self.get(key: key)?.data == value?.data {
+            return
+        }
         self.cachedEntries[key] = CachedEntry(entry: value)
         updatedEntryKeys.insert(key)
         operations.append(.update(key, value))

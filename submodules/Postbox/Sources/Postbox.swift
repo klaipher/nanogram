@@ -3312,7 +3312,9 @@ final class PostboxImpl {
     }
     
     fileprivate func putItemCacheEntry(id: ItemCacheEntryId, entry: CodableEntry) {
-        self.itemCacheTable.put(id: id, entry: entry, metaTable: self.itemCacheMetaTable)
+        if !self.itemCacheTable.put(id: id, entry: entry, metaTable: self.itemCacheMetaTable) {
+            return
+        }
         self.currentUpdatedCacheEntryKeys.insert(id)
     }
     
