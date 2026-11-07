@@ -807,7 +807,7 @@ public class ChatMessageAnimatedStickerItemNode: ChatMessageItemView {
     }
     
     private func applyLoopStickers(_ loopStickers: Bool) {
-        guard self.telegramFile != nil, self.didSetUpAnimationNode, let animationNode = self.animationNode as? AnimatedStickerNode else {
+        guard self.telegramFile != nil, self.didSetUpAnimationNode, let animationNode = self.animationNode as? DefaultAnimatedStickerNodeImpl else {
             return
         }
         var currentlyLooping = false
@@ -829,9 +829,7 @@ public class ChatMessageAnimatedStickerItemNode: ChatMessageItemView {
                 animationNode.playbackMode = .loop
                 return
             }
-            animationNode.playbackMode = .loop
-            animationNode.isPlaying = true
-            animationNode.play()
+            animationNode.playLoop()
         }
     }
     
