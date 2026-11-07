@@ -493,7 +493,12 @@ public final class GiftStoreContentComponent: Component {
             
             let bottomContentOffset = max(0.0, self.contentHeight - bounds.origin.y - bounds.height)
             if interactive, bottomContentOffset < 800.0 {
-                self.starGiftsContext?.loadMore()
+                // scrollViewDidScroll can arrive while the screen is laying out, and loadMore() pushes the state
+                // synchronously: updating inside the update trapped (ComponentHostView precondition). Upstream's
+                // sibling screens dispatch it the same way.
+                Queue.mainQueue().justDispatch { [weak self] in
+                    self?.starGiftsContext?.loadMore()
+                }
             }
         }
         

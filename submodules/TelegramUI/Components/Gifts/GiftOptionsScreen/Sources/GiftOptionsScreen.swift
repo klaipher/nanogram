@@ -874,7 +874,10 @@ final class GiftOptionsScreenComponent: Component {
                         
             let bottomContentOffset = max(0.0, self.scrollView.contentSize.height - self.scrollView.contentOffset.y - self.scrollView.frame.height)
             if interactive, bottomContentOffset < 320.0, case .transfer = self.starsFilter {
-                self.state?.starGiftsContext.loadMore()
+                // As in the gift store: never push the gifts state from inside a layout pass.
+                Queue.mainQueue().justDispatch { [weak self] in
+                    self?.state?.starGiftsContext.loadMore()
+                }
             }
         }
         
