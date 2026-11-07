@@ -88,6 +88,13 @@ private final class ControlledTransitionContext {
     }
 }
 
+/// How a stored property of `ListViewItemNode` is treated when a row is reused from a pool (`prepareForPoolReuse`).
+public enum ListViewItemNodePoolTreatment {
+    case constant
+    case reset
+    case rewrittenOnInsert
+}
+
 open class ListViewItemNode: ASDisplayNode, AccessibilityFocusableNode {
     public struct HeaderId: Hashable {
         public var space: AnyHashable
@@ -510,6 +517,57 @@ open class ListViewItemNode: ASDisplayNode, AccessibilityFocusableNode {
         self.controlledTransitions.removeAll()
     }
     
+    /// Puts the list-engine state of a row that has left its list back to the state of a node that was never inserted.
+    /// The row's subclass resets its own state; this is only the part owned by `ListViewItemNode`.
+    public final func prepareForPoolReuse() {
+        self.index = nil
+        self.appliedNeighbors = .none
+        self.removeAllAnimations()
+        self.pendingControlledTransitions.removeAll()
+        self.tempHeaderSpaceAffinities.removeAll()
+        self.headerSpaceAffinities.removeAll()
+        self.setAttachedHeaderNodes([])
+        self.setAccessoryItemNode(nil, leftInset: 0.0, rightInset: 0.0)
+        self.headerAccessoryItemNode = nil
+        self.isHighlightedInOverlay = false
+        self.stickyHeaderBandTrim = 0.0
+        self.transitionOffset = 0.0
+        self.apparentHeight = 0.0
+        self.apparentHeightTransition = nil
+        self.visibility = .none
+        self.hostOwnsFrame = false
+    }
+
+    /// One decision for every stored property of `ListViewItemNode` (a Mirror test compares the key set).
+    public static let poolResetLedger: [String: ListViewItemNodePoolTreatment] = [
+        "rotated": .constant,
+        "index": .reset,
+        "appliedNeighbors": .reset,
+        "isHighlightedInOverlay": .reset,
+        "accessoryItemNode": .reset,
+        "headerAccessoryItemNode": .reset,
+        "animations": .reset,
+        "pendingControlledTransitions": .reset,
+        "controlledTransitions": .reset,
+        "tempHeaderSpaceAffinities": .reset,
+        "headerSpaceAffinities": .reset,
+        "attachedHeaderNodes": .reset,
+        "wantsTrailingItemSpaceUpdates": .constant,
+        "scrollPositioningInsets": .constant,
+        "canBeUsedAsScrollToItemAnchor": .constant,
+        "visibility": .reset,
+        "hostOwnsFrame": .reset,
+        "insets": .rewrittenOnInsert,
+        "_contentSize": .rewrittenOnInsert,
+        "contentOffset": .rewrittenOnInsert,
+        "transitionOffset": .reset,
+        "apparentHeight": .reset,
+        "apparentHeightTransition": .reset,
+        "_bounds": .rewrittenOnInsert,
+        "_position": .rewrittenOnInsert,
+        "stickyHeaderBandTrim": .reset
+    ]
+
     func addPendingControlledTransition(transition: ControlledTransition) {
         self.pendingControlledTransitions.append(transition)
     }

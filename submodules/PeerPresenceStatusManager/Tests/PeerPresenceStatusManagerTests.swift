@@ -377,4 +377,17 @@ final class PeerPresenceStatusManagerTests: XCTestCase {
         XCTAssertEqual(updates, 1)
         managerRef = nil
     }
+
+    // A chat list row that is reused for another chat must not be refreshed for the previous chat's presence.
+    func testCancelStopsAPendingRefresh() {
+        let environment = FakeEnvironment(timestamp: 1_000_000.4)
+        let presence = EnginePeer.Presence(status: .present(until: 1_000_010), lastActivity: 0)
+        let row = self.makeRow(environment: environment, presence: presence, mode: .onlineState, layoutCost: 0.0)
+        XCTAssertEqual(environment.pendingTimerCount, 1)
+        row.manager.cancel()
+        XCTAssertEqual(environment.pendingTimerCount, 0)
+        environment.advance(to: 1_000_100.0)
+        XCTAssertEqual(row.updates(), 0)
+        withExtendedLifetime(row.manager) {}
+    }
 }

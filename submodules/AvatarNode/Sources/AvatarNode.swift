@@ -575,6 +575,13 @@ private func generateAvatarBubblePath() -> CGPath {
     return try! convertSvgPath("M60,30.274903 C60,46.843446 46.568544,60.274904 30,60.274904 C13.431458,60.274904 0,46.843446 0,30.274903 C0,23.634797 2.158635,17.499547 5.810547,12.529785 L6.036133,12.226074 C6.921364,10.896042 7.367402,8.104698 5.548828,5.316895 C3.606939,2.340088 1.186019,0.979668 2.399414,0.470215 C3.148032,0.156204 7.572027,0.000065 10.764648,1.790527 C12.148517,2.56662 13.2296,3.342422 14.09224,4.039734 C14.42622,4.309704 14.892063,4.349773 15.265962,4.138523 C19.618079,1.679604 24.644722,0.274902 30,0.274902 C46.568544,0.274902 60,13.70636 60,30.274903 Z ")
 }
 
+/// What `AvatarNode.prepareForReuse` does with a stored property.
+public enum AvatarNodeReuseTreatment {
+    case constant
+    case reset
+    case refuse
+}
+
 public final class AvatarNode: ASDisplayNode {
     public static func avatarBubbleMask(size: CGSize) -> UIImage! {
         return generateImage(size, rotatedContext: { size, context in
@@ -760,6 +767,58 @@ public final class AvatarNode: ASDisplayNode {
                 self.view.accessibilityIgnoresInvertColors = true
             }
         }
+        
+        /// Puts the node into the state a new `ContentNode` is in, for a node reused for another peer: stops the loads,
+        /// forgets the image, the letters and the parameters (so the next `setPeer` is not skipped as "unchanged") and
+        /// removes the temporary nodes that animations add.
+        func prepareForReuse() {
+            self.loadDisposable.set(nil)
+            self.imageReadyDisposable.set(nil)
+            self.imageReady.set(.single(false))
+            self.state = .empty
+            self.parameters = nil
+            self.params = nil
+            self.theme = nil
+            self.overrideImage = nil
+            self.currentImage = nil
+            self.unroundedImage = nil
+            self.badgeView = nil
+            self.contents = nil
+            self.imageNode.prepareForReuse()
+            self.imageNode.clipsToBounds = false
+            self.imageNode.cornerRadius = 0.0
+            if self.imageNodeMask != nil {
+                self.imageNodeMask = nil
+                if self.imageNode.isNodeLoaded {
+                    self.imageNode.view.mask = nil
+                }
+            }
+            if let subnodes = self.subnodes {
+                for subnode in subnodes where subnode !== self.imageNode {
+                    subnode.removeFromSupernode()
+                }
+            }
+            self.setNeedsDisplay()
+        }
+        
+        /// One decision for every stored property of `ContentNode` (a Mirror test compares the key set).
+        static let reuseLedger: [String: AvatarNodeReuseTreatment] = [
+            "font": .constant,
+            "parameters": .reset,
+            "theme": .reset,
+            "overrideImage": .reset,
+            "imageNode": .reset,
+            "imageNodeMask": .reset,
+            "editOverlayNode": .refuse,
+            "imageReadyDisposable": .reset,
+            "state": .reset,
+            "unroundedImage": .reset,
+            "currentImage": .reset,
+            "params": .reset,
+            "loadDisposable": .reset,
+            "badgeView": .reset,
+            "imageReady": .reset
+        ]
         
         public func updateSize(size: CGSize) {
             self.imageNode.frame = CGRect(origin: CGPoint(), size: size)
@@ -1550,6 +1609,38 @@ public final class AvatarNode: ASDisplayNode {
             }
         }
     }
+    
+    /// Puts the node into the state a new `AvatarNode` is in, for a node reused for another peer: no loads, no story
+    /// ring, no image, no letters. The node must not be on screen.
+    public func prepareForReuse() {
+        self.cancelLoading()
+        self.storyStats = nil
+        // The ring is removed here rather than through `updateStoryIndicator`, which returns early without parameters
+        // and fades the view out instead of removing it.
+        if let storyIndicator = self.storyIndicator {
+            self.storyIndicator = nil
+            storyIndicator.view?.removeFromSuperview()
+        }
+        self.storyPresentationParams = nil
+        if self.isNodeLoaded {
+            ComponentTransition.immediate.setScale(view: self.contentNode.view, scale: 1.0)
+        }
+        self.contentNode.prepareForReuse()
+    }
+    
+    /// False when the node carries something `prepareForReuse` does not undo (the edit overlay of a profile avatar).
+    public var canPrepareForReuse: Bool {
+        return self.contentNode.editOverlayNode == nil
+    }
+    
+    /// One decision for every stored property of `AvatarNode` (a Mirror test compares the key set).
+    public static let reuseLedger: [String: AvatarNodeReuseTreatment] = [
+        "contentNode": .constant,
+        "storyIndicator": .reset,
+        "storyPresentationParams": .reset,
+        "loadingStatuses": .reset,
+        "storyStats": .reset
+    ]
     
     public func cancelLoading() {
         for disposable in self.loadingStatuses.copyItems() {

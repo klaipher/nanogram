@@ -183,6 +183,14 @@ public final class PeerPresenceStatusManager {
         }
     }
 
+    /// Stops a pending refresh: `update` is not called until `reset` is called again. For a chat list row that is
+    /// reused for another chat.
+    public func cancel() {
+        self.timer?.dispose()
+        self.timer = nil
+        self.deadline = nil
+    }
+
     private func scheduleTimerIfNeeded() {
         guard self.timer == nil, let deadline = self.deadline, !self.environment.isApplicationInBackground else {
             return

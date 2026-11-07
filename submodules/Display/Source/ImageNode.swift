@@ -219,6 +219,28 @@ public class ImageNode: ASDisplayNode {
         wasSynchronous = false
     }
     
+    /// Forgets the image and the "first image" state, so the next signal's image appears without cross-fading from the
+    /// previous one. For a node that is reused for a different subject (a pooled chat list row).
+    public func prepareForReuse() {
+        self.disposable.set(nil)
+        self.contents = nil
+        self.first = true
+        self.didSetReady = false
+    }
+    
+    /// One decision for every stored property of `ImageNode` (a Mirror test compares the key set).
+    public static let reuseLedger: [String: String] = [
+        "disposable": "reset: cancelled",
+        "hasImage": "constant: latched true, the 'ready' signal stays true",
+        "first": "reset",
+        "enableEmpty": "constant: init parameter",
+        "enableAnimatedTransition": "constant: init parameter",
+        "animateFirstTransition": "constant",
+        "_contentReady": "constant",
+        "didSetReady": "reset",
+        "contentUpdated": "constant: owner's callback"
+    ]
+    
     public override func clearContents() {
         super.clearContents()
         

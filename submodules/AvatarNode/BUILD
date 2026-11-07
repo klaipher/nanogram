@@ -41,6 +41,9 @@ swift_library(
     ]),
     deps = [
         ":AvatarNode",
+        "//submodules/AsyncDisplayKit:AsyncDisplayKit",
+        "//submodules/Display:Display",
+        "//submodules/ComponentFlow",
         "//submodules/MozjpegBinding:MozjpegBinding",
     ],
 )

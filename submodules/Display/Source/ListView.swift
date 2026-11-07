@@ -3982,6 +3982,7 @@ open class ListViewImpl: ASDisplayNode, ListView, ASScrollViewDelegate, ASGestur
     
     private func removeItemNodeAtIndex(_ index: Int, animateFullTransition: Bool) {
         let node = self.itemNodes[index]
+        let wasLive = node.index != nil
         self.itemNodes.remove(at: index)
         
         if animateFullTransition {
@@ -4006,7 +4007,19 @@ open class ListViewImpl: ASDisplayNode, ListView, ASScrollViewDelegate, ASGestur
             node.setAccessoryItemNode(nil, leftInset: self.insets.left, rightInset: self.insets.right)
             node.headerAccessoryItemNode?.removeFromSupernode()
             node.headerAccessoryItemNode = nil
+            if ListViewItemNodeRemovalPolicy.shouldOffer(wasLive: wasLive, animated: false), let observer = self.itemNodeRemovedObserver {
+                observer(node)
+            }
         }
+    }
+
+    /// A row left the list through removeItemNodeAtIndex (non-animated branch) while it still had an index. It can still
+    /// come back in the same update (a moved row, a deleted row's disappearing placeholder, an animated scroll's temporary
+    /// nodes): a receiver must defer and re-check `supernode == nil && !containsItemNode(node)`. Nil by default.
+    public final var itemNodeRemovedObserver: ((ListViewItemNode) -> Void)?
+
+    public final func containsItemNode(_ node: ListViewItemNode) -> Bool {
+        return self.itemNodes.contains(where: { $0 === node })
     }
 
     private var nextHeaderSpaceAffinity: Int = 0
@@ -5610,4 +5623,12 @@ private func makeCustomSpringSublayerTransformAnimation(layer: CALayer, curve: C
     animation.isRemovedOnCompletion = true
     animation.isAdditive = true
     return animation
+}
+
+
+/// Which removals are offered to `ListViewImpl.itemNodeRemovedObserver`.
+public enum ListViewItemNodeRemovalPolicy {
+    public static func shouldOffer(wasLive: Bool, animated: Bool) -> Bool {
+        return wasLive && !animated
+    }
 }
