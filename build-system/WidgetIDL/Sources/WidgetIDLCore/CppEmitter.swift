@@ -636,7 +636,7 @@ struct CppEmitter {
                             static JSValue \(setter)(JSContext* ctx, JSValueConst thisVal, JSValueConst value) {
                                 return wr::glue(ctx, [&]() -> JSValue {
                                     auto& self = wr::thisAs<\(implType)>(ctx, thisVal, \(ns)::k\(x), \(cppString(a.name)));
-                                    \(self.enumName(a.type) != nil ? "auto converted = wr::convert<\(st)>(ctx, value, \(self.info(x, a.name, 0)));\n        if (!enumValid_\(self.enumName(a.type)!)(converted)) return JS_UNDEFINED;\n        self.set\(upperFirst(a.name))(ctx, std::move(converted));" : "self.set\(upperFirst(a.name))(ctx, wr::convert<\(st)>(ctx, value, \(self.info(x, a.name, 0))));")
+                                    \(self.enumName(a.type) != nil ? "auto converted = wr::convert<\(st)>(ctx, value, \(self.info(x, a.name, 0)));\n        if (!enumValid_\(self.enumName(a.type) ?? "")(converted)) return JS_UNDEFINED;\n        self.set\(upperFirst(a.name))(ctx, std::move(converted));" : "self.set\(upperFirst(a.name))(ctx, wr::convert<\(st)>(ctx, value, \(self.info(x, a.name, 0))));")
                                     return JS_UNDEFINED;
                                 });
                             }

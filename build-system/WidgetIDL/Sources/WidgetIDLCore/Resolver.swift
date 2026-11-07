@@ -185,7 +185,9 @@ public func resolve(_ files: [[Definition]], file: String = "<idl>") throws -> R
     var index: [String: Int] = [:]
     var resolvedInterfaces: [ResolvedInterface] = []
     for name in ordered {
-        let i = interfaces[name]!
+        guard let i = interfaces[name] else {
+            throw fail("unknown interface \(name)")
+        }
         let members = try i.members.map(resolveMember)
         var seen: [String: Bool] = [:] // name -> is an operation
         for member in members {
@@ -241,7 +243,9 @@ public func resolve(_ files: [[Definition]], file: String = "<idl>") throws -> R
     }
     var resolvedDictionaries: [Dictionary] = []
     for name in dictionaryOrder {
-        var d = dictionaries[name]!
+        guard var d = dictionaries[name] else {
+            throw fail("unknown dictionary \(name)")
+        }
         d.members = try flatten(name)
         d.inherits = nil
         resolvedDictionaries.append(d)

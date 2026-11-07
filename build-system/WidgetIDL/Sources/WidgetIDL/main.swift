@@ -10,7 +10,7 @@ while let i = arguments.firstIndex(of: "--include"), i + 1 < arguments.count {
 }
 func take(_ flag: String) -> String {
     guard let i = arguments.firstIndex(of: flag), i + 1 < arguments.count else {
-        FileHandle.standardError.write("WidgetIDL: missing \(flag)\n".data(using: .utf8)!)
+        FileHandle.standardError.write(Data("WidgetIDL: missing \(flag)\n".utf8))
         exit(2)
     }
     let value = arguments[i + 1]
@@ -30,6 +30,6 @@ do {
     try output.header.write(toFile: headerPath, atomically: true, encoding: .utf8)
     try output.source.write(toFile: sourcePath, atomically: true, encoding: .utf8)
 } catch {
-    FileHandle.standardError.write("WidgetIDL: \(error)\n".data(using: .utf8)!)
+    FileHandle.standardError.write(Data("WidgetIDL: \(error)\n".utf8))
     exit(1)
 }
