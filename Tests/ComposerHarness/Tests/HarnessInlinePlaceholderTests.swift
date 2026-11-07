@@ -5,6 +5,7 @@ import AccountContext
 import ChatPresentationInterfaceState
 import ComponentFlow
 import ChatInputAccessoryPanel
+import ChatTextInputPanelNode
 @testable import ComposerHarnessLib
 
 /// An inline bot's placeholder (`botInfo.inlinePlaceholder`, "Search..." once "@bot " is typed) is one line the panel draws
@@ -87,7 +88,7 @@ final class HarnessInlinePlaceholderTests: XCTestCase {
             HarnessEngine.settle(root)
         }
         host.panel.textInputAccessoryPanel = { _, _, _, _ in
-            return AnyComponentWithIdentity(id: "harness.accessoryPanel", component: AnyComponent(HarnessStubAccessoryPanel(height: 70.0)))
+            return [ChatTextInputAccessoryPanelCandidate(key: "harness.accessoryPanel", panel: AnyComponentWithIdentity(id: "harness.accessoryPanel", component: AnyComponent(HarnessStubAccessoryPanel(height: 70.0))))]
         }
         let username = "@asmico_widget_bot"
         host.setInputContent(ChatInputContent(blocks: [HarnessEdited.paragraph([HarnessEdited.run(username + " ")])]))
