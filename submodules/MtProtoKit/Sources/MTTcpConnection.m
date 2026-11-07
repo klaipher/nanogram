@@ -1,3 +1,4 @@
+#import "MTTcpResponseTimeoutPolicy.h"
 #import "MTTcpConnection.h"
 
 #import <MtProtoKit/MTLogging.h>
@@ -827,6 +828,11 @@ struct ctr_state {
     uint8_t _quickAckByte;
     
     MTTimer *_responseTimeoutTimer;
+    // Nanogram: the first-response timeout of a fresh direct connection (MTTcpResponseTimeoutPolicy).
+    CFAbsoluteTime _connectStartTime;
+    NSTimeInterval _connectDuration;
+    bool _receivedAnyData;
+    bool _responseTimeoutIsFirstResponse;
     
     bool _readingPartialData;
     NSData *_packetHead;
@@ -894,6 +900,7 @@ struct ctr_state {
     if (self != nil)
     {
         _internalId = [[MTInternalId(MTTcpConnection) alloc] init];
+        _connectDuration = -1.0;
         
         _getLogPrefix = [getLogPrefix copy];
         
@@ -1124,6 +1131,9 @@ struct ctr_state {
                     }
                     
                     __autoreleasing NSError *error = nil;
+                    strongSelf->_connectStartTime = CFAbsoluteTimeGetCurrent();
+                    strongSelf->_connectDuration = -1.0;
+                    strongSelf->_receivedAnyData = false;
                     if (![strongSelf->_socket connectToHost:connectionData.ip onPort:connectionData.port viaInterface:strongSelf->_interface withTimeout:12 error:&error] || error != nil) {
                         [strongSelf closeAndNotifyWithError:true];
                     } else if (strongSelf->_socksIp == nil) {
@@ -1413,7 +1423,10 @@ struct ctr_state {
                 
                 if (dataToSend.expectDataInResponse && _responseTimeoutTimer == nil) {
                     __weak MTTcpConnection *weakSelf = self;
-                    _responseTimeoutTimer = [[MTTimer alloc] initWithTimeout:MTMinTcpResponseTimeout + completeDataLength / (12.0 * 1024) repeat:false completion:^{
+                    // Only a direct connection: through a SOCKS or MTProto proxy the setup time measures the proxy.
+                    const bool awaitingFirstResponse = !_receivedAnyData && _socksIp == nil && _mtpIp == nil;
+                    _responseTimeoutIsFirstResponse = awaitingFirstResponse && _connectDuration >= 0.0;
+                    _responseTimeoutTimer = [[MTTimer alloc] initWithTimeout:MTTcpResponseTimeoutForSend(awaitingFirstResponse, _connectDuration, completeDataLength) repeat:false completion:^{
                         __strong MTTcpConnection *strongSelf = weakSelf;
                         [strongSelf responseTimeout];
                     } queue:[MTTcpConnection tcpQueue].nativeQueue];
@@ -1462,7 +1475,11 @@ struct ctr_state {
     _responseTimeoutTimer = nil;
     
     if (MTLogEnabled()) {
-        MTLog(@"[MTTcpConnection#%" PRIxPTR " response timeout]", (intptr_t)self);
+        if (_responseTimeoutIsFirstResponse) {
+            MTLog(@"[MTTcpConnection#%" PRIxPTR " response timeout (first response, connected in %.0f ms)]", (intptr_t)self, _connectDuration * 1000.0);
+        } else {
+            MTLog(@"[MTTcpConnection#%" PRIxPTR " response timeout]", (intptr_t)self);
+        }
     }
     [self closeAndNotifyWithError:true];
 }
@@ -1472,6 +1489,8 @@ struct ctr_state {
     if (_closed)
         return;
     
+    _receivedAnyData = true;
+    _responseTimeoutIsFirstResponse = false;
     [_responseTimeoutTimer resetTimeout:MTMinTcpResponseTimeout];
     
     if (_packetRestLength != 0)
@@ -1541,6 +1560,8 @@ struct ctr_state {
 {
     if (_closed)
         return;
+    
+    _receivedAnyData = true;
     
     id<MTTcpConnectionDelegate> delegate = _delegate;
     [delegate tcpConnectionDownloadActivityUpdated:self];
@@ -2083,6 +2104,9 @@ struct ctr_state {
              
 - (void)connectionInterfaceDidConnect
 {
+    if (_connectStartTime > 0.0) {
+        _connectDuration = MAX(0.0, CFAbsoluteTimeGetCurrent() - _connectStartTime);
+    }
     if (_socksIp != nil) {
         
     } else {

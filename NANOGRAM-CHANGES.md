@@ -55,6 +55,9 @@ marked (check) were not re-verified against the code; correct them on the next c
 - Upstream: partly. Sync: `tools/dev/tgcalls-port`, `submodules/TgVoipWebrtc/CLAUDE.md`. Both forks contain Telegram 13.2's engine changes (webrtc 590a8b23 merged; tgcalls c1de0882 ported, see the forks' NANOGRAM-CHANGES.md); the superproject BUILD carries Telegram's `content_negotiation_test` and `signaling_sctp_options_test`.
 
 ### Rust MTProto engine, network
+- First-response timeout (MtProtoKit, 2026-11-08): a fresh direct TCP connection waits max(3 s, 10 × its setup time) for its first
+  byte instead of upstream's fixed 12 s (`MTTcpResponseTimeoutPolicy`, `MTTcpConnection`). Shared with the Mac. Upstream: 12 s.
+  Sync: keep the `_connectStartTime` / `_connectDuration` / `_receivedAnyData` bookkeeping and the policy call when merging MTTcpConnection.
 - What: the MTProto transport runs on the Rust `mtproto-engine`; network telemetry, WEB proxy carrier, MultipartUpload
   and FetchV2 tuning, TCP keepalive. (check)
 - Where: `third-party/mtproto-engine`, `submodules/MTProtoRustEngine` (check), docs/subsystems/mtproto-rust-engine.md, docs/subsystems/network-telemetry-and-web-proxy.md.
