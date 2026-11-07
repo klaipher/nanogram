@@ -32,10 +32,11 @@ final class VideoStickerHardwareStream {
 // Runs once per process, on the first video sticker that is decoded, and is logged once.
 let videoStickerVP9HardwareProbe: VP9HardwareProbeResult = {
     let result = VP9HardwareDecoding.probe()
-    Logger.shared.log("VideoSticker", result.description)
+    // A process without the shared logger (a test harness) logs nothing: `Logger.shared` asserts there.
+    Logger.sharedIfInstalled?.log("VideoSticker", result.description)
     // How many stickers got a hardware decoder and how many met a full cap, at most once a minute.
     VP9HardwareDecoding.setStatsReporter({ text in
-        Logger.shared.log("VideoSticker", text)
+        Logger.sharedIfInstalled?.log("VideoSticker", text)
     })
     return result
 }()
