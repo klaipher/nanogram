@@ -21,9 +21,13 @@ final class WidgetHarnessWalletTests: XCTestCase {
     private var savedRequestAnswer: ((AccountContext, EngineMessage.Id, BotWidgetQueryType, Data) -> Signal<Data?, BotWidgetQueryError>)?
     private var savedPerform: ((MessageWidgetWallet.Request, @escaping (Result<MessageWidgetWallet.Outcome, WalletContext.WidgetWalletFailure>) -> Void) -> Void)?
     private var accountId: Int64?
+    private var savedWalletEnabled = false
 
     override func setUp() {
         super.setUp()
+        // Nanogram: the wallet is off for widgets until the local switch is on (default off), so these cases turn it on.
+        self.savedWalletEnabled = MessageWidgetLocalSettings.walletEnabled()
+        MessageWidgetLocalSettings.setWalletEnabled(true)
         self.savedRequestAnswer = MessageWidgetNetwork.requestAnswer
         self.savedPerform = MessageWidgetWallet.perform
     }
@@ -38,6 +42,7 @@ final class WidgetHarnessWalletTests: XCTestCase {
         if let accountId = self.accountId {
             MessageWidgetWalletAvailability.set(false, accountId: accountId)
         }
+        MessageWidgetLocalSettings.setWalletEnabled(self.savedWalletEnabled)
         super.tearDown()
     }
 
