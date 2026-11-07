@@ -237,6 +237,10 @@ ios_unit_test(
     linkopts = ["-framework", "MediaPlayer"],
     minimum_os_version = "15.0",
     runner = ":HarnessTestRunner",
+    # The suite (the 30 seeds of the composer fuzz test among it) runs for 15+ minutes: more than the default
+    # size's 5 and the "large" size's 15.
+    size = "large",
+    timeout = "eternal",
     test_host = ":ComposerHarness",
     deps = [":ComposerHarnessTestsLib"],
     visibility = ["//Tests:__subpackages__"],
