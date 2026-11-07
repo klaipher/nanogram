@@ -12,15 +12,35 @@ private let linkDisplay: Any.Type = ListViewImpl.self
 final class Application: UIApplication {
 }
 
+/// Scene-based: an app built with the iOS 27 SDK that does not adopt the scene lifecycle traps at launch.
 @objc(AppDelegate)
 final class AppDelegate: UIResponder, UIApplicationDelegate {
+    func application(_ application: UIApplication, didFinishLaunchingWithOptions launchOptions: [UIApplication.LaunchOptionsKey: Any]?) -> Bool {
+        return true
+    }
+
+    func application(
+        _ application: UIApplication,
+        configurationForConnecting connectingSceneSession: UISceneSession,
+        options: UIScene.ConnectionOptions
+    ) -> UISceneConfiguration {
+        let configuration = UISceneConfiguration(name: "Default", sessionRole: connectingSceneSession.role)
+        configuration.delegateClass = SceneDelegate.self
+        return configuration
+    }
+}
+
+@objc(SceneDelegate)
+final class SceneDelegate: NSObject, UIWindowSceneDelegate {
     var window: UIWindow?
 
-    func application(_ application: UIApplication, didFinishLaunchingWithOptions launchOptions: [UIApplication.LaunchOptionsKey: Any]?) -> Bool {
-        let window = UIWindow(frame: UIScreen.main.bounds)
+    func scene(_ scene: UIScene, willConnectTo session: UISceneSession, options connectionOptions: UIScene.ConnectionOptions) {
+        guard let windowScene = scene as? UIWindowScene else {
+            return
+        }
+        let window = UIWindow(windowScene: windowScene)
         window.rootViewController = UIViewController()
         window.makeKeyAndVisible()
         self.window = window
-        return true
     }
 }
