@@ -111,6 +111,18 @@ public final class SharedDisplayLinkDriver {
             }
         }
     }
+    /// Debug Settings ▸ "Display link: Telegram's rate" (off by default): the shared link asks for upstream's rates
+    /// (`upstreamSharedDisplayLinkFrameRateRange`), so a 120 Hz screen is not held at 60 Hz or 30 Hz while only slow
+    /// animations run. A scroll-smoothness A/B; turning it on or off also starts the pacing log.
+    public var followsUpstreamFrameRate: Bool = false {
+        didSet {
+            if self.followsUpstreamFrameRate != oldValue {
+                self.pacingLogEnabled = true
+                self.flushPacingStats(force: true)
+                self.update()
+            }
+        }
+    }
     /// Receives one frame-pacing line per 10 s of display-link frames (`DisplayLinkPacingStats`) once the cap has
     /// been set from Debug Settings this launch. Set by the app (to its logger).
     public var pacingLog: ((String) -> Void)?
@@ -202,7 +214,7 @@ public final class SharedDisplayLinkDriver {
             if #available(iOS 15.0, *) {
                 let maxFps = Float(UIScreen.main.maximumFramesPerSecond)
                 // Upstream's rule, with the iPad's 120 Hz override optional (B-1, `capsTabletFrameRate`).
-                let frameRateRange = sharedDisplayLinkFrameRateRange(requested: maxFramesPerSecond, displayMaxFramesPerSecond: maxFps, isTablet: isIpad, capsTabletRate: self.capsTabletFrameRate)
+                let frameRateRange = sharedDisplayLinkFrameRateRange(requested: maxFramesPerSecond, displayMaxFramesPerSecond: maxFps, isTablet: isIpad, capsTabletRate: self.capsTabletFrameRate, followsUpstreamRate: self.followsUpstreamFrameRate)
                 self.preferredFramesPerSecond = frameRateRange.preferred ?? maxFps
                 
                 if displayLink.preferredFrameRateRange != frameRateRange {
@@ -238,7 +250,7 @@ public final class SharedDisplayLinkDriver {
             @unknown default:
                 thermal = "unknown"
             }
-            pacingLog("SharedDisplayLink pacing: \(line) ipad=\(isIpad) thermal=\(thermal) lowPower=\(ProcessInfo.processInfo.isLowPowerModeEnabled)")
+            pacingLog("SharedDisplayLink pacing: \(line) ipad=\(isIpad) upstreamRate=\(self.followsUpstreamFrameRate) thermal=\(thermal) lowPower=\(ProcessInfo.processInfo.isLowPowerModeEnabled)")
             self.pacingStats = DisplayLinkPacingStats()
         } else if force {
             self.pacingStats = DisplayLinkPacingStats()

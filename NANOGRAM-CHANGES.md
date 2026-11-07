@@ -151,6 +151,19 @@ marked (check) were not re-verified against the code; correct them on the next c
   member) and `ChatControllerInteraction` are upstream files with small changes; the rest is new. Not shared with the Mac (CoreList is iOS only).
 - Sync: a property added upstream to `ChatControllerInteraction` that a row's layout reads needs the `rowPrepEpoch` `didSet`; a
   property added to `ChatMessageStickerItemNode` needs a ledger entry and a reset in `prepareForRowReuse` (the ledger test fails otherwise).
+### List-scroll A/B vs Telegram (iOS, Debug Settings, default off)
+- What: Debug Settings ▸ List scroll (A/B vs Telegram). "Display link: Telegram's rate" gives the shared display link upstream 13.2's
+  rule (`.default` for links of 60 fps or less, so up to 120 Hz on ProMotion) instead of ours (60 Hz, or 30 Hz when every link asks for
+  30 or less). "List rows: accessibility text at once" makes `ListViewDeferredAccessibility` run requests inside the row's layout, as
+  upstream. "List scroll: log frame rate" logs one line per ListView scroll gesture (`ListView scroll pacing: list=… avgHz=… late=…`).
+- Why: the owner finds chat-list scrolling short of 120 Hz (2026-11-07). A code comparison against 13.2 found the list engine
+  identical and these two of our changes as the only ones on the scroll path; the switches let a device run decide.
+- Where: `TabletEnergyRules.swift` (`followsUpstreamRate`, `upstreamSharedDisplayLinkFrameRateRange`),
+  `SharedDisplayLinkDriver.followsUpstreamFrameRate`, `ListViewDeferredAccessibility.forcesImmediate`, new
+  `ListViewScrollPacing.swift` (hooks in `ListView` drag begin/end, deceleration end and `scrollViewDidScroll`),
+  `ExperimentalUISettings`, `SharedAccountContext`, `DebugController.swift`. Not shared with the Mac.
+- Upstream: all off is our behaviour; all on is upstream's (except the log).
+
 ### Differences added or changed by the 13.2 merge (2026-11-06)
 - rlottie: upstream removed it and `LottieSettings`; iOS now renders only with tlottie. Our rlottie fork and `submodules/rlottie` wrappers stay for the macOS app and the Watch app (`docs/mac-core-paths.txt`). Upstream: no.
 - Glass: matches upstream 13.2 by default (owner decision, revised). The luma clamp is installed on iOS 26 and 27 with upstream's ranges (`GlassBackgroundView.adaptiveLumaRange`: dark 0-0.874; light 0.22-1.0 on iOS 26, 0.125-1.0 on iOS 27). The Debug Settings switch for Apple's fully native glass was removed on 2026-11-07 (owner: it saves no battery; the clamp is one number per luma callback), so the clamp is always installed. Where: `GlassFixedLook`, `UIViewController+Navigation.m`. Upstream: same look; the only difference is that `registerEffectViewOverrides` does one class lookup for the running OS instead of upstream's loop over both names (keeps the launch-time gain). Sync: keep the single lookup when merging upstream's loop.

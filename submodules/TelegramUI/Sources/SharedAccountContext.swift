@@ -586,6 +586,13 @@ public final class SharedAccountContextImpl: SharedAccountContext {
             Logger.shared.log("DisplayLink", line)
         }
         SharedDisplayLinkDriver.shared.capsTabletFrameRate = immediateExperimentalUISettingsValue.with({ $0.tabletDisplayLinkFrameRateCap })
+        // List scroll A/B vs Telegram (Debug Settings): upstream's display-link rate, immediate row accessibility, scroll pacing log.
+        ListViewScrollPacing.log = { line in
+            Logger.shared.log("ListView", line)
+        }
+        SharedDisplayLinkDriver.shared.followsUpstreamFrameRate = immediateExperimentalUISettingsValue.with({ $0.displayLinkUpstreamRate })
+        ListViewDeferredAccessibility.shared.forcesImmediate = immediateExperimentalUISettingsValue.with({ $0.listAccessibilityImmediate })
+        ListViewScrollPacing.isEnabled = immediateExperimentalUISettingsValue.with({ $0.listScrollPacingLog })
         MediaEditorVideoExport.forceLegacyStoryWriter = immediateExperimentalUISettingsValue.with({ $0.storyLegacyVideoWriter })
         MediaEditorVideoExport.forceLegacyChatWriter = immediateExperimentalUISettingsValue.with({ $0.chatLegacyVideoWriter })
         
@@ -601,6 +608,9 @@ public final class SharedAccountContextImpl: SharedAccountContext {
                 ChatScrollExperiments.setMask(settings.chatScrollExperiments)
                 ManagedAudioSessionImpl.respectsSystemRecordingInput = settings.respectSystemMicrophone
                 SharedDisplayLinkDriver.shared.capsTabletFrameRate = settings.tabletDisplayLinkFrameRateCap
+                SharedDisplayLinkDriver.shared.followsUpstreamFrameRate = settings.displayLinkUpstreamRate
+                ListViewDeferredAccessibility.shared.forcesImmediate = settings.listAccessibilityImmediate
+                ListViewScrollPacing.isEnabled = settings.listScrollPacingLog
                 MediaEditorVideoExport.forceLegacyStoryWriter = settings.storyLegacyVideoWriter
                 MediaEditorVideoExport.forceLegacyChatWriter = settings.chatLegacyVideoWriter
             }

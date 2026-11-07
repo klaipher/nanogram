@@ -109,4 +109,20 @@ private extension ExperimentalUISettings {
         settings.chatOpenDeferSetup = value
         return settings
     }
+
+    func testListScrollABSwitchesAreOffByDefaultAndTheChoiceIsKept() throws {
+        for settings in [ExperimentalUISettings.defaultSettings, try self.decode("{}"), try self.decode(#"{"glassDebugDisabledGroups": 2}"#)] {
+            XCTAssertFalse(settings.displayLinkUpstreamRate)
+            XCTAssertFalse(settings.listAccessibilityImmediate)
+            XCTAssertFalse(settings.listScrollPacingLog)
+        }
+        var settings = ExperimentalUISettings.defaultSettings
+        settings.displayLinkUpstreamRate = true
+        settings.listAccessibilityImmediate = true
+        settings.listScrollPacingLog = true
+        let saved = try self.roundTrip(settings)
+        XCTAssertTrue(saved.displayLinkUpstreamRate)
+        XCTAssertTrue(saved.listAccessibilityImmediate)
+        XCTAssertTrue(saved.listScrollPacingLog)
+    }
 }

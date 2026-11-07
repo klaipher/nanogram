@@ -281,6 +281,7 @@ private enum DebugControllerSection: Int32 {
     case emojiPanelOpen
     case chatOpen
     case chatScroll
+    case listScroll
     case translation
     case web
     case videoExperiments2
@@ -378,6 +379,10 @@ enum DebugControllerEntry: ItemListNodeEntry {
     case chatScrollHeader(PresentationTheme)
     case chatScrollPrepareLayoutAhead(Bool)
     case chatScrollReuseRowViews(Bool)
+    case listScrollHeader(PresentationTheme)
+    case displayLinkUpstreamRate(Bool)
+    case listAccessibilityImmediate(Bool)
+    case listScrollPacingLog(Bool)
     case enableNetworkFramework(Bool)
     case enableNetworkExperiments(Bool)
     case rustMTProtoEngine(Bool)
@@ -413,6 +418,8 @@ enum DebugControllerEntry: ItemListNodeEntry {
             return DebugControllerSection.chatOpen.rawValue
         case .chatScrollHeader, .chatScrollPrepareLayoutAhead, .chatScrollReuseRowViews:
             return DebugControllerSection.chatScroll.rawValue
+        case .listScrollHeader, .displayLinkUpstreamRate, .listAccessibilityImmediate, .listScrollPacingLog:
+            return DebugControllerSection.listScroll.rawValue
         case .springSendAnimation, .fakeWalletTransfers, .stickerRendererMode, .disableImageContentAnalysis, .disableLanguageRecognition, .localTranscription, .enableVoipTcp, .tabletDisplayLinkFrameRateCap, .chatMediaEditorLegacy, .mediaGridLegacy, .sharedMediaGridLegacy, .storyLegacyVideoWriter, .chatLegacyVideoWriter, .chatSideListLegacy, .messageWidgets, .messageWidgetWallet:
             return DebugControllerSection.experiments.rawValue
         case .enableNetworkFramework, .enableNetworkExperiments, .rustMTProtoEngine, .networkEngineInfo:
@@ -577,6 +584,15 @@ enum DebugControllerEntry: ItemListNodeEntry {
             return 135
         case .chatScrollReuseRowViews:
             return 136
+        case .listScrollHeader:
+            // Its own section, like the chat scroll experiments above.
+            return 137
+        case .displayLinkUpstreamRate:
+            return 138
+        case .listAccessibilityImmediate:
+            return 139
+        case .listScrollPacingLog:
+            return 140
         case .springSendAnimation:
             // ItemList asserts its entries are in strictly increasing order (`<`: section, then
             // `sortIndex`, which is the stableId here; ItemListControllerNode.swift), so an id must
@@ -678,6 +694,32 @@ enum DebugControllerEntry: ItemListNodeEntry {
             return chatScrollSwitch(presentationData: presentationData, arguments: arguments, sectionId: self.section, title: "Chat rows: prepare layout ahead", text: "Lays out the rows that are about to scroll into view on a background queue, so the scroll frame only applies them. A prepared row is used only when everything it depends on is unchanged; otherwise it is laid out as before. Default: off. Applies at once.", bit: ExperimentalUISettings.chatScrollPrepareLayoutAhead, value: value)
         case let .chatScrollReuseRowViews(value):
             return chatScrollSwitch(presentationData: presentationData, arguments: arguments, sectionId: self.section, title: "Chat rows: reuse row views", text: "Tears down the rows that scrolled out of the loaded range when the app is idle instead of inside the scroll frame, and reuses the views of sticker rows. Default: off. Applies to rows that leave the range from now on.", bit: ExperimentalUISettings.chatScrollReuseRowViews, value: value)
+        case .listScrollHeader:
+            return ItemListSectionHeaderItem(presentationData: presentationData, text: "LIST SCROLL (A/B VS TELEGRAM)", sectionId: self.section)
+        case let .displayLinkUpstreamRate(value):
+            return ItemListSwitchItem(presentationData: presentationData, systemStyle: .glass, title: "Display link: Telegram's rate", text: "Off (default): the app's animation timer asks for 60 or 30 Hz when only slow animations run, which saves battery. On: Telegram's rule, up to 120 Hz whenever anything animates. Compare scroll smoothness, mostly at the start of a scroll. Default: off. Applies at once.", value: value, maximumNumberOfLines: 0, sectionId: self.section, style: .blocks, updated: { value in
+                let _ = updateExperimentalUISettingsInteractively(accountManager: arguments.sharedContext.accountManager, { settings in
+                    var settings = settings
+                    settings.displayLinkUpstreamRate = value
+                    return settings
+                }).start()
+            })
+        case let .listAccessibilityImmediate(value):
+            return ItemListSwitchItem(presentationData: presentationData, systemStyle: .glass, title: "List rows: accessibility text at once", text: "Off (default): the VoiceOver text of chat list rows and messages is built after scrolling pauses. On: inside each row's layout, as Telegram does. Default: off. Applies at once.", value: value, maximumNumberOfLines: 0, sectionId: self.section, style: .blocks, updated: { value in
+                let _ = updateExperimentalUISettingsInteractively(accountManager: arguments.sharedContext.accountManager, { settings in
+                    var settings = settings
+                    settings.listAccessibilityImmediate = value
+                    return settings
+                }).start()
+            })
+        case let .listScrollPacingLog(value):
+            return ItemListSwitchItem(presentationData: presentationData, systemStyle: .glass, title: "List scroll: log frame rate", text: "Writes one log line per scroll of any list: frames, average Hz, late frames and the longest gap (\"ListView scroll pacing\"). Needs Log to File; send with Send Logs. Default: off.", value: value, maximumNumberOfLines: 0, sectionId: self.section, style: .blocks, updated: { value in
+                let _ = updateExperimentalUISettingsInteractively(accountManager: arguments.sharedContext.accountManager, { settings in
+                    var settings = settings
+                    settings.listScrollPacingLog = value
+                    return settings
+                }).start()
+            })
         case .sendLogs:
             return ItemListActionItem(presentationData: presentationData, systemStyle: .glass, title: "Send Logs", kind: .generic, alignment: .natural, sectionId: self.section, style: .blocks, action: {
                 arguments.openLogs()
@@ -1467,6 +1509,12 @@ func debugControllerEntries(environment: DebugControllerEntriesEnvironment, them
         entries.append(.chatScrollHeader(theme))
         entries.append(.chatScrollPrepareLayoutAhead(experimentalSettings.chatScrollExperiments & ExperimentalUISettings.chatScrollPrepareLayoutAhead != 0))
         entries.append(.chatScrollReuseRowViews(experimentalSettings.chatScrollExperiments & ExperimentalUISettings.chatScrollReuseRowViews != 0))
+
+        // List scroll A/B vs Telegram: our two scroll-path differences, each switchable to upstream, and a pacing log.
+        entries.append(.listScrollHeader(theme))
+        entries.append(.displayLinkUpstreamRate(experimentalSettings.displayLinkUpstreamRate))
+        entries.append(.listAccessibilityImmediate(experimentalSettings.listAccessibilityImmediate))
+        entries.append(.listScrollPacingLog(experimentalSettings.listScrollPacingLog))
     }
 
     if isMainApp {

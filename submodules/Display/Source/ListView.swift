@@ -480,6 +480,8 @@ open class ListViewImpl: ASDisplayNode, ListView, ASScrollViewDelegate, ASGestur
     private let waitingForNodesDisposable = MetaDisposable()
     
     private var auxiliaryDisplayLink: CADisplayLink?
+    /// Debug Settings ▸ "List scroll: log frame rate": created at the first gesture with the switch on.
+    private var scrollPacing: ListViewScrollPacing?
     private var auxiliaryDisplayLinkHandle: SharedDisplayLinkDriver.Link?
     private var debugView: UIView?
     private var isAuxiliaryDisplayLinkEnabled: Bool = false {
@@ -947,6 +949,13 @@ open class ListViewImpl: ASDisplayNode, ListView, ASScrollViewDelegate, ASGestur
 
         self.scroller.forceDecelerating = false
         self.isDragging = true
+
+        if ListViewScrollPacing.isEnabled {
+            if self.scrollPacing == nil {
+                self.scrollPacing = ListViewScrollPacing(listName: String(describing: type(of: self)))
+            }
+            self.scrollPacing?.beginGesture(timestamp: CACurrentMediaTime())
+        }
         
         self.beganInteractiveDragging(self.touchesPosition)
         
@@ -993,6 +1002,7 @@ open class ListViewImpl: ASDisplayNode, ListView, ASScrollViewDelegate, ASGestur
         self.ignoreScrollingEvents = false
         self.endedInteractiveDragging(self.touchesPosition)
         if !decelerate {
+            self.scrollPacing?.endGesture(timestamp: CACurrentMediaTime())
             self.didEndScrolling?(false)
         }
     }
@@ -1005,6 +1015,7 @@ open class ListViewImpl: ASDisplayNode, ListView, ASScrollViewDelegate, ASGestur
         self.resetScrollIndicatorFlashTimer(start: true)
         self.isAuxiliaryDisplayLinkEnabled = false
         if !scrollView.isTracking {
+            self.scrollPacing?.endGesture(timestamp: CACurrentMediaTime())
             self.didEndScrolling?(true)
         }
     }
@@ -1059,6 +1070,9 @@ open class ListViewImpl: ASDisplayNode, ListView, ASScrollViewDelegate, ASGestur
     public var defaultToSynchronousTransactionWhileScrolling: Bool = false
     
     public func scrollViewDidScroll(_ scrollView: UIScrollView) {
+        if let scrollPacing = self.scrollPacing {
+            scrollPacing.didScroll(timestamp: CACurrentMediaTime(), maximumFramesPerSecond: scrollView.window?.screen.maximumFramesPerSecond ?? 60)
+        }
         self.updateScrollViewDidScroll(scrollView, synchronous: self.defaultToSynchronousTransactionWhileScrolling)
         scrollView.fixScrollDisplayLink()
     }

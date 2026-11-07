@@ -77,4 +77,16 @@ final class ListViewDeferredAccessibilityTests: XCTestCase {
         print("ListViewDeferredAccessibilityTests: \(String(format: "%.2f", perRequestUs)) us per request")
         XCTAssertLessThan(perRequestUs, 50.0)
     }
+
+    /// "List rows: accessibility text at once" (scroll A/B): requests run inside the call, as upstream builds them in layout.
+    func test_forcesImmediateRunsAtOnce() {
+        let deferred = ListViewDeferredAccessibility(quietInterval: 10.0, batchSize: 8, isImmediate: { false })
+        deferred.forcesImmediate = true
+        var runs = 0
+        deferred.request(owner: Owner()) { runs += 1 }
+        XCTAssertEqual(runs, 1)
+        deferred.forcesImmediate = false
+        deferred.request(owner: Owner()) { runs += 1 }
+        XCTAssertEqual(runs, 1, "off again: deferred")
+    }
 }
