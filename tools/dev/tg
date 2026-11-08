@@ -11,6 +11,9 @@ ROOT="$(cd "$(dirname "${BASH_SOURCE[0]}")/../.." && pwd)"
 APP_NAME="Nanogram"
 # Simulator builds (tree artifact): rules_apple puts a bundle whose name differs from the target under <target>_archive-root.
 SIM_APP="$ROOT/bazel-bin/Telegram/Telegram_archive-root/Payload/${APP_NAME}.app"
+# The app's dSYM follows the Bazel target, not the bundle: Telegram.app.dSYM with DWARF/Telegram (its UUID is the
+# Nanogram executable's).
+APP_DSYM="Telegram.app.dSYM"
 # Relative paths on the command line (tg testflight --notes) are the caller's, not the repository's.
 CALLER_PWD="$PWD"
 cd "$ROOT"
@@ -662,7 +665,7 @@ archive_dsyms() {
   local candidates=() dsyms=()
   for dsym in "$outdir"/*.dSYM; do [ -d "$dsym" ] && candidates+=("$dsym"); done
   [ ${#candidates[@]} -gt 0 ] || die "no dSYMs next to $ipa"
-  [ -d "$outdir/${APP_NAME}.app.dSYM" ] || die "no ${APP_NAME}.app.dSYM next to $ipa"
+  [ -d "$outdir/${APP_DSYM}" ] || die "no ${APP_DSYM} next to $ipa"
 
   # In a subshell, so its EXIT trap removes the extracted files whatever happens.
   binaries="$(
@@ -678,9 +681,9 @@ archive_dsyms() {
     ""|.*|*[!0-9.]*) die "no usable CFBundleVersion in $ipa: '$version'" ;;
   esac
   app_uuids="$(echo "$binaries" | awk -v app="Payload/${APP_NAME}.app/${APP_NAME}" '$1 == app { print $2 }' | sort | xargs)"
-  dsym_uuids="$(dwarfdump --uuid "$outdir/${APP_NAME}.app.dSYM" | awk '{ print $2 }' | sort | xargs)"
+  dsym_uuids="$(dwarfdump --uuid "$outdir/${APP_DSYM}" | awk '{ print $2 }' | sort | xargs)"
   [ -n "$app_uuids" ] && [ "$app_uuids" = "$dsym_uuids" ] \
-    || die "${APP_NAME}.app.dSYM ($dsym_uuids) does not belong to the app in $ipa ($app_uuids)"
+    || die "${APP_DSYM} ($dsym_uuids) does not belong to the app in $ipa ($app_uuids)"
 
   for dsym in "${candidates[@]}"; do
     matched=0
