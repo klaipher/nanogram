@@ -6448,7 +6448,10 @@ public class ChatTextInputPanelNode: ChatInputPanelNode, ASEditableTextNodeDeleg
         
         if !self.switching {
             self.switching = true
-            self.richTextInputNode?.makeInputFirstResponder()
+            // Debug Settings "Frame hitches": the system raises the keyboard inside this call, before any keyboard notification.
+            FrameHitchMonitor.shared.measure("keyboardFocusTap") {
+                self.richTextInputNode?.makeInputFirstResponder()
+            }
             
             self.switchToTextInputIfNeeded?()
             self.switching = false

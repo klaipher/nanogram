@@ -89,6 +89,11 @@ public final class FrameHitchMonitor {
             if !isEnabled {
                 FrameHitchMonitor.shared.endAll()
             }
+            // The sampler runs for as long as the switch is on, so a stall that begins before a window opens (the tap
+            // that raises the keyboard) still has its samples.
+            if isEnabled != oldValue {
+                FrameHitchMonitor.sampler?(isEnabled)
+            }
         }
     }
     public static var log: ((String) -> Void)?
@@ -152,6 +157,29 @@ public final class FrameHitchMonitor {
         self.stopIfIdle()
     }
 
+    /// Times synchronous work that runs inside one frame (a display link cannot see a stall that starts before its
+    /// window opens). Logs one line, and the main-thread stack, when it took at least `FrameHitchStats.stackThreshold`.
+    @discardableResult
+    public func measure<T>(_ name: String, _ body: () -> T) -> T {
+        guard FrameHitchMonitor.isEnabled else {
+            return body()
+        }
+        let start = CACurrentMediaTime()
+        let result = body()
+        let end = CACurrentMediaTime()
+        if end - start >= FrameHitchStats.stackThreshold {
+            var line = String(format: "Frame hitches: window=%@ syncMs=%.1f", name, (end - start) * 1000.0)
+            if let context = FrameHitchMonitor.context?() {
+                line += " ab=" + context
+            }
+            FrameHitchMonitor.log?(line)
+            if let capture = FrameHitchMonitor.capture?(start, end), let report = FrameHitchMonitor.report {
+                FrameHitchMonitor.log?(String(format: "Frame hitch stack: window=%@ gapMs=%.1f atSeconds=0.00", name, (end - start) * 1000.0) + "\n" + report(capture))
+            }
+        }
+        return result
+    }
+
     private func endAll() {
         let sessions = self.sessions.values
         self.sessions.removeAll()
@@ -175,7 +203,6 @@ public final class FrameHitchMonitor {
         link.add(to: .main, forMode: .common)
         self.link = link
         self.lastExpectedDuration = nil
-        FrameHitchMonitor.sampler?(true)
     }
 
     private func stopIfIdle() {
@@ -184,7 +211,6 @@ public final class FrameHitchMonitor {
         }
         link.invalidate()
         self.link = nil
-        FrameHitchMonitor.sampler?(false)
     }
 
     private func tick(_ link: CADisplayLink) {

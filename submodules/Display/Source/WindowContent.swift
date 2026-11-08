@@ -682,8 +682,6 @@ public class Window1 {
                     transitionCurve = .easeInOut
                 }
                 
-                // Debug Settings "Frame hitches": the keyboard animation plus the layout it triggers, from this notification on.
-                FrameHitchMonitor.shared.observe(keyboardHeight.isLessThanOrEqualTo(0.0) ? "keyboardHide" : "keyboardShow", duration: max(duration, 0.25) + 0.15)
                 strongSelf.updateLayout { $0.update(inputHeight: keyboardHeight.isLessThanOrEqualTo(0.0) ? nil : keyboardHeight, transition: .animated(duration: duration, curve: transitionCurve), overrideTransition: false) }
             }
         })
@@ -842,6 +840,8 @@ public class Window1 {
                     }
                 }
                 
+                // Debug Settings "Frame hitches": the keyboard animation plus the layout it triggers, from this notification on.
+                FrameHitchMonitor.shared.observe(keyboardHeight.isLessThanOrEqualTo(0.0) ? "keyboardHide" : "keyboardShow", duration: max(duration, 0.25) + 0.15)
                 strongSelf.updateLayout { $0.update(inputHeight: keyboardHeight.isLessThanOrEqualTo(0.0) ? nil : keyboardHeight, transition: transition, overrideTransition: false) }
             }
         })

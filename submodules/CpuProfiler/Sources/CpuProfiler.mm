@@ -55,7 +55,7 @@ inline uintptr_t strippedPointer(uintptr_t value) {
 
 /// Reads one thread's stack. The caller must have suspended `thread`, and must resume it
 /// before doing anything that allocates.
-int walkStack(thread_t thread, uintptr_t stackLow, uintptr_t stackHigh, uintptr_t *frames) {
+int walkStack(thread_t thread, uintptr_t stackLow, uintptr_t stackHigh, uintptr_t *frames, int maxFrames = kMaxFrames) {
     arm_thread_state64_t state;
     mach_msg_type_number_t stateCount = ARM_THREAD_STATE64_COUNT;
     if (thread_get_state(thread, ARM_THREAD_STATE64, (thread_state_t)&state, &stateCount) != KERN_SUCCESS) {
@@ -75,7 +75,7 @@ int walkStack(thread_t thread, uintptr_t stackLow, uintptr_t stackHigh, uintptr_
         frames[count++] = lr;
     }
 
-    while (count < kMaxFrames) {
+    while (count < maxFrames) {
         if (framePointer < stackLow || framePointer + 2 * sizeof(uintptr_t) > stackHigh) {
             break;
         }
@@ -141,8 +141,8 @@ NSString * _Nullable uuidStringForImageHeader(const struct mach_header_64 *heade
     return nil;
 }
 
-void appendTree(NSMutableString *output, const TreeNode &node, int depth, int threshold, std::unordered_set<uintptr_t> &imageBases) {
-    if (depth > 40) {
+void appendTree(NSMutableString *output, const TreeNode &node, int depth, int threshold, std::unordered_set<uintptr_t> &imageBases, int maxDepth = 40) {
+    if (depth > maxDepth) {
         return;
     }
 
@@ -163,7 +163,7 @@ void appendTree(NSMutableString *output, const TreeNode &node, int depth, int th
          child.second->count,
          depth * 2, "",
          describeAddress(child.first, imageBases)];
-        appendTree(output, *child.second, depth + 1, threshold, imageBases);
+        appendTree(output, *child.second, depth + 1, threshold, imageBases, maxDepth);
     }
 }
 
@@ -363,10 +363,13 @@ std::atomic<bool> profilerIsRunning{false};
 
 // MainThreadSampler: one writer (the sampler thread), readers on the main thread. A reader only copies
 // samples well behind the write index, which the writer will not reach again for seconds.
+// UIKit's event and keyboard paths nest past 48 frames; a cut stack loses its root and splits the merged tree.
+constexpr int kMainMaxFrames = 128;
+
 struct MainSample {
     uint64_t time = 0;
     int count = 0;
-    uintptr_t frames[kMaxFrames];
+    uintptr_t frames[kMainMaxFrames];
 };
 
 constexpr uint64_t kRingSize = 4096;
@@ -390,7 +393,7 @@ void runMainSampler(thread_t mainThread, uintptr_t stackLow, uintptr_t stackHigh
         const uint64_t index = mainRingWriteIndex.load(std::memory_order_relaxed);
         MainSample &sample = mainRing[index % kRingSize];
         if (thread_suspend(mainThread) == KERN_SUCCESS) {
-            sample.count = walkStack(mainThread, stackLow, stackHigh, sample.frames);
+            sample.count = walkStack(mainThread, stackLow, stackHigh, sample.frames, kMainMaxFrames);
             sample.time = mach_absolute_time();
             thread_resume(mainThread);
             if (sample.count > 0) {
@@ -473,7 +476,7 @@ void runMainSampler(thread_t mainThread, uintptr_t stackLow, uintptr_t stackHigh
     TreeNode root;
     for (size_t i = 0; i < sampleCount; i++) {
         const MainSample &sample = samples[i];
-        const int frameCount = std::min(sample.count, kMaxFrames);
+        const int frameCount = std::min(sample.count, kMainMaxFrames);
         if (frameCount <= 0) {
             continue;
         }
@@ -488,7 +491,7 @@ void runMainSampler(thread_t mainThread, uintptr_t stackLow, uintptr_t stackHigh
     std::unordered_set<uintptr_t> imageBases;
     NSMutableString *output = [[NSMutableString alloc] init];
     [output appendFormat:@"Main thread: %d samples\n", root.count];
-    appendTree(output, root, 0, 1, imageBases);
+    appendTree(output, root, 0, 1, imageBases, kMainMaxFrames);
     [output appendString:@"Binary Images:\n"];
     const uint32_t imageCount = _dyld_image_count();
     for (uint32_t i = 0; i < imageCount; i++) {

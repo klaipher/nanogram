@@ -82,6 +82,36 @@ final class FrameHitchMonitorTests: XCTestCase {
         XCTAssertEqual(stats.hitches, 0)
     }
 
+    /// A stall inside one call (the tap that raises the keyboard) is timed directly and logged with the sampler's stack.
+    func test_measureLogsASlowCallWithItsStack() {
+        var lines: [String] = []
+        var samplerStates: [Bool] = []
+        FrameHitchMonitor.log = { lines.append($0) }
+        FrameHitchMonitor.sampler = { samplerStates.append($0) }
+        FrameHitchMonitor.capture = { _, _ in return "capture" as NSString }
+        FrameHitchMonitor.report = { _ in return "tree" }
+        defer {
+            FrameHitchMonitor.isEnabled = false
+            FrameHitchMonitor.log = nil
+            FrameHitchMonitor.sampler = nil
+            FrameHitchMonitor.capture = nil
+            FrameHitchMonitor.report = nil
+        }
+        FrameHitchMonitor.isEnabled = true
+        XCTAssertEqual(samplerStates, [true], "the sampler runs while the switch is on")
+        let fast = FrameHitchMonitor.shared.measure("keyboardFocusTap") { 1 }
+        XCTAssertEqual(fast, 1)
+        XCTAssertTrue(lines.isEmpty, "a fast call logs nothing")
+        FrameHitchMonitor.shared.measure("keyboardFocusTap") {
+            Thread.sleep(forTimeInterval: 0.04)
+        }
+        XCTAssertEqual(lines.count, 2, "\(lines)")
+        XCTAssertTrue(lines.first?.hasPrefix("Frame hitches: window=keyboardFocusTap syncMs=") == true, lines.first ?? "")
+        XCTAssertTrue(lines.last?.hasSuffix("\ntree") == true, lines.last ?? "")
+        FrameHitchMonitor.isEnabled = false
+        XCTAssertEqual(samplerStates, [true, false])
+    }
+
     func test_summaryLine() {
         var stats = FrameHitchStats(startTime: 10.0)
         var t = 10.0
