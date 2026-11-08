@@ -624,7 +624,6 @@ public final class SharedAccountContextImpl: SharedAccountContext {
             return describeKeyboardHosting()
         }
         FrameHitchMonitor.isEnabled = immediateExperimentalUISettingsValue.with({ $0.frameHitchLog })
-        KeyboardWindowAccess.isDisabled = immediateExperimentalUISettingsValue.with({ $0.keyboardWindowAccessOff })
         SharedDisplayLinkDriver.shared.followsUpstreamFrameRate = immediateExperimentalUISettingsValue.with({ $0.displayLinkUpstreamRate })
         ListViewDeferredAccessibility.shared.forcesImmediate = immediateExperimentalUISettingsValue.with({ $0.listAccessibilityImmediate })
         ListViewScrollPacing.isEnabled = immediateExperimentalUISettingsValue.with({ $0.listScrollPacingLog })
@@ -649,7 +648,6 @@ public final class SharedAccountContextImpl: SharedAccountContext {
                 ListViewDeferredAccessibility.shared.forcesImmediate = settings.listAccessibilityImmediate
                 ListViewScrollPacing.isEnabled = settings.listScrollPacingLog
                 FrameHitchMonitor.isEnabled = settings.frameHitchLog
-                KeyboardWindowAccess.isDisabled = settings.keyboardWindowAccessOff
                 ChatListRowExperiments.lazyRareSubnodes = settings.chatListLazyRareSubnodes
                 ChatListRowExperiments.rowReuse = settings.chatListRowReuse
                 MediaEditorVideoExport.forceLegacyStoryWriter = settings.storyLegacyVideoWriter

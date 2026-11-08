@@ -387,7 +387,6 @@ enum DebugControllerEntry: ItemListNodeEntry {
     case chatListRowReuse(Bool)
     case frameHitchLog(Bool)
     case keyboardProbe
-    case keyboardWindowAccessOff(Bool)
     case enableNetworkFramework(Bool)
     case enableNetworkExperiments(Bool)
     case rustMTProtoEngine(Bool)
@@ -423,7 +422,7 @@ enum DebugControllerEntry: ItemListNodeEntry {
             return DebugControllerSection.chatOpen.rawValue
         case .chatScrollHeader, .chatScrollPrepareLayoutAhead, .chatScrollReuseRowViews:
             return DebugControllerSection.chatScroll.rawValue
-        case .listScrollHeader, .displayLinkUpstreamRate, .listAccessibilityImmediate, .listScrollPacingLog, .chatListLazyRareSubnodes, .chatListRowReuse, .frameHitchLog, .keyboardProbe, .keyboardWindowAccessOff:
+        case .listScrollHeader, .displayLinkUpstreamRate, .listAccessibilityImmediate, .listScrollPacingLog, .chatListLazyRareSubnodes, .chatListRowReuse, .frameHitchLog, .keyboardProbe:
             return DebugControllerSection.listScroll.rawValue
         case .springSendAnimation, .fakeWalletTransfers, .stickerRendererMode, .disableImageContentAnalysis, .disableLanguageRecognition, .localTranscription, .enableVoipTcp, .tabletDisplayLinkFrameRateCap, .chatMediaEditorLegacy, .mediaGridLegacy, .sharedMediaGridLegacy, .storyLegacyVideoWriter, .chatLegacyVideoWriter, .chatSideListLegacy, .messageWidgets, .messageWidgetWallet:
             return DebugControllerSection.experiments.rawValue
@@ -610,9 +609,6 @@ enum DebugControllerEntry: ItemListNodeEntry {
         case .keyboardProbe:
             // Appended right after `frameHitchLog`; see the ordering note at `springSendAnimation`.
             return 144
-        case .keyboardWindowAccessOff:
-            // Appended right after `keyboardProbe`; see the ordering note at `springSendAnimation`.
-            return 145
         case .springSendAnimation:
             // ItemList asserts its entries are in strictly increasing order (`<`: section, then
             // `sortIndex`, which is the stableId here; ItemListControllerNode.swift), so an id must
@@ -770,14 +766,6 @@ enum DebugControllerEntry: ItemListNodeEntry {
                 let controller = KeyboardProbeViewController()
                 controller.modalPresentationStyle = .pageSheet
                 arguments.getRootController()?.present(controller, animated: true)
-            })
-        case let .keyboardWindowAccessOff(value):
-            return ItemListSwitchItem(presentationData: presentationData, systemStyle: .glass, title: "Keyboard: leave the keyboard window alone (A/B)", text: "Off (default, as Telegram): the app reads the system keyboard's window to move it during a swipe-down dismissal and to place overlays above it. On: it never does, to test whether that keeps the keyboard drawn in our process (Frame hitches logs kb=… per keyboard animation). With it on, the keyboard does not follow the finger when you swipe it down. Restart the app after changing it.", value: value, maximumNumberOfLines: 0, sectionId: self.section, style: .blocks, updated: { value in
-                let _ = updateExperimentalUISettingsInteractively(accountManager: arguments.sharedContext.accountManager, { settings in
-                    var settings = settings
-                    settings.keyboardWindowAccessOff = value
-                    return settings
-                }).start()
             })
         case .sendLogs:
             return ItemListActionItem(presentationData: presentationData, systemStyle: .glass, title: "Send Logs", kind: .generic, alignment: .natural, sectionId: self.section, style: .blocks, action: {
@@ -1579,7 +1567,6 @@ func debugControllerEntries(environment: DebugControllerEntriesEnvironment, them
         entries.append(.chatListRowReuse(experimentalSettings.chatListRowReuse))
         entries.append(.frameHitchLog(experimentalSettings.frameHitchLog))
         entries.append(.keyboardProbe)
-        entries.append(.keyboardWindowAccessOff(experimentalSettings.keyboardWindowAccessOff))
     }
 
     if isMainApp {
