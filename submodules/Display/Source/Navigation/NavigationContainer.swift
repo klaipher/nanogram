@@ -85,7 +85,14 @@ public final class NavigationContainer: ASDisplayNode, ASGestureRecognizerDelega
     
     private let isFlat: Bool
     public private(set) var controllers: [ViewController] = []
-    private var state: State = State(layout: nil, canBeClosed: nil, top: nil, transition: nil, pending: nil)
+    private var state: State = State(layout: nil, canBeClosed: nil, top: nil, transition: nil, pending: nil) {
+        didSet {
+            if oldValue.transition != nil && self.state.transition == nil {
+                // A transition ended: the screen beneath the (new) top may need preparing.
+                self.schedulePopPreparation()
+            }
+        }
+    }
     
     weak var minimizedContainer: MinimizedContainer?
     
@@ -121,6 +128,7 @@ public final class NavigationContainer: ASDisplayNode, ASGestureRecognizerDelega
     
     public func inFocusUpdated(isInFocus: Bool) {
         self.state.top?.value.isInFocus = isInFocus
+        self.schedulePopPreparation()
     }
     
     public var overflowInset: CGFloat = 0.0
@@ -189,6 +197,17 @@ public final class NavigationContainer: ASDisplayNode, ASGestureRecognizerDelega
         self.controllerRemoved = controllerRemoved
         
         super.init()
+        
+        self.memoryWarningObserver = NotificationCenter.default.addObserver(forName: UIApplication.didReceiveMemoryWarningNotification, object: nil, queue: .main, using: { [weak self] _ in
+            self?.releasePreparedPopController()
+        })
+    }
+    
+    deinit {
+        if let memoryWarningObserver = self.memoryWarningObserver {
+            NotificationCenter.default.removeObserver(memoryWarningObserver)
+        }
+        self.popPreparationWork?.cancel()
     }
     
     public override func didLoad() {
@@ -309,18 +328,14 @@ public final class NavigationContainer: ASDisplayNode, ASGestureRecognizerDelega
         
         topController.viewWillDisappear(true)
         let topNode = topController.displayNode
-        var bottomControllerLayout = layout
-        if bottomController.view.disableAutomaticKeyboardHandling.isEmpty {
-            if let minimizedContainer = self.minimizedContainer, (bottomControllerLayout.inputHeight ?? 0.0) > 0.0 {
-                var updatedSize = bottomControllerLayout.size
-                var updatedIntrinsicInsets = bottomControllerLayout.intrinsicInsets
-                updatedSize.height -= minimizedContainer.collapsedHeight(layout: layout)
-                updatedIntrinsicInsets.bottom = 0.0
-                bottomControllerLayout = bottomControllerLayout.withUpdatedSize(updatedSize).withUpdatedIntrinsicInsets(updatedIntrinsicInsets)
-            }
-            bottomControllerLayout = bottomControllerLayout.withUpdatedInputHeight(nil)
+        let bottomControllerLayout = self.bottomControllerLayout(layout, bottomController: bottomController)
+        // Prepared while the top screen was idle (same screen, same layout): its layout is what this call would redo.
+        let wasPrepared = NavigationPopPreparationSettings.isEnabled && self.popPreparation.isPrepared(controller: ObjectIdentifier(bottomController), layout: bottomControllerLayout)
+        self.popPreparation.reset()
+        self.preparedPopController = nil
+        if !wasPrepared {
+            bottomController.containerLayoutUpdated(bottomControllerLayout, transition: .immediate)
         }
-        bottomController.containerLayoutUpdated(bottomControllerLayout, transition: .immediate)
         bottomController.viewWillAppear(true)
         let bottomNode = bottomController.displayNode
         
@@ -351,6 +366,105 @@ public final class NavigationContainer: ASDisplayNode, ASGestureRecognizerDelega
         var tracker = NavigationInteractivePopTracker(totalDistance: self.view.bounds.width)
         tracker.addSample(time: time, translation: translation, velocity: velocity, isChange: false)
         self.interactivePop = InteractivePop(transition: transition, tracker: tracker, base: 0.0, target: 0.0, anchor: anchor)
+    }
+
+    /// The layout the screen beneath the top one gets for a swipe back: no keyboard, and the minimized container's
+    /// strip taken off while one is up with the keyboard.
+    private func bottomControllerLayout(_ layout: ContainerViewLayout, bottomController: ViewController) -> ContainerViewLayout {
+        var bottomControllerLayout = layout
+        if bottomController.view.disableAutomaticKeyboardHandling.isEmpty {
+            if let minimizedContainer = self.minimizedContainer, (bottomControllerLayout.inputHeight ?? 0.0) > 0.0 {
+                var updatedSize = bottomControllerLayout.size
+                var updatedIntrinsicInsets = bottomControllerLayout.intrinsicInsets
+                updatedSize.height -= minimizedContainer.collapsedHeight(layout: layout)
+                updatedIntrinsicInsets.bottom = 0.0
+                bottomControllerLayout = bottomControllerLayout.withUpdatedSize(updatedSize).withUpdatedIntrinsicInsets(updatedIntrinsicInsets)
+            }
+            bottomControllerLayout = bottomControllerLayout.withUpdatedInputHeight(nil)
+        }
+        return bottomControllerLayout
+    }
+
+    // MARK: Preparing the screen beneath
+
+    private var popPreparation = NavigationPopPreparation<ContainerViewLayout>()
+    private var popPreparationWork: DispatchWorkItem?
+    private weak var preparedPopController: ViewController?
+    private var memoryWarningObserver: NSObjectProtocol?
+
+    private func canPreparePop() -> Bool {
+        return NavigationPopPreparation<ContainerViewLayout>.canPrepare(isEnabled: NavigationPopPreparationSettings.isEnabled, isInFocus: self.isInFocus, hasTransition: self.state.transition != nil, hasInteractivePop: self.interactivePop != nil, hasPendingChild: self.state.pending != nil, controllerCount: self.controllers.count)
+    }
+
+    /// Arms the preparation of the screen beneath the top one after the top screen has been idle for a moment. Cheap to
+    /// call on every update: it does nothing while one is armed or the screen is already prepared.
+    private func schedulePopPreparation() {
+        guard NavigationPopPreparationSettings.isEnabled else {
+            self.releasePreparedPopController()
+            return
+        }
+        if self.controllers.count <= 1 {
+            self.releasePreparedPopController()
+            return
+        }
+        guard self.popPreparationWork == nil, self.canPreparePop(), let layout = self.state.layout else {
+            return
+        }
+        let bottomController = self.controllers[self.controllers.count - 2]
+        if self.popPreparation.isPrepared(controller: ObjectIdentifier(bottomController), layout: self.bottomControllerLayout(layout, bottomController: bottomController)) {
+            return
+        }
+        let work = DispatchWorkItem { [weak self] in
+            guard let self else {
+                return
+            }
+            self.popPreparationWork = nil
+            self.preparePopController()
+        }
+        self.popPreparationWork = work
+        DispatchQueue.main.asyncAfter(deadline: .now() + NavigationPopPreparation<ContainerViewLayout>.idleDelay, execute: work)
+    }
+
+    /// Lays the screen beneath out for the current layout and starts its display, off the hierarchy (invisible), so the
+    /// swipe's start finds both done. One level only; dropped on a memory warning or when the stack changes.
+    private func preparePopController() {
+        guard self.canPreparePop(), let layout = self.state.layout, self.controllers.count > 1 else {
+            return
+        }
+        let bottomController = self.controllers[self.controllers.count - 2]
+        let bottomLayout = self.bottomControllerLayout(layout, bottomController: bottomController)
+        if self.popPreparation.isPrepared(controller: ObjectIdentifier(bottomController), layout: bottomLayout) {
+            return
+        }
+        if let previous = self.preparedPopController, previous !== bottomController {
+            self.releasePreparedPopController()
+        }
+        let bottomNode = bottomController.displayNode
+        // Only a screen that is out of every hierarchy: one shown elsewhere (a split's other column) is not ours to lay out.
+        guard bottomNode.supernode == nil else {
+            return
+        }
+        bottomController.containerLayoutUpdated(bottomLayout, transition: .immediate)
+        if bottomNode.frame.size != layout.size {
+            bottomNode.frame = CGRect(origin: bottomNode.frame.origin, size: layout.size)
+        }
+        bottomNode.recursivelyEnsureDisplaySynchronously(false)
+        self.preparedPopController = bottomController
+        self.popPreparation.markPrepared(controller: ObjectIdentifier(bottomController), layout: bottomLayout)
+    }
+
+    /// Forgets the preparation and frees the prepared screen's drawn contents (an off-hierarchy node holds them
+    /// otherwise; the swipe draws them again when it needs them).
+    private func releasePreparedPopController() {
+        self.popPreparationWork?.cancel()
+        self.popPreparationWork = nil
+        self.popPreparation.reset()
+        if let controller = self.preparedPopController {
+            self.preparedPopController = nil
+            if controller.isNodeLoaded, controller.displayNode.supernode == nil {
+                controller.displayNode.recursivelyClearContents()
+            }
+        }
     }
 
     /// A swipe back that begins while a transition runs takes it over where UIKit's interruptible transitions do
@@ -744,6 +858,7 @@ public final class NavigationContainer: ASDisplayNode, ASGestureRecognizerDelega
             self.statusBarStyle = updatedStatusBarStyle
             self.statusBarStyleUpdated?(statusBarTransition)
         }
+        self.schedulePopPreparation()
     }
     
     public var shouldAnimateDisappearance: Bool = false

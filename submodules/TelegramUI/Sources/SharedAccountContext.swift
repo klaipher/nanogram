@@ -630,6 +630,7 @@ public final class SharedAccountContextImpl: SharedAccountContext {
         ChatListRowExperiments.lazyRareSubnodes = immediateExperimentalUISettingsValue.with({ $0.chatListLazyRareSubnodes })
         ChatListRowExperiments.rowReuse = immediateExperimentalUISettingsValue.with({ $0.chatListRowReuse })
         ChatListRowExperiments.asyncMediaWhileScrolling = immediateExperimentalUISettingsValue.with({ $0.chatListAsyncMediaWhileScrolling })
+        NavigationPopPreparationSettings.isEnabled = immediateExperimentalUISettingsValue.with({ $0.backSwipePreparePreviousScreen })
         MediaEditorVideoExport.forceLegacyStoryWriter = immediateExperimentalUISettingsValue.with({ $0.storyLegacyVideoWriter })
         MediaEditorVideoExport.forceLegacyChatWriter = immediateExperimentalUISettingsValue.with({ $0.chatLegacyVideoWriter })
         
@@ -652,6 +653,7 @@ public final class SharedAccountContextImpl: SharedAccountContext {
                 ChatListRowExperiments.lazyRareSubnodes = settings.chatListLazyRareSubnodes
                 ChatListRowExperiments.rowReuse = settings.chatListRowReuse
                 ChatListRowExperiments.asyncMediaWhileScrolling = settings.chatListAsyncMediaWhileScrolling
+                NavigationPopPreparationSettings.isEnabled = settings.backSwipePreparePreviousScreen
                 MediaEditorVideoExport.forceLegacyStoryWriter = settings.storyLegacyVideoWriter
                 MediaEditorVideoExport.forceLegacyChatWriter = settings.chatLegacyVideoWriter
             }

@@ -95,6 +95,9 @@ public struct ExperimentalUISettings: Codable, Equatable {
     public var frameHitchLog: Bool
     /// Debug Settings ▸ List scroll ▸ Chat list: async media previews while scrolling. On by default.
     public var chatListAsyncMediaWhileScrolling: Bool
+    /// Debug Settings ▸ List scroll ▸ Back swipe: prepare the previous screen. Off by default. While the top screen is idle the
+    /// screen beneath it is laid out and drawn off the hierarchy, so the swipe's start only inserts it.
+    public var backSwipePreparePreviousScreen: Bool
     /// Debug Settings ▸ "Calls: livestream hardware decoding". On by default (owner decision, 2026-11). Live stream video is decoded
     /// with VideoToolbox instead of FFmpeg's software decoders (at most 2 sessions, per-stream fallback to
     /// software on any error). Local only: nothing is negotiated or sent. Read when a call starts.
@@ -220,6 +223,7 @@ public struct ExperimentalUISettings: Codable, Equatable {
         chatListRowReuse: Bool = false,
         frameHitchLog: Bool = false,
         chatListAsyncMediaWhileScrolling: Bool = true,
+        backSwipePreparePreviousScreen: Bool = false,
         callsLivestreamHardwareDecoding: Bool = true,
         callsNativeCapturePath: Bool = true,
         callsSystemNoiseSuppression: Bool = true,
@@ -273,6 +277,7 @@ public struct ExperimentalUISettings: Codable, Equatable {
         self.chatListRowReuse = chatListRowReuse
         self.frameHitchLog = frameHitchLog
         self.chatListAsyncMediaWhileScrolling = chatListAsyncMediaWhileScrolling
+        self.backSwipePreparePreviousScreen = backSwipePreparePreviousScreen
         self.callsLivestreamHardwareDecoding = callsLivestreamHardwareDecoding
         self.callsNativeCapturePath = callsNativeCapturePath
         self.callsSystemNoiseSuppression = callsSystemNoiseSuppression
@@ -342,6 +347,7 @@ public struct ExperimentalUISettings: Codable, Equatable {
         self.chatListRowReuse = try container.decodeIfPresent(Bool.self, forKey: "chatListRowReuse") ?? false
         self.frameHitchLog = try container.decodeIfPresent(Bool.self, forKey: "frameHitchLog") ?? false
         self.chatListAsyncMediaWhileScrolling = try container.decodeIfPresent(Bool.self, forKey: "chatListAsyncMediaWhileScrolling") ?? true
+        self.backSwipePreparePreviousScreen = try container.decodeIfPresent(Bool.self, forKey: "backSwipePreparePreviousScreen") ?? false
         // These four defaulted to off and became on (owner decision, 2026-11). The whole struct is saved on every change, so
         // an install that ever opened Debug Settings holds an explicit `false` under the old keys that the user never
         // chose. They are read from new keys (as with advanced ducking): only a choice made after the change counts.
@@ -417,6 +423,7 @@ public struct ExperimentalUISettings: Codable, Equatable {
         try container.encode(self.chatListRowReuse, forKey: "chatListRowReuse")
         try container.encode(self.frameHitchLog, forKey: "frameHitchLog")
         try container.encode(self.chatListAsyncMediaWhileScrolling, forKey: "chatListAsyncMediaWhileScrolling")
+        try container.encode(self.backSwipePreparePreviousScreen, forKey: "backSwipePreparePreviousScreen")
         try container.encode(self.callsLivestreamHardwareDecoding, forKey: "callsLivestreamHardwareDecodingDefaultOn")
         try container.encode(self.callsNativeCapturePath, forKey: "callsNativeCapturePathDefaultOn")
         try container.encode(self.callsSystemNoiseSuppression, forKey: "callsSystemNoiseSuppressionDefaultOn")

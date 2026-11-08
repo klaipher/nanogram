@@ -148,6 +148,15 @@ final class ExperimentalUISettingsDefaultsTests: XCTestCase {
         XCTAssertFalse(try self.roundTrip(settings).chatListAsyncMediaWhileScrolling)
     }
 
+    func testBackSwipePreparePreviousScreenIsOffByDefaultAndTheChoiceIsKept() throws {
+        for settings in [ExperimentalUISettings.defaultSettings, try self.decode("{}"), try self.decode(#"{"glassDebugDisabledGroups": 2}"#)] {
+            XCTAssertFalse(settings.backSwipePreparePreviousScreen)
+        }
+        var settings = ExperimentalUISettings.defaultSettings
+        settings.backSwipePreparePreviousScreen = true
+        XCTAssertTrue(try self.roundTrip(settings).backSwipePreparePreviousScreen)
+    }
+
     func testChatListRowReuseIsOffByDefaultAndTheChoiceIsKept() throws {
         for settings in [ExperimentalUISettings.defaultSettings, try self.decode("{}"), try self.decode(#"{"glassDebugDisabledGroups": 2}"#)] {
             XCTAssertFalse(settings.chatListRowReuse)

@@ -22,6 +22,7 @@ final class DebugControllerEntriesTests: XCTestCase {
         settings.chatListRowReuse = on
         settings.frameHitchLog = on
         settings.chatListAsyncMediaWhileScrolling = on
+        settings.backSwipePreparePreviousScreen = on
         settings.localTranscription = on
         settings.disableQuickReaction = on
         settings.disableLanguageRecognition = on

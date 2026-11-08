@@ -387,6 +387,7 @@ enum DebugControllerEntry: ItemListNodeEntry {
     case chatListRowReuse(Bool)
     case frameHitchLog(Bool)
     case chatListAsyncMediaWhileScrolling(Bool)
+    case backSwipePreparePreviousScreen(Bool)
     case enableNetworkFramework(Bool)
     case enableNetworkExperiments(Bool)
     case rustMTProtoEngine(Bool)
@@ -422,7 +423,7 @@ enum DebugControllerEntry: ItemListNodeEntry {
             return DebugControllerSection.chatOpen.rawValue
         case .chatScrollHeader, .chatScrollPrepareLayoutAhead, .chatScrollReuseRowViews:
             return DebugControllerSection.chatScroll.rawValue
-        case .listScrollHeader, .displayLinkUpstreamRate, .listAccessibilityImmediate, .listScrollPacingLog, .chatListLazyRareSubnodes, .chatListRowReuse, .frameHitchLog, .chatListAsyncMediaWhileScrolling:
+        case .listScrollHeader, .displayLinkUpstreamRate, .listAccessibilityImmediate, .listScrollPacingLog, .chatListLazyRareSubnodes, .chatListRowReuse, .frameHitchLog, .chatListAsyncMediaWhileScrolling, .backSwipePreparePreviousScreen:
             return DebugControllerSection.listScroll.rawValue
         case .springSendAnimation, .fakeWalletTransfers, .stickerRendererMode, .disableImageContentAnalysis, .disableLanguageRecognition, .localTranscription, .enableVoipTcp, .tabletDisplayLinkFrameRateCap, .chatMediaEditorLegacy, .mediaGridLegacy, .sharedMediaGridLegacy, .storyLegacyVideoWriter, .chatLegacyVideoWriter, .chatSideListLegacy, .messageWidgets, .messageWidgetWallet:
             return DebugControllerSection.experiments.rawValue
@@ -608,6 +609,9 @@ enum DebugControllerEntry: ItemListNodeEntry {
             return 143
         case .chatListAsyncMediaWhileScrolling:
             return 146
+        case .backSwipePreparePreviousScreen:
+            // Appended right after `chatListAsyncMediaWhileScrolling`; see the ordering note at `springSendAnimation`.
+            return 147
         case .springSendAnimation:
             // ItemList asserts its entries are in strictly increasing order (`<`: section, then
             // `sortIndex`, which is the stableId here; ItemListControllerNode.swift), so an id must
@@ -765,6 +769,14 @@ enum DebugControllerEntry: ItemListNodeEntry {
                 let _ = updateExperimentalUISettingsInteractively(accountManager: arguments.sharedContext.accountManager, { settings in
                     var settings = settings
                     settings.chatListAsyncMediaWhileScrolling = value
+                    return settings
+                }).start()
+            })
+        case let .backSwipePreparePreviousScreen(value):
+            return ItemListSwitchItem(presentationData: presentationData, systemStyle: .glass, title: "Back swipe: prepare the previous screen", text: "Off (default): the swipe back lays out and draws the screen beneath when your finger goes down, as Telegram does. On: while a screen sits idle, the screen beneath it is laid out and drawn out of sight, so the swipe starts faster. Costs the memory of one extra drawn screen (freed on a memory warning) and a short main-thread job about half a second after a screen settles.", value: value, maximumNumberOfLines: 0, sectionId: self.section, style: .blocks, updated: { value in
+                let _ = updateExperimentalUISettingsInteractively(accountManager: arguments.sharedContext.accountManager, { settings in
+                    var settings = settings
+                    settings.backSwipePreparePreviousScreen = value
                     return settings
                 }).start()
             })
@@ -1568,6 +1580,7 @@ func debugControllerEntries(environment: DebugControllerEntriesEnvironment, them
         entries.append(.chatListRowReuse(experimentalSettings.chatListRowReuse))
         entries.append(.frameHitchLog(experimentalSettings.frameHitchLog))
         entries.append(.chatListAsyncMediaWhileScrolling(experimentalSettings.chatListAsyncMediaWhileScrolling))
+        entries.append(.backSwipePreparePreviousScreen(experimentalSettings.backSwipePreparePreviousScreen))
     }
 
     if isMainApp {
