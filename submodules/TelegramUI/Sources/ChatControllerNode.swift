@@ -1119,6 +1119,11 @@ class ChatControllerNode: ASDisplayNode, ASScrollViewDelegate {
         self.inputMediaNodeDataIdleDisposable?.dispose()
         self.inlineSearchResultsReadyDisposable?.dispose()
         self.loadMoreSearchResultsDisposable?.dispose()
+        // The panel data holds thousands of items; freeing it here cost ~75 ms of the close. Hand the item groups
+        // to a background queue so it frees the last reference.
+        if let inputMediaNodeData = self.inputMediaNodeData {
+            OffMainRelease.release(inputMediaNodeData.itemGroupsForOffMainRelease)
+        }
     }
     
     override func didLoad() {
