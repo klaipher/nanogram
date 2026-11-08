@@ -51,6 +51,37 @@ public func windowKeyboardNotificationDecision(kind: WindowKeyboardNotificationK
     }
 }
 
+// MARK: - Keyboard in a floating window
+
+/// The keyboard height a tablet window reserves when the window does not cover the screen (iPadOS windowing,
+/// Slide Over, Stage Manager). The keyboard frame is in screen coordinates and `keyboardFrameInWindow` is the same
+/// frame converted to the window. Only a docked keyboard (bottom edge at the screen bottom, spanning the window's
+/// width) reserves space, and only the part that overlaps the window; a floating or split keyboard reserves 0
+/// because it does not occupy the bottom edge. Returns nil when the rule does not apply (a phone, a compact
+/// width, or a window that covers the screen) and the generic measurement stays in charge.
+public func tabletWindowedKeyboardHeight(deviceType: DeviceType, isRegularWidth: Bool, keyboardFrameOnScreen: CGRect, keyboardFrameInWindow: CGRect, screenSize: CGSize, windowSize: CGSize) -> CGFloat? {
+    guard case .tablet = deviceType, isRegularWidth else {
+        return nil
+    }
+    let tolerance: CGFloat = 5.0
+    if abs(windowSize.width - screenSize.width) < 1.0 && abs(windowSize.height - screenSize.height) < 1.0 {
+        return nil
+    }
+    if keyboardFrameOnScreen.isEmpty {
+        return 0.0
+    }
+    let isAtScreenBottom = keyboardFrameOnScreen.maxY >= screenSize.height - tolerance
+    let spansWindow = keyboardFrameInWindow.minX <= tolerance && keyboardFrameInWindow.maxX >= windowSize.width - tolerance
+    if !isAtScreenBottom || !spansWindow {
+        return 0.0
+    }
+    let overlap = keyboardFrameInWindow.intersection(CGRect(origin: .zero, size: windowSize))
+    if overlap.isNull || overlap.isEmpty {
+        return 0.0
+    }
+    return overlap.height
+}
+
 // MARK: - Keyboard orientation
 
 /// Whether the on-screen keyboard is in its landscape shape. The keyboard spans the screen, so on a tablet its

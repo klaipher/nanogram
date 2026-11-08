@@ -9,6 +9,49 @@ final class TabletLayoutRulesTests: XCTestCase {
         return ContainerViewLayout(size: size, metrics: LayoutMetrics(widthClass: widthClass, heightClass: widthClass, orientation: orientation, windowSize: windowSize), deviceMetrics: deviceMetrics, intrinsicInsets: UIEdgeInsets(top: 0.0, left: 0.0, bottom: bottomInset, right: 0.0), safeInsets: UIEdgeInsets(), reservedCorners: .none, division: nil, additionalInsets: UIEdgeInsets(), statusBarHeight: nil, inputHeight: inputHeight, inputHeightIsInteractivellyChanging: false, inVoiceOver: false, presentedInFormSheet: false)
     }
 
+    // MARK: Keyboard in a floating window
+
+    private let screen = CGSize(width: 2000.0, height: 1500.0)
+    private let floatingWindow = CGRect(x: 1410.0, y: 50.0, width: 575.0, height: 1270.0)
+
+    private func windowedHeight(deviceType: DeviceType = .tablet, regular: Bool = true, keyboard: CGRect, window: CGRect) -> CGFloat? {
+        let inWindow = keyboard.offsetBy(dx: -window.minX, dy: -window.minY)
+        return tabletWindowedKeyboardHeight(deviceType: deviceType, isRegularWidth: regular, keyboardFrameOnScreen: keyboard, keyboardFrameInWindow: inWindow, screenSize: screen, windowSize: window.size)
+    }
+
+    /// The owner's screenshot: floating keyboard at the bottom left, window at the right; nothing is covered.
+    func test_floatingKeyboard_outsideFloatingWindow_reservesNothing() {
+        XCTAssertEqual(windowedHeight(keyboard: CGRect(x: 35.0, y: 810.0, width: 480.0, height: 485.0), window: floatingWindow), 0.0)
+    }
+
+    func test_floatingKeyboard_overlappingWindow_reservesNothing() {
+        XCTAssertEqual(windowedHeight(keyboard: CGRect(x: 1500.0, y: 810.0, width: 480.0, height: 485.0), window: floatingWindow), 0.0)
+    }
+
+    func test_dockedKeyboard_fullScreenWindow_staysLegacy() {
+        XCTAssertNil(windowedHeight(keyboard: CGRect(x: 0.0, y: 1100.0, width: 2000.0, height: 400.0), window: CGRect(origin: .zero, size: screen)))
+    }
+
+    func test_dockedKeyboard_windowAboveKeyboard_reservesNothing() {
+        let window = CGRect(x: 1410.0, y: 50.0, width: 575.0, height: 900.0)
+        XCTAssertEqual(windowedHeight(keyboard: CGRect(x: 0.0, y: 1100.0, width: 2000.0, height: 400.0), window: window), 0.0)
+    }
+
+    func test_dockedKeyboard_overlappingWindow_reservesOverlap() {
+        // Window bottom at 1320, keyboard top at 1100: 220pt overlap.
+        XCTAssertEqual(windowedHeight(keyboard: CGRect(x: 0.0, y: 1100.0, width: 2000.0, height: 400.0), window: floatingWindow), 220.0)
+    }
+
+    func test_phoneAndCompactWidth_areNotHandled() {
+        let keyboard = CGRect(x: 35.0, y: 810.0, width: 480.0, height: 485.0)
+        XCTAssertNil(windowedHeight(deviceType: .phone, keyboard: keyboard, window: floatingWindow))
+        XCTAssertNil(windowedHeight(regular: false, keyboard: keyboard, window: floatingWindow))
+    }
+
+    func test_keyboardHide_emptyFrame_reservesNothing() {
+        XCTAssertEqual(windowedHeight(keyboard: .zero, window: floatingWindow), 0.0)
+    }
+
     // MARK: Keyboard notifications
 
     /// The owner's iPad: the input assistant bar of sticker mode (about 80pt) went away with an empty end frame,

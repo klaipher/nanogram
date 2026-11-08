@@ -104,6 +104,8 @@ marked (check) were not re-verified against the code; correct them on the next c
 ### Platforms
 - What: iPad (resizable chat list, window controls, Split View cameras), iPhone Duo reserved corners, iOS 26/27 window and touch handling, standalone Apple Watch client.
 - Where: docs/iphone-duo-layout.md, docs/ios27-windows-and-touches.md, `Telegram/WatchApp`.
+- iPad floating keyboard in a floating window: upstream reserves the floating keyboard's height inside a Slide Over / windowed app (input panel lifted, empty area below);
+  ours reserves height only for a docked keyboard that overlaps the window. Where: `TabletLayoutRules.swift` (`tabletWindowedKeyboardHeight`), `WindowContent.swift` keyboard handler.
 - iPad display link: upstream always runs the shared display link at up to 120 Hz on an iPad; ours asks only for the rate the active
   animations need, as on the iPhone (Debug Settings "iPad: Display Link 120 Hz Cap", on by default since 2026-11-07). Where:
   `TabletEnergyRules.swift` (`sharedDisplayLinkFrameRateRange`), `SharedDisplayLinkDriver.capsTabletFrameRate`.

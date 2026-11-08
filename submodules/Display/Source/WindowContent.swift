@@ -719,12 +719,14 @@ public class Window1 {
                 }
                 
                 var minKeyboardY: CGFloat?
+                var keyboardFrameInWindow: CGRect?
                 if #available(iOSApplicationExtension 16.1, iOS 16.1, *), let screen = notification.object as? UIScreen, let keyboardFrameEnd = notification.userInfo?[UIResponder.keyboardFrameEndUserInfoKey] as? CGRect {
                     let fromCoordinateSpace = screen.coordinateSpace
                     let toCoordinateSpace: UICoordinateSpace = strongSelf.hostView.eventView
 
                     let convertedKeyboardFrameEnd = fromCoordinateSpace.convert(keyboardFrameEnd, to: toCoordinateSpace)
                     minKeyboardY = convertedKeyboardFrameEnd.minY
+                    keyboardFrameInWindow = convertedKeyboardFrameEnd
                 }
 
                 var windowedHeightDifference: CGFloat = 0.0
@@ -802,6 +804,11 @@ public class Window1 {
                 // an all-zero frame has minY 0 and is not caught here.
                 if #available(iOSApplicationExtension 16.1, iOS 16.1, *), let screen = notification.object as? UIScreen, let keyboardFrameEnd = notification.userInfo?[UIResponder.keyboardFrameEndUserInfoKey] as? CGRect, keyboardFrameEnd.minY >= screen.bounds.height - 1.0 {
                     keyboardHeight = 0.0
+                }
+                // Nanogram: in a floating window on a tablet only a docked keyboard that overlaps the window reserves
+                // height; a floating keyboard reserves none (tabletWindowedKeyboardHeight, TabletLayoutRules.swift).
+                if let screen = notification.object as? UIScreen, let keyboardFrameEnd = notification.userInfo?[UIResponder.keyboardFrameEndUserInfoKey] as? CGRect, let keyboardFrameInWindow, let windowedHeight = tabletWindowedKeyboardHeight(deviceType: strongSelf.deviceMetrics.type, isRegularWidth: isTablet, keyboardFrameOnScreen: keyboardFrameEnd, keyboardFrameInWindow: keyboardFrameInWindow, screenSize: screen.bounds.size, windowSize: strongSelf.windowLayout.size) {
+                    keyboardHeight = windowedHeight
                 }
                 if case .hidden = notificationDecision {
                     keyboardHeight = 0.0
