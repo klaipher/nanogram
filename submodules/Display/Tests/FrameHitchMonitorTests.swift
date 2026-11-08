@@ -102,9 +102,25 @@ final class FrameHitchMonitorTests: XCTestCase {
         let fast = FrameHitchMonitor.shared.measure("keyboardFocusTap") { 1 }
         XCTAssertEqual(fast, 1)
         XCTAssertTrue(lines.isEmpty, "a fast call logs nothing")
+        var reportThreads: [Bool] = []
+        let reported = self.expectation(description: "stack report")
+        FrameHitchMonitor.report = { _ in
+            reportThreads.append(Thread.isMainThread)
+            reported.fulfill()
+            return "tree"
+        }
         FrameHitchMonitor.shared.measure("keyboardFocusTap") {
             Thread.sleep(forTimeInterval: 0.04)
         }
+        XCTAssertEqual(lines.count, 1, "only the summary is written on the main thread: \(lines)")
+        self.wait(for: [reported], timeout: 2.0)
+        let deadline = Date().addingTimeInterval(2.0)
+        while lines.count < 2 && Date() < deadline {
+            RunLoop.current.run(until: Date().addingTimeInterval(0.01))
+        }
+        // Building a stack report walks a 128-frame tree with dladdr: on the main thread it was itself a 10-30 ms stall
+        // that the next window (a keyboard show after a hide) recorded (202611081037 logs: 111 samples).
+        XCTAssertEqual(reportThreads, [false], "the stack report is built off the main thread")
         XCTAssertEqual(lines.count, 2, "\(lines)")
         XCTAssertTrue(lines.first?.hasPrefix("Frame hitches: window=keyboardFocusTap syncMs=") == true, lines.first ?? "")
         XCTAssertTrue(lines.last?.hasSuffix("\ntree") == true, lines.last ?? "")

@@ -107,6 +107,9 @@ public final class FrameHitchMonitor {
     public static var report: ((AnyObject) -> String)?
 
     static let keptStallLimit = 4
+    /// Stack reports are built here, not on the main thread: building one walks a 128-frame tree with `dladdr`, which
+    /// on the main thread was itself a stall the next window recorded.
+    private static let reportQueue = DispatchQueue(label: "org.telegram.FrameHitchMonitor.report", qos: .utility)
 
     private final class Session {
         let name: String
@@ -173,8 +176,11 @@ public final class FrameHitchMonitor {
                 line += " ab=" + context
             }
             FrameHitchMonitor.log?(line)
-            if let capture = FrameHitchMonitor.capture?(start, end), let report = FrameHitchMonitor.report {
-                FrameHitchMonitor.log?(String(format: "Frame hitch stack: window=%@ gapMs=%.1f atSeconds=0.00", name, (end - start) * 1000.0) + "\n" + report(capture))
+            if let capture = FrameHitchMonitor.capture?(start, end), let report = FrameHitchMonitor.report, let log = FrameHitchMonitor.log {
+                let header = String(format: "Frame hitch stack: window=%@ gapMs=%.1f atSeconds=0.00", name, (end - start) * 1000.0)
+                FrameHitchMonitor.reportQueue.async {
+                    log(header + "\n" + report(capture))
+                }
             }
         }
         return result
@@ -240,15 +246,24 @@ public final class FrameHitchMonitor {
             return
         }
         FrameHitchMonitor.log?(session.stats.summary(window: session.name, context: FrameHitchMonitor.context?()))
-        guard let report = FrameHitchMonitor.report else {
+        guard let report = FrameHitchMonitor.report, let log = FrameHitchMonitor.log else {
             return
         }
+        var pending: [(String, AnyObject)] = []
         for stall in session.stats.keptStalls {
             guard let capture = session.captures[stall.start] else {
                 continue
             }
             let header = String(format: "Frame hitch stack: window=%@ gapMs=%.1f atSeconds=%.2f", session.name, (stall.end - stall.start) * 1000.0, stall.start - session.stats.startTime)
-            FrameHitchMonitor.log?(header + "\n" + report(capture))
+            pending.append((header, capture))
+        }
+        guard !pending.isEmpty else {
+            return
+        }
+        FrameHitchMonitor.reportQueue.async {
+            for (header, capture) in pending {
+                log(header + "\n" + report(capture))
+            }
         }
     }
 }
