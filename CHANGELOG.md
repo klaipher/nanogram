@@ -4,7 +4,7 @@ Newest first. Internal notes for each TestFlight build; testers see the What to 
 
 ## Unreleased
 
-- **"Send as" menu: the close button closes it with the keyboard up**. Owner, 2026-11-08 (13.2 202611081636): with the keyboard open, choosing which name to post as, the close icon (in the avatar button's place) opened another copy of the menu instead of closing it, one more per tap. `openSendAsPeer` (`ChatControllerLoadDisplayNode.swift`) always presented a new context menu, and with the keyboard up the tap on that button reaches it while a menu is open. The open menu is kept (`ChatControllerImpl.sendAsPeersContextController`, weak, cleared in `dismissed`); a press while it is open dismisses it. The same code is upstream's. No unit test (chat controller glue); checked on device by the owner.
+- **"Send as" menu: the close button closes it with the keyboard up**. Owner, 2026-11-08 (13.2 202611081636): with the keyboard open, choosing which name to post as, the close icon (in the avatar button's place) opened another copy of the menu instead of closing it, one more per tap. `openSendAsPeer` (`ChatControllerLoadDisplayNode.swift`) always presented a new context menu, and with the keyboard up the tap on that button reaches it while a menu is open. The open menu is kept (`ChatControllerImpl.sendAsPeersContextController`, weak, cleared in `dismissed`); a press while it is open dismisses it. The same code is upstream's. No unit test (chat controller glue); compiled, to be checked on device by the owner in the next build.
 
 ## 13.2 (202611081918) — 2026-11-08 — 4d9521f8
 
