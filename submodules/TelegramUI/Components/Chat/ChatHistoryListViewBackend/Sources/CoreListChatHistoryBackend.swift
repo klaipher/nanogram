@@ -125,7 +125,13 @@ final class CoreListChatHistoryBackend: ASDisplayNode, ChatHistoryListViewBacken
     // Ordered entry array: the source of truth for what CoreVirtualListView displays. Mirrors the
     // ListView transaction model (delete/insert/update over indices) with a stable serial per entry
     // used as the CoreListItem identity.
-    private var entries: [CoreListEntryItem] = []
+    private var entries: [CoreListEntryItem] = [] {
+        didSet {
+            self.entriesRevision &+= 1
+        }
+    }
+    /// Moves on every write to `entries`; part of what `rowPrefetchGate` compares.
+    private var entriesRevision: UInt64 = 0
     private var currentSize: CGSize = .zero
     private var currentInsets: UIEdgeInsets = .zero
     
@@ -140,6 +146,7 @@ final class CoreListChatHistoryBackend: ASDisplayNode, ChatHistoryListViewBacken
     private let rowPrefetcher = CoreListChatRowPrefetcher()
     private var prefetchLastRange: (first: Int, last: Int)?
     private var prefetchDirection: Int = 0
+    private var rowPrefetchGate = ChatRowPrefetchPlanGate()
 
     /// "Chat rows: reuse row views": hosts of rows that left the load band whose node type has a complete reset, kept hidden in
     /// the list's container until a new row of the same node type needs a view.
@@ -496,6 +503,11 @@ final class CoreListChatHistoryBackend: ASDisplayNode, ChatHistoryListViewBacken
     // every row hundreds of points from where the user sees it, for the entire momentum phase.
     // (ListViewImpl reads settled endpoints, but there model == presented; here it does not.)
     private func loadedFrame(of node: ListViewItemNode) -> CGRect? {
+        // O(1) path: a built node sits directly in its host view, and CoreList answers in O(1) whether that host is a loaded
+        // row. Same answer as the scan below (a node lives in at most one host); anything unexpected falls through to it.
+        if let hostView = node.view.superview as? CoreListNodeHostView, hostView.itemNode === node, self.coreList.loadedIndex(ofItemView: hostView) != nil {
+            return self.listFrame(of: hostView)
+        }
         for hostView in self.itemNodeHostViews {
             if hostView.itemNode === node {
                 return self.listFrame(of: hostView)
@@ -1003,6 +1015,7 @@ final class CoreListChatHistoryBackend: ASDisplayNode, ChatHistoryListViewBacken
         self.rowTeardownQueue.flush()
         self.rowViewPool.drain()
         self.rowPrefetcher.evictAll()
+        self.rowPrefetchGate.reset()
     }
 
     override func didExitHierarchy() {
@@ -1053,6 +1066,12 @@ final class CoreListChatHistoryBackend: ASDisplayNode, ChatHistoryListViewBacken
         self.prefetchLastRange = range
         let width = self.coreList.currentContentWidth
         guard self.prefetchDirection != 0, width > 1.0, !self.prefersSynchronousResourceLoading else {
+            return
+        }
+        // Per-frame fast path: the same loaded range, direction, width and entries as the last run that planned (and not
+        // long ago) produce the same candidates, so skip rebuilding keys, params and the retain list.
+        let signature = ChatRowPrefetchPlanGate.Signature(first: range.first, last: range.last, direction: self.prefetchDirection, width: Double(width), entriesRevision: self.entriesRevision, prefersSynchronousLoads: self.prefersSynchronousResourceLoading)
+        guard self.rowPrefetchGate.shouldRun(signature: signature, now: CACurrentMediaTime()) else {
             return
         }
         var indices: [Int] = []
@@ -1660,13 +1679,15 @@ final class CoreListChatHistoryBackend: ASDisplayNode, ChatHistoryListViewBacken
 
         var firstVisible: (index: Int, fullyVisible: Bool)?
         var lastVisibleIndex: Int?
-        for entry in self.coreList.loadedItemEntries {
-            let frame = self.listFrame(of: entry.view)
-            if frame.maxY >= band.top && frame.minY < band.bottom {
-                if firstVisible == nil {
-                    firstVisible = (entry.index, frame.minY >= band.top - 10.0)
+        self.coreList.withPresentedFrames { presentedFrame in
+            for entry in self.coreList.loadedItemEntries {
+                let frame = presentedFrame(entry.view)
+                if frame.maxY >= band.top && frame.minY < band.bottom {
+                    if firstVisible == nil {
+                        firstVisible = (entry.index, frame.minY >= band.top - 10.0)
+                    }
+                    lastVisibleIndex = entry.index
                 }
-                lastVisibleIndex = entry.index
             }
         }
 
@@ -1780,14 +1801,22 @@ final class CoreListChatHistoryBackend: ASDisplayNode, ChatHistoryListViewBacken
     // See `visibleBand` for why the band reads currentSize/currentInsets.
     func forEachVisibleItemNode(_ f: (ASDisplayNode) -> Void) {
         let band = self.visibleBand
-        for hostView in self.itemNodeHostViews {
-            guard let itemNode = hostView.itemNode else {
-                continue
+        // The frames are read in one pass and `f` runs after it: `f` may call back into the list (itemNodeFrame), and the
+        // viewport delta is computed once for the whole pass rather than once per row.
+        var visible: [ListViewItemNode] = []
+        self.coreList.withPresentedFrames { presentedFrame in
+            for hostView in self.itemNodeHostViews {
+                guard let itemNode = hostView.itemNode else {
+                    continue
+                }
+                let frame = presentedFrame(hostView)
+                if frame.maxY > band.top && frame.minY < band.bottom {
+                    visible.append(itemNode)
+                }
             }
-            let frame = self.listFrame(of: hostView)
-            if frame.maxY > band.top && frame.minY < band.bottom {
-                f(itemNode)
-            }
+        }
+        for itemNode in visible {
+            f(itemNode)
         }
     }
 

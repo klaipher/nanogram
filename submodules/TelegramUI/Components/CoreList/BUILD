@@ -130,3 +130,31 @@ ios_unit_test(
         ":CoreListScrollPathTestsLib",
     ],
 )
+
+# Per-frame chat scroll reads: the presented-frame pass, the O(1) view -> index lookup, and the memoized attachment
+# flight tracks (perf/chat-scroll-tick).
+swift_library(
+    name = "CoreListChatScrollTickTestsLib",
+    testonly = True,
+    srcs = glob(
+        ["CoreListDemoTests/TestSupport/*.swift"],
+        exclude = [
+            "CoreListDemoTests/TestSupport/ManualAutoLoadResponseScheduler.swift",
+        ],
+    ) + [
+        "CoreListDemoTests/ChatScrollTickGeometryTests.swift",
+        "CoreListDemoTests/AttachmentFlightMemoTests.swift",
+    ],
+    deps = [
+        ":CoreListDemoForTests",
+    ],
+)
+
+ios_unit_test(
+    name = "CoreListChatScrollTickTests",
+    minimum_os_version = "15.0",
+    runner = ":CoreListTestRunner",
+    deps = [
+        ":CoreListChatScrollTickTestsLib",
+    ],
+)

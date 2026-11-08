@@ -344,10 +344,35 @@ extension CoreVirtualListView {
         var boxedKeyTimes: AttachmentFlightBoxedKeyTimes?
 
         for attachment in window.attachments {
-            let composed = attachmentMap(attachment, window: window)
-                .composedKeyframe(trajectory: flight.trajectory,
-                                  coordinateShift: flight.coordinateShift)
+            let map = attachmentMap(attachment, window: window)
             let layer = attachment.view.layer
+            // The composed keyframe is a pure function of the map, the trajectory's samples and the shift, and it maps
+            // every sample twice. When the layer's last computation had exactly these inputs, its outcome stands:
+            // a rigid attachment still needs no track, and a moving one is left alone while its track is the one
+            // that was installed for this flight start.
+            if let memo = layer.attachmentFlightComputationMemo,
+               memo.coordinateShift == flight.coordinateShift,
+               memo.map.isIdentical(to: map),
+               memo.hasSameSamples(as: flight.trajectory.samples) {
+                attachmentFlightMemoHitCount += 1
+                if memo.isRigid {
+                    layer.removeAnimation(forKey: Self.attachmentFlightKey)
+                    continue
+                }
+                if let installed = layer.attachmentFlightTrackRecord,
+                   layer.animation(forKey: Self.attachmentFlightKey) != nil,
+                   installed.duration == flight.trajectory.duration, installed.beginTime == flight.beginTime,
+                   installed.computationMemo === memo {
+                    continue
+                }
+            }
+            attachmentFlightMemoMissCount += 1
+            let composed = map.composedKeyframe(trajectory: flight.trajectory,
+                                                coordinateShift: flight.coordinateShift)
+            let memo = AttachmentFlightComputationMemo(map: map, samples: flight.trajectory.samples,
+                                                       coordinateShift: flight.coordinateShift,
+                                                       isRigid: !composed.values.contains(where: { abs($0) > 1e-9 }))
+            layer.attachmentFlightComputationMemo = memo
             // A rigid attachment rides the content translation and needs no track of its own.
             guard composed.values.contains(where: { abs($0) > 1e-9 }) else {
                 layer.removeAnimation(forKey: Self.attachmentFlightKey)
@@ -362,6 +387,8 @@ extension CoreVirtualListView {
                layer.animation(forKey: Self.attachmentFlightKey) != nil,
                installed.matches(values: composed.values, keyTimes: composed.keyTimes,
                                  duration: flight.trajectory.duration, beginTime: flight.beginTime) {
+                // Same track, so the new memo describes it as well as the one it replaced.
+                installed.computationMemo = memo
                 continue
             }
             let keyTimes: AttachmentFlightBoxedKeyTimes
@@ -387,9 +414,11 @@ extension CoreVirtualListView {
             animation.beginTime = flight.beginTime
             animation.preferHighRefreshRate()
             layer.add(animation, forKey: Self.attachmentFlightKey)
-            layer.attachmentFlightTrackRecord = AttachmentFlightTrackRecord(
+            let record = AttachmentFlightTrackRecord(
                 values: composed.values, keyTimes: composed.keyTimes,
                 duration: flight.trajectory.duration, beginTime: flight.beginTime)
+            record.computationMemo = memo
+            layer.attachmentFlightTrackRecord = record
         }
     }
 
@@ -819,6 +848,8 @@ final class AttachmentFlightTrackRecord {
     let keyTimes: [Double]
     let duration: CFTimeInterval
     let beginTime: CFTimeInterval
+    /// The computation inputs the values were derived from; see `AttachmentFlightComputationMemo`.
+    var computationMemo: AttachmentFlightComputationMemo?
 
     init(values: [CGFloat], keyTimes: [Double], duration: CFTimeInterval, beginTime: CFTimeInterval) {
         self.values = values
@@ -835,6 +866,36 @@ final class AttachmentFlightTrackRecord {
     }
 }
 
+/// The inputs of one `composedKeyframe` computation for an attachment layer and what it concluded. Together with the
+/// flight's begin time and duration (kept on the track record) this is everything the installed track depends on, so
+/// equal inputs let `installAttachmentFlightTracks` skip the recomputation.
+///
+/// The trajectory is compared by sample-buffer identity: the memo holds the array, so its buffer cannot be freed and
+/// reused, and a shared buffer is never mutated (copy on write). A rebaked trajectory has a new buffer and misses, which
+/// is the conservative direction.
+final class AttachmentFlightComputationMemo {
+    let map: AttachmentOffsetMap
+    let samples: [Trajectory.Sample]
+    let coordinateShift: CGFloat
+    let isRigid: Bool
+
+    init(map: AttachmentOffsetMap, samples: [Trajectory.Sample], coordinateShift: CGFloat, isRigid: Bool) {
+        self.map = map
+        self.samples = samples
+        self.coordinateShift = coordinateShift
+        self.isRigid = isRigid
+    }
+
+    func hasSameSamples(as other: [Trajectory.Sample]) -> Bool {
+        guard samples.count == other.count, !other.isEmpty else { return false }
+        return samples.withUnsafeBufferPointer { mine in
+            other.withUnsafeBufferPointer { theirs in
+                mine.baseAddress == theirs.baseAddress
+            }
+        }
+    }
+}
+
 /// A flight's keyTimes and their boxed form, built once and shared by every attachment's track.
 final class AttachmentFlightBoxedKeyTimes {
     let raw: [Double]
@@ -847,9 +908,21 @@ final class AttachmentFlightBoxedKeyTimes {
 }
 
 private var attachmentFlightTrackRecordKey: UInt8 = 0
+private var attachmentFlightComputationMemoKey: UInt8 = 0
 private var attachmentFlightBoxedKeyTimesKey: UInt8 = 0
 
 extension CALayer {
+    /// The last flight-track computation for this layer; a cache like the record, never the authority.
+    fileprivate var attachmentFlightComputationMemo: AttachmentFlightComputationMemo? {
+        get {
+            objc_getAssociatedObject(self, &attachmentFlightComputationMemoKey) as? AttachmentFlightComputationMemo
+        }
+        set {
+            objc_setAssociatedObject(self, &attachmentFlightComputationMemoKey, newValue,
+                                     .OBJC_ASSOCIATION_RETAIN_NONATOMIC)
+        }
+    }
+
     /// The inputs of the flight track this layer currently carries, written only by
     /// `installAttachmentFlightTracks`. It is a cache, never the authority: a track is kept only
     /// while the layer still HAS an animation under `attachmentFlightKey`, so a layer stripped by a

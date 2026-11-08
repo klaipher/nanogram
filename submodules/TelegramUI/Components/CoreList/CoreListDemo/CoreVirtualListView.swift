@@ -840,6 +840,11 @@ public final class CoreVirtualListView: UIView {
         didSet { windowRevision &+= 1 }
     }
     private var windowRevision = 0
+    /// Collection index of each loaded row view, keyed by view identity, valid for `revision`. Rebuilt lazily on the first
+    /// lookup after the window changed, so a per-frame walk over the loaded rows resolves each view in O(1).
+    private var loadedIndexByViewCache: (revision: Int, indices: [ObjectIdentifier: Int])?
+    /// How many times the map above was rebuilt. Read by tests to pin that lookups between window changes reuse it.
+    private(set) var loadedIndexByViewRebuildCount = 0
     private var lastScrollTickSignature: ScrollTickSignature?
     private(set) var containerOriginY: CGFloat = 0
     private var viewportCarries: [ViewportCarry] = []
@@ -997,6 +1002,37 @@ public final class CoreVirtualListView: UIView {
         activeWindow.view(for: index)
     }
 
+    /// The collection index of `view` when it is a loaded row of the settled window, else nil. The O(1) inverse of
+    /// `loadedItemView(at:)`: same population (settled/loaded rows only, never off-screen entries or exit-overlay ghosts).
+    public func loadedIndex(ofItemView view: UIView) -> Int? {
+        if let cache = loadedIndexByViewCache, cache.revision == windowRevision {
+            return cache.indices[ObjectIdentifier(view)]
+        }
+        var indices: [ObjectIdentifier: Int] = [:]
+        indices.reserveCapacity(activeWindow.items.count)
+        for item in activeWindow.items {
+            let key = ObjectIdentifier(item.view)
+            // `view(for:)` returns the FIRST item with an index; keep the first of any duplicate view as well.
+            if indices[key] == nil {
+                indices[key] = item.index
+            }
+        }
+        loadedIndexByViewCache = (windowRevision, indices)
+        loadedIndexByViewRebuildCount += 1
+        return indices[ObjectIdentifier(view)]
+    }
+
+    /// Runs `body` with a frame reader that answers exactly what `presentedFrame(of:)` answers, but computes the
+    /// viewport delta (`engine.offset`, the content host origin, and the animation controller's clock and additive
+    /// track) once for the whole pass instead of once per row. Use it for a loop over many rows in one frame.
+    /// The reader must not outlive `body`.
+    public func withPresentedFrames<Result>(_ body: (_ presentedFrame: (UIView) -> CGRect) -> Result) -> Result {
+        let delta = modelToPresentedViewportDelta
+        return body { view in
+            self.convert(view.bounds, from: view).offsetBy(dx: 0, dy: -delta)
+        }
+    }
+
     /// Non-copying, in-ascending-index-order iteration over the loaded item views **paired with their
     /// collection indices**. Same in-place COW-snapshot walk as `loadedItemViews` — no array built, no
     /// element copied, safe to mutate the list mid-iteration — but each element also carries the
@@ -1144,6 +1180,12 @@ public final class CoreVirtualListView: UIView {
     /// How far the model viewport leads the presented one: `(engine.offset − contentHost model origin)` plus
     /// the additive viewport correction. Zero whenever nothing is animating the viewport.
     private var modelToPresentedViewportDelta: CGFloat {
+        modelToPresentedViewportDeltaReadCount += 1
+        return computeModelToPresentedViewportDelta()
+    }
+    /// How many times the delta was computed. Read by tests to pin that a pass computes it once.
+    private(set) var modelToPresentedViewportDeltaReadCount = 0
+    private func computeModelToPresentedViewportDelta() -> CGFloat {
         (engine.offset - engine.contentHost.bounds.origin.y)
             + animationController.viewportOffset(at: animationController.now())
     }
@@ -1180,6 +1222,10 @@ public final class CoreVirtualListView: UIView {
     /// Set by an attachment's `onContentDidChange`. A flag rather than a set: a pass re-measures
     /// every loaded attachment anyway.
     var attachmentsAreDirty = false
+    /// Flight-track computations skipped / performed by `installAttachmentFlightTracks` (see
+    /// `AttachmentFlightComputationMemo`). Read by tests to pin that an unchanged track is not recomputed.
+    var attachmentFlightMemoHitCount = 0
+    var attachmentFlightMemoMissCount = 0
     /// The item array the CURRENT `activeWindow` was built against. `resolveAttachments` maps a prior
     /// run's collection indices back to identities through this, because `_items` has already been
     /// replaced by the time a pass resolves attachments.

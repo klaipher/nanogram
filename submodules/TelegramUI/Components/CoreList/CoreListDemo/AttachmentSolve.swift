@@ -56,6 +56,26 @@ struct AttachmentOffsetMap {
         self.yield = yield
     }
 
+    /// Whether `other` is the same function of offset: every stored input of `y(atOffset:)` equal, partners included.
+    /// Exact equality on purpose (it gates a memo of baked values, where any difference is a different track).
+    func isIdentical(to other: AttachmentOffsetMap) -> Bool {
+        guard lo == other.lo, hi == other.hi, anchor == other.anchor, contentBase == other.contentBase,
+              edge == other.edge, isFloating == other.isFloating, height == other.height else {
+            return false
+        }
+        switch (yield, other.yield) {
+        case (nil, nil):
+            return true
+        case let (lhs?, rhs?):
+            guard lhs.gap == rhs.gap, lhs.partners.count == rhs.partners.count else {
+                return false
+            }
+            return zip(lhs.partners, rhs.partners).allSatisfy { $0.isIdentical(to: $1) }
+        default:
+            return false
+        }
+    }
+
     /// The display anchor expressed in frame space at a given engine offset.
     func anchorInFrameSpace(atOffset offset: CGFloat) -> CGFloat {
         anchor + offset - contentBase
