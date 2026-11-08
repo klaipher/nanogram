@@ -112,6 +112,56 @@ public final class Logger {
     private var pendingLogData = Data()
     private var isLogFlushScheduled: Bool = false
     
+    // What the logger holds that has not reached the files yet, for the memory log. `queuedEntries` counts the
+    // `log`/`shortLog` calls whose closure is queued on the logger queue and has not run (a utility queue that is
+    // starved while the main thread is busy lets them pile up, each holding its message); `pendingBytes` is the size
+    // of the two write buffers. Readable from any thread.
+    private let statsLock = NSLock()
+    private var queuedEntriesValue: Int = 0
+    private var queuedBytesValue: Int = 0
+    private var pendingBytesValue: Int = 0
+
+    public struct Backlog: Equatable {
+        public var queuedEntries: Int
+        public var queuedBytes: Int
+        public var pendingBytes: Int
+
+        public init(queuedEntries: Int, queuedBytes: Int, pendingBytes: Int) {
+            self.queuedEntries = queuedEntries
+            self.queuedBytes = queuedBytes
+            self.pendingBytes = pendingBytes
+        }
+    }
+
+    public var backlog: Backlog {
+        self.statsLock.lock()
+        defer {
+            self.statsLock.unlock()
+        }
+        return Backlog(queuedEntries: self.queuedEntriesValue, queuedBytes: self.queuedBytesValue, pendingBytes: self.pendingBytesValue)
+    }
+
+    private func entryQueued(bytes: Int) {
+        self.statsLock.lock()
+        self.queuedEntriesValue += 1
+        self.queuedBytesValue += bytes
+        self.statsLock.unlock()
+    }
+
+    private func entryStarted(bytes: Int) {
+        self.statsLock.lock()
+        self.queuedEntriesValue -= 1
+        self.queuedBytesValue -= bytes
+        self.statsLock.unlock()
+    }
+
+    private func updatePendingBytes() {
+        let total = self.pendingLogData.count + self.pendingShortLogData.count
+        self.statsLock.lock()
+        self.pendingBytesValue = total
+        self.statsLock.unlock()
+    }
+
     public var logToFile: Bool = true {
         didSet {
             if oldValue && !self.logToFile {
@@ -227,6 +277,7 @@ public final class Logger {
         }
         self.onLogWrite?(count)
         DiskWriteAccounting.shared.add(DiskWriteCategory.logs, bytes: count)
+        self.updatePendingBytes()
     }
     
     private func appendLog(_ data: Data, to file: ManagedFile) {
@@ -265,7 +316,7 @@ public final class Logger {
         data.withUnsafeBytes { rawBytes -> Void in
             let _ = file.write(rawBytes.baseAddress!, count: count)
         }
-        DiskWriteAccounting.shared.add(DiskWriteCategory.logs, bytes: count)
+        DiskWriteAccounting.shared.add(DiskWriteCategory.logs, bytes: count)        self.updatePendingBytes()
     }
     
     private func appendShortLog(_ data: Data, to file: ManagedFile) {
@@ -460,7 +511,13 @@ public final class Logger {
         }
         
         if self.logToFile {
+            let queuedBytes = string.utf8.count
+            self.entryQueued(bytes: queuedBytes)
             self.queue.async {
+                self.entryStarted(bytes: queuedBytes)
+                defer {
+                    self.updatePendingBytes()
+                }
                 let content: String
                 if let consoleContent = consoleContent {
                     content = consoleContent
@@ -563,7 +620,13 @@ public final class Logger {
         
         let timestamp: Double = CFAbsoluteTimeGetCurrent() + kCFAbsoluteTimeIntervalSince1970
         
+        let queuedBytes = string.utf8.count
+        self.entryQueued(bytes: queuedBytes)
         self.queue.async {
+            self.entryStarted(bytes: queuedBytes)
+            defer {
+                self.updatePendingBytes()
+            }
             let content = WriteBuffer()
             var binaryEventMarkerValue: UInt64 = binaryEventMarker
             content.write(&binaryEventMarkerValue, offset: 0, length: 8)

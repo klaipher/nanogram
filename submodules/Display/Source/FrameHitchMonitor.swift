@@ -15,6 +15,14 @@ struct FrameHitchStats {
     /// A gap longer than this is the link pausing (app in the background, link stopped), not a frame.
     static let pauseThreshold: Double = 1.0
     static let stackThreshold: Double = 0.025
+    /// A window that is still open after this long has lost its `end` (a list released mid-gesture, a cancelled
+    /// touch): it is closed so its display link, run at the screen's top rate, does not tick for the rest of the
+    /// session.
+    static let maxWindowSeconds: Double = 60.0
+
+    static func isExpired(startTime: Double, now: Double) -> Bool {
+        return now - startTime >= FrameHitchStats.maxWindowSeconds
+    }
 
     let startTime: Double
     private(set) var frames: Int = 0
@@ -110,6 +118,65 @@ public final class FrameHitchMonitor {
     public static var keyboardState: (() -> String)?
 
     static let keptStallLimit = 4
+
+    /// What the monitor holds, for the memory log: open windows, kept stack captures with their bytes, whether the
+    /// display link runs, how many stack reports were queued and not yet built. Readable from any thread.
+    public struct Diagnostics: Equatable {
+        public var openSessions: Int = 0
+        public var storedCaptures: Int = 0
+        public var storedCaptureBytes: Int = 0
+        public var isLinkRunning: Bool = false
+        public var pendingReports: Int = 0
+        public var expiredSessions: Int = 0
+
+        public init() {
+        }
+    }
+
+    private static let diagnosticsLock = NSLock()
+    private static var diagnosticsValue = Diagnostics()
+
+    public static var diagnostics: Diagnostics {
+        FrameHitchMonitor.diagnosticsLock.lock()
+        defer {
+            FrameHitchMonitor.diagnosticsLock.unlock()
+        }
+        return FrameHitchMonitor.diagnosticsValue
+    }
+
+    private static func updateDiagnostics(_ f: (inout Diagnostics) -> Void) {
+        FrameHitchMonitor.diagnosticsLock.lock()
+        f(&FrameHitchMonitor.diagnosticsValue)
+        FrameHitchMonitor.diagnosticsLock.unlock()
+    }
+
+    private func publishDiagnostics() {
+        var captures = 0
+        var bytes = 0
+        for session in self.sessions.values {
+            captures += session.captures.count
+            for capture in session.captures.values {
+                bytes += (capture as? NSData)?.length ?? 0
+            }
+        }
+        let openSessions = self.sessions.count
+        let isLinkRunning = self.link != nil
+        FrameHitchMonitor.updateDiagnostics { value in
+            value.openSessions = openSessions
+            value.storedCaptures = captures
+            value.storedCaptureBytes = bytes
+            value.isLinkRunning = isLinkRunning
+        }
+    }
+
+    /// Runs `body` on the report queue, counting it as pending until it has run.
+    private static func enqueueReport(_ body: @escaping () -> Void) {
+        FrameHitchMonitor.updateDiagnostics { $0.pendingReports += 1 }
+        FrameHitchMonitor.reportQueue.async {
+            body()
+            FrameHitchMonitor.updateDiagnostics { $0.pendingReports -= 1 }
+        }
+    }
     /// Stack reports are built here, not on the main thread: building one walks a 128-frame tree with `dladdr`, which
     /// on the main thread was itself a stall the next window recorded.
     private static let reportQueue = DispatchQueue(label: "org.telegram.FrameHitchMonitor.report", qos: .utility)
@@ -144,6 +211,7 @@ public final class FrameHitchMonitor {
         }
         self.sessions[name] = Session(name: name, startTime: CACurrentMediaTime())
         self.startIfNeeded()
+        self.publishDiagnostics()
     }
 
     /// Opens `name` until `duration` seconds from now (a keyboard animation).
@@ -161,6 +229,7 @@ public final class FrameHitchMonitor {
         }
         self.finish(session)
         self.stopIfIdle()
+        self.publishDiagnostics()
     }
 
     /// Times synchronous work that runs inside one frame (a display link cannot see a stall that starts before its
@@ -181,7 +250,7 @@ public final class FrameHitchMonitor {
             FrameHitchMonitor.log?(line)
             if let capture = FrameHitchMonitor.capture?(start, end), let report = FrameHitchMonitor.report, let log = FrameHitchMonitor.log {
                 let header = String(format: "Frame hitch stack: window=%@ gapMs=%.1f atSeconds=0.00", name, (end - start) * 1000.0)
-                FrameHitchMonitor.reportQueue.async {
+                FrameHitchMonitor.enqueueReport {
                     log(header + "\n" + report(capture))
                 }
             }
@@ -196,6 +265,7 @@ public final class FrameHitchMonitor {
             self.finish(session)
         }
         self.stopIfIdle()
+        self.publishDiagnostics()
     }
 
     private func startIfNeeded() {
@@ -227,20 +297,28 @@ public final class FrameHitchMonitor {
         let expected = self.lastExpectedDuration ?? link.duration
         self.lastExpectedDuration = link.targetTimestamp - link.timestamp
         var expired: [String] = []
+        var captureChanged = false
         for (name, session) in self.sessions {
             if let stall = session.stats.record(timestamp: timestamp, expectedDuration: expected) {
                 if session.stats.keep(stall, limit: FrameHitchMonitor.keptStallLimit), let capture = FrameHitchMonitor.capture?(stall.start, stall.end) {
                     session.captures[stall.start] = capture
                     let kept = Set(session.stats.keptStalls.map(\.start))
                     session.captures = session.captures.filter { kept.contains($0.key) }
+                    captureChanged = true
                 }
             }
             if let deadline = session.deadline, timestamp >= deadline {
                 expired.append(name)
+            } else if FrameHitchStats.isExpired(startTime: session.stats.startTime, now: CACurrentMediaTime()) {
+                expired.append(name)
+                FrameHitchMonitor.updateDiagnostics { $0.expiredSessions += 1 }
             }
         }
         for name in expired {
             self.end(name)
+        }
+        if captureChanged {
+            self.publishDiagnostics()
         }
     }
 
@@ -267,7 +345,7 @@ public final class FrameHitchMonitor {
         guard !pending.isEmpty else {
             return
         }
-        FrameHitchMonitor.reportQueue.async {
+        FrameHitchMonitor.enqueueReport {
             for (header, capture) in pending {
                 log(header + "\n" + report(capture))
             }

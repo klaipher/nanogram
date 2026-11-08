@@ -7,6 +7,7 @@ import TelegramCore
 import DeviceModel
 import Camera
 import CameraMultitaskingPolicy
+import BackgroundDiagnostics
 
 final class CameraSession {
     private let singleSession: AVCaptureSession?
@@ -116,6 +117,9 @@ final class CameraDeviceContext {
 }
 
 private final class CameraContext {
+    /// Shows in the 30 s `Memory detail` line while the context lives: the 2026-11-08 log has `CameraContext Init`
+    /// 1-2 s after some foregrounds, followed by +150-300 MB.
+    private let liveToken = LiveInstanceToken("CameraContext")
     private let queue: Queue
     private let session: CameraSession
     private let ciContext: CIContext

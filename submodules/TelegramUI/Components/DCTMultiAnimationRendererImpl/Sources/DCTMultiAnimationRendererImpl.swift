@@ -201,6 +201,23 @@ func makeVideoRangeYuvaPixelBuffer(y: AnimationCacheItemFrame.Plane, u: Animatio
 // Items smaller than this (pixels) always use images when useYuvA is on.
 let yuvaMinimumPixelSize: CGFloat = 128.0
 
+/// How many animated items the renderer holds, for the memory log. Readable from any thread.
+public enum DCTMultiAnimationRendererDiagnostics {
+    private static let live = Atomic<Int>(value: 0)
+
+    public static var liveItemContexts: Int {
+        return live.with({ $0 })
+    }
+
+    fileprivate static func opened() {
+        let _ = live.modify({ $0 + 1 })
+    }
+
+    fileprivate static func closed() {
+        let _ = live.modify({ $0 - 1 })
+    }
+}
+
 final class ItemAnimationContext {
     final class Frame {
         let frame: AnimationCacheItemFrame
@@ -608,6 +625,7 @@ final class ItemAnimationContext {
         // Small emoji gain nothing from a YUVA surface (measured), so they keep the image path.
         self.useYuvA = useYuvA && min(size.width, size.height) >= yuvaMinimumPixelSize
         self.stateUpdated = stateUpdated
+        DCTMultiAnimationRendererDiagnostics.opened()
 
         self.disposable = cache.get(sourceId: itemId, size: size, fetch: fetch).start(next: { [weak self] result in
             Queue.mainQueue().async {
@@ -678,6 +696,7 @@ final class ItemAnimationContext {
     }
 
     deinit {
+        DCTMultiAnimationRendererDiagnostics.closed()
         self.disposable?.dispose()
         self.displayLink?.invalidate()
     }

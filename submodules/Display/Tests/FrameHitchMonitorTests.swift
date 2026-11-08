@@ -128,6 +128,29 @@ final class FrameHitchMonitorTests: XCTestCase {
         XCTAssertEqual(samplerStates, [true, false])
     }
 
+    /// A window whose `end` never comes (a list released mid-gesture) would keep the top-rate display link ticking.
+    func test_aWindowThatNeverEndsExpires() {
+        XCTAssertFalse(FrameHitchStats.isExpired(startTime: 100.0, now: 159.9))
+        XCTAssertTrue(FrameHitchStats.isExpired(startTime: 100.0, now: 160.0))
+    }
+
+    /// The memory log reads these from a utility queue: open windows, kept captures and their bytes.
+    func test_diagnosticsFollowOpenWindows() {
+        FrameHitchMonitor.log = { _ in }
+        defer {
+            FrameHitchMonitor.isEnabled = false
+            FrameHitchMonitor.log = nil
+        }
+        FrameHitchMonitor.isEnabled = true
+        FrameHitchMonitor.shared.begin("chatScroll")
+        XCTAssertEqual(FrameHitchMonitor.diagnostics.openSessions, 1)
+        XCTAssertTrue(FrameHitchMonitor.diagnostics.isLinkRunning)
+        FrameHitchMonitor.shared.end("chatScroll")
+        XCTAssertEqual(FrameHitchMonitor.diagnostics.openSessions, 0)
+        XCTAssertEqual(FrameHitchMonitor.diagnostics.storedCaptures, 0)
+        XCTAssertFalse(FrameHitchMonitor.diagnostics.isLinkRunning)
+    }
+
     func test_summaryLine() {
         var stats = FrameHitchStats(startTime: 10.0)
         var t = 10.0

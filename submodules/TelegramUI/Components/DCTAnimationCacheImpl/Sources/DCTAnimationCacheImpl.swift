@@ -668,6 +668,24 @@ private final class AnimationCacheItemWriterImpl: AnimationCacheItemWriter {
     }
 }
 
+/// What the animation cache holds in memory, for the memory log: opened items (each keeps its whole compressed file
+/// as `Data` and a decoded frame) and the bytes of those files. Readable from any thread.
+public enum DCTAnimationCacheDiagnostics {
+    private static let state = Atomic<(items: Int, bytes: Int)>(value: (0, 0))
+
+    public static var openItems: (items: Int, bytes: Int) {
+        return state.with({ $0 })
+    }
+
+    fileprivate static func opened(bytes: Int) {
+        let _ = state.modify({ ($0.items + 1, $0.bytes + bytes) })
+    }
+
+    fileprivate static func closed(bytes: Int) {
+        let _ = state.modify({ ($0.items - 1, $0.bytes - bytes) })
+    }
+}
+
 private final class AnimationCacheItemAccessor {
     private enum ReadError: Error {
         case generic
@@ -732,9 +750,11 @@ private final class AnimationCacheItemAccessor {
         self.durationMapping = durationMapping
         
         self.currentDctData = dctData
+        DCTAnimationCacheDiagnostics.opened(bytes: data.count)
     }
     
     deinit {
+        DCTAnimationCacheDiagnostics.closed(bytes: self.data.count)
         self.sparseBuffer?.deallocate()
     }
     

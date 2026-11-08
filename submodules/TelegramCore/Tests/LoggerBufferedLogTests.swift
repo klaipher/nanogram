@@ -136,6 +136,20 @@ final class LoggerBufferedLogTests: XCTestCase {
         XCTAssertNotNil(line.range(of: pattern, options: .regularExpression), "unexpected line: \(line)", file: file, line: lineNumber)
     }
 
+    /// The memory log reads the backlog: entries queued and not yet run, and the bytes waiting in the write buffers.
+    func testBacklogCountsBufferedBytesUntilTheyAreWritten() {
+        let logger = self.makeLogger()
+        XCTAssertEqual(logger.backlog, Logger.Backlog(queuedEntries: 0, queuedBytes: 0, pendingBytes: 0))
+        logger.log("Test", "hello")
+        logger.drainForTesting()
+        let buffered = logger.backlog
+        XCTAssertEqual(buffered.queuedEntries, 0)
+        XCTAssertEqual(buffered.queuedBytes, 0)
+        XCTAssertGreaterThan(buffered.pendingBytes, "hello".utf8.count)
+        logger.flushPendingLogsAndWait()
+        XCTAssertEqual(logger.backlog.pendingBytes, 0)
+    }
+
     func testLinesAreWrittenInOrderWithTheOldFormat() {
         let logger = self.makeLogger()
         for i in 0 ..< 300 {

@@ -59,6 +59,8 @@ import AnimatedStickerNode
 import MTProtoRustEngine
 import BackgroundDiagnostics
 import DiskWriteAccounting
+import DCTAnimationCacheImpl
+import DCTMultiAnimationRendererImpl
 
 #if DEBUG
 import AlertComponent
@@ -2227,6 +2229,36 @@ private func extractAccountManagerState(records: AccountRecordsView<TelegramAcco
         }))
         self.memoryProbeRegistrations.append(registry.register(name: "URLCache memory", read: {
             return MemoryProbeRegistry.Reading(count: 0, bytes: UInt64(clamping: URLCache.shared.currentMemoryUsage))
+        }))
+        // The 2026-11-08 foreground growth of ~1 MB/s: these separate the always-on diagnostics and the per-frame
+        // animation state from the rest of the heap.
+        self.memoryProbeRegistrations.append(registry.register(name: "frame hitch captures", read: {
+            let value = FrameHitchMonitor.diagnostics
+            return MemoryProbeRegistry.Reading(count: value.storedCaptures, bytes: UInt64(clamping: value.storedCaptureBytes))
+        }))
+        self.memoryProbeRegistrations.append(registry.register(name: "frame hitch open windows (link running = bytes 1)", read: {
+            let value = FrameHitchMonitor.diagnostics
+            return MemoryProbeRegistry.Reading(count: value.openSessions, bytes: value.isLinkRunning ? 1 : 0)
+        }))
+        self.memoryProbeRegistrations.append(registry.register(name: "frame hitch reports pending", read: {
+            return MemoryProbeRegistry.Reading(count: FrameHitchMonitor.diagnostics.pendingReports)
+        }))
+        self.memoryProbeRegistrations.append(registry.register(name: "frame hitch windows expired unended", read: {
+            return MemoryProbeRegistry.Reading(count: FrameHitchMonitor.diagnostics.expiredSessions)
+        }))
+        self.memoryProbeRegistrations.append(registry.register(name: "log queued entries", read: {
+            let value = Logger.sharedIfInstalled?.backlog ?? Logger.Backlog(queuedEntries: 0, queuedBytes: 0, pendingBytes: 0)
+            return MemoryProbeRegistry.Reading(count: value.queuedEntries, bytes: UInt64(clamping: value.queuedBytes))
+        }))
+        self.memoryProbeRegistrations.append(registry.register(name: "log write buffers", read: {
+            return MemoryProbeRegistry.Reading(count: 0, bytes: UInt64(clamping: Logger.sharedIfInstalled?.backlog.pendingBytes ?? 0))
+        }))
+        self.memoryProbeRegistrations.append(registry.register(name: "animation cache open items", read: {
+            let value = DCTAnimationCacheDiagnostics.openItems
+            return MemoryProbeRegistry.Reading(count: value.items, bytes: UInt64(clamping: value.bytes))
+        }))
+        self.memoryProbeRegistrations.append(registry.register(name: "animation renderer item contexts", read: {
+            return MemoryProbeRegistry.Reading(count: DCTMultiAnimationRendererDiagnostics.liveItemContexts)
         }))
     }
     
