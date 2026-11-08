@@ -4750,7 +4750,9 @@ final class PostboxImpl {
     func optimizeStorageIfNeeded(minFreeFraction: Double, minInterval: Double, maxLiveBytes: Int64?, now: Double, shouldProceed: () -> Bool) -> PostboxStorageOptimizationResult {
         assert(self.queue.isCurrent())
         let markerPath = self.basePath + "/" + PostboxStorageOptimizationSchedule.markerFileName
-        if !PostboxStorageOptimizationSchedule.isDue(lastRun: PostboxStorageOptimizationSchedule.lastRun(markerPath: markerPath), now: now, minInterval: minInterval) {
+        let lastRun = PostboxStorageOptimizationSchedule.lastRun(markerPath: markerPath)
+        if !PostboxStorageOptimizationSchedule.isDue(lastRun: lastRun, now: now, minInterval: minInterval) {
+            postboxLog(String(format: "Postbox: storage optimization not due, last check %.1f h ago (every %.0f h)", (now - (lastRun ?? now)) / 3600.0, minInterval / 3600.0))
             return .skippedRecentlyChecked
         }
         let availableDiskSpace = (try? URL(fileURLWithPath: self.basePath).resourceValues(forKeys: [.volumeAvailableCapacityForImportantUsageKey]))?.volumeAvailableCapacityForImportantUsage

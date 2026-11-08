@@ -651,6 +651,13 @@ public final class SqliteValueBox: ValueBox {
         }
 
         postboxLog("Did open DB at \(path)")
+        if !self.inMemory {
+            // The database's size on disk, once per open (no SQL: the file attributes only), so logs show how big it is.
+            let fileSize: (String) -> Int64 = { filePath in
+                return ((try? FileManager.default.attributesOfItem(atPath: filePath))?[.size] as? NSNumber)?.int64Value ?? 0
+            }
+            postboxLog(String(format: "DB size at %@: %.1f MB, WAL %.1f MB", (path as NSString).lastPathComponent, Double(fileSize(path)) / 1048576.0, Double(fileSize(path + "-wal")) / 1048576.0))
+        }
         if self.removeDatabaseOnError && !self.inMemory {
             SqliteValueBox.clearOpenFailures(databasePath: path)
         }
@@ -2953,6 +2960,7 @@ public final class SqliteValueBox: ValueBox {
             return .failed
         }
         if before.pageCount == 0 || before.freeFraction < minFreeFraction {
+            postboxLog(String(format: "SqliteValueBox: not fragmented, %.1f MB, %.1f%% free pages (VACUUM from %.0f%%)", Double(before.pageCount * before.pageSize) / 1048576.0, before.freeFraction * 100.0, minFreeFraction * 100.0))
             return .notFragmented(before)
         }
         let needed = (before.pageCount - before.freePageCount) * before.pageSize * 2
