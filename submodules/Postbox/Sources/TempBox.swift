@@ -147,7 +147,9 @@ private final class TempBoxContexts {
     }
 }
 
-private var sharedValue: TempBox?
+// Behind a lock: two threads initializing at once both released the previous value and crashed in its deinit
+// (iPad MetricKit, Intents extension, 2026-11-03: SIGSEGV in TempBox.__deallocating_deinit).
+private let sharedValue = Atomic<TempBox?>(value: nil)
 
 public final class TempBox {
     private let basePath: String
@@ -158,11 +160,11 @@ public final class TempBox {
     private let contexts = Atomic<TempBoxContexts>(value: TempBoxContexts())
     
     public static func initializeShared(basePath: String, processType: String, launchSpecificId: Int64) {
-        sharedValue = TempBox(basePath: basePath, processType: processType, launchSpecificId: launchSpecificId)
+        let _ = sharedValue.swap(TempBox(basePath: basePath, processType: processType, launchSpecificId: launchSpecificId))
     }
     
     public static var shared: TempBox {
-        return sharedValue!
+        return sharedValue.with { $0 }!
     }
     
     private init(basePath: String, processType: String, launchSpecificId: Int64) {
