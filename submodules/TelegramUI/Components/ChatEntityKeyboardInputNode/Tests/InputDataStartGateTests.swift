@@ -43,4 +43,16 @@ final class InputDataStartGateTests: XCTestCase {
         XCTAssertFalse(gate.shouldStart(.demand))
         XCTAssertFalse(gate.shouldStart(.idle))
     }
+
+    func testFocusPrewarmWaitsForTheKeyboardOnlyWhenDeferralIsOn() {
+        XCTAssertNil(InputDataStartGate.focusPrewarmDelay(deferEnabled: false))
+        XCTAssertEqual(InputDataStartGate.focusPrewarmDelay(deferEnabled: true), InputDataStartGate.focusPrewarmWait)
+        XCTAssertGreaterThanOrEqual(InputDataStartGate.focusPrewarmWait, 0.35, "at least the keyboard animation")
+    }
+
+    func testAnExplicitDemandDuringTheFocusDelayStartsAtOnceAndTheDelayedStartIsANoOp() {
+        var gate = InputDataStartGate()
+        XCTAssertTrue(gate.shouldStart(.demand))
+        XCTAssertFalse(gate.shouldStart(.idle), "the delayed focus start finds the data already started")
+    }
 }

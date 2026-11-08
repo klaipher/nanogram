@@ -5241,7 +5241,7 @@ public class ChatTextInputPanelNode: ChatInputPanelNode, ASEditableTextNodeDeleg
             self.richTextInputNode?.inputView.addGestureRecognizer(touchDownGestureRecognizer)
         }
         
-        self.inputPanelsPrewarmRequested?()
+        self.inputPanelsFocusPrewarmRequested?()
     }
 
     @objc public func editableTextNodeDidBeginEditing(_ editableTextNode: ASEditableTextNode) {
@@ -6473,6 +6473,9 @@ public class ChatTextInputPanelNode: ChatInputPanelNode, ASEditableTextNodeDeleg
     /// Called on touch-down of an input-mode accessory button (stickers/emoji) and when the text input
     /// begins editing: the chat uses it to start building the emoji and sticker panel data early.
     public var inputPanelsPrewarmRequested: (() -> Void)?
+    /// Called when the text input begins editing (the keyboard starts rising). Separate from the touch-down prewarm so
+    /// the chat can hold the build back until the keyboard animation is over.
+    public var inputPanelsFocusPrewarmRequested: (() -> Void)?
     
     @objc func accessoryItemButtonTouchDown(_ button: UIView) {
         for (item, currentButton) in self.accessoryItemButtons where currentButton === button {

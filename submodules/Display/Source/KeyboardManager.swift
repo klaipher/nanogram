@@ -24,16 +24,7 @@ public extension UIResponder {
 }
 
 private func getFirstResponder(_ view: UIView) -> UIView? {
-    if view.isFirstResponder {
-        return view
-    } else {
-        for subview in view.subviews {
-            if let result = getFirstResponder(subview) {
-                return result
-            }
-        }
-        return nil
-    }
+    return FirstResponderLookup.shared.findView(in: view)
 }
 
 class KeyboardManager {

@@ -238,21 +238,7 @@ func isHardwareKeyboardBar(keyboardFrame: CGRect, deviceType: DeviceType, respon
 }
 
 public func getFirstResponderAndAccessoryHeight(_ view: UIView, _ accessoryHeight: CGFloat? = nil) -> (UIView?, CGFloat?) {
-    if view.isFirstResponder {
-        return (view, accessoryHeight)
-    } else {
-        var updatedAccessoryHeight = accessoryHeight
-        if let view = view as? WindowInputAccessoryHeightProvider {
-            updatedAccessoryHeight = view.getWindowInputAccessoryHeight()
-        }
-        for subview in view.subviews {
-            let (result, resultHeight) = getFirstResponderAndAccessoryHeight(subview, updatedAccessoryHeight)
-            if let result = result {
-                return (result, resultHeight)
-            }
-        }
-        return (nil, nil)
-    }
+    return FirstResponderLookup.shared.find(in: view, accessoryHeight: accessoryHeight)
 }
 
 /// Where a keyboard drag may start for a touch at `location`: the first responder and the input accessory height
@@ -378,15 +364,7 @@ public extension UIView {
     }
     
     func findFirstResponder() -> UIView? {
-        if self.isFirstResponder {
-            return self
-        }
-        for subview in self.subviews {
-            if let result = subview.findFirstResponder() {
-                return result
-            }
-        }
-        return nil
+        return FirstResponderLookup.shared.findView(in: self)
     }
 }
 
@@ -1556,9 +1534,6 @@ public class Window1 {
                 let updatedInputOffset = inputHeightOffsetForLayout(self.windowLayout)
                 if !previousInputOffset.isEqual(to: updatedInputOffset) {
                     let hide = updatingLayout.transition.isAnimated && updatingLayout.layout.upperKeyboardInputPositionBound == updatingLayout.layout.size.height
-                    if hide {
-                        print("hide with \(updatingLayout.transition)")
-                    }
                     self.keyboardManager?.updateInteractiveInputOffset(updatedInputOffset, transition: updatingLayout.transition, completion: { [weak self] in
                         if let strongSelf = self, hide {
                             strongSelf.updateLayout {

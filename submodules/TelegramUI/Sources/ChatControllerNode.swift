@@ -980,6 +980,9 @@ class ChatControllerNode: ASDisplayNode, ASScrollViewDelegate {
         self.textInputPanelNode?.inputPanelsPrewarmRequested = { [weak self] in
             self?.startInputMediaNodeDataIfNeeded(.prewarm)
         }
+        self.textInputPanelNode?.inputPanelsFocusPrewarmRequested = { [weak self] in
+            self?.prewarmInputMediaNodeDataAfterFocus()
+        }
         self.textInputPanelNode?.mediaItemViewFactory = { items, existing in
             // In-place update: reuse the existing container (surviving photo/video cells keep their bound fetch,
             // no re-flash) across add-more / delete-one; else build a fresh one.
@@ -4352,6 +4355,20 @@ class ChatControllerNode: ASDisplayNode, ASScrollViewDelegate {
                 }
             )
         )
+    }
+    
+    /// The text input got focus: the keyboard is rising. The data build runs on the main queue, so with the emoji panel
+    /// deferral on it starts after the keyboard animation (through the idle path, which also waits for a quiet history
+    /// list and replaces a pending earlier idle start); an explicit demand or a button touch-down still starts at once.
+    private func prewarmInputMediaNodeDataAfterFocus() {
+        guard self.didInitializeInputMediaNodeDataPromise, !self.inputMediaNodeDataStartGate.hasStarted else {
+            return
+        }
+        if let delay = InputDataStartGate.focusPrewarmDelay(deferEnabled: EmojiPanelOpenTuning.defersHeavyWork) {
+            self.scheduleIdleInputMediaNodeDataStart(after: delay)
+        } else {
+            self.startInputMediaNodeDataIfNeeded(.prewarm)
+        }
     }
     
     private func scheduleIdleInputMediaNodeDataStart(after seconds: Double) {
