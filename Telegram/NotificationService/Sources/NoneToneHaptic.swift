@@ -1,5 +1,4 @@
 import Foundation
-import Postbox
 import TelegramCore
 
 /// Notification tone "None" must stay inaudible but still vibrate. The server leaves the `sound`
@@ -25,7 +24,7 @@ enum NoneToneHaptic {
     /// The default-settings category of a message push. Channels need to be told apart from
     /// supergroups by the stored peer; `nil` means "unknown", and an unknown peer keeps the
     /// push as it is.
-    static func category(peerNamespace: PeerId.Namespace, isBroadcastChannel: Bool?) -> Category? {
+    static func category(peerNamespace: EnginePeer.Id.Namespace, isBroadcastChannel: Bool?) -> Category? {
         if peerNamespace == Namespaces.Peer.CloudUser || peerNamespace == Namespaces.Peer.SecretChat {
             // Secret chats use the private-chat defaults and the settings of the peer they belong to.
             return .privateChat
