@@ -139,6 +139,15 @@ final class ExperimentalUISettingsDefaultsTests: XCTestCase {
         XCTAssertFalse(try self.roundTrip(settings).chatListLazyRareSubnodes)
     }
 
+    func testChatListAsyncMediaWhileScrollingIsOnByDefaultAndTheChoiceIsKept() throws {
+        for settings in [ExperimentalUISettings.defaultSettings, try self.decode("{}"), try self.decode(#"{"glassDebugDisabledGroups": 2}"#)] {
+            XCTAssertTrue(settings.chatListAsyncMediaWhileScrolling)
+        }
+        var settings = ExperimentalUISettings.defaultSettings
+        settings.chatListAsyncMediaWhileScrolling = false
+        XCTAssertFalse(try self.roundTrip(settings).chatListAsyncMediaWhileScrolling)
+    }
+
     func testChatListRowReuseIsOffByDefaultAndTheChoiceIsKept() throws {
         for settings in [ExperimentalUISettings.defaultSettings, try self.decode("{}"), try self.decode(#"{"glassDebugDisabledGroups": 2}"#)] {
             XCTAssertFalse(settings.chatListRowReuse)

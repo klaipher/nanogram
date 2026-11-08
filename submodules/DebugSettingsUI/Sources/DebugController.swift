@@ -387,6 +387,7 @@ enum DebugControllerEntry: ItemListNodeEntry {
     case chatListRowReuse(Bool)
     case frameHitchLog(Bool)
     case keyboardProbe
+    case chatListAsyncMediaWhileScrolling(Bool)
     case enableNetworkFramework(Bool)
     case enableNetworkExperiments(Bool)
     case rustMTProtoEngine(Bool)
@@ -422,7 +423,7 @@ enum DebugControllerEntry: ItemListNodeEntry {
             return DebugControllerSection.chatOpen.rawValue
         case .chatScrollHeader, .chatScrollPrepareLayoutAhead, .chatScrollReuseRowViews:
             return DebugControllerSection.chatScroll.rawValue
-        case .listScrollHeader, .displayLinkUpstreamRate, .listAccessibilityImmediate, .listScrollPacingLog, .chatListLazyRareSubnodes, .chatListRowReuse, .frameHitchLog, .keyboardProbe:
+        case .listScrollHeader, .displayLinkUpstreamRate, .listAccessibilityImmediate, .listScrollPacingLog, .chatListLazyRareSubnodes, .chatListRowReuse, .frameHitchLog, .keyboardProbe, .chatListAsyncMediaWhileScrolling:
             return DebugControllerSection.listScroll.rawValue
         case .springSendAnimation, .fakeWalletTransfers, .stickerRendererMode, .disableImageContentAnalysis, .disableLanguageRecognition, .localTranscription, .enableVoipTcp, .tabletDisplayLinkFrameRateCap, .chatMediaEditorLegacy, .mediaGridLegacy, .sharedMediaGridLegacy, .storyLegacyVideoWriter, .chatLegacyVideoWriter, .chatSideListLegacy, .messageWidgets, .messageWidgetWallet:
             return DebugControllerSection.experiments.rawValue
@@ -609,6 +610,8 @@ enum DebugControllerEntry: ItemListNodeEntry {
         case .keyboardProbe:
             // Appended right after `frameHitchLog`; see the ordering note at `springSendAnimation`.
             return 144
+        case .chatListAsyncMediaWhileScrolling:
+            return 146
         case .springSendAnimation:
             // ItemList asserts its entries are in strictly increasing order (`<`: section, then
             // `sortIndex`, which is the stableId here; ItemListControllerNode.swift), so an id must
@@ -766,6 +769,14 @@ enum DebugControllerEntry: ItemListNodeEntry {
                 let controller = KeyboardProbeViewController()
                 controller.modalPresentationStyle = .pageSheet
                 arguments.getRootController()?.present(controller, animated: true)
+            })
+        case let .chatListAsyncMediaWhileScrolling(value):
+            return ItemListSwitchItem(presentationData: presentationData, systemStyle: .glass, title: "Chat list: async media previews while scrolling", text: "On (default): while you scroll the chat list, rows that arrive in bulk (loading more chats) decode their media previews in the background, so a preview can show a placeholder for a frame. Off: those rows decode on the main thread as Telegram does (smoother content, longer frames). The first screen, a folder switch and a jump to the top always decode up front. Applies to rows loaded from now on.", value: value, maximumNumberOfLines: 0, sectionId: self.section, style: .blocks, updated: { value in
+                let _ = updateExperimentalUISettingsInteractively(accountManager: arguments.sharedContext.accountManager, { settings in
+                    var settings = settings
+                    settings.chatListAsyncMediaWhileScrolling = value
+                    return settings
+                }).start()
             })
         case .sendLogs:
             return ItemListActionItem(presentationData: presentationData, systemStyle: .glass, title: "Send Logs", kind: .generic, alignment: .natural, sectionId: self.section, style: .blocks, action: {
@@ -1567,6 +1578,7 @@ func debugControllerEntries(environment: DebugControllerEntriesEnvironment, them
         entries.append(.chatListRowReuse(experimentalSettings.chatListRowReuse))
         entries.append(.frameHitchLog(experimentalSettings.frameHitchLog))
         entries.append(.keyboardProbe)
+        entries.append(.chatListAsyncMediaWhileScrolling(experimentalSettings.chatListAsyncMediaWhileScrolling))
     }
 
     if isMainApp {

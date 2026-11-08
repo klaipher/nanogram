@@ -7,4 +7,7 @@ public enum ChatListRowExperiments {
     public static var lazyRareSubnodes: Bool = true
     /// "Chat list rows: reuse rows" (default off). Part 2.
     public static var rowReuse: Bool = false
+    /// "Chat list: async media previews while scrolling" (default on). While the user scrolls, a bulk insert no longer
+    /// loads its rows' media previews synchronously.
+    public static var asyncMediaWhileScrolling: Bool = true
 }

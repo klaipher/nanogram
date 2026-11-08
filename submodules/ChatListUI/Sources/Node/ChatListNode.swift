@@ -3682,7 +3682,7 @@ public final class ChatListNode: ListViewImpl {
             if self.view.window != nil || self.synchronousDrawingWhenNotAnimated {
                 if !options.contains(.AnimateInsertion) {
                     options.insert(.PreferSynchronousDrawing)
-                    if ChatListSynchronousLoadingPolicy.prefersSynchronousResourceLoading(isFirstTransition: !self.hasAppliedFirstListTransition, filterChanged: transition.chatListView.filter != self.lastTransitionFilter, scrollsToItem: transition.scrollToItem != nil, insertedCount: transition.insertItems.count) {
+                    if ChatListSynchronousLoadingPolicy.prefersSynchronousResourceLoading(isFirstTransition: !self.hasAppliedFirstListTransition, filterChanged: transition.chatListView.filter != self.lastTransitionFilter, scrollsToItem: transition.scrollToItem != nil, insertedCount: transition.insertItems.count, userIsScrolling: self.isTracking || self.isDeceleratingAfterTracking, asyncWhileScrolling: ChatListRowExperiments.asyncMediaWhileScrolling) {
                         options.insert(.PreferSynchronousResourceLoading)
                     }
                 }

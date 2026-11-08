@@ -629,6 +629,7 @@ public final class SharedAccountContextImpl: SharedAccountContext {
         ListViewScrollPacing.isEnabled = immediateExperimentalUISettingsValue.with({ $0.listScrollPacingLog })
         ChatListRowExperiments.lazyRareSubnodes = immediateExperimentalUISettingsValue.with({ $0.chatListLazyRareSubnodes })
         ChatListRowExperiments.rowReuse = immediateExperimentalUISettingsValue.with({ $0.chatListRowReuse })
+        ChatListRowExperiments.asyncMediaWhileScrolling = immediateExperimentalUISettingsValue.with({ $0.chatListAsyncMediaWhileScrolling })
         MediaEditorVideoExport.forceLegacyStoryWriter = immediateExperimentalUISettingsValue.with({ $0.storyLegacyVideoWriter })
         MediaEditorVideoExport.forceLegacyChatWriter = immediateExperimentalUISettingsValue.with({ $0.chatLegacyVideoWriter })
         
@@ -650,6 +651,7 @@ public final class SharedAccountContextImpl: SharedAccountContext {
                 FrameHitchMonitor.isEnabled = settings.frameHitchLog
                 ChatListRowExperiments.lazyRareSubnodes = settings.chatListLazyRareSubnodes
                 ChatListRowExperiments.rowReuse = settings.chatListRowReuse
+                ChatListRowExperiments.asyncMediaWhileScrolling = settings.chatListAsyncMediaWhileScrolling
                 MediaEditorVideoExport.forceLegacyStoryWriter = settings.storyLegacyVideoWriter
                 MediaEditorVideoExport.forceLegacyChatWriter = settings.chatLegacyVideoWriter
             }
