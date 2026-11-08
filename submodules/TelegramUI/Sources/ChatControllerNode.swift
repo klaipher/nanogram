@@ -4,6 +4,7 @@ import AsyncDisplayKit
 import Postbox
 import SwiftSignalKit
 import Display
+import BackgroundDiagnostics
 import SideColumnLayout
 import TelegramCore
 import TelegramPresentationData
@@ -182,6 +183,9 @@ private final class PendingSwitchToChatLocation {
 }
 
 class ChatControllerNode: ASDisplayNode, ASScrollViewDelegate {
+    /// Counts this screen's instances in the memory log ("live objects"): a count that only grows means something keeps them alive.
+    private let liveInstanceToken = LiveInstanceToken("ChatControllerNode")
+
     let context: AccountContext
     private(set) var chatLocation: ChatLocation
     private var chatLocationContextHolder: Atomic<ChatLocationContextHolder?>

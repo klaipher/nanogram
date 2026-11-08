@@ -2,6 +2,7 @@ import Foundation
 import UIKit
 import SwiftSignalKit
 import Display
+import BackgroundDiagnostics
 import AsyncDisplayKit
 import TelegramCore
 import TelegramPresentationData
@@ -493,6 +494,9 @@ private struct ChatHistoryAnimatedEmojiConfiguration {
 private var nextClientId: Int32 = 1
 
 public final class ChatHistoryListNodeImpl: ASDisplayNode, ChatHistoryNode, ChatHistoryListNode {
+    /// Counts this screen's instances in the memory log ("live objects"): a count that only grows means something keeps them alive.
+    private let liveInstanceToken = LiveInstanceToken("ChatHistoryListNode")
+
     override public func didEnterHierarchy() {
         super.didEnterHierarchy()
         if self.skippedDisplayedItemRangeRefresh {

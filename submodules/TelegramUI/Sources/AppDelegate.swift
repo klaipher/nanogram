@@ -238,6 +238,7 @@ private func extractAccountManagerState(records: AccountRecordsView<TelegramAcco
     private var statusBarHost: ApplicationStatusBarHost?
     private var dataImportSplash: LegacyDataImportSplash?
     private var memoryUsageOverlayView: UILabel?
+    private var memoryProbeRegistrations: [MemoryProbeRegistry.Registration] = []
     
     private let crashReportPromptDisposable = MetaDisposable()
     private var buildConfig: BuildConfig?
@@ -1770,9 +1771,16 @@ private func extractAccountManagerState(records: AccountRecordsView<TelegramAcco
         let _ = self.urlSession(identifier: "\(baseAppBundleId).backroundSession")
         
         var previousReportedMemoryConsumption = 0
+        self.registerMemoryProbes()
+        var memoryDetailTick = 0
         // Every 5 s (was 0.5 s, for the life of the app, background included). The value is only
         // logged on a >1 MB change and shown by a debug overlay; 2 Hz kept the main thread waking.
         let memoryReportTimer = Foundation.Timer.scheduledTimer(withTimeInterval: 5.0, repeats: true, block: { _ in
+            // Every 30 s: who holds the memory (heap by zone, live objects, cache sizes), with "Log to File" on.
+            memoryDetailTick += 1
+            if memoryDetailTick % 6 == 0 {
+                self.logMemoryDetail()
+            }
             let value = getMemoryConsumption()
             if abs(value - previousReportedMemoryConsumption) > 1 * 1024 * 1024 {
                 previousReportedMemoryConsumption = value
@@ -2196,6 +2204,7 @@ private func extractAccountManagerState(records: AccountRecordsView<TelegramAcco
         Logger.shared.log("App \(self.episodeId)", "Memory warning")
         // The app may be killed for memory next: write the buffered log lines.
         Logger.shared.flushPendingLogs()
+        self.purgeMemory(reason: "memory warning")
         let _ = (self.sharedContextPromise.get()
         |> take(1)
         |> mapToSignal { sharedApplicationContext in
@@ -2209,8 +2218,59 @@ private func extractAccountManagerState(records: AccountRecordsView<TelegramAcco
         })
     }
     
+    /// What the memory log can measure about the app's own caches and objects (see `MemoryProbeRegistry`). Cheap reads
+    /// only: they run on a utility queue every 30 s.
+    private func registerMemoryProbes() {
+        let registry = MemoryProbeRegistry.shared
+        self.memoryProbeRegistrations.append(registry.register(name: "chat controllers", read: {
+            return MemoryProbeRegistry.Reading(count: Int(ChatControllerCount.with({ $0 })))
+        }))
+        self.memoryProbeRegistrations.append(registry.register(name: "URLCache memory", read: {
+            return MemoryProbeRegistry.Reading(count: 0, bytes: UInt64(clamping: URLCache.shared.currentMemoryUsage))
+        }))
+    }
+    
+    /// One line every 30 s with "Log to File" on: the process memory, the heap by malloc zone, the thread count, how many
+    /// live objects of the kinds that must not pile up exist, and the sizes the registered caches report. The heap in the
+    /// 2026-11-08 log grew to 1.3 GB while every Nanogram cache stayed bounded, so this is how the next log shows who holds it.
+    private func logMemoryDetail() {
+        guard Logger.shared.logToFile else {
+            return
+        }
+        let episodeId = self.episodeId
+        DispatchQueue.global(qos: .utility).async {
+            let snapshot = MemoryProbeRegistry.shared.snapshot()
+            let report = MemoryDetailReport(
+                memory: ProcessMemory.current(),
+                threads: MemoryRelief.threadCount(),
+                zones: MallocZoneUsage.largest(limit: 4),
+                caches: snapshot.caches,
+                instances: snapshot.instances
+            )
+            Logger.shared.log("App \(episodeId)", report.logLine)
+        }
+    }
+    
+    /// Entering the background or a memory warning: asks every registered cache to drop what it kept for speed, hands free
+    /// heap pages back to the system, and logs the footprint before and after (with "Log to File" on).
+    private func purgeMemory(reason: String) {
+        let before = ProcessMemory.current()
+        let purged = MemoryProbeRegistry.shared.purgeAll()
+        let episodeId = self.episodeId
+        let logToFile = Logger.shared.logToFile
+        DispatchQueue.global(qos: .utility).async {
+            MemoryRelief.returnFreeHeapPages()
+            guard logToFile else {
+                return
+            }
+            let report = MemoryPurgeReport(reason: reason, before: before, after: ProcessMemory.current(), purged: purged)
+            Logger.shared.log("App \(episodeId)", report.logLine)
+        }
+    }
+    
     func handleDidEnterBackground() {
         Logger.shared.flushPendingLogs()
+        self.purgeMemory(reason: "background")
         let _ = (self.sharedContextPromise.get()
         |> take(1)
         |> deliverOnMainQueue).start(next: { sharedApplicationContext in
