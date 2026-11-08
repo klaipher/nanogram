@@ -615,7 +615,7 @@ enum DebugControllerEntry: ItemListNodeEntry {
             return 146
         case .backSwipePreparePreviousScreen:
             // Appended right after `chatListAsyncMediaWhileScrolling`; see the ordering note at `springSendAnimation`.
-            return 147
+            return 148
         case .springSendAnimation:
             // ItemList asserts its entries are in strictly increasing order (`<`: section, then
             // `sortIndex`, which is the stableId here; ItemListControllerNode.swift), so an id must

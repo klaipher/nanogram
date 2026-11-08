@@ -316,7 +316,8 @@ public final class Logger {
         data.withUnsafeBytes { rawBytes -> Void in
             let _ = file.write(rawBytes.baseAddress!, count: count)
         }
-        DiskWriteAccounting.shared.add(DiskWriteCategory.logs, bytes: count)        self.updatePendingBytes()
+        DiskWriteAccounting.shared.add(DiskWriteCategory.logs, bytes: count)
+        self.updatePendingBytes()
     }
     
     private func appendShortLog(_ data: Data, to file: ManagedFile) {
