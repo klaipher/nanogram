@@ -590,6 +590,12 @@ public final class SharedAccountContextImpl: SharedAccountContext {
         ListViewScrollPacing.log = { line in
             Logger.shared.log("ListView", line)
         }
+        ListViewScrollPacing.context = {
+            return immediateExperimentalUISettingsValue.with { settings in
+                let on: (Bool) -> String = { $0 ? "on" : "off" }
+                return "lazyRows=\(on(settings.chatListLazyRareSubnodes)) rowReuse=\(on(settings.chatListRowReuse)) upstreamRate=\(on(settings.displayLinkUpstreamRate)) a11yNow=\(on(settings.listAccessibilityImmediate))"
+            }
+        }
         SharedDisplayLinkDriver.shared.followsUpstreamFrameRate = immediateExperimentalUISettingsValue.with({ $0.displayLinkUpstreamRate })
         ListViewDeferredAccessibility.shared.forcesImmediate = immediateExperimentalUISettingsValue.with({ $0.listAccessibilityImmediate })
         ListViewScrollPacing.isEnabled = immediateExperimentalUISettingsValue.with({ $0.listScrollPacingLog })
