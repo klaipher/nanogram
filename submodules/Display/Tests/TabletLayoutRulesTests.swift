@@ -311,4 +311,10 @@ final class TabletLayoutRulesTests: XCTestCase {
     func test_switcher_phone_isUpstream() {
         XCTAssertEqual(mediaPanelSwitcherMetrics(deviceType: .phone), MediaPanelSwitcherMetrics(fontSize: 14.0, itemHeight: 28.0, textInset: 12.0, rowHeight: 40.0, barIntrinsicHeight: 34.0))
     }
+
+    /// A full-screen window mid-rotation (window still in the old orientation, keyboard and screen in the new one) keeps
+    /// the full-screen path.
+    func test_windowedKeyboard_fullScreenMidRotation_isTheOldPath() {
+        XCTAssertNil(tabletWindowedKeyboardHeight(deviceType: .tablet, isRegularWidth: true, keyboardFrameOnScreen: CGRect(x: 0.0, y: 900.0, width: 1376.0, height: 132.0), keyboardFrameInWindow: CGRect(x: 0.0, y: 900.0, width: 1376.0, height: 132.0), screenSize: CGSize(width: 1376.0, height: 1032.0), windowSize: CGSize(width: 1032.0, height: 1376.0)))
+    }
 }

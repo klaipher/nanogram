@@ -10,6 +10,12 @@ private enum EphemeralDeleteMessageRequest {
 }
 
 func _internal_deleteMessagesInteractively(account: Account, messageIds: [MessageId], type: InteractiveMessagesDeletionType, deleteAllInGroup: Bool = false) -> Signal<Void, NoError> {
+    // Nanogram: deleting a group or channel photo deletes its service message; the remembered photo lists
+    // (`peerPhotosRequestCoalescer`, 60 s) must not show it again. Deletions are rare, so any deletion drops them.
+    return peerPhotosCacheInvalidating(_internal_deleteMessagesInteractivelyImpl(account: account, messageIds: messageIds, type: type, deleteAllInGroup: deleteAllInGroup))
+}
+
+private func _internal_deleteMessagesInteractivelyImpl(account: Account, messageIds: [MessageId], type: InteractiveMessagesDeletionType, deleteAllInGroup: Bool) -> Signal<Void, NoError> {
     return account.postbox.transaction { transaction -> [EphemeralDeleteMessageRequest] in
         var ephemeralRequests: [EphemeralDeleteMessageRequest] = []
         for messageId in messageIds where messageId.namespace == Namespaces.Message.EphemeralLocal || messageId.namespace == Namespaces.Message.WelcomeMessageCloud {

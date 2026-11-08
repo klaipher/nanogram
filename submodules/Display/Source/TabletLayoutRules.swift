@@ -64,7 +64,11 @@ public func tabletWindowedKeyboardHeight(deviceType: DeviceType, isRegularWidth:
         return nil
     }
     let tolerance: CGFloat = 5.0
-    if abs(windowSize.width - screenSize.width) < 1.0 && abs(windowSize.height - screenSize.height) < 1.0 {
+    // Compared without the orientation: during a rotation UIKit posts the keyboard frame for the new orientation
+    // before the window layout has its new size, and a full-screen window must still take the old path.
+    let windowLong = max(windowSize.width, windowSize.height), windowShort = min(windowSize.width, windowSize.height)
+    let screenLong = max(screenSize.width, screenSize.height), screenShort = min(screenSize.width, screenSize.height)
+    if abs(windowLong - screenLong) < 1.0 && abs(windowShort - screenShort) < 1.0 {
         return nil
     }
     if keyboardFrameOnScreen.isEmpty {

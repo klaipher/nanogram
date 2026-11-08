@@ -330,7 +330,7 @@ public final class NavigationContainer: ASDisplayNode, ASGestureRecognizerDelega
         let topNode = topController.displayNode
         let bottomControllerLayout = self.bottomControllerLayout(layout, bottomController: bottomController)
         // Prepared while the top screen was idle (same screen, same layout): its layout is what this call would redo.
-        let wasPrepared = NavigationPopPreparationSettings.isEnabled && self.popPreparation.isPrepared(controller: ObjectIdentifier(bottomController), layout: bottomControllerLayout)
+        let wasPrepared = NavigationPopPreparationSettings.isEnabled && self.isStillPrepared(bottomController, layout: bottomControllerLayout)
         self.popPreparation.reset()
         self.preparedPopController = nil
         if !wasPrepared {
@@ -411,7 +411,7 @@ public final class NavigationContainer: ASDisplayNode, ASGestureRecognizerDelega
             return
         }
         let bottomController = self.controllers[self.controllers.count - 2]
-        if self.popPreparation.isPrepared(controller: ObjectIdentifier(bottomController), layout: self.bottomControllerLayout(layout, bottomController: bottomController)) {
+        if self.isStillPrepared(bottomController, layout: self.bottomControllerLayout(layout, bottomController: bottomController)) {
             return
         }
         let work = DispatchWorkItem { [weak self] in
@@ -433,7 +433,7 @@ public final class NavigationContainer: ASDisplayNode, ASGestureRecognizerDelega
         }
         let bottomController = self.controllers[self.controllers.count - 2]
         let bottomLayout = self.bottomControllerLayout(layout, bottomController: bottomController)
-        if self.popPreparation.isPrepared(controller: ObjectIdentifier(bottomController), layout: bottomLayout) {
+        if self.isStillPrepared(bottomController, layout: bottomLayout) {
             return
         }
         if let previous = self.preparedPopController, previous !== bottomController {
@@ -451,6 +451,16 @@ public final class NavigationContainer: ASDisplayNode, ASGestureRecognizerDelega
         bottomNode.recursivelyEnsureDisplaySynchronously(false)
         self.preparedPopController = bottomController
         self.popPreparation.markPrepared(controller: ObjectIdentifier(bottomController), layout: bottomLayout)
+    }
+
+    /// The marker holds only while it names this very controller (not a new one at a reused address) and that controller
+    /// has stayed out of the hierarchy since: a screen that was on top meanwhile (popped and pushed again) got other
+    /// layouts, so its preparation no longer matches what it shows.
+    private func isStillPrepared(_ controller: ViewController, layout: ContainerViewLayout) -> Bool {
+        guard self.preparedPopController === controller, controller.isNodeLoaded, controller.displayNode.supernode == nil else {
+            return false
+        }
+        return self.popPreparation.isPrepared(controller: ObjectIdentifier(controller), layout: layout)
     }
 
     /// Forgets the preparation and frees the prepared screen's drawn contents (an off-hierarchy node holds them
@@ -666,6 +676,10 @@ public final class NavigationContainer: ASDisplayNode, ASGestureRecognizerDelega
     }
     
     public func update(layout: ContainerViewLayout, canBeClosed: Bool, controllers: [ViewController], transition: ContainedViewLayoutTransition) {
+        // A prepared screen that is shown now (it became the top, or another column took it) is no longer prepared.
+        if let prepared = self.preparedPopController, !(controllers.count > 1 && controllers[controllers.count - 2] === prepared && (!prepared.isNodeLoaded || prepared.displayNode.supernode == nil)) {
+            self.releasePreparedPopController()
+        }
         let previousLayout = self.state.layout
         self.state.layout = layout
         self.state.canBeClosed = canBeClosed
