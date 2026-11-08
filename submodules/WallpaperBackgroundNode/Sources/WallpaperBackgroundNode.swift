@@ -2134,6 +2134,122 @@ private protocol WallpaperComponentView: AnyObject {
     func update(size: CGSize, transition: ContainedViewLayoutTransition)
 }
 
+extension WallpaperBackgroundNodeImpl {
+    /// Renders the pattern of `wallpaper` for a full-screen chat in the background and stores it under the key
+    /// `loadPatternForSizeIfNeeded` looks it up with, so the first chat open hits `cachedPatternImages` instead of
+    /// drawing it on the main thread. Same inputs as the chat's own path (pattern colour from the wallpaper colours,
+    /// no star gift, shared slot, scale `min(2, screen scale)`), so the image is the one the chat would draw.
+    /// Main queue only. Returns the subscription that waits for the wallpaper file, or nil when nothing is to be done.
+    fileprivate static func prewarmPattern(context: AccountContext, wallpaper: TelegramWallpaper, size: CGSize, displayMode: WallpaperDisplayMode, isEnabled: Bool, isCurrent: @escaping () -> Bool) -> Disposable? {
+        guard case let .file(file) = wallpaper, file.isPattern else {
+            return nil
+        }
+
+        // Keep in step with `loadPatternForSizeIfNeeded`; a difference only makes the chat miss, it never changes pixels.
+        let brightness = UIColor.average(of: file.settings.colors.map(UIColor.init(rgb:))).hsb.b
+        let patternIsLight = brightness > 0.3
+        let intensity = CGFloat(file.settings.intensity ?? 50) / 100.0
+        let invertPattern = intensity < 0
+        let patternColor: UIColor
+        if invertPattern {
+            patternColor = .clear
+        } else {
+            patternColor = patternIsLight ? .black : .white
+        }
+        let patternBackgroundColor: UIColor = .clear
+
+        let key = ValidPatternGeneratedImage(wallpaper: wallpaper, size: size, displayMode: displayMode, patternColor: patternColor.rgb, backgroundColor: patternBackgroundColor.rgb, invertPattern: invertPattern, starGift: nil, modelRectIndex: nil)
+        let isAlreadyCached = WallpaperBackgroundNodeImpl.cachedPatternImages.first(where: { $0.generated == key }) != nil
+        guard WallpaperPatternPrewarmPlan.shouldRender(isEnabled: isEnabled, isAlreadyCached: isAlreadyCached) else {
+            return nil
+        }
+
+        func reference(for resource: EngineMediaResource) -> MediaResourceReference {
+            return .wallpaper(wallpaper: .slug(file.slug), resource: resource._asResource())
+        }
+        var convertedRepresentations: [ImageRepresentationWithReference] = []
+        for representation in file.file.previewRepresentations {
+            convertedRepresentations.append(ImageRepresentationWithReference(representation: representation, reference: reference(for: EngineMediaResource(representation.resource))))
+        }
+        let dimensions = file.file.dimensions ?? PixelDimensions(width: 2000, height: 4000)
+        convertedRepresentations.append(ImageRepresentationWithReference(representation: .init(dimensions: dimensions, resource: file.file.resource, progressiveSizes: [], immediateThumbnailData: nil, hasVideo: false, isPersonal: false), reference: reference(for: EngineMediaResource(file.file.resource))))
+
+        let signal = patternWallpaperImage(account: context.account, accountManager: context.sharedContext.accountManager, representations: convertedRepresentations, mode: .screen, autoFetchFullSize: true)
+        let patternArguments = TransformImageArguments(corners: ImageCorners(), imageSize: size, boundingSize: size, intrinsicInsets: UIEdgeInsets(), custom: PatternWallpaperArguments(colors: [patternBackgroundColor], rotation: nil, customPatternColor: patternColor, preview: false, displayMode: displayMode.argumentsDisplayMode, symbolImage: nil, modelRectIndex: nil), scale: min(2.0, UIScreenScale))
+
+        let disposable = MetaDisposable()
+        disposable.set((signal
+        |> deliverOnMainQueue).start(next: { [weak disposable] result in
+            // While the file is still loading the signal says nil; keep waiting for it.
+            guard let (generator, rects) = result else {
+                return
+            }
+            disposable?.set(nil)
+            guard isCurrent() else {
+                return
+            }
+            DispatchQueue.global(qos: .utility).async {
+                let image = generator(patternArguments)?.generateImage()
+                Queue.mainQueue().async {
+                    // Dropped when a memory warning, a cancel or a newer request came in meanwhile, or when the chat drew it first.
+                    guard isCurrent(), let image else {
+                        return
+                    }
+                    if WallpaperBackgroundNodeImpl.cachedPatternImages.first(where: { $0.generated == key }) != nil {
+                        return
+                    }
+                    WallpaperBackgroundNodeImpl.storeCachedPatternImage(CachedValidPatternImage(generate: generator, generated: key, rects: rects, starGift: nil, symbolImage: nil, modelRectIndex: nil, image: image), isShared: true)
+                }
+            }
+        }))
+        return disposable
+    }
+}
+
+/// Renders the chat wallpaper's pattern in the background ahead of the first chat open (Debug Settings "Chat open:
+/// prewarm wallpaper pattern"). Main queue only. A memory warning drops the render in flight; the cache itself is
+/// emptied by the existing memory-warning observer of the pattern cache.
+public final class WallpaperPatternPrewarmer {
+    private let context: AccountContext
+    private var epoch = WallpaperPatternPrewarmEpoch()
+    private let disposable = MetaDisposable()
+    private var memoryWarningObserver: NSObjectProtocol?
+
+    public init(context: AccountContext) {
+        self.context = context
+        self.memoryWarningObserver = NotificationCenter.default.addObserver(forName: UIApplication.didReceiveMemoryWarningNotification, object: nil, queue: .main, using: { [weak self] _ in
+            self?.cancel()
+        })
+    }
+
+    deinit {
+        if let memoryWarningObserver = self.memoryWarningObserver {
+            NotificationCenter.default.removeObserver(memoryWarningObserver)
+        }
+        self.disposable.dispose()
+    }
+
+    /// Prepares the pattern for a full-screen chat on an iPhone. Does nothing for other wallpapers, for iPad (the chat
+    /// size is not known ahead there) or when the pattern is stored already.
+    public func prewarmChatPattern(wallpaper: TelegramWallpaper, isEnabled: Bool) {
+        self.disposable.set(nil)
+        guard let size = WallpaperPatternPrewarmPlan.chatBackgroundSize(screenSize: UIScreen.main.bounds.size, isPhone: UIDevice.current.userInterfaceIdiom == .phone) else {
+            return
+        }
+        let token = self.epoch.begin()
+        if let subscription = WallpaperBackgroundNodeImpl.prewarmPattern(context: self.context, wallpaper: wallpaper, size: size, displayMode: .aspectFill, isEnabled: isEnabled, isCurrent: { [weak self] in
+            return self?.epoch.isCurrent(token) ?? false
+        }) {
+            self.disposable.set(subscription)
+        }
+    }
+
+    public func cancel() {
+        self.epoch.invalidate()
+        self.disposable.set(nil)
+    }
+}
+
 public func createWallpaperBackgroundNode(context: AccountContext, forChatDisplay: Bool, useSharedAnimationPhase: Bool = false) -> WallpaperBackgroundNode {
     return WallpaperBackgroundNodeImpl(context: context, useSharedAnimationPhase: useSharedAnimationPhase)
 }

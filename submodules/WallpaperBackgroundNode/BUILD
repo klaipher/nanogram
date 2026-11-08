@@ -89,3 +89,16 @@ swift_test(
         "-warnings-as-errors",
     ],
 )
+
+# Host (macOS) test of the pattern prewarm plan. It compiles only the Foundation-only plan file.
+# Run with `./build-input/bazel-9.3.1-darwin-arm64 test //submodules/WallpaperBackgroundNode:WallpaperPatternPrewarmPlanTests`.
+swift_test(
+    name = "WallpaperPatternPrewarmPlanTests",
+    srcs = [
+        "Sources/WallpaperPatternPrewarmPlan.swift",
+        "Tests/WallpaperPatternPrewarmPlanTests.swift",
+    ],
+    copts = [
+        "-warnings-as-errors",
+    ],
+)
