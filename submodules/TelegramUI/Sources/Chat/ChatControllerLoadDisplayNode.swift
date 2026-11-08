@@ -4117,6 +4117,11 @@ extension ChatControllerImpl {
                 strongSelf.push(controller)
             }
         }, openSendAsPeer: { [weak self] node, gesture in
+            if let current = self?.sendAsPeersContextController {
+                self?.sendAsPeersContextController = nil
+                current.dismiss(completion: nil)
+                return
+            }
             guard let strongSelf = self, let peerId = strongSelf.chatLocation.peerId, let node = node as? ContextReferenceContentNode, let peers = strongSelf.presentationInterfaceState.sendAsPeers, let layout = strongSelf.validLayout else {
                 return
             }
@@ -4167,13 +4172,17 @@ extension ChatControllerImpl {
             strongSelf.chatDisplayNode.messageTransitionNode.dismissMessageReactionContexts()
             
             let contextController = makeContextController(presentationData: strongSelf.presentationData, source: .reference(ChatControllerContextReferenceContentSource(controller: strongSelf, sourceView: node.view, insets: UIEdgeInsets(top: 0.0, left: 0.0, bottom: bottomInset, right: 0.0), contentInsets: UIEdgeInsets(top: 0.0, left: 0.0, bottom: 0.0, right: 0.0))), items: .single(ContextController.Items(content: .list(items))), gesture: gesture, workaroundUseLegacyImplementation: true)
-            contextController.dismissed = { [weak self] in
+            contextController.dismissed = { [weak self, weak contextController] in
                 if let strongSelf = self {
+                    if strongSelf.sendAsPeersContextController === contextController {
+                        strongSelf.sendAsPeersContextController = nil
+                    }
                     strongSelf.updateChatPresentationInterfaceState(interactive: true, {
                         return $0.updatedShowSendAsPeers(false)
                     })
                 }
             }
+            strongSelf.sendAsPeersContextController = contextController
             strongSelf.presentInGlobalOverlay(contextController)
             
             strongSelf.updateChatPresentationInterfaceState(interactive: true, {

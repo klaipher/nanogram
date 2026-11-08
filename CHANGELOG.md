@@ -4,6 +4,8 @@ Newest first. Internal notes for each TestFlight build; testers see the What to 
 
 ## Unreleased
 
+- **"Send as" menu: the close button closes it with the keyboard up**. Owner, 2026-11-08 (13.2 202611081636): with the keyboard open, choosing which name to post as, the close icon (in the avatar button's place) opened another copy of the menu instead of closing it, one more per tap. `openSendAsPeer` (`ChatControllerLoadDisplayNode.swift`) always presented a new context menu, and with the keyboard up the tap on that button reaches it while a menu is open. The open menu is kept (`ChatControllerImpl.sendAsPeersContextController`, weak, cleared in `dismissed`); a press while it is open dismisses it. The same code is upstream's. No unit test (chat controller glue); checked on device by the owner.
+
 ## 13.2 (202611081918) — 2026-11-08 — 4d9521f8
 
 TestFlight build. Previous TestFlight build: 202611081636 (976148f0); changes since are `git log 976148f0..4d9521f8`: device measurement tooling only (Debug Settings): the main thread's and the app's CPU time per Frame hitches window, windows for push, pop and back swipe, the full switch set in every measurement line, and two rows that set all performance switches to ours or to Telegram's behaviour. No user-visible change. Entries below.

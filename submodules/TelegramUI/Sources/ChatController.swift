@@ -529,6 +529,9 @@ public final class ChatControllerImpl: TelegramBaseController, ChatController, G
     weak var slowmodeTooltipController: ChatSlowmodeHintController?
     
     weak var currentContextController: ContextController?
+    /// The "send as" menu while it is open. With the keyboard up the menu lets touches through to the input panel, where
+    /// the avatar button (showing a close icon then) sits; a tap there closes this menu instead of opening another.
+    weak var sendAsPeersContextController: ContextController?
     public var visibleContextController: ViewController? {
         return self.currentContextController
     }
