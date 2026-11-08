@@ -165,4 +165,20 @@ final class FrameHitchMonitorTests: XCTestCase {
         XCTAssertTrue(line.contains(" longestMs=50.0"), line)
         XCTAssertTrue(line.hasSuffix(" ab=rowReuse=on"), line)
     }
+
+    /// A window opened in the middle of a stall (a push starts after the new screen was built in the same turn) counts
+    /// that stall: its first interval runs from the last frame before the window.
+    func test_aWindowSeededWithTheLastFrameCountsTheStallItOpensIn() {
+        var stats = FrameHitchStats(startTime: 10.05, lastFrame: 10.0)
+        let stall = stats.record(timestamp: 10.06, expectedDuration: 1.0 / 120.0)
+        XCTAssertEqual(stats.frames, 1)
+        XCTAssertEqual(stats.hitches, 1)
+        XCTAssertNotNil(stall)
+    }
+
+    func test_anOldLastFrameIsNotUsedAsTheSeed() {
+        var stats = FrameHitchStats(startTime: 12.0, lastFrame: 10.0)
+        stats.record(timestamp: 12.01, expectedDuration: 1.0 / 120.0)
+        XCTAssertEqual(stats.frames, 0, "a frame from before a pause is not this window's")
+    }
 }

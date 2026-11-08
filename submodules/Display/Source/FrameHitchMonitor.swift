@@ -37,6 +37,18 @@ struct FrameHitchStats {
         self.startTime = startTime
     }
 
+    /// A window that opens while frames are being timed starts from the last frame seen, so a stall it opens in (a push
+    /// that starts after the new screen was built in the same main-thread turn) is counted. A last frame older than
+    /// `seedLimit` (the pause threshold: the link runs while the switch is on) is from before a pause and is not used.
+    init(startTime: Double, lastFrame: Double?) {
+        self.startTime = startTime
+        if let lastFrame, startTime - lastFrame >= 0.0, startTime - lastFrame < FrameHitchStats.seedLimit {
+            self.lastTimestamp = lastFrame
+        }
+    }
+
+    static let seedLimit: Double = FrameHitchStats.pauseThreshold
+
     /// Records one display-link callback. Returns the stall when this frame is long enough to deserve a stack.
     @discardableResult
     mutating func record(timestamp: Double, expectedDuration: Double) -> Stall? {
@@ -85,9 +97,10 @@ struct FrameHitchStats {
     }
 }
 
-/// Debug Settings "Frame hitches: log with main-thread stacks" (off by default). While a window is open (a scroll of
-/// the chat, the chat list or any list, a keyboard animation), a display link at the screen's top rate times every
-/// frame. At the window's end one summary line is logged, followed by the main thread's stacks during its longest
+/// Debug Settings "Frame hitches: log with main-thread stacks" (off by default). While the switch is on, a display link
+/// at the screen's top rate times every frame (so the screen stays at its top rate: a diagnostics mode), and a window
+/// (a scroll of the chat, the chat list or any list, a keyboard animation, a push, pop or back swipe) counts the frames
+/// it spans. At the window's end one summary line is logged, followed by the main thread's stacks during its longest
 /// stalls, taken from a sampler the app starts while a window is open. Main thread only.
 public final class FrameHitchMonitor {
     public static let shared = FrameHitchMonitor()
@@ -96,6 +109,9 @@ public final class FrameHitchMonitor {
         didSet {
             if !isEnabled {
                 FrameHitchMonitor.shared.endAll()
+            } else {
+                // Timed for as long as the switch is on, so a window that opens mid-stall still sees the stall.
+                FrameHitchMonitor.shared.startIfNeeded()
             }
             // The sampler runs for as long as the switch is on, so a stall that begins before a window opens (the tap
             // that raises the keyboard) still has its samples.
@@ -187,14 +203,16 @@ public final class FrameHitchMonitor {
         var captures: [Double: AnyObject] = [:]
         var deadline: Double?
 
-        init(name: String, startTime: Double) {
+        init(name: String, startTime: Double, lastFrame: Double?) {
             self.name = name
-            self.stats = FrameHitchStats(startTime: startTime)
+            self.stats = FrameHitchStats(startTime: startTime, lastFrame: lastFrame)
         }
     }
 
     private var sessions: [String: Session] = [:]
     private var link: CADisplayLink?
+    /// The last display-link callback; the link runs for as long as the switch is on, so a window can start from it.
+    private var lastTickTimestamp: Double?
     private var lastExpectedDuration: Double?
 
     private init() {
@@ -209,7 +227,7 @@ public final class FrameHitchMonitor {
             session.deadline = nil
             return
         }
-        self.sessions[name] = Session(name: name, startTime: CACurrentMediaTime())
+        self.sessions[name] = Session(name: name, startTime: CACurrentMediaTime(), lastFrame: self.lastTickTimestamp)
         self.startIfNeeded()
         self.publishDiagnostics()
     }
@@ -268,7 +286,7 @@ public final class FrameHitchMonitor {
         self.publishDiagnostics()
     }
 
-    private func startIfNeeded() {
+    fileprivate func startIfNeeded() {
         guard self.link == nil else {
             return
         }
@@ -285,7 +303,7 @@ public final class FrameHitchMonitor {
     }
 
     private func stopIfIdle() {
-        guard self.sessions.isEmpty, let link = self.link else {
+        guard self.sessions.isEmpty, !FrameHitchMonitor.isEnabled, let link = self.link else {
             return
         }
         link.invalidate()
@@ -294,6 +312,7 @@ public final class FrameHitchMonitor {
 
     private func tick(_ link: CADisplayLink) {
         let timestamp = link.timestamp
+        self.lastTickTimestamp = timestamp
         let expected = self.lastExpectedDuration ?? link.duration
         self.lastExpectedDuration = link.targetTimestamp - link.timestamp
         var expired: [String] = []

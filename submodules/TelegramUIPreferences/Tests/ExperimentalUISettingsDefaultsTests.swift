@@ -175,6 +175,46 @@ final class ExperimentalUISettingsDefaultsTests: XCTestCase {
         settings.chatListRowReuse = true
         XCTAssertTrue(try self.roundTrip(settings).chatListRowReuse)
     }
+
+    /// Debug Settings "Perf A/B": one tap sets every switch of this round to our variant or to Telegram's behaviour.
+    func testPerformanceSwitchesCanAllBeSetToTelegramsBehaviour() {
+        let telegram = ExperimentalUISettings.defaultSettings.withPerformanceSwitches(optimized: false)
+        XCTAssertFalse(telegram.emojiPanelDefersHeavyWork)
+        XCTAssertFalse(telegram.chatOpenDeferSetup)
+        XCTAssertFalse(telegram.chatOpenPrewarmWallpaperPattern)
+        XCTAssertTrue(telegram.displayLinkUpstreamRate, "Telegram's rate is the switch's on state")
+        XCTAssertTrue(telegram.listAccessibilityImmediate, "Telegram's accessibility timing is the switch's on state")
+        XCTAssertFalse(telegram.chatListLazyRareSubnodes)
+        XCTAssertFalse(telegram.chatListRowReuse)
+        XCTAssertFalse(telegram.chatListAsyncMediaWhileScrolling)
+        XCTAssertFalse(telegram.backSwipePreparePreviousScreen)
+        XCTAssertEqual(telegram.chatScrollExperiments, 0)
+        XCTAssertEqual(telegram.stickerRendererMode, ExperimentalUISettings.defaultSettings.stickerRendererMode, "renderers are not part of the A/B")
+    }
+
+    func testPerformanceSwitchesCanAllBeSetToOurs() {
+        let ours = ExperimentalUISettings.defaultSettings.withPerformanceSwitches(optimized: false).withPerformanceSwitches(optimized: true)
+        XCTAssertTrue(ours.emojiPanelDefersHeavyWork)
+        XCTAssertTrue(ours.chatOpenDeferSetup)
+        XCTAssertTrue(ours.chatOpenPrewarmWallpaperPattern)
+        XCTAssertFalse(ours.displayLinkUpstreamRate)
+        XCTAssertFalse(ours.listAccessibilityImmediate)
+        XCTAssertTrue(ours.chatListLazyRareSubnodes)
+        XCTAssertTrue(ours.chatListRowReuse)
+        XCTAssertTrue(ours.chatListAsyncMediaWhileScrolling)
+        XCTAssertTrue(ours.backSwipePreparePreviousScreen)
+        XCTAssertEqual(ours.chatScrollExperiments, 3)
+    }
+
+    /// Every log line that measures something names every switch it ran with.
+    func testPerformanceSummaryNamesEverySwitch() {
+        let summary = ExperimentalUISettings.defaultSettings.withPerformanceSwitches(optimized: false).performanceSwitchesSummary
+        XCTAssertEqual(summary, "set=telegram emojiDefer=off openDefer=off wallPrewarm=off upstreamRate=on a11yNow=on lazyRows=off rowReuse=off asyncMedia=off backPrep=off chatRows=0 ipadCap=on")
+        XCTAssertTrue(ExperimentalUISettings.defaultSettings.withPerformanceSwitches(optimized: true).performanceSwitchesSummary.hasPrefix("set=ours "))
+        var mixed = ExperimentalUISettings.defaultSettings.withPerformanceSwitches(optimized: true)
+        mixed.chatListRowReuse = false
+        XCTAssertTrue(mixed.performanceSwitchesSummary.hasPrefix("set=mixed "))
+    }
 }
 
 private extension ExperimentalUISettings {

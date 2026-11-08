@@ -389,6 +389,9 @@ enum DebugControllerEntry: ItemListNodeEntry {
     case frameHitchLog(Bool)
     case chatListAsyncMediaWhileScrolling(Bool)
     case backSwipePreparePreviousScreen(Bool)
+    case performanceSwitchesOurs
+    case performanceSwitchesTelegram
+    case performanceSwitchesInfo(String)
     case enableNetworkFramework(Bool)
     case enableNetworkExperiments(Bool)
     case rustMTProtoEngine(Bool)
@@ -424,7 +427,7 @@ enum DebugControllerEntry: ItemListNodeEntry {
             return DebugControllerSection.chatOpen.rawValue
         case .chatScrollHeader, .chatScrollPrepareLayoutAhead, .chatScrollReuseRowViews:
             return DebugControllerSection.chatScroll.rawValue
-        case .listScrollHeader, .displayLinkUpstreamRate, .listAccessibilityImmediate, .listScrollPacingLog, .chatListLazyRareSubnodes, .chatListRowReuse, .frameHitchLog, .chatListAsyncMediaWhileScrolling, .backSwipePreparePreviousScreen:
+        case .listScrollHeader, .displayLinkUpstreamRate, .listAccessibilityImmediate, .listScrollPacingLog, .chatListLazyRareSubnodes, .chatListRowReuse, .frameHitchLog, .chatListAsyncMediaWhileScrolling, .backSwipePreparePreviousScreen, .performanceSwitchesOurs, .performanceSwitchesTelegram, .performanceSwitchesInfo:
             return DebugControllerSection.listScroll.rawValue
         case .springSendAnimation, .fakeWalletTransfers, .stickerRendererMode, .disableImageContentAnalysis, .disableLanguageRecognition, .localTranscription, .enableVoipTcp, .tabletDisplayLinkFrameRateCap, .chatMediaEditorLegacy, .mediaGridLegacy, .sharedMediaGridLegacy, .storyLegacyVideoWriter, .chatLegacyVideoWriter, .chatSideListLegacy, .messageWidgets, .messageWidgetWallet:
             return DebugControllerSection.experiments.rawValue
@@ -616,6 +619,13 @@ enum DebugControllerEntry: ItemListNodeEntry {
         case .backSwipePreparePreviousScreen:
             // Appended right after `chatListAsyncMediaWhileScrolling`; see the ordering note at `springSendAnimation`.
             return 148
+        case .performanceSwitchesOurs:
+            // Appended right after `backSwipePreparePreviousScreen`; see the ordering note at `springSendAnimation`.
+            return 149
+        case .performanceSwitchesTelegram:
+            return 150
+        case .performanceSwitchesInfo:
+            return 151
         case .springSendAnimation:
             // ItemList asserts its entries are in strictly increasing order (`<`: section, then
             // `sortIndex`, which is the stableId here; ItemListControllerNode.swift), so an id must
@@ -792,6 +802,20 @@ enum DebugControllerEntry: ItemListNodeEntry {
                     return settings
                 }).start()
             })
+        case .performanceSwitchesOurs:
+            return ItemListActionItem(presentationData: presentationData, systemStyle: .glass, title: "Perf A/B: all switches to ours", kind: .generic, alignment: .natural, sectionId: self.section, style: .blocks, action: {
+                let _ = updateExperimentalUISettingsInteractively(accountManager: arguments.sharedContext.accountManager, { settings in
+                    return settings.withPerformanceSwitches(optimized: true)
+                }).start()
+            })
+        case .performanceSwitchesTelegram:
+            return ItemListActionItem(presentationData: presentationData, systemStyle: .glass, title: "Perf A/B: all switches to Telegram's behaviour", kind: .generic, alignment: .natural, sectionId: self.section, style: .blocks, action: {
+                let _ = updateExperimentalUISettingsInteractively(accountManager: arguments.sharedContext.accountManager, { settings in
+                    return settings.withPerformanceSwitches(optimized: false)
+                }).start()
+            })
+        case let .performanceSwitchesInfo(summary):
+            return ItemListTextItem(presentationData: presentationData, text: .plain("Now: \(summary).\nThe two rows above set the switches of this section, Chat open, Chat scroll and the emoji panel at once. Each Frame hitches line names the set it ran with. Restart the app after switching, so the first chat open is measured cold."), sectionId: self.section)
         case .sendLogs:
             return ItemListActionItem(presentationData: presentationData, systemStyle: .glass, title: "Send Logs", kind: .generic, alignment: .natural, sectionId: self.section, style: .blocks, action: {
                 arguments.openLogs()
@@ -1594,6 +1618,9 @@ func debugControllerEntries(environment: DebugControllerEntriesEnvironment, them
         entries.append(.frameHitchLog(experimentalSettings.frameHitchLog))
         entries.append(.chatListAsyncMediaWhileScrolling(experimentalSettings.chatListAsyncMediaWhileScrolling))
         entries.append(.backSwipePreparePreviousScreen(experimentalSettings.backSwipePreparePreviousScreen))
+        entries.append(.performanceSwitchesOurs)
+        entries.append(.performanceSwitchesTelegram)
+        entries.append(.performanceSwitchesInfo(experimentalSettings.performanceSwitchesSummary))
     }
 
     if isMainApp {

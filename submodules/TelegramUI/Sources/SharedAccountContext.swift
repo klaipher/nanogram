@@ -593,10 +593,7 @@ public final class SharedAccountContextImpl: SharedAccountContext {
             Logger.shared.log("ListView", line)
         }
         let frameRateContext: () -> String = {
-            return immediateExperimentalUISettingsValue.with { settings in
-                let on: (Bool) -> String = { $0 ? "on" : "off" }
-                return "lazyRows=\(on(settings.chatListLazyRareSubnodes)) rowReuse=\(on(settings.chatListRowReuse)) upstreamRate=\(on(settings.displayLinkUpstreamRate)) a11yNow=\(on(settings.listAccessibilityImmediate)) chatRows=\(settings.chatScrollExperiments)"
-            }
+            return immediateExperimentalUISettingsValue.with { $0.performanceSwitchesSummary }
         }
         ListViewScrollPacing.context = frameRateContext
         // Debug Settings "Frame hitches": frame timing per scroll and keyboard animation, with main-thread stacks of the longest stalls.

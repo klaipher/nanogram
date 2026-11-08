@@ -360,6 +360,7 @@ public final class NavigationContainer: ASDisplayNode, ASGestureRecognizerDelega
         bottomController.displayNode.recursivelyEnsureDisplaySynchronously(true)
         let transition = TopTransition(type: .pop, previous: Child(value: bottomController, layout: layout), destination: self.state.top ?? Child(value: topController, layout: layout), coordinator: navigationTransitionCoordinator)
         self.state.transition = transition
+        self.beginHitchWindow("backSwipe", screen: bottomController)
 
         var tracker = NavigationInteractivePopTracker(totalDistance: self.view.bounds.width)
         tracker.addSample(time: time, translation: translation, velocity: velocity, isChange: false)
@@ -388,6 +389,9 @@ public final class NavigationContainer: ASDisplayNode, ASGestureRecognizerDelega
     private var popPreparation = NavigationPopPreparation<ContainerViewLayout>()
     private var popPreparationWork: DispatchWorkItem?
     private weak var preparedPopController: ViewController?
+    /// Debug Settings "Frame hitches": the window of the transition running now (`navPush:`, `navPop:`, `backSwipe:` and
+    /// the type of the screen that appears).
+    private var hitchWindow: String?
     private var memoryWarningObserver: NSObjectProtocol?
 
     private func canPreparePop() -> Bool {
@@ -908,6 +912,7 @@ public final class NavigationContainer: ASDisplayNode, ASGestureRecognizerDelega
                 bottomController = toValue.value
             }
             toValue.value.setIgnoreAppearanceMethodInvocations(false)
+            self.beginHitchWindow(transitionType == .push ? "navPush" : "navPop", screen: toValue.value)
             
             let screenCornerRadii = self.minimizedContainer == nil && self.state.canBeClosed != true ? layout.screenCornerRadii : CornerRadii(uniform: 0.0)
             let style = navigationTransitionStyle(top: topController, bottom: bottomController, operation: transitionType == .push ? .push : .pop, isFlat: self.isFlat, layout: layout, reduceMotion: UIAccessibility.isReduceMotionEnabled)
@@ -1096,7 +1101,29 @@ public final class NavigationContainer: ASDisplayNode, ASGestureRecognizerDelega
     
     /// A tap push or pop has run to its end (or a push a swipe caught was let go and ran on to it): the previous screen
     /// leaves.
+    private func beginHitchWindow(_ kind: String, screen: ViewController) {
+        guard FrameHitchMonitor.isEnabled else {
+            return
+        }
+        if let previous = self.hitchWindow {
+            FrameHitchMonitor.shared.end(previous)
+        }
+        let name = kind + ":" + String(describing: type(of: screen))
+        self.hitchWindow = name
+        FrameHitchMonitor.shared.begin(name)
+    }
+
+    /// Kept open a little after the transition lands: a pushed chat finishes its deferred setup in those frames.
+    private func endHitchWindow() {
+        guard let name = self.hitchWindow else {
+            return
+        }
+        self.hitchWindow = nil
+        FrameHitchMonitor.shared.observe(name, duration: 0.25)
+    }
+
     private func completeTopTransition(_ topTransition: TopTransition) {
+        self.endHitchWindow()
         self.expansionStatusBar = nil
         if viewTreeContainsFirstResponder(view: topTransition.previous.value.view) {
             self.ignoreInputHeight = true
