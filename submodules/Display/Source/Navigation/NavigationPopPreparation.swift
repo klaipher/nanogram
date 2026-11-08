@@ -1,6 +1,6 @@
 import Foundation
 
-/// Debug Settings > List scroll > "Back swipe: prepare the previous screen". Written by `SharedAccountContext`.
+/// Debug Settings > Performance > "Back swipe: prepare the previous screen". Written by `SharedAccountContext`.
 public enum NavigationPopPreparationSettings {
     public static var isEnabled: Bool = false
 }

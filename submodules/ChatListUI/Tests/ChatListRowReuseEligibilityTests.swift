@@ -79,8 +79,4 @@ final class ChatListRowReuseEligibilityTests: XCTestCase {
         XCTAssertFalse(ChatListNode.supportsRowReuse(mode: chatListMode, location: .chatList(groupId: .root), isSideList: false, previewing: true, isInlineMode: false))
         XCTAssertFalse(ChatListNode.supportsRowReuse(mode: chatListMode, location: .chatList(groupId: .root), isSideList: false, previewing: false, isInlineMode: true))
     }
-    
-    func testFlagDefaultsOff() {
-        XCTAssertFalse(ChatListRowExperiments.rowReuse)
-    }
 }

@@ -3,26 +3,12 @@ import XCTest
 @testable import EntityKeyboard
 
 final class EmojiPanelOpenTuningTests: XCTestCase {
-    override func tearDown() {
-        EmojiPanelOpenTuning.setDefersHeavyWork(false)
-        super.tearDown()
-    }
-
-    func testTheSwitchIsOffByDefaultAndCached() {
-        XCTAssertFalse(EmojiPanelOpenTuning.defersHeavyWork)
-        EmojiPanelOpenTuning.setDefersHeavyWork(true)
-        XCTAssertTrue(EmojiPanelOpenTuning.defersHeavyWork)
-        EmojiPanelOpenTuning.setDefersHeavyWork(false)
-        XCTAssertFalse(EmojiPanelOpenTuning.defersHeavyWork)
-    }
-
     func testHandoffIsDeferredOnlyWhenSwitchingIntoMediaWithoutAPanel() {
-        XCTAssertTrue(DeferredKeyboardHandoffGate.shouldDefer(switchEnabled: true, wasMedia: false, willBeMedia: true, panelAlreadyBuilt: false, hasCustomTextView: false))
-        XCTAssertFalse(DeferredKeyboardHandoffGate.shouldDefer(switchEnabled: false, wasMedia: false, willBeMedia: true, panelAlreadyBuilt: false, hasCustomTextView: false), "switch off = today's path")
-        XCTAssertFalse(DeferredKeyboardHandoffGate.shouldDefer(switchEnabled: true, wasMedia: true, willBeMedia: true, panelAlreadyBuilt: false, hasCustomTextView: false))
-        XCTAssertFalse(DeferredKeyboardHandoffGate.shouldDefer(switchEnabled: true, wasMedia: false, willBeMedia: false, panelAlreadyBuilt: false, hasCustomTextView: false))
-        XCTAssertFalse(DeferredKeyboardHandoffGate.shouldDefer(switchEnabled: true, wasMedia: false, willBeMedia: true, panelAlreadyBuilt: true, hasCustomTextView: false))
-        XCTAssertFalse(DeferredKeyboardHandoffGate.shouldDefer(switchEnabled: true, wasMedia: false, willBeMedia: true, panelAlreadyBuilt: false, hasCustomTextView: true), "poll option fields keep their own input")
+        XCTAssertTrue(DeferredKeyboardHandoffGate.shouldDefer(wasMedia: false, willBeMedia: true, panelAlreadyBuilt: false, hasCustomTextView: false))
+        XCTAssertFalse(DeferredKeyboardHandoffGate.shouldDefer(wasMedia: true, willBeMedia: true, panelAlreadyBuilt: false, hasCustomTextView: false))
+        XCTAssertFalse(DeferredKeyboardHandoffGate.shouldDefer(wasMedia: false, willBeMedia: false, panelAlreadyBuilt: false, hasCustomTextView: false))
+        XCTAssertFalse(DeferredKeyboardHandoffGate.shouldDefer(wasMedia: false, willBeMedia: true, panelAlreadyBuilt: true, hasCustomTextView: false))
+        XCTAssertFalse(DeferredKeyboardHandoffGate.shouldDefer(wasMedia: false, willBeMedia: true, panelAlreadyBuilt: false, hasCustomTextView: true), "poll option fields keep their own input")
     }
 
     func testAScheduledHandoffRunsOnce() {
@@ -58,20 +44,15 @@ final class EmojiPanelOpenTuningTests: XCTestCase {
         XCTAssertTrue(gate.consume(token))
     }
 
-    func testWithTheSwitchOffEveryTileIsCreatedAtOnce() {
-        XCTAssertTrue(LazyGifTilePlan.mayCreateTile(switchEnabled: false, paneSettled: false, createdInThisPass: 0))
-        XCTAssertTrue(LazyGifTilePlan.mayCreateTile(switchEnabled: false, paneSettled: false, createdInThisPass: 10_000))
+    func testNothingIsCreatedBeforeThePaneIsOnScreen() {
+        XCTAssertFalse(LazyGifTilePlan.mayCreateTile(paneSettled: false, createdInThisPass: 0))
     }
 
-    func testWithTheSwitchOnNothingIsCreatedBeforeThePaneIsOnScreen() {
-        XCTAssertFalse(LazyGifTilePlan.mayCreateTile(switchEnabled: true, paneSettled: false, createdInThisPass: 0))
-    }
-
-    func testWithTheSwitchOnTilesAreCreatedInBoundedPasses() {
+    func testTilesAreCreatedInBoundedPasses() {
         for created in 0 ..< LazyGifTilePlan.tilesPerPass {
-            XCTAssertTrue(LazyGifTilePlan.mayCreateTile(switchEnabled: true, paneSettled: true, createdInThisPass: created))
+            XCTAssertTrue(LazyGifTilePlan.mayCreateTile(paneSettled: true, createdInThisPass: created))
         }
-        XCTAssertFalse(LazyGifTilePlan.mayCreateTile(switchEnabled: true, paneSettled: true, createdInThisPass: LazyGifTilePlan.tilesPerPass))
+        XCTAssertFalse(LazyGifTilePlan.mayCreateTile(paneSettled: true, createdInThisPass: LazyGifTilePlan.tilesPerPass))
         XCTAssertGreaterThan(LazyGifTilePlan.tilesPerPass, 0, "a pass that creates nothing would never finish")
     }
 

@@ -710,8 +710,7 @@ public final class GifPagerContentComponent: Component {
             self.updateVisibleItems(attemptSynchronousLoads: false, transition: transition, fromScrolling: true)
         }
         
-        /// Set one run-loop turn after the pane enters a window (the synchronous panel build is over by then). Only read when
-        /// the "Emoji panel: defer ..." switch is on.
+        /// Set one run-loop turn after the pane enters a window (the synchronous panel build is over by then).
         private var isPaneSettled: Bool = false
         private var deferredTilePassScheduled: Bool = false
         
@@ -719,7 +718,7 @@ public final class GifPagerContentComponent: Component {
             super.didMoveToWindow()
             
             if self.window != nil {
-                if EmojiPanelOpenTuning.defersHeavyWork && !self.isPaneSettled {
+                if !self.isPaneSettled {
                     self.scheduleDeferredTilePass()
                 }
             } else {
@@ -799,9 +798,8 @@ public final class GifPagerContentComponent: Component {
                     if let current = self.visibleItemLayers[itemId] {
                         itemLayer = current
                     } else {
-                        // Debug Settings "Emoji panel: defer ..." (off by default): create the tiles' display layers only once the
-                        // pane is on screen, a few per run-loop turn. With the switch off this check is always true.
-                        if !LazyGifTilePlan.mayCreateTile(switchEnabled: EmojiPanelOpenTuning.defersHeavyWork, paneSettled: self.isPaneSettled, createdInThisPass: createdTilesInThisPass) {
+                        // Create the tiles' display layers only once the pane is on screen, a few per run-loop turn.
+                        if !LazyGifTilePlan.mayCreateTile(paneSettled: self.isPaneSettled, createdInThisPass: createdTilesInThisPass) {
                             hasDeferredTiles = true
                             continue
                         }

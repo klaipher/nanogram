@@ -580,22 +580,15 @@ public final class SharedAccountContextImpl: SharedAccountContext {
         
         GlassBackgroundView.useCustomGlassImpl = immediateExperimentalUISettingsValue.with({ $0.fakeGlass })
         GlassDebugGroups.setDisabledMask(immediateExperimentalUISettingsValue.with({ $0.glassDebugDisabledGroups }))
-        EmojiPanelOpenTuning.setDefersHeavyWork(immediateExperimentalUISettingsValue.with({ $0.emojiPanelDefersHeavyWork }))
-        ChatScrollExperiments.setMask(immediateExperimentalUISettingsValue.with({ $0.chatScrollExperiments }))
         ManagedAudioSessionImpl.respectsSystemRecordingInput = immediateExperimentalUISettingsValue.with({ $0.respectSystemMicrophone })
         // iPad audit B-1: the display-link cap A/B (Debug Settings) and its pacing log.
         SharedDisplayLinkDriver.shared.pacingLog = { line in
             Logger.shared.log("DisplayLink", line)
         }
         SharedDisplayLinkDriver.shared.capsTabletFrameRate = immediateExperimentalUISettingsValue.with({ $0.tabletDisplayLinkFrameRateCap })
-        // List scroll A/B vs Telegram (Debug Settings): upstream's display-link rate, immediate row accessibility, scroll pacing log.
-        ListViewScrollPacing.log = { line in
-            Logger.shared.log("ListView", line)
-        }
         let frameRateContext: () -> String = {
-            return immediateExperimentalUISettingsValue.with { $0.performanceSwitchesSummary }
+            return immediateExperimentalUISettingsValue.with { $0.backSwipePreparePreviousScreen ? "backPrep=on" : "backPrep=off" }
         }
-        ListViewScrollPacing.context = frameRateContext
         // Debug Settings "Frame hitches": frame timing per scroll and keyboard animation, with main-thread stacks of the longest stalls.
         FrameHitchMonitor.log = { line in
             Logger.shared.log("FrameHitch", line)
@@ -621,12 +614,6 @@ public final class SharedAccountContextImpl: SharedAccountContext {
             return describeKeyboardHosting()
         }
         FrameHitchMonitor.isEnabled = immediateExperimentalUISettingsValue.with({ $0.frameHitchLog })
-        SharedDisplayLinkDriver.shared.followsUpstreamFrameRate = immediateExperimentalUISettingsValue.with({ $0.displayLinkUpstreamRate })
-        ListViewDeferredAccessibility.shared.forcesImmediate = immediateExperimentalUISettingsValue.with({ $0.listAccessibilityImmediate })
-        ListViewScrollPacing.isEnabled = immediateExperimentalUISettingsValue.with({ $0.listScrollPacingLog })
-        ChatListRowExperiments.lazyRareSubnodes = immediateExperimentalUISettingsValue.with({ $0.chatListLazyRareSubnodes })
-        ChatListRowExperiments.rowReuse = immediateExperimentalUISettingsValue.with({ $0.chatListRowReuse })
-        ChatListRowExperiments.asyncMediaWhileScrolling = immediateExperimentalUISettingsValue.with({ $0.chatListAsyncMediaWhileScrolling })
         NavigationPopPreparationSettings.isEnabled = immediateExperimentalUISettingsValue.with({ $0.backSwipePreparePreviousScreen })
         MediaEditorVideoExport.forceLegacyStoryWriter = immediateExperimentalUISettingsValue.with({ $0.storyLegacyVideoWriter })
         MediaEditorVideoExport.forceLegacyChatWriter = immediateExperimentalUISettingsValue.with({ $0.chatLegacyVideoWriter })
@@ -639,17 +626,9 @@ public final class SharedAccountContextImpl: SharedAccountContext {
                 flatBuffers_checkedGet = settings.checkSerializedData
                 GlassBackgroundView.useCustomGlassImpl = settings.fakeGlass
                 GlassDebugGroups.setDisabledMask(settings.glassDebugDisabledGroups)
-                EmojiPanelOpenTuning.setDefersHeavyWork(settings.emojiPanelDefersHeavyWork)
-                ChatScrollExperiments.setMask(settings.chatScrollExperiments)
                 ManagedAudioSessionImpl.respectsSystemRecordingInput = settings.respectSystemMicrophone
                 SharedDisplayLinkDriver.shared.capsTabletFrameRate = settings.tabletDisplayLinkFrameRateCap
-                SharedDisplayLinkDriver.shared.followsUpstreamFrameRate = settings.displayLinkUpstreamRate
-                ListViewDeferredAccessibility.shared.forcesImmediate = settings.listAccessibilityImmediate
-                ListViewScrollPacing.isEnabled = settings.listScrollPacingLog
                 FrameHitchMonitor.isEnabled = settings.frameHitchLog
-                ChatListRowExperiments.lazyRareSubnodes = settings.chatListLazyRareSubnodes
-                ChatListRowExperiments.rowReuse = settings.chatListRowReuse
-                ChatListRowExperiments.asyncMediaWhileScrolling = settings.chatListAsyncMediaWhileScrolling
                 NavigationPopPreparationSettings.isEnabled = settings.backSwipePreparePreviousScreen
                 MediaEditorVideoExport.forceLegacyStoryWriter = settings.storyLegacyVideoWriter
                 MediaEditorVideoExport.forceLegacyChatWriter = settings.chatLegacyVideoWriter

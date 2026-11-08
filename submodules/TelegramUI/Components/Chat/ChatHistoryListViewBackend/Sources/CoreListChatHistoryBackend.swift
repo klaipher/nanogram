@@ -137,18 +137,18 @@ final class CoreListChatHistoryBackend: ASDisplayNode, ChatHistoryListViewBacken
     
     private var nextStableVersion: Int = 1
 
-    // MARK: - Chat-scroll experiments (Debug Settings ▸ Chat scroll; both off by default)
+    // MARK: - Chat-scroll row preparation and view reuse (always on)
     //
-    // Every use is behind `ChatScrollExperiments.isPrepareLayoutAheadEnabled` / `.isReuseRowViewsEnabled`, two cached Bools;
-    // with both off none of this state is touched and the row paths are the ones they always were.
+    // Rows about to scroll into view are laid out ahead on a background queue, and rows leaving the loaded range are torn
+    // down at an idle run-loop turn, with the views of certified row kinds reset and reused.
 
-    /// "Chat rows: prepare layout ahead": see `CoreListChatRowPrefetcher`.
+    /// Prepare layout ahead: see `CoreListChatRowPrefetcher`.
     private let rowPrefetcher = CoreListChatRowPrefetcher()
     private var prefetchLastRange: (first: Int, last: Int)?
     private var prefetchDirection: Int = 0
     private var rowPrefetchGate = ChatRowPrefetchPlanGate()
 
-    /// "Chat rows: reuse row views": hosts of rows that left the load band whose node type has a complete reset, kept hidden in
+    /// Row view reuse: hosts of rows that left the load band whose node type has a complete reset, kept hidden in
     /// the list's container until a new row of the same node type needs a view.
     private lazy var rowViewPool: ChatRowViewPool<CoreListNodeHostView, ObjectIdentifier> = {
         let pool = ChatRowViewPool<CoreListNodeHostView, ObjectIdentifier>(limits: ChatRowViewPool<CoreListNodeHostView, ObjectIdentifier>.Limits(perKind: 4, total: 8), reset: { host in
@@ -866,9 +866,7 @@ final class CoreListChatHistoryBackend: ASDisplayNode, ChatHistoryListViewBacken
             // here is the LOADED WINDOW — a rebalance loading or dropping rows moves both terms of the
             // "whole collection is on screen" test.
             self.updateTrailingItemSpace(transition: .immediate)
-            if ChatScrollExperiments.isPrepareLayoutAheadEnabled {
-                self.planRowPrefetch()
-            }
+            self.planRowPrefetch()
         }
         self.coreList.onLoadedEdgeReached = { [weak self] _ in
             guard let self else { return }
@@ -969,14 +967,14 @@ final class CoreListChatHistoryBackend: ASDisplayNode, ChatHistoryListViewBacken
     // MARK: - Chat-scroll experiments
 
     private func installRowExperiments() {
-        // Offered every row the rebalance unloads; takes it over only while "reuse row views" is on, and answers false
-        // (today's behaviour: `render()` removes the view in the same tick) otherwise.
+        // Offered every row the rebalance unloads; takes it over (idle teardown, view reuse) and answers false (`render()`
+        // removes the view in the same tick) only when the backend is gone or the teardown queue is full.
         self.coreList.rowRetirementHandler = { [weak self] views in
-            guard ChatScrollExperiments.isReuseRowViewsEnabled, let self else {
+            guard let self else {
                 return false
             }
             // A heavy fling unloads rows faster than the idle turns finish them, and every waiting row is a whole hidden
-            // bubble in the container: past the cap the list removes these in the tick, as it does with the switch off.
+            // bubble in the container: past the cap the list removes these in the tick, as it did before the idle teardown existed.
             guard self.rowTeardownQueue.hasRoom(for: views.count) else {
                 return false
             }
@@ -1001,7 +999,7 @@ final class CoreListChatHistoryBackend: ASDisplayNode, ChatHistoryListViewBacken
             self.coreList.releaseRetiredRow(view)
             return
         }
-        if ChatScrollExperiments.isReuseRowViewsEnabled, let kind = host.reuseKind {
+        if let kind = host.reuseKind {
             // `recycle` resets the host; a refusal or a full pool removes it through `onDiscard`.
             self.rowViewPool.recycle(host, kind: kind)
         } else {
@@ -2179,7 +2177,7 @@ private final class CoreListEntryItem: CoreListItem {
     }
 
     func view() -> UIView & CoreListItemView {
-        if ChatScrollExperiments.isReuseRowViewsEnabled, let backend = self.backend, let pooled = backend.reusableHostView(for: self) {
+        if let backend = self.backend, let pooled = backend.reusableHostView(for: self) {
             return pooled
         }
         return CoreListNodeHostView(stableId: self.stableId,
@@ -2308,7 +2306,7 @@ private final class CoreListNodeHostView: UIView, CoreListItemView {
         self.contentDirty = true
     }
 
-    // MARK: - Row view reuse ("Chat rows: reuse row views")
+    // MARK: - Row view reuse
 
     /// The key this host is pooled under: its node's concrete type, when that type has a complete reset.
     var reuseKind: ObjectIdentifier? {
@@ -2572,10 +2570,10 @@ private final class CoreListNodeHostView: UIView, CoreListItemView {
             // row that scrolls into view, and forcing it there decodes each arriving bubble's images
             // on the main thread mid-fling instead of letting them land a frame later.
             let synchronousLoads = self.backend?.prefersSynchronousResourceLoading ?? false
-            // "Chat rows: prepare layout ahead": a node built in the background for exactly this row, width, insets, neighbours,
-            // item and interaction state. Off (the default) or no exact match: the synchronous build below, as always.
+            // A node built in the background for exactly this row, width, insets, neighbours, item and interaction state.
+            // No exact match: the synchronous build below.
             var prepared: CoreListChatRowPrefetcher.Prepared?
-            if ChatScrollExperiments.isPrepareLayoutAheadEnabled, let backend = self.backend {
+            if let backend = self.backend {
                 prepared = backend.takePreparedRow(item: self.listItem, stableId: self.stableId, stableVersion: self.stableVersion, width: width, leftInset: self.leftInset, rightInset: self.rightInset, neighbors: self.neighbors, synchronousLoads: synchronousLoads)
             }
             if let prepared {

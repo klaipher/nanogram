@@ -118,24 +118,10 @@ final class TabletSecondBatchRulesTests: XCTestCase {
         XCTAssertEqual(sharedDisplayLinkFrameRateRange(requested: .fps(60), displayMaxFramesPerSecond: self.ipadMax, isTablet: false, capsTabletRate: false), CAFrameRateRange(minimum: 30.0, maximum: 60.0, preferred: 60.0))
     }
 
-    /// "Display link: Telegram's rate" (scroll A/B): upstream 13.2's rule on every device, whatever the iPad cap says.
-    func test_upstreamRate_matchesTelegram() {
-        for capsTabletRate in [false, true] {
-            XCTAssertEqual(sharedDisplayLinkFrameRateRange(requested: .fps(30), displayMaxFramesPerSecond: self.ipadMax, isTablet: false, capsTabletRate: capsTabletRate, followsUpstreamRate: true), .default)
-            XCTAssertEqual(sharedDisplayLinkFrameRateRange(requested: .fps(60), displayMaxFramesPerSecond: self.ipadMax, isTablet: false, capsTabletRate: capsTabletRate, followsUpstreamRate: true), .default)
-            XCTAssertEqual(sharedDisplayLinkFrameRateRange(requested: .fps(120), displayMaxFramesPerSecond: self.ipadMax, isTablet: false, capsTabletRate: capsTabletRate, followsUpstreamRate: true), CAFrameRateRange(minimum: 30.0, maximum: 120.0, preferred: 120.0))
-            XCTAssertEqual(sharedDisplayLinkFrameRateRange(requested: .max, displayMaxFramesPerSecond: self.ipadMax, isTablet: false, capsTabletRate: capsTabletRate, followsUpstreamRate: true), CAFrameRateRange(minimum: 30.0, maximum: 120.0, preferred: 120.0))
-            for requested: SharedDisplayLinkDriver.FramesPerSecond in [.fps(30), .fps(60), .fps(120), .max] {
-                XCTAssertEqual(sharedDisplayLinkFrameRateRange(requested: requested, displayMaxFramesPerSecond: self.ipadMax, isTablet: true, capsTabletRate: capsTabletRate, followsUpstreamRate: true), CAFrameRateRange(minimum: 30.0, maximum: 120.0, preferred: 120.0), "\(requested)")
-                XCTAssertEqual(sharedDisplayLinkFrameRateRange(requested: requested, displayMaxFramesPerSecond: 60.0, isTablet: false, capsTabletRate: capsTabletRate, followsUpstreamRate: true), .default, "60 Hz screen, \(requested)")
-            }
-        }
-    }
-
-    /// Off (the default) keeps ours: a phone's link asks for 60 Hz or 30 Hz when its animations need no more.
-    func test_upstreamRateOff_keepsOurPhoneRule() {
-        XCTAssertEqual(sharedDisplayLinkFrameRateRange(requested: .fps(60), displayMaxFramesPerSecond: self.ipadMax, isTablet: false, capsTabletRate: false, followsUpstreamRate: false), CAFrameRateRange(minimum: 30.0, maximum: 60.0, preferred: 60.0))
-        XCTAssertEqual(sharedDisplayLinkFrameRateRange(requested: .fps(30), displayMaxFramesPerSecond: self.ipadMax, isTablet: false, capsTabletRate: false, followsUpstreamRate: false), CAFrameRateRange(minimum: 15.0, maximum: 30.0, preferred: 30.0))
+    /// A phone's link asks for 60 Hz or 30 Hz when its animations need no more.
+    func test_phoneRuleAsksFor60Or30Hz() {
+        XCTAssertEqual(sharedDisplayLinkFrameRateRange(requested: .fps(60), displayMaxFramesPerSecond: self.ipadMax, isTablet: false, capsTabletRate: false), CAFrameRateRange(minimum: 30.0, maximum: 60.0, preferred: 60.0))
+        XCTAssertEqual(sharedDisplayLinkFrameRateRange(requested: .fps(30), displayMaxFramesPerSecond: self.ipadMax, isTablet: false, capsTabletRate: false), CAFrameRateRange(minimum: 15.0, maximum: 30.0, preferred: 30.0))
     }
 
     func test_pacingStats_countsFramesRateAndLateFrames() {

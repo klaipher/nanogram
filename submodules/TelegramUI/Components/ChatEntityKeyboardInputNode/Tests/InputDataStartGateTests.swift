@@ -44,9 +44,7 @@ final class InputDataStartGateTests: XCTestCase {
         XCTAssertFalse(gate.shouldStart(.idle))
     }
 
-    func testFocusPrewarmWaitsForTheKeyboardOnlyWhenDeferralIsOn() {
-        XCTAssertNil(InputDataStartGate.focusPrewarmDelay(deferEnabled: false))
-        XCTAssertEqual(InputDataStartGate.focusPrewarmDelay(deferEnabled: true), InputDataStartGate.focusPrewarmWait)
+    func testFocusPrewarmWaitsForTheKeyboard() {
         XCTAssertGreaterThanOrEqual(InputDataStartGate.focusPrewarmWait, 0.35, "at least the keyboard animation")
     }
 

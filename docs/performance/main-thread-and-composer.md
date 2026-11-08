@@ -42,24 +42,22 @@ Invariants the compiler does not check; each has a test.
   versions. Nothing is uploaded; Debug Settings ▸ Send MetricKit Reports is the only way out. Host test:
   `//submodules/CrashReporting:CrashReportingTests`.
 - **Signposts**: `PerformanceSignposts` (Display) intervals `chatHistoryEntriesForView` and `composerKeystroke`.
-- **Chat open: defer non-visible setup** (Debug Settings ▸ "CHAT OPEN (PERFORMANCE)", `ExperimentalUISettings.chatOpenDeferSetup`,
-  default off, main app only). `ChatControllerImpl` reads the switch once in `init` (standard, non-previewing chats only) into
-  `openSetup` (`DeferredSetup`, SwiftSignalKit). With it off, `openSetup.run` executes the work at once in place, so the code path
-  is the original one. With it on, the setup submitted through `openSetup.run` runs from `viewDidAppear` on the next main-queue
+- **Chat open: defer non-visible setup** (always on; the Debug Settings switch was removed 2026-11-08, main app only).
+  `ChatControllerImpl` creates `openSetup` (`DeferredSetup`, SwiftSignalKit) in `init` for standard, non-previewing chats only. The
+  setup submitted through `openSetup.run` runs from `viewDidAppear` on the next main-queue
   turn: nameColor, botCallbackAlert, audio/video recorder, typing/sticker/recording activity (init); translation host (iOS 18),
   send-as list, network-speed notices, `GlobalControlPanelsContext` and its state subscription (`loadDisplayNodeImpl`). Anything
   that can change the first frame (presentation data, content data, history, sticker/download settings, read state, network title) stays
   synchronous. Attribution signposts (category Performance): `chatInit` (whole init) with `chatInitInteraction`,
   `chatInitDisplayNode`, `chatInitReloadLocation`, `chatInitPresentationData`, one `chatInitDeferrable` per deferrable item,
   `chatInitDeferredSetup` (the flush) and `chatFirstLayout`. Tests: `//submodules/SSignalKit/SwiftSignalKit:SwiftSignalKitTests`
-  (`DeferredSetupTests`), `//submodules/DebugSettingsUI:DebugSettingsUITests` (`ChatOpenSwitchTests`),
-  `//submodules/TelegramUIPreferences:TelegramUIPreferencesTests`.
-- **Chat open: prewarm wallpaper pattern** (Debug Settings, same section, `ExperimentalUISettings.chatOpenPrewarmWallpaperPattern`, default on).
+  (`DeferredSetupTests`).
+- **Chat open: prewarm wallpaper pattern** (always on; the Debug Settings switch was removed 2026-11-08).
   `WallpaperPatternPrewarmer` renders the chat wallpaper's pattern on a utility queue into the pattern cache 3 s after the root
   controllers exist (and after wallpaper changes), under the key and with the draw arguments the chat uses, so the first chat open takes
   the cache-hit path (~36 ms less on main). iPhone, pattern wallpapers only. Test: `//submodules/WallpaperBackgroundNode:WallpaperPatternPrewarmPlanTests`.
-- **Chat-scroll experiments** (Debug Settings ▸ Chat scroll, both off by default): "Chat rows: prepare layout ahead" and
-  "Chat rows: reuse row views". A prepared row is used only for an exactly equal `ChatRowPrepKey`; `ChatControllerInteraction`
+- **Chat-scroll features** (always on; the Debug Settings switches were removed 2026-11-08): prepare row layout ahead and
+  reuse row views. A prepared row is used only for an exactly equal `ChatRowPrepKey`; `ChatControllerInteraction`
   properties that a row's layout reads must keep the `rowPrepEpoch` `didSet` (a new such property needs it too). A row view
   type is pooled only when it overrides `supportsRowReuse` and `prepareForRowReuse` and its ledger test passes. Details:
   `docs/chat/corelist-chat-history-backend.md`.

@@ -82,10 +82,10 @@ public enum PerformanceSignpostName {
     /// The first emission of the presentation-data pipeline, i.e. `themeAndStringsUpdated` (iOS). Inside `chatInit` when every
     /// source of the pipeline emits at once, otherwise after it. Interval.
     public static let chatInitPresentationData: StaticString = "chatInitPresentationData"
-    /// The setup that "Chat open: defer non-visible setup" can move to after the first appearance, measured where it runs
+    /// The setup that the deferred chat-open setup moves to after the first appearance, measured where it runs
     /// today (iOS, inside `chatInit` and `chatInitDisplayNode`). Interval, once per item.
     public static let chatInitDeferrable: StaticString = "chatInitDeferrable"
-    /// The setup deferred by "Chat open: defer non-visible setup" runs after the first appearance (iOS). Interval.
+    /// The setup deferred by the chat-open setup deferral runs after the first appearance (iOS). Interval.
     public static let chatInitDeferredSetup: StaticString = "chatInitDeferredSetup"
     /// The first `containerLayoutUpdated` of a chat controller (iOS). Interval.
     public static let chatFirstLayout: StaticString = "chatFirstLayout"

@@ -5,20 +5,7 @@ import Display
 @testable import ChatListUI
 
 final class ChatListRowReuseResetTests: XCTestCase {
-    private var savedReuseFlag: Bool = false
-    
-    override func setUp() {
-        super.setUp()
-        self.savedReuseFlag = ChatListRowExperiments.rowReuse
-    }
-    
-    override func tearDown() {
-        ChatListRowExperiments.rowReuse = self.savedReuseFlag
-        super.tearDown()
-    }
-    
-    private func makeNode(reuse: Bool) -> ChatListItemNode {
-        ChatListRowExperiments.rowReuse = reuse
+    private func makeNode() -> ChatListItemNode {
         return ChatListItemNode()
     }
     
@@ -31,14 +18,8 @@ final class ChatListRowReuseResetTests: XCTestCase {
         return image
     }
     
-    func testANodeCreatedWithReuseOffIsRefused() {
-        let node = self.makeNode(reuse: false)
-        XCTAssertEqual(node.rowReuseRefusal(), .createdWithReuseOff)
-        XCTAssertFalse(node.prepareForRowReuse())
-    }
-    
     func testABareNodeIsRefusedForMissingItem() {
-        let node = self.makeNode(reuse: true)
+        let node = self.makeNode()
         XCTAssertEqual(node.rowReuseRefusal(), .notEligible)
         XCTAssertFalse(node.prepareForRowReuse())
     }
@@ -46,7 +27,7 @@ final class ChatListRowReuseResetTests: XCTestCase {
     func testRefusalsLeaveTheRowUntouched() {
         // Tainted.
         do {
-            let node = self.makeNode(reuse: true)
+            let node = self.makeNode()
             node.isRowReuseTainted = true
             node.currentTextLeftCutout = 5.0
             XCTAssertEqual(node.rowReuseRefusalIgnoringEligibilityForTesting(), .tainted)
@@ -55,7 +36,7 @@ final class ChatListRowReuseResetTests: XCTestCase {
         }
         // Highlighted.
         do {
-            let node = self.makeNode(reuse: true)
+            let node = self.makeNode()
             node.setHighlighted(true, at: CGPoint(), animated: false)
             node.currentTextLeftCutout = 5.0
             XCTAssertEqual(node.rowReuseRefusalIgnoringEligibilityForTesting(), .highlighted)
@@ -64,7 +45,7 @@ final class ChatListRowReuseResetTests: XCTestCase {
         }
         // A layer animation in the subtree.
         do {
-            let node = self.makeNode(reuse: true)
+            let node = self.makeNode()
             _ = node.view
             node.titleNode.layer.add(CABasicAnimation(keyPath: "opacity"), forKey: "test")
             node.currentTextLeftCutout = 5.0
@@ -74,7 +55,7 @@ final class ChatListRowReuseResetTests: XCTestCase {
         }
         // Node state a removal animation leaves behind.
         do {
-            let node = self.makeNode(reuse: true)
+            let node = self.makeNode()
             node.zPosition = -1.0
             node.currentTextLeftCutout = 5.0
             XCTAssertEqual(node.rowReuseRefusalIgnoringEligibilityForTesting(), .nodeState)
@@ -83,7 +64,7 @@ final class ChatListRowReuseResetTests: XCTestCase {
         }
         // Typing indicator shown.
         do {
-            let node = self.makeNode(reuse: true)
+            let node = self.makeNode()
             node.addSubnode(node.inputActivitiesNode)
             node.currentTextLeftCutout = 5.0
             XCTAssertEqual(node.rowReuseRefusalIgnoringEligibilityForTesting(), .typing)
@@ -93,14 +74,14 @@ final class ChatListRowReuseResetTests: XCTestCase {
     }
     
     func testAnOrdinaryRowPassesTheRefusals() {
-        let node = self.makeNode(reuse: true)
+        let node = self.makeNode()
         XCTAssertNil(node.rowReuseRefusalIgnoringEligibilityForTesting())
         _ = node.view
         XCTAssertNil(node.rowReuseRefusalIgnoringEligibilityForTesting())
     }
     
     func testResetRestoresDefaults() {
-        let node = self.makeNode(reuse: true)
+        let node = self.makeNode()
         _ = node.view
         
         let fixed: [ASDisplayNode] = [

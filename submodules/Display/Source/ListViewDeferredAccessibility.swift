@@ -21,10 +21,6 @@ public final class ListViewDeferredAccessibility {
         }
     }
 
-    /// Debug Settings ▸ "List rows: accessibility text at once" (off by default): build the strings inside each row's
-    /// layout, as upstream does, to compare scroll smoothness. Main thread.
-    public var forcesImmediate: Bool = false
-
     private let quietInterval: Double
     private let batchSize: Int
     private let isImmediate: () -> Bool
@@ -44,7 +40,7 @@ public final class ListViewDeferredAccessibility {
     /// replaces it.
     public func request(owner: AnyObject, _ action: @escaping () -> Void) {
         let id = ObjectIdentifier(owner)
-        if self.forcesImmediate || self.isImmediate() {
+        if self.isImmediate() {
             self.entries.removeValue(forKey: id)
             action()
             return

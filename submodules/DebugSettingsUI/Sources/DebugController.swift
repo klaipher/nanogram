@@ -278,10 +278,7 @@ private enum DebugControllerSection: Int32 {
     case experiments
     case streamsAndCalls
     case glassGroups
-    case emojiPanelOpen
-    case chatOpen
-    case chatScroll
-    case listScroll
+    case performance
     case translation
     case web
     case videoExperiments2
@@ -294,17 +291,6 @@ private func glassGroupSwitch(presentationData: ItemListPresentationData, argume
         let _ = updateExperimentalUISettingsInteractively(accountManager: arguments.sharedContext.accountManager, { settings in
             var settings = settings
             settings.glassDebugDisabledGroups = value ? (settings.glassDebugDisabledGroups | bit) : (settings.glassDebugDisabledGroups & ~bit)
-            return settings
-        }).start()
-    })
-}
-
-/// One switch of the "Chat scroll" section: sets or clears `bit` in `chatScrollExperiments`.
-private func chatScrollSwitch(presentationData: ItemListPresentationData, arguments: DebugControllerArguments, sectionId: ItemListSectionId, title: String, text: String, bit: Int32, value: Bool) -> ListViewItem {
-    return ItemListSwitchItem(presentationData: presentationData, systemStyle: .glass, title: title, text: text, value: value, maximumNumberOfLines: 0, sectionId: sectionId, style: .blocks, updated: { value in
-        let _ = updateExperimentalUISettingsInteractively(accountManager: arguments.sharedContext.accountManager, { settings in
-            var settings = settings
-            settings.chatScrollExperiments = value ? (settings.chatScrollExperiments | bit) : (settings.chatScrollExperiments & ~bit)
             return settings
         }).start()
     })
@@ -372,26 +358,9 @@ enum DebugControllerEntry: ItemListNodeEntry {
     case glassGroupNavigationBar(Bool)
     case glassGroupInputPanel(Bool)
     case glassGroupFloatingButtons(Bool)
-    case emojiPanelHeader(PresentationTheme)
-    case emojiPanelDefersHeavyWork(Bool)
-    case chatOpenHeader(PresentationTheme)
-    case chatOpenDeferSetup(Bool)
-    case chatOpenPrewarmWallpaperPattern(Bool)
-    case chatScrollHeader(PresentationTheme)
-    case chatScrollPrepareLayoutAhead(Bool)
-    case chatScrollReuseRowViews(Bool)
-    case listScrollHeader(PresentationTheme)
-    case displayLinkUpstreamRate(Bool)
-    case listAccessibilityImmediate(Bool)
-    case listScrollPacingLog(Bool)
-    case chatListLazyRareSubnodes(Bool)
-    case chatListRowReuse(Bool)
+    case performanceHeader(PresentationTheme)
     case frameHitchLog(Bool)
-    case chatListAsyncMediaWhileScrolling(Bool)
     case backSwipePreparePreviousScreen(Bool)
-    case performanceSwitchesOurs
-    case performanceSwitchesTelegram
-    case performanceSwitchesInfo(String)
     case enableNetworkFramework(Bool)
     case enableNetworkExperiments(Bool)
     case rustMTProtoEngine(Bool)
@@ -421,14 +390,8 @@ enum DebugControllerEntry: ItemListNodeEntry {
             return DebugControllerSection.streamsAndCalls.rawValue
         case .glassGroupsHeader, .glassGroupNavigationBar, .glassGroupInputPanel, .glassGroupFloatingButtons:
             return DebugControllerSection.glassGroups.rawValue
-        case .emojiPanelHeader, .emojiPanelDefersHeavyWork:
-            return DebugControllerSection.emojiPanelOpen.rawValue
-        case .chatOpenHeader, .chatOpenDeferSetup, .chatOpenPrewarmWallpaperPattern:
-            return DebugControllerSection.chatOpen.rawValue
-        case .chatScrollHeader, .chatScrollPrepareLayoutAhead, .chatScrollReuseRowViews:
-            return DebugControllerSection.chatScroll.rawValue
-        case .listScrollHeader, .displayLinkUpstreamRate, .listAccessibilityImmediate, .listScrollPacingLog, .chatListLazyRareSubnodes, .chatListRowReuse, .frameHitchLog, .chatListAsyncMediaWhileScrolling, .backSwipePreparePreviousScreen, .performanceSwitchesOurs, .performanceSwitchesTelegram, .performanceSwitchesInfo:
-            return DebugControllerSection.listScroll.rawValue
+        case .performanceHeader, .frameHitchLog, .backSwipePreparePreviousScreen:
+            return DebugControllerSection.performance.rawValue
         case .springSendAnimation, .fakeWalletTransfers, .stickerRendererMode, .disableImageContentAnalysis, .disableLanguageRecognition, .localTranscription, .enableVoipTcp, .tabletDisplayLinkFrameRateCap, .chatMediaEditorLegacy, .mediaGridLegacy, .sharedMediaGridLegacy, .storyLegacyVideoWriter, .chatLegacyVideoWriter, .chatSideListLegacy, .messageWidgets, .messageWidgetWallet:
             return DebugControllerSection.experiments.rawValue
         case .enableNetworkFramework, .enableNetworkExperiments, .rustMTProtoEngine, .networkEngineInfo:
@@ -576,56 +539,15 @@ enum DebugControllerEntry: ItemListNodeEntry {
             return 122
         case .glassGroupFloatingButtons:
             return 123
-        case .emojiPanelHeader:
-            // Its own section, so these ids only order it inside itself.
-            return 130
-        case .emojiPanelDefersHeavyWork:
-            return 131
-        case .chatOpenHeader:
-            // Its own section, like the glass groups.
-            return 132
-        case .chatOpenDeferSetup:
-            return 133
-        case .chatOpenPrewarmWallpaperPattern:
-            // Appended right after `chatOpenDeferSetup`, inside the same section (the section sorts first); see the ordering note at `springSendAnimation`.
-            return 147
-        case .chatScrollHeader:
-            // Its own section, like the glass groups above.
-            return 134
-        case .chatScrollPrepareLayoutAhead:
-            return 135
-        case .chatScrollReuseRowViews:
-            return 136
-        case .listScrollHeader:
-            // Its own section, like the chat scroll experiments above.
+        case .performanceHeader:
+            // Its own section, so these ids only order it inside itself (ids of retired switches are not reused).
             return 137
-        case .displayLinkUpstreamRate:
-            return 138
-        case .listAccessibilityImmediate:
-            return 139
-        case .listScrollPacingLog:
-            return 140
-        case .chatListLazyRareSubnodes:
-            // Appended right after `listScrollPacingLog`; see the ordering note at `springSendAnimation`.
-            return 141
-        case .chatListRowReuse:
-            // Appended right after `chatListLazyRareSubnodes`; see the ordering note at `springSendAnimation`.
-            return 142
         case .frameHitchLog:
-            // Appended right after `chatListRowReuse`; see the ordering note at `springSendAnimation`.
+            // Kept its id when the switches between it and the header were retired; see the ordering note at `springSendAnimation`.
             return 143
-        case .chatListAsyncMediaWhileScrolling:
-            return 146
         case .backSwipePreparePreviousScreen:
-            // Appended right after `chatListAsyncMediaWhileScrolling`; see the ordering note at `springSendAnimation`.
+            // Kept its id when the switches before it were retired; see the ordering note at `springSendAnimation`.
             return 148
-        case .performanceSwitchesOurs:
-            // Appended right after `backSwipePreparePreviousScreen`; see the ordering note at `springSendAnimation`.
-            return 149
-        case .performanceSwitchesTelegram:
-            return 150
-        case .performanceSwitchesInfo:
-            return 151
         case .springSendAnimation:
             // ItemList asserts its entries are in strictly increasing order (`<`: section, then
             // `sortIndex`, which is the stableId here; ItemListControllerNode.swift), so an id must
@@ -695,89 +617,14 @@ enum DebugControllerEntry: ItemListNodeEntry {
             return ItemListSectionHeaderItem(presentationData: presentationData, text: "STREAMS & CALLS", sectionId: self.section)
         case .glassGroupsHeader:
             return ItemListSectionHeaderItem(presentationData: presentationData, text: "GLASS GROUPS (GPU ATTRIBUTION)", sectionId: self.section)
-        case .emojiPanelHeader:
-            return ItemListSectionHeaderItem(presentationData: presentationData, text: "EMOJI PANEL (OPEN HANG)", sectionId: self.section)
-        case let .emojiPanelDefersHeavyWork(value):
-            return ItemListSwitchItem(presentationData: presentationData, systemStyle: .glass, title: "Emoji panel: defer first-responder handoff / heavy layers", text: "Opening the panel builds it first and only then swaps the keyboard's input view and first responder; GIF tiles get their display layers after the pane is on screen, a few per frame. The panel can show empty GIF cells for a moment. Default: on. Applies at once.", value: value, maximumNumberOfLines: 0, sectionId: self.section, style: .blocks, updated: { value in
-                let _ = updateExperimentalUISettingsInteractively(accountManager: arguments.sharedContext.accountManager, { settings in
-                    var settings = settings
-                    settings.emojiPanelDefersHeavyWork = value
-                    return settings
-                }).start()
-            })
         case let .glassGroupNavigationBar(value):
             return glassGroupSwitch(presentationData: presentationData, arguments: arguments, sectionId: self.section, title: "Navigation bar glass off", text: "Replaces the navigation bar's glass with a solid fill, to measure what it costs. Default: off. Applies at once.", bit: ExperimentalUISettings.glassDebugNavigationBar, value: value)
         case let .glassGroupInputPanel(value):
             return glassGroupSwitch(presentationData: presentationData, arguments: arguments, sectionId: self.section, title: "Input panel glass off", text: "Replaces the chat input panel's glass with a solid fill. Default: off. Applies at once.", bit: ExperimentalUISettings.glassDebugInputPanel, value: value)
-        case .chatOpenHeader:
-            return ItemListSectionHeaderItem(presentationData: presentationData, text: "CHAT OPEN (PERFORMANCE)", sectionId: self.section)
-        case let .chatOpenDeferSetup(value):
-            return ItemListSwitchItem(presentationData: presentationData, systemStyle: .glass, title: "Chat open: defer non-visible setup", text: "Starts the send-as list, the account colour, the recorder and activity listeners, the media and call panels, the on-device translation host and the network-speed notices after the chat has appeared instead of while it opens. They show up a moment later (panels slide in after the open animation). Default: on. Applies to chats opened afterwards.", value: value, maximumNumberOfLines: 0, sectionId: self.section, style: .blocks, updated: { value in
-                let _ = updateExperimentalUISettingsInteractively(accountManager: arguments.sharedContext.accountManager, { settings in
-                    var settings = settings
-                    settings.chatOpenDeferSetup = value
-                    return settings
-                }).start()
-            })
-        case let .chatOpenPrewarmWallpaperPattern(value):
-            return ItemListSwitchItem(presentationData: presentationData, systemStyle: .glass, title: "Chat open: prewarm wallpaper pattern", text: "Renders the chat wallpaper's pattern in the background a few seconds after launch, so the first chat you open does not draw it while it opens. The picture is the same as before. Does nothing for plain or gradient wallpapers or on iPad. Default: on. Applies the next time the wallpaper changes or the app starts.", value: value, maximumNumberOfLines: 0, sectionId: self.section, style: .blocks, updated: { value in
-                let _ = updateExperimentalUISettingsInteractively(accountManager: arguments.sharedContext.accountManager, { settings in
-                    var settings = settings
-                    settings.chatOpenPrewarmWallpaperPattern = value
-                    return settings
-                }).start()
-            })
         case let .glassGroupFloatingButtons(value):
             return glassGroupSwitch(presentationData: presentationData, arguments: arguments, sectionId: self.section, title: "Floating buttons glass off", text: "Replaces the scroll-to-bottom, mentions and reactions buttons' glass with a solid fill. Default: off. Applies at once.", bit: ExperimentalUISettings.glassDebugFloatingButtons, value: value)
-        case .chatScrollHeader:
-            return ItemListSectionHeaderItem(presentationData: presentationData, text: "CHAT SCROLL (EXPERIMENTS)", sectionId: self.section)
-        case let .chatScrollPrepareLayoutAhead(value):
-            return chatScrollSwitch(presentationData: presentationData, arguments: arguments, sectionId: self.section, title: "Chat rows: prepare layout ahead", text: "Lays out the rows that are about to scroll into view on a background queue, so the scroll frame only applies them. A prepared row is used only when everything it depends on is unchanged; otherwise it is laid out as before. Default: on. Applies at once.", bit: ExperimentalUISettings.chatScrollPrepareLayoutAhead, value: value)
-        case let .chatScrollReuseRowViews(value):
-            return chatScrollSwitch(presentationData: presentationData, arguments: arguments, sectionId: self.section, title: "Chat rows: reuse row views", text: "Tears down the rows that scrolled out of the loaded range when the app is idle instead of inside the scroll frame, and reuses the views of sticker rows. Default: on. Applies to rows that leave the range from now on.", bit: ExperimentalUISettings.chatScrollReuseRowViews, value: value)
-        case .listScrollHeader:
-            return ItemListSectionHeaderItem(presentationData: presentationData, text: "LIST SCROLL (A/B VS TELEGRAM)", sectionId: self.section)
-        case let .displayLinkUpstreamRate(value):
-            return ItemListSwitchItem(presentationData: presentationData, systemStyle: .glass, title: "Display link: Telegram's rate", text: "Off (default): the app's animation timer asks for 60 or 30 Hz when only slow animations run, which saves battery. On: Telegram's rule, up to 120 Hz whenever anything animates. Compare scroll smoothness, mostly at the start of a scroll. Default: off. Applies at once.", value: value, maximumNumberOfLines: 0, sectionId: self.section, style: .blocks, updated: { value in
-                SharedDisplayLinkDriver.shared.startPacingLog()
-                let _ = updateExperimentalUISettingsInteractively(accountManager: arguments.sharedContext.accountManager, { settings in
-                    var settings = settings
-                    settings.displayLinkUpstreamRate = value
-                    return settings
-                }).start()
-            })
-        case let .listAccessibilityImmediate(value):
-            return ItemListSwitchItem(presentationData: presentationData, systemStyle: .glass, title: "List rows: accessibility text at once", text: "Off (default): the VoiceOver text of chat list rows and messages is built after scrolling pauses. On: inside each row's layout, as Telegram does. Default: off. Applies at once.", value: value, maximumNumberOfLines: 0, sectionId: self.section, style: .blocks, updated: { value in
-                let _ = updateExperimentalUISettingsInteractively(accountManager: arguments.sharedContext.accountManager, { settings in
-                    var settings = settings
-                    settings.listAccessibilityImmediate = value
-                    return settings
-                }).start()
-            })
-        case let .listScrollPacingLog(value):
-            return ItemListSwitchItem(presentationData: presentationData, systemStyle: .glass, title: "List scroll: log frame rate", text: "Writes one log line per scroll of any list (\"ListView scroll pacing\"): drag = frame rate under the finger and late frames; decel = the fling after release, where iOS slows the rate on purpose, so only sudden stalls (jumps) count; ab = the A/B switches that were on. Needs Log to File; send with Send Logs. Default: off.", value: value, maximumNumberOfLines: 0, sectionId: self.section, style: .blocks, updated: { value in
-                let _ = updateExperimentalUISettingsInteractively(accountManager: arguments.sharedContext.accountManager, { settings in
-                    var settings = settings
-                    settings.listScrollPacingLog = value
-                    return settings
-                }).start()
-            })
-        case let .chatListLazyRareSubnodes(value):
-            return ItemListSwitchItem(presentationData: presentationData, systemStyle: .glass, title: "Chat list rows: lazy rare subnodes", text: "On (default): a chat list row adds its rarely shown parts (pin, mute and hidden icons, unread and mention badges, online dot, message status, community shadow) only when it first shows them, so a row entering the screen builds fewer views and layers. Off: every row builds them all up front, as Telegram does. Applies to rows created from now on.", value: value, maximumNumberOfLines: 0, sectionId: self.section, style: .blocks, updated: { value in
-                let _ = updateExperimentalUISettingsInteractively(accountManager: arguments.sharedContext.accountManager, { settings in
-                    var settings = settings
-                    settings.chatListLazyRareSubnodes = value
-                    return settings
-                }).start()
-            })
-        case let .chatListRowReuse(value):
-            return ItemListSwitchItem(presentationData: presentationData, systemStyle: .glass, title: "Chat list rows: reuse rows", text: "Off (default): every row that scrolls into a chat list is built new, as Telegram does. On: up to 8 ordinary chat rows that scrolled out of a chat list are reset and reused for the next ones; forum, community, archive, editing, swiped, highlighted or context-menu rows are never reused. Applies to rows that leave the list from now on.", value: value, maximumNumberOfLines: 0, sectionId: self.section, style: .blocks, updated: { value in
-                let _ = updateExperimentalUISettingsInteractively(accountManager: arguments.sharedContext.accountManager, { settings in
-                    var settings = settings
-                    settings.chatListRowReuse = value
-                    return settings
-                }).start()
-            })
+        case .performanceHeader:
+            return ItemListSectionHeaderItem(presentationData: presentationData, text: "PERFORMANCE", sectionId: self.section)
         case let .frameHitchLog(value):
             return ItemListSwitchItem(presentationData: presentationData, systemStyle: .glass, title: "Frame hitches: log with main-thread stacks", text: "While you scroll a chat, the chat list or any list, and while the keyboard opens or closes, every frame is timed. One \"Frame hitches\" line per scroll or keyboard animation (frames, hitches, hitch time, longest gap), followed by what the main thread was doing during its longest stalls (\"Frame hitch stack\"). Holds the screen at its top rate and samples the main thread while measuring, so use it only to collect logs. Needs Log to File; send with Send Logs. Default: off.", value: value, maximumNumberOfLines: 0, sectionId: self.section, style: .blocks, updated: { value in
                 let _ = updateExperimentalUISettingsInteractively(accountManager: arguments.sharedContext.accountManager, { settings in
@@ -786,36 +633,14 @@ enum DebugControllerEntry: ItemListNodeEntry {
                     return settings
                 }).start()
             })
-        case let .chatListAsyncMediaWhileScrolling(value):
-            return ItemListSwitchItem(presentationData: presentationData, systemStyle: .glass, title: "Chat list: async media previews while scrolling", text: "On (default): while you scroll the chat list, rows that arrive in bulk (loading more chats) decode their media previews in the background, so a preview can show a placeholder for a frame. Off: those rows decode on the main thread as Telegram does (smoother content, longer frames). The first screen, a folder switch and a jump to the top always decode up front. Applies to rows loaded from now on.", value: value, maximumNumberOfLines: 0, sectionId: self.section, style: .blocks, updated: { value in
-                let _ = updateExperimentalUISettingsInteractively(accountManager: arguments.sharedContext.accountManager, { settings in
-                    var settings = settings
-                    settings.chatListAsyncMediaWhileScrolling = value
-                    return settings
-                }).start()
-            })
         case let .backSwipePreparePreviousScreen(value):
-            return ItemListSwitchItem(presentationData: presentationData, systemStyle: .glass, title: "Back swipe: prepare the previous screen", text: "Off (default): the swipe back lays out and draws the screen beneath when your finger goes down, as Telegram does. On: while a screen sits idle, the screen beneath it is laid out and drawn out of sight, so the swipe starts faster. Costs the memory of one extra drawn screen (freed on a memory warning) and a short main-thread job about half a second after a screen settles.", value: value, maximumNumberOfLines: 0, sectionId: self.section, style: .blocks, updated: { value in
+            return ItemListSwitchItem(presentationData: presentationData, systemStyle: .glass, title: "Back swipe: prepare the previous screen", text: "On (default): while a screen sits idle, the screen beneath it is laid out and drawn out of sight, so the swipe starts faster. Off: the swipe back lays out and draws the screen beneath when your finger goes down, as Telegram does. Costs the memory of one extra drawn screen (freed on a memory warning) and a short main-thread job about half a second after a screen settles.", value: value, maximumNumberOfLines: 0, sectionId: self.section, style: .blocks, updated: { value in
                 let _ = updateExperimentalUISettingsInteractively(accountManager: arguments.sharedContext.accountManager, { settings in
                     var settings = settings
                     settings.backSwipePreparePreviousScreen = value
                     return settings
                 }).start()
             })
-        case .performanceSwitchesOurs:
-            return ItemListActionItem(presentationData: presentationData, systemStyle: .glass, title: "Perf A/B: all switches to ours", kind: .generic, alignment: .natural, sectionId: self.section, style: .blocks, action: {
-                let _ = updateExperimentalUISettingsInteractively(accountManager: arguments.sharedContext.accountManager, { settings in
-                    return settings.withPerformanceSwitches(optimized: true)
-                }).start()
-            })
-        case .performanceSwitchesTelegram:
-            return ItemListActionItem(presentationData: presentationData, systemStyle: .glass, title: "Perf A/B: all switches to Telegram's behaviour", kind: .generic, alignment: .natural, sectionId: self.section, style: .blocks, action: {
-                let _ = updateExperimentalUISettingsInteractively(accountManager: arguments.sharedContext.accountManager, { settings in
-                    return settings.withPerformanceSwitches(optimized: false)
-                }).start()
-            })
-        case let .performanceSwitchesInfo(summary):
-            return ItemListTextItem(presentationData: presentationData, text: .plain("Now: \(summary).\nThe two rows above set the switches of this section, Chat open, Chat scroll and the emoji panel at once. Each Frame hitches line names the set it ran with. Restart the app after switching, so the first chat open is measured cold."), sectionId: self.section)
         case .sendLogs:
             return ItemListActionItem(presentationData: presentationData, systemStyle: .glass, title: "Send Logs", kind: .generic, alignment: .natural, sectionId: self.section, style: .blocks, action: {
                 arguments.openLogs()
@@ -1595,32 +1420,10 @@ func debugControllerEntries(environment: DebugControllerEntriesEnvironment, them
         entries.append(.glassGroupInputPanel(experimentalSettings.glassDebugDisabledGroups & ExperimentalUISettings.glassDebugInputPanel != 0))
         entries.append(.glassGroupFloatingButtons(experimentalSettings.glassDebugDisabledGroups & ExperimentalUISettings.glassDebugFloatingButtons != 0))
         
-        // Performance switch (off by default): the emoji / sticker / GIF panel open hang.
-        entries.append(.emojiPanelHeader(theme))
-        entries.append(.emojiPanelDefersHeavyWork(experimentalSettings.emojiPanelDefersHeavyWork))
-        // Chat open performance: moves non-visible setup of a chat to after its first appearance.
-        entries.append(.chatOpenHeader(theme))
-        entries.append(.chatOpenDeferSetup(experimentalSettings.chatOpenDeferSetup))
-        entries.append(.chatOpenPrewarmWallpaperPattern(experimentalSettings.chatOpenPrewarmWallpaperPattern))
-
-        // Chat scroll experiments (A/B on device): both off by default.
-        entries.append(.chatScrollHeader(theme))
-        entries.append(.chatScrollPrepareLayoutAhead(experimentalSettings.chatScrollExperiments & ExperimentalUISettings.chatScrollPrepareLayoutAhead != 0))
-        entries.append(.chatScrollReuseRowViews(experimentalSettings.chatScrollExperiments & ExperimentalUISettings.chatScrollReuseRowViews != 0))
-
-        // List scroll A/B vs Telegram: our two scroll-path differences, each switchable to upstream, and a pacing log.
-        entries.append(.listScrollHeader(theme))
-        entries.append(.displayLinkUpstreamRate(experimentalSettings.displayLinkUpstreamRate))
-        entries.append(.listAccessibilityImmediate(experimentalSettings.listAccessibilityImmediate))
-        entries.append(.listScrollPacingLog(experimentalSettings.listScrollPacingLog))
-        entries.append(.chatListLazyRareSubnodes(experimentalSettings.chatListLazyRareSubnodes))
-        entries.append(.chatListRowReuse(experimentalSettings.chatListRowReuse))
+        // Performance: the frame-hitch log and the back-swipe preparation (the other performance switches are always on now).
+        entries.append(.performanceHeader(theme))
         entries.append(.frameHitchLog(experimentalSettings.frameHitchLog))
-        entries.append(.chatListAsyncMediaWhileScrolling(experimentalSettings.chatListAsyncMediaWhileScrolling))
         entries.append(.backSwipePreparePreviousScreen(experimentalSettings.backSwipePreparePreviousScreen))
-        entries.append(.performanceSwitchesOurs)
-        entries.append(.performanceSwitchesTelegram)
-        entries.append(.performanceSwitchesInfo(experimentalSettings.performanceSwitchesSummary))
     }
 
     if isMainApp {

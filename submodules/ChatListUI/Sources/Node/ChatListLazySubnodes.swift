@@ -10,7 +10,7 @@ enum ChatListMainContentChild: Int, CaseIterable {
     }
 }
 
-/// The parts of a chat list row that an ordinary row never shows. With the "lazy rare subnodes" switch on they join
+/// The parts of a chat list row that an ordinary row never shows. They join
 /// the row's node hierarchy (and so get a view or layer) the first time the row needs them visible.
 enum ChatListLazySubnode: Int, CaseIterable {
     case communityShadow, status, pinnedIcon, badge, mentionBadge, hiddenPeerIcon, mutedIcon, onlineDot

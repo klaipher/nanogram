@@ -184,39 +184,3 @@ final class ChatRowPrepEpochTests: XCTestCase {
         XCTAssertEqual(epoch.value, 2)
     }
 }
-
-final class ChatScrollExperimentsTests: XCTestCase {
-    override func tearDown() {
-        ChatScrollExperiments.setMask(0)
-        super.tearDown()
-    }
-
-    func testBothSwitchesAreOffByDefault() {
-        XCTAssertEqual(ChatScrollExperiments.mask, 0)
-        XCTAssertFalse(ChatScrollExperiments.isPrepareLayoutAheadEnabled)
-        XCTAssertFalse(ChatScrollExperiments.isReuseRowViewsEnabled)
-    }
-
-    func testEachBitDrivesItsOwnFlag() {
-        ChatScrollExperiments.setMask(ChatScrollExperiment.prepareLayoutAhead.rawValue)
-        XCTAssertTrue(ChatScrollExperiments.isPrepareLayoutAheadEnabled)
-        XCTAssertFalse(ChatScrollExperiments.isReuseRowViewsEnabled)
-        ChatScrollExperiments.setMask(ChatScrollExperiment.reuseRowViews.rawValue)
-        XCTAssertFalse(ChatScrollExperiments.isPrepareLayoutAheadEnabled)
-        XCTAssertTrue(ChatScrollExperiments.isReuseRowViewsEnabled)
-        ChatScrollExperiments.setMask(0)
-        XCTAssertFalse(ChatScrollExperiments.isReuseRowViewsEnabled)
-    }
-
-    func testUnknownBitsAreDropped() {
-        ChatScrollExperiments.setMask(0x7ffffff0 | ChatScrollExperiment.reuseRowViews.rawValue)
-        XCTAssertEqual(ChatScrollExperiments.mask, ChatScrollExperiment.reuseRowViews.rawValue)
-    }
-
-    func testMaskHelpers() {
-        var mask = ChatScrollExperiments.mask(0, setting: .prepareLayoutAhead, enabled: true)
-        mask = ChatScrollExperiments.mask(mask, setting: .reuseRowViews, enabled: true)
-        XCTAssertEqual(mask, ChatScrollExperiments.mask(of: [.prepareLayoutAhead, .reuseRowViews]))
-        XCTAssertEqual(ChatScrollExperiments.mask(mask, setting: .prepareLayoutAhead, enabled: false), ChatScrollExperiment.reuseRowViews.rawValue)
-    }
-}

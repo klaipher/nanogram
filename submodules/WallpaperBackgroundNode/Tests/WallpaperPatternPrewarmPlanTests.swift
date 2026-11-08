@@ -14,11 +14,9 @@ final class WallpaperPatternPrewarmPlanTests: XCTestCase {
         XCTAssertNil(WallpaperPatternPrewarmPlan.chatBackgroundSize(screenSize: CGSize(width: CGFloat.nan, height: 956.0), isPhone: true))
     }
 
-    func testRendersOnlyWhenEnabledAndNotCached() {
-        XCTAssertTrue(WallpaperPatternPrewarmPlan.shouldRender(isEnabled: true, isAlreadyCached: false))
-        XCTAssertFalse(WallpaperPatternPrewarmPlan.shouldRender(isEnabled: true, isAlreadyCached: true))
-        XCTAssertFalse(WallpaperPatternPrewarmPlan.shouldRender(isEnabled: false, isAlreadyCached: false))
-        XCTAssertFalse(WallpaperPatternPrewarmPlan.shouldRender(isEnabled: false, isAlreadyCached: true))
+    func testRendersOnlyWhenNotCached() {
+        XCTAssertTrue(WallpaperPatternPrewarmPlan.shouldRender(isAlreadyCached: false))
+        XCTAssertFalse(WallpaperPatternPrewarmPlan.shouldRender(isAlreadyCached: true))
     }
 
     func testANewRequestSupersedesTheOneInFlight() {

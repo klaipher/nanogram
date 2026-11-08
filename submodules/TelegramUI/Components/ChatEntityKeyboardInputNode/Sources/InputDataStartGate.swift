@@ -23,15 +23,9 @@ public struct InputDataStartGate {
     /// The idle build waits until the history list has not scrolled for this long, and asks again after the same time.
     public static let scrollQuietPeriod: Double = 0.3
 
-    /// Seconds the build waits after the text input got focus when "Emoji panel: defer first-responder handoff / heavy
-    /// layers" is on: about the keyboard's own animation (0.25 s plus slack), so the main-thread build does not land in
-    /// the keyboard's frames. A touch-down on the panel button is not delayed.
+    /// Seconds the build waits after the text input got focus: about the keyboard's own animation (0.25 s plus slack), so
+    /// the main-thread build does not land in the keyboard's frames. A touch-down on the panel button is not delayed.
     public static let focusPrewarmWait: Double = 0.4
-
-    /// How long the build waits after the text input got focus; nil: start at once (switch off, today's behaviour).
-    public static func focusPrewarmDelay(deferEnabled: Bool) -> Double? {
-        return deferEnabled ? focusPrewarmWait : nil
-    }
 
     public enum IdleDecision: Equatable {
         case startNow

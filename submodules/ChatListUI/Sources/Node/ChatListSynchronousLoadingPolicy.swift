@@ -12,14 +12,14 @@ enum ChatListSynchronousLoadingPolicy {
     /// More inserted rows than this count as a bulk change (reload, search clear, large history).
     static let bulkInsertThreshold = 3
 
-    /// `userIsScrolling` (finger down or coasting) with `asyncWhileScrolling` on: more rows arriving in bulk (paging in
+    /// `userIsScrolling` (finger down or coasting): more rows arriving in bulk (paging in
     /// the next chats) is not a reason to decode their media previews on the main thread; that cost ~40 ms for one row
     /// in the 202611081037 hitch log. The first content, a folder switch and a jump still load synchronously.
-    static func prefersSynchronousResourceLoading(isFirstTransition: Bool, filterChanged: Bool, scrollsToItem: Bool, insertedCount: Int, userIsScrolling: Bool = false, asyncWhileScrolling: Bool = false) -> Bool {
+    static func prefersSynchronousResourceLoading(isFirstTransition: Bool, filterChanged: Bool, scrollsToItem: Bool, insertedCount: Int, userIsScrolling: Bool = false) -> Bool {
         if isFirstTransition || filterChanged || scrollsToItem {
             return true
         }
-        if userIsScrolling && asyncWhileScrolling {
+        if userIsScrolling {
             return false
         }
         return insertedCount > bulkInsertThreshold

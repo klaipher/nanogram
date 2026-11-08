@@ -349,7 +349,7 @@ public final class ChatControllerInteraction: ChatControllerInteractionProtocol 
     public let displayPollRestrictedToast: (EngineMessage.Id) -> Void
     
     /// Moves whenever state that a chat row's layout reads is assigned (selection, highlight, hidden media, download and
-    /// sticker settings, ...). "Chat rows: prepare layout ahead" keys a prepared row by it, so a row prepared before such a
+    /// sticker settings, ...). Prepared chat rows (layout built ahead) are keyed by it, so a row prepared before such a
     /// change is never used after it. Bool and id properties count only a real change (several are assigned every scroll
     /// frame or interface update with the same value); collections and settings structs count every assignment. Only ever read and written on the main thread.
     public var rowPrepEpoch: UInt64 {

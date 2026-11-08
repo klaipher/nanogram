@@ -495,7 +495,7 @@ class ChatControllerNode: ASDisplayNode, ASScrollViewDelegate {
     private var displayVideoUnmuteTipDisposable: Disposable?
     
     private var onLayoutCompletions: [(ContainedViewLayoutTransition) -> Void] = []
-    /// Debug Settings "Emoji panel: defer first-responder handoff / heavy layers": at most one keyboard handoff waits for the panel build.
+    /// Emoji panel open: at most one keyboard handoff waits for the panel build.
     private var deferredMediaKeyboardHandoffGate = DeferredKeyboardHandoffGate()
 
     init(context: AccountContext, chatLocation: ChatLocation, chatLocationContextHolder: Atomic<ChatLocationContextHolder?>, subject: ChatControllerSubject?, controllerInteraction: ChatControllerInteraction, chatPresentationInterfaceState: ChatPresentationInterfaceState, automaticMediaDownloadSettings: MediaAutoDownloadSettings, navigationBar: NavigationBar?, statusBar: StatusBar?, backgroundNode: WallpaperBackgroundNode, controller: ChatControllerImpl?) {
@@ -4053,7 +4053,6 @@ class ChatControllerNode: ASDisplayNode, ASScrollViewDelegate {
             var waitForKeyboardLayout = false
             let customTextView = self.chatPresentationInterfaceStateTextFieldView(chatPresentationInterfaceState)
             let deferKeyboardHandoff = DeferredKeyboardHandoffGate.shouldDefer(
-                switchEnabled: EmojiPanelOpenTuning.defersHeavyWork,
                 wasMedia: previousInputModeIsMedia,
                 willBeMedia: focusedTextInputIsMedia,
                 panelAlreadyBuilt: self.inputNode is ChatEntityKeyboardInputNode,
@@ -4076,7 +4075,7 @@ class ChatControllerNode: ASDisplayNode, ASScrollViewDelegate {
                     }
                 } else {
                     if deferKeyboardHandoff {
-                        // Debug Settings "Emoji panel: defer ...": the input view swap and the first-responder change run after
+                        // Emoji panel open deferral: the input view swap and the first-responder change run after
                         // the panel has been built (`performDeferredMediaKeyboardHandoff`).
                     } else if richTextInputNode.keyboardInputView !== updatedInputView {
                         richTextInputNode.keyboardInputView = updatedInputView
@@ -4366,18 +4365,13 @@ class ChatControllerNode: ASDisplayNode, ASScrollViewDelegate {
         )
     }
     
-    /// The text input got focus: the keyboard is rising. The data build runs on the main queue, so with the emoji panel
-    /// deferral on it starts after the keyboard animation (through the idle path, which also waits for a quiet history
+    /// The text input got focus: the keyboard is rising. The data build runs on the main queue, so it starts after the keyboard animation (through the idle path, which also waits for a quiet history
     /// list and replaces a pending earlier idle start); an explicit demand or a button touch-down still starts at once.
     private func prewarmInputMediaNodeDataAfterFocus() {
         guard self.didInitializeInputMediaNodeDataPromise, !self.inputMediaNodeDataStartGate.hasStarted else {
             return
         }
-        if let delay = InputDataStartGate.focusPrewarmDelay(deferEnabled: EmojiPanelOpenTuning.defersHeavyWork) {
-            self.scheduleIdleInputMediaNodeDataStart(after: delay)
-        } else {
-            self.startInputMediaNodeDataIfNeeded(.prewarm)
-        }
+        self.scheduleIdleInputMediaNodeDataStart(after: InputDataStartGate.focusPrewarmWait)
     }
     
     private func scheduleIdleInputMediaNodeDataStart(after seconds: Double) {

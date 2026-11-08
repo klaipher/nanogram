@@ -6,7 +6,7 @@ import ChatMessageItemView
 import ChatMessageItemCommon
 @testable import ChatMessageStickerItemNode
 
-/// The sticker row is the one view type certified for "Chat rows: reuse row views". These tests keep its reset complete:
+/// The sticker row is the one view type certified for chat row view reuse. These tests keep its reset complete:
 /// every stored property of the class chain must have a decision in a ledger, and the reset must put the state that can
 /// be set from outside back.
 final class ChatRowReuseLedgerTests: XCTestCase {

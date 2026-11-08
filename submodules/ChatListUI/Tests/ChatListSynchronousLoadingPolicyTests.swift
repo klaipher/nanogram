@@ -23,24 +23,19 @@ final class ChatListSynchronousLoadingPolicyTests: XCTestCase {
         XCTAssertTrue(self.prefers(inserted: 40))
     }
 
-    func testBulkInsertWhileScrollingLoadsAsynchronouslyWhenTheSwitchIsOn() {
+    func testBulkInsertWhileScrollingLoadsAsynchronously() {
         let bulk = ChatListSynchronousLoadingPolicy.bulkInsertThreshold + 1
-        XCTAssertFalse(ChatListSynchronousLoadingPolicy.prefersSynchronousResourceLoading(isFirstTransition: false, filterChanged: false, scrollsToItem: false, insertedCount: bulk, userIsScrolling: true, asyncWhileScrolling: true))
-    }
-
-    func testBulkInsertWhileScrollingStaysSynchronousWhenTheSwitchIsOff() {
-        let bulk = ChatListSynchronousLoadingPolicy.bulkInsertThreshold + 1
-        XCTAssertTrue(ChatListSynchronousLoadingPolicy.prefersSynchronousResourceLoading(isFirstTransition: false, filterChanged: false, scrollsToItem: false, insertedCount: bulk, userIsScrolling: true, asyncWhileScrolling: false))
+        XCTAssertFalse(ChatListSynchronousLoadingPolicy.prefersSynchronousResourceLoading(isFirstTransition: false, filterChanged: false, scrollsToItem: false, insertedCount: bulk, userIsScrolling: true))
     }
 
     func testBulkInsertWhileNotScrollingStaysSynchronous() {
         let bulk = ChatListSynchronousLoadingPolicy.bulkInsertThreshold + 1
-        XCTAssertTrue(ChatListSynchronousLoadingPolicy.prefersSynchronousResourceLoading(isFirstTransition: false, filterChanged: false, scrollsToItem: false, insertedCount: bulk, userIsScrolling: false, asyncWhileScrolling: true))
+        XCTAssertTrue(ChatListSynchronousLoadingPolicy.prefersSynchronousResourceLoading(isFirstTransition: false, filterChanged: false, scrollsToItem: false, insertedCount: bulk, userIsScrolling: false))
     }
 
     func testFirstContentFolderSwitchAndJumpStaySynchronousWhileScrolling() {
         for (first, filter, scroll) in [(true, false, false), (false, true, false), (false, false, true)] {
-            XCTAssertTrue(ChatListSynchronousLoadingPolicy.prefersSynchronousResourceLoading(isFirstTransition: first, filterChanged: filter, scrollsToItem: scroll, insertedCount: 0, userIsScrolling: true, asyncWhileScrolling: true))
+            XCTAssertTrue(ChatListSynchronousLoadingPolicy.prefersSynchronousResourceLoading(isFirstTransition: first, filterChanged: filter, scrollsToItem: scroll, insertedCount: 0, userIsScrolling: true))
         }
     }
 }

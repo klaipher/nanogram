@@ -15,13 +15,7 @@ import SwiftSignalKit
 /// preferred 120, on every iPad with a 120 Hz screen (`isTablet`), so one visible animated emoji wakes the main thread
 /// 120 times a second there, four times the phone's rate. With `capsTabletRate` (Debug Settings, off by default, for
 /// the owner's on-device A/B) an iPad follows the phone rule: 120 Hz only when a link asks for more than 60.
-/// With `followsUpstreamRate` (Debug Settings "Display link: Telegram's rate", off by default, a scroll-smoothness A/B)
-/// every device gets upstream's rule: `.default` for links of 60 fps or less (on a 120 Hz screen the link then runs at up
-/// to 120 Hz), 30–120 Hz for faster ones, and an iPad always 30–120 Hz.
-public func sharedDisplayLinkFrameRateRange(requested: SharedDisplayLinkDriver.FramesPerSecond, displayMaxFramesPerSecond: Float, isTablet: Bool, capsTabletRate: Bool, followsUpstreamRate: Bool = false) -> CAFrameRateRange {
-    if followsUpstreamRate {
-        return upstreamSharedDisplayLinkFrameRateRange(requested: requested, displayMaxFramesPerSecond: displayMaxFramesPerSecond, isTablet: isTablet)
-    }
+public func sharedDisplayLinkFrameRateRange(requested: SharedDisplayLinkDriver.FramesPerSecond, displayMaxFramesPerSecond: Float, isTablet: Bool, capsTabletRate: Bool) -> CAFrameRateRange {
     var frameRateRange: CAFrameRateRange = .default
     switch requested {
     case let .fps(fps):
@@ -45,25 +39,6 @@ public func sharedDisplayLinkFrameRateRange(requested: SharedDisplayLinkDriver.F
         }
     }
     if isTablet && !capsTabletRate && displayMaxFramesPerSecond > 61.0 {
-        frameRateRange = CAFrameRateRange(minimum: 30.0, maximum: 120.0, preferred: 120.0)
-    }
-    return frameRateRange
-}
-
-/// Upstream Telegram 13.2's rule (`SharedDisplayLinkDriver.update`), unchanged.
-func upstreamSharedDisplayLinkFrameRateRange(requested: SharedDisplayLinkDriver.FramesPerSecond, displayMaxFramesPerSecond: Float, isTablet: Bool) -> CAFrameRateRange {
-    var frameRateRange: CAFrameRateRange = .default
-    switch requested {
-    case let .fps(fps):
-        if fps > 60 && displayMaxFramesPerSecond > 61.0 {
-            frameRateRange = CAFrameRateRange(minimum: 30.0, maximum: 120.0, preferred: 120.0)
-        }
-    case .max:
-        if displayMaxFramesPerSecond > 61.0 {
-            frameRateRange = CAFrameRateRange(minimum: 30.0, maximum: 120.0, preferred: 120.0)
-        }
-    }
-    if isTablet && displayMaxFramesPerSecond > 61.0 {
         frameRateRange = CAFrameRateRange(minimum: 30.0, maximum: 120.0, preferred: 120.0)
     }
     return frameRateRange

@@ -257,7 +257,7 @@ public final class TelegramRootController: NavigationController, TelegramRootCon
         self.startWallpaperPatternPrewarm()
     }
     
-    /// Debug Settings "Chat open: prewarm wallpaper pattern": a few seconds after the chat list is up (and whenever the chat
+    /// Chat open wallpaper prewarm: a few seconds after the chat list is up (and whenever the chat
     /// wallpaper changes) the wallpaper pattern is rendered in the background into the pattern cache, so the first chat
     /// opened does not draw it on the main thread. The render itself runs on a utility queue.
     private func startWallpaperPatternPrewarm() {
@@ -272,7 +272,7 @@ public final class TelegramRootController: NavigationController, TelegramRootCon
         |> distinctUntilChanged
         |> delay(3.0, queue: Queue.mainQueue())
         |> deliverOnMainQueue).startStrict(next: { [weak prewarmer] wallpaper in
-            prewarmer?.prewarmChatPattern(wallpaper: wallpaper, isEnabled: context.sharedContext.immediateExperimentalUISettings.chatOpenPrewarmWallpaperPattern)
+            prewarmer?.prewarmChatPattern(wallpaper: wallpaper)
         })
     }
         

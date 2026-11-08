@@ -2803,14 +2803,13 @@ public final class ChatListNode: ListViewImpl {
         self.interaction = nodeInteraction
         
         if ChatListNode.supportsRowReuse(mode: mode, location: location, isSideList: isSideList, previewing: previewing, isInlineMode: isInlineMode) {
-            // Rows that scroll out of this list wait here, reset, for the next rows of the same list (Debug Settings,
-            // off by default). The pool is checked again when a row is taken, so the switch can be turned off live.
+            // Rows that scroll out of this list wait here, reset, for the next rows of the same list.
             let pool = ListRowPool<ChatListItemNode>(capacity: 8, schedule: { block in
                 // Not `Queue.mainQueue().async`: that runs the block inline on the main thread, and a node removed in a
                 // replay may be inserted again by a later operation of the same replay.
                 DispatchQueue.main.async(execute: block)
             }, prepare: { [weak self] node in
-                guard let self, ChatListRowExperiments.rowReuse, node.supernode == nil, !self.containsItemNode(node) else {
+                guard let self, node.supernode == nil, !self.containsItemNode(node) else {
                     return false
                 }
                 return node.prepareForRowReuse()
@@ -2819,10 +2818,6 @@ public final class ChatListNode: ListViewImpl {
             nodeInteraction.rowPool = pool
             self.itemNodeRemovedObserver = { [weak self] node in
                 guard let self, let pool = self.rowPool else {
-                    return
-                }
-                guard ChatListRowExperiments.rowReuse else {
-                    pool.drain()
                     return
                 }
                 if let node = node as? ChatListItemNode, node.rowReuseRefusal() == nil {
@@ -3682,7 +3677,7 @@ public final class ChatListNode: ListViewImpl {
             if self.view.window != nil || self.synchronousDrawingWhenNotAnimated {
                 if !options.contains(.AnimateInsertion) {
                     options.insert(.PreferSynchronousDrawing)
-                    if ChatListSynchronousLoadingPolicy.prefersSynchronousResourceLoading(isFirstTransition: !self.hasAppliedFirstListTransition, filterChanged: transition.chatListView.filter != self.lastTransitionFilter, scrollsToItem: transition.scrollToItem != nil, insertedCount: transition.insertItems.count, userIsScrolling: self.isTracking || self.isDeceleratingAfterTracking, asyncWhileScrolling: ChatListRowExperiments.asyncMediaWhileScrolling) {
+                    if ChatListSynchronousLoadingPolicy.prefersSynchronousResourceLoading(isFirstTransition: !self.hasAppliedFirstListTransition, filterChanged: transition.chatListView.filter != self.lastTransitionFilter, scrollsToItem: transition.scrollToItem != nil, insertedCount: transition.insertItems.count, userIsScrolling: self.isTracking || self.isDeceleratingAfterTracking) {
                         options.insert(.PreferSynchronousResourceLoading)
                     }
                 }

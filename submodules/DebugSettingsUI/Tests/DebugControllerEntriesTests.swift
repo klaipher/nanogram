@@ -16,13 +16,8 @@ final class DebugControllerEntriesTests: XCTestCase {
         settings.crashOnLongQueries = on
         settings.enableVoipTcp = on
         settings.fakeGlass = on
-        settings.chatOpenDeferSetup = on
-        settings.chatOpenPrewarmWallpaperPattern = on
         settings.compressedEmojiCache = on
-        settings.chatListLazyRareSubnodes = on
-        settings.chatListRowReuse = on
         settings.frameHitchLog = on
-        settings.chatListAsyncMediaWhileScrolling = on
         settings.backSwipePreparePreviousScreen = on
         settings.localTranscription = on
         settings.disableQuickReaction = on
@@ -50,9 +45,6 @@ final class DebugControllerEntriesTests: XCTestCase {
         settings.videoMessageCameraMatrix = on ? .cameraTag : .bt709
         settings.stickerRendererMode = on ? .gpuAll : .cpu
         settings.tabletDisplayLinkFrameRateCap = on
-        settings.displayLinkUpstreamRate = on
-        settings.listAccessibilityImmediate = on
-        settings.listScrollPacingLog = on
         return settings
     }
 
@@ -131,6 +123,16 @@ final class DebugControllerEntriesTests: XCTestCase {
             }
             return false
         }))
+    }
+
+    /// The PERFORMANCE section keeps the two ids it had (ids of retired switches are not reused) and sits in the main app only.
+    func testPerformanceSectionHoldsTheHitchLogAndTheBackSwipeSwitch() {
+        let header = DebugControllerEntry.performanceHeader(defaultPresentationTheme)
+        let all = self.entries(isMainApp: true, isDevAccount: false, engineKind: nil, settings: .defaultSettings)
+        XCTAssertEqual(all.filter { $0.section == header.section }.map(\.stableId), [137, 143, 148])
+        XCTAssertEqual(all.filter { $0.section == header.section }.map(\.stableId), [header.stableId, DebugControllerEntry.frameHitchLog(false).stableId, DebugControllerEntry.backSwipePreparePreviousScreen(true).stableId])
+        XCTAssertTrue(all.contains(DebugControllerEntry.backSwipePreparePreviousScreen(true)), "on by default")
+        XCTAssertFalse(self.entries(isMainApp: false, isDevAccount: false, engineKind: nil, settings: .defaultSettings).contains(where: { $0.section == header.section }))
     }
 
     func testCpuSavingSwitchesAreShown() {

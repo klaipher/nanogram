@@ -2140,7 +2140,7 @@ extension WallpaperBackgroundNodeImpl {
     /// drawing it on the main thread. Same inputs as the chat's own path (pattern colour from the wallpaper colours,
     /// no star gift, shared slot, scale `min(2, screen scale)`), so the image is the one the chat would draw.
     /// Main queue only. Returns the subscription that waits for the wallpaper file, or nil when nothing is to be done.
-    fileprivate static func prewarmPattern(context: AccountContext, wallpaper: TelegramWallpaper, size: CGSize, displayMode: WallpaperDisplayMode, isEnabled: Bool, isCurrent: @escaping () -> Bool) -> Disposable? {
+    fileprivate static func prewarmPattern(context: AccountContext, wallpaper: TelegramWallpaper, size: CGSize, displayMode: WallpaperDisplayMode, isCurrent: @escaping () -> Bool) -> Disposable? {
         guard case let .file(file) = wallpaper, file.isPattern else {
             return nil
         }
@@ -2160,7 +2160,7 @@ extension WallpaperBackgroundNodeImpl {
 
         let key = ValidPatternGeneratedImage(wallpaper: wallpaper, size: size, displayMode: displayMode, patternColor: patternColor.rgb, backgroundColor: patternBackgroundColor.rgb, invertPattern: invertPattern, starGift: nil, modelRectIndex: nil)
         let isAlreadyCached = WallpaperBackgroundNodeImpl.cachedPatternImages.first(where: { $0.generated == key }) != nil
-        guard WallpaperPatternPrewarmPlan.shouldRender(isEnabled: isEnabled, isAlreadyCached: isAlreadyCached) else {
+        guard WallpaperPatternPrewarmPlan.shouldRender(isAlreadyCached: isAlreadyCached) else {
             return nil
         }
 
@@ -2231,13 +2231,13 @@ public final class WallpaperPatternPrewarmer {
 
     /// Prepares the pattern for a full-screen chat on an iPhone. Does nothing for other wallpapers, for iPad (the chat
     /// size is not known ahead there) or when the pattern is stored already.
-    public func prewarmChatPattern(wallpaper: TelegramWallpaper, isEnabled: Bool) {
+    public func prewarmChatPattern(wallpaper: TelegramWallpaper) {
         self.disposable.set(nil)
         guard let size = WallpaperPatternPrewarmPlan.chatBackgroundSize(screenSize: UIScreen.main.bounds.size, isPhone: UIDevice.current.userInterfaceIdiom == .phone) else {
             return
         }
         let token = self.epoch.begin()
-        if let subscription = WallpaperBackgroundNodeImpl.prewarmPattern(context: self.context, wallpaper: wallpaper, size: size, displayMode: .aspectFill, isEnabled: isEnabled, isCurrent: { [weak self] in
+        if let subscription = WallpaperBackgroundNodeImpl.prewarmPattern(context: self.context, wallpaper: wallpaper, size: size, displayMode: .aspectFill, isCurrent: { [weak self] in
             return self?.epoch.isCurrent(token) ?? false
         }) {
             self.disposable.set(subscription)

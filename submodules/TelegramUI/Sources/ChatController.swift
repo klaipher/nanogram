@@ -674,9 +674,8 @@ public final class ChatControllerImpl: TelegramBaseController, ChatController, G
     var postedScheduledMessagesEventsDisposable: Disposable?
     
     var globalControlPanelsContext: GlobalControlPanelsContext?
-    /// Debug Settings "Chat open: defer non-visible setup". Disabled (everything runs inside `init` / `loadDisplayNode`, as before)
-    /// unless the switch was on when this controller was created and it is a standard chat; then the setup submitted
-    /// through it runs from `viewDidAppear` on the next main-queue turn. The switch is read once, in `init`.
+    /// Deferred chat-open setup. Disabled (everything runs inside `init` / `loadDisplayNode`) unless this is a standard chat;
+    /// then the setup submitted through it runs from `viewDidAppear` on the next main-queue turn. Chosen once, in `init`.
     var openSetup = DeferredSetup(isEnabled: false)
     var didMeasureFirstLayout = false
     var globalControlPanelsContextState: GlobalControlPanelsContext.State?
@@ -788,7 +787,7 @@ public final class ChatControllerImpl: TelegramBaseController, ChatController, G
         
         self._hasGlassStyle = true
         
-        if case .standard(.default) = mode, context.sharedContext.immediateExperimentalUISettings.chatOpenDeferSetup {
+        if case .standard(.default) = mode {
             self.openSetup = DeferredSetup(isEnabled: true)
         }
         
@@ -8049,7 +8048,7 @@ public final class ChatControllerImpl: TelegramBaseController, ChatController, G
     }
 
     /// Hooks the temporary voice playlist of the panels context to this chat (raise to listen, history list). Called from
-    /// `viewDidAppear`, and when the panels context is created after that (Debug Settings "Chat open: defer non-visible setup").
+    /// `viewDidAppear`, and when the panels context is created after that (deferred chat-open setup).
     func installTempVoicePlaylistHandlers() {
         self.globalControlPanelsContext?.setTempVoicePlaylistEnded({ [weak self] in
             guard let strongSelf = self else {

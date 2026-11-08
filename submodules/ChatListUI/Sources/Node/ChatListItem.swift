@@ -588,10 +588,10 @@ public class ChatListItem: ListViewItem {
     }
     
     public func nodeConfiguredForParams(async: @escaping (@escaping () -> Void) -> Void, params: ListViewItemLayoutParams, synchronousLoads: Bool, neighbors: ListViewItemNeighbors, completion: @escaping (ListViewItemNode, @escaping () -> (Signal<Void, NoError>?, (ListViewItemApply) -> Void)) -> Void) {
-        // Row reuse (Debug Settings, off by default): an eligible item takes a pooled row of its list when there is one.
-        if ChatListRowExperiments.rowReuse, ChatListRowReuseFacts(item: self).isEligible, self.interaction.rowPool != nil {
+        // Row reuse: an eligible item takes a pooled row of its list when there is one.
+        if ChatListRowReuseFacts(item: self).isEligible, self.interaction.rowPool != nil {
             let run: () -> Void = {
-                if let pool = self.interaction.rowPool, let node = pool.take(where: { $0.usesLazySubnodesMatchesCurrentFlag && $0.supernode == nil }) {
+                if let pool = self.interaction.rowPool, let node = pool.take(where: { $0.supernode == nil }) {
                     self.configureReusedNode(node, async: async, params: params, synchronousLoads: synchronousLoads, neighbors: neighbors, completion: completion)
                 } else {
                     self.configureNewNode(async: async, params: params, synchronousLoads: synchronousLoads, neighbors: neighbors, completion: completion)
@@ -1611,16 +1611,13 @@ public class ChatListItemNode: ItemListRevealOptionsItemNode {
     
     var layoutParams: (ChatListItem, first: Bool, last: Bool, firstWithHeader: Bool, nextIsPinned: Bool, nextHasActiveRevealControls: Bool, ListViewItemLayoutParams, countersSize: CGFloat)?
     
-    /// Fixed when the node is created (`ChatListRowExperiments.lazyRareSubnodes`). When true, the rarely shown parts
-    /// (see `ChatListLazySubnode`) join the node hierarchy only when the row first needs them visible.
-    private let usesLazySubnodes: Bool
+    /// The rarely shown parts (see `ChatListLazySubnode`) join the node hierarchy only when the row first needs them visible.
     private var attachedLazySubnodes: ChatListLazySubnodeSet
     
     /// Set when the row did something `prepareForRowReuse` cannot undo (a context menu, an opened story, a flash
     /// highlight). A tainted row is destroyed as before.
     var isRowReuseTainted = false
-    /// The fixed subnodes' values as `init` leaves them. Captured only when `ChatListRowExperiments.rowReuse` is on at
-    /// creation, so a row created with the switch off costs nothing and is never reused.
+    /// The fixed subnodes' values as `init` leaves them, captured at creation.
     private var subnodeDefaults: [ChatListRowSubnodeDefault]?
     
     private var isHighlighted: Bool = false
@@ -2093,9 +2090,7 @@ public class ChatListItemNode: ItemListRevealOptionsItemNode {
         self.separatorNode = ASDisplayNode()
         self.separatorNode.isLayerBacked = true
         
-        let usesLazySubnodes = ChatListRowExperiments.lazyRareSubnodes
-        self.usesLazySubnodes = usesLazySubnodes
-        self.attachedLazySubnodes = usesLazySubnodes ? [] : .all
+        self.attachedLazySubnodes = []
         
         super.init(layerBacked: false, rotated: false, seeThrough: false)
         
@@ -2107,28 +2102,14 @@ public class ChatListItemNode: ItemListRevealOptionsItemNode {
         self.addSubnode(self.contextContainer)
         self.contextContainer.addSubnode(self.mainContentContainerNode)
         
-        if !self.usesLazySubnodes {
-            self.avatarContainerNode.addSubnode(self.communityAvatarShadowNode)
-        }
         self.avatarContainerNode.addSubnode(self.avatarNode)
 
         self.contextContainer.addSubnode(self.avatarContainerNode)
-        if !self.usesLazySubnodes {
-            self.avatarNode.addSubnode(self.onlineNode)
-        }
         
         self.mainContentContainerNode.addSubnode(self.titleNode)
         self.mainContentContainerNode.addSubnode(self.authorNode)
         self.mainContentContainerNode.addSubnode(self.textNode.textNode)
         self.mainContentContainerNode.addSubnode(self.dateNode)
-        if !self.usesLazySubnodes {
-            self.mainContentContainerNode.addSubnode(self.statusNode)
-            self.mainContentContainerNode.addSubnode(self.pinnedIconNode)
-            self.mainContentContainerNode.addSubnode(self.badgeNode)
-            self.mainContentContainerNode.addSubnode(self.mentionBadgeNode)
-            self.mainContentContainerNode.addSubnode(self.hiddenPeerIconNode)
-            self.mainContentContainerNode.addSubnode(self.mutedIconNode)
-        }
         
         // The row shows only the online dot, so refresh only when online state flips.
         self.peerPresenceManager = PeerPresenceStatusManager(mode: .onlineState, update: { [weak self] in
@@ -2184,25 +2165,23 @@ public class ChatListItemNode: ItemListRevealOptionsItemNode {
             self.avatarNode.view.addGestureRecognizer(avatarTapRecognizer)
         }
         
-        if ChatListRowExperiments.rowReuse {
-            let fixedNodes: [ASDisplayNode] = [
-                self.backgroundNode, self.highlightedBackgroundNode, self.contextContainer, self.mainContentContainerNode,
-                self.avatarContainerNode, self.communityAvatarShadowNode, self.avatarNode, self.titleNode, self.authorNode,
-                self.forwardedIconNode, self.textNode.textNode, self.inputActivitiesNode, self.dateNode, self.separatorNode,
-                self.statusNode, self.badgeNode, self.mentionBadgeNode, self.onlineNode, self.pinnedIconNode,
-                self.hiddenPeerIconNode, self.mutedIconNode
-            ]
-            self.subnodeDefaults = fixedNodes.map { node in
-                return ChatListRowSubnodeDefault(
-                    node: node,
-                    alpha: node.alpha,
-                    isHidden: node.isHidden,
-                    transform: node.transform,
-                    subnodeTransform: node.subnodeTransform,
-                    frame: node.frame,
-                    isImageNode: node is ASImageNode
-                )
-            }
+        let fixedNodes: [ASDisplayNode] = [
+            self.backgroundNode, self.highlightedBackgroundNode, self.contextContainer, self.mainContentContainerNode,
+            self.avatarContainerNode, self.communityAvatarShadowNode, self.avatarNode, self.titleNode, self.authorNode,
+            self.forwardedIconNode, self.textNode.textNode, self.inputActivitiesNode, self.dateNode, self.separatorNode,
+            self.statusNode, self.badgeNode, self.mentionBadgeNode, self.onlineNode, self.pinnedIconNode,
+            self.hiddenPeerIconNode, self.mutedIconNode
+        ]
+        self.subnodeDefaults = fixedNodes.map { node in
+            return ChatListRowSubnodeDefault(
+                node: node,
+                alpha: node.alpha,
+                isHidden: node.isHidden,
+                transform: node.transform,
+                subnodeTransform: node.subnodeTransform,
+                frame: node.frame,
+                isImageNode: node is ASImageNode
+            )
         }
     }
 
@@ -6509,15 +6488,9 @@ public class ChatListItemNode: ItemListRevealOptionsItemNode {
     }
 }
 
-// MARK: - Row reuse (Debug Settings ▸ List scroll ▸ Chat list rows: reuse rows)
+// MARK: - Row reuse
 
 extension ChatListItemNode {
-    /// True when the node was created in the same lazy-subnode mode as the current setting, so reusing it keeps an A/B
-    /// of the lazy switch pure.
-    var usesLazySubnodesMatchesCurrentFlag: Bool {
-        return self.usesLazySubnodes == ChatListRowExperiments.lazyRareSubnodes
-    }
-    
     /// Why this row must not go back into the pool, or nil when it can. Pure: reads state, changes nothing, and does
     /// not load a view.
     func rowReuseRefusal() -> ChatListRowReuseRefusal? {
@@ -6539,9 +6512,6 @@ extension ChatListItemNode {
     }
     
     private func rowReuseRefusal(ignoringEligibility: Bool) -> ChatListRowReuseRefusal? {
-        if self.subnodeDefaults == nil {
-            return .createdWithReuseOff
-        }
         if self.isRowReuseTainted {
             return .tainted
         }
@@ -6811,7 +6781,6 @@ extension ChatListItemNode {
         "cachedChatListQuoteSearchResult": .reset,
         "cachedCustomTextEntities": .reset,
         "layoutParams": .reset,
-        "usesLazySubnodes": .constant,
         "attachedLazySubnodes": .constant,
         "isRowReuseTainted": .refuse,
         "subnodeDefaults": .constant,

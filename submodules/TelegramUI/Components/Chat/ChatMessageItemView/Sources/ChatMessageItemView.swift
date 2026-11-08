@@ -759,8 +759,8 @@ open class ChatMessageItemView: ListViewItemNode, ChatMessageItemNodeProtocol {
         self.frame = CGRect()
     }
     
-    /// Whether this view type has a complete `prepareForRowReuse`. Only such types are pooled by the "Chat rows: reuse
-    /// row views" switch; every other type is created and destroyed per row as before.
+    /// Whether this view type has a complete `prepareForRowReuse`. Only such types are pooled by the chat row view
+    /// reuse; every other type is created and destroyed per row as before.
     open class var supportsRowReuse: Bool {
         return false
     }

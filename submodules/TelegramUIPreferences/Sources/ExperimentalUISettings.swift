@@ -78,24 +78,9 @@ public struct ExperimentalUISettings: Codable, Equatable {
     /// checking it on an iPad): an iPad's shared display link follows the rate its animations ask for instead of always
     /// 120 Hz; changing it in Debug Settings starts a frame-pacing log. No effect on an iPhone.
     public var tabletDisplayLinkFrameRateCap: Bool
-    /// Debug Settings ▸ "List scroll (A/B vs Telegram)" ▸ "Display link: Telegram's rate". Off by default: the shared
-    /// display link asks only for the rate its animations need (60 or 30 Hz). On: upstream's rule. Applies at once.
-    public var displayLinkUpstreamRate: Bool
-    /// Debug Settings ▸ "List scroll (A/B vs Telegram)" ▸ "List rows: accessibility text at once". Off by default: row
-    /// accessibility strings are built after rows stop arriving. On: inside each row's layout, as upstream. Applies at once.
-    public var listAccessibilityImmediate: Bool
-    /// Debug Settings ▸ "List scroll (A/B vs Telegram)" ▸ "List scroll: log frame rate". Off by default. One log line per
-    /// scroll gesture of any list (ListView): frames, average Hz, late frames.
-    public var listScrollPacingLog: Bool
-    /// Debug Settings ▸ List scroll ▸ Chat list rows: lazy rare subnodes. On by default. Applies to rows created from now on.
-    public var chatListLazyRareSubnodes: Bool
-    /// Debug Settings ▸ List scroll ▸ Chat list rows: reuse rows. Off by default. Applies to rows that leave the list from now on.
-    public var chatListRowReuse: Bool
-    /// Debug Settings ▸ List scroll ▸ Frame hitches: log with main-thread stacks. Off by default.
+    /// Debug Settings ▸ Performance ▸ Frame hitches: log with main-thread stacks. Off by default.
     public var frameHitchLog: Bool
-    /// Debug Settings ▸ List scroll ▸ Chat list: async media previews while scrolling. On by default.
-    public var chatListAsyncMediaWhileScrolling: Bool
-    /// Debug Settings ▸ List scroll ▸ Back swipe: prepare the previous screen. Off by default. While the top screen is idle the
+    /// Debug Settings ▸ Performance ▸ Back swipe: prepare the previous screen. On by default (since 2026-11-08). While the top screen is idle the
     /// screen beneath it is laid out and drawn off the hierarchy, so the swipe's start only inserts it.
     public var backSwipePreparePreviousScreen: Bool
     /// Debug Settings ▸ "Calls: livestream hardware decoding". On by default (owner decision, 2026-11). Live stream video is decoded
@@ -127,26 +112,6 @@ public struct ExperimentalUISettings: Codable, Equatable {
     public static let glassDebugNavigationBar: Int32 = 1
     public static let glassDebugInputPanel: Int32 = 2
     public static let glassDebugFloatingButtons: Int32 = 4
-    /// Debug Settings ▸ "Emoji panel: defer first-responder handoff / heavy layers". On by default (owner decision, 2026-11-07); main app only.
-    /// On: opening the emoji / sticker / GIF panel builds the panel before the keyboard's input view and first responder change,
-    /// and creates GIF tile display layers after the pane is on screen, a few per run-loop turn. Applies at once.
-    public var emojiPanelDefersHeavyWork: Bool
-    /// Debug Settings ▸ "Chat open: defer non-visible setup". On by default (owner decision, 2026-11-07). When on, a standard chat starts the subscriptions and
-    /// helpers that are not needed for its first frame (send-as list, account colour, recorders, activity, panels context,
-    /// translation host, network-speed notices) after its first appearance instead of inside `ChatControllerImpl.init`.
-    /// Read once per chat controller (the value is cached in the controller).
-    public var chatOpenDeferSetup: Bool
-    /// Debug Settings ▸ "Chat open: prewarm wallpaper pattern". On by default: after launch, with the chat list idle, the chat
-    /// wallpaper's pattern is rendered in the background into the pattern cache, so the first chat opened does not draw it
-    /// on the main thread. The image is the one the chat would draw (same cache key), so nothing looks different.
-    public var chatOpenPrewarmWallpaperPattern: Bool
-    /// Debug Settings ▸ "Chat scroll": bits of the chat-scroll switches that are on. Both on by default (3, owner decision 2026-11-07);
-    /// 0 leaves chat scrolling as it was. The bits equal `ChatScrollExperiment`'s raw values (ChatRowPrep).
-    public var chatScrollExperiments: Int32
-    /// "Chat rows: prepare layout ahead".
-    public static let chatScrollPrepareLayoutAhead: Int32 = 1
-    /// "Chat rows: reuse row views".
-    public static let chatScrollReuseRowViews: Int32 = 2
     public var stickerRendererMode: StickerRendererMode
 
     public static var defaultSettings: ExperimentalUISettings {
@@ -220,25 +185,15 @@ public struct ExperimentalUISettings: Codable, Equatable {
         videoMessageCloseFocus: Bool = true,
         videoMessageCameraMatrix: RoundVideoCameraMatrix = .bt709,
         tabletDisplayLinkFrameRateCap: Bool = true,
-        displayLinkUpstreamRate: Bool = false,
-        listAccessibilityImmediate: Bool = false,
-        listScrollPacingLog: Bool = false,
-        chatListLazyRareSubnodes: Bool = true,
-        chatListRowReuse: Bool = false,
         frameHitchLog: Bool = false,
-        chatListAsyncMediaWhileScrolling: Bool = true,
-        backSwipePreparePreviousScreen: Bool = false,
+        backSwipePreparePreviousScreen: Bool = true,
         callsLivestreamHardwareDecoding: Bool = true,
         callsNativeCapturePath: Bool = true,
         callsSystemNoiseSuppression: Bool = true,
         callsAdvancedDucking: Bool = false,
         callsGroupNoiseMode: Int32 = 2,
         callsThermalVideoLadder: Bool = true,
-        glassDebugDisabledGroups: Int32 = 0,
-        emojiPanelDefersHeavyWork: Bool = true,
-        chatOpenDeferSetup: Bool = true,
-        chatOpenPrewarmWallpaperPattern: Bool = true,
-        chatScrollExperiments: Int32 = ExperimentalUISettings.chatScrollPrepareLayoutAhead | ExperimentalUISettings.chatScrollReuseRowViews
+        glassDebugDisabledGroups: Int32 = 0
     ) {
         self.keepChatNavigationStack = keepChatNavigationStack
         self.skipReadHistory = skipReadHistory
@@ -275,13 +230,7 @@ public struct ExperimentalUISettings: Codable, Equatable {
         self.videoMessageCameraMatrix = videoMessageCameraMatrix
         self.stickerRendererMode = stickerRendererMode
         self.tabletDisplayLinkFrameRateCap = tabletDisplayLinkFrameRateCap
-        self.displayLinkUpstreamRate = displayLinkUpstreamRate
-        self.listAccessibilityImmediate = listAccessibilityImmediate
-        self.listScrollPacingLog = listScrollPacingLog
-        self.chatListLazyRareSubnodes = chatListLazyRareSubnodes
-        self.chatListRowReuse = chatListRowReuse
         self.frameHitchLog = frameHitchLog
-        self.chatListAsyncMediaWhileScrolling = chatListAsyncMediaWhileScrolling
         self.backSwipePreparePreviousScreen = backSwipePreparePreviousScreen
         self.callsLivestreamHardwareDecoding = callsLivestreamHardwareDecoding
         self.callsNativeCapturePath = callsNativeCapturePath
@@ -290,10 +239,6 @@ public struct ExperimentalUISettings: Codable, Equatable {
         self.callsGroupNoiseMode = callsGroupNoiseMode
         self.callsThermalVideoLadder = callsThermalVideoLadder
         self.glassDebugDisabledGroups = glassDebugDisabledGroups
-        self.emojiPanelDefersHeavyWork = emojiPanelDefersHeavyWork
-        self.chatOpenDeferSetup = chatOpenDeferSetup
-        self.chatOpenPrewarmWallpaperPattern = chatOpenPrewarmWallpaperPattern
-        self.chatScrollExperiments = chatScrollExperiments
     }
     
     /// Revision of Nanogram's defaults that a saved blob was written with. Revision 1 turned on large
@@ -346,14 +291,9 @@ public struct ExperimentalUISettings: Codable, Equatable {
         self.videoMessageCameraMatrix = (try container.decodeIfPresent(String.self, forKey: "videoMessageCameraMatrix")).flatMap(RoundVideoCameraMatrix.init(rawValue:)) ?? .bt709
         // On by default since 2026-11-07 under a new key: blobs saved before hold `false` under the old one unchosen.
         self.tabletDisplayLinkFrameRateCap = try container.decodeIfPresent(Bool.self, forKey: "tabletDisplayLinkFrameRateCapDefaultOn") ?? true
-        self.displayLinkUpstreamRate = try container.decodeIfPresent(Bool.self, forKey: "displayLinkUpstreamRate") ?? false
-        self.listAccessibilityImmediate = try container.decodeIfPresent(Bool.self, forKey: "listAccessibilityImmediate") ?? false
-        self.listScrollPacingLog = try container.decodeIfPresent(Bool.self, forKey: "listScrollPacingLog") ?? false
-        self.chatListLazyRareSubnodes = try container.decodeIfPresent(Bool.self, forKey: "chatListLazyRareSubnodes") ?? true
-        self.chatListRowReuse = try container.decodeIfPresent(Bool.self, forKey: "chatListRowReuse") ?? false
         self.frameHitchLog = try container.decodeIfPresent(Bool.self, forKey: "frameHitchLog") ?? false
-        self.chatListAsyncMediaWhileScrolling = try container.decodeIfPresent(Bool.self, forKey: "chatListAsyncMediaWhileScrolling") ?? true
-        self.backSwipePreparePreviousScreen = try container.decodeIfPresent(Bool.self, forKey: "backSwipePreparePreviousScreen") ?? false
+        // On by default since 2026-11-08 under a new key: blobs saved before hold `false` under the old one unchosen.
+        self.backSwipePreparePreviousScreen = try container.decodeIfPresent(Bool.self, forKey: "backSwipePreparePreviousScreenDefaultOn") ?? true
         // These four defaulted to off and became on (owner decision, 2026-11). The whole struct is saved on every change, so
         // an install that ever opened Debug Settings holds an explicit `false` under the old keys that the user never
         // chose. They are read from new keys (as with advanced ducking): only a choice made after the change counts.
@@ -369,12 +309,6 @@ public struct ExperimentalUISettings: Codable, Equatable {
         self.callsGroupNoiseMode = try container.decodeIfPresent(Int32.self, forKey: "callsGroupNoiseModeRNNoiseDefault") ?? 2
         self.callsThermalVideoLadder = try container.decodeIfPresent(Bool.self, forKey: "callsThermalVideoLadderDefaultOn") ?? true
         self.glassDebugDisabledGroups = try container.decodeIfPresent(Int32.self, forKey: "glassDebugDisabledGroups") ?? 0
-        // These three became on by default on 2026-11-07 (owner decision). The whole struct is saved on every change, so the
-        // old keys hold an explicit off the user may never have chosen; only the new keys count.
-        self.emojiPanelDefersHeavyWork = try container.decodeIfPresent(Bool.self, forKey: "emojiPanelDefersHeavyWorkDefaultOn") ?? true
-        self.chatOpenDeferSetup = try container.decodeIfPresent(Bool.self, forKey: "chatOpenDeferSetupDefaultOn") ?? true
-        self.chatOpenPrewarmWallpaperPattern = try container.decodeIfPresent(Bool.self, forKey: "chatOpenPrewarmWallpaperPatternDefaultOn") ?? true
-        self.chatScrollExperiments = try container.decodeIfPresent(Int32.self, forKey: "chatScrollExperimentsDefaultOn") ?? (ExperimentalUISettings.chatScrollPrepareLayoutAhead | ExperimentalUISettings.chatScrollReuseRowViews)
 
         if savedDefaultsRevision < 1 {
             // Saved before the GPU renderers became the default: both were the old CPU defaults.
@@ -423,14 +357,8 @@ public struct ExperimentalUISettings: Codable, Equatable {
         try container.encode(self.videoMessageCloseFocus, forKey: "videoMessageCloseFocusOn")
         try container.encode(self.videoMessageCameraMatrix.rawValue, forKey: "videoMessageCameraMatrix")
         try container.encode(self.tabletDisplayLinkFrameRateCap, forKey: "tabletDisplayLinkFrameRateCapDefaultOn")
-        try container.encode(self.displayLinkUpstreamRate, forKey: "displayLinkUpstreamRate")
-        try container.encode(self.listAccessibilityImmediate, forKey: "listAccessibilityImmediate")
-        try container.encode(self.listScrollPacingLog, forKey: "listScrollPacingLog")
-        try container.encode(self.chatListLazyRareSubnodes, forKey: "chatListLazyRareSubnodes")
-        try container.encode(self.chatListRowReuse, forKey: "chatListRowReuse")
         try container.encode(self.frameHitchLog, forKey: "frameHitchLog")
-        try container.encode(self.chatListAsyncMediaWhileScrolling, forKey: "chatListAsyncMediaWhileScrolling")
-        try container.encode(self.backSwipePreparePreviousScreen, forKey: "backSwipePreparePreviousScreen")
+        try container.encode(self.backSwipePreparePreviousScreen, forKey: "backSwipePreparePreviousScreenDefaultOn")
         try container.encode(self.callsLivestreamHardwareDecoding, forKey: "callsLivestreamHardwareDecodingDefaultOn")
         try container.encode(self.callsNativeCapturePath, forKey: "callsNativeCapturePathDefaultOn")
         try container.encode(self.callsSystemNoiseSuppression, forKey: "callsSystemNoiseSuppressionDefaultOn")
@@ -438,10 +366,6 @@ public struct ExperimentalUISettings: Codable, Equatable {
         try container.encode(self.callsGroupNoiseMode, forKey: "callsGroupNoiseModeRNNoiseDefault")
         try container.encode(self.callsThermalVideoLadder, forKey: "callsThermalVideoLadderDefaultOn")
         try container.encode(self.glassDebugDisabledGroups, forKey: "glassDebugDisabledGroups")
-        try container.encode(self.emojiPanelDefersHeavyWork, forKey: "emojiPanelDefersHeavyWorkDefaultOn")
-        try container.encode(self.chatOpenDeferSetup, forKey: "chatOpenDeferSetupDefaultOn")
-        try container.encode(self.chatOpenPrewarmWallpaperPattern, forKey: "chatOpenPrewarmWallpaperPatternDefaultOn")
-        try container.encode(self.chatScrollExperiments, forKey: "chatScrollExperimentsDefaultOn")
         try container.encode(ExperimentalUISettings.nanogramDefaultsRevision, forKey: "nanogramDefaultsRevision")
     }
 }

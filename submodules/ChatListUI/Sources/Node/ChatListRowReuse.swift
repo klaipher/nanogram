@@ -118,7 +118,6 @@ extension ChatListNode {
 
 /// Why a row cannot go back into the pool. The checks are pure reads.
 enum ChatListRowReuseRefusal: Equatable {
-    case createdWithReuseOff
     case tainted
     case notEligible
     case videoAvatar

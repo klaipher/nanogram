@@ -108,21 +108,6 @@ public final class NextFrame: NSObject {
     }
 }
 
-/// Debug Settings switch "Emoji panel: defer first-responder handoff / heavy layers" (off by default, main app only).
-/// Cached `Bool`, written on the main thread when the experimental settings change (`SharedAccountContext`), read on the
-/// main thread. With it off, nothing in the panel open path differs from before.
-public enum EmojiPanelOpenTuning {
-    nonisolated(unsafe) private static var defersHeavyWorkValue = false
-
-    public static var defersHeavyWork: Bool {
-        return self.defersHeavyWorkValue
-    }
-
-    public static func setDefersHeavyWork(_ value: Bool) {
-        self.defersHeavyWorkValue = value
-    }
-}
-
 /// Mitigation 1: the keyboard / first-responder handoff for the media input mode runs after the panel has been built.
 public struct DeferredKeyboardHandoffGate {
     private var token: Int = 0
@@ -133,8 +118,8 @@ public struct DeferredKeyboardHandoffGate {
 
     /// Whether the handoff is deferred for a state change. Only when switching into the media mode while the panel does not
     /// exist yet (the synchronous build is what is being moved ahead of the handoff).
-    public static func shouldDefer(switchEnabled: Bool, wasMedia: Bool, willBeMedia: Bool, panelAlreadyBuilt: Bool, hasCustomTextView: Bool) -> Bool {
-        return switchEnabled && willBeMedia && !wasMedia && !panelAlreadyBuilt && !hasCustomTextView
+    public static func shouldDefer(wasMedia: Bool, willBeMedia: Bool, panelAlreadyBuilt: Bool, hasCustomTextView: Bool) -> Bool {
+        return willBeMedia && !wasMedia && !panelAlreadyBuilt && !hasCustomTextView
     }
 
     /// Starts a deferred handoff; a handoff scheduled earlier becomes stale.
@@ -166,10 +151,7 @@ public enum LazyGifTilePlan {
     /// Tiles created in one pass; the rest follow on the next run-loop turn.
     public static let tilesPerPass = 6
 
-    public static func mayCreateTile(switchEnabled: Bool, paneSettled: Bool, createdInThisPass: Int) -> Bool {
-        if !switchEnabled {
-            return true
-        }
+    public static func mayCreateTile(paneSettled: Bool, createdInThisPass: Int) -> Bool {
         return paneSettled && createdInThisPass < self.tilesPerPass
     }
 }

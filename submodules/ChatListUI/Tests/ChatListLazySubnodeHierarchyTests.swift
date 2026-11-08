@@ -5,24 +5,11 @@ import Display
 @testable import ChatListUI
 
 final class ChatListLazySubnodeHierarchyTests: XCTestCase {
-    private var savedLazyFlag: Bool = true
-    
-    override func setUp() {
-        super.setUp()
-        self.savedLazyFlag = ChatListRowExperiments.lazyRareSubnodes
-    }
-    
-    override func tearDown() {
-        ChatListRowExperiments.lazyRareSubnodes = self.savedLazyFlag
-        super.tearDown()
-    }
-    
-    private func makeNode(lazy: Bool) -> ChatListItemNode {
-        ChatListRowExperiments.lazyRareSubnodes = lazy
+    private func makeNode() -> ChatListItemNode {
         return ChatListItemNode()
     }
     
-    /// The children of `mainContentContainerNode` in the order `init` adds them when nothing is lazy.
+    /// The children of `mainContentContainerNode` in the order they would have when nothing is lazy.
     private func mainChildren(of node: ChatListItemNode) -> [(ChatListMainContentChild, ASDisplayNode)] {
         return [
             (.title, node.titleNode),
@@ -62,7 +49,7 @@ final class ChatListLazySubnodeHierarchyTests: XCTestCase {
     }
     
     func testSubnodeLedgerCoversEveryNodeProperty() {
-        let node = self.makeNode(lazy: true)
+        let node = self.makeNode()
         XCTAssertEqual(
             self.storedNodePropertyNames(node),
             Set(ChatListItemNode.subnodeLedger.keys),
@@ -80,19 +67,8 @@ final class ChatListLazySubnodeHierarchyTests: XCTestCase {
         XCTAssertEqual(lazyKeys, Set(ChatListLazySubnode.allCases.map { $0.propertyName }))
     }
     
-    func testFlagOffBuildsTodaysTree() {
-        let node = self.makeNode(lazy: false)
-        let expectedMain = self.mainChildren(of: node).map { $0.1 }
-        XCTAssertEqual(self.ids(node.mainContentContainerNode.subnodes ?? []), self.ids(expectedMain))
-        XCTAssertEqual(self.ids(node.avatarContainerNode.subnodes ?? []), self.ids([node.communityAvatarShadowNode, node.avatarNode]))
-        XCTAssertEqual(self.ids(node.avatarNode.subnodes ?? []), self.ids([node.avatarNode.contentNode, node.onlineNode]))
-        for kind in ChatListLazySubnode.allCases {
-            XCTAssertTrue(node.isLazySubnodeAttached(kind))
-        }
-    }
-    
-    func testFlagOnLeavesRareNodesOutAndUnloaded() {
-        let node = self.makeNode(lazy: true)
+    func testRareNodesAreLeftOutAndUnloaded() {
+        let node = self.makeNode()
         let rare: [ASDisplayNode] = [
             node.communityAvatarShadowNode, node.statusNode, node.pinnedIconNode, node.badgeNode,
             node.mentionBadgeNode, node.hiddenPeerIconNode, node.mutedIconNode, node.onlineNode
@@ -132,7 +108,7 @@ final class ChatListLazySubnodeHierarchyTests: XCTestCase {
     func testAnyShowOrderMatchesTheFlagOffOrder() {
         for loaded in [false, true] {
             for order in self.shuffles {
-                let node = self.makeNode(lazy: true)
+                let node = self.makeNode()
                 if loaded {
                     _ = node.view
                 }
@@ -153,7 +129,7 @@ final class ChatListLazySubnodeHierarchyTests: XCTestCase {
     }
     
     func testShowIsIdempotent() {
-        let node = self.makeNode(lazy: true)
+        let node = self.makeNode()
         node.showLazySubnode(.badge)
         node.showLazySubnode(.badge)
         node.showLazySubnode(.onlineDot)
@@ -163,28 +139,14 @@ final class ChatListLazySubnodeHierarchyTests: XCTestCase {
         XCTAssertTrue(node.isLazySubnodeAttached(.badge))
     }
     
-    func testFlagFlipAfterCreationDoesNotChangeTheRow() {
-        let lazyNode = self.makeNode(lazy: true)
-        ChatListRowExperiments.lazyRareSubnodes = false
-        XCTAssertFalse(lazyNode.isLazySubnodeAttached(.badge))
-        XCTAssertNil(lazyNode.badgeNode.supernode)
-        lazyNode.showLazySubnode(.badge)
-        XCTAssertNotNil(lazyNode.badgeNode.supernode)
-        
-        let eagerNode = self.makeNode(lazy: false)
-        ChatListRowExperiments.lazyRareSubnodes = true
-        XCTAssertTrue(eagerNode.isLazySubnodeAttached(.badge))
-        XCTAssertNotNil(eagerNode.badgeNode.supernode)
-    }
-    
     func testShadowGoesBelowAvatar() {
-        let node = self.makeNode(lazy: true)
+        let node = self.makeNode()
         node.showLazySubnode(.communityShadow)
         XCTAssertEqual(self.ids(node.avatarContainerNode.subnodes ?? []), self.ids([node.communityAvatarShadowNode, node.avatarNode]))
     }
     
     func testOnlineDotGateKeepsItBelowOverlays() {
-        let node = self.makeNode(lazy: true)
+        let node = self.makeNode()
         _ = node.view
         _ = node.avatarNode.view
         let story = UIView()
@@ -210,7 +172,7 @@ final class ChatListLazySubnodeHierarchyTests: XCTestCase {
     }
     
     func testPendingAlphaAndFrameSurviveAttach() {
-        let node = self.makeNode(lazy: true)
+        let node = self.makeNode()
         let rect = CGRect(x: 10.0, y: 20.0, width: 30.0, height: 40.0)
         let transition = ContainedViewLayoutTransition.animated(duration: 0.3, curve: .easeInOut)
         node.updateLazyAlpha(.badge, alpha: 0.0, transition: transition)
@@ -221,7 +183,7 @@ final class ChatListLazySubnodeHierarchyTests: XCTestCase {
         XCTAssertEqual(node.badgeNode.alpha, 0.0)
         XCTAssertEqual(node.badgeNode.frame, rect)
         
-        let other = self.makeNode(lazy: true)
+        let other = self.makeNode()
         other.updateLazyFrame(.badge, frame: CGRect(x: CGFloat.nan, y: 0.0, width: 10.0, height: 10.0), transition: transition)
         XCTAssertEqual(other.badgeNode.frame, CGRect())
     }

@@ -1,7 +1,7 @@
 import Foundation
 import CoreGraphics
 
-/// Decisions of the wallpaper pattern prewarm (Debug Settings "Chat open: prewarm wallpaper pattern"), kept free of
+/// Decisions of the wallpaper pattern prewarm (the chat wallpaper pattern prewarm), kept free of
 /// UIKit so they can be tested on the host.
 ///
 /// The first chat opened after launch used to render the wallpaper pattern on the main thread (about 36 ms, a cache
@@ -17,9 +17,9 @@ enum WallpaperPatternPrewarmPlan {
         return CGSize(width: min(screenSize.width, screenSize.height), height: max(screenSize.width, screenSize.height))
     }
 
-    /// A render is worth starting only when the switch is on and the pattern is not stored yet.
-    static func shouldRender(isEnabled: Bool, isAlreadyCached: Bool) -> Bool {
-        return isEnabled && !isAlreadyCached
+    /// A render is worth starting only when the pattern is not stored yet.
+    static func shouldRender(isAlreadyCached: Bool) -> Bool {
+        return !isAlreadyCached
     }
 }
 
