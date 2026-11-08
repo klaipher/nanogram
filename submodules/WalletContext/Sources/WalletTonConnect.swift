@@ -231,6 +231,7 @@ extension WalletContextImpl {
 
     func resetTonConnect() {
         self.tonConnectEpoch &+= 1
+        self.tonConnectRefreshThrottle.reset()
         self.tonConnectPreparationTask?.cancel()
         self.tonConnectRefreshTask?.cancel()
         self.tonConnectPreparationTask = nil
@@ -304,7 +305,10 @@ extension WalletContextImpl {
         self.publishTonConnectState()
     }
 
-    func updateTonConnectEnvironment(refresh: Bool) {
+    /// `automatic`: `refresh` only says the app came to the foreground or the network came back. Such a refresh is
+    /// skipped when sessions were fetched less than `WalletTonConnectRefreshThrottle.interval` ago and no wallet
+    /// screen is open.
+    func updateTonConnectEnvironment(refresh: Bool, automatic: Bool = false) {
         let becameAvailable = self.canPresentTonConnect && !self.tonConnectWasAvailable
         self.tonConnectWasAvailable = self.canPresentTonConnect
         self.publishTonConnectState()
@@ -316,7 +320,8 @@ extension WalletContextImpl {
             }
             return
         }
-        if refresh || becameAvailable, self.isNetworkAvailable, self.tonConnectRefreshTask == nil {
+        if refresh || becameAvailable, self.isNetworkAvailable, self.tonConnectRefreshTask == nil,
+           self.tonConnectRefreshThrottle.shouldRefresh(isAutomatic: automatic, hasWalletScreen: self.walletScreenCount > 0, now: Date()) {
             self.tonConnectRefreshTask = Task { [weak self] in
                 guard let self else { return }
                 await self.refreshTonConnectFromServer()
@@ -334,6 +339,7 @@ extension WalletContextImpl {
             try await self.restoreTonConnectRequests()
             let sessions = try await WalletSignalRequestContext<[WalletTonConnectSession]>().run(self.engine.wallet.tonConnectGetSessions())
             guard !self.isShutdown, epoch == self.tonConnectEpoch else { return }
+            self.tonConnectRefreshThrottle.recordSuccess(at: Date())
             let ids = Set(sessions.map(\.id))
             for id in Array(self.tonConnectSessions.keys) where !ids.contains(id) && (self.tonConnectSessionRevisions[id] ?? 0) <= revision {
                 self.removeTonConnectSession(id)

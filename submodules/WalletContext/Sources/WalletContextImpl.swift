@@ -137,6 +137,7 @@ actor WalletContextImpl {
     var observationTask: Task<Void, Never>?
     var serverStateRetryTask: Task<Void, Never>?
     var serverStateRetryPolicy = WalletStateRetryPolicy()
+    let unavailableAnswerKey: String
             
     var pollingTask: Task<Void, Never>?
     var pollingTaskId: UUID?
@@ -202,6 +203,7 @@ actor WalletContextImpl {
     var tonConnectRefreshTask: Task<Void, Never>?
     var tonConnectWalletIdentity: String?
     var tonConnectWasAvailable = false
+    var tonConnectRefreshThrottle = WalletTonConnectRefreshThrottle()
 
     init(
         engine: TelegramEngine,
@@ -221,6 +223,12 @@ actor WalletContextImpl {
         self.storedStateWriter = WalletStoredStateWriter(engine: engine)
         self.streamingURLProvider = WalletStreamingURLProvider(engine: engine, logger: logger)
         self.currentState = initialState
+        self.unavailableAnswerKey = "nanogram.wallet.stateUnavailableAt." + storageNamespace
+        let stored = UserDefaults.standard.object(forKey: self.unavailableAnswerKey) as? Double
+        if let answeredAt = WalletUnavailableMemory.rememberedAnswerDate(stored: stored, now: Date()) {
+            // A launch within minutes of WALLET_UNAVAILABLE starts out as if it had just received it.
+            self.serverStateRetryPolicy.recordFailure(.authoritative, at: answeredAt)
+        }
     }
 
     func shutdown() async {
@@ -290,7 +298,7 @@ actor WalletContextImpl {
             self.pendingScreenSynchronizationScope.formUnion(self.visibleScreenSynchronizationScope)
         }
         self.evaluateRuntimeDemand(refreshIfPollingBecomesActive: !wasNetworkUsable)
-        self.updateTonConnectEnvironment(refresh: becameForeground || (!wasNetworkUsable && self.canUseNetworkRuntime))
+        self.updateTonConnectEnvironment(refresh: becameForeground || (!wasNetworkUsable && self.canUseNetworkRuntime), automatic: true)
     }
 
     func updateWalletConfiguration(_ configuration: WalletConfiguration, revision: UInt64) {
@@ -605,11 +613,16 @@ actor WalletContextImpl {
             self.serverStateRetryTask?.cancel()
             self.serverStateRetryTask = nil
             self.serverStateRetryPolicy.reset()
+            UserDefaults.standard.removeObject(forKey: self.unavailableAnswerKey)
             self.applyServerWalletState(value, forceActivation: promotedReplacement, balanceOverlayRevision: balanceOverlayRevision)
         } catch is CancellationError {
         } catch {
             self.logger.error("wallet_state_failed", error)
-            self.serverStateRetryPolicy.recordFailure(Self.failureKind(error), at: Date())
+            let failureKind = Self.failureKind(error)
+            self.serverStateRetryPolicy.recordFailure(failureKind, at: Date())
+            if failureKind == .authoritative {
+                UserDefaults.standard.set(Date().timeIntervalSince1970, forKey: self.unavailableAnswerKey)
+            }
             if !self.isShutdown,
                self.serverStateMutationRevision == revision,
                self.latestWalletStateRevision == walletStateRevision,

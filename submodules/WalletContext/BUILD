@@ -73,3 +73,17 @@ ios_unit_test(
     runner = ":WalletCardStickersTestRunner",
     deps = [":WalletWidgetCallsTestsLib"],
 )
+
+swift_library(
+    name = "WalletRequestMemoryTestsLib",
+    testonly = True,
+    srcs = ["Tests/WalletRequestMemoryTests.swift"],
+    deps = [":WalletContext"],
+)
+
+ios_unit_test(
+    name = "WalletRequestMemoryTests",
+    minimum_os_version = "15.0",
+    runner = ":WalletCardStickersTestRunner",
+    deps = [":WalletRequestMemoryTestsLib"],
+)
