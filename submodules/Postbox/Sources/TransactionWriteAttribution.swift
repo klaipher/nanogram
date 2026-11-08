@@ -19,6 +19,18 @@ struct TransactionWriteAttribution: Equatable {
     private(set) var totalCommits: Int = 0
     private(set) var totalFrames: Int = 0
 
+    /// A single transaction that appended this many bytes of WAL is logged at once with its call site, not in the
+    /// ten-minute summary (a process killed or suspended soon after would never log that).
+    static let largeCommitBytes = 16 * 1024 * 1024
+
+    static func largeCommitLine(site: String, frames: Int, frameBytes: Int, thresholdBytes: Int = TransactionWriteAttribution.largeCommitBytes) -> String? {
+        let bytes = frames * frameBytes
+        if frames <= 0 || bytes < thresholdBytes {
+            return nil
+        }
+        return "Postbox large transaction: \(site) appended \(frames) frames to the WAL (\(String(format: "%.1f", Double(bytes) / 1048576.0)) MB)"
+    }
+
     static func siteName(file: String, line: Int) -> String {
         let name = file.split(separator: "/").last.map(String.init) ?? file
         return "\(name):\(line)"

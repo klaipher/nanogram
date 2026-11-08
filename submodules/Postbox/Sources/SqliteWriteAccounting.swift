@@ -24,9 +24,16 @@ final class SqliteWalWriteAccounting {
     private var lastFrames: Int32 = 0
     private var lastBackfilledFrames: Int32 = 0
     private var lastCommitAppendedFrames: Int32 = 0
+    private var hasCommitted = false
+    /// A single commit, or a single checkpoint, that writes at least this many bytes gets a notice for the log.
+    static let defaultLargeWriteBytes = 16 * 1024 * 1024
+    private let largeWriteBytes: Int
+    private let databaseName: String
 
-    init(databasePath: String, handle: OpaquePointer?) {
+    init(databasePath: String, handle: OpaquePointer?, largeWriteBytes: Int = SqliteWalWriteAccounting.defaultLargeWriteBytes) {
         let name = DiskWriteCategory.databaseName(path: (databasePath as NSString).deletingLastPathComponent)
+        self.databaseName = name
+        self.largeWriteBytes = largeWriteBytes
         self.walCategory = DiskWriteCategory.sqliteWal(database: name)
         self.checkpointCategory = DiskWriteCategory.sqliteCheckpoint(database: name)
         self.walPath = databasePath + "-wal"
@@ -40,7 +47,17 @@ final class SqliteWalWriteAccounting {
         self.frameSize = 24 + max(512, pageSize)
     }
 
-    func committed(walFrames: Int32) {
+    private static func megabytes(_ bytes: Int) -> String {
+        return String(format: "%.1f MB", Double(bytes) / 1048576.0)
+    }
+
+    /// Returns a line for the log when this commit made the WAL grow by `largeWriteBytes` or more, or when the WAL
+    /// already held that much at this connection's first commit (written before it opened, such as by the previous
+    /// process: the first commit then counts all of it, because the connection cannot tell whose frames they are).
+    @discardableResult
+    func committed(walFrames: Int32) -> String? {
+        let isFirstCommit = !self.hasCommitted
+        self.hasCommitted = true
         let appended = walFrames >= self.lastFrames ? walFrames - self.lastFrames : walFrames
         if walFrames < self.lastFrames {
             // The WAL restarted: its backfilled frames count from zero again.
@@ -51,6 +68,14 @@ final class SqliteWalWriteAccounting {
         if appended > 0 {
             DiskWriteAccounting.shared.add(self.walCategory, bytes: Int(appended) * self.frameSize)
         }
+        let appendedBytes = Int(appended) * self.frameSize
+        if appendedBytes < self.largeWriteBytes {
+            return nil
+        }
+        if isFirstCommit {
+            return "SQLite \(self.databaseName): the WAL held \(appended) frames (\(SqliteWalWriteAccounting.megabytes(appendedBytes))) at this connection's first commit; they were written before it opened (the previous process or an extension) and are counted as written now"
+        }
+        return "SQLite \(self.databaseName): one commit appended \(appended) frames (\(SqliteWalWriteAccounting.megabytes(appendedBytes))), the WAL is now \(walFrames) frames"
     }
 
     /// The frames the last commit appended, once: a second call without a commit in between gives 0. Called on the
@@ -63,7 +88,8 @@ final class SqliteWalWriteAccounting {
 
     /// `backfilledFrames`: the WAL's total backfilled frames after a checkpoint (`sqlite3_wal_checkpoint_v2`'s
     /// `pnCkpt`).
-    func checkpointed(backfilledFrames: Int32) {
+    @discardableResult
+    func checkpointed(backfilledFrames: Int32) -> String? {
         let firstFrame = backfilledFrames >= self.lastBackfilledFrames ? self.lastBackfilledFrames : 0
         let copied = backfilledFrames - firstFrame
         self.lastBackfilledFrames = max(0, backfilledFrames)
@@ -71,7 +97,11 @@ final class SqliteWalWriteAccounting {
             let pageSize = self.frameSize - SqliteWalWriteAccounting.frameHeaderSize
             let pages = SqliteWalWriteAccounting.distinctPages(walPath: self.walPath, frameSize: self.frameSize, firstFrame: Int(firstFrame), frameCount: Int(copied)) ?? Int(copied)
             DiskWriteAccounting.shared.add(self.checkpointCategory, bytes: pages * pageSize)
+            if pages * pageSize >= self.largeWriteBytes {
+                return "SQLite \(self.databaseName): a checkpoint copied \(pages) pages (\(SqliteWalWriteAccounting.megabytes(pages * pageSize))) from \(copied) WAL frames into the database file"
+            }
         }
+        return nil
     }
 
     private static let walHeaderSize = 32

@@ -3453,7 +3453,12 @@ final class PostboxImpl {
         
         let appendedFrames = self.valueBox.takeLastCommitAppendedFrames()
         if appendedFrames > 0 {
-            self.transactionWriteAttribution.note(site: TransactionWriteAttribution.siteName(file: file, line: line), frames: appendedFrames)
+            let siteName = TransactionWriteAttribution.siteName(file: file, line: line)
+            if let largeLine = TransactionWriteAttribution.largeCommitLine(site: siteName, frames: appendedFrames, frameBytes: self.valueBox.walFrameSize) {
+                postboxLog(largeLine)
+                postboxLogSync()
+            }
+            self.transactionWriteAttribution.note(site: siteName, frames: appendedFrames)
             if let attributionLine = self.transactionWriteAttribution.takeLogLine(now: Date().timeIntervalSince1970) {
                 postboxLog(attributionLine)
             }
@@ -4740,7 +4745,7 @@ final class PostboxImpl {
     
     public func optimizeStorage() -> Signal<Never, NoError> {
         return Signal { subscriber in
-            self.valueBox.vacuum()
+            self.valueBox.vacuum(caller: "Postbox.optimizeStorage (Debug Settings)")
             subscriber.putCompletion()
             
             return EmptyDisposable

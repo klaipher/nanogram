@@ -226,4 +226,26 @@ final class SqliteValueBoxWriteAccountingTests: XCTestCase {
             valueBox.internalClose()
         }
     }
+
+    func testLargeCommitsAndCheckpointsGetANotice() {
+        let basePath = NSTemporaryDirectory() + "SqliteValueBoxWriteAccountingTests-" + UUID().uuidString
+        let accounting = SqliteWalWriteAccounting(databasePath: basePath + "/postbox/db/db_sqlite", handle: nil, largeWriteBytes: 40000)
+        XCTAssertEqual(accounting.frameSize, 24 + 4096)
+        // The first commit finds frames that were there before the connection: said so.
+        let first = accounting.committed(walFrames: 20)
+        XCTAssertTrue(first?.contains("first commit") == true, first ?? "")
+        // Small growth: no notice. Growth past the threshold: a notice with the size.
+        XCTAssertNil(accounting.committed(walFrames: 25))
+        let large = accounting.committed(walFrames: 45)
+        XCTAssertTrue(large?.contains("one commit appended 20 frames") == true, large ?? "")
+        // No WAL file to read: the frame count is the upper bound for the checkpoint.
+        XCTAssertNil(accounting.checkpointed(backfilledFrames: 5))
+        let checkpoint = accounting.checkpointed(backfilledFrames: 45)
+        XCTAssertTrue(checkpoint?.contains("a checkpoint copied 40 pages") == true, checkpoint ?? "")
+    }
+
+    func testAFirstCommitWithAnEmptyWalGetsNoNotice() {
+        let accounting = SqliteWalWriteAccounting(databasePath: NSTemporaryDirectory() + "x/postbox/db/db_sqlite", handle: nil, largeWriteBytes: 40000)
+        XCTAssertNil(accounting.committed(walFrames: 2))
+    }
 }

@@ -307,6 +307,16 @@ private func passiveWalCheckpoint(_ handle: OpaquePointer?, schema: UnsafePointe
     return max(0, checkpointedFrames)
 }
 
+/// A commit or checkpoint that wrote a lot (see `SqliteWalWriteAccounting`) is logged at once and flushed: the
+/// process may be suspended or killed right after, and the per-call-site summary only comes up to ten minutes later.
+private func logLargeWrite(_ notice: String?) {
+    guard let notice else {
+        return
+    }
+    postboxLog(notice)
+    postboxLogSync()
+}
+
 private struct TablePairKey: Hashable {
     let table1: Int32
     let table2: Int32
@@ -386,6 +396,11 @@ public final class SqliteValueBox: ValueBox {
     public let interruptGate = SqliteInterruptGate()
     /// The current connection's write counter (also the WAL hook's context); the idle checkpoint reports to it too.
     private var walWriteAccounting: SqliteWalWriteAccounting?
+
+    /// Bytes of one WAL frame (header and page); 0 before the connection is set up.
+    var walFrameSize: Int {
+        return self.walWriteAccounting?.frameSize ?? 0
+    }
 
     /// WAL frames the last commit on this connection appended (0 for a read-only transaction), once.
     func takeLastCommitAppendedFrames() -> Int {
@@ -819,10 +834,10 @@ public final class SqliteValueBox: ValueBox {
         let writeAccounting = Unmanaged.passRetained(walWriteAccounting).toOpaque()
         sqlite3_wal_hook(database.handle, { context, handle, schema, frames in
             let writeAccounting = context.flatMap { Unmanaged<SqliteWalWriteAccounting>.fromOpaque($0).takeUnretainedValue() }
-            writeAccounting?.committed(walFrames: frames)
+            logLargeWrite(writeAccounting?.committed(walFrames: frames))
             if frames >= SqliteValueBox.walAutocheckpointFrames {
                 let backfilled = passiveWalCheckpoint(handle, schema: schema, idle: false)
-                writeAccounting?.checkpointed(backfilledFrames: backfilled)
+                logLargeWrite(writeAccounting?.checkpointed(backfilledFrames: backfilled))
             }
             return SQLITE_OK
         }, writeAccounting)
@@ -977,7 +992,7 @@ public final class SqliteValueBox: ValueBox {
     public func checkpoint() {
         precondition(self.queue.isCurrent())
         let backfilled = passiveWalCheckpoint(self.database.handle, schema: "main", idle: true)
-        self.walWriteAccounting?.checkpointed(backfilledFrames: backfilled)
+        logLargeWrite(self.walWriteAccounting?.checkpointed(backfilledFrames: backfilled))
     }
     
     @discardableResult
@@ -2872,17 +2887,25 @@ public final class SqliteValueBox: ValueBox {
     /// (another process, such as the notification extension, holding it), a full disk or an I/O
     /// error is logged and returned as `false`, and the database stays as it was.
     @discardableResult
-    public func vacuum() -> Bool {
+    public func vacuum(caller: String = #function) -> Bool {
         precondition(self.queue.isCurrent())
         self.interruptGate.setMaintenanceRunning(true)
         defer {
             self.interruptGate.setMaintenanceRunning(false)
         }
+        let startTime = CFAbsoluteTimeGetCurrent()
+        let beforeStats = self.pageStats()
+        // Flushed before the statement: VACUUM rewrites the whole file, and the app may be suspended while it runs.
+        postboxLog("SqliteValueBox: VACUUM begin [\(self.databasePath)] from \(caller), \(beforeStats.map { "\($0.pageCount) pages of \($0.pageSize) bytes, \($0.freePageCount) free" } ?? "page counts unknown")")
+        postboxLogSync()
         let vacuumCode = self.database.executeReturningCode("VACUUM")
         if vacuumCode != SQLITE_OK {
-            postboxLog("SqliteValueBox: VACUUM failed: \(SqliteValueBox.describeVacuumFailure(vacuumCode)) (\(self.database.currentError() ?? "no message"))")
+            postboxLog("SqliteValueBox: VACUUM failed: \(SqliteValueBox.describeVacuumFailure(vacuumCode)) (\(self.database.currentError() ?? "no message")) after \(String(format: "%.1f", CFAbsoluteTimeGetCurrent() - startTime)) s")
+            postboxLogSync()
             return false
         }
+        postboxLog("SqliteValueBox: VACUUM end [\(self.databasePath)] from \(caller) in \(String(format: "%.1f", CFAbsoluteTimeGetCurrent() - startTime)) s, \(self.pageStats().map { "\($0.pageCount) pages, \($0.freePageCount) free" } ?? "page counts unknown")")
+        postboxLogSync()
         let checkpointCode = self.database.executeReturningCode("PRAGMA wal_checkpoint(TRUNCATE)")
         if checkpointCode != SQLITE_OK {
             // The VACUUM itself is committed; the WAL is truncated at a later checkpoint.
@@ -2976,7 +2999,7 @@ public final class SqliteValueBox: ValueBox {
         if !shouldProceed() {
             return .deferred
         }
-        if !self.vacuum() {
+        if !self.vacuum(caller: "vacuumIfFragmented (nightly optimisation)") {
             return .failed
         }
         let after = self.pageStats()
