@@ -165,7 +165,9 @@ func requestCoalescerCurrentTime() -> Double {
 /// `RequestCoalescerState` behind a lock, joined to signals. `signal(key:fallback:fetch:)` returns the
 /// remembered result, or shares one running `fetch` between all callers asking for the same key.
 /// `fetch` yields nil when the request failed: that is answered with `fallback` and never remembered.
-final class RequestCoalescer<Key: Hashable, Value> {
+// `@unchecked Sendable`: every piece of state is behind `guarded` (an `Atomic`), so the global instance
+// (`peerPhotosRequestCoalescer`) is safe to share; declared here so it is warning-free in both the iOS and the Mac build.
+final class RequestCoalescer<Key: Hashable, Value>: @unchecked Sendable {
     private struct Guarded {
         var state: RequestCoalescerState<Key, Value>
         var nextWaiter: Int = 0

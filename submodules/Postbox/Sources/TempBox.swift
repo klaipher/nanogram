@@ -149,7 +149,30 @@ private final class TempBoxContexts {
 
 // Behind a lock: two threads initializing at once both released the previous value and crashed in its deinit
 // (iPad MetricKit, Intents extension, 2026-11-03: SIGSEGV in TempBox.__deallocating_deinit).
-private let sharedValue = Atomic<TempBox?>(value: nil)
+private let sharedValue = TempBoxSharedSlot()
+
+/// The slot behind a lock. A class of our own rather than `Atomic`: `Atomic` is `Sendable` in the iOS build and not in
+/// the Mac's package build, so neither a plain `let` nor `nonisolated(unsafe)` is warning-free on both.
+private final class TempBoxSharedSlot: @unchecked Sendable {
+    private let lock = NSLock()
+    private var value: TempBox?
+
+    func swap(_ newValue: TempBox?) -> TempBox? {
+        self.lock.lock()
+        let previous = self.value
+        self.value = newValue
+        self.lock.unlock()
+        return previous
+    }
+
+    func get() -> TempBox? {
+        self.lock.lock()
+        defer {
+            self.lock.unlock()
+        }
+        return self.value
+    }
+}
 
 public final class TempBox {
     private let basePath: String
@@ -164,7 +187,7 @@ public final class TempBox {
     }
     
     public static var shared: TempBox {
-        guard let value = sharedValue.with({ $0 }) else {
+        guard let value = sharedValue.get() else {
             preconditionFailure("TempBox.shared before TempBox.initializeShared")
         }
         return value
