@@ -230,11 +230,12 @@ final class RequestCoalescer<Key: Hashable, Value> {
                 subscriber.putCompletion()
                 return EmptyDisposable
             case let .start(flight):
-                let disposable = fetch.start(next: { [weak self] result in
-                    self?.finish(flight: flight, value: result.value, retryAfter: result.retryAfter, fallback: fallback)
-                }, completed: { [weak self] in
+                // `self` is already held by the enclosing signal closure; the fetch ends with it.
+                let disposable = fetch.start(next: { result in
+                    self.finish(flight: flight, value: result.value, retryAfter: result.retryAfter, fallback: fallback)
+                }, completed: {
                     // A fetch that ends without an answer counts as a failure; a no-op after an answer.
-                    self?.finish(flight: flight, value: nil, retryAfter: 0, fallback: fallback)
+                    self.finish(flight: flight, value: nil, retryAfter: 0, fallback: fallback)
                 })
                 let stillRunning = self.guarded.modify { guarded in
                     var guarded = guarded
