@@ -329,13 +329,11 @@ public final class NavigationContainer: ASDisplayNode, ASGestureRecognizerDelega
         topController.viewWillDisappear(true)
         let topNode = topController.displayNode
         let bottomControllerLayout = self.bottomControllerLayout(layout, bottomController: bottomController)
-        // Prepared while the top screen was idle (same screen, same layout): its layout is what this call would redo.
-        let wasPrepared = NavigationPopPreparationSettings.isEnabled && self.isStillPrepared(bottomController, layout: bottomControllerLayout)
         self.popPreparation.reset()
         self.preparedPopController = nil
-        if !wasPrepared {
-            bottomController.containerLayoutUpdated(bottomControllerLayout, transition: .immediate)
-        }
+        // Always laid out as upstream does: skipping it for a prepared screen saved little and could leave its state
+        // (a highlighted row, an inset) as it was when it was prepared.
+        bottomController.containerLayoutUpdated(bottomControllerLayout, transition: .immediate)
         bottomController.viewWillAppear(true)
         let bottomNode = bottomController.displayNode
         
@@ -471,9 +469,10 @@ public final class NavigationContainer: ASDisplayNode, ASGestureRecognizerDelega
         self.popPreparation.reset()
         if let controller = self.preparedPopController {
             self.preparedPopController = nil
-            if controller.isNodeLoaded, controller.displayNode.supernode == nil {
-                controller.displayNode.recursivelyClearContents()
-            }
+            // Nothing is cleared here: clearing the contents of a screen that comes back later (the chat list after
+            // chat → another chat → back) blanked layer contents set directly (avatars, images) that never redraw
+            // (owner, build 202611081505, 2026-11-08 16:14). ASDK's own off-hierarchy clearing stays as upstream.
+            _ = controller
         }
     }
 

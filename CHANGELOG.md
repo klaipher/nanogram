@@ -4,6 +4,8 @@ Newest first. Internal notes for each TestFlight build; testers see the What to 
 
 ## Unreleased
 
+- **Back swipe preparation no longer blanks the screens beneath (fix of 202611081505)**. Owner, 2026-11-08 16:14 (screenshot): after opening a channel, then another screen, then going back, the chat list showed no avatars and no media previews, and the tapped row kept its highlight. `releasePreparedPopController` (run when the stack changes) called `recursivelyClearContents()` on the prepared screen while it was off the hierarchy; contents set directly on layers (avatars, image nodes) are not redrawn when the screen comes back. The clear is removed (ASDK's own off-hierarchy handling stays as upstream), and `interactivePopBegan` always runs the bottom controller's `containerLayoutUpdated` again (the skip for a prepared screen saved little and could keep stale state). The preparation still finishes the screen's drawing ahead of the swipe. Switch unchanged (off by default). Tests: DisplayTests pass.
+
 - **Shared-core warnings for the Mac package build (Postbox, TelegramCore)**. The Mac's warnings gate (counts may only go down) found one new Swift 6 concurrency warning each from this round: `TempBox`'s shared slot (`Atomic<TempBox?>` is not `Sendable` in the Mac's package build) and the global `peerPhotosRequestCoalescer`. `TempBox` uses a small `@unchecked Sendable` slot class with an `NSLock` (the pattern `StaleChannelDiagnostics` uses, warning-free on both builds); `RequestCoalescer` is `@unchecked Sendable` (all state is behind its `Atomic`). No behaviour change. Tests: PostboxTests, TelegramCoreTests pass.
 
 ## 13.2 (202611081505) — 2026-11-08 — 6a8d17ba
