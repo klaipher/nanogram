@@ -58,7 +58,8 @@ final class NoneToneHapticTests: XCTestCase {
         XCTAssertEqual(NoneToneHaptic.category(peerNamespace: Namespaces.Peer.CloudChannel, isBroadcastChannel: true), .channel)
         XCTAssertEqual(NoneToneHaptic.category(peerNamespace: Namespaces.Peer.CloudChannel, isBroadcastChannel: false), .group)
         XCTAssertNil(NoneToneHaptic.category(peerNamespace: Namespaces.Peer.CloudChannel, isBroadcastChannel: nil))
-        XCTAssertNil(NoneToneHaptic.category(peerNamespace: Namespaces.Peer.SecretChat, isBroadcastChannel: nil))
+        XCTAssertEqual(NoneToneHaptic.category(peerNamespace: Namespaces.Peer.SecretChat, isBroadcastChannel: nil), .privateChat)
+        XCTAssertNil(NoneToneHaptic.category(peerNamespace: Namespaces.Peer.CloudChannel, isBroadcastChannel: nil))
     }
 
     func testChatToneNoneOverridesAudibleGlobalTone() {

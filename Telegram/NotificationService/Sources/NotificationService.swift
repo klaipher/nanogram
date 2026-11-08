@@ -961,6 +961,7 @@ private final class NotificationServiceHandler {
 
     private let notificationKeyDisposable = MetaDisposable()
     private let pollDisposable = MetaDisposable()
+    private let noneToneDisposable = MetaDisposable()
     // Handler creation is, for practical purposes, when the system's ~30 s extension
     // budget started ticking; the connection deadline on the poll path counts from here.
     private let startTimestamp = CFAbsoluteTimeGetCurrent()
@@ -2976,7 +2977,7 @@ private final class NotificationServiceHandler {
                         // Tone "None" arrives without a `sound` key, and iOS vibrates only for a
                         // notification that has a sound. Look the tone and mute state up locally.
                         let topicId = (content.userInfo["threadId"] as? Int32).flatMap { Int64($0) }
-                        let _ = (stateManager.postbox.transaction { transaction -> String? in
+                        strongSelf.noneToneDisposable.set((stateManager.postbox.transaction { transaction -> String? in
                             var isBroadcastChannel: Bool?
                             var isMonoForum = false
                             if peerId.namespace == Namespaces.Peer.CloudChannel, let channel = transaction.getPeer(peerId) as? TelegramChannel {
@@ -2994,7 +2995,8 @@ private final class NotificationServiceHandler {
                             if !isMonoForum, let topicId, let threadData = transaction.getMessageHistoryThreadInfo(peerId: peerId, threadId: topicId)?.data.get(MessageHistoryThreadData.self) {
                                 peerSettings.append(threadData.notificationSettings)
                             }
-                            if let settings = transaction.getPeerNotificationSettings(id: peerId) as? TelegramPeerNotificationSettings {
+                            let settingsPeerId = transaction.getPeer(peerId)?.associatedPeerId ?? peerId
+                            if let settings = transaction.getPeerNotificationSettings(id: settingsPeerId) as? TelegramPeerNotificationSettings {
                                 peerSettings.append(settings)
                             }
                             let global = (transaction.getPreferencesEntry(key: PreferencesKeys.globalNotifications)?.get(GlobalNotificationSettings.self) ?? GlobalNotificationSettings.defaultSettings).effective
@@ -3011,13 +3013,18 @@ private final class NotificationServiceHandler {
                                 now: now
                             )
                         }
-                        |> deliverOn(strongSelf.queue)).start(next: { soundName in
+                        |> deliverOn(strongSelf.queue)).start(next: { [weak self] soundName in
+                            guard self != nil else {
+                                return
+                            }
                             var content = content
                             if let soundName {
+                                Logger.shared.log("NotificationService \(episode)", "None tone: haptic sound substituted")
                                 content.sound = soundName
+                                updateCurrentContent(content)
                             }
                             processAction(.poll(peerId: peerId, content: content, messageId: messageId, reportDelivery: reportDelivery, enableInlineEmoji: enableInlineEmoji))
-                        })
+                        }))
                     } else {
                         processAction(action)
                     }
