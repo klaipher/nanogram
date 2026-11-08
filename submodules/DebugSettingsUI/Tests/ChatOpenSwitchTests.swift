@@ -33,12 +33,29 @@ final class ChatOpenSwitchTests: XCTestCase {
             return
         }
         XCTAssertEqual(all[start + 1].stableId, DebugControllerEntry.chatOpenDeferSetup(false).stableId)
-        XCTAssertEqual(all.filter { $0.section == header.section }.count, 2)
+        XCTAssertEqual(all[start + 2].stableId, DebugControllerEntry.chatOpenPrewarmWallpaperPattern(false).stableId)
+        XCTAssertEqual(all.filter { $0.section == header.section }.count, 3)
         XCTAssertNotEqual(header.section, DebugControllerEntry.glassGroupsHeader(defaultPresentationTheme).section)
         XCTAssertNotEqual(header.section, DebugControllerEntry.callsHeader(defaultPresentationTheme).section)
     }
 
+    func testThePrewarmSwitchIsOnByDefaultAndShowsTheSetting() {
+        func prewarmValues(_ settings: ExperimentalUISettings) -> [Bool] {
+            return self.entries(isMainApp: true, settings: settings).compactMap { entry -> Bool? in
+                if case let .chatOpenPrewarmWallpaperPattern(value) = entry {
+                    return value
+                }
+                return nil
+            }
+        }
+        XCTAssertEqual(prewarmValues(.defaultSettings), [true])
+        var settings = ExperimentalUISettings.defaultSettings
+        settings.chatOpenPrewarmWallpaperPattern = false
+        XCTAssertEqual(prewarmValues(settings), [false])
+    }
+
     func testOnlyTheMainAppOffersIt() {
         XCTAssertTrue(self.entries(isMainApp: false, settings: .defaultSettings).compactMap { self.value($0) }.isEmpty)
+        XCTAssertFalse(self.entries(isMainApp: false, settings: .defaultSettings).contains(DebugControllerEntry.chatOpenPrewarmWallpaperPattern(true)))
     }
 }

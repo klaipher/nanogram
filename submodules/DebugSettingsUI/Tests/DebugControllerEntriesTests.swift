@@ -17,6 +17,7 @@ final class DebugControllerEntriesTests: XCTestCase {
         settings.enableVoipTcp = on
         settings.fakeGlass = on
         settings.chatOpenDeferSetup = on
+        settings.chatOpenPrewarmWallpaperPattern = on
         settings.compressedEmojiCache = on
         settings.chatListLazyRareSubnodes = on
         settings.chatListRowReuse = on

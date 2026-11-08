@@ -376,6 +376,7 @@ enum DebugControllerEntry: ItemListNodeEntry {
     case emojiPanelDefersHeavyWork(Bool)
     case chatOpenHeader(PresentationTheme)
     case chatOpenDeferSetup(Bool)
+    case chatOpenPrewarmWallpaperPattern(Bool)
     case chatScrollHeader(PresentationTheme)
     case chatScrollPrepareLayoutAhead(Bool)
     case chatScrollReuseRowViews(Bool)
@@ -419,7 +420,7 @@ enum DebugControllerEntry: ItemListNodeEntry {
             return DebugControllerSection.glassGroups.rawValue
         case .emojiPanelHeader, .emojiPanelDefersHeavyWork:
             return DebugControllerSection.emojiPanelOpen.rawValue
-        case .chatOpenHeader, .chatOpenDeferSetup:
+        case .chatOpenHeader, .chatOpenDeferSetup, .chatOpenPrewarmWallpaperPattern:
             return DebugControllerSection.chatOpen.rawValue
         case .chatScrollHeader, .chatScrollPrepareLayoutAhead, .chatScrollReuseRowViews:
             return DebugControllerSection.chatScroll.rawValue
@@ -582,6 +583,9 @@ enum DebugControllerEntry: ItemListNodeEntry {
             return 132
         case .chatOpenDeferSetup:
             return 133
+        case .chatOpenPrewarmWallpaperPattern:
+            // Appended right after `chatOpenDeferSetup`, inside the same section (the section sorts first); see the ordering note at `springSendAnimation`.
+            return 147
         case .chatScrollHeader:
             // Its own section, like the glass groups above.
             return 134
@@ -702,6 +706,14 @@ enum DebugControllerEntry: ItemListNodeEntry {
                 let _ = updateExperimentalUISettingsInteractively(accountManager: arguments.sharedContext.accountManager, { settings in
                     var settings = settings
                     settings.chatOpenDeferSetup = value
+                    return settings
+                }).start()
+            })
+        case let .chatOpenPrewarmWallpaperPattern(value):
+            return ItemListSwitchItem(presentationData: presentationData, systemStyle: .glass, title: "Chat open: prewarm wallpaper pattern", text: "Renders the chat wallpaper's pattern in the background a few seconds after launch, so the first chat you open does not draw it while it opens. The picture is the same as before. Does nothing for plain or gradient wallpapers or on iPad. Default: on. Applies the next time the wallpaper changes or the app starts.", value: value, maximumNumberOfLines: 0, sectionId: self.section, style: .blocks, updated: { value in
+                let _ = updateExperimentalUISettingsInteractively(accountManager: arguments.sharedContext.accountManager, { settings in
+                    var settings = settings
+                    settings.chatOpenPrewarmWallpaperPattern = value
                     return settings
                 }).start()
             })
@@ -1565,6 +1577,7 @@ func debugControllerEntries(environment: DebugControllerEntriesEnvironment, them
         // Chat open performance: moves non-visible setup of a chat to after its first appearance.
         entries.append(.chatOpenHeader(theme))
         entries.append(.chatOpenDeferSetup(experimentalSettings.chatOpenDeferSetup))
+        entries.append(.chatOpenPrewarmWallpaperPattern(experimentalSettings.chatOpenPrewarmWallpaperPattern))
 
         // Chat scroll experiments (A/B on device): both off by default.
         entries.append(.chatScrollHeader(theme))

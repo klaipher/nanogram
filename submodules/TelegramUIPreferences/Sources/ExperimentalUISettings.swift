@@ -136,6 +136,10 @@ public struct ExperimentalUISettings: Codable, Equatable {
     /// translation host, network-speed notices) after its first appearance instead of inside `ChatControllerImpl.init`.
     /// Read once per chat controller (the value is cached in the controller).
     public var chatOpenDeferSetup: Bool
+    /// Debug Settings ▸ "Chat open: prewarm wallpaper pattern". On by default: after launch, with the chat list idle, the chat
+    /// wallpaper's pattern is rendered in the background into the pattern cache, so the first chat opened does not draw it
+    /// on the main thread. The image is the one the chat would draw (same cache key), so nothing looks different.
+    public var chatOpenPrewarmWallpaperPattern: Bool
     /// Debug Settings ▸ "Chat scroll": bits of the chat-scroll switches that are on. Both on by default (3, owner decision 2026-11-07);
     /// 0 leaves chat scrolling as it was. The bits equal `ChatScrollExperiment`'s raw values (ChatRowPrep).
     public var chatScrollExperiments: Int32
@@ -233,6 +237,7 @@ public struct ExperimentalUISettings: Codable, Equatable {
         glassDebugDisabledGroups: Int32 = 0,
         emojiPanelDefersHeavyWork: Bool = true,
         chatOpenDeferSetup: Bool = true,
+        chatOpenPrewarmWallpaperPattern: Bool = true,
         chatScrollExperiments: Int32 = ExperimentalUISettings.chatScrollPrepareLayoutAhead | ExperimentalUISettings.chatScrollReuseRowViews
     ) {
         self.keepChatNavigationStack = keepChatNavigationStack
@@ -287,6 +292,7 @@ public struct ExperimentalUISettings: Codable, Equatable {
         self.glassDebugDisabledGroups = glassDebugDisabledGroups
         self.emojiPanelDefersHeavyWork = emojiPanelDefersHeavyWork
         self.chatOpenDeferSetup = chatOpenDeferSetup
+        self.chatOpenPrewarmWallpaperPattern = chatOpenPrewarmWallpaperPattern
         self.chatScrollExperiments = chatScrollExperiments
     }
     
@@ -367,6 +373,7 @@ public struct ExperimentalUISettings: Codable, Equatable {
         // old keys hold an explicit off the user may never have chosen; only the new keys count.
         self.emojiPanelDefersHeavyWork = try container.decodeIfPresent(Bool.self, forKey: "emojiPanelDefersHeavyWorkDefaultOn") ?? true
         self.chatOpenDeferSetup = try container.decodeIfPresent(Bool.self, forKey: "chatOpenDeferSetupDefaultOn") ?? true
+        self.chatOpenPrewarmWallpaperPattern = try container.decodeIfPresent(Bool.self, forKey: "chatOpenPrewarmWallpaperPatternDefaultOn") ?? true
         self.chatScrollExperiments = try container.decodeIfPresent(Int32.self, forKey: "chatScrollExperimentsDefaultOn") ?? (ExperimentalUISettings.chatScrollPrepareLayoutAhead | ExperimentalUISettings.chatScrollReuseRowViews)
 
         if savedDefaultsRevision < 1 {
@@ -433,6 +440,7 @@ public struct ExperimentalUISettings: Codable, Equatable {
         try container.encode(self.glassDebugDisabledGroups, forKey: "glassDebugDisabledGroups")
         try container.encode(self.emojiPanelDefersHeavyWork, forKey: "emojiPanelDefersHeavyWorkDefaultOn")
         try container.encode(self.chatOpenDeferSetup, forKey: "chatOpenDeferSetupDefaultOn")
+        try container.encode(self.chatOpenPrewarmWallpaperPattern, forKey: "chatOpenPrewarmWallpaperPatternDefaultOn")
         try container.encode(self.chatScrollExperiments, forKey: "chatScrollExperimentsDefaultOn")
         try container.encode(ExperimentalUISettings.nanogramDefaultsRevision, forKey: "nanogramDefaultsRevision")
     }

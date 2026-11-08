@@ -61,6 +61,16 @@ final class ExperimentalUISettingsDefaultsTests: XCTestCase {
         XCTAssertTrue(try self.roundTrip(try self.roundTrip(settings).withChatOpenDeferSetup(true)).chatOpenDeferSetup)
     }
 
+    func testChatOpenWallpaperPrewarmIsOnByDefaultAndTheChoiceIsKept() throws {
+        XCTAssertTrue(ExperimentalUISettings.defaultSettings.chatOpenPrewarmWallpaperPattern)
+        XCTAssertTrue(try self.decode("{}").chatOpenPrewarmWallpaperPattern)
+        XCTAssertTrue(try self.decode(#"{"chatOpenPrewarmWallpaperPattern": 0}"#).chatOpenPrewarmWallpaperPattern, "only the DefaultOn key counts")
+        var settings = ExperimentalUISettings.defaultSettings
+        settings.chatOpenPrewarmWallpaperPattern = false
+        XCTAssertFalse(try self.roundTrip(settings).chatOpenPrewarmWallpaperPattern)
+        XCTAssertTrue(try self.roundTrip(settings).chatOpenDeferSetup, "the two chat open switches are independent")
+    }
+
     func testChatScrollExperimentsAreOnByDefaultAndTheChoiceIsKept() throws {
         XCTAssertEqual(try self.decode("{}").chatScrollExperiments, 3)
         XCTAssertEqual(ExperimentalUISettings.defaultSettings.chatScrollExperiments, 3)
