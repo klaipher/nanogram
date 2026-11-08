@@ -2200,13 +2200,25 @@ final class PostboxImpl {
         
         let _ = self.transaction({ transaction -> Void in
             let reindexUnreadVersion: Int32 = 2
+            var versionChanged = false
             if self.messageHistoryMetadataTable.getShouldReindexUnreadCountsState() != reindexUnreadVersion {
                 self.messageHistoryMetadataTable.setShouldReindexUnreadCounts(value: true)
                 self.messageHistoryMetadataTable.setShouldReindexUnreadCountsState(value: reindexUnreadVersion)
+                versionChanged = true
             }
             //#if DEBUG
+            // Nanogram: upstream forces this on every launch (its DEBUG guard is commented out), which costs ~30-50 ms on
+            // this queue and ~10 MB of WAL per launch; iOS relaunches the app many times a day. Keep the periodic repair,
+            // at most every 6 hours (a version change still reindexes at once).
             if !isTemporary {
-                self.messageHistoryMetadataTable.setShouldReindexUnreadCounts(value: true)
+                let markerPath = self.basePath + "/" + PostboxUnreadReindexSchedule.markerFileName
+                let now = CFAbsoluteTimeGetCurrent()
+                if PostboxUnreadReindexSchedule.shouldForceReindex(versionChanged: versionChanged, lastRun: PostboxUnreadReindexSchedule.lastRun(markerPath: markerPath), now: now) {
+                    self.messageHistoryMetadataTable.setShouldReindexUnreadCounts(value: true)
+                    PostboxUnreadReindexSchedule.setLastRun(markerPath: markerPath, timestamp: now)
+                } else {
+                    postboxLog("reindexUnreadCounts skipped: last forced reindex was recent")
+                }
             }
             //#endif
             
@@ -5601,6 +5613,34 @@ public enum PostboxStorageOptimizationSchedule {
         return Double(string)
     }
     
+    static func setLastRun(markerPath: String, timestamp: Double) {
+        let _ = try? "\(timestamp)".data(using: .utf8)?.write(to: URL(fileURLWithPath: markerPath), options: .atomic)
+    }
+}
+
+/// How often Postbox forces the unread-count reindex at open (see the transaction after "Postbox initialization took").
+enum PostboxUnreadReindexSchedule {
+    static let markerFileName = "unread-reindex-timestamp"
+    static let minInterval: Double = 6.0 * 60.0 * 60.0
+
+    static func shouldForceReindex(versionChanged: Bool, lastRun: Double?, now: Double) -> Bool {
+        if versionChanged {
+            return true
+        }
+        guard let lastRun else {
+            return true
+        }
+        // A clock that went backwards (or a marker from the future) does not block forever.
+        return now - lastRun >= minInterval || now < lastRun
+    }
+
+    static func lastRun(markerPath: String) -> Double? {
+        guard let data = FileManager.default.contents(atPath: markerPath), let string = String(data: data, encoding: .utf8) else {
+            return nil
+        }
+        return Double(string)
+    }
+
     static func setLastRun(markerPath: String, timestamp: Double) {
         let _ = try? "\(timestamp)".data(using: .utf8)?.write(to: URL(fileURLWithPath: markerPath), options: .atomic)
     }
