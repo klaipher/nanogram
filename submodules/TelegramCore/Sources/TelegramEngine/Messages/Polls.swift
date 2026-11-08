@@ -38,6 +38,7 @@ public enum RequestMessageSelectPollOptionError {
 }
 
 func _internal_requestMessageSelectPollOption(account: Account, messageId: MessageId, opaqueIdentifiers: [Data]) -> Signal<TelegramMediaPoll?, RequestMessageSelectPollOptionError> {
+    account.viewTracker.forgetPollFetch(messageId: messageId)
     return account.postbox.loadedPeerWithId(messageId.peerId)
     |> take(1)
     |> castError(RequestMessageSelectPollOptionError.self)
@@ -130,6 +131,7 @@ public enum AddPollOptionError {
 }
 
 func _internal_addPollOption(account: Account, messageId: MessageId, text: String, entities: [MessageTextEntity], mediaReference: AnyMediaReference?) -> Signal<Never, AddPollOptionError> {
+    account.viewTracker.forgetPollFetch(messageId: messageId)
     return account.postbox.loadedPeerWithId(messageId.peerId)
     |> take(1)
     |> castError(AddPollOptionError.self)
@@ -161,6 +163,7 @@ public enum DeletePollOptionError {
 }
 
 func _internal_deletePollOption(account: Account, messageId: MessageId, opaqueIdentifier: Data) -> Signal<Never, DeletePollOptionError> {
+    account.viewTracker.forgetPollFetch(messageId: messageId)
     return account.postbox.loadedPeerWithId(messageId.peerId)
     |> take(1)
     |> castError(DeletePollOptionError.self)
@@ -527,6 +530,7 @@ private final class PollResultsContextImpl {
     
     init(queue: Queue, account: Account, messageId: MessageId, poll: TelegramMediaPoll) {
         self.queue = queue
+        account.viewTracker.forgetPollFetch(messageId: messageId)
         
         for option in poll.options {
             var count: Int?

@@ -163,7 +163,7 @@ private func fetchWebpage(account: Account, messageId: MessageId, threadId: Int6
     }
 }
 
-private func fetchPoll(account: Account, messageId: MessageId) -> Signal<Void, NoError> {
+private func fetchPoll(account: Account, messageId: MessageId, throttle: Atomic<PollFetchThrottle<MessageId, TelegramMediaPoll>>) -> Signal<Void, NoError> {
     return account.postbox.transaction { transaction -> Signal<Void, NoError> in
         guard let peer = transaction.getPeer(messageId.peerId), let inputPeer = apiInputPeer(peer) else {
             return .complete()
@@ -171,6 +171,12 @@ private func fetchPoll(account: Account, messageId: MessageId) -> Signal<Void, N
         var pollHash: Int64 = 0
         if let message = transaction.getMessage(messageId), let poll = message.media.first(where: { $0 is TelegramMediaPoll }) as? TelegramMediaPoll {
             pollHash = poll.pollHash
+            let now = requestCoalescerCurrentTime()
+            let _ = throttle.modify { throttle in
+                var throttle = throttle
+                throttle.recordFetch(key: messageId, fingerprint: poll, now: now)
+                return throttle
+            }
         }
         return account.network.request(Api.functions.messages.getPollResults(peer: inputPeer, msgId: messageId.id, pollHash: pollHash))
         |> map(Optional.init)
@@ -333,6 +339,8 @@ public final class AccountViewTracker {
     private var pollMessageIds: [MessageId: Int] = [:]
     private var webpageDisposables: [MessageId: Disposable] = [:]
     private var pollDisposables: [MessageId: Disposable] = [:]
+    /// Polls fetched less than a minute ago and unchanged since are not fetched again when they come back on screen.
+    private let pollFetchThrottle = Atomic<PollFetchThrottle<MessageId, TelegramMediaPoll>>(value: PollFetchThrottle(window: 60.0))
     
     private var viewVisibleCallListHoleIds: [Int32: Set<MessageIndex>] = [:]
     private var visibleCallListHoleIds: [MessageIndex: Int] = [:]
@@ -552,6 +560,16 @@ public final class AccountViewTracker {
         }
     }
     
+    /// An explicit user action on a poll (vote, retract, add or delete an option, open the voters list): the
+    /// next time the poll comes on screen it is fetched whatever the last fetch was.
+    func forgetPollFetch(messageId: MessageId) {
+        let _ = self.pollFetchThrottle.modify { throttle in
+            var throttle = throttle
+            throttle.forget(key: messageId)
+            return throttle
+        }
+    }
+
     private func updatePolls(viewId: Int32, messageIds: Set<MessageId>, messages: [MessageId: Message]) {
         let queue = self.queue
         self.queue.async {
@@ -629,10 +647,27 @@ public final class AccountViewTracker {
                             }
                         }
                         
+                        let storedPoll: TelegramMediaPoll? = messages[messageId].flatMap { message in
+                            return message.media.first(where: { $0 is TelegramMediaPoll }) as? TelegramMediaPoll
+                        }
+                        let throttle = self.pollFetchThrottle
+                        // Only the first fetch after the poll came on screen may be skipped; the 30 s refresh of a poll that stays on screen runs as before.
+                        let isFirstFetch = Atomic<Bool>(value: true)
+                        let fetch: Signal<Never, NoError> = deferred { () -> Signal<Never, NoError> in
+                            let isFirst = isFirstFetch.with { $0 }
+                            let _ = isFirstFetch.modify { _ in false }
+                            if isFirst, let storedPoll {
+                                let now = requestCoalescerCurrentTime()
+                                if !throttle.with({ $0.shouldFetch(key: messageId, fingerprint: storedPoll, now: now) }) {
+                                    return .complete()
+                                }
+                            }
+                            return fetchPoll(account: account, messageId: messageId, throttle: throttle) |> ignoreValues
+                        }
                         let pollSignal: Signal<Never, NoError> = deadlineTimer
                         |> distinctUntilChanged
                         |> mapToSignal { reachedDeadline -> Signal<Never, NoError> in
-                            return pollRefreshSignal(fetch: fetchPoll(account: account, messageId: messageId) |> ignoreValues, reachedDeadline: reachedDeadline, burstInterval: 0.5, regularInterval: 30.0)
+                            return pollRefreshSignal(fetch: fetch, reachedDeadline: reachedDeadline, burstInterval: 0.5, regularInterval: 30.0)
                         }
                         self.pollDisposables[messageId] = pollSignal.start()
                     } else {

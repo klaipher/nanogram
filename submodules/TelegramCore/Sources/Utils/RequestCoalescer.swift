@@ -157,8 +157,9 @@ func requestCoalescerRetryAfter(errorDescription: String?) -> Double {
     return Double(seconds)
 }
 
+/// Seconds on a clock that keeps running while the device sleeps and does not follow the wall clock.
 func requestCoalescerCurrentTime() -> Double {
-    return ProcessInfo.processInfo.systemUptime
+    return Double(clock_gettime_nsec_np(CLOCK_MONOTONIC)) / 1_000_000_000.0
 }
 
 /// `RequestCoalescerState` behind a lock, joined to signals. `signal(key:fallback:fetch:)` returns the
