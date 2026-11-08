@@ -191,6 +191,13 @@ marked (check) were not re-verified against the code; correct them on the next c
 - Upstream (row reuse): switch off = upstream's behaviour (one `Bool` read in `nodeConfiguredForParams`; the removal observer drains an empty pool).
 - Sync (row reuse): any stored property added to `ChatListItemNode`, `ItemListRevealOptionsItemNode`, `ListViewItemNode`, `AvatarNode` / `ContentNode` or `ImageNode` needs a reuse-ledger decision (the Mirror tests fail otherwise). A new optional child or view added by the apply must be removed in `prepareForRowReuse` or refused in `rowReuseRefusal`.
 
+### Notification tone "None" still vibrates (iOS)
+- What: with a chat's or category's tone set to None, a message push gets the bundled near-silent `nanogram-none-haptic.caf` as its sound, so iOS fires the Taptic Engine (per Settings, Sounds & Haptics). Upstream shows no sound and no vibration. Only when our own settings resolve to None and notifications are on; muted chats, "Send without sound", reactions, stories, calls and pushes that already carry a sound are unchanged.
+- Why: iOS vibrates only for a notification that has a sound, and the server omits `sound` for None.
+- Where: `Telegram/NotificationService/Sources/NoneToneHaptic.swift`, `NotificationService.swift` (`processAction`, lookup before the action switch), `Telegram/Telegram-iOS/Resources/notifications/nanogram-none-haptic.caf`; tests `Telegram/NotificationService/Tests/NoneToneHapticTests.swift`. iOS only.
+- Upstream: no (could be offered). Nothing changes what is sent to the server.
+- Sync: the action block in `NotificationService.swift` is wrapped in a closure without re-indenting; on a conflict keep upstream's block and re-wrap it.
+
 ### Differences added or changed by the 13.2 merge (2026-11-06)
 - rlottie: upstream removed it and `LottieSettings`; iOS now renders only with tlottie. Our rlottie fork and `submodules/rlottie` wrappers stay for the macOS app and the Watch app (`docs/mac-core-paths.txt`). Upstream: no.
 - Glass: matches upstream 13.2 by default (owner decision, revised). The luma clamp is installed on iOS 26 and 27 with upstream's ranges (`GlassBackgroundView.adaptiveLumaRange`: dark 0-0.874; light 0.22-1.0 on iOS 26, 0.125-1.0 on iOS 27). The Debug Settings switch for Apple's fully native glass was removed on 2026-11-07 (owner: it saves no battery; the clamp is one number per luma callback), so the clamp is always installed. Where: `GlassFixedLook`, `UIViewController+Navigation.m`. Upstream: same look; the only difference is that `registerEffectViewOverrides` does one class lookup for the running OS instead of upstream's loop over both names (keeps the launch-time gain). Sync: keep the single lookup when merging upstream's loop.

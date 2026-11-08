@@ -1626,6 +1626,10 @@ private final class NotificationServiceHandler {
                         }
                     }
 
+                    // Not re-indented, to keep the diff against upstream small: the whole
+                    // `if let action` block below is the body of `processAction`, so a message
+                    // push can first get its "None"-tone haptic sound (see `NoneToneHaptic`).
+                    let processAction: (Action?) -> Void = { action in
                     if let action = action {
                         switch action {
                         case let .call(callData):
@@ -2963,6 +2967,59 @@ private final class NotificationServiceHandler {
                         updateCurrentContent(content)
 
                         completed()
+                    }
+                    }
+
+                    if case let .poll(peerId, content, messageId, reportDelivery, enableInlineEmoji)? = action,
+                       NoneToneHaptic.isCandidate(currentSound: content.sound, isSilent: content.silent, title: content.title, subtitle: content.subtitle, body: content.body, category: content.category),
+                       let stateManager = strongSelf.stateManager {
+                        // Tone "None" arrives without a `sound` key, and iOS vibrates only for a
+                        // notification that has a sound. Look the tone and mute state up locally.
+                        let topicId = (content.userInfo["threadId"] as? Int32).flatMap { Int64($0) }
+                        let _ = (stateManager.postbox.transaction { transaction -> String? in
+                            var isBroadcastChannel: Bool?
+                            var isMonoForum = false
+                            if peerId.namespace == Namespaces.Peer.CloudChannel, let channel = transaction.getPeer(peerId) as? TelegramChannel {
+                                isMonoForum = channel.isMonoForum
+                                if case .broadcast = channel.info {
+                                    isBroadcastChannel = true
+                                } else {
+                                    isBroadcastChannel = false
+                                }
+                            }
+                            guard let category = NoneToneHaptic.category(peerNamespace: peerId.namespace, isBroadcastChannel: isBroadcastChannel) else {
+                                return nil
+                            }
+                            var peerSettings: [TelegramPeerNotificationSettings] = []
+                            if !isMonoForum, let topicId, let threadData = transaction.getMessageHistoryThreadInfo(peerId: peerId, threadId: topicId)?.data.get(MessageHistoryThreadData.self) {
+                                peerSettings.append(threadData.notificationSettings)
+                            }
+                            if let settings = transaction.getPeerNotificationSettings(id: peerId) as? TelegramPeerNotificationSettings {
+                                peerSettings.append(settings)
+                            }
+                            let global = (transaction.getPreferencesEntry(key: PreferencesKeys.globalNotifications)?.get(GlobalNotificationSettings.self) ?? GlobalNotificationSettings.defaultSettings).effective
+                            let now = Int32(clamping: Int64(CFAbsoluteTimeGetCurrent() + kCFAbsoluteTimeIntervalSince1970))
+                            return NoneToneHaptic.replacementSound(
+                                currentSound: content.sound,
+                                isSilent: content.silent,
+                                title: content.title,
+                                subtitle: content.subtitle,
+                                body: content.body,
+                                category: content.category,
+                                peerSettings: peerSettings,
+                                defaults: NoneToneHaptic.defaults(for: category, global: global),
+                                now: now
+                            )
+                        }
+                        |> deliverOn(strongSelf.queue)).start(next: { soundName in
+                            var content = content
+                            if let soundName {
+                                content.sound = soundName
+                            }
+                            processAction(.poll(peerId: peerId, content: content, messageId: messageId, reportDelivery: reportDelivery, enableInlineEmoji: enableInlineEmoji))
+                        })
+                    } else {
+                        processAction(action)
                     }
                 }))
             })
