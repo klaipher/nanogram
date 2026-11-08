@@ -2,7 +2,7 @@
 
 ### Updating the running simulator after a rebuild (whole-`.app` copy)
 
-`tools/dev/tg run` does all of this for the default simulator build: `tg build` makes `bazel-bin/Telegram/Nanogram.app` directly (tree artifact, no `.ipa`), and `tg run` clones it to a writable staging copy, replaces the installed bundle in place (or installs it) on the test simulator and launches it. The recipe below is for plain `Make.py` builds, which still produce an `.ipa`.
+`tools/dev/tg run` does all of this for the default simulator build: `tg build` makes `bazel-bin/Telegram/Telegram_archive-root/Payload/Nanogram.app` directly (tree artifact, no `.ipa`), and `tg run` clones it to a writable staging copy, replaces the installed bundle in place (or installs it) on the test simulator and launches it. The recipe below is for plain `Make.py` builds, which still produce an `.ipa`.
 
 `simctl install` will NOT replace an already-installed app when the build number is unchanged (installd keeps a hard-link cache), so a rebuilt binary silently doesn't take effect. **Preferred fix: copy the whole freshly-built `.app` over the installed bundle in place.** This is more robust than swapping only the `Frameworks/TelegramUIFramework` binary (no risk of app↔framework version skew), and it preserves the account/login because the **data container is a separate path** (`.../data/Containers/Data/Application/<uuid>/`, keyed by bundle id) — only the **bundle** container is replaced, and the install-DB entry stays valid since the path + bundle id are unchanged.
 

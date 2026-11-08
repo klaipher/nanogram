@@ -9,6 +9,8 @@ set -euo pipefail
 ROOT="$(cd "$(dirname "${BASH_SOURCE[0]}")/../.." && pwd)"
 # The app bundle inside bazel-bin/Telegram/ and Telegram.ipa (Telegram/BUILD bundle_name); its executable has the same name.
 APP_NAME="Nanogram"
+# Simulator builds (tree artifact): rules_apple puts a bundle whose name differs from the target under <target>_archive-root.
+SIM_APP="$ROOT/bazel-bin/Telegram/Telegram_archive-root/Payload/${APP_NAME}.app"
 # Relative paths on the command line (tg testflight --notes) are the caller's, not the repository's.
 CALLER_PWD="$PWD"
 cd "$ROOT"
@@ -185,8 +187,8 @@ cmd_build() {
     ${extra[@]+"${extra[@]}"}
   if [ $device -eq 0 ]; then
     # No Telegram name or logo where the app means itself (tools/dev/lint/branding.py).
-    python3 "$ROOT/tools/dev/lint/branding.py" --bundle "$ROOT/bazel-bin/Telegram/${APP_NAME}.app"
-    say "Built: $ROOT/bazel-bin/Telegram/${APP_NAME}.app"
+    python3 "$ROOT/tools/dev/lint/branding.py" --bundle "$SIM_APP"
+    say "Built: $SIM_APP"
   else
     say "Built: $ROOT/bazel-bin/Telegram/Telegram.ipa"
   fi
@@ -214,12 +216,12 @@ cmd_run() {
   else
     open "$dev_dir/../Applications/DeviceHub.app" || true
   fi
-  [ -x "$ROOT/bazel-bin/Telegram/${APP_NAME}.app/${APP_NAME}" ] || die "no app at $ROOT/bazel-bin/Telegram/${APP_NAME}.app"
+  [ -x "$SIM_APP/${APP_NAME}" ] || die "no app at $SIM_APP"
   # Bazel outputs are read-only and simctl needs a writable bundle: stage an APFS
   # clone (instant, no extra space) and install from that.
   local stage; stage="$(mktemp -d)"
   app_path="$stage/${APP_NAME}.app"
-  cp -Rc "$ROOT/bazel-bin/Telegram/${APP_NAME}.app" "$app_path" && chmod -R u+w "$app_path"
+  cp -Rc "$SIM_APP" "$app_path" && chmod -R u+w "$app_path"
   xcrun simctl terminate "$udid" "$bundle_id" 2>/dev/null || true
   # `simctl install` keeps the old binary when the build number is unchanged, so
   # replace an installed bundle in place (the data container is separate).

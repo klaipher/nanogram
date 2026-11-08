@@ -43,7 +43,7 @@ profiles disabled, the same setup upstream's own CI uses.
 | `tg strict-report` | Swift 6 concurrency problems per module (~15 min, see below) |
 | `tg watch test` / `tg watch build` | the Apple Watch app (`Telegram/WatchApp`) and its unit tests in the watchOS simulator (xcodebuild, not Bazel; see `CLAUDE.md`, "Embedded watch app") |
 
-Simulator builds produce `bazel-bin/Telegram/Nanogram.app` (a directory, not a zipped `.ipa`); `tg run` installs and
+Simulator builds produce `bazel-bin/Telegram/Telegram_archive-root/Payload/Nanogram.app` (a directory, not a zipped `.ipa`); `tg run` installs and
 launches it. Device builds still produce `bazel-bin/Telegram/Telegram.ipa`.
 
 Logging in on the simulator: debug builds show a QR code on the "Your Phone" screen. Scan it in Telegram on your
