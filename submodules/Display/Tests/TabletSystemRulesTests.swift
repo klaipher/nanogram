@@ -234,4 +234,23 @@ final class TabletSystemRulesTests: XCTestCase {
     func test_historyDrag_phone_leavesItToTheWindowGesture() {
         XCTAssertFalse(shouldDismissKeyboardOnHistoryDrag(deviceType: .phone, textInputIsFocused: true, hasHardwareKeyboard: false))
     }
+
+    /// The hardware keyboard query (GameController's `GCKeyboard.coalesced`) cost ~24 ms of one frame on an iPhone when a
+    /// chat was opened from the list (frame hitch log, build 202611080941). It only matters on a tablet, so a phone, an
+    /// unrequested focus and an unfocused input must not ask.
+    func test_theHardwareKeyboardIsOnlyQueriedWhereItMatters() {
+        var queries = 0
+        let query: () -> Bool = {
+            queries += 1
+            return false
+        }
+        _ = shouldActivateInputOnChatOpen(requested: true, deviceType: .phone, hasHardwareKeyboard: query())
+        _ = shouldActivateInputOnChatOpen(requested: false, deviceType: .tablet, hasHardwareKeyboard: query())
+        _ = shouldDismissKeyboardOnHistoryDrag(deviceType: .phone, textInputIsFocused: true, hasHardwareKeyboard: query())
+        _ = shouldDismissKeyboardOnHistoryDrag(deviceType: .tablet, textInputIsFocused: false, hasHardwareKeyboard: query())
+        XCTAssertEqual(queries, 0)
+        _ = shouldActivateInputOnChatOpen(requested: true, deviceType: .tablet, hasHardwareKeyboard: query())
+        _ = shouldDismissKeyboardOnHistoryDrag(deviceType: .tablet, textInputIsFocused: true, hasHardwareKeyboard: query())
+        XCTAssertEqual(queries, 2)
+    }
 }

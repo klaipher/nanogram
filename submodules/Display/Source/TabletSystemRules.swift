@@ -247,13 +247,14 @@ public func hardwareKeyboardIsConnected() -> Bool {
 /// every row tap; on an iPhone that is invisible, but on an iPad the chat is already laid out beside the list,
 /// the field takes focus at once and the on-screen keyboard fills the lower half of the screen. On an iPad it is
 /// allowed only with a hardware keyboard (typing starts straight away, nothing is covered). Phones are upstream.
-public func shouldActivateInputOnChatOpen(requested: Bool, deviceType: DeviceType, hasHardwareKeyboard: Bool) -> Bool {
+/// `hasHardwareKeyboard` is evaluated only on a tablet: the GameController query costs a frame on first use.
+public func shouldActivateInputOnChatOpen(requested: Bool, deviceType: DeviceType, hasHardwareKeyboard: @autoclosure () -> Bool) -> Bool {
     guard requested else {
         return false
     }
     switch deviceType {
     case .tablet:
-        return hasHardwareKeyboard
+        return hasHardwareKeyboard()
     case .phone:
         return true
     }
@@ -262,13 +263,13 @@ public func shouldActivateInputOnChatOpen(requested: Bool, deviceType: DeviceTyp
 /// Whether the user's finger dragging the message history dismisses the keyboard. The window's interactive
 /// keyboard gesture is a phone-only gesture (`Window1`), so on an iPad the drag itself dismisses the on-screen
 /// keyboard. Not with a hardware keyboard (the field stays ready for typing) and not when nothing is focused.
-public func shouldDismissKeyboardOnHistoryDrag(deviceType: DeviceType, textInputIsFocused: Bool, hasHardwareKeyboard: Bool) -> Bool {
+public func shouldDismissKeyboardOnHistoryDrag(deviceType: DeviceType, textInputIsFocused: Bool, hasHardwareKeyboard: @autoclosure () -> Bool) -> Bool {
     guard textInputIsFocused else {
         return false
     }
     switch deviceType {
     case .tablet:
-        return !hasHardwareKeyboard
+        return !hasHardwareKeyboard()
     case .phone:
         return false
     }
