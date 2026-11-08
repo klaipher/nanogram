@@ -722,7 +722,7 @@ enum DebugControllerEntry: ItemListNodeEntry {
                 }).start()
             })
         case let .listScrollPacingLog(value):
-            return ItemListSwitchItem(presentationData: presentationData, systemStyle: .glass, title: "List scroll: log frame rate", text: "Writes one log line per scroll of any list: frames, average Hz, late frames and the longest gap (\"ListView scroll pacing\"). Needs Log to File; send with Send Logs. Default: off.", value: value, maximumNumberOfLines: 0, sectionId: self.section, style: .blocks, updated: { value in
+            return ItemListSwitchItem(presentationData: presentationData, systemStyle: .glass, title: "List scroll: log frame rate", text: "Writes one log line per scroll of any list (\"ListView scroll pacing\"): drag = frame rate under the finger and late frames; decel = the fling after release, where iOS slows the rate on purpose, so only sudden stalls (jumps) count; ab = the A/B switches that were on. Needs Log to File; send with Send Logs. Default: off.", value: value, maximumNumberOfLines: 0, sectionId: self.section, style: .blocks, updated: { value in
                 let _ = updateExperimentalUISettingsInteractively(accountManager: arguments.sharedContext.accountManager, { settings in
                     var settings = settings
                     settings.listScrollPacingLog = value
