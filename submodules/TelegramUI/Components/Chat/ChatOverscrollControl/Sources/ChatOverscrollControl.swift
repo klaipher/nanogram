@@ -579,7 +579,11 @@ final class AvatarComponent: Component {
                 }
                 
                 avatarNode.frame = CGRect(origin: CGPoint(), size: availableSize)
-                avatarNode.setPeer(context: component.context, theme: theme, peer: component.peer, emptyColor: theme.list.mediaPlaceholderColor, synchronousLoad: true)
+                // Not synchronous: the control is created on a scroll tick (the first pixel of overscroll), and drawing the avatar
+                // there cost ~28 ms of that frame (`peerAvatarImage` -> `generateImage` on the main thread, 202611081037 hitch log).
+                // The control starts nearly collapsed and grows over 94 pt of pull, so the avatar lands a frame later while it is
+                // still small.
+                avatarNode.setPeer(context: component.context, theme: theme, peer: component.peer, emptyColor: theme.list.mediaPlaceholderColor, synchronousLoad: false)
             }
 
             if let badge = component.badge {
