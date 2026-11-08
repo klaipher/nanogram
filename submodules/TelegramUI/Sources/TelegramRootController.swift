@@ -94,6 +94,8 @@ public final class TelegramRootController: NavigationController, TelegramRootCon
     
     private var applicationInFocusDisposable: Disposable?
     private var storyUploadEventsDisposable: Disposable?
+    private var wallpaperPrewarmer: WallpaperPatternPrewarmer?
+    private var wallpaperPrewarmDisposable: Disposable?
     
     override public var minimizedContainer: MinimizedContainer? {
         didSet {
@@ -152,6 +154,8 @@ public final class TelegramRootController: NavigationController, TelegramRootCon
         self.presentationDataDisposable?.dispose()
         self.applicationInFocusDisposable?.dispose()
         self.storyUploadEventsDisposable?.dispose()
+        self.wallpaperPrewarmDisposable?.dispose()
+        self.wallpaperPrewarmer?.cancel()
     }
     
     public func getContactsController() -> ViewController? {
@@ -250,6 +254,26 @@ public final class TelegramRootController: NavigationController, TelegramRootCon
         self.accountSettingsController = accountSettingsController
         self.rootTabController = tabBarController
         self.pushViewController(tabBarController, animated: false)
+        self.startWallpaperPatternPrewarm()
+    }
+    
+    /// Debug Settings "Chat open: prewarm wallpaper pattern": a few seconds after the chat list is up (and whenever the chat
+    /// wallpaper changes) the wallpaper pattern is rendered in the background into the pattern cache, so the first chat
+    /// opened does not draw it on the main thread. The render itself runs on a utility queue.
+    private func startWallpaperPatternPrewarm() {
+        guard self.context.sharedContext.applicationBindings.isMainApp, self.wallpaperPrewarmDisposable == nil else {
+            return
+        }
+        let prewarmer = WallpaperPatternPrewarmer(context: self.context)
+        self.wallpaperPrewarmer = prewarmer
+        let context = self.context
+        self.wallpaperPrewarmDisposable = (context.sharedContext.presentationData
+        |> map { $0.chatWallpaper }
+        |> distinctUntilChanged
+        |> delay(3.0, queue: Queue.mainQueue())
+        |> deliverOnMainQueue).startStrict(next: { [weak prewarmer] wallpaper in
+            prewarmer?.prewarmChatPattern(wallpaper: wallpaper, isEnabled: context.sharedContext.immediateExperimentalUISettings.chatOpenPrewarmWallpaperPattern)
+        })
     }
         
     public func updateRootControllers(showCallsTab: Bool, showNewsTab: Bool) {

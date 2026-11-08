@@ -54,6 +54,10 @@ Invariants the compiler does not check; each has a test.
   `chatInitDeferredSetup` (the flush) and `chatFirstLayout`. Tests: `//submodules/SSignalKit/SwiftSignalKit:SwiftSignalKitTests`
   (`DeferredSetupTests`), `//submodules/DebugSettingsUI:DebugSettingsUITests` (`ChatOpenSwitchTests`),
   `//submodules/TelegramUIPreferences:TelegramUIPreferencesTests`.
+- **Chat open: prewarm wallpaper pattern** (Debug Settings, same section, `ExperimentalUISettings.chatOpenPrewarmWallpaperPattern`, default on).
+  `WallpaperPatternPrewarmer` renders the chat wallpaper's pattern on a utility queue into the pattern cache 3 s after the root
+  controllers exist (and after wallpaper changes), under the key and with the draw arguments the chat uses, so the first chat open takes
+  the cache-hit path (~36 ms less on main). iPhone, pattern wallpapers only. Test: `//submodules/WallpaperBackgroundNode:WallpaperPatternPrewarmPlanTests`.
 - **Chat-scroll experiments** (Debug Settings ▸ Chat scroll, both off by default): "Chat rows: prepare layout ahead" and
   "Chat rows: reuse row views". A prepared row is used only for an exactly equal `ChatRowPrepKey`; `ChatControllerInteraction`
   properties that a row's layout reads must keep the `rowPrepEpoch` `didSet` (a new such property needs it too). A row view
