@@ -181,4 +181,35 @@ final class FrameHitchMonitorTests: XCTestCase {
         stats.record(timestamp: 12.01, expectedDuration: 1.0 / 120.0)
         XCTAssertEqual(stats.frames, 0, "a frame from before a pause is not this window's")
     }
+
+    /// On a fast phone a scroll rarely misses a frame whatever the variant, so each line also says how much CPU the
+    /// window cost: the main thread's and the whole app's, in ms and in ms per second of the window.
+    func test_summaryLineCarriesTheCPUCostOfTheWindow() {
+        var stats = FrameHitchStats(startTime: 10.0)
+        var t = 10.0
+        stats.record(timestamp: t, expectedDuration: 1.0 / 120.0)
+        self.run(&stats, from: &t, frames: 240, hz: 120.0)
+        let cpu = FrameHitchCPU(seconds: 2.0, mainThread: 0.5, app: 0.9)
+        let line = stats.summary(window: "list:ChatListNode", context: "set=ours", cpu: cpu)
+        XCTAssertTrue(line.contains(" mainCpuMs=500.0 mainCpuMsPerS=250.0 appCpuMsPerS=450.0 "), line)
+        XCTAssertTrue(line.hasSuffix(" ab=set=ours"), line)
+    }
+
+    func test_theCPUClockOfTheCallingThreadAdvancesWithWork() {
+        guard let before = FrameHitchCPU.Reading.current() else {
+            return XCTFail("thread_info and getrusage are available")
+        }
+        var x: UInt64 = 1
+        let end = Date().addingTimeInterval(0.05)
+        while Date() < end {
+            x = x &* 6364136223846793005 &+ 1442695040888963407
+        }
+        XCTAssertNotEqual(x, 0)
+        guard let after = FrameHitchCPU.Reading.current() else {
+            return XCTFail()
+        }
+        let cpu = FrameHitchCPU(from: before, to: after, seconds: 0.05)
+        XCTAssertGreaterThan(cpu.mainThread, 0.02, "50 ms of busy work on this thread")
+        XCTAssertGreaterThanOrEqual(cpu.app, cpu.mainThread - 0.001, "the process clock includes this thread (to the kernel's granularity)")
+    }
 }

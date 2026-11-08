@@ -1,6 +1,66 @@
 import Foundation
 import UIKit
 import QuartzCore
+import Darwin
+
+/// CPU time a measured window cost: the main thread's (`thread_info`, read on the main thread) and the whole app's
+/// (`getrusage`, every thread, the frame-hitch sampler included). On a fast phone a scroll rarely misses a frame whatever
+/// the variant, so this is what tells two variants apart.
+struct FrameHitchCPU: Equatable {
+    struct Reading {
+        let thread: Double
+        let process: Double
+
+        /// The calling thread's and the process's CPU time in seconds; nil when the kernel does not answer.
+        static func current() -> Reading? {
+            let thread = mach_thread_self()
+            defer {
+                mach_port_deallocate(mach_task_self_, thread)
+            }
+            var info = thread_basic_info()
+            var count = mach_msg_type_number_t(MemoryLayout<thread_basic_info_data_t>.size / MemoryLayout<integer_t>.size)
+            let result = withUnsafeMutablePointer(to: &info) { pointer in
+                pointer.withMemoryRebound(to: integer_t.self, capacity: Int(count)) { reboundPointer in
+                    thread_info(thread, thread_flavor_t(THREAD_BASIC_INFO), reboundPointer, &count)
+                }
+            }
+            guard result == KERN_SUCCESS else {
+                return nil
+            }
+            var usage = rusage()
+            guard getrusage(RUSAGE_SELF, &usage) == 0 else {
+                return nil
+            }
+            let threadTime = seconds(info.user_time) + seconds(info.system_time)
+            let processTime = seconds(usage.ru_utime) + seconds(usage.ru_stime)
+            return Reading(thread: threadTime, process: processTime)
+        }
+
+        private static func seconds(_ value: time_value_t) -> Double {
+            return Double(value.seconds) + Double(value.microseconds) / 1_000_000.0
+        }
+
+        private static func seconds(_ value: timeval) -> Double {
+            return Double(value.tv_sec) + Double(value.tv_usec) / 1_000_000.0
+        }
+    }
+
+    let seconds: Double
+    let mainThread: Double
+    let app: Double
+
+    init(seconds: Double, mainThread: Double, app: Double) {
+        self.seconds = seconds
+        self.mainThread = mainThread
+        self.app = app
+    }
+
+    init(from start: Reading, to end: Reading, seconds: Double) {
+        self.seconds = seconds
+        self.mainThread = max(0.0, end.thread - start.thread)
+        self.app = max(0.0, end.process - start.process)
+    }
+}
 
 /// Frame timing of one measured window (a chat scroll, a keyboard animation). A frame is a hitch when the display
 /// link fires more than half a frame later than the frame the system planned (`targetTimestamp - timestamp` of the
@@ -87,9 +147,12 @@ struct FrameHitchStats {
         return self.keptStalls.contains(stall)
     }
 
-    func summary(window: String, context: String?) -> String {
+    func summary(window: String, context: String?, cpu: FrameHitchCPU? = nil) -> String {
         let ratio = self.elapsed > 0.0 ? self.hitchTime * 1000.0 / self.elapsed : 0.0
         var line = String(format: "Frame hitches: window=%@ frames=%d seconds=%.2f hitches=%d hitchMs=%.1f msPerS=%.1f longestMs=%.1f", window, self.frames, self.elapsed, self.hitches, self.hitchTime * 1000.0, ratio, self.longestInterval * 1000.0)
+        if let cpu, cpu.seconds > 0.0 {
+            line += String(format: " mainCpuMs=%.1f mainCpuMsPerS=%.1f appCpuMsPerS=%.1f", cpu.mainThread * 1000.0, cpu.mainThread * 1000.0 / cpu.seconds, cpu.app * 1000.0 / cpu.seconds)
+        }
         if let context {
             line += " ab=" + context
         }
@@ -202,10 +265,12 @@ public final class FrameHitchMonitor {
         var stats: FrameHitchStats
         var captures: [Double: AnyObject] = [:]
         var deadline: Double?
+        let startCPU: FrameHitchCPU.Reading?
 
         init(name: String, startTime: Double, lastFrame: Double?) {
             self.name = name
             self.stats = FrameHitchStats(startTime: startTime, lastFrame: lastFrame)
+            self.startCPU = FrameHitchCPU.Reading.current()
         }
     }
 
@@ -345,7 +410,11 @@ public final class FrameHitchMonitor {
         guard session.stats.frames > 0 else {
             return
         }
-        var summary = session.stats.summary(window: session.name, context: FrameHitchMonitor.context?())
+        var cpu: FrameHitchCPU?
+        if let startCPU = session.startCPU, let endCPU = FrameHitchCPU.Reading.current() {
+            cpu = FrameHitchCPU(from: startCPU, to: endCPU, seconds: CACurrentMediaTime() - session.stats.startTime)
+        }
+        var summary = session.stats.summary(window: session.name, context: FrameHitchMonitor.context?(), cpu: cpu)
         if session.name.hasPrefix("keyboard"), let keyboardState = FrameHitchMonitor.keyboardState?() {
             summary += " kb=" + keyboardState
         }
