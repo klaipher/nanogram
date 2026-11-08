@@ -53,4 +53,17 @@ final class InputDataStartGateTests: XCTestCase {
         XCTAssertTrue(gate.shouldStart(.demand))
         XCTAssertFalse(gate.shouldStart(.idle), "the delayed focus start finds the data already started")
     }
+
+    /// The build is ~250 ms on the main thread. Landing while a key repeats (a held delete right after focus) it stalls
+    /// the keyboard's repeat timer, which runs on our main thread on iOS 27: it waits for a pause in typing as well.
+    func testTheIdleBuildWaitsForAPauseInTyping() {
+        XCTAssertEqual(InputDataStartGate.idleDecision(secondsSinceLastScroll: nil, secondsSinceLastTextChange: 0.1), .retry(after: InputDataStartGate.typingQuietPeriod - 0.1))
+        XCTAssertEqual(InputDataStartGate.idleDecision(secondsSinceLastScroll: nil, secondsSinceLastTextChange: InputDataStartGate.typingQuietPeriod), .startNow)
+        XCTAssertEqual(InputDataStartGate.idleDecision(secondsSinceLastScroll: nil, secondsSinceLastTextChange: nil), .startNow)
+    }
+
+    func testTheIdleBuildWaitsForTheLaterOfScrollAndTyping() {
+        let decision = InputDataStartGate.idleDecision(secondsSinceLastScroll: 0.25, secondsSinceLastTextChange: 0.1)
+        XCTAssertEqual(decision, .retry(after: max(InputDataStartGate.scrollQuietPeriod - 0.25, InputDataStartGate.typingQuietPeriod - 0.1)))
+    }
 }

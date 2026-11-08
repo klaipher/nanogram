@@ -1083,6 +1083,15 @@ public func refreshGenericTextInputAttributes(context: AnyObject, textView: UITe
     }
 }
 
+/// Runs on every keystroke, twice. An unchanged set is not written again: on iOS 27 the system keyboard runs in our
+/// process, and a programmatic trait write while a delete is held is a candidate for cancelling the key repeat.
+private func setTypingAttributesIfChanged(_ textView: UITextView, _ attributes: [NSAttributedString.Key: Any]) {
+    if (textView.typingAttributes as NSDictionary).isEqual(to: attributes) {
+        return
+    }
+    textView.typingAttributes = attributes
+}
+
 public func refreshChatTextInputTypingAttributes(_ textView: UITextView, textColor: UIColor, baseFontSize: CGFloat) {
     var filteredAttributes: [NSAttributedString.Key: Any] = [
         NSAttributedString.Key.font: Font.regular(baseFontSize),
@@ -1105,7 +1114,7 @@ public func refreshChatTextInputTypingAttributes(_ textView: UITextView, textCol
             }
         }
     }
-    textView.typingAttributes = filteredAttributes
+    setTypingAttributesIfChanged(textView, filteredAttributes)
 }
 
 public func refreshChatTextInputTypingAttributes(_ textView: UITextView, theme: PresentationTheme, baseFontSize: CGFloat) {
@@ -1130,7 +1139,7 @@ public func refreshChatTextInputTypingAttributes(_ textView: UITextView, theme: 
             }
         }
     }
-    textView.typingAttributes = filteredAttributes
+    setTypingAttributesIfChanged(textView, filteredAttributes)
 }
 
 private func trimRangesForChatInputText(_ text: NSAttributedString) -> (Int, Int) {

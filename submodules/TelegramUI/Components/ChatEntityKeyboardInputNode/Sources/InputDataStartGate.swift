@@ -32,13 +32,25 @@ public struct InputDataStartGate {
         case retry(after: Double)
     }
 
-    /// Whether the idle build may start now, given the seconds since the history list last scrolled
-    /// (nil: it has not scrolled).
-    public static func idleDecision(secondsSinceLastScroll: Double?) -> IdleDecision {
-        guard let secondsSinceLastScroll, secondsSinceLastScroll < scrollQuietPeriod else {
-            return .startNow
+    /// The idle build also waits until the text has not changed for this long. The build is ~250 ms on the main thread,
+    /// and on iOS 27 the system keyboard's key repeat runs on our main thread too: a build landing in a held delete right
+    /// after focus stalled the repeat (one character per hold, owner's tester, 2026-11-08).
+    public static let typingQuietPeriod: Double = 0.5
+
+    /// Whether the idle build may start now, given the seconds since the history list last scrolled and since the text
+    /// last changed (nil: it has not).
+    public static func idleDecision(secondsSinceLastScroll: Double?, secondsSinceLastTextChange: Double? = nil) -> IdleDecision {
+        var wait: Double = 0.0
+        if let secondsSinceLastScroll, secondsSinceLastScroll < scrollQuietPeriod {
+            wait = max(wait, scrollQuietPeriod - max(0.0, secondsSinceLastScroll))
         }
-        return .retry(after: scrollQuietPeriod - max(0.0, secondsSinceLastScroll))
+        if let secondsSinceLastTextChange, secondsSinceLastTextChange < typingQuietPeriod {
+            wait = max(wait, typingQuietPeriod - max(0.0, secondsSinceLastTextChange))
+        }
+        if wait > 0.0 {
+            return .retry(after: wait)
+        }
+        return .startNow
     }
 
     public private(set) var hasStarted = false

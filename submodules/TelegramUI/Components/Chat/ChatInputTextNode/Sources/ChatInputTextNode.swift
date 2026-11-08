@@ -1100,11 +1100,45 @@ public final class ChatInputTextView: ChatInputTextViewImpl, UITextViewDelegate,
         }
     }
     
+    /// Receives one line per run of deletes (`DeleteBurstTracker`). Set by the app (to its logger).
+    public static var deleteBurstLog: ((String) -> Void)?
+    private var deleteBurstTracker = DeleteBurstTracker()
+    private var deleteBurstFlushScheduled = false
+
+    override public func deleteBackward() {
+        if let log = ChatInputTextView.deleteBurstLog {
+            if let finished = self.deleteBurstTracker.recordDelete(at: CACurrentMediaTime()) {
+                log(finished)
+            }
+            self.scheduleDeleteBurstFlush()
+        }
+        super.deleteBackward()
+    }
+
+    private func scheduleDeleteBurstFlush() {
+        if self.deleteBurstFlushScheduled {
+            return
+        }
+        self.deleteBurstFlushScheduled = true
+        DispatchQueue.main.asyncAfter(deadline: .now() + DeleteBurstTracker.gap + 0.05, execute: { [weak self] in
+            guard let self else {
+                return
+            }
+            self.deleteBurstFlushScheduled = false
+            if let line = self.deleteBurstTracker.finish(at: CACurrentMediaTime()) {
+                ChatInputTextView.deleteBurstLog?(line)
+            } else if self.deleteBurstTracker.hasOpenRun {
+                self.scheduleDeleteBurstFlush()
+            }
+        })
+    }
+
     override public var attributedText: NSAttributedString? {
         get {
             return super.attributedText
         } set(value) {
             if self.attributedText != value {
+                self.deleteBurstTracker.recordProgrammaticWrite(at: CACurrentMediaTime())
                 let selectedRange = self.selectedRange
                 let preserveSelectedRange = selectedRange.location != self.textStorage.length
                 
@@ -1142,7 +1176,9 @@ public final class ChatInputTextView: ChatInputTextViewImpl, UITextViewDelegate,
                     super.attributedText = value ?? NSAttributedString()
                 }
                 
-                if preserveSelectedRange {
+                // Only when the write moved it: a programmatic selection change is what cancels the system keyboard's key
+                // repeat (on iOS 27 it runs in our process), and an attributes-only write leaves the caret where it was.
+                if preserveSelectedRange && self.selectedRange != selectedRange {
                     self.isPreservingSelection = true
                     self.selectedRange = selectedRange
                     self.isPreservingSelection = false

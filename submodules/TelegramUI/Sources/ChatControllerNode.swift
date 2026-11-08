@@ -310,6 +310,8 @@ class ChatControllerNode: ASDisplayNode, ASScrollViewDelegate {
     private var inputMediaNodeDataPromise = Promise<ChatEntityKeyboardInputNode.InputData>()
     private var didInitializeInputMediaNodeDataPromise: Bool = false
     private var inputMediaNodeDataStartGate = InputDataStartGate()
+    /// When the text input last changed (see `scheduleIdleInputMediaNodeDataStart`).
+    private var lastInputTextChangeTimestamp: Double?
     private var inputMediaNodeDataIdleDisposable: Disposable?
     private var inputMediaNodeDataDisposable: Disposable?
     private var inputMediaNodeStateContext = ChatEntityKeyboardInputNode.StateContext()
@@ -3893,6 +3895,10 @@ class ChatControllerNode: ASDisplayNode, ASScrollViewDelegate {
                 textStateUpdated = true
             }
             
+            if chatPresentationInterfaceState.interfaceState.effectiveInputState.inputText !== self.chatPresentationInterfaceState.interfaceState.effectiveInputState.inputText {
+                // Identity, not contents: a cheap "the text may have changed" for the emoji panel data build's typing pause.
+                self.lastInputTextChangeTimestamp = CACurrentMediaTime()
+            }
             self.chatPresentationInterfaceState = self.chatPresentationInterfaceState.updatedInterfaceState { $0.withUpdatedEffectiveInputState(textInputPanelNode.inputTextState) }
         }
         
@@ -4385,7 +4391,11 @@ class ChatControllerNode: ASDisplayNode, ASScrollViewDelegate {
             if let timestamp = self.historyNode.lastScrollActivityTimestamp {
                 secondsSinceLastScroll = CACurrentMediaTime() - timestamp
             }
-            switch InputDataStartGate.idleDecision(secondsSinceLastScroll: secondsSinceLastScroll) {
+            var secondsSinceLastTextChange: Double?
+            if let timestamp = self.lastInputTextChangeTimestamp {
+                secondsSinceLastTextChange = CACurrentMediaTime() - timestamp
+            }
+            switch InputDataStartGate.idleDecision(secondsSinceLastScroll: secondsSinceLastScroll, secondsSinceLastTextChange: secondsSinceLastTextChange) {
             case .startNow:
                 self.startInputMediaNodeDataIfNeeded(.idle)
             case let .retry(after):

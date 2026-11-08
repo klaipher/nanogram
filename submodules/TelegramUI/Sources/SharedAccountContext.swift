@@ -9,6 +9,7 @@ import NotificationsPresentationData
 import SwiftSignalKit
 import WebProxyTransport
 import Display
+import ChatInputTextNode
 import ComponentFlow
 import TelegramPresentationData
 import TelegramCallsUI
@@ -590,6 +591,10 @@ public final class SharedAccountContextImpl: SharedAccountContext {
             return immediateExperimentalUISettingsValue.with { $0.backSwipePreparePreviousScreen ? "backPrep=on" : "backPrep=off" }
         }
         // Debug Settings "Frame hitches": frame timing per scroll and keyboard animation, with main-thread stacks of the longest stalls.
+        // One line per run of deletes in the chat composer: did the keyboard repeat, and did we touch the text meanwhile.
+        ChatInputTextView.deleteBurstLog = { line in
+            Logger.shared.log("Composer", line)
+        }
         FrameHitchMonitor.log = { line in
             Logger.shared.log("FrameHitch", line)
         }
