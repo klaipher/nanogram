@@ -105,6 +105,9 @@ public final class FrameHitchMonitor {
     public static var capture: ((Double, Double) -> AnyObject?)?
     /// Turns a capture into a text call tree (runs when the window ends).
     public static var report: ((AnyObject) -> String)?
+    /// Extra state appended to keyboard windows' summaries as ` kb=…` (where the system keyboard is drawn). Set by
+    /// the app; runs on the main thread when a keyboard window ends.
+    public static var keyboardState: (() -> String)?
 
     static let keptStallLimit = 4
     /// Stack reports are built here, not on the main thread: building one walks a 128-frame tree with `dladdr`, which
@@ -163,14 +166,14 @@ public final class FrameHitchMonitor {
     /// Times synchronous work that runs inside one frame (a display link cannot see a stall that starts before its
     /// window opens). Logs one line, and the main-thread stack, when it took at least `FrameHitchStats.stackThreshold`.
     @discardableResult
-    public func measure<T>(_ name: String, _ body: () -> T) -> T {
+    public func measure<T>(_ name: String, alwaysLog: Bool = false, _ body: () -> T) -> T {
         guard FrameHitchMonitor.isEnabled else {
             return body()
         }
         let start = CACurrentMediaTime()
         let result = body()
         let end = CACurrentMediaTime()
-        if end - start >= FrameHitchStats.stackThreshold {
+        if alwaysLog || end - start >= FrameHitchStats.stackThreshold {
             var line = String(format: "Frame hitches: window=%@ syncMs=%.1f", name, (end - start) * 1000.0)
             if let context = FrameHitchMonitor.context?() {
                 line += " ab=" + context
@@ -245,7 +248,11 @@ public final class FrameHitchMonitor {
         guard session.stats.frames > 0 else {
             return
         }
-        FrameHitchMonitor.log?(session.stats.summary(window: session.name, context: FrameHitchMonitor.context?()))
+        var summary = session.stats.summary(window: session.name, context: FrameHitchMonitor.context?())
+        if session.name.hasPrefix("keyboard"), let keyboardState = FrameHitchMonitor.keyboardState?() {
+            summary += " kb=" + keyboardState
+        }
+        FrameHitchMonitor.log?(summary)
         guard let report = FrameHitchMonitor.report, let log = FrameHitchMonitor.log else {
             return
         }

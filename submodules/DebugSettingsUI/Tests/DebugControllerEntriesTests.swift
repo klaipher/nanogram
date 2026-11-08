@@ -21,6 +21,7 @@ final class DebugControllerEntriesTests: XCTestCase {
         settings.chatListLazyRareSubnodes = on
         settings.chatListRowReuse = on
         settings.frameHitchLog = on
+        settings.keyboardWindowAccessOff = on
         settings.localTranscription = on
         settings.disableQuickReaction = on
         settings.disableLanguageRecognition = on

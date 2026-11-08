@@ -4295,6 +4295,9 @@ public class ChatTextInputPanelNode: ChatInputPanelNode, ASEditableTextNodeDeleg
     }
     
     public func chatInputTextNodeDidUpdateText() {
+        // Debug Settings "Frame hitches": each keystroke and the work it triggers (with the keyboard drawn in our
+        // process, a busy main thread also delays the key animations).
+        FrameHitchMonitor.shared.observe("typing", duration: 0.5)
         if self.ignoreChatInputTextNodeDidUpdateText {
             return
         }

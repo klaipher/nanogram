@@ -93,6 +93,8 @@ public struct ExperimentalUISettings: Codable, Equatable {
     public var chatListRowReuse: Bool
     /// Debug Settings ▸ List scroll ▸ Frame hitches: log with main-thread stacks. Off by default.
     public var frameHitchLog: Bool
+    /// Debug Settings ▸ List scroll ▸ Keyboard: leave the keyboard window alone (A/B). Off by default.
+    public var keyboardWindowAccessOff: Bool
     /// Debug Settings ▸ "Calls: livestream hardware decoding". On by default (owner decision, 2026-11). Live stream video is decoded
     /// with VideoToolbox instead of FFmpeg's software decoders (at most 2 sessions, per-stream fallback to
     /// software on any error). Local only: nothing is negotiated or sent. Read when a call starts.
@@ -217,6 +219,7 @@ public struct ExperimentalUISettings: Codable, Equatable {
         chatListLazyRareSubnodes: Bool = true,
         chatListRowReuse: Bool = false,
         frameHitchLog: Bool = false,
+        keyboardWindowAccessOff: Bool = false,
         callsLivestreamHardwareDecoding: Bool = true,
         callsNativeCapturePath: Bool = true,
         callsSystemNoiseSuppression: Bool = true,
@@ -269,6 +272,7 @@ public struct ExperimentalUISettings: Codable, Equatable {
         self.chatListLazyRareSubnodes = chatListLazyRareSubnodes
         self.chatListRowReuse = chatListRowReuse
         self.frameHitchLog = frameHitchLog
+        self.keyboardWindowAccessOff = keyboardWindowAccessOff
         self.callsLivestreamHardwareDecoding = callsLivestreamHardwareDecoding
         self.callsNativeCapturePath = callsNativeCapturePath
         self.callsSystemNoiseSuppression = callsSystemNoiseSuppression
@@ -337,6 +341,7 @@ public struct ExperimentalUISettings: Codable, Equatable {
         self.chatListLazyRareSubnodes = try container.decodeIfPresent(Bool.self, forKey: "chatListLazyRareSubnodes") ?? true
         self.chatListRowReuse = try container.decodeIfPresent(Bool.self, forKey: "chatListRowReuse") ?? false
         self.frameHitchLog = try container.decodeIfPresent(Bool.self, forKey: "frameHitchLog") ?? false
+        self.keyboardWindowAccessOff = try container.decodeIfPresent(Bool.self, forKey: "keyboardWindowAccessOff") ?? false
         // These four defaulted to off and became on (owner decision, 2026-11). The whole struct is saved on every change, so
         // an install that ever opened Debug Settings holds an explicit `false` under the old keys that the user never
         // chose. They are read from new keys (as with advanced ducking): only a choice made after the change counts.
@@ -411,6 +416,7 @@ public struct ExperimentalUISettings: Codable, Equatable {
         try container.encode(self.chatListLazyRareSubnodes, forKey: "chatListLazyRareSubnodes")
         try container.encode(self.chatListRowReuse, forKey: "chatListRowReuse")
         try container.encode(self.frameHitchLog, forKey: "frameHitchLog")
+        try container.encode(self.keyboardWindowAccessOff, forKey: "keyboardWindowAccessOff")
         try container.encode(self.callsLivestreamHardwareDecoding, forKey: "callsLivestreamHardwareDecodingDefaultOn")
         try container.encode(self.callsNativeCapturePath, forKey: "callsNativeCapturePathDefaultOn")
         try container.encode(self.callsSystemNoiseSuppression, forKey: "callsSystemNoiseSuppressionDefaultOn")

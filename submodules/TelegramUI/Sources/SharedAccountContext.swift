@@ -39,6 +39,7 @@ import PremiumUI
 import StickerPackPreviewUI
 import ChatControllerInteraction
 import CpuProfiler
+import UIKitRuntimeUtils
 import ChatPresentationInterfaceState
 import StorageUsageScreen
 import DebugSettingsUI
@@ -619,7 +620,11 @@ public final class SharedAccountContextImpl: SharedAccountContext {
             }
             return MainThreadSampler.report(forCapture: data as Data)
         }
+        FrameHitchMonitor.keyboardState = {
+            return describeKeyboardHosting()
+        }
         FrameHitchMonitor.isEnabled = immediateExperimentalUISettingsValue.with({ $0.frameHitchLog })
+        KeyboardWindowAccess.isDisabled = immediateExperimentalUISettingsValue.with({ $0.keyboardWindowAccessOff })
         SharedDisplayLinkDriver.shared.followsUpstreamFrameRate = immediateExperimentalUISettingsValue.with({ $0.displayLinkUpstreamRate })
         ListViewDeferredAccessibility.shared.forcesImmediate = immediateExperimentalUISettingsValue.with({ $0.listAccessibilityImmediate })
         ListViewScrollPacing.isEnabled = immediateExperimentalUISettingsValue.with({ $0.listScrollPacingLog })
@@ -644,6 +649,7 @@ public final class SharedAccountContextImpl: SharedAccountContext {
                 ListViewDeferredAccessibility.shared.forcesImmediate = settings.listAccessibilityImmediate
                 ListViewScrollPacing.isEnabled = settings.listScrollPacingLog
                 FrameHitchMonitor.isEnabled = settings.frameHitchLog
+                KeyboardWindowAccess.isDisabled = settings.keyboardWindowAccessOff
                 ChatListRowExperiments.lazyRareSubnodes = settings.chatListLazyRareSubnodes
                 ChatListRowExperiments.rowReuse = settings.chatListRowReuse
                 MediaEditorVideoExport.forceLegacyStoryWriter = settings.storyLegacyVideoWriter
@@ -5513,4 +5519,34 @@ private func useFlatModalCallsPresentation(context: AccountContext) -> Bool {
         return false
     }
     return true
+}
+
+/// Debug Settings "Frame hitches": where the system keyboard is drawn. Since iOS 17 the iPhone keyboard runs in its own
+/// process (WWDC23 "Keep up with the keyboard"); the 202611081037 log still showed `UIKeyboardLayoutStar` building
+/// layouts and `UIKBKeyView` drawing keys on our main thread. `inProcess` with key views means the keys live in our
+/// process. Walks the keyboard window only.
+func describeKeyboardHosting() -> String {
+    guard let window = UIApplication.shared.internalGetKeyboard() else {
+        return "noKeyboardWindow"
+    }
+    var keyViews = 0
+    var layoutStar = false
+    var remoteHosts = 0
+    var stack: [(UIView, Int)] = [(window, 0)]
+    while let (view, depth) = stack.popLast() {
+        let name = NSStringFromClass(type(of: view))
+        if name.hasPrefix("UIKBKeyView") {
+            keyViews += 1
+        } else if name.hasPrefix("UIKeyboardLayoutStar") {
+            layoutStar = true
+        } else if name.contains("Remote") || name.contains("Placeholder") {
+            remoteHosts += 1
+        }
+        if depth < 40 {
+            for subview in view.subviews {
+                stack.append((subview, depth + 1))
+            }
+        }
+    }
+    return "inProcessWindow:\(NSStringFromClass(type(of: window))) keyViews=\(keyViews) layoutStar=\(layoutStar ? "yes" : "no") remoteHosts=\(remoteHosts)"
 }
