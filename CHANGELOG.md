@@ -4,6 +4,8 @@ Newest first. Internal notes for each TestFlight build; testers see the What to 
 
 ## Unreleased
 
+- **"Send as" avatar button shows while the chat opens again, as in Telegram**. Owner, 2026-11-08: the button appeared about a second after a group or channel opened. Its list subscription was inside the deferred chat-open setup (`openSetup.run`, flushed the main-queue turn after `viewDidAppear`, so after the push transition), and the list is read from the database first, so deferring it bought little. The subscription in `ChatControllerLoadDisplayNode.swift` starts at load again (upstream's placement); the rest of the deferred setup (network-speed notices, global media/live-location panels, name colour, bot callback alerts, recorders, typing activity) stays deferred. No unit test (chat controller glue); compiled.
+
 ## 13.2 (202611082109) — 2026-11-08 — 6c74cf54
 
 TestFlight build. Previous TestFlight build: 202611081918 (4d9521f8); changes since are `git log 4d9521f8..6c74cf54`: the "send as" menu's close button closes it with the keyboard up (no more stacked copies); the performance switches are baked in (our variants always on, their Debug switches and the Telegram-variant branches removed, the scroll pacing log and Perf A/B rows removed); back-swipe preparation is on by default. What to Test: the send-as close button, chat list and chats unchanged in look, two-level back navigation. Entries below.

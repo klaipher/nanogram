@@ -792,83 +792,81 @@ extension ChatControllerImpl {
             return SendAsPeer(peer: peer, subscribers: nil, isPremiumRequired: false)
         }
         
-        self.openSetup.run { [weak self] in
-            guard let self else {
-                return
-            }
-            if let peerId = self.chatLocation.peerId, [Namespaces.Peer.CloudChannel, Namespaces.Peer.CloudGroup].contains(peerId.namespace) {
-                self.sendAsPeersDisposable = (combineLatest(
-                    queue: Queue.mainQueue(),
-                    currentAccountPeer,
-                    self.context.account.postbox.peerView(id: peerId),
-                    self.context.engine.peers.sendAsAvailablePeers(peerId: peerId))
-                ).startStrict(next: { [weak self] currentAccountPeer, peerView, peers in
-                    guard let strongSelf = self else {
-                        return
-                    }
-                
-                    if let channel = peerViewMainPeer(peerView) as? TelegramChannel, channel.isMonoForum {
-                        return
-                    }
-                
-                    let isPremium = strongSelf.presentationInterfaceState.isPremium
-                
-                    var allPeers: [SendAsPeer]?
-                    if !peers.isEmpty {
-                        if let channel = peerViewMainPeer(peerView) as? TelegramChannel, case .group = channel.info, channel.hasPermission(.canBeAnonymous) {
-                            allPeers = peers
-                        
-                            var hasAnonymousPeer = false
-                            for peer in peers {
-                                if peer.peer.id == channel.id {
-                                    hasAnonymousPeer = true
-                                    break
-                                }
+        // Not deferred to after the open transition (the rest of the chat-open setup is): the "send as" list is read from the
+        // database first, so starting it now shows the avatar button during the transition, as in Telegram. Deferred, it
+        // appeared about a second after the chat opened (owner, 2026-11-08).
+        if let peerId = self.chatLocation.peerId, [Namespaces.Peer.CloudChannel, Namespaces.Peer.CloudGroup].contains(peerId.namespace) {
+            self.sendAsPeersDisposable = (combineLatest(
+                queue: Queue.mainQueue(),
+                currentAccountPeer,
+                self.context.account.postbox.peerView(id: peerId),
+                self.context.engine.peers.sendAsAvailablePeers(peerId: peerId))
+            ).startStrict(next: { [weak self] currentAccountPeer, peerView, peers in
+                guard let strongSelf = self else {
+                    return
+                }
+            
+                if let channel = peerViewMainPeer(peerView) as? TelegramChannel, channel.isMonoForum {
+                    return
+                }
+            
+                let isPremium = strongSelf.presentationInterfaceState.isPremium
+            
+                var allPeers: [SendAsPeer]?
+                if !peers.isEmpty {
+                    if let channel = peerViewMainPeer(peerView) as? TelegramChannel, case .group = channel.info, channel.hasPermission(.canBeAnonymous) {
+                        allPeers = peers
+                    
+                        var hasAnonymousPeer = false
+                        for peer in peers {
+                            if peer.peer.id == channel.id {
+                                hasAnonymousPeer = true
+                                break
                             }
-                            if !hasAnonymousPeer {
-                                allPeers?.insert(SendAsPeer(peer: EnginePeer(channel), subscribers: 0, isPremiumRequired: false), at: 0)
+                        }
+                        if !hasAnonymousPeer {
+                            allPeers?.insert(SendAsPeer(peer: EnginePeer(channel), subscribers: 0, isPremiumRequired: false), at: 0)
+                        }
+                    } else if let channel = peerViewMainPeer(peerView) as? TelegramChannel, case let .broadcast(info) = channel.info, (info.flags.contains(.messagesShouldHaveSignatures) || info.flags.contains(.messagesShouldHaveProfiles)) {
+                        allPeers = peers
+                    
+                        var hasAnonymousPeer = false
+                        var hasSelfPeer = false
+                        for peer in peers {
+                            if peer.peer.id == channel.id {
+                                hasAnonymousPeer = true
+                            } else if peer.peer.id == strongSelf.context.account.peerId {
+                                hasSelfPeer = true
                             }
-                        } else if let channel = peerViewMainPeer(peerView) as? TelegramChannel, case let .broadcast(info) = channel.info, (info.flags.contains(.messagesShouldHaveSignatures) || info.flags.contains(.messagesShouldHaveProfiles)) {
-                            allPeers = peers
-                        
-                            var hasAnonymousPeer = false
-                            var hasSelfPeer = false
-                            for peer in peers {
-                                if peer.peer.id == channel.id {
-                                    hasAnonymousPeer = true
-                                } else if peer.peer.id == strongSelf.context.account.peerId {
-                                    hasSelfPeer = true
-                                }
-                            }
-                            if !hasSelfPeer {
-                                allPeers?.insert(currentAccountPeer, at: 0)
-                            }
-                            if !hasAnonymousPeer {
-                                allPeers?.insert(SendAsPeer(peer: EnginePeer(channel), subscribers: 0, isPremiumRequired: false), at: 0)
-                            }
-                        } else {
-                            allPeers = peers.filter { $0.peer.id != peerViewMainPeer(peerView)?.id }
+                        }
+                        if !hasSelfPeer {
                             allPeers?.insert(currentAccountPeer, at: 0)
                         }
-                    }
-                    if allPeers?.count == 1 {
-                        allPeers = nil
-                    }
-                
-                    var currentSendAsPeerId = strongSelf.presentationInterfaceState.currentSendAsPeerId
-                    if let peerId = currentSendAsPeerId, let peer = allPeers?.first(where: { $0.peer.id == peerId }) {
-                        if !isPremium && peer.isPremiumRequired {
-                            currentSendAsPeerId = nil
+                        if !hasAnonymousPeer {
+                            allPeers?.insert(SendAsPeer(peer: EnginePeer(channel), subscribers: 0, isPremiumRequired: false), at: 0)
                         }
                     } else {
+                        allPeers = peers.filter { $0.peer.id != peerViewMainPeer(peerView)?.id }
+                        allPeers?.insert(currentAccountPeer, at: 0)
+                    }
+                }
+                if allPeers?.count == 1 {
+                    allPeers = nil
+                }
+            
+                var currentSendAsPeerId = strongSelf.presentationInterfaceState.currentSendAsPeerId
+                if let peerId = currentSendAsPeerId, let peer = allPeers?.first(where: { $0.peer.id == peerId }) {
+                    if !isPremium && peer.isPremiumRequired {
                         currentSendAsPeerId = nil
                     }
-                
-                    strongSelf.updateChatPresentationInterfaceState(animated: true, interactive: false, {
-                        return $0.updatedSendAsPeers(allPeers).updatedCurrentSendAsPeerId(currentSendAsPeerId)
-                    })
+                } else {
+                    currentSendAsPeerId = nil
+                }
+            
+                strongSelf.updateChatPresentationInterfaceState(animated: true, interactive: false, {
+                    return $0.updatedSendAsPeers(allPeers).updatedCurrentSendAsPeerId(currentSendAsPeerId)
                 })
-            }
+            })
         }
         
         if let peerId = self.chatLocation.peerId {
