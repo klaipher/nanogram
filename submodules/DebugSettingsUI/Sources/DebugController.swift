@@ -385,6 +385,7 @@ enum DebugControllerEntry: ItemListNodeEntry {
     case listScrollPacingLog(Bool)
     case chatListLazyRareSubnodes(Bool)
     case chatListRowReuse(Bool)
+    case frameHitchLog(Bool)
     case enableNetworkFramework(Bool)
     case enableNetworkExperiments(Bool)
     case rustMTProtoEngine(Bool)
@@ -420,7 +421,7 @@ enum DebugControllerEntry: ItemListNodeEntry {
             return DebugControllerSection.chatOpen.rawValue
         case .chatScrollHeader, .chatScrollPrepareLayoutAhead, .chatScrollReuseRowViews:
             return DebugControllerSection.chatScroll.rawValue
-        case .listScrollHeader, .displayLinkUpstreamRate, .listAccessibilityImmediate, .listScrollPacingLog, .chatListLazyRareSubnodes, .chatListRowReuse:
+        case .listScrollHeader, .displayLinkUpstreamRate, .listAccessibilityImmediate, .listScrollPacingLog, .chatListLazyRareSubnodes, .chatListRowReuse, .frameHitchLog:
             return DebugControllerSection.listScroll.rawValue
         case .springSendAnimation, .fakeWalletTransfers, .stickerRendererMode, .disableImageContentAnalysis, .disableLanguageRecognition, .localTranscription, .enableVoipTcp, .tabletDisplayLinkFrameRateCap, .chatMediaEditorLegacy, .mediaGridLegacy, .sharedMediaGridLegacy, .storyLegacyVideoWriter, .chatLegacyVideoWriter, .chatSideListLegacy, .messageWidgets, .messageWidgetWallet:
             return DebugControllerSection.experiments.rawValue
@@ -601,6 +602,9 @@ enum DebugControllerEntry: ItemListNodeEntry {
         case .chatListRowReuse:
             // Appended right after `chatListLazyRareSubnodes`; see the ordering note at `springSendAnimation`.
             return 142
+        case .frameHitchLog:
+            // Appended right after `chatListRowReuse`; see the ordering note at `springSendAnimation`.
+            return 143
         case .springSendAnimation:
             // ItemList asserts its entries are in strictly increasing order (`<`: section, then
             // `sortIndex`, which is the stableId here; ItemListControllerNode.swift), so an id must
@@ -742,6 +746,14 @@ enum DebugControllerEntry: ItemListNodeEntry {
                 let _ = updateExperimentalUISettingsInteractively(accountManager: arguments.sharedContext.accountManager, { settings in
                     var settings = settings
                     settings.chatListRowReuse = value
+                    return settings
+                }).start()
+            })
+        case let .frameHitchLog(value):
+            return ItemListSwitchItem(presentationData: presentationData, systemStyle: .glass, title: "Frame hitches: log with main-thread stacks", text: "While you scroll a chat, the chat list or any list, and while the keyboard opens or closes, every frame is timed. One \"Frame hitches\" line per scroll or keyboard animation (frames, hitches, hitch time, longest gap), followed by what the main thread was doing during its longest stalls (\"Frame hitch stack\"). Holds the screen at its top rate and samples the main thread while measuring, so use it only to collect logs. Needs Log to File; send with Send Logs. Default: off.", value: value, maximumNumberOfLines: 0, sectionId: self.section, style: .blocks, updated: { value in
+                let _ = updateExperimentalUISettingsInteractively(accountManager: arguments.sharedContext.accountManager, { settings in
+                    var settings = settings
+                    settings.frameHitchLog = value
                     return settings
                 }).start()
             })
@@ -1543,6 +1555,7 @@ func debugControllerEntries(environment: DebugControllerEntriesEnvironment, them
         entries.append(.listScrollPacingLog(experimentalSettings.listScrollPacingLog))
         entries.append(.chatListLazyRareSubnodes(experimentalSettings.chatListLazyRareSubnodes))
         entries.append(.chatListRowReuse(experimentalSettings.chatListRowReuse))
+        entries.append(.frameHitchLog(experimentalSettings.frameHitchLog))
     }
 
     if isMainApp {

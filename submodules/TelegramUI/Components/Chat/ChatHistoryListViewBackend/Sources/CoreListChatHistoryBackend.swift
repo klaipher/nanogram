@@ -867,6 +867,7 @@ final class CoreListChatHistoryBackend: ASDisplayNode, ChatHistoryListViewBacken
         // consumer ignores it, so pass .zero.
         self.coreList.willBeginDragging = { [weak self] in
             guard let self else { return }
+            FrameHitchMonitor.shared.begin("chatScroll")
 
             // Sample the drag's origin before it can move anything. ListViewImpl samples in
             // `touchesBegan` — finger down — whereas CoreVirtualListView's earliest hook is drag-begin,
@@ -929,6 +930,7 @@ final class CoreListChatHistoryBackend: ASDisplayNode, ChatHistoryListViewBacken
             // coordinate space for a value nothing reads.
             self.endedInteractiveDragging(.zero)
             if !isDecelerating {
+                FrameHitchMonitor.shared.end("chatScroll")
                 self.didEndScrolling?(false)
             }
         }
@@ -937,6 +939,7 @@ final class CoreListChatHistoryBackend: ASDisplayNode, ChatHistoryListViewBacken
         // stop. See the seam's own comment for why the flag is already true by then.
         self.coreList.didEndScrolling = { [weak self] in
             guard let self, !self.isTracking else { return }
+            FrameHitchMonitor.shared.end("chatScroll")
             self.didEndScrolling?(true)
         }
         self.installRowExperiments()

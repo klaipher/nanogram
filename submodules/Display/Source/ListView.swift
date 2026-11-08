@@ -482,6 +482,7 @@ open class ListViewImpl: ASDisplayNode, ListView, ASScrollViewDelegate, ASGestur
     private var auxiliaryDisplayLink: CADisplayLink?
     /// Debug Settings ▸ "List scroll: log frame rate": created at the first gesture with the switch on.
     private var scrollPacing: ListViewScrollPacing?
+    private lazy var frameHitchWindowName: String = "list:" + String(describing: type(of: self))
     private var auxiliaryDisplayLinkHandle: SharedDisplayLinkDriver.Link?
     private var debugView: UIView?
     private var isAuxiliaryDisplayLinkEnabled: Bool = false {
@@ -956,6 +957,9 @@ open class ListViewImpl: ASDisplayNode, ListView, ASScrollViewDelegate, ASGestur
             }
             self.scrollPacing?.beginGesture(timestamp: CACurrentMediaTime())
         }
+        if FrameHitchMonitor.isEnabled {
+            FrameHitchMonitor.shared.begin(self.frameHitchWindowName)
+        }
         
         self.beganInteractiveDragging(self.touchesPosition)
         
@@ -1004,6 +1008,7 @@ open class ListViewImpl: ASDisplayNode, ListView, ASScrollViewDelegate, ASGestur
         self.endedInteractiveDragging(self.touchesPosition)
         if !decelerate {
             self.scrollPacing?.endGesture(timestamp: CACurrentMediaTime())
+            FrameHitchMonitor.shared.end(self.frameHitchWindowName)
             self.didEndScrolling?(false)
         }
     }
@@ -1017,6 +1022,7 @@ open class ListViewImpl: ASDisplayNode, ListView, ASScrollViewDelegate, ASGestur
         self.isAuxiliaryDisplayLinkEnabled = false
         if !scrollView.isTracking {
             self.scrollPacing?.endGesture(timestamp: CACurrentMediaTime())
+            FrameHitchMonitor.shared.end(self.frameHitchWindowName)
             self.didEndScrolling?(true)
         }
     }

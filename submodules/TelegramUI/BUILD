@@ -260,6 +260,7 @@ swift_library(
         "//submodules/Speak:Speak",
         "//submodules/PeerInfoAvatarListNode:PeerInfoAvatarListNode",
         "//submodules/DebugSettingsUI:DebugSettingsUI",
+        "//submodules/CpuProfiler:CpuProfiler",
         "//submodules/ImportStickerPackUI:ImportStickerPackUI",
         "//submodules/GradientBackground:GradientBackground",
         "//submodules/WallpaperBackgroundNode:WallpaperBackgroundNode",

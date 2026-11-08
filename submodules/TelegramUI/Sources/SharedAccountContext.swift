@@ -38,6 +38,7 @@ import InAppPurchaseManager
 import PremiumUI
 import StickerPackPreviewUI
 import ChatControllerInteraction
+import CpuProfiler
 import ChatPresentationInterfaceState
 import StorageUsageScreen
 import DebugSettingsUI
@@ -590,12 +591,35 @@ public final class SharedAccountContextImpl: SharedAccountContext {
         ListViewScrollPacing.log = { line in
             Logger.shared.log("ListView", line)
         }
-        ListViewScrollPacing.context = {
+        let frameRateContext: () -> String = {
             return immediateExperimentalUISettingsValue.with { settings in
                 let on: (Bool) -> String = { $0 ? "on" : "off" }
-                return "lazyRows=\(on(settings.chatListLazyRareSubnodes)) rowReuse=\(on(settings.chatListRowReuse)) upstreamRate=\(on(settings.displayLinkUpstreamRate)) a11yNow=\(on(settings.listAccessibilityImmediate))"
+                return "lazyRows=\(on(settings.chatListLazyRareSubnodes)) rowReuse=\(on(settings.chatListRowReuse)) upstreamRate=\(on(settings.displayLinkUpstreamRate)) a11yNow=\(on(settings.listAccessibilityImmediate)) chatRows=\(settings.chatScrollExperiments)"
             }
         }
+        ListViewScrollPacing.context = frameRateContext
+        // Debug Settings "Frame hitches": frame timing per scroll and keyboard animation, with main-thread stacks of the longest stalls.
+        FrameHitchMonitor.log = { line in
+            Logger.shared.log("FrameHitch", line)
+        }
+        FrameHitchMonitor.context = frameRateContext
+        FrameHitchMonitor.sampler = { start in
+            if start {
+                MainThreadSampler.start(withInterval: 0.003)
+            } else {
+                MainThreadSampler.stop()
+            }
+        }
+        FrameHitchMonitor.capture = { start, end in
+            return MainThreadSampler.capture(from: start, to: end).map { $0 as NSData }
+        }
+        FrameHitchMonitor.report = { capture in
+            guard let data = capture as? NSData else {
+                return ""
+            }
+            return MainThreadSampler.report(forCapture: data as Data)
+        }
+        FrameHitchMonitor.isEnabled = immediateExperimentalUISettingsValue.with({ $0.frameHitchLog })
         SharedDisplayLinkDriver.shared.followsUpstreamFrameRate = immediateExperimentalUISettingsValue.with({ $0.displayLinkUpstreamRate })
         ListViewDeferredAccessibility.shared.forcesImmediate = immediateExperimentalUISettingsValue.with({ $0.listAccessibilityImmediate })
         ListViewScrollPacing.isEnabled = immediateExperimentalUISettingsValue.with({ $0.listScrollPacingLog })
@@ -619,6 +643,7 @@ public final class SharedAccountContextImpl: SharedAccountContext {
                 SharedDisplayLinkDriver.shared.followsUpstreamFrameRate = settings.displayLinkUpstreamRate
                 ListViewDeferredAccessibility.shared.forcesImmediate = settings.listAccessibilityImmediate
                 ListViewScrollPacing.isEnabled = settings.listScrollPacingLog
+                FrameHitchMonitor.isEnabled = settings.frameHitchLog
                 ChatListRowExperiments.lazyRareSubnodes = settings.chatListLazyRareSubnodes
                 ChatListRowExperiments.rowReuse = settings.chatListRowReuse
                 MediaEditorVideoExport.forceLegacyStoryWriter = settings.storyLegacyVideoWriter

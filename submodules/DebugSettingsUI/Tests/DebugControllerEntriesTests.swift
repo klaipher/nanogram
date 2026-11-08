@@ -20,6 +20,7 @@ final class DebugControllerEntriesTests: XCTestCase {
         settings.compressedEmojiCache = on
         settings.chatListLazyRareSubnodes = on
         settings.chatListRowReuse = on
+        settings.frameHitchLog = on
         settings.localTranscription = on
         settings.disableQuickReaction = on
         settings.disableLanguageRecognition = on

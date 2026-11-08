@@ -29,6 +29,29 @@ NS_ASSUME_NONNULL_BEGIN
 
 @end
 
+/// Debug Settings "Frame hitches: log with main-thread stacks": samples the main thread every few
+/// milliseconds into a fixed ring buffer (about 12 s deep), so the stack of a stall that just ended can be
+/// read back. Sampling suspends the main thread for a few microseconds per sample and allocates nothing
+/// while it is suspended. Off unless started.
+@interface MainThreadSampler : NSObject
+
+/// Starts sampling. Must be called on the main thread. Does nothing if already running.
++ (void)startWithInterval:(NSTimeInterval)interval;
+
+/// Stops sampling. The ring keeps its samples until the next start.
++ (void)stop;
+
+@property (class, nonatomic, readonly) BOOL isRunning;
+
+/// Copies the raw samples taken between two `CACurrentMediaTime()` instants. Cheap (a memcpy), so it
+/// can run right after a stall; nil if there are none.
++ (nullable NSData *)captureFrom:(double)startTime to:(double)endTime;
+
+/// A merged main-thread call tree of a capture, with a Binary Images footer for offline symbolication.
++ (NSString *)reportForCapture:(NSData *)capture;
+
+@end
+
 NS_ASSUME_NONNULL_END
 
 #endif /* CpuProfiler_h */

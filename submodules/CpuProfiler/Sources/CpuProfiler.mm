@@ -361,7 +361,153 @@ NSString *runProfile(double duration, double sampleRate) {
 
 std::atomic<bool> profilerIsRunning{false};
 
+// MainThreadSampler: one writer (the sampler thread), readers on the main thread. A reader only copies
+// samples well behind the write index, which the writer will not reach again for seconds.
+struct MainSample {
+    uint64_t time = 0;
+    int count = 0;
+    uintptr_t frames[kMaxFrames];
+};
+
+constexpr uint64_t kRingSize = 4096;
+MainSample *mainRing = nullptr;
+std::atomic<uint64_t> mainRingWriteIndex{0};
+std::atomic<uint64_t> mainSamplerGeneration{0};
+std::atomic<bool> mainSamplerRunning{false};
+
+uint64_t absoluteFromSeconds(double seconds) {
+    mach_timebase_info_data_t timebase;
+    mach_timebase_info(&timebase);
+    if (seconds <= 0.0) {
+        return 0;
+    }
+    return (uint64_t)(seconds * 1.0e9 * (double)timebase.denom / (double)timebase.numer);
+}
+
+void runMainSampler(thread_t mainThread, uintptr_t stackLow, uintptr_t stackHigh, double interval, uint64_t generation) {
+    while (mainSamplerRunning.load() && mainSamplerGeneration.load() == generation) {
+#if defined(__arm64__)
+        const uint64_t index = mainRingWriteIndex.load(std::memory_order_relaxed);
+        MainSample &sample = mainRing[index % kRingSize];
+        if (thread_suspend(mainThread) == KERN_SUCCESS) {
+            sample.count = walkStack(mainThread, stackLow, stackHigh, sample.frames);
+            sample.time = mach_absolute_time();
+            thread_resume(mainThread);
+            if (sample.count > 0) {
+                mainRingWriteIndex.store(index + 1, std::memory_order_release);
+            }
+        }
+#else
+        (void)mainThread;
+        (void)stackLow;
+        (void)stackHigh;
+#endif
+        usleep((useconds_t)(interval * 1.0e6));
+    }
+    mach_port_deallocate(mach_task_self(), mainThread);
+}
+
 }  // namespace
+
+@implementation MainThreadSampler
+
++ (BOOL)isRunning {
+    return mainSamplerRunning.load();
+}
+
++ (void)startWithInterval:(NSTimeInterval)interval {
+    NSAssert([NSThread isMainThread], @"MainThreadSampler must be started on the main thread");
+    if (![NSThread isMainThread] || mainSamplerRunning.load()) {
+        return;
+    }
+    if (mainRing == nullptr) {
+        mainRing = (MainSample *)calloc(kRingSize, sizeof(MainSample));
+        if (mainRing == nullptr) {
+            return;
+        }
+    }
+    const thread_t mainThread = mach_thread_self();
+    const pthread_t handle = pthread_self();
+    const uintptr_t stackHigh = (uintptr_t)pthread_get_stackaddr_np(handle);
+    const uintptr_t stackLow = stackHigh - pthread_get_stacksize_np(handle);
+    const uint64_t generation = mainSamplerGeneration.fetch_add(1) + 1;
+    mainSamplerRunning.store(true);
+    const double clampedInterval = std::max(0.001, interval);
+
+    dispatch_queue_attr_t attributes = dispatch_queue_attr_make_with_qos_class(DISPATCH_QUEUE_SERIAL, QOS_CLASS_USER_INTERACTIVE, 0);
+    dispatch_queue_t queue = dispatch_queue_create("org.telegram.MainThreadSampler", attributes);
+    dispatch_async(queue, ^{
+        runMainSampler(mainThread, stackLow, stackHigh, clampedInterval, generation);
+    });
+}
+
++ (void)stop {
+    mainSamplerRunning.store(false);
+}
+
++ (nullable NSData *)captureFrom:(double)startTime to:(double)endTime {
+    if (mainRing == nullptr || endTime <= startTime) {
+        return nil;
+    }
+    const uint64_t start = absoluteFromSeconds(startTime);
+    const uint64_t end = absoluteFromSeconds(endTime);
+    const uint64_t writeIndex = mainRingWriteIndex.load(std::memory_order_acquire);
+    // Stay clear of the slots the writer can reach while this copies.
+    const uint64_t available = std::min<uint64_t>(writeIndex, kRingSize - 64);
+    NSMutableData *data = [[NSMutableData alloc] init];
+    for (uint64_t back = 1; back <= available; back++) {
+        const MainSample &sample = mainRing[(writeIndex - back) % kRingSize];
+        if (sample.time < start) {
+            break;
+        }
+        if (sample.time <= end && sample.count > 0) {
+            [data appendBytes:&sample length:sizeof(MainSample)];
+        }
+    }
+    return data.length > 0 ? data : nil;
+}
+
++ (NSString *)reportForCapture:(NSData *)capture {
+    const size_t sampleCount = capture.length / sizeof(MainSample);
+    const MainSample *samples = (const MainSample *)capture.bytes;
+    TreeNode root;
+    for (size_t i = 0; i < sampleCount; i++) {
+        const MainSample &sample = samples[i];
+        const int frameCount = std::min(sample.count, kMaxFrames);
+        if (frameCount <= 0) {
+            continue;
+        }
+        root.count += 1;
+        TreeNode *node = &root;
+        for (int frameIndex = frameCount - 1; frameIndex >= 0; frameIndex--) {
+            TreeNode &child = node->children[sample.frames[frameIndex]];
+            child.count += 1;
+            node = &child;
+        }
+    }
+    std::unordered_set<uintptr_t> imageBases;
+    NSMutableString *output = [[NSMutableString alloc] init];
+    [output appendFormat:@"Main thread: %d samples\n", root.count];
+    appendTree(output, root, 0, 1, imageBases);
+    [output appendString:@"Binary Images:\n"];
+    const uint32_t imageCount = _dyld_image_count();
+    for (uint32_t i = 0; i < imageCount; i++) {
+        const struct mach_header *header = _dyld_get_image_header(i);
+        if (header == nullptr || imageBases.find((uintptr_t)header) == imageBases.end()) {
+            continue;
+        }
+        const char *path = _dyld_get_image_name(i);
+        const char *lastSlash = path != nullptr ? strrchr(path, '/') : nullptr;
+        NSString *uuid = uuidStringForImageHeader((const struct mach_header_64 *)header);
+        [output appendFormat:@"  0x%lx  %s  <%@>\n",
+         (unsigned long)(uintptr_t)header,
+         lastSlash != nullptr ? lastSlash + 1 : (path != nullptr ? path : "?"),
+         uuid != nil ? uuid : @"?"];
+    }
+    return output;
+}
+
+@end
 
 @implementation CpuProfiler
 
