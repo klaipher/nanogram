@@ -582,11 +582,6 @@ public final class SharedAccountContextImpl: SharedAccountContext {
         GlassBackgroundView.useCustomGlassImpl = immediateExperimentalUISettingsValue.with({ $0.fakeGlass })
         GlassDebugGroups.setDisabledMask(immediateExperimentalUISettingsValue.with({ $0.glassDebugDisabledGroups }))
         ManagedAudioSessionImpl.respectsSystemRecordingInput = immediateExperimentalUISettingsValue.with({ $0.respectSystemMicrophone })
-        // iPad audit B-1: the display-link cap A/B (Debug Settings) and its pacing log.
-        SharedDisplayLinkDriver.shared.pacingLog = { line in
-            Logger.shared.log("DisplayLink", line)
-        }
-        SharedDisplayLinkDriver.shared.capsTabletFrameRate = immediateExperimentalUISettingsValue.with({ $0.tabletDisplayLinkFrameRateCap })
         let frameRateContext: () -> String = {
             return immediateExperimentalUISettingsValue.with { $0.backSwipePreparePreviousScreen ? "backPrep=on" : "backPrep=off" }
         }
@@ -632,7 +627,6 @@ public final class SharedAccountContextImpl: SharedAccountContext {
                 GlassBackgroundView.useCustomGlassImpl = settings.fakeGlass
                 GlassDebugGroups.setDisabledMask(settings.glassDebugDisabledGroups)
                 ManagedAudioSessionImpl.respectsSystemRecordingInput = settings.respectSystemMicrophone
-                SharedDisplayLinkDriver.shared.capsTabletFrameRate = settings.tabletDisplayLinkFrameRateCap
                 FrameHitchMonitor.isEnabled = settings.frameHitchLog
                 NavigationPopPreparationSettings.isEnabled = settings.backSwipePreparePreviousScreen
                 MediaEditorVideoExport.forceLegacyStoryWriter = settings.storyLegacyVideoWriter

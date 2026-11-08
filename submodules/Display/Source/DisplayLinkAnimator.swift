@@ -99,30 +99,6 @@ public final class SharedDisplayLinkDriver {
     private var isProcessingEvent: Bool = false
     private var isUpdateRequested: Bool = false
 
-    /// iPad audit B-1 (Debug Settings ▸ "iPad: Display Link 120 Hz Cap", on by default since 2026-11-07, owner decision
-    /// after checking it on an iPad): an iPad's shared link follows the rate its links ask for instead of always 120 Hz
-    /// (`sharedDisplayLinkFrameRateRange`). The app sets it at launch; only a change from Debug Settings starts the pacing
-    /// log (`startPacingLog`), so the launch value does not log every 10 s.
-    public var capsTabletFrameRate: Bool = false {
-        didSet {
-            if self.capsTabletFrameRate != oldValue {
-                self.flushPacingStats(force: true)
-                self.update()
-            }
-        }
-    }
-    /// Starts the frame-pacing log for the rest of this launch: called by the Debug Settings switch of the iPad rate rule,
-    /// so a run with each setting can be compared. Main thread.
-    public func startPacingLog() {
-        self.pacingLogEnabled = true
-        self.flushPacingStats(force: true)
-    }
-    /// Receives one frame-pacing line per 10 s of display-link frames (`DisplayLinkPacingStats`) once a rate switch has
-    /// been changed in Debug Settings this launch (`startPacingLog`). Set by the app (to its logger).
-    public var pacingLog: ((String) -> Void)?
-    private var pacingLogEnabled: Bool = false
-    private var pacingStats = DisplayLinkPacingStats()
-    private var preferredFramesPerSecond: Float = 0.0
     
     private init() {
         let _ = NotificationCenter.default.addObserver(forName: UIApplication.willEnterForegroundNotification, object: nil, queue: nil, using: { [weak self] _ in
@@ -207,9 +183,8 @@ public final class SharedDisplayLinkDriver {
             }
             if #available(iOS 15.0, *) {
                 let maxFps = Float(UIScreen.main.maximumFramesPerSecond)
-                // Our rule (60 or 30 Hz when the animations need no more), with the iPad's 120 Hz override optional (B-1, `capsTabletFrameRate`).
-                let frameRateRange = sharedDisplayLinkFrameRateRange(requested: maxFramesPerSecond, displayMaxFramesPerSecond: maxFps, isTablet: isIpad, capsTabletRate: self.capsTabletFrameRate)
-                self.preferredFramesPerSecond = frameRateRange.preferred ?? maxFps
+                // Our rule (60 or 30 Hz when the animations need no more), on iPads too (B-1).
+                let frameRateRange = sharedDisplayLinkFrameRateRange(requested: maxFramesPerSecond, displayMaxFramesPerSecond: maxFps, isTablet: isIpad)
                 
                 if displayLink.preferredFrameRateRange != frameRateRange {
                     displayLink.preferredFrameRateRange = frameRateRange
@@ -221,36 +196,9 @@ public final class SharedDisplayLinkDriver {
                 self.displayLink = nil
                 displayLink.invalidate()
             }
-            self.pacingStats.pause()
         }
     }
 
-    private func flushPacingStats(force: Bool) {
-        guard self.pacingLogEnabled, let pacingLog = self.pacingLog else {
-            return
-        }
-        let windowDuration = force ? 0.0 : 10.0
-        if let line = self.pacingStats.summary(windowDuration: windowDuration, capsTabletRate: self.capsTabletFrameRate, preferredFramesPerSecond: self.preferredFramesPerSecond) {
-            let thermal: String
-            switch ProcessInfo.processInfo.thermalState {
-            case .nominal:
-                thermal = "nominal"
-            case .fair:
-                thermal = "fair"
-            case .serious:
-                thermal = "serious"
-            case .critical:
-                thermal = "critical"
-            @unknown default:
-                thermal = "unknown"
-            }
-            pacingLog("SharedDisplayLink pacing: \(line) ipad=\(isIpad) thermal=\(thermal) lowPower=\(ProcessInfo.processInfo.isLowPowerModeEnabled)")
-            self.pacingStats = DisplayLinkPacingStats()
-        } else if force {
-            self.pacingStats = DisplayLinkPacingStats()
-        }
-    }
-    
     @objc private func displayLinkEvent(displayLink: CADisplayLink) {
         self.isProcessingEvent = true
         
@@ -258,10 +206,6 @@ public final class SharedDisplayLinkDriver {
         self.lastTargetTimestamp = displayLink.targetTimestamp
         if duration > 0.0 {
             self.frameDuration = duration
-        }
-        if self.pacingLogEnabled {
-            self.pacingStats.record(timestamp: displayLink.timestamp, frameDuration: duration)
-            self.flushPacingStats(force: false)
         }
 
         

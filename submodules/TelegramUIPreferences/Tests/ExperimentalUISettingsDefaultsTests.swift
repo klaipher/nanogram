@@ -72,15 +72,6 @@ final class ExperimentalUISettingsDefaultsTests: XCTestCase {
         XCTAssertTrue(settings.compressedEmojiCache)
     }
 
-    func testTheIPadDisplayLinkCapIsOnByDefaultAndTheChoiceIsKept() throws {
-        XCTAssertTrue(ExperimentalUISettings.defaultSettings.tabletDisplayLinkFrameRateCap)
-        XCTAssertTrue(try self.decode("{}").tabletDisplayLinkFrameRateCap)
-        XCTAssertTrue(try self.decode(#"{"tabletDisplayLinkFrameRateCap": 0}"#).tabletDisplayLinkFrameRateCap, "the off-by-default key is not read")
-        var settings = ExperimentalUISettings.defaultSettings
-        settings.tabletDisplayLinkFrameRateCap = false
-        XCTAssertFalse(try self.roundTrip(settings).tabletDisplayLinkFrameRateCap)
-    }
-
     func testBackSwipePreparePreviousScreenIsOnByDefaultAndTheChoiceIsKept() throws {
         for settings in [ExperimentalUISettings.defaultSettings, try self.decode("{}"), try self.decode(#"{"glassDebugDisabledGroups": 2}"#)] {
             XCTAssertTrue(settings.backSwipePreparePreviousScreen)

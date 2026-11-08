@@ -44,7 +44,6 @@ final class DebugControllerEntriesTests: XCTestCase {
         settings.videoMessageCloseFocus = on
         settings.videoMessageCameraMatrix = on ? .cameraTag : .bt709
         settings.stickerRendererMode = on ? .gpuAll : .cpu
-        settings.tabletDisplayLinkFrameRateCap = on
         return settings
     }
 

@@ -107,8 +107,8 @@ marked (check) were not re-verified against the code; correct them on the next c
 - iPad floating keyboard in a floating window: upstream reserves the floating keyboard's height inside a Slide Over / windowed app (input panel lifted, empty area below);
   ours reserves height only for a docked keyboard that overlaps the window. Where: `TabletLayoutRules.swift` (`tabletWindowedKeyboardHeight`), `WindowContent.swift` keyboard handler.
 - iPad display link: upstream always runs the shared display link at up to 120 Hz on an iPad; ours asks only for the rate the active
-  animations need, as on the iPhone (Debug Settings "iPad: Display Link 120 Hz Cap", on by default since 2026-11-07). Where:
-  `TabletEnergyRules.swift` (`sharedDisplayLinkFrameRateRange`), `SharedDisplayLinkDriver.capsTabletFrameRate`.
+  animations need, as on the iPhone (always; its Debug Settings switch was removed on 2026-11-08). Where:
+  `TabletEnergyRules.swift` (`sharedDisplayLinkFrameRateRange`), `SharedDisplayLinkDriver` (`DisplayLinkAnimator.swift`).
 - iOS 27 glass backdrop overrides: `registerEffectViewOverrides` (`UIViewController+Navigation.m`) skips the `UISDFBackdropView` lookup on iOS 27 (upstream 13.1.2 looks it up by the iOS 26 name, misses, and pays a failed mangled-name scan of about 45 ms in +load). Still true: one lookup per OS, by the running OS's name.
 
 ### Branding and identity

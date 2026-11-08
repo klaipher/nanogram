@@ -4,6 +4,8 @@ Newest first. Internal notes for each TestFlight build; testers see the What to 
 
 ## Unreleased
 
+- **iPad display-link cap baked in; its Debug switch and the pacing log removed**. Owner, 2026-11-08. An iPad's shared display link always follows the rate its animations ask for (60 or 30 Hz when they need no more), as on the iPhone; upstream forced up to 120 Hz on every 120 Hz iPad. It had been on by default since 2026-11-07. Removed: `ExperimentalUISettings.tabletDisplayLinkFrameRateCap` (old blobs with its key decode), the Debug row (id 81 retired), `SharedDisplayLinkDriver.capsTabletFrameRate`, `startPacingLog`/`pacingLog` and `DisplayLinkPacingStats` (the pacing log only started when that switch was toggled), and `sharedDisplayLinkFrameRateRange`'s `capsTabletRate:` parameter and its 120 Hz tablet override. NANOGRAM-CHANGES.md updated. Tests: TabletSecondBatchTests (rewritten for the rule without the switch), DisplayTests, TelegramUIPreferencesTests, DebugSettingsUITests pass; app compiled.
+
 ## 13.2 (202611082219) — 2026-11-08 — 489139c3
 
 TestFlight build. Previous TestFlight build: 202611082109 (6c74cf54); changes since are `git log 6c74cf54..489139c3`: the "send as" avatar button loads with the chat again (not a second later); composer: the emoji/sticker data build waits for a pause in typing, no redundant typing-attribute or caret writes per keystroke, and one log line per run of deletes (held-delete diagnostics). What to Test: holding delete, typing right after focus, the send-as button timing. Entries below.

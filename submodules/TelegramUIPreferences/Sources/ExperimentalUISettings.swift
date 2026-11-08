@@ -74,10 +74,6 @@ public struct ExperimentalUISettings: Codable, Equatable {
     /// with the 1x framing kept (`Camera.RoundVideoCloseFocus`). Read when the camera screen opens.
     public var videoMessageCloseFocus: Bool
     public var videoMessageCameraMatrix: RoundVideoCameraMatrix
-    /// Debug Settings ▸ "iPad: Display Link 120 Hz Cap" (audit B-1; on by default since 2026-11-07, owner decision after
-    /// checking it on an iPad): an iPad's shared display link follows the rate its animations ask for instead of always
-    /// 120 Hz; changing it in Debug Settings starts a frame-pacing log. No effect on an iPhone.
-    public var tabletDisplayLinkFrameRateCap: Bool
     /// Debug Settings ▸ Performance ▸ Frame hitches: log with main-thread stacks. Off by default.
     public var frameHitchLog: Bool
     /// Debug Settings ▸ Performance ▸ Back swipe: prepare the previous screen. On by default (since 2026-11-08). While the top screen is idle the
@@ -184,7 +180,6 @@ public struct ExperimentalUISettings: Codable, Equatable {
         showCrashReportAlerts: Bool? = nil,
         videoMessageCloseFocus: Bool = true,
         videoMessageCameraMatrix: RoundVideoCameraMatrix = .bt709,
-        tabletDisplayLinkFrameRateCap: Bool = true,
         frameHitchLog: Bool = false,
         backSwipePreparePreviousScreen: Bool = true,
         callsLivestreamHardwareDecoding: Bool = true,
@@ -229,7 +224,6 @@ public struct ExperimentalUISettings: Codable, Equatable {
         self.videoMessageCloseFocus = videoMessageCloseFocus
         self.videoMessageCameraMatrix = videoMessageCameraMatrix
         self.stickerRendererMode = stickerRendererMode
-        self.tabletDisplayLinkFrameRateCap = tabletDisplayLinkFrameRateCap
         self.frameHitchLog = frameHitchLog
         self.backSwipePreparePreviousScreen = backSwipePreparePreviousScreen
         self.callsLivestreamHardwareDecoding = callsLivestreamHardwareDecoding
@@ -289,8 +283,6 @@ public struct ExperimentalUISettings: Codable, Equatable {
         self.videoMessageCloseFocus = try container.decodeIfPresent(Bool.self, forKey: "videoMessageCloseFocusOn") ?? true
         // A new key: blobs saved before it existed (and unknown values) get the BT.709 default.
         self.videoMessageCameraMatrix = (try container.decodeIfPresent(String.self, forKey: "videoMessageCameraMatrix")).flatMap(RoundVideoCameraMatrix.init(rawValue:)) ?? .bt709
-        // On by default since 2026-11-07 under a new key: blobs saved before hold `false` under the old one unchosen.
-        self.tabletDisplayLinkFrameRateCap = try container.decodeIfPresent(Bool.self, forKey: "tabletDisplayLinkFrameRateCapDefaultOn") ?? true
         self.frameHitchLog = try container.decodeIfPresent(Bool.self, forKey: "frameHitchLog") ?? false
         // On by default since 2026-11-08 under a new key: blobs saved before hold `false` under the old one unchosen.
         self.backSwipePreparePreviousScreen = try container.decodeIfPresent(Bool.self, forKey: "backSwipePreparePreviousScreenDefaultOn") ?? true
@@ -356,7 +348,6 @@ public struct ExperimentalUISettings: Codable, Equatable {
         try container.encode(self.stickerRendererMode.rawValue, forKey: "stickerRendererMode")
         try container.encode(self.videoMessageCloseFocus, forKey: "videoMessageCloseFocusOn")
         try container.encode(self.videoMessageCameraMatrix.rawValue, forKey: "videoMessageCameraMatrix")
-        try container.encode(self.tabletDisplayLinkFrameRateCap, forKey: "tabletDisplayLinkFrameRateCapDefaultOn")
         try container.encode(self.frameHitchLog, forKey: "frameHitchLog")
         try container.encode(self.backSwipePreparePreviousScreen, forKey: "backSwipePreparePreviousScreenDefaultOn")
         try container.encode(self.callsLivestreamHardwareDecoding, forKey: "callsLivestreamHardwareDecodingDefaultOn")

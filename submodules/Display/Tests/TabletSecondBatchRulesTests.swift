@@ -92,69 +92,29 @@ final class TabletSecondBatchRulesTests: XCTestCase {
 
     private let ipadMax: Float = 120.0
 
-    /// Cap off (the default) is upstream: an iPad's shared link always runs at up to 120 Hz.
-    func test_capOff_tabletAlwaysAsks120() {
-        for requested: SharedDisplayLinkDriver.FramesPerSecond in [.fps(30), .fps(60), .fps(120), .max] {
-            let range = sharedDisplayLinkFrameRateRange(requested: requested, displayMaxFramesPerSecond: self.ipadMax, isTablet: true, capsTabletRate: false)
-            XCTAssertEqual(range, CAFrameRateRange(minimum: 30.0, maximum: 120.0, preferred: 120.0), "\(requested)")
-        }
+    /// An iPad's shared link follows the rate its links ask for (upstream forced up to 120 Hz on every 120 Hz iPad);
+    /// the Debug Settings switch for it was removed once it had been on by default for a week.
+    func test_tabletFollowsRequestedRate() {
+        XCTAssertEqual(sharedDisplayLinkFrameRateRange(requested: .fps(30), displayMaxFramesPerSecond: self.ipadMax, isTablet: true), CAFrameRateRange(minimum: 15.0, maximum: 30.0, preferred: 30.0))
+        XCTAssertEqual(sharedDisplayLinkFrameRateRange(requested: .fps(60), displayMaxFramesPerSecond: self.ipadMax, isTablet: true), CAFrameRateRange(minimum: 30.0, maximum: 60.0, preferred: 60.0))
+        XCTAssertEqual(sharedDisplayLinkFrameRateRange(requested: .fps(120), displayMaxFramesPerSecond: self.ipadMax, isTablet: true), CAFrameRateRange(minimum: 30.0, maximum: 120.0, preferred: 120.0))
+        XCTAssertEqual(sharedDisplayLinkFrameRateRange(requested: .max, displayMaxFramesPerSecond: self.ipadMax, isTablet: true), CAFrameRateRange(minimum: 30.0, maximum: 120.0, preferred: 120.0))
     }
 
-    func test_capOn_tabletFollowsRequestedRate() {
-        XCTAssertEqual(sharedDisplayLinkFrameRateRange(requested: .fps(30), displayMaxFramesPerSecond: self.ipadMax, isTablet: true, capsTabletRate: true), CAFrameRateRange(minimum: 15.0, maximum: 30.0, preferred: 30.0))
-        XCTAssertEqual(sharedDisplayLinkFrameRateRange(requested: .fps(60), displayMaxFramesPerSecond: self.ipadMax, isTablet: true, capsTabletRate: true), CAFrameRateRange(minimum: 30.0, maximum: 60.0, preferred: 60.0))
-        XCTAssertEqual(sharedDisplayLinkFrameRateRange(requested: .fps(120), displayMaxFramesPerSecond: self.ipadMax, isTablet: true, capsTabletRate: true), CAFrameRateRange(minimum: 30.0, maximum: 120.0, preferred: 120.0))
-        XCTAssertEqual(sharedDisplayLinkFrameRateRange(requested: .max, displayMaxFramesPerSecond: self.ipadMax, isTablet: true, capsTabletRate: true), CAFrameRateRange(minimum: 30.0, maximum: 120.0, preferred: 120.0))
-    }
-
-    /// Phones never see the override, whatever the switch says.
-    func test_phone_unaffectedBySwitch() {
+    /// Phones and iPads follow the same rule.
+    func test_phoneAndTabletAgree() {
         for requested: SharedDisplayLinkDriver.FramesPerSecond in [.fps(30), .fps(60), .fps(120), .max] {
             XCTAssertEqual(
-                sharedDisplayLinkFrameRateRange(requested: requested, displayMaxFramesPerSecond: self.ipadMax, isTablet: false, capsTabletRate: true),
-                sharedDisplayLinkFrameRateRange(requested: requested, displayMaxFramesPerSecond: self.ipadMax, isTablet: false, capsTabletRate: false)
+                sharedDisplayLinkFrameRateRange(requested: requested, displayMaxFramesPerSecond: self.ipadMax, isTablet: false),
+                sharedDisplayLinkFrameRateRange(requested: requested, displayMaxFramesPerSecond: self.ipadMax, isTablet: true)
             )
         }
-        XCTAssertEqual(sharedDisplayLinkFrameRateRange(requested: .fps(60), displayMaxFramesPerSecond: self.ipadMax, isTablet: false, capsTabletRate: false), CAFrameRateRange(minimum: 30.0, maximum: 60.0, preferred: 60.0))
     }
 
     /// A phone's link asks for 60 Hz or 30 Hz when its animations need no more.
     func test_phoneRuleAsksFor60Or30Hz() {
-        XCTAssertEqual(sharedDisplayLinkFrameRateRange(requested: .fps(60), displayMaxFramesPerSecond: self.ipadMax, isTablet: false, capsTabletRate: false), CAFrameRateRange(minimum: 30.0, maximum: 60.0, preferred: 60.0))
-        XCTAssertEqual(sharedDisplayLinkFrameRateRange(requested: .fps(30), displayMaxFramesPerSecond: self.ipadMax, isTablet: false, capsTabletRate: false), CAFrameRateRange(minimum: 15.0, maximum: 30.0, preferred: 30.0))
-    }
-
-    func test_pacingStats_countsFramesRateAndLateFrames() {
-        var stats = DisplayLinkPacingStats()
-        var t = 100.0
-        stats.record(timestamp: t, frameDuration: 1.0 / 60.0)
-        for i in 0 ..< 600 {
-            // Every 100th interval is a dropped frame (two frame durations).
-            t += (i % 100 == 99) ? 2.0 / 60.0 : 1.0 / 60.0
-            stats.record(timestamp: t, frameDuration: 1.0 / 60.0)
-        }
-        XCTAssertEqual(stats.frames, 600)
-        XCTAssertEqual(stats.lateFrames, 6)
-        XCTAssertEqual(stats.longestInterval, 2.0 / 60.0, accuracy: 1e-9)
-        XCTAssertEqual(stats.elapsed, 606.0 / 60.0, accuracy: 1e-6)
-
-        let line = stats.summary(windowDuration: 10.0, capsTabletRate: true, preferredFramesPerSecond: 60.0)
-        XCTAssertNotNil(line)
-        XCTAssertTrue(line?.contains("cap=on") == true, line ?? "")
-        XCTAssertTrue(line?.contains("frames=600") == true, line ?? "")
-        XCTAssertTrue(line?.contains("late=6") == true, line ?? "")
-        XCTAssertNil(stats.summary(windowDuration: 30.0, capsTabletRate: true, preferredFramesPerSecond: 60.0))
-    }
-
-    /// A pause is not a late frame.
-    func test_pacingStats_pauseIsNotAFrame() {
-        var stats = DisplayLinkPacingStats()
-        stats.record(timestamp: 0.0, frameDuration: 1.0 / 120.0)
-        stats.record(timestamp: 1.0 / 120.0, frameDuration: 1.0 / 120.0)
-        stats.pause()
-        stats.record(timestamp: 5.0, frameDuration: 1.0 / 120.0)
-        XCTAssertEqual(stats.frames, 1)
-        XCTAssertEqual(stats.lateFrames, 0)
+        XCTAssertEqual(sharedDisplayLinkFrameRateRange(requested: .fps(60), displayMaxFramesPerSecond: self.ipadMax, isTablet: false), CAFrameRateRange(minimum: 30.0, maximum: 60.0, preferred: 60.0))
+        XCTAssertEqual(sharedDisplayLinkFrameRateRange(requested: .fps(30), displayMaxFramesPerSecond: self.ipadMax, isTablet: false), CAFrameRateRange(minimum: 15.0, maximum: 30.0, preferred: 30.0))
     }
 
     // MARK: A-6 Menu bar
