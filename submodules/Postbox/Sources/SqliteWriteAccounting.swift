@@ -64,7 +64,9 @@ final class SqliteWalWriteAccounting {
             self.lastBackfilledFrames = 0
         }
         self.lastFrames = walFrames
-        self.lastCommitAppendedFrames = appended
+        // Frames found at the first commit were written before this connection (the previous process, an extension):
+        // they are accounted as written, but not attributed to the transaction that happened to commit first.
+        self.lastCommitAppendedFrames = isFirstCommit ? 0 : appended
         if appended > 0 {
             DiskWriteAccounting.shared.add(self.walCategory, bytes: Int(appended) * self.frameSize)
         }
@@ -75,7 +77,8 @@ final class SqliteWalWriteAccounting {
         if isFirstCommit {
             return "SQLite \(self.databaseName): the WAL held \(appended) frames (\(SqliteWalWriteAccounting.megabytes(appendedBytes))) at this connection's first commit; they were written before it opened (the previous process or an extension) and are counted as written now"
         }
-        return "SQLite \(self.databaseName): one commit appended \(appended) frames (\(SqliteWalWriteAccounting.megabytes(appendedBytes))), the WAL is now \(walFrames) frames"
+        // Another process (an extension) writing to the same WAL between two of our commits is counted here too.
+        return "SQLite \(self.databaseName): the WAL grew by \(appended) frames (\(SqliteWalWriteAccounting.megabytes(appendedBytes))) at one commit (another process's writes in between count too), the WAL is now \(walFrames) frames"
     }
 
     /// The frames the last commit appended, once: a second call without a commit in between gives 0. Called on the

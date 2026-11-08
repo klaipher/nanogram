@@ -237,11 +237,21 @@ final class SqliteValueBoxWriteAccountingTests: XCTestCase {
         // Small growth: no notice. Growth past the threshold: a notice with the size.
         XCTAssertNil(accounting.committed(walFrames: 25))
         let large = accounting.committed(walFrames: 45)
-        XCTAssertTrue(large?.contains("one commit appended 20 frames") == true, large ?? "")
+        XCTAssertTrue(large?.contains("the WAL grew by 20 frames") == true, large ?? "")
         // No WAL file to read: the frame count is the upper bound for the checkpoint.
         XCTAssertNil(accounting.checkpointed(backfilledFrames: 5))
         let checkpoint = accounting.checkpointed(backfilledFrames: 45)
         XCTAssertTrue(checkpoint?.contains("a checkpoint copied 40 pages") == true, checkpoint ?? "")
+    }
+
+    /// The first commit of a connection finds the WAL another process left (the previous process, an extension): those
+    /// frames are not this transaction's, so the per-transaction attribution must not get them.
+    func testInheritedFramesAreNotAttributedToTheFirstTransaction() {
+        let accounting = SqliteWalWriteAccounting(databasePath: NSTemporaryDirectory() + "y/postbox/db/db_sqlite", handle: nil, largeWriteBytes: 40000)
+        accounting.committed(walFrames: 5000)
+        XCTAssertEqual(accounting.takeLastCommitAppendedFrames(), 0)
+        accounting.committed(walFrames: 5030)
+        XCTAssertEqual(accounting.takeLastCommitAppendedFrames(), 30)
     }
 
     func testAFirstCommitWithAnEmptyWalGetsNoNotice() {

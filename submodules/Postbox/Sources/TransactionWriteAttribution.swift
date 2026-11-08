@@ -28,7 +28,7 @@ struct TransactionWriteAttribution: Equatable {
         if frames <= 0 || bytes < thresholdBytes {
             return nil
         }
-        return "Postbox large transaction: \(site) appended \(frames) frames to the WAL (\(String(format: "%.1f", Double(bytes) / 1048576.0)) MB)"
+        return "Postbox large transaction: \(site): the WAL grew by \(frames) frames during it (\(String(format: "%.1f", Double(bytes) / 1048576.0)) MB; another process's writes in between count too)"
     }
 
     static func siteName(file: String, line: Int) -> String {

@@ -93,7 +93,7 @@ public struct ExperimentalUISettings: Codable, Equatable {
     public var chatListRowReuse: Bool
     /// Debug Settings ▸ List scroll ▸ Frame hitches: log with main-thread stacks. Off by default.
     public var frameHitchLog: Bool
-    /// Debug Settings ▸ List scroll ▸ Keyboard: leave the keyboard window alone (A/B). Off by default.
+    /// Debug Settings ▸ List scroll ▸ Chat list: async media previews while scrolling. On by default.
     public var chatListAsyncMediaWhileScrolling: Bool
     /// Debug Settings ▸ "Calls: livestream hardware decoding". On by default (owner decision, 2026-11). Live stream video is decoded
     /// with VideoToolbox instead of FFmpeg's software decoders (at most 2 sessions, per-stream fallback to

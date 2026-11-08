@@ -2265,6 +2265,8 @@ private func extractAccountManagerState(records: AccountRecordsView<TelegramAcco
             }
             let report = MemoryPurgeReport(reason: reason, before: before, after: ProcessMemory.current(), purged: purged)
             Logger.shared.log("App \(episodeId)", report.logLine)
+            // The app may be suspended (and killed for memory) right after this: write the line out now.
+            Logger.shared.flushPendingLogs()
         }
     }
     

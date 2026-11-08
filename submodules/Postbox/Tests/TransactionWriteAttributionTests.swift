@@ -66,7 +66,7 @@ final class TransactionWriteAttributionTests: XCTestCase {
         let line = TransactionWriteAttribution.largeCommitLine(site: "A.swift:7", frames: 5000, frameBytes: 4120)
         XCTAssertNotNil(line)
         XCTAssertTrue(line?.contains("A.swift:7") == true, line ?? "")
-        XCTAssertTrue(line?.contains("5000 frames") == true, line ?? "")
+        XCTAssertTrue(line?.contains("the WAL grew by 5000 frames") == true, line ?? "")
         XCTAssertNil(TransactionWriteAttribution.largeCommitLine(site: "A.swift:7", frames: 100, frameBytes: 4120))
         XCTAssertNil(TransactionWriteAttribution.largeCommitLine(site: "A.swift:7", frames: 0, frameBytes: 4120))
         XCTAssertNotNil(TransactionWriteAttribution.largeCommitLine(site: "B.swift:1", frames: 3, frameBytes: 4120, thresholdBytes: 10000))

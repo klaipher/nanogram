@@ -2215,7 +2215,6 @@ final class PostboxImpl {
                 let now = CFAbsoluteTimeGetCurrent()
                 if PostboxUnreadReindexSchedule.shouldForceReindex(versionChanged: versionChanged, lastRun: PostboxUnreadReindexSchedule.lastRun(markerPath: markerPath), now: now) {
                     self.messageHistoryMetadataTable.setShouldReindexUnreadCounts(value: true)
-                    PostboxUnreadReindexSchedule.setLastRun(markerPath: markerPath, timestamp: now)
                 } else {
                     postboxLog("reindexUnreadCounts skipped: last forced reindex was recent")
                 }
@@ -2236,6 +2235,10 @@ final class PostboxImpl {
                 }
                 postboxLog("reindexUnreadCounts took \(CFAbsoluteTimeGetCurrent() - startTime)")
                 self.messageHistoryMetadataTable.setShouldReindexUnreadCounts(value: false)
+                // Marked only once the reindex ran (a launch killed before it keeps the next one due).
+                if !isTemporary {
+                    PostboxUnreadReindexSchedule.setLastRun(markerPath: self.basePath + "/" + PostboxUnreadReindexSchedule.markerFileName, timestamp: CFAbsoluteTimeGetCurrent())
+                }
             }
             
             if !isTemporary {

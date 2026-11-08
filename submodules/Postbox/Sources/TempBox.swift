@@ -164,7 +164,10 @@ public final class TempBox {
     }
     
     public static var shared: TempBox {
-        return sharedValue.with { $0 }!
+        guard let value = sharedValue.with({ $0 }) else {
+            preconditionFailure("TempBox.shared before TempBox.initializeShared")
+        }
+        return value
     }
     
     private init(basePath: String, processType: String, launchSpecificId: Int64) {
