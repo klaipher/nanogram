@@ -61,6 +61,22 @@ private func avatarGalleryEntryWithVideoRepresentations(_ entry: AvatarGalleryEn
     }
 }
 
+/// Everything the profile photo list is built from. Two equal values build the same list, so the list is
+/// requested again only when they differ.
+public struct PeerInfoProfilePhotosInputs: Equatable {
+    public let peer: EnginePeer
+    public let firstEntry: AvatarGalleryEntry
+    public let secondEntry: TelegramMediaImage?
+    public let lastEntry: TelegramMediaImage?
+
+    public init(peer: EnginePeer, firstEntry: AvatarGalleryEntry, secondEntry: TelegramMediaImage?, lastEntry: TelegramMediaImage?) {
+        self.peer = peer
+        self.firstEntry = firstEntry
+        self.secondEntry = secondEntry
+        self.lastEntry = lastEntry
+    }
+}
+
 public func peerInfoProfilePhotos(context: AccountContext, peerId: EnginePeer.Id) -> Signal<Any, NoError> {
     return context.engine.data.subscribe(TelegramEngine.EngineData.Item.Peer.Peer(id: peerId))
     |> mapToSignal { peer -> Signal<[AvatarGalleryEntry]?, NoError> in
@@ -74,7 +90,7 @@ public func peerInfoProfilePhotos(context: AccountContext, peerId: EnginePeer.Id
         if let entries = entries {
             if var firstEntry = entries.first {
                 return context.account.postbox.peerView(id: peerId)
-                |> mapToSignal { peerView -> Signal<(Bool, [AvatarGalleryEntry])?, NoError>in
+                |> map { peerView -> PeerInfoProfilePhotosInputs? in
                     if let peer = peerViewMainPeer(peerView) {
                         var secondEntry: TelegramMediaImage?
                         var lastEntry: TelegramMediaImage?
@@ -97,11 +113,21 @@ public func peerInfoProfilePhotos(context: AccountContext, peerId: EnginePeer.Id
                                 }
                             }
                         }
-                        return fetchedAvatarGalleryEntries(engine: context.engine, account: context.account, peer: EnginePeer(peer), firstEntry: firstEntry, secondEntry: secondEntry, lastEntry: lastEntry)
-                        |> map(Optional.init)
+                        return PeerInfoProfilePhotosInputs(peer: EnginePeer(peer), firstEntry: firstEntry, secondEntry: secondEntry, lastEntry: lastEntry)
                     } else {
+                        return nil
+                    }
+                }
+                // The peer view also changes with presence, typing and unrelated cached data. Only a change of
+                // what the photo list is built from may send the list request again (log of 2026-11-07: one
+                // user's list was requested 236 times in 93 minutes, every 3-4 s in places).
+                |> distinctUntilChanged
+                |> mapToSignal { inputs -> Signal<(Bool, [AvatarGalleryEntry])?, NoError> in
+                    guard let inputs else {
                         return .single(nil)
                     }
+                    return fetchedAvatarGalleryEntries(engine: context.engine, account: context.account, peer: inputs.peer, firstEntry: inputs.firstEntry, secondEntry: inputs.secondEntry, lastEntry: inputs.lastEntry)
+                    |> map(Optional.init)
                 }
             } else {
                 return .single((true, []))

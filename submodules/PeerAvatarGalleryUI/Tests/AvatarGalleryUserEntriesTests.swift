@@ -181,6 +181,33 @@ private enum ImageSource: Equatable {
     case other
 }
 
+/// The profile photo list is requested again only when the inputs it is built from differ. The peer view
+/// also changes with presence and typing; such a change leaves the inputs equal.
+final class PeerInfoProfilePhotosInputsTests: XCTestCase {
+    private func inputs(photoId: Int64, second: TelegramMediaImage? = nil, last: TelegramMediaImage? = nil) -> PeerInfoProfilePhotosInputs {
+        return PeerInfoProfilePhotosInputs(peer: peer, firstEntry: makePeerRecordEntry(photoId: photoId), secondEntry: second, lastEntry: last)
+    }
+
+    func testRebuiltFromTheSameRecordIsEqual() {
+        XCTAssertEqual(self.inputs(photoId: 101), self.inputs(photoId: 101))
+    }
+
+    func testRebuiltFromTheSameCachedPhotosIsEqual() {
+        let photo = makePhoto(id: 7).image
+        XCTAssertEqual(self.inputs(photoId: 101, second: photo, last: photo), self.inputs(photoId: 101, second: photo, last: photo))
+    }
+
+    func testNewCurrentPhotoDiffers() {
+        XCTAssertNotEqual(self.inputs(photoId: 101), self.inputs(photoId: 102))
+    }
+
+    func testNewFallbackOrPublicPhotoDiffers() {
+        let photo = makePhoto(id: 7).image
+        XCTAssertNotEqual(self.inputs(photoId: 101), self.inputs(photoId: 101, last: photo))
+        XCTAssertNotEqual(self.inputs(photoId: 101), self.inputs(photoId: 101, second: photo))
+    }
+}
+
 private let peer: EnginePeer = .user(TelegramUser(
     id: EnginePeer.Id(namespace: Namespaces.Peer.CloudUser, id: EnginePeer.Id.Id._internalFromInt64Value(1)),
     accessHash: nil,

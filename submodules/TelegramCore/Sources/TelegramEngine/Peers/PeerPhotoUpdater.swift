@@ -102,6 +102,10 @@ func _internal_updatePeerPhoto(postbox: Postbox, network: Network, stateManager:
 }
     
 func _internal_updatePeerPhotoInternal(postbox: Postbox, network: Network, stateManager: AccountStateManager?, accountPeerId: PeerId, peer: Signal<Peer, NoError>, photo: Signal<UploadedPeerPhotoData, NoError>?, video: Signal<UploadedPeerPhotoData?, NoError>?, videoStartTimestamp: Double?, markup: UploadPeerPhotoMarkup? = nil, fallback: Bool = false, customPeerPhotoMode: SetCustomPeerPhotoMode? = nil, mapResourceToAvatarSizes: @escaping (MediaResource, [TelegramMediaImageRepresentation]) -> Signal<[Int: Data], NoError>) -> Signal<UpdatePeerPhotoStatus, UploadPeerPhotoError> {
+    return peerPhotosCacheInvalidating(_internal_updatePeerPhotoInternalUncached(postbox: postbox, network: network, stateManager: stateManager, accountPeerId: accountPeerId, peer: peer, photo: photo, video: video, videoStartTimestamp: videoStartTimestamp, markup: markup, fallback: fallback, customPeerPhotoMode: customPeerPhotoMode, mapResourceToAvatarSizes: mapResourceToAvatarSizes))
+}
+
+private func _internal_updatePeerPhotoInternalUncached(postbox: Postbox, network: Network, stateManager: AccountStateManager?, accountPeerId: PeerId, peer: Signal<Peer, NoError>, photo: Signal<UploadedPeerPhotoData, NoError>?, video: Signal<UploadedPeerPhotoData?, NoError>?, videoStartTimestamp: Double?, markup: UploadPeerPhotoMarkup? = nil, fallback: Bool = false, customPeerPhotoMode: SetCustomPeerPhotoMode? = nil, mapResourceToAvatarSizes: @escaping (MediaResource, [TelegramMediaImageRepresentation]) -> Signal<[Int: Data], NoError>) -> Signal<UpdatePeerPhotoStatus, UploadPeerPhotoError> {
     return peer
     |> mapError { _ -> UploadPeerPhotoError in }
     |> mapToSignal { peer -> Signal<UpdatePeerPhotoStatus, UploadPeerPhotoError> in
@@ -608,6 +612,10 @@ func _internal_updatePeerPhotoInternal(postbox: Postbox, network: Network, state
 /// `add_set_profile_photo_to_cache`), the account record is set from the returned photo, in the form
 /// the server's own report of it takes, which the later update then leaves as it is.
 func _internal_updatePeerPhotoExisting(account: Account, reference: TelegramMediaImageReference, representations: [TelegramMediaImageRepresentation], videoRepresentations: [TelegramMediaImage.VideoRepresentation]) -> Signal<TelegramMediaImage?, NoError> {
+    return peerPhotosCacheInvalidating(_internal_updatePeerPhotoExistingUncached(account: account, reference: reference, representations: representations, videoRepresentations: videoRepresentations))
+}
+
+private func _internal_updatePeerPhotoExistingUncached(account: Account, reference: TelegramMediaImageReference, representations: [TelegramMediaImageRepresentation], videoRepresentations: [TelegramMediaImage.VideoRepresentation]) -> Signal<TelegramMediaImage?, NoError> {
     switch reference {
     case let .cloud(imageId, accessHash, fileReference):
         return account.network.request(Api.functions.photos.updateProfilePhoto(flags: 0, bot: nil, id: .inputPhoto(.init(id: imageId, accessHash: accessHash, fileReference: Buffer(data: fileReference)))))
@@ -759,6 +767,10 @@ private func clearAccountFallbackPhoto(account: Account) -> Signal<Void, NoError
 }
 
 func _internal_removeAccountPhoto(account: Account, reference: TelegramMediaImageReference?, fallback: Bool) -> Signal<Void, NoError> {
+    return peerPhotosCacheInvalidating(_internal_removeAccountPhotoUncached(account: account, reference: reference, fallback: fallback))
+}
+
+private func _internal_removeAccountPhotoUncached(account: Account, reference: TelegramMediaImageReference?, fallback: Bool) -> Signal<Void, NoError> {
     if let reference = reference {
         switch reference {
         case let .cloud(imageId, accessHash, fileReference):

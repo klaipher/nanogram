@@ -23,19 +23,48 @@ public struct TelegramPeerPhoto {
     }
 }
 
+/// Identifies one photo-list request: the list changes when the peer's photo does, so the peer's current
+/// photo is part of the key and a changed photo never meets an older list.
+struct PeerPhotosRequestKey: Hashable {
+    let accountPeerId: PeerId
+    let peerId: PeerId
+    let currentPhotos: [String]
+}
+
+/// `profileImageRepresentations` reduced to what tells two photos apart.
+func peerPhotosFingerprint(_ representations: [TelegramMediaImageRepresentation]) -> [String] {
+    return representations.map { "\($0.resource.id.stringRepresentation)#\($0.isPersonal ? 1 : 0)" }
+}
+
+/// Photo lists remembered for a minute and shared between concurrent callers (log of 2026-11-07: 282
+/// `photos.getUserPhotos` in 93 min, three within 2 ms, five FLOOD_WAITs). Dropped by
+/// `invalidatePeerPhotosCache` whenever the account sets, replaces or deletes a profile photo.
+let peerPhotosRequestCoalescer = RequestCoalescer<PeerPhotosRequestKey, [TelegramPeerPhoto]>(lifetime: 60.0)
+
+func invalidatePeerPhotosCache() {
+    peerPhotosRequestCoalescer.invalidateAll()
+}
+
 func _internal_requestPeerPhotos(accountPeerId: PeerId, postbox: Postbox, network: Network, peerId: PeerId) -> Signal<[TelegramPeerPhoto], NoError> {
-    return postbox.transaction{ transaction -> Peer? in
+    return postbox.transaction { transaction -> Peer? in
         return transaction.getPeer(peerId)
     }
     |> mapToSignal { peer -> Signal<[TelegramPeerPhoto], NoError> in
-        if let peer = peer as? TelegramUser, let inputUser = apiInputUser(peer) {
+        let key = PeerPhotosRequestKey(accountPeerId: accountPeerId, peerId: peerId, currentPhotos: peerPhotosFingerprint(peer?.profileImageRepresentations ?? []))
+        return peerPhotosRequestCoalescer.signal(key: key, fallback: [], fetch: _internal_requestPeerPhotosUncached(accountPeerId: accountPeerId, postbox: postbox, network: network, peer: peer))
+    }
+}
+
+private func _internal_requestPeerPhotosUncached(accountPeerId: PeerId, postbox: Postbox, network: Network, peer: Peer?) -> Signal<(value: [TelegramPeerPhoto]?, retryAfter: Double), NoError> {
+    if let peer = peer as? TelegramUser, let inputUser = apiInputUser(peer) {
             return network.request(Api.functions.photos.getUserPhotos(userId: inputUser, offset: 0, maxId: 0, limit: 100))
-            |> map {Optional($0)}
-            |> mapError {_ in}
-            |> `catch` { _ -> Signal<Api.photos.Photos?, NoError> in
-                return .single(nil)
+            |> map { (result: Api.photos.Photos) -> (Api.photos.Photos?, Double) in
+                return (result, 0.0)
             }
-            |> map { result -> [TelegramPeerPhoto] in
+            |> `catch` { error -> Signal<(Api.photos.Photos?, Double), NoError> in
+                return .single((nil, requestCoalescerRetryAfter(errorDescription: error.errorDescription)))
+            }
+            |> map { result, retryAfter -> (value: [TelegramPeerPhoto]?, retryAfter: Double) in
                 if let result = result {
                     let totalCount:Int
                     let photos: [Api.Photo]
@@ -65,18 +94,20 @@ func _internal_requestPeerPhotos(accountPeerId: PeerId, postbox: Postbox, networ
                         }
                     }
                     
-                    return images
+                    return (images, 0.0)
                 } else {
-                    return []
+                    return (nil, retryAfter)
                 }
             }
         } else if let peer = peer, let inputPeer = apiInputPeer(peer) {
             return network.request(Api.functions.messages.search(flags: 0, peer: inputPeer, q: "", fromId: nil, savedPeerId: nil, savedReaction: nil, topMsgId: nil, filter: .inputMessagesFilterChatPhotos, minDate: 0, maxDate: 0, offsetId: 0, addOffset: 0, limit: 1000, maxId: 0, minId: 0, hash: 0))
-            |> map(Optional.init)
-            |> `catch` { _ -> Signal<Api.messages.Messages?, NoError> in
-                return .single(nil)
+            |> map { (result: Api.messages.Messages) -> (Api.messages.Messages?, Double) in
+                return (result, 0.0)
             }
-            |> mapToSignal { result -> Signal<[TelegramPeerPhoto], NoError> in
+            |> `catch` { error -> Signal<(Api.messages.Messages?, Double), NoError> in
+                return .single((nil, requestCoalescerRetryAfter(errorDescription: error.errorDescription)))
+            }
+            |> mapToSignal { result, retryAfter -> Signal<(value: [TelegramPeerPhoto]?, retryAfter: Double), NoError> in
                 if let result = result {
                     let messages: [Api.Message]
                     let chats: [Api.Chat]
@@ -126,7 +157,7 @@ func _internal_requestPeerPhotos(accountPeerId: PeerId, postbox: Postbox, networ
                         }
                         
                         return renderedMessages
-                    } |> map { messages -> [TelegramPeerPhoto] in
+                    } |> map { messages -> (value: [TelegramPeerPhoto]?, retryAfter: Double) in
                         var photos: [TelegramPeerPhoto] = []
                         var index:Int = 0
                         for message in messages {
@@ -142,15 +173,33 @@ func _internal_requestPeerPhotos(accountPeerId: PeerId, postbox: Postbox, networ
                             }
                             index += 1
                         }
-                        return photos
+                        return (photos, 0.0)
                     }
                     
                 } else {
-                    return .single([])
+                    return .single((nil, retryAfter))
                 }
             }
         } else {
-            return .single([])
+            // Nothing to ask (no peer record or no access hash): answered with an empty list, not remembered.
+            return .single((nil, 0.0))
         }
+}
+
+/// `signal`, with the remembered photo lists dropped before it starts and again whenever it reports
+/// progress, completes or is cancelled, so the next gallery asks the server for the list the change produced.
+func peerPhotosCacheInvalidating<T, E>(_ signal: Signal<T, E>) -> Signal<T, E> {
+    return signal
+    |> beforeStarted {
+        invalidatePeerPhotosCache()
+    }
+    |> afterNext { _ in
+        invalidatePeerPhotosCache()
+    }
+    |> afterCompleted {
+        invalidatePeerPhotosCache()
+    }
+    |> afterDisposed {
+        invalidatePeerPhotosCache()
     }
 }
