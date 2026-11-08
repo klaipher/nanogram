@@ -109,6 +109,7 @@ marked (check) were not re-verified against the code; correct them on the next c
 ### Branding and identity
 - What: Nanogram name, icons (Sphere default), bundle names, Siri phrases, language packs; a lint keeps Telegram's name and logo out. Own bundle identifiers and team.
 - Where: `tools/dev/lint/branding.py`, `Telegram/Telegram-iOS/Nanogram.icon`.
+- Also: the app bundle and executable are `Nanogram.app` / `Nanogram` (`Telegram/BUILD` `bundle_name`, 2026-11-08); the Bazel target and `Telegram.ipa` keep upstream's name.
 - Upstream: no.
 
 ### Call switch defaults (iOS)

@@ -2,7 +2,7 @@
 """Nanogram branding guard: no Telegram name where the text names this app, no Telegram logo.
 
   branding.py                    check the sources
-  branding.py --bundle APP       also check a built Telegram.app (tg build runs this)
+  branding.py --bundle APP       also check a built Nanogram.app (tg build runs this)
   branding.py --apply-en         rewrite the identity values in the bundled en table
 
 The identity keys are the lists in submodules/NanogramBranding/Sources/NanogramIdentityKeys.swift,
@@ -316,7 +316,7 @@ def apply_en(rules):
 
 def main(argv=None):
     parser = argparse.ArgumentParser(description=__doc__, formatter_class=argparse.RawDescriptionHelpFormatter)
-    parser.add_argument('--bundle', help='also check this built Telegram.app')
+    parser.add_argument('--bundle', help='also check this built Nanogram.app')
     parser.add_argument('--apply-en', action='store_true', help='brand the identity values of the bundled en table')
     args = parser.parse_args(argv)
     rules = Rules()

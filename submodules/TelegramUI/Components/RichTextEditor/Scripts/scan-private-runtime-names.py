@@ -11,8 +11,8 @@ string section, or anywhere in constant data (the tables are one long JSON blob,
 strings). Exits 1 when anything is found.
 
 Run it on the release framework after a Make.py release build:
-    unzip -o bazel-bin/Telegram/Telegram.ipa 'Payload/Telegram.app/Frameworks/TelegramUIFramework.framework/*' -d <dir>
-    Scripts/scan-private-runtime-names.py <dir>/Payload/Telegram.app/Frameworks/TelegramUIFramework.framework/TelegramUIFramework
+    unzip -o bazel-bin/Telegram/Telegram.ipa 'Payload/Nanogram.app/Frameworks/TelegramUIFramework.framework/*' -d <dir>
+    Scripts/scan-private-runtime-names.py <dir>/Payload/Nanogram.app/Frameworks/TelegramUIFramework.framework/TelegramUIFramework
 and on the engine's static archives, which attribute a hit to a module.
 
 A hit is not by itself a private API reference. The table holds names the engine crosses with

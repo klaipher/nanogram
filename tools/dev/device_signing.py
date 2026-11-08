@@ -8,7 +8,7 @@ Subcommands:
   apns-csr   Create the private key and certificate signing request for the push certificate.
   apns-pem   Combine the downloaded push certificate (aps.cer) with that key into the .pem file
              that my.telegram.org/apps expects, so Telegram's servers can push to your app.
-  testflight Wrap a built Telegram.ipa into an Xcode archive, let Xcode re-sign it for the App
+  testflight Wrap a built Telegram.ipa (its bundle is Nanogram.app) into an Xcode archive, let Xcode re-sign it for the App
              Store (distribution certificate and profiles are created automatically) and upload
              it to App Store Connect with the Apple ID signed in to Xcode, or with an App Store
              Connect API team key when asc/asc.json and asc/AuthKey_<key id>.p8 exist. The app
@@ -36,6 +36,15 @@ XCODE_PROFILES = os.path.expanduser('~/Library/Developer/Xcode/UserData/Provisio
 # Suffixes match build-system/Make/BuildConfiguration.py (profile_name_mapping).
 # The watch app is not built for device installs, so it is left out.
 EXTENSIONS = ['.Share', '.NotificationService', '.NotificationContent', '.Widget', '.SiriIntents', '.BroadcastUpload']
+
+
+def payload_app_name(unpacked):
+    """The app bundle in an unpacked .ipa: 'Nanogram.app' (Telegram/BUILD bundle_name), found rather than assumed, so an
+    .ipa from before the rename (Telegram.app) still works. Exactly one .app must be in Payload/."""
+    apps = sorted(name for name in os.listdir(os.path.join(unpacked, 'Payload')) if name.endswith('.app'))
+    if len(apps) != 1:
+        sys.exit('expected one .app in %s/Payload, found %s' % (unpacked, apps or 'none'))
+    return apps[0]
 
 
 def exported_ipa(out_dir):
@@ -374,8 +383,9 @@ def cmd_testflight(args):
     # ditto keeps symlinks and permissions inside the bundles.
     unpacked = os.path.join(work, 'ipa')
     subprocess.run(['ditto', '-x', '-k', args.ipa, unpacked], check=True)
-    app = os.path.join(apps_dir, 'Telegram.app')
-    subprocess.run(['ditto', os.path.join(unpacked, 'Payload', 'Telegram.app'), app], check=True)
+    app_name = payload_app_name(unpacked)
+    app = os.path.join(apps_dir, app_name)
+    subprocess.run(['ditto', os.path.join(unpacked, 'Payload', app_name), app], check=True)
     adhoc_sign_unsigned_watch_code(app)
     if args.enhanced_security == 'require':
         require_enhanced_security(app, False, 'in the built app, before export')
@@ -387,7 +397,7 @@ def cmd_testflight(args):
     with open(os.path.join(archive, 'Info.plist'), 'wb') as f:
         plistlib.dump({
             'ApplicationProperties': {
-                'ApplicationPath': 'Applications/Telegram.app',
+                'ApplicationPath': 'Applications/' + app_name,
                 'Architectures': ['arm64'],
                 'CFBundleIdentifier': info['CFBundleIdentifier'],
                 'CFBundleShortVersionString': info['CFBundleShortVersionString'],
@@ -432,7 +442,7 @@ def cmd_testflight(args):
         exported = exported_ipa(os.path.join(work, 'out'))
         check_dir = os.path.join(work, 'exported')
         subprocess.run(['ditto', '-x', '-k', exported, check_dir], check=True)
-        require_enhanced_security(os.path.join(check_dir, 'Payload', 'Telegram.app'), True,
+        require_enhanced_security(os.path.join(check_dir, 'Payload', payload_app_name(check_dir)), True,
                                   'in the exported App Store build')
     if not args.export_only and not xcodebuild_uploads:
         env = dict(os.environ, API_PRIVATE_KEYS_DIR=ASC_DIR)

@@ -44,7 +44,7 @@ Apple's steps: https://developer.apple.com/help/account/identifiers/enable-app-c
 - **Status:** done. **Type:** self-service. Apple lists it as a standard iOS capability: https://developer.apple.com/help/account/reference/supported-capabilities-ios
 - **Where:** Portal > Nanogram > **Communication Notifications**.
 - **Note:** the App Store Connect API **cannot** set it, because its `CapabilityType` list has no communication-notifications value (https://developer.apple.com/documentation/appstoreconnectapi/capabilitytype). It has to be done in the portal, and that is how it was done. The API **can** set `SIRIKIT`, `ICLOUD` and `APPLE_ID_AUTH` (same page).
-- **Verify:** `codesign -d --entitlements :- Payload/Telegram.app` on the exported IPA shows the key.
+- **Verify:** `codesign -d --entitlements :- Payload/Nanogram.app` on the exported IPA shows the key.
 
 ### 2. Notification filtering (`com.apple.developer.usernotifications.filtering`) ⏳
 - **Gives the user:** the notification extension can silently drop a push, so you don't get "You have a new message" banners for muted or deleted chats and duplicate or empty messages are hidden. Apple: "allows a notification service extension to receive remote notifications without displaying the notification to the user" (https://developer.apple.com/documentation/bundleresources/entitlements/com.apple.developer.usernotifications.filtering).
@@ -56,7 +56,7 @@ Apple's steps: https://developer.apple.com/help/account/identifiers/enable-app-c
   2. `Telegram/BUILD` lines 579–583 (the condition is on line 583): change `notification_filtering_fragment = ... if telegram_bundle_id == "ph.telegra.Telegraph"` so it also matches `org.klaipher.Nanogram`. This only affects the main app's entitlements, as it does for official Telegram; do it only after the main-app profile has the capability, or signing fails.
   3. The extension's entitlements come from `Telegram/BUILD` (`NotificationServiceEntitlements`, built by `extension_entitlements` in `Telegram/entitlements.bzl` since 2026-11-04), not from its profile: it gets `notification_filtering_fragment` as soon as step 2 adds the bundle to `notification_filtering_enabled`. The regenerated `NotificationService.mobileprovision` from step 1 must carry the key too, or the signed extension will not install or upload.
   4. `Telegram/NotificationService/Sources/ServicePushPresentation.swift:17`: make `appCanFilterNotifications(baseAppBundleId:)` return true for `org.klaipher.Nanogram`, and flip the `XCTAssertFalse` in `Telegram/NotificationService/Tests/ServicePushPresentationTests.swift:16`.
-- **Verify:** `codesign -d --entitlements :- Payload/Telegram.app/PlugIns/NotificationService*.appex` shows the key. Apple also says the push must have `apns-push-type: alert` for the extension to be able to hide it; that header is set by Telegram's servers (unverified). `security cms -D -i <profile>.mobileprovision` shows it in the profile (Apple's verification method: https://developer.apple.com/help/account/reference/provisioning-with-managed-capabilities). On a device, a push for a muted chat should produce no banner.
+- **Verify:** `codesign -d --entitlements :- Payload/Nanogram.app/PlugIns/NotificationService*.appex` shows the key. Apple also says the push must have `apns-push-type: alert` for the extension to be able to hide it; that header is set by Telegram's servers (unverified). `security cms -D -i <profile>.mobileprovision` shows it in the profile (Apple's verification method: https://developer.apple.com/help/account/reference/provisioning-with-managed-capabilities). On a device, a push for a muted chat should produce no banner.
 - **Recommendation:** worth having. Wait for Apple, then do the changes above.
 
 ### 3. Siri (`com.apple.developer.siri`) — do now
@@ -118,6 +118,6 @@ Apple's steps: https://developer.apple.com/help/account/identifiers/enable-app-c
 - **C2 `is_appstore_build`:** currently `false`, compiled in as `APP_CONFIG_IS_APPSTORE_BUILD` (`submodules/BuildConfig/BUILD:29`). Set it to `true` only for the public App Store release build. **Later.**
 
 ## Verifying everything at once
-1. **Exported IPA:** `unzip -q Nanogram.ipa -d x && codesign -d --entitlements :- x/Payload/Telegram.app`, then repeat for each `x/Payload/Telegram.app/PlugIns/*.appex`.
+1. **Exported IPA:** `unzip -q Nanogram.ipa -d x && codesign -d --entitlements :- x/Payload/Nanogram.app`, then repeat for each `x/Payload/Nanogram.app/PlugIns/*.appex`.
 2. **Provisioning profile:** `security cms -D -i <profile>.mobileprovision`, then look at the `Entitlements` dict (https://developer.apple.com/help/account/reference/provisioning-with-managed-capabilities).
 3. **App ID via API:** `GET /v1/bundleIds/{id}/bundleIdCapabilities` (https://developer.apple.com/documentation/appstoreconnectapi/get-v1-bundleids-_id_-bundleidcapabilities). Communication Notifications won't appear there because the API has no type for it, so check it in the portal instead.

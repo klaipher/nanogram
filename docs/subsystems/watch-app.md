@@ -2,7 +2,7 @@
 
 ## Embedded watch app (`Telegram/WatchApp`)
 
-Nanogram's standalone watchOS client (SwiftUI; TDLib through the `TDShim` package, which wraps Swiftgram/TDLibFramework; vendored `RLottieKit`, `WebPKit`, `OpusKit`) lives in `Telegram/WatchApp/` and can be embedded into the **device** IPA under `Telegram.app/Watch/`. It is built by `xcodebuild` (not Bazel) and codesigned by the Bazel build. **This copy is the source of truth: edit it here.** The old upstream (`~/build/tgwatch`, `tools/export-sources.sh`) no longer exists.
+Nanogram's standalone watchOS client (SwiftUI; TDLib through the `TDShim` package, which wraps Swiftgram/TDLibFramework; vendored `RLottieKit`, `WebPKit`, `OpusKit`) lives in `Telegram/WatchApp/` and can be embedded into the **device** IPA under `Nanogram.app/Watch/`. It is built by `xcodebuild` (not Bazel) and codesigned by the Bazel build. **This copy is the source of truth: edit it here.** The old upstream (`~/build/tgwatch`, `tools/export-sources.sh`) no longer exists.
 
 **Build it into the IPA:** add `--embedWatchApp` to a Make.py **device** build (`--configuration=debug_arm64` or `release_arm64`) together with `--watchApiId`, `--watchApiHash`, `--watchSigningIdentity`, `--watchProvisioningProfile` (`tg device --watch` does this). Off by default (it adds an xcodebuild step of ~1 min once SwiftPM checkouts are cached, see below); simulator builds never embed, and the default `debug_sim_arm64` build is unaffected.
 

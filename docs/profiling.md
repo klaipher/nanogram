@@ -81,7 +81,7 @@ profiling build; nothing else is needed.
 
 ```sh
 xcrun xctrace list devices                       # the iPhone's UDID, e.g. 00008150-…
-codesign -d --entitlements - <unpacked>/Payload/Telegram.app | grep -A1 get-task-allow   # optional check
+codesign -d --entitlements - <unpacked>/Payload/Nanogram.app | grep -A1 get-task-allow   # optional check
 ```
 
 The next build overwrites `bazel-bin`, so copy the dSYMs you need next to the trace
@@ -174,7 +174,7 @@ xcrun xctrace record --device "$DEV" --template 'App Launch' --time-limit 8s \
   --output ~/traces/ios-launch.trace --launch -- <bundle id>
 ```
 
-The iOS executable is `Telegram` whatever the display name. Unlock the phone and keep it awake.
+The iOS executable is `Nanogram` (bundle `Nanogram.app`, Telegram/BUILD `bundle_name`; builds before 2026-11-08 used `Telegram`). Unlock the phone and keep it awake.
 
 ### On the iPhone without a Mac (also works for testers on TestFlight)
 

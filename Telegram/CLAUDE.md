@@ -29,7 +29,7 @@ clients *compile* against module interfaces, so the order is client compile → 
 ## Embedded watch app (`Telegram/WatchApp`)
 
 A standalone watchOS Telegram client, developed in the separate `~/build/tgwatch` repo, is vendored at
-`Telegram/WatchApp/` and can be embedded into the **device** IPA under `Telegram.app/Watch/`. `xcodebuild` builds it
+`Telegram/WatchApp/` and can be embedded into the **device** IPA under `Nanogram.app/Watch/`. `xcodebuild` builds it
 (not Bazel); the Bazel build codesigns it.
 
 **Build it:** add `--embedWatchApp` to a Make.py **device** build (`--configuration=debug_arm64` or `release_arm64`)

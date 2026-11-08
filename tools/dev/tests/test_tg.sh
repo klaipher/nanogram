@@ -118,19 +118,19 @@ make_binary() {
   clang -g -o "$1" "$1.c" && dsymutil "$1" -o "$1.dSYM" && rm -f "$1.c"
 }
 
-# make_build <dir>: <dir>/Telegram.ipa (an app, an extension, a framework and a framework stub
+# make_build <dir>: <dir>/Telegram.ipa holding Nanogram.app (an app, an extension, a framework and a framework stub
 # without its executable, build 202611031200)
 # with the dSYMs Make.py leaves next to it, plus one from another build (Stale.appex.dSYM).
 make_build() {
-  local dir="$1" bin="$1/bin" app="$1/Payload/Telegram.app"
+  local dir="$1" bin="$1/bin" app="$1/Payload/Nanogram.app"
   mkdir -p "$app/PlugIns/Share.appex" "$app/Frameworks/TelegramUIFramework.framework"
-  make_binary "$bin/Telegram" 1 && make_binary "$bin/Share" 2 && make_binary "$bin/TelegramUIFramework" 3 \
+  make_binary "$bin/Nanogram" 1 && make_binary "$bin/Share" 2 && make_binary "$bin/TelegramUIFramework" 3 \
     && make_binary "$bin/Stale" 4 || return 1
-  cp "$bin/Telegram" "$app/Telegram"
+  cp "$bin/Nanogram" "$app/Nanogram"
   cp "$bin/Share" "$app/PlugIns/Share.appex/Share"
   cp "$bin/TelegramUIFramework" "$app/Frameworks/TelegramUIFramework.framework/TelegramUIFramework"
   plutil -create xml1 "$app/Info.plist"
-  plutil -insert CFBundleExecutable -string Telegram "$app/Info.plist"
+  plutil -insert CFBundleExecutable -string Nanogram "$app/Info.plist"
   plutil -insert CFBundleVersion -string 202611031200 "$app/Info.plist"
   plutil -create xml1 "$app/PlugIns/Share.appex/Info.plist"
   plutil -insert CFBundleExecutable -string Share "$app/PlugIns/Share.appex/Info.plist"
@@ -141,7 +141,7 @@ make_build() {
   plutil -create xml1 "$app/Watch/Watch.app/Frameworks/TDLibFramework.framework/Info.plist"
   plutil -insert CFBundleExecutable -string TDLibFramework "$app/Watch/Watch.app/Frameworks/TDLibFramework.framework/Info.plist"
   (cd "$dir" && zip -qr Telegram.ipa Payload) || return 1
-  mv "$bin/Telegram.dSYM" "$dir/Telegram.app.dSYM"
+  mv "$bin/Nanogram.dSYM" "$dir/Nanogram.app.dSYM"
   mv "$bin/Share.dSYM" "$dir/Share.appex.dSYM"
   mv "$bin/TelegramUIFramework.dSYM" "$dir/TelegramUIFramework.framework.dSYM"
   mv "$bin/Stale.dSYM" "$dir/Stale.appex.dSYM"
@@ -187,7 +187,7 @@ test_archive_dsyms() {
 
   TG_DSYM_KEEP=20 run_archive_dsyms "$build"
   check "archive_dsyms succeeds" [ "$STATUS" -eq 0 ]
-  check "the app's dSYM is archived" archived Telegram.app.dSYM
+  check "the app's dSYM is archived" archived Nanogram.app.dSYM
   check "the extension's dSYM is archived" archived Share.appex.dSYM
   check "the framework's dSYM is archived" archived TelegramUIFramework.framework.dSYM
   check "a dSYM of no binary in the ipa is not archived" not_archived Stale.appex.dSYM
@@ -232,7 +232,7 @@ test_archive_dsyms() {
   check "TG_DSYM_KEEP=0 removes nothing" [ -d "$TMP/archive/202610010034" ]
 
   # The app's dSYM from another build: refuse, and still clean up.
-  rm -rf "$build/Telegram.app.dSYM"; cp -R "$build/Stale.appex.dSYM" "$build/Telegram.app.dSYM"
+  rm -rf "$build/Nanogram.app.dSYM"; cp -R "$build/Stale.appex.dSYM" "$build/Nanogram.app.dSYM"
   run_archive_dsyms "$build"
   check "an app dSYM of another build fails" [ "$STATUS" -ne 0 ]
   check "the temporary directory is removed after a failure" tmpdir_empty

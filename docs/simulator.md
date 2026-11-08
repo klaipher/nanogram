@@ -2,7 +2,7 @@
 
 ### Updating the running simulator after a rebuild (whole-`.app` copy)
 
-`tools/dev/tg run` does all of this for the default simulator build: `tg build` makes `bazel-bin/Telegram/Telegram.app` directly (tree artifact, no `.ipa`), and `tg run` clones it to a writable staging copy, replaces the installed bundle in place (or installs it) on the test simulator and launches it. The recipe below is for plain `Make.py` builds, which still produce an `.ipa`.
+`tools/dev/tg run` does all of this for the default simulator build: `tg build` makes `bazel-bin/Telegram/Nanogram.app` directly (tree artifact, no `.ipa`), and `tg run` clones it to a writable staging copy, replaces the installed bundle in place (or installs it) on the test simulator and launches it. The recipe below is for plain `Make.py` builds, which still produce an `.ipa`.
 
 `simctl install` will NOT replace an already-installed app when the build number is unchanged (installd keeps a hard-link cache), so a rebuilt binary silently doesn't take effect. **Preferred fix: copy the whole freshly-built `.app` over the installed bundle in place.** This is more robust than swapping only the `Frameworks/TelegramUIFramework` binary (no risk of app↔framework version skew), and it preserves the account/login because the **data container is a separate path** (`.../data/Containers/Data/Application/<uuid>/`, keyed by bundle id) — only the **bundle** container is replaced, and the install-DB entry stays valid since the path + bundle id are unchanged.
 
@@ -23,7 +23,7 @@ BUNDLE=ph.telegra.Telegraph
 # rewritten every build and carries a real mtime.
 STAGE=$(mktemp -d)
 unzip -q -o bazel-bin/Telegram/Telegram.ipa -d "$STAGE"
-SRC="$STAGE/Payload/Telegram.app"
+SRC="$STAGE/Payload/Nanogram.app"
 DEST="$(xcrun simctl get_app_container "$K3" "$BUNDLE" app)"   # installed bundle path
 # GUARD before the destructive rm: never rm the installed app unless SRC actually resolved,
 # or a failed cp leaves the sim with NO app installed (relaunch then fails).
@@ -51,7 +51,7 @@ There is no cheap way to eyeball the staleness, which is what makes it dangerous
   investigation before anyone suspects the bundle. It did exactly that once already.
 
 So the recipe above unzips the `.ipa` instead. If you ever do copy from archive-root, verify first:
-`md5 -q .../Telegram_archive-root/Payload/Telegram.app/Frameworks/TelegramUIFramework.framework/TelegramUIFramework`
+`md5 -q .../Telegram_archive-root/Payload/Nanogram.app/Frameworks/TelegramUIFramework.framework/TelegramUIFramework`
 against the same path unzipped out of the `.ipa`, and treat a mismatch as stale.
 
 (The older framework-only `cp` of `TelegramUIFramework` still works and is faster, but prefer the

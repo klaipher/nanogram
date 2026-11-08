@@ -1933,6 +1933,8 @@ apple_prebuilt_watchos_application(
 
 ios_application(
     name = "Telegram",
+    # The bundle (Nanogram.app), its executable and dSYM say Nanogram; the target and the .ipa keep the upstream name.
+    bundle_name = "Nanogram",
     bundle_id = "{telegram_bundle_id}".format(
         telegram_bundle_id = telegram_bundle_id,
     ),

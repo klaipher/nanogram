@@ -33,6 +33,29 @@ class ExportedIpaTests(unittest.TestCase):
             device_signing.exported_ipa(self.out)
 
 
+class PayloadAppNameTests(unittest.TestCase):
+    def setUp(self):
+        self.root = tempfile.mkdtemp()
+        self.addCleanup(shutil.rmtree, self.root)
+        os.makedirs(os.path.join(self.root, 'Payload'))
+
+    def test_the_renamed_bundle_is_found(self):
+        os.makedirs(os.path.join(self.root, 'Payload', 'Nanogram.app'))
+        self.assertEqual(device_signing.payload_app_name(self.root), 'Nanogram.app')
+
+    def test_an_ipa_from_before_the_rename_still_works(self):
+        os.makedirs(os.path.join(self.root, 'Payload', 'Telegram.app'))
+        self.assertEqual(device_signing.payload_app_name(self.root), 'Telegram.app')
+
+    def test_no_app_or_two_apps_stop(self):
+        with self.assertRaises(SystemExit):
+            device_signing.payload_app_name(self.root)
+        os.makedirs(os.path.join(self.root, 'Payload', 'Nanogram.app'))
+        os.makedirs(os.path.join(self.root, 'Payload', 'Telegram.app'))
+        with self.assertRaises(SystemExit):
+            device_signing.payload_app_name(self.root)
+
+
 if __name__ == '__main__':
     unittest.main()
 
@@ -78,7 +101,7 @@ class EnhancedSecurityVerificationTests(unittest.TestCase):
         import plistlib
         root = tempfile.mkdtemp()
         self.addCleanup(shutil.rmtree, root)
-        app = os.path.join(root, 'Telegram.app')
+        app = os.path.join(root, 'Nanogram.app')
         bundles = {self.APP: app}
         os.makedirs(app)
         for suffix in suffixes:
