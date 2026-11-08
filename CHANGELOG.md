@@ -4,6 +4,8 @@ Newest first. Internal notes for each TestFlight build; testers see the What to 
 
 ## Unreleased
 
+- **Launch order files regenerated for the 13.2 code (Telegram/OrderFiles, release link only)**. The 2026-10-31 lists predate the 13.1.2 and 13.2 merges: against the release binary of 202611080941, the share of their names still present had dropped (TelegramUI 954 → 882, TelegramCore 1036 → 992 since build 202611021745), and functions 13.2 added to the launch path were not listed at all. `tools/dev/orderfile.py --runs 3` on the logged-in "iPhone 17" simulator (iOS 27.2) with a fresh debug build of 569510a4 (owner's OK to launch, 2026-11-08). Names present in the 202611080941 release binary, old → new list: TelegramUI 882 → 1,224, TelegramCore 992 → 1,122, Postbox 772 → 821, SwiftSignalKit 138 → 174, MtProtoKit 115 → 221. Names the linker cannot find are ignored, so the link cannot break; the effect is fewer page faults on a device cold launch, not measured yet (MetricKit `timeToFirstDraw` of the next builds).
+
 ## 13.2 (202611081037) — 2026-11-08 — edb083a4
 
 TestFlight build. Previous TestFlight build: 202611080941 (5030b678); changes since are `git log 5030b678..edb083a4`: no GameController hardware-keyboard query on iPhone chat open and history drag, and the frame hitch log's second round (keyboard windows in the right handler, sampler always on, 128-frame stacks, timed focus tap). What to Test: chat open from the list, the keyboard measurement run. Entries below.

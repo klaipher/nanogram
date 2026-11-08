@@ -1,15 +1,9 @@
 -[MTApiEnvironment initWithDeviceModelName:]
--[MTApiEnvironment platformString]
--[MTApiEnvironment platform]
--[MTContext setRefreshesTemporaryKeys:]
-+[MTContext contextQueue]
-___25+[MTContext contextQueue]_block_invoke
--[MTQueue initWithName:]
 ___25-[MTContext setKeychain:]_block_invoke
-+[MTDeprecated unarchiveDeprecatedWithData:]
--[MTDatacenterAddressSet initWithCoder:]
-___38-[MTRequestMessageService addRequest:]_block_invoke
 _MTLog
+___38-[MTRequestMessageService addRequest:]_block_invoke
+___70-[GCDAsyncSocket connectToHost:onPort:viaInterface:withTimeout:error:]_block_invoke_2
+-[GCDAsyncSocket lookup:host:port:]
 ___45-[MTTcpTransport setDelegateNeedsTransaction]_block_invoke_2
 -[MTTcpConnectionBehaviour requestConnection]
 -[MTTcpConnectionBehaviour timerEvent:]
@@ -22,100 +16,220 @@ ___67-[MTTcpTransport tcpConnectionBehaviourRequestsReconnection:error:]_block_i
 ___31-[MTTcpTransport startIfNeeded]_block_invoke
 -[MTContext chooseTransportSchemeForConnectionToDatacenterId:schemes:]
 ___70-[MTContext chooseTransportSchemeForConnectionToDatacenterId:schemes:]_block_invoke
-___24-[MTTcpConnection start]_block_invoke
--[MTSignal startWithNextStrict:file:line:]
-___70-[GCDAsyncSocket connectToHost:onPort:viaInterface:withTimeout:error:]_block_invoke_2
--[GCDAsyncSocket lookup:host:port:]
+-[MTTransportScheme description]
+-[MTDatacenterAddress description]
 ___42-[MTNetworkAvailability initWithDelegate:]_block_invoke
-___53-[GCDAsyncSocket connectWithAddress4:address6:error:]_block_invoke
-_MTLogWithPrefix
-___112-[MTProto transportReadyForTransaction:scheme:transportSpecificTransaction:forceConfirmations:transactionReady:]_block_invoke
-_MTShortLog
+-[MTNetworkAvailability updateFlags:]
+___37-[MTNetworkAvailability updateFlags:]_block_invoke
 ___29-[GCDAsyncSocket didConnect:]_block_invoke_4
 ___29-[GCDAsyncSocket didConnect:]_block_invoke_2
 -[GCDAsyncSocket openStreams]
-___84-[MTProto transportConnectionContextUpdateStateChanged:isUpdatingConnectionContext:]_block_invoke
-___destroy_helper_block_e8_32s40s48s56s
-___61-[MTTcpTransport tcpConnectionReceivedData:networkType:data:]_block_invoke
--[MTTransport _processIncomingData:scheme:networkType:transactionId:requestTransactionAfterProcessing:decodeResult:]
--[MTProto transportHasIncomingData:scheme:networkType:data:transactionId:requestTransactionAfterProcessing:decodeResult:]
-___copy_helper_block_e8_32s40s48s56s64s72b
-___copy_helper_block_e8_32w
 ___121-[MTProto transportHasIncomingData:scheme:networkType:data:transactionId:requestTransactionAfterProcessing:decodeResult:]_block_invoke
 -[MTProto _processIncomingMessage:totalSize:withTransactionId:address:authInfoSelector:networkType:]
--[MTRequestMessageService mtProto:receivedMessage:authInfoSelector:networkType:]
--[MTContext updateAddressSetForDatacenterWithId:addressSet:forceUpdateSchemes:]
-___79-[MTContext updateAddressSetForDatacenterWithId:addressSet:forceUpdateSchemes:]_block_invoke
-+[MTContext performWithObjCTry:]
--[MTRequestMessageService removeRequestByInternalId:]
--[MTRequestMessageService removeRequestByInternalId:askForReconnectionOnDrop:]
--[MTProto outgoingShortMessageDescription:messageId:messageSeqNo:]
-___71-[GCDAsyncSocket readDataToLength:withTimeout:buffer:bufferOffset:tag:]_block_invoke
--[GCDAsyncSocket maybeDequeueRead]
--[GCDAsyncSocket doReadData]
-___17-[MTProto resume]_block_invoke
--[MTProto resetTransport]
-___25-[MTProto resetTransport]_block_invoke
--[MTContext transportSchemesForDatacenterWithId:media:enforceMedia:isProxy:]
-___76-[MTContext transportSchemesForDatacenterWithId:media:enforceMedia:isProxy:]_block_invoke
--[MTContext _allTransportSchemesForDatacenterWithId:]
-___112-[MTProto transportReadyForTransaction:scheme:transportSpecificTransaction:forceConfirmations:transactionReady:]_block_invoke_2.145
-___112-[MTProto transportReadyForTransaction:scheme:transportSpecificTransaction:forceConfirmations:transactionReady:]_block_invoke_2
-___77-[MTTcpConnection sendDatas:completion:requestQuickAck:expectDataInResponse:]_block_invoke
--[MTTcpConnection sendDataIfNeeded]
--[MTAesCtr encryptIn:out:len:]
--[MTProto _dataForEncryptedContainerWithMessages:authKey:sessionInfo:quickAckId:address:extendedPadding:]
-+[MTProto _encryptedTransportDataForPaddedPlaintext:authKey:quickAckId:]
-_MTAesEncryptRaw
-_MTAesIgeRawWithAlignedBuffers
-_MTIsWordAligned
--[MTNetworkUsageManagerImpl dealloc]
--[MTNetworkUsageManagerImpl sync]
+-[MTDatacenterAuthMessageService mtProto:receivedMessage:authInfoSelector:networkType:]
+_selectPublicKey
+-[MTDatacenterAuthPublicKey fingerprintWithEncryptionProvider:]
+_MTRsaFingerprint
+_MTFactorize
+_mygcd
+___20-[MTSignal startOn:]_block_invoke.169
+-[MTSignal startWithNext:error:completed:]
+___77+[MTDiscoverConnectionSignals tcpConnectionWithContext:datacenterId:address:]_block_invoke
+___53-[GCDAsyncSocket connectWithAddress4:address6:error:]_block_invoke
 ___37-[GCDAsyncSocket completeCurrentRead]_block_invoke
 -[MTGcdAsyncSocketTcpConnectionInterface socket:didReadData:withTag:networkType:]
 -[MTTcpConnection connectionInterfaceDidReadData:withTag:networkType:]
 -[MTTcpConnection addReadData:networkType:]
 -[MTTcpConnection processReceivedData:tag:networkType:]
--[MTTcpConnection requestReadDataWithLength:tag:]
--[MTGcdAsyncSocketTcpConnectionInterface readDataToLength:withTimeout:tag:]
--[GCDAsyncSocket readDataToLength:withTimeout:tag:]
--[GCDAsyncSocket readDataToLength:withTimeout:buffer:bufferOffset:tag:]
--[MTAesCtr nextKeystreamBlock]
+___77+[MTDiscoverConnectionSignals tcpConnectionWithContext:datacenterId:address:]_block_invoke.12
+-[MTSubscriber putCompletion]
+___20-[MTSignal startOn:]_block_invoke_4
+___17-[MTSignal then:]_block_invoke_2.133
+___19+[MTSignal single:]_block_invoke
+-[MTSubscriber putNext:]
+___17-[MTSignal then:]_block_invoke_3
+___37-[MTSignal timeout:onQueue:orSignal:]_block_invoke_6
+___18-[MTSignal catch:]_block_invoke_2
+___25+[MTSignal mergeSignals:]_block_invoke_2
+___17-[MTSignal then:]_block_invoke_2
+___113+[MTDiscoverConnectionSignals _startBackoffRoundOf:delay:maxDelay:queue:subscriber:currentDisposable:isDisposed:]_block_invoke
+___17-[MTSignal take:]_block_invoke_2
+___16-[MTSignal map:]_block_invoke_2
+___26-[MTSignal switchToLatest]_block_invoke_2
+-[MTSignalQueueState enqueueSignal:]
+___36-[MTSignalQueueState enqueueSignal:]_block_invoke
+___22-[MTSignal onDispose:]_block_invoke_4
+-[MTDisposableSet dispose]
+-[MTSubscriberDisposable dispose]
+-[MTSignalQueueState dispose]
+-[MTMetaDisposable dispose]
+-[MTBlockDisposable dispose]
+___18-[MTSignal catch:]_block_invoke_2.141
+___73+[MTDiscoverConnectionSignals repeatSignal:withBackoffFrom:upTo:onQueue:]_block_invoke_2
+___37-[MTSignal timeout:onQueue:orSignal:]_block_invoke_3.139
+___77+[MTDiscoverConnectionSignals tcpConnectionWithContext:datacenterId:address:]_block_invoke.26
+-[MTTcpConnection stop]
+___23-[MTTcpConnection stop]_block_invoke
+-[MTTcpConnection closeAndNotifyWithError:]
+___43-[MTTcpConnection closeAndNotifyWithError:]_block_invoke
+-[MTGcdAsyncSocketTcpConnectionInterface disconnect]
+-[GCDAsyncSocket disconnect]
+___28-[GCDAsyncSocket disconnect]_block_invoke
+-[GCDAsyncSocket closeWithError:]
+-[GCDAsyncSocket removeStreamsFromRunLoop]
++[GCDAsyncSocket cfstreamThread]
+___84-[MTContext updateTransportSchemeForDatacenterWithId:transportScheme:media:isProxy:]_block_invoke
++[MTContext performWithObjCTry:]
+-[MTTransportSchemeKey encodeWithCoder:]
 ___destroy_helper_block_e8_32s
--[MTTimer dealloc]
--[MTTimer .cxx_destruct]
--[MTTcpTransport startActualizationPingResendTimer]
-___51-[MTTcpTransport startActualizationPingResendTimer]_block_invoke
--[MTTimer start]
--[MTSessionInfo setMessageProcessed:]
-+[MTProto _decryptedPayloadForIncomingTransportData:authKey:]
-+[MTMessageEncryptionKey messageEncryptionKeyV2ForAuthKey:messageKey:toClient:]
+-[MTTcpConnection dealloc]
+-[MTTcpConnection .cxx_destruct]
+___70-[MTProto getAuthKeyForCurrentScheme:createIfNeeded:authInfoSelector:]_block_invoke
+-[MTContext authInfoForDatacenterWithIdRequired:isCdn:selector:allowUnboundEphemeralKeys:]
+___90-[MTContext authInfoForDatacenterWithIdRequired:isCdn:selector:allowUnboundEphemeralKeys:]_block_invoke
+-[MTDatacenterAuthAction execute:datacenterId:]
+-[MTProto addMessageService:]
++[MTInternalMessageParser parseMessage:]
+_MTExp
+-[MTNetworkUsageManagerImpl dealloc]
+-[MTNetworkUsageManagerImpl sync]
+___112-[MTProto transportReadyForTransaction:scheme:transportSpecificTransaction:forceConfirmations:transactionReady:]_block_invoke
 -[MTRequestMessageService mtProtoMessageTransaction:authInfoSelector:sessionInfo:scheme:]
--[MTProto incomingMessageDescription:]
--[MTOutputStream writeData:]
+-[MTRequestMessageService decorateRequestData:initializeApi:requestVerificationData:recaptchaVerificationData:unresolvedDependencyOnRequestInternalId:decoratedDebugDescription:]
+-[MTBuffer(TL) appendTLString:]
+-[MTProto outgoingMessageDescription:messageId:messageSeqNo:authKeyId:]
+___84-[MTProto transportConnectionContextUpdateStateChanged:isUpdatingConnectionContext:]_block_invoke
 ___44-[GCDAsyncSocket writeData:withTimeout:tag:]_block_invoke
 -[GCDAsyncSocket maybeDequeueWrite]
 -[GCDAsyncSocket doWriteData]
-___66-[GCDAsyncSocket setupReadAndWriteSourcesForNewlyConnectedSocket:]_block_invoke
--[MTNetworkUsageManager addIncomingBytes:interface:]
--[MTNetworkUsageManager with:]
+-[MTRequestMessageService mtProto:receivedMessage:authInfoSelector:networkType:]
+-[MTRequest .cxx_destruct]
++[MTProto _decryptedPayloadForIncomingTransportData:authKey:]
+_MTAesDecryptRaw
+_MTAesIgeRawWithAlignedBuffers
+_MyAesIgeDecrypt
+_MTLogWithPrefix
 ___16-[MTTimer start]_block_invoke
-___41-[MTNetworkUsageManagerImpl scheduleSync]_block_invoke
+___26-[MTSignal delay:onQueue:]_block_invoke_2
+___26-[MTSignal switchToLatest]_block_invoke
+___16-[MTSignal map:]_block_invoke
+___17-[MTSignal take:]_block_invoke
+___25+[MTSignal mergeSignals:]_block_invoke
+___18-[MTSignal catch:]_block_invoke
+___49+[MTHttpRequestOperation dataForHttpUrl:headers:]_block_invoke
+-[MTContext updateAddressSetForDatacenterWithId:addressSet:forceUpdateSchemes:]
+___79-[MTContext updateAddressSetForDatacenterWithId:addressSet:forceUpdateSchemes:]_block_invoke
+-[MTDatacenterAddressSet encodeWithCoder:]
+___49+[MTHttpRequestOperation dataForHttpUrl:headers:]_block_invoke.16
+___102+[MTBackupAddressSignals fetchBackupIps:currentContext:additionalSource:phoneNumber:mainDatacenterId:]_block_invoke.142
++[MTBackupAddressSignals fetchConfigFromAddress:currentContext:mainDatacenterId:]
+-[MTApiEnvironment copyWithZone:]
+-[MTApiEnvironment platformString]
+-[MTApiEnvironment platform]
+-[MTApiEnvironment getSysInfoByName:]
+___49-[MTTcpTransport _requestTransactionFromDelegate]_block_invoke.160
+___24-[MTTcpConnection start]_block_invoke
+-[MTSignal startWithNextStrict:file:line:]
+___24-[MTTcpConnection start]_block_invoke_4
+___24-[MTTcpConnection start]_block_invoke_5
+_MTCreateSafariClientHello
+_executeGenerationCode
+_executeGenerationCodeRecursive
+_generate_public_key
+_get_double_x
+_get_y2
+___77-[MTTcpConnection sendDatas:completion:requestQuickAck:expectDataInResponse:]_block_invoke
+-[MTTcpConnection sendDataIfNeeded]
+-[MTProto getAuthKeyForCurrentScheme:createIfNeeded:authInfoSelector:]
+-[MTDatacenterAuthInfo authKey]
+-[MTProto _parseIncomingMessages:dataMessageId:embeddedAuthKeyId:parseError:]
+-[MTSessionInfo scheduledMessageConfirmations]
+___112-[MTProto transportReadyForTransaction:scheme:transportSpecificTransaction:forceConfirmations:transactionReady:]_block_invoke_2.145
+___112-[MTProto transportReadyForTransaction:scheme:transportSpecificTransaction:forceConfirmations:transactionReady:]_block_invoke_2
+-[MTSessionInfo assignTransactionId:toScheduledMessageConfirmationsWithIds:]
+-[MTTcpConnection start]
+___35-[GCDAsyncSocket lookup:host:port:]_block_invoke_2
+-[GCDAsyncSocket lookup:didSucceedWithAddress4:address6:]
+-[GCDAsyncSocket connectWithAddress4:address6:error:]
++[MTInternalMessageParser unwrapMessage:]
++[MTGzip decompress:maxOutputLength:]
+___66-[GCDAsyncSocket setupReadAndWriteSourcesForNewlyConnectedSocket:]_block_invoke
+-[GCDAsyncSocket doReadData]
+-[MTDatacenterAuthInfo authKeyId]
 ___28-[GCDAsyncSocket doReadData]_block_invoke
 -[MTGcdAsyncSocketTcpConnectionInterface socket:didReadPartialDataOfLength:tag:]
 -[MTTcpConnection connectionInterfaceDidReadPartialDataOfLength:tag:]
 -[MTTcpTransport tcpConnectionDownloadActivityUpdated:]
-_ctr128_inc
--[MTTcpTransport tcpConnectionReceivedData:networkType:data:]
--[MTRequest .cxx_destruct]
-_MTRawSha256TwoParts
-+[MTInternalMessageParser unwrapMessage:]
-+[MTGzip decompress:maxOutputLength:]
+-[MTTcpTransport tcpConnectionProgressUpdated:packetProgressToken:packetLength:progress:]
+-[MTGcdAsyncSocketTcpConnectionInterface connectToHost:onPort:viaInterface:withTimeout:error:]
+-[GCDAsyncSocket connectToHost:onPort:viaInterface:withTimeout:error:]
+___70-[GCDAsyncSocket connectToHost:onPort:viaInterface:withTimeout:error:]_block_invoke
+-[GCDAsyncSocket startConnectTimeout:]
+-[MTNetworkAvailability updateReachability:notify:]
+___51-[MTNetworkAvailability updateReachability:notify:]_block_invoke
+-[GCDAsyncSocket doReadEOF]
+-[MTTcpConnection requestReadDataWithLength:tag:]
+-[MTGcdAsyncSocketTcpConnectionInterface readDataToLength:withTimeout:tag:]
+-[GCDAsyncSocket readDataToLength:withTimeout:tag:]
+-[GCDAsyncSocket readDataToLength:withTimeout:buffer:bufferOffset:tag:]
+_MTShortLog
+___36-[MTProto transportActivityUpdated:]_block_invoke
+-[MTRequestMessageService mtProtoTransportActivityUpdated:]
+-[MTRequestMessageService updateRequestsTimeoutTimerWithReset:]
+-[MTRequest errorContext]
+___55-[MTTcpTransport tcpConnectionDownloadActivityUpdated:]_block_invoke
+-[MTProto transportActivityUpdated:]
+___69-[MTProto transportDecodeProgressToken:scheme:data:token:completion:]_block_invoke
+-[MTInputStream readData:failed:]
++[MTMessageEncryptionKey messageEncryptionKeyV2ForAuthKey:messageKey:toClient:]
+_MTSha256
+___61-[MTTcpTransport tcpConnectionReceivedData:networkType:data:]_block_invoke_2
+-[MTTcpTransport connectionIsValid:]
+___65-[MTContext updateAuthInfoForDatacenterWithId:authInfo:selector:]_block_invoke
+-[MTProto contextDatacenterAuthInfoUpdated:datacenterId:authInfo:selector:]
+-[MTContext performBatchUpdates:]
+___75-[MTProto contextDatacenterAuthInfoUpdated:datacenterId:authInfo:selector:]_block_invoke
+-[MTProto resetTransport]
+___25-[MTProto resetTransport]_block_invoke
+-[MTProto setTransport:keepTransportActive:]
+___44-[MTProto setTransport:keepTransportActive:]_block_invoke
+___69-[MTProto transportConnectionStateChanged:isConnected:proxySettings:]_block_invoke
+___41-[MTNetworkUsageManagerImpl scheduleSync]_block_invoke
+___71-[GCDAsyncSocket readDataToLength:withTimeout:buffer:bufferOffset:tag:]_block_invoke
+-[GCDAsyncSocket maybeDequeueRead]
+-[GCDAsyncSocket completeCurrentRead]
+___81+[MTBackupAddressSignals fetchConfigFromAddress:currentContext:mainDatacenterId:]_block_invoke_2
++[MTBackupAddressSignals applyAddressList:toContext:]
+___53+[MTBackupAddressSignals applyAddressList:toContext:]_block_invoke
+_objc_msgSend$initWithAddressList:
+-[MTSubscriber initWithNext:error:completed:]
+-[MTSubscriberBlocks initWithNext:error:completed:]
+-[MTProto _dataForEncryptedContainerWithMessages:authKey:sessionInfo:quickAckId:address:extendedPadding:]
+___33-[MTNetworkUsageManagerImpl sync]_block_invoke.5
+-[MTTimer start]
+___91-[MTContext invalidateTransportSchemeForDatacenterId:transportScheme:isProbablyHttp:media:]_block_invoke
+-[MTContext transportSchemeForDatacenterWithIdRequired:moreOptimalThan:beginWithHttp:media:isProxy:]
+___100-[MTContext transportSchemeForDatacenterWithIdRequired:moreOptimalThan:beginWithHttp:media:isProxy:]_block_invoke
+-[MTSignal startWithNextStrict:error:completed:file:line:]
+___22-[MTSignal onDispose:]_block_invoke
+-[MTSubscriber _assignDisposable:]
+-[MTBlockDisposable dealloc]
+-[MTBlockDisposable .cxx_destruct]
+_encryptRSAModernPadding
 ___49-[MTTcpTransport _requestTransactionFromDelegate]_block_invoke_2.161
 -[MTTcpConnection sendDatas:completion:requestQuickAck:expectDataInResponse:]
-___49-[MTTcpTransport _requestTransactionFromDelegate]_block_invoke.160
+___97+[MTBackupAddressSignals fetchBackupIpsResolveGoogle:phoneNumber:currentContext:addressOverride:]_block_invoke
+-[MTProto pause]
+-[MTNetworkUsageManager addIncomingBytes:interface:]
+-[MTNetworkUsageManager with:]
+___49-[MTTcpTransport _requestTransactionFromDelegate]_block_invoke_3
+___112-[MTProto transportReadyForTransaction:scheme:transportSpecificTransaction:forceConfirmations:transactionReady:]_block_invoke.144
+-[MTRequestMessageService removeRequestByInternalId:]
+-[MTRequestMessageService removeRequestByInternalId:askForReconnectionOnDrop:]
+___78-[MTRequestMessageService removeRequestByInternalId:askForReconnectionOnDrop:]_block_invoke
+-[MTRequest scanInternalId]
 -[MTContext setDiscoverBackupAddressListSignal:]
--[MTRequestMessageService decorateRequestData:initializeApi:requestVerificationData:recaptchaVerificationData:unresolvedDependencyOnRequestInternalId:decoratedDebugDescription:]
-+[GCDAsyncSocket cfstreamThread]
--[MTSessionInfo messageProcessed:]
-___copy_helper_block_e8_32s40s48s56s
+-[MTSessionInfo scheduleMessageConfirmation:size:]
+_MTRawSha256TwoParts
+-[MTProto incomingMessageDescription:]
+___33-[MTNetworkUsageManagerImpl sync]_block_invoke

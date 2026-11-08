@@ -14,6 +14,9 @@ Regenerate after large changes to the launch path (logged-in simulator app insta
 python3 tools/dev/orderfile.py --udid <SIMULATOR_UDID> --runs 3
 ```
 
-Generated 2026-10-31 from 2 debug-simulator launches: TelegramUI 1,485 symbols, TelegramCore
-1,578, Postbox 1,201, SwiftSignalKit 202, MtProtoKit 121 (93-99% of profiled names matched).
+Generated 2026-11-08 from 3 debug-simulator launches of the Telegram 13.2 merge (main 569510a4): TelegramUI
+1,862 symbols, TelegramCore 1,735, Postbox 1,245, SwiftSignalKit 261, MtProtoKit 235 (66/28/22/6/0 profiled
+names not found). Against the release binary of build 202611080941 (lists that survive inlining): TelegramUI
+1,224 (the 2026-10-31 list: 882), TelegramCore 1,122 (992), Postbox 821 (772), SwiftSignalKit 174 (138),
+MtProtoKit 221 (115). About a third of a list never matches a release binary: small functions are inlined there.
 The launch-time gain shows on a device (cold launch from flash), not on the simulator.
