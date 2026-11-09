@@ -11,9 +11,10 @@ ROOT="$(cd "$(dirname "${BASH_SOURCE[0]}")/../.." && pwd)"
 APP_NAME="Nanogram"
 # Simulator builds (tree artifact): rules_apple puts a bundle whose name differs from the target under <target>_archive-root.
 SIM_APP="$ROOT/bazel-bin/Telegram/Telegram_archive-root/Payload/${APP_NAME}.app"
-# The app's dSYM follows the Bazel target, not the bundle: Telegram.app.dSYM with DWARF/Telegram (its UUID is the
-# Nanogram executable's).
-APP_DSYM="Telegram.app.dSYM"
+# The app's dSYM: a fresh build puts it in Telegram_dsyms/Nanogram.app.dSYM (rules_apple, the bundle is named Nanogram
+# since 2026-11-08); builds before the rename left Telegram.app.dSYM (DWARF/Telegram) next to the ipa. archive_dsyms
+# takes the first that exists and checks its UUID against the app either way.
+APP_DSYMS=("Telegram_dsyms/${APP_NAME}.app.dSYM" "Telegram.app.dSYM")
 # Relative paths on the command line (tg testflight --notes) are the caller's, not the repository's.
 CALLER_PWD="$PWD"
 cd "$ROOT"
@@ -662,10 +663,16 @@ prune_dsym_archive() {
 archive_dsyms() {
   local ipa="$1" outdir binaries version app_uuids dsym_uuids dest dsym name uuid matched
   outdir="$(cd -P "$(dirname "$ipa")" && pwd)"
-  local candidates=() dsyms=()
-  for dsym in "$outdir"/*.dSYM; do [ -d "$dsym" ] && candidates+=("$dsym"); done
+  local candidates=() dsyms=() app_dsym=""
+  for dsym in "$outdir"/*.dSYM "$outdir"/Telegram_dsyms/*.dSYM; do [ -d "$dsym" ] && candidates+=("$dsym"); done
   [ ${#candidates[@]} -gt 0 ] || die "no dSYMs next to $ipa"
-  [ -d "$outdir/${APP_DSYM}" ] || die "no ${APP_DSYM} next to $ipa"
+  for dsym in "${APP_DSYMS[@]}"; do
+    if [ -d "$outdir/$dsym" ]; then
+      app_dsym="$outdir/$dsym"
+      break
+    fi
+  done
+  [ -n "$app_dsym" ] || die "no app dSYM next to $ipa (${APP_DSYMS[*]})"
 
   # In a subshell, so its EXIT trap removes the extracted files whatever happens.
   binaries="$(
@@ -681,9 +688,9 @@ archive_dsyms() {
     ""|.*|*[!0-9.]*) die "no usable CFBundleVersion in $ipa: '$version'" ;;
   esac
   app_uuids="$(echo "$binaries" | awk -v app="Payload/${APP_NAME}.app/${APP_NAME}" '$1 == app { print $2 }' | sort | xargs)"
-  dsym_uuids="$(dwarfdump --uuid "$outdir/${APP_DSYM}" | awk '{ print $2 }' | sort | xargs)"
+  dsym_uuids="$(dwarfdump --uuid "$app_dsym" | awk '{ print $2 }' | sort | xargs)"
   [ -n "$app_uuids" ] && [ "$app_uuids" = "$dsym_uuids" ] \
-    || die "${APP_DSYM} ($dsym_uuids) does not belong to the app in $ipa ($app_uuids)"
+    || die "${app_dsym#"$outdir"/} ($dsym_uuids) does not belong to the app in $ipa ($app_uuids)"
 
   for dsym in "${candidates[@]}"; do
     matched=0

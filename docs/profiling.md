@@ -174,7 +174,7 @@ xcrun xctrace record --device "$DEV" --template 'App Launch' --time-limit 8s \
   --output ~/traces/ios-launch.trace --launch -- <bundle id>
 ```
 
-The iOS executable is `Nanogram` (bundle `Nanogram.app`, Telegram/BUILD `bundle_name`; builds before 2026-11-08 used `Telegram`; the dSYM is still `Telegram.app.dSYM` with `DWARF/Telegram`). Unlock the phone and keep it awake.
+The iOS executable is `Nanogram` (bundle `Nanogram.app`, Telegram/BUILD `bundle_name`; builds before 2026-11-08 used `Telegram`; a fresh build's dSYM is `Telegram_dsyms/Nanogram.app.dSYM`, archived as `Nanogram.app.dSYM.zip`; builds up to 202611082219 archived `Telegram.app.dSYM` with `DWARF/Telegram`). Unlock the phone and keep it awake.
 
 ### On the iPhone without a Mac (also works for testers on TestFlight)
 

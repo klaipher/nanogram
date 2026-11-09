@@ -231,6 +231,21 @@ test_archive_dsyms() {
   TG_DSYM_KEEP=0 run_archive_dsyms "$build"
   check "TG_DSYM_KEEP=0 removes nothing" [ -d "$TMP/archive/202610010034" ]
 
+  # Since the bundle is Nanogram.app, a fresh build puts the app's dSYM in Telegram_dsyms/Nanogram.app.dSYM, not next to
+  # the ipa; a Telegram.app.dSYM there is left from an older build (its UUID is not the app's).
+  mkdir -p "$build/Telegram_dsyms"
+  mv "$build/Telegram.app.dSYM" "$build/Telegram_dsyms/Nanogram.app.dSYM"
+  run_archive_dsyms "$build"
+  check "the app's dSYM is found in Telegram_dsyms" [ "$STATUS" -eq 0 ]
+  check "the app's dSYM from Telegram_dsyms is archived" archived Nanogram.app.dSYM
+  cp -R "$build/Stale.appex.dSYM" "$build/Telegram.app.dSYM"
+  run_archive_dsyms "$build"
+  check "a stale Telegram.app.dSYM next to the ipa does not hide Telegram_dsyms" [ "$STATUS" -eq 0 ]
+  check "the stale Telegram.app.dSYM is not archived" not_archived Telegram.app.dSYM
+  rm -rf "$build/Telegram.app.dSYM"
+  mv "$build/Telegram_dsyms/Nanogram.app.dSYM" "$build/Telegram.app.dSYM"
+  rmdir "$build/Telegram_dsyms"
+
   # The app's dSYM from another build: refuse, and still clean up.
   rm -rf "$build/Telegram.app.dSYM"; cp -R "$build/Stale.appex.dSYM" "$build/Telegram.app.dSYM"
   run_archive_dsyms "$build"
