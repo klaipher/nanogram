@@ -47,6 +47,24 @@ public enum MediaPickerCameraCellCaptureAction: Equatable {
     case stop
 }
 
+/// What the chat camera tile does when the full-screen camera takes over its camera and preview view.
+public struct MediaPickerChatCameraHandOff: Equatable {
+    public var enablesPreview: Bool
+    public var startsCapture: Bool
+
+    public init(enablesPreview: Bool, startsCapture: Bool) {
+        self.enablesPreview = enablesPreview
+        self.startsCapture = startsCapture
+    }
+}
+
+/// Without a live preview in the tile (Power Saving), the tile has disabled its preview connection and stopped the
+/// camera. The full-screen camera keeps the same preview view and never enables it again, so the hand-off does: else
+/// the camera runs (green indicator on) behind a frozen picture.
+public func mediaPickerChatCameraHandOff(hasLivePreview: Bool) -> MediaPickerChatCameraHandOff {
+    return MediaPickerChatCameraHandOff(enablesPreview: true, startsCapture: !hasLivePreview)
+}
+
 public func mediaPickerChatCameraCellCaptureAction(isActive: Bool, hasLivePreview: Bool, isInvalidated: Bool, isInWindow: Bool, isHandedOff: Bool) -> MediaPickerCameraCellCaptureAction {
     if isHandedOff {
         return .none

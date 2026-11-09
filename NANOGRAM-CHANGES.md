@@ -199,6 +199,11 @@ marked (check) were not re-verified against the code; correct them on the next c
 - Upstream: no (could be offered). Nothing changes what is sent to the server.
 - Sync: the action block in `NotificationService.swift` is wrapped in a closure without re-indenting; on a conflict keep upstream's block and re-wrap it.
 
+### Chat camera hand-off enables the preview (iOS)
+- What: tapping the attach-menu camera tile turns the shared preview back on before the full-screen camera takes it; upstream left it off when Power Saving had disabled the tile's live preview (frozen picture).
+- Where: `submodules/TelegramUI/Components/ChatMediaSend/Sources/MediaPickerCameraCell.swift` (`mediaPickerChatCameraHandOff`), `submodules/MediaPickerUI/Sources/MediaPickerScreen.swift` (`cameraTapped`).
+- Upstream: no (upstream bug, 13.2).
+
 ### Differences added or changed by the 13.2 merge (2026-11-06)
 - rlottie: upstream removed it and `LottieSettings`; iOS now renders only with tlottie. Our rlottie fork and `submodules/rlottie` wrappers stay for the macOS app and the Watch app (`docs/mac-core-paths.txt`). Upstream: no.
 - Glass: matches upstream 13.2 by default (owner decision, revised). The luma clamp is installed on iOS 26 and 27 with upstream's ranges (`GlassBackgroundView.adaptiveLumaRange`: dark 0-0.874; light 0.22-1.0 on iOS 26, 0.125-1.0 on iOS 27). The Debug Settings switch for Apple's fully native glass was removed on 2026-11-07 (owner: it saves no battery; the clamp is one number per luma callback), so the clamp is always installed. Where: `GlassFixedLook`, `UIViewController+Navigation.m`. Upstream: same look; the only difference is that `registerEffectViewOverrides` does one class lookup for the running OS instead of upstream's loop over both names (keeps the launch-time gain). Sync: keep the single lookup when merging upstream's loop.

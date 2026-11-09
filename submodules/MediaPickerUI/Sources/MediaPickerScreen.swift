@@ -1209,7 +1209,11 @@ public final class MediaPickerScreenImpl: ViewController, MediaPickerScreen, Att
                     return
                 }
                 self.dismissInput()
-                if !self.modernCameraHasLivePreview {
+                let handOff = mediaPickerChatCameraHandOff(hasLivePreview: self.modernCameraHasLivePreview)
+                if handOff.enablesPreview {
+                    previewView.isEnabled = true
+                }
+                if handOff.startsCapture {
                     camera.startCapture()
                 }
                 self.isModernCameraHandedOff = true
