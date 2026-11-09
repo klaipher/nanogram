@@ -4,6 +4,8 @@ Newest first. Internal notes for each TestFlight build; testers see the What to 
 
 ## Unreleased
 
+- **Pre-push parity hook (tooling)**. Same file as the Mac's `parity.py`: the hook now tells the Mac from iOS by the core gitlink in HEAD instead of `submodules/telegram-ios/.git`, so a Mac worktree without the core checked out no longer runs the iOS history-root check. No change for iOS pushes. Test: `test_parity`.
+
 - **iPad display-link cap baked in; its Debug switch and the pacing log removed**. Owner, 2026-11-08. An iPad's shared display link always follows the rate its animations ask for (60 or 30 Hz when they need no more), as on the iPhone; upstream forced up to 120 Hz on every 120 Hz iPad. It had been on by default since 2026-11-07. Removed: `ExperimentalUISettings.tabletDisplayLinkFrameRateCap` (old blobs with its key decode), the Debug row (id 81 retired), `SharedDisplayLinkDriver.capsTabletFrameRate`, `startPacingLog`/`pacingLog` and `DisplayLinkPacingStats` (the pacing log only started when that switch was toggled), and `sharedDisplayLinkFrameRateRange`'s `capsTabletRate:` parameter and its 120 Hz tablet override. NANOGRAM-CHANGES.md updated. Tests: TabletSecondBatchTests (rewritten for the rule without the switch), DisplayTests, TelegramUIPreferencesTests, DebugSettingsUITests pass; app compiled.
 
 ## 13.2 (202611082219) — 2026-11-08 — 489139c3
