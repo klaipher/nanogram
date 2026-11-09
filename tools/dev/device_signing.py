@@ -454,7 +454,17 @@ def cmd_testflight(args):
         print('Signed for the App Store (not uploaded): ' + os.path.join(work, 'out'))
     else:
         print('Uploaded. The build appears in App Store Connect > TestFlight after Apple processes it (10-30 min).')
-    print('Work files: ' + work)
+    print(finish_testflight_work(work, uploaded=not args.export_only))
+
+
+def finish_testflight_work(work, uploaded):
+    """An uploaded build's staging folder (archive, .ipa, signed package: ~2 GB) is removed; the dSYMs are kept by
+    `tg testflight` elsewhere. An export-only build keeps it, since the signed package is the result. A failed export
+    or upload exits before this and keeps it for the logs."""
+    if uploaded:
+        shutil.rmtree(work, ignore_errors=True)
+        return 'Removed the work files in ' + work
+    return 'Work files: ' + work
 
 
 def main():

@@ -9,6 +9,26 @@ sys.path.insert(0, os.path.join(os.path.dirname(os.path.abspath(__file__)), '..'
 import device_signing  # noqa: E402
 
 
+class TestflightWorkFilesTests(unittest.TestCase):
+    # Each upload staged a ~1.9 GB archive and .ipa in TMPDIR and never removed it: 13 uploads filled 24 GB.
+    def make_work(self):
+        work = tempfile.mkdtemp(prefix='testflight-test-')
+        self.addCleanup(shutil.rmtree, work, True)
+        os.makedirs(os.path.join(work, 'Nanogram.xcarchive'))
+        return work
+
+    def test_an_uploaded_build_leaves_no_work_files(self):
+        work = self.make_work()
+        device_signing.finish_testflight_work(work, uploaded=True)
+        self.assertFalse(os.path.exists(work))
+
+    def test_an_export_only_build_keeps_the_signed_package(self):
+        work = self.make_work()
+        message = device_signing.finish_testflight_work(work, uploaded=False)
+        self.assertTrue(os.path.isdir(work))
+        self.assertIn(work, message)
+
+
 class ExportedIpaTests(unittest.TestCase):
     def setUp(self):
         self.out = tempfile.mkdtemp(prefix='device-signing-test-')
