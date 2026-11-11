@@ -426,6 +426,25 @@ final class ThumbnailFiller {
         self.onProgress?()
     }
 
+    /// Drops the whole-library index (ids, versions, states) after the last picker closed, so it does not stay in
+    /// memory between picker sessions. The next picker installs a new plan. Requests in flight finish and find
+    /// no catalog entry. Stored thumbnails and the retry registry are untouched.
+    func releaseCatalog() {
+        self.catalog = ThumbnailCatalog.empty
+        self.states = []
+        self.missing = IndexSet()
+        self.networkEligible = IndexSet()
+        self.networkTried = []
+        self.filledCount = 0
+        self.unavailableCount = 0
+        self.launchPending = [:]
+        self.launchPendingIndices = IndexSet()
+        self.urgent = []
+        self.ranges = []
+        self.hasPlan = false
+        self.isComplete = false
+    }
+
     func setPriority(ranges: [Range<Int>]) {
         guard ranges != self.ranges else {
             return

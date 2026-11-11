@@ -84,11 +84,28 @@ public final class MediaGridPhotoLibraryFiller {
 
     public func releasePickerLease() {
         if Thread.isMainThread {
-            self.pacer?.pickerClosed()
+            self.pickerLeaseReleased()
         } else {
             DispatchQueue.main.async { [weak self] in
-                self?.pacer?.pickerClosed()
+                self?.pickerLeaseReleased()
             }
+        }
+    }
+
+    /// Number of pickers that hold a lease.
+    var pickerLeaseCount: Int {
+        return self.pacer?.openPickerCount ?? 0
+    }
+
+    /// Called on the main queue when the last picker's lease is released.
+    var onLastPickerReleased: (() -> Void)?
+
+    private func pickerLeaseReleased() {
+        self.pacer?.pickerClosed()
+        if self.pickerLeaseCount == 0 {
+            self.source.fetchResult = PHFetchResult<PHAsset>()
+            self.filler.releaseCatalog()
+            self.onLastPickerReleased?()
         }
     }
 
@@ -174,6 +191,23 @@ public final class MediaGridPhotoLibraryServices {
             let screen = UIScreen.main
             return MediaGridLaunchCache.coverage(screenSize: screen.bounds.size, scale: screen.scale)
         }
+        self.filler.onLastPickerReleased = { [weak self] in
+            self?.releaseMemoryAfterLastPicker(completion: nil)
+        }
+    }
+
+    /// The shared store and launch cache otherwise keep ~80-110 MB (decoded 768x768 pages, writer contexts, launch
+    /// images) until a memory warning or the background. After the last picker closes: write what is pending, then
+    /// drop every decoded page and the launch images. The next picker decodes what it shows again. Main thread.
+    func releaseMemoryAfterLastPicker(completion: (() -> Void)?) {
+        self.cachedLaunchCache?.releaseImages()
+        self.store.flush(completion: { [weak self] in
+            // A picker that opened meanwhile owns the visible set.
+            if self?.filler.pickerLeaseCount == 0 {
+                self?.store.trimToVisible(ids: [])
+            }
+            completion?()
+        })
     }
 
     public var launchCache: MediaGridLaunchCache {
