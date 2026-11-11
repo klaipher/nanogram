@@ -191,7 +191,7 @@ Status values: `todo`, `in progress`, `done (<commit>)`, `dropped (<reason>)`.
 
 ## Design changes (L)
 
-### R20. Chat history re-lays out every loaded row on every update, on the main thread — `todo` (narrowing allUpdated cannot be proven safe: neighbour merging and non-entry inputs)
+### R20. Chat history re-lays out every loaded row on every update, on the main thread — `in progress` (rows keep their stableVersion when entry, associated data and rowPrepEpoch are unchanged: fffd9824; layout still on main)
 
 - `TelegramUI/Sources/ChatHistoryListNode.swift:2056,2648` (`messageViewQueue = mainQueue`,
   `allUpdated: !isSavedMusic || forceUpdateAll`); `CoreListChatHistoryBackend.swift:953-955,1784,2020,2097`
