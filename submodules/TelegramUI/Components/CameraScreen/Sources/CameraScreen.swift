@@ -2606,6 +2606,9 @@ private class BlurView: UIVisualEffectView {
     }
 }
 
+/// Frame-hitch window of the full-screen camera (chat attach, stories): from `animateIn` to `dismiss`.
+let cameraScreenFrameHitchWindow = "camera"
+
 public class CameraScreenImpl: ViewController, CameraScreen {
     public enum Mode: Equatable {
         case story
@@ -4275,6 +4278,7 @@ public class CameraScreenImpl: ViewController, CameraScreen {
         
         private var animatedIn = false
         func animateIn() {
+            FrameHitchMonitor.shared.begin(cameraScreenFrameHitchWindow)
             guard let controller = self.controller else {
                 return
             }
@@ -5499,6 +5503,7 @@ public class CameraScreenImpl: ViewController, CameraScreen {
     }
     
     deinit {
+        FrameHitchMonitor.shared.end(cameraScreenFrameHitchWindow)
         self.cameraActivationLink?.invalidate()
         self.audioSessionDisposable?.dispose()
         self.postingAvailabilityDisposable?.dispose()
@@ -6122,6 +6127,7 @@ public class CameraScreenImpl: ViewController, CameraScreen {
     }
     
     public override func dismiss(animated flag: Bool, completion: (() -> Void)? = nil) {
+        FrameHitchMonitor.shared.end(cameraScreenFrameHitchWindow)
         self.cameraActivationLink?.invalidate()
         self.cameraActivationLink = nil
         if !flag {
