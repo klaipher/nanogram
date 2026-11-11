@@ -118,6 +118,8 @@ final class HLSVideoNativeContentNode: ASDisplayNode, UniversalVideoContentNode 
     private let stats = HLSPlaybackStats()
     private var isEffectivelyPlaying = false
     private var isPlayRequested = false
+    // Latched: the node has played with sound once, so it is not a muted inline autoplay any more.
+    private var hasHadSound = false
 
     // While the user watches with sound (the gallery, not muted inline autoplay) and the buffer ahead is short, the
     // quality files' requests go ahead of other downloads in the queue. Above `priorityBufferHigh` the queue is shared
@@ -377,9 +379,14 @@ final class HLSVideoNativeContentNode: ASDisplayNode, UniversalVideoContentNode 
         Logger.shared.log("HLSNative", "\(self.fileReference.media.fileId.id): download priority \(isOn ? "on" : "off") buffered=\(String(format: "%.1f", self.controller.forwardBufferLength))")
     }
     
-    // Without sound the video plays at most at the preload quality.
+    // Without sound the video plays at most at the preload quality, and keeps a short buffer ahead while it is still
+    // an inline autoplay: one that has had sound (the gallery, fullscreen) keeps the full window even when muted again.
     private func applyCap() {
         self.controller.setCap(self.enableSound ? nil : self.preloadLevel)
+        if self.enableSound {
+            self.hasHadSound = true
+        }
+        self.controller.setMaxBufferAhead(hlsForwardBufferSeconds(isMuted: !self.enableSound, isInline: !self.hasHadSound))
     }
     
     // The bandwidth estimate is kept per kind of network (`HLSBandwidthStore`). Cellular is one class: the radio

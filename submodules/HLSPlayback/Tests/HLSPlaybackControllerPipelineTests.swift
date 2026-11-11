@@ -206,6 +206,35 @@ final class HLSPlaybackControllerPipelineTests: XCTestCase {
         h.assertInvariants()
     }
     
+    // The forward buffer limit can change while playing (a muted inline video gets sound, or opens in the gallery):
+    // loads stop at the lower limit and go on when it rises.
+    func testLoadsStopAtTheForwardLimitAndResumeWhenItRises() {
+        var configuration = HLSPlaybackController.Configuration()
+        configuration.maxBufferAhead = 15.0
+        let h = ControllerHarness(configuration: configuration)
+        h.environment.bandwidth = 50_000_000.0
+        h.environment.progressChunk = 131_072
+        h.setPlaylists()
+        h.controller.start()
+        h.environment.advance(by: 10.0)
+
+        let lowLimitLoads = h.segmentLoads.count
+        XCTAssertGreaterThan(lowLimitLoads, 0)
+        for load in h.segmentLoads {
+            XCTAssertLessThan(self.segmentStart(h, load) ?? 0.0, 15.0)
+        }
+
+        h.controller.setMaxBufferAhead(40.0)
+        h.environment.advance(by: 10.0)
+
+        XCTAssertGreaterThan(h.segmentLoads.count, lowLimitLoads)
+        XCTAssertTrue(h.segmentLoads.contains(where: { (self.segmentStart(h, $0) ?? 0.0) >= 15.0 }))
+        for load in h.segmentLoads {
+            XCTAssertLessThan(self.segmentStart(h, load) ?? 0.0, 40.0)
+        }
+        h.assertInvariants()
+    }
+    
     // A manual switch while a part is being made: that part is flushed once it lands, so it does not count as buffered,
     // and the new level loads from the playhead.
     func testAManualSwitchDuringAnAppendLoadsFromThePlayhead() {
