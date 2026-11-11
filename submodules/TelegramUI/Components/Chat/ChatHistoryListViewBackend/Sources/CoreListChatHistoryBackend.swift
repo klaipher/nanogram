@@ -184,6 +184,21 @@ final class CoreListChatHistoryBackend: ASDisplayNode, ChatHistoryListViewBacken
     // — it is false, which is the correct answer for every node those passes create.
     private(set) var prefersSynchronousResourceLoading: Bool = false
 
+    // The height of the rows this synchronous pass has built so far. Rows start from the anchor outward, so a row that
+    // starts past the viewport's height is in the preload band: it decodes its photos asynchronously
+    // (`ChatViewportLoadBudget`), instead of up to ~40 ms each on main at chat open.
+    private var synchronousPassBuiltHeight: CGFloat = 0.0
+
+    fileprivate func allowsSynchronousLoadForNextRow() -> Bool {
+        return self.prefersSynchronousResourceLoading && ChatViewportLoadBudget.allowsSynchronousLoad(builtHeight: self.synchronousPassBuiltHeight, viewportHeight: self.currentSize.height)
+    }
+
+    fileprivate func noteSynchronousPassRowBuilt(height: CGFloat) {
+        if self.prefersSynchronousResourceLoading {
+            self.synchronousPassBuiltHeight += max(0.0, height)
+        }
+    }
+
     // MARK: - Narrow scroll-view accessors
     var bounces: Bool = true
     var contentHeight: CGFloat { return self.coreList.settledContentHeight }
@@ -1168,6 +1183,7 @@ final class CoreListChatHistoryBackend: ASDisplayNode, ChatHistoryListViewBacken
         // builds asynchronously. That is the safe direction to be wrong in, and it is the same
         // direction ListViewImpl errs in when a transaction is queued behind another.
         self.prefersSynchronousResourceLoading = options.contains(.PreferSynchronousResourceLoading)
+        self.synchronousPassBuiltHeight = 0.0
         defer {
             self.prefersSynchronousResourceLoading = false
         }
@@ -2586,7 +2602,7 @@ private final class CoreListNodeHostView: UIView, CoreListItemView {
             // animation, and the send animation. This is a fresh-node path, so it is reached by every
             // row that scrolls into view, and forcing it there decodes each arriving bubble's images
             // on the main thread mid-fling instead of letting them land a frame later.
-            let synchronousLoads = self.backend?.prefersSynchronousResourceLoading ?? false
+            let synchronousLoads = self.backend?.allowsSynchronousLoadForNextRow() ?? false
             // A node built in the background for exactly this row, width, insets, neighbours, item and interaction state.
             // No exact match: the synchronous build below.
             var prepared: CoreListChatRowPrefetcher.Prepared?
@@ -2612,6 +2628,7 @@ private final class CoreListNodeHostView: UIView, CoreListItemView {
                 // ListViewImpl keeps it in step with the row's rendered height.
                 let height = node.contentSize.height + node.insets.top + node.insets.bottom
                 node.apparentHeight = height
+                self.backend?.noteSynchronousPassRowBuilt(height: height)
                 // Claimed only AFTER the node has been built. `nodeConfiguredForParams` assigns
                 // `contentSize`/`insets` itself, and on this path we WANT the node's own writes: they
                 // are what give a fresh view its initial box, with nothing to animate from anyway.
