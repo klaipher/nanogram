@@ -114,4 +114,43 @@ final class AccountStateEventHubTests: StateSyncTestCase {
             disposable.dispose()
         }
     }
+
+    /// With no added incoming and no was-scheduled message there is nothing to read, so `dispatch` opens no Postbox
+    /// transaction: it completes while the Postbox queue is held busy. The order stays the same (see the test above:
+    /// the pipes first, then the empty notification delivery, then the completion).
+    func testDispatchWithNothingToReadOpensNoPostboxTransaction() {
+        let queue = Queue(name: "AccountStateEventHubTests")
+        let hub = self.makeHub(queue: queue)
+        let log = EventLog()
+        let completed = DispatchSemaphore(value: 0)
+        let postboxHeld = DispatchSemaphore(value: 0)
+        let release = DispatchSemaphore(value: 0)
+        Postbox.sharedQueue.justDispatch {
+            postboxHeld.signal()
+            let _ = release.wait(timeout: .now() + 20.0)
+        }
+        XCTAssertEqual(postboxHeld.wait(timeout: .now() + 10.0), .success)
+        var disposable: Disposable?
+        queue.sync {
+            disposable = hub.notificationMessages.start(next: { batch in
+                log.append("notifications \(batch.count)")
+            })
+        }
+
+        withExtendedLifetime(hub) {
+            queue.async {
+                hub.dispatch(AccountFinalStateEvents.testing(deletedMessageIds: [.global(5)]), completed: {
+                    log.append("completed")
+                    completed.signal()
+                })
+                log.append("returned")
+            }
+            let result = completed.wait(timeout: .now() + 5.0)
+            release.signal()
+            XCTAssertEqual(result, .success, "dispatch waited for the Postbox queue")
+        }
+
+        XCTAssertEqual(log.values, ["returned", "notifications 0", "completed"])
+        disposable?.dispose()
+    }
 }

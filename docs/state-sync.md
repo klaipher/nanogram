@@ -44,7 +44,9 @@ are the audit's.
   `PendingMessageReferences.swift` (messages waiting for a late reference), `HistoryViewStateValidation.swift`,
   `AccountViewTracker.swift`; secret chats: `ProcessSecretChatIncoming{Encrypted,Decrypted}Operations.swift`.
 - Read state: `SynchronizePeerReadState.swift` (validation and push), `NonMemberChannelReadState.swift` (no read
-  state for a channel the account is not a member of; invariant 30).
+  state for a channel the account is not a member of; invariant 30). A read mark the server accepted is not pushed again
+  (`PeerReadStatePushLedger.swift`: kept per account, dropped when the server's read state or unread mark disagrees);
+  validation skips its `getHistory` probe when a cloud message is stored.
 - Elsewhere: `Account/AccountIntermediateState.swift` (`AccountMutableState`, `AccountStateMutationOperation`,
   `AccountFinalState`, `AccountReplayedFinalState`, `AccountFinalStateEvents`), `Account/Account.swift`,
   `SyncCore/SyncCore_AuthorizedAccountState.swift` (`AuthorizedAccountState`: the stored pts, qts, date, seq and

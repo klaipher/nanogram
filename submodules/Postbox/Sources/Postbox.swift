@@ -3452,7 +3452,7 @@ final class PostboxImpl {
     let isInTransaction: Atomic<Bool>
     private var transactionWriteAttribution = TransactionWriteAttribution()
     
-    private func internalTransaction<T>(_ f: (Transaction) -> T, file: String = #file, line: Int = #line) -> (result: T, updatedTransactionStateVersion: Int64?, updatedMasterClientId: Int64?) {
+    private func internalTransaction<T>(_ f: (Transaction) -> T, file: String = #file, line: Int = #line, detail: String? = nil) -> (result: T, updatedTransactionStateVersion: Int64?, updatedMasterClientId: Int64?) {
         let _ = self.isInTransaction.swap(true)
         
         let startTime = CFAbsoluteTimeGetCurrent()
@@ -3482,7 +3482,12 @@ final class PostboxImpl {
         let endTime = CFAbsoluteTimeGetCurrent()
         let transactionDuration = endTime - startTime
         if transactionDuration > 0.01 {
-            postboxLog("Postbox transaction took \(transactionDuration * 1000.0) ms, from: \(file):\(line)")
+            postboxLog("Postbox transaction took \(transactionDuration * 1000.0) ms, from: \(file):\(line)\(detail.flatMap({ " " + $0 }) ?? "")")
+        }
+        if transactionDuration > 0.05 {
+            // Every live view is updated by a transaction that touches what it shows: which kinds there are, and how
+            // many, says what a slow one pays for.
+            postboxLog("Postbox slow transaction (\(transactionDuration * 1000.0) ms) live views: \(self.viewTracker.liveViewCountsDescription())")
         }
         
         let _ = self.isInTransaction.swap(false)
@@ -3504,7 +3509,7 @@ final class PostboxImpl {
         return (result, updatedTransactionState, updatedMasterClientId)
     }
     
-    public func transactionSignal<T, E>(userInteractive: Bool = false, _ f: @escaping(Subscriber<T, E>, Transaction) -> Disposable, file: String = #file, line: Int = #line) -> Signal<T, E> {
+    public func transactionSignal<T, E>(userInteractive: Bool = false, _ f: @escaping(Subscriber<T, E>, Transaction) -> Disposable, file: String = #file, line: Int = #line, detail: String? = nil) -> Signal<T, E> {
         return Signal { subscriber in
             let disposable = MetaDisposable()
             
@@ -3512,7 +3517,7 @@ final class PostboxImpl {
                 self.beginInternalTransaction {
                     let (_, updatedTransactionState, updatedMasterClientId) = self.internalTransaction({ transaction in
                         disposable.set(f(subscriber, transaction))
-                    }, file: file, line: line)
+                    }, file: file, line: line, detail: detail)
                     
                     if updatedTransactionState != nil || updatedMasterClientId != nil {
                         //self.pipeNotifier.notify()
@@ -4445,8 +4450,9 @@ final class PostboxImpl {
         }
     }
     
-    public func combinedView(keys: [PostboxViewKey]) -> Signal<CombinedView, NoError> {
-        return self.transactionSignal { [self] subscriber, transaction in
+    public func combinedView(keys: [PostboxViewKey], file: StaticString = #file, line: Int = #line) -> Signal<CombinedView, NoError> {
+        let detail = "keys: " + keys.map({ postboxViewKeyKind($0) }).sorted().joined(separator: ",")
+        return self.transactionSignal({ [self] subscriber, transaction in
             var views: [PostboxViewKey: MutablePostboxView] = [:]
             for key in keys {
                 views[key] = postboxViewForKey(postbox: self, key: key)
@@ -4468,7 +4474,7 @@ final class PostboxImpl {
                     }
                 }
             }
-        }
+        }, file: "\(file)", line: line, detail: detail)
     }
     
     fileprivate func enumeratePreferencesEntries(_ f: (PreferencesEntry) -> Bool) {
@@ -5457,12 +5463,12 @@ public class Postbox {
         }
     }
 
-    public func combinedView(keys: [PostboxViewKey]) -> Signal<CombinedView, NoError> {
+    public func combinedView(keys: [PostboxViewKey], file: StaticString = #file, line: Int = #line) -> Signal<CombinedView, NoError> {
         return Signal { subscriber in
             let disposable = MetaDisposable()
 
             self.impl.with { impl in
-                disposable.set(impl.combinedView(keys: keys).start(next: subscriber.putNext, error: subscriber.putError, completed: subscriber.putCompletion))
+                disposable.set(impl.combinedView(keys: keys, file: file, line: line).start(next: subscriber.putNext, error: subscriber.putError, completed: subscriber.putCompletion))
             }
 
             return disposable

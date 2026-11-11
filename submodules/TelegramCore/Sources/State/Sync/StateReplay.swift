@@ -144,7 +144,8 @@ func replayFinalState(
     policy: ReplayPolicy,
     storyReactionContext: StoryReactionContext? = nil,
     storyRefreshContext: StoryRefreshContext? = nil,
-    storyViewRefreshContext: StoryViewRefreshContext? = nil
+    storyViewRefreshContext: StoryViewRefreshContext? = nil,
+    readStatePushLedger: PeerReadStatePushLedger? = nil
 ) -> AccountReplayedFinalState? {
     if policy.verifiesTransaction, ReplayRejection.verify(transaction, finalState: finalState.state) != nil {
         Logger.shared.log("State", "failed to verify final state")
@@ -152,7 +153,7 @@ func replayFinalState(
     }
 
     let prepass = ReplayPrepass.prepare(transaction: transaction, finalState: finalState)
-    let context = ReplayContext(accountManager: accountManager, postbox: postbox, accountPeerId: accountPeerId, mediaBox: mediaBox, encryptionProvider: encryptionProvider, transaction: transaction, finalState: finalState, removePossiblyDeliveredMessagesUniqueIds: removePossiblyDeliveredMessagesUniqueIds, policy: policy, prepass: prepass, storyReactionContext: storyReactionContext, storyRefreshContext: storyRefreshContext, storyViewRefreshContext: storyViewRefreshContext)
+    let context = ReplayContext(accountManager: accountManager, postbox: postbox, accountPeerId: accountPeerId, mediaBox: mediaBox, encryptionProvider: encryptionProvider, transaction: transaction, finalState: finalState, removePossiblyDeliveredMessagesUniqueIds: removePossiblyDeliveredMessagesUniqueIds, policy: policy, prepass: prepass, storyReactionContext: storyReactionContext, storyRefreshContext: storyRefreshContext, storyViewRefreshContext: storyViewRefreshContext, readStatePushLedger: readStatePushLedger)
     let operations = batchContentAndDeferStateOperations(finalState.state.operations)
     context.applyContentOperations(operations.content)
     context.applyStateAdvance(operations.stateAdvance)
@@ -194,6 +195,8 @@ final class ReplayContext {
     let storyReactionContext: StoryReactionContext?
     let storyRefreshContext: StoryRefreshContext?
     let storyViewRefreshContext: StoryViewRefreshContext?
+    /// Input. A server read state or unread mark that disagrees with the last read-state push drops that push's record.
+    let readStatePushLedger: PeerReadStatePushLedger?
 
     // MARK: - From the prepass
     /// Prepass, then `.ReadOutbox`. Persisted by `finalize` as the peers' last activity.
@@ -343,7 +346,7 @@ final class ReplayContext {
     }
 
     /// Takes the replay's inputs and the prepass's results; every accumulator starts empty.
-    init(accountManager: AccountManager<TelegramAccountManagerTypes>, postbox: Postbox, accountPeerId: PeerId, mediaBox: MediaBox, encryptionProvider: EncryptionProvider, transaction: Transaction, finalState: AccountFinalState, removePossiblyDeliveredMessagesUniqueIds: [Int64: PeerId], policy: ReplayPolicy, prepass: ReplayPrepass, storyReactionContext: StoryReactionContext?, storyRefreshContext: StoryRefreshContext?, storyViewRefreshContext: StoryViewRefreshContext?) {
+    init(accountManager: AccountManager<TelegramAccountManagerTypes>, postbox: Postbox, accountPeerId: PeerId, mediaBox: MediaBox, encryptionProvider: EncryptionProvider, transaction: Transaction, finalState: AccountFinalState, removePossiblyDeliveredMessagesUniqueIds: [Int64: PeerId], policy: ReplayPolicy, prepass: ReplayPrepass, storyReactionContext: StoryReactionContext?, storyRefreshContext: StoryRefreshContext?, storyViewRefreshContext: StoryViewRefreshContext?, readStatePushLedger: PeerReadStatePushLedger?) {
         self.accountManager = accountManager
         self.postbox = postbox
         self.accountPeerId = accountPeerId
@@ -356,6 +359,7 @@ final class ReplayContext {
         self.storyReactionContext = storyReactionContext
         self.storyRefreshContext = storyRefreshContext
         self.storyViewRefreshContext = storyViewRefreshContext
+        self.readStatePushLedger = readStatePushLedger
         self.peerActivityTimestamps = prepass.peerActivityTimestamps
         self.holesFromPreviousStateMessageIds = prepass.holesFromPreviousStateMessageIds
         self.readInboxCloudMessageIds = prepass.readInboxCloudMessageIds

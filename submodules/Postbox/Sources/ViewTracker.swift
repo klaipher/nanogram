@@ -9,6 +9,15 @@ public enum ViewUpdateType: Equatable {
     case UpdateVisible
 }
 
+/// The case name of a view key, without its payload (peer ids and the like stay out of the slow-transaction log).
+func postboxViewKeyKind(_ key: PostboxViewKey) -> String {
+    let description = String(describing: key)
+    if let end = description.firstIndex(of: "(") {
+        return String(description[description.startIndex ..< end])
+    }
+    return description
+}
+
 final class ViewTracker {
     private let queue: Queue
     
@@ -221,6 +230,37 @@ final class ViewTracker {
         }
         
         return (index, record.1.signal())
+    }
+    
+    /// The live views per kind, for the log of a slow transaction (every one of them is updated by each transaction
+    /// that touches what it shows). Combined views are counted by the kinds of their keys. Diagnostic only.
+    func liveViewCountsDescription() -> String {
+        var counts: [(String, Int)] = [
+            ("chatList", self.chatListViews.copyItems().count),
+            ("messageHistory", self.messageHistoryViews.copyItems().count),
+            ("contactPeerIds", self.contactPeerIdsViews.copyItems().count),
+            ("peer", self.peerViews.copyItems().count),
+            ("unreadMessageCounts", self.unreadMessageCountsViews.copyItems().count),
+            ("peerMergedOperationLog", self.peerMergedOperationLogViews.copyItems().count),
+            ("timestampBasedMessageAttributes", self.timestampBasedMessageAttributesViews.copyItems().count),
+            ("combined", self.combinedViews.copyItems().count),
+            ("postboxState", self.postboxStateViews.copyItems().count),
+            ("message", self.messageViews.copyItems().count),
+            ("preferences", self.preferencesViews.copyItems().count),
+            ("multiplePeers", self.multiplePeersViews.copyItems().count),
+            ("itemCollections", self.itemCollectionsViews.copyItems().count),
+            ("failedMessageIds", self.failedMessageIdsViews.copyItems().count)
+        ]
+        var combinedKeyKinds: [String: Int] = [:]
+        for (view, _) in self.combinedViews.copyItems() {
+            for key in view.views.keys {
+                combinedKeyKinds[postboxViewKeyKind(key), default: 0] += 1
+            }
+        }
+        for (kind, count) in combinedKeyKinds.sorted(by: { $0.key < $1.key }) {
+            counts.append(("combined." + kind, count))
+        }
+        return counts.filter({ $0.1 != 0 }).map({ "\($0.0)=\($0.1)" }).joined(separator: " ")
     }
     
     func removeCombinedView(_ index: Bag<(CombinedMutableView, ValuePipe<CombinedView>)>.Index) {

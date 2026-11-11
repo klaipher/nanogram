@@ -70,7 +70,9 @@ private final class SynchronizePeerReadStatesContextImpl {
             
             if let operation = maybeOperation {
                 if let current = self.activeOperations[peerId] {
-                    if current.operation != operation {
+                    // Compared by what is sent: a Push carries the whole read state, and a change in the top known id, the
+                    // outgoing read id or the unread count is not a different push.
+                    if current.operation.syncPayload != operation.syncPayload {
                         Logger.shared.log("SynchronizePeerReadStates", "\(peerId): store pending operation \(operation) (active is \(current.operation))")
                         self.pendingOperations[peerId] = operation
                     } else {
@@ -87,10 +89,10 @@ private final class SynchronizePeerReadStatesContextImpl {
                     let signal: Signal<Never, PeerReadStateValidationError>
                     switch operation {
                     case .Validate:
-                        signal = synchronizePeerReadState(network: self.network, postbox: self.postbox, stateManager: self.stateManager, peerId: peerId, push: false, validate: true)
+                        signal = synchronizePeerReadState(network: self.network, postbox: self.postbox, stateManager: self.stateManager, peerId: peerId, push: false, validate: true, ledger: self.stateManager.readStatePushLedger)
                         |> ignoreValues
                     case let .Push(_, thenSync):
-                        signal = synchronizePeerReadState(network: self.network, postbox: self.postbox, stateManager: stateManager, peerId: peerId, push: true, validate: thenSync)
+                        signal = synchronizePeerReadState(network: self.network, postbox: self.postbox, stateManager: stateManager, peerId: peerId, push: true, validate: thenSync, ledger: self.stateManager.readStatePushLedger)
                         |> ignoreValues
                     }
                     operationDisposable.set((signal
