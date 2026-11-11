@@ -2164,7 +2164,7 @@ public final class MessageInputPanelComponent: Component {
                                     component.sendMessageAction(nil)
                                 } else if component.hasRecordedVideoPreview {
                                     component.sendMessageAction(nil)
-                                } else if !(component.style == .gift && component.displayGiftSendButton), case let .text(string) = self.getSendMessageInput(), string.string.trimmingCharacters(in: .whitespacesAndNewlines).isEmpty {
+                                } else if !(component.style == .gift && component.displayGiftSendButton), case let .text(string) = self.getSendMessageInput(applyAutocorrection: false), string.string.trimmingCharacters(in: .whitespacesAndNewlines).isEmpty {
                                 } else {
                                     self.sendMessageAction()
                                 }

@@ -31,8 +31,12 @@ public struct ChatHistoryListViewUpdateItem {
     /// The edge of the item that stays put on screen if its height changes (a message widget's resize anchor), while it
     /// is on screen; nil leaves the list's own placement.
     public let resizeAnchor: ListViewItemResizeAnchor?
+    /// The row's content and everything its layout reads are the same as in the previous update (`allUpdated` re-submits
+    /// every entry): a backend that keys rows by a content version may keep the old row as it is.
+    public let keepsStableVersion: Bool
     
-    public init(index: Int, previousIndex: Int, stableId: UInt64, item: ListViewItem, directionHint: ListViewItemOperationDirectionHint?, resizeAnchor: ListViewItemResizeAnchor? = nil) {
+    public init(index: Int, previousIndex: Int, stableId: UInt64, item: ListViewItem, directionHint: ListViewItemOperationDirectionHint?, resizeAnchor: ListViewItemResizeAnchor? = nil, keepsStableVersion: Bool = false) {
+        self.keepsStableVersion = keepsStableVersion
         self.index = index
         self.previousIndex = previousIndex
         self.stableId = stableId

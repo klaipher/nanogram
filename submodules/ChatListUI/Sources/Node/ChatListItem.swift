@@ -1116,6 +1116,7 @@ private final class ChatListMediaPreviewNode: ASDisplayNode {
     
     private var requestedImage: Bool = false
     private var disposable: Disposable?
+    private var layoutGate = ChatListMediaPreviewLayoutGate<AnyHashable>()
     
     init(context: AccountContext, message: EngineMessage, media: EngineMedia) {
         self.context = context
@@ -1137,6 +1138,16 @@ private final class ChatListMediaPreviewNode: ASDisplayNode {
     }
     
     func updateLayout(size: CGSize, synchronousLoads: Bool) {
+        // The same size and media as the last call: nothing to lay out or draw again.
+        var mediaId: AnyHashable = AnyHashable(0)
+        if let id = self.media.id {
+            mediaId = AnyHashable(id)
+        } else if case let .action(action) = self.media, case let .suggestedProfilePhoto(image) = action.action, let imageId = image?.id {
+            mediaId = AnyHashable(imageId)
+        }
+        guard self.layoutGate.shouldLayout(size: size, mediaId: mediaId) else {
+            return
+        }
         if let image = self.playIcon.image {
             self.playIcon.frame = CGRect(origin: CGPoint(x: floor((size.width - image.size.width) / 2.0), y: floor((size.height - image.size.height) / 2.0)), size: image.size)
         }

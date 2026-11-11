@@ -817,7 +817,10 @@ public final class PhysicsScrollEngine: NSObject, ScrollEngine {
     /// Separate from `pinsMaximumRefreshRate` because the two were conflated: unpinning BOTH gave up
     /// the animation's rate guarantee — the hitch the pinning was introduced to fix — while only
     /// incidentally reducing sampler load, so the combination read as worse.
-    static var pinsSamplingLinkRate = true
+    ///
+    /// Off by default (the sampler runs at the system's adaptive rate; the animation itself stays pinned): the pinned
+    /// sampler held the main thread at ~120 Hz for every fling.
+    static var pinsSamplingLinkRate = false
 
     /// Whether `launchFlight` runs UIScrollView's release hand-off at all (see
     /// `PhysicsScrollCore.applyDecelerationHandOff`).
@@ -841,10 +844,18 @@ public final class PhysicsScrollEngine: NSObject, ScrollEngine {
     /// display link keeps CoreAnimation's default.
     @available(iOS 15.0, *)
     private func maxRefreshRange() -> CAFrameRateRange? {
-        guard Self.pinsMaximumRefreshRate else { return nil }
-        let maxFps = Float(UIScreen.main.maximumFramesPerSecond)
-        guard maxFps > 61 else { return nil }   // no-op on ≤60Hz (incl. Simulator)
+        guard let maxFps = Self.pinnedFrameRate(pinsMaximumRefreshRate: Self.pinsMaximumRefreshRate, maximumFramesPerSecond: UIScreen.main.maximumFramesPerSecond, isLowPowerMode: ProcessInfo.processInfo.isLowPowerModeEnabled) else { return nil }
         return CAFrameRateRange(minimum: maxFps, maximum: maxFps, preferred: maxFps)
+    }
+
+    /// The rate a flight pins the display to, or nil when it does not pin: pinning is off, the panel is ≤60Hz (incl.
+    /// Simulator), or Low Power Mode is on (it caps ProMotion at 60 Hz, and a rigid range the system cannot satisfy only
+    /// costs power).
+    static func pinnedFrameRate(pinsMaximumRefreshRate: Bool, maximumFramesPerSecond: Int, isLowPowerMode: Bool) -> Float? {
+        guard pinsMaximumRefreshRate, !isLowPowerMode else { return nil }
+        let maxFps = Float(maximumFramesPerSecond)
+        guard maxFps > 61 else { return nil }
+        return maxFps
     }
 
     /// One display frame in ms, for the release hand-off. Falls back to 60Hz.

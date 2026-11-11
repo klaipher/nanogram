@@ -17,6 +17,13 @@ struct NavigationPopPreparation<Layout: Equatable> {
     static var idleDelay: TimeInterval { return 0.6 }
 
     private(set) var prepared: (controller: ObjectIdentifier, layout: Layout)?
+    /// Rows changed in the prepared screen after it was drawn (it is out of every hierarchy, so they were laid out but
+    /// not drawn): the preparation no longer holds and runs again, or the swipe's start draws them on the main thread.
+    private(set) var contentChanged: Bool = false
+
+    /// Posted by a list (`CoreVirtualListView`, `ListView`) whose content changed while it is out of every window; the
+    /// object is the list's view. Plain string so a UIKit-only library can post it.
+    static var contentDidChangeNotification: Notification.Name { return Notification.Name("NanogramCoveredContentDidChange") }
 
     /// Whether a preparation is worth scheduling now.
     static func canPrepare(isEnabled: Bool, isInFocus: Bool, hasTransition: Bool, hasInteractivePop: Bool, hasPendingChild: Bool, controllerCount: Int) -> Bool {
@@ -28,11 +35,19 @@ struct NavigationPopPreparation<Layout: Equatable> {
         guard let prepared = self.prepared else {
             return false
         }
-        return prepared.controller == controller && prepared.layout == layout
+        return prepared.controller == controller && prepared.layout == layout && !self.contentChanged
+    }
+
+    /// The prepared screen's content changed: it must be drawn again. Ignored when no screen is prepared.
+    mutating func noteContentChange(controller: ObjectIdentifier) {
+        if let prepared = self.prepared, prepared.controller == controller {
+            self.contentChanged = true
+        }
     }
 
     mutating func markPrepared(controller: ObjectIdentifier, layout: Layout) {
         self.prepared = (controller, layout)
+        self.contentChanged = false
     }
 
     /// The swipe takes the prepared screen (or something invalidated it). Returns the screen that was prepared.
@@ -40,6 +55,7 @@ struct NavigationPopPreparation<Layout: Equatable> {
     mutating func reset() -> ObjectIdentifier? {
         let controller = self.prepared?.controller
         self.prepared = nil
+        self.contentChanged = false
         return controller
     }
 }

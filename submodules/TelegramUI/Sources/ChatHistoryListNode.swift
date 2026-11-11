@@ -42,6 +42,7 @@ import TextFormat
 import ChatNewThreadInfoItem
 import PhoneNumberFormat
 import ChatHistoryListViewBackend
+import ChatRowPrep
 import Postbox
 import LaunchSignpostSupport
 
@@ -97,6 +98,9 @@ struct ChatHistoryView {
     let locationInput: ChatHistoryLocationInput?
     let ignoreMessagesInTimestampRange: ClosedRange<Int32>?
     let ignoreMessageIds: Set<MessageId>
+    /// `controllerInteraction.rowPrepEpoch` when the view was built: with the entry, the presentation data and the
+    /// associated data it decides whether a row keeps its `stableVersion` (`shouldKeepStableVersion`).
+    var rowPrepEpoch: UInt64 = 0
 }
 
 enum ChatHistoryViewTransitionReason {
@@ -118,6 +122,9 @@ struct ChatHistoryViewTransitionUpdateEntry {
     let previousIndex: Int
     let entry: ChatHistoryEntry
     let directionHint: ListViewItemOperationDirectionHint?
+    /// The row's inputs are the same as in the previous update, so the list keeps its content version and does not lay
+    /// it out again (see `shouldKeepStableVersion`).
+    var keepsStableVersion: Bool = false
 }
 
 struct ChatHistoryViewTransition {
@@ -310,7 +317,7 @@ private func mappedUpdateEntries(context: AccountContext, chatLocation: ChatLoca
                         }
                         item = ListMessageItem(presentationData: presentationData, systemStyle: systemStyle, context: context, chatLocation: chatLocation, interaction: ListMessageItemInteraction(controllerInteraction: controllerInteraction), message: message, translateToLanguage: associatedData.translateToLanguage, selection: selection, displayHeader: displayHeader, hintIsLink: hintLinks, isGlobalSearchResult: isGlobalSearch, isSavedMusic: isSavedMusic, canReorder: canReorder, richMessageQueueId: richMessageQueueId)
                 }
-                return ChatHistoryListViewUpdateItem(index: entry.index, previousIndex: entry.previousIndex, stableId: entry.entry.stableId, item: item, directionHint: entry.directionHint)
+                return ChatHistoryListViewUpdateItem(index: entry.index, previousIndex: entry.previousIndex, stableId: entry.entry.stableId, item: item, directionHint: entry.directionHint, keepsStableVersion: entry.keepsStableVersion)
             case let .MessageGroupEntry(_, messages, presentationData):
                 let item: ListViewItem
                 switch mode {
@@ -320,11 +327,11 @@ private func mappedUpdateEntries(context: AccountContext, chatLocation: ChatLoca
                         assertionFailure()
                         item = ListMessageItem(presentationData: presentationData, systemStyle: systemStyle, context: context, chatLocation: chatLocation, interaction: ListMessageItemInteraction(controllerInteraction: controllerInteraction), message: messages[0].0, selection: .none, displayHeader: false)
                 }
-                return ChatHistoryListViewUpdateItem(index: entry.index, previousIndex: entry.previousIndex, stableId: entry.entry.stableId, item: item, directionHint: entry.directionHint)
+                return ChatHistoryListViewUpdateItem(index: entry.index, previousIndex: entry.previousIndex, stableId: entry.entry.stableId, item: item, directionHint: entry.directionHint, keepsStableVersion: entry.keepsStableVersion)
             case let .UnreadEntry(_, presentationData):
-                return ChatHistoryListViewUpdateItem(index: entry.index, previousIndex: entry.previousIndex, stableId: entry.entry.stableId, item: ChatUnreadItem(index: entry.entry.index, presentationData: presentationData, controllerInteraction: controllerInteraction, context: context), directionHint: entry.directionHint)
+                return ChatHistoryListViewUpdateItem(index: entry.index, previousIndex: entry.previousIndex, stableId: entry.entry.stableId, item: ChatUnreadItem(index: entry.entry.index, presentationData: presentationData, controllerInteraction: controllerInteraction, context: context), directionHint: entry.directionHint, keepsStableVersion: entry.keepsStableVersion)
             case let .ReplyCountEntry(_, isComments, count, presentationData):
-                return ChatHistoryListViewUpdateItem(index: entry.index, previousIndex: entry.previousIndex, stableId: entry.entry.stableId, item: ChatReplyCountItem(index: entry.entry.index, isComments: isComments, count: count, presentationData: presentationData, context: context, controllerInteraction: controllerInteraction), directionHint: entry.directionHint)
+                return ChatHistoryListViewUpdateItem(index: entry.index, previousIndex: entry.previousIndex, stableId: entry.entry.stableId, item: ChatReplyCountItem(index: entry.entry.index, isComments: isComments, count: count, presentationData: presentationData, context: context, controllerInteraction: controllerInteraction), directionHint: entry.directionHint, keepsStableVersion: entry.keepsStableVersion)
             case let .ChatInfoEntry(data, presentationData):
                 let item: ListViewItem
                 switch data {
@@ -335,7 +342,7 @@ private func mappedUpdateEntries(context: AccountContext, chatLocation: ChatLoca
                 case .newThreadInfo:
                     item = ChatNewThreadInfoItem(controllerInteraction: controllerInteraction, presentationData: presentationData, context: context)
                 }
-                return ChatHistoryListViewUpdateItem(index: entry.index, previousIndex: entry.previousIndex, stableId: entry.entry.stableId, item: item, directionHint: entry.directionHint)
+                return ChatHistoryListViewUpdateItem(index: entry.index, previousIndex: entry.previousIndex, stableId: entry.entry.stableId, item: item, directionHint: entry.directionHint, keepsStableVersion: entry.keepsStableVersion)
         }
     }
 }
@@ -2272,7 +2279,7 @@ public final class ChatHistoryListNodeImpl: ASDisplayNode, ChatHistoryNode, Chat
                     pinToTopStableId: pinToTopStableId
                 ) }
                 let lastHeaderId = filteredEntries.last.flatMap { listMessageDateHeaderId(timestamp: $0.index.timestamp) } ?? 0
-                let processedView = ChatHistoryView(originalView: view, filteredEntries: filteredEntries, associatedData: associatedData, lastHeaderId: lastHeaderId, id: id, locationInput: update.2, ignoreMessagesInTimestampRange: update.3, ignoreMessageIds: update.4)
+                let processedView = ChatHistoryView(originalView: view, filteredEntries: filteredEntries, associatedData: associatedData, lastHeaderId: lastHeaderId, id: id, locationInput: update.2, ignoreMessagesInTimestampRange: update.3, ignoreMessageIds: update.4, rowPrepEpoch: controllerInteraction.rowPrepEpoch)
                 let previousValueAndVersion = previousView.swap((processedView, update.1, selectedMessages, allAdMessages.version))
                 let _ = chatHistoryEntriesForViewState.swap(updatedChatHistoryEntriesForViewState)
                 let previous = previousValueAndVersion?.0
@@ -4311,7 +4318,7 @@ public final class ChatHistoryListNodeImpl: ASDisplayNode, ChatHistoryNode, Chat
                     }
                 }
             }
-            if !foundItemNodes.isEmpty && foundItemNodes.allSatisfy({ $0.bounds.height <= 1800.0 }) {
+            if ChatDustSnapshotPolicy.isEligible(heights: foundItemNodes.map { $0.bounds.height }) {
                 if self.dustEffectLayer == nil {
                     let dustEffectLayer = DustEffectLayer()
                     dustEffectLayer.position = self.bounds.center
@@ -4332,7 +4339,7 @@ public final class ChatHistoryListNodeImpl: ASDisplayNode, ChatHistoryNode, Chat
                 }
                 if let dustEffectLayer = self.dustEffectLayer {
                     for itemNode in foundItemNodes {
-                        guard let (image, subFrame) = itemNode.makeContentSnapshot() else {
+                        guard let (image, subFrame) = itemNode.makeContentSnapshot(scale: ChatDustSnapshotPolicy.snapshotScale) else {
                             continue
                         }
                         let itemFrame = itemNode.layer.convert(subFrame, to: dustEffectLayer)

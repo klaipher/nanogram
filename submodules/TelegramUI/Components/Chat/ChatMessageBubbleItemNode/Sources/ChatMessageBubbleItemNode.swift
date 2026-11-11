@@ -8741,7 +8741,11 @@ public class ChatMessageBubbleItemNode: ChatMessageItemView, ChatMessagePreviewI
     }
     
     override public func makeContentSnapshot() -> (UIImage, CGRect)? {
-        UIGraphicsBeginImageContextWithOptions(self.backgroundNode.view.bounds.size, false, 0.0)
+        return self.makeContentSnapshot(scale: 0.0)
+    }
+    
+    override public func makeContentSnapshot(scale: CGFloat) -> (UIImage, CGRect)? {
+        UIGraphicsBeginImageContextWithOptions(self.backgroundNode.view.bounds.size, false, scale)
         let context = UIGraphicsGetCurrentContext()!
         
         context.translateBy(x: -self.backgroundNode.frame.minX, y: -self.backgroundNode.frame.minY)

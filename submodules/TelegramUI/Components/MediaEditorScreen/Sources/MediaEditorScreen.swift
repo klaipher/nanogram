@@ -646,12 +646,13 @@ final class MediaEditorScreenComponent: Component {
             }
         }
         
-        func getInputText() -> NSAttributedString {
+        /// `applyAutocorrection: false` for reads that are not a send (a length check): the keyboard commit costs up to 200 ms.
+        func getInputText(applyAutocorrection: Bool = true) -> NSAttributedString {
             guard let inputPanelView = self.inputPanel.view as? MessageInputPanelComponent.View else {
                 return NSAttributedString()
             }
             var inputText = NSAttributedString()
-            switch inputPanelView.getSendMessageInput() {
+            switch inputPanelView.getSendMessageInput(applyAutocorrection: applyAutocorrection) {
             case let .text(text):
                 inputText = text
             }
@@ -1102,7 +1103,7 @@ final class MediaEditorScreenComponent: Component {
                                 }
                             case .text:
                                 Queue.mainQueue().after(0.1) {
-                                    let text = self.getInputText()
+                                    let text = self.getInputText(applyAutocorrection: false)
                                     if text.length > component.context.userLimits.maxStoryCaptionLength {
                                         controller.presentCaptionLimitPremiumSuggestion(isPremium: self.state?.isPremium ?? false)
                                     }

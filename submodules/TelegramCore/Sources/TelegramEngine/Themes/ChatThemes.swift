@@ -196,15 +196,23 @@ extension ChatTheme {
 
 func _internal_getChatThemes(accountManager: AccountManager<TelegramAccountManagerTypes>, network: Network, forceUpdate: Bool = false, onlyCached: Bool = false) -> Signal<[TelegramTheme], NoError> {
     let fetch: ([TelegramTheme]?, Int64?) -> Signal<[TelegramTheme], NoError> = { current, hash in
+        // The same hash was requested a moment ago (every chat open asked again): nothing new to learn.
+        if !forceUpdate, !ChatThemesRequestGate.shared.shouldRequest(hash: hash ?? 0, now: ProcessInfo.processInfo.systemUptime) {
+            return .complete()
+        }
         return network.request(Api.functions.account.getChatThemes(hash: hash ?? 0))
         |> retryRequestIfNotFrozen
         |> mapToSignal { result -> Signal<[TelegramTheme], NoError> in
             guard let result else {
+                if !forceUpdate {
+                    ChatThemesRequestGate.shared.forget(hash: hash ?? 0)
+                }
                 return .complete()
             }
             switch result {
                 case let .themes(themesData):
                     let (hash, apiThemes) = (themesData.hash, themesData.themes)
+                    ChatThemesRequestGate.shared.noteFresh(hash: hash, now: ProcessInfo.processInfo.systemUptime)
                     let result = apiThemes.compactMap { TelegramTheme(apiTheme: $0) }
                     if result == current {
                         return .complete()

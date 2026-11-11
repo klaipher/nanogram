@@ -51,4 +51,29 @@ final class NavigationPopPreparationTests: XCTestCase {
         XCTAssertGreaterThan(Preparation.idleDelay, 0.0)
         XCTAssertLessThan(Preparation.idleDelay, 1.0)
     }
+
+    func testContentChangeMakesThePreparedScreenUnprepared() {
+        let a = NSObject()
+        let b = NSObject()
+        var preparation = Preparation()
+        preparation.markPrepared(controller: ObjectIdentifier(a), layout: 1)
+        preparation.noteContentChange(controller: ObjectIdentifier(b))
+        XCTAssertTrue(preparation.isPrepared(controller: ObjectIdentifier(a), layout: 1), "another screen's change is not ours")
+        preparation.noteContentChange(controller: ObjectIdentifier(a))
+        XCTAssertFalse(preparation.isPrepared(controller: ObjectIdentifier(a), layout: 1))
+        preparation.markPrepared(controller: ObjectIdentifier(a), layout: 1)
+        XCTAssertTrue(preparation.isPrepared(controller: ObjectIdentifier(a), layout: 1), "preparing again draws the change")
+    }
+
+    func testContentChangeWithNothingPreparedIsIgnoredAndResetClearsIt() {
+        let a = NSObject()
+        var preparation = Preparation()
+        preparation.noteContentChange(controller: ObjectIdentifier(a))
+        preparation.markPrepared(controller: ObjectIdentifier(a), layout: 1)
+        XCTAssertTrue(preparation.isPrepared(controller: ObjectIdentifier(a), layout: 1))
+        preparation.noteContentChange(controller: ObjectIdentifier(a))
+        preparation.reset()
+        preparation.markPrepared(controller: ObjectIdentifier(a), layout: 1)
+        XCTAssertTrue(preparation.isPrepared(controller: ObjectIdentifier(a), layout: 1))
+    }
 }
