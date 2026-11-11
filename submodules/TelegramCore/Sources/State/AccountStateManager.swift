@@ -285,11 +285,12 @@ public final class AccountStateManager {
         let storyReactionContext: StoryReactionContext
         let storyRefreshContext: StoryRefreshContext
         let storyViewRefreshContext: StoryViewRefreshContext
+        let readStatePushLedger: PeerReadStatePushLedger
 
         /// What every replay of this account's final states needs (seam 5, `FinalStateReplayer.applyReplay`). Built
         /// from the constants above, so it is the same value whenever and wherever it is read.
         var replayer: FinalStateReplayer {
-            return FinalStateReplayer(accountManager: self.accountManager, postbox: self.postbox, accountPeerId: self.accountPeerId, encryptionProvider: self.network.encryptionProvider, auxiliaryMethods: self.auxiliaryMethods, messagesRemovedContext: self.messagesRemovedContext, storyReactionContext: self.storyReactionContext, storyRefreshContext: self.storyRefreshContext, storyViewRefreshContext: self.storyViewRefreshContext)
+            return FinalStateReplayer(accountManager: self.accountManager, postbox: self.postbox, accountPeerId: self.accountPeerId, encryptionProvider: self.network.encryptionProvider, auxiliaryMethods: self.auxiliaryMethods, messagesRemovedContext: self.messagesRemovedContext, storyReactionContext: self.storyReactionContext, storyRefreshContext: self.storyRefreshContext, storyViewRefreshContext: self.storyViewRefreshContext, readStatePushLedger: self.readStatePushLedger)
         }
         
         fileprivate var storyUpdatesPipe: ValuePipe<[InternalStoryUpdate]> {
@@ -380,7 +381,8 @@ public final class AccountStateManager {
             messagesRemovedContext: MessagesRemovedContext,
             storyReactionContext: StoryReactionContext,
             storyRefreshContext: StoryRefreshContext,
-            storyViewRefreshContext: StoryViewRefreshContext
+            storyViewRefreshContext: StoryViewRefreshContext,
+            readStatePushLedger: PeerReadStatePushLedger
         ) {
             self.queue = queue
             self.gapWaitTimeout = gapWaitTimeout
@@ -396,6 +398,7 @@ public final class AccountStateManager {
             self.storyReactionContext = storyReactionContext
             self.storyRefreshContext = storyRefreshContext
             self.storyViewRefreshContext = storyViewRefreshContext
+            self.readStatePushLedger = readStatePushLedger
             self.eventHub = AccountStateEventHub(
                 queue: queue,
                 postbox: postbox,
@@ -1149,6 +1152,7 @@ public final class AccountStateManager {
     let storyReactionContext = StoryReactionContext()
     let storyRefreshContext = StoryRefreshContext()
     let storyViewRefreshContext = StoryViewRefreshContext()
+    let readStatePushLedger = PeerReadStatePushLedger()
 
     /// This manager's registration with `StoredMessageConfirmationDeletionReporters` (owner decision D1),
     /// disposed in `deinit`.
@@ -1180,6 +1184,7 @@ public final class AccountStateManager {
         let storyReactionContext = self.storyReactionContext
         let storyRefreshContext = self.storyRefreshContext
         let storyViewRefreshContext = self.storyViewRefreshContext
+        let readStatePushLedger = self.readStatePushLedger
         
         var updateConfigRequestedImpl: (() -> Void)?
         var isPremiumUpdatedImpl: (() -> Void)?
@@ -1206,7 +1211,8 @@ public final class AccountStateManager {
                 messagesRemovedContext: messagesRemovedContext,
                 storyReactionContext: storyReactionContext,
                 storyRefreshContext: storyRefreshContext,
-                storyViewRefreshContext: storyViewRefreshContext
+                storyViewRefreshContext: storyViewRefreshContext,
+                readStatePushLedger: readStatePushLedger
             )
         })
         

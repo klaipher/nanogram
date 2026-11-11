@@ -32,6 +32,9 @@ extension ReplayContext {
             }
         }
 
+        // The server's own state: a push of ours it no longer agrees with is not repeated as a duplicate.
+        readStatePushLedger?.note(peerId: peerId, serverMaxIncomingReadId: maxIncomingReadId, serverMarkedUnread: markedUnreadValue)
+
         var ignore = false
         if let currentReadState = transaction.getCombinedPeerReadState(peerId) {
             loop: for (currentNamespace, currentState) in currentReadState.states {
@@ -112,6 +115,7 @@ extension ReplayContext {
                 }
             }
         } else {
+            readStatePushLedger?.note(peerId: peerId, serverMaxIncomingReadId: nil, serverMarkedUnread: value)
             transaction.applyMarkUnread(peerId: peerId, namespace: namespace, value: value, interactive: false)
         }
     }

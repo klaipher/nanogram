@@ -182,7 +182,7 @@ func localReadMarkIsAheadOfServer(localMaxIncomingReadId: MessageId.Id, serverMa
     return (serverCount != 0 || serverMarkedUnread) && localMaxIncomingReadId > serverMaxIncomingReadId
 }
 
-private func validatePeerReadState(network: Network, postbox: Postbox, stateManager: AccountStateManager, peerId: PeerId) -> Signal<Never, PeerReadStateValidationError> {
+private func validatePeerReadState(network: Network, postbox: Postbox, stateManager: AccountStateManager, peerId: PeerId, ledger: PeerReadStatePushLedger?) -> Signal<Never, PeerReadStateValidationError> {
     if peerId.namespace == Namespaces.Peer.SecretChat {
         // A secret chat has no Api.InputPeer, so there is no dialog to read an authoritative
         // read state from: every step below fails at inputPeer and asks to retry, forever.
@@ -236,6 +236,9 @@ private func validatePeerReadState(network: Network, postbox: Postbox, stateMana
                     }
                 }
             }
+            if case let .idBased(serverMaxIncomingReadId, _, _, _, serverMarkedUnread) = readState {
+                ledger?.note(peerId: peerId, serverMaxIncomingReadId: serverMaxIncomingReadId, serverMarkedUnread: serverMarkedUnread)
+            }
             transaction.resetIncomingReadStates([peerId: [Namespaces.Message.Cloud: updatedReadState]])
             return nil
         }
@@ -251,7 +254,22 @@ private func validatePeerReadState(network: Network, postbox: Postbox, stateMana
     return maybeAppliedReadState
 }
 
-private func pushPeerReadState(network: Network, postbox: Postbox, stateManager: AccountStateManager, peerId: PeerId, readState: PeerReadState) -> Signal<PeerReadState, PeerReadStateValidationError> {
+/// Ends a push: records it in the ledger when every request of it succeeded, then hands the pushed state on.
+private func recordingPush(_ push: Signal<Bool, NoError>, ledger: PeerReadStatePushLedger?, peerId: PeerId, payload: PeerReadStatePushLedger.Payload, generation: Int, readState: PeerReadState) -> Signal<PeerReadState, PeerReadStateValidationError> {
+    return push
+    |> mapToSignal { succeeded -> Signal<PeerReadState, NoError> in
+        if succeeded {
+            ledger?.record(peerId: peerId, payload: payload, generation: generation)
+        }
+        return .single(readState)
+    }
+    |> castError(PeerReadStateValidationError.self)
+}
+
+/// Sends `readState`'s read mark: `channels.readHistory` / `messages.readHistory`, then `messages.markDialogUnread` when
+/// it is marked unread. With a `ledger`, a mark the server already accepted (same maximum read id and unread mark, see
+/// `PeerReadStatePushLedger`) is not sent again, and a mark is recorded only when every request of it was answered.
+private func pushPeerReadState(network: Network, postbox: Postbox, stateManager: AccountStateManager, peerId: PeerId, readState: PeerReadState, ledger: PeerReadStatePushLedger?) -> Signal<PeerReadState, PeerReadStateValidationError> {
     if peerId.namespace == Namespaces.Peer.SecretChat {
         // Decide whether a request is needed before looking the peer up: inputSecretChat goes
         // through loadedPeerWithId, which never emits when the peer row is missing and fails
@@ -290,42 +308,50 @@ private func pushPeerReadState(network: Network, postbox: Postbox, stateManager:
                 let (channelId, accessHash) = (inputPeerChannelData.channelId, inputPeerChannelData.accessHash)
                 switch readState {
                 case let .idBased(maxIncomingReadId, _, _, _, markedUnread):
-                    var pushSignal: Signal<Void, NoError> = network.request(Api.functions.channels.readHistory(channel: Api.InputChannel.inputChannel(.init(channelId: channelId, accessHash: accessHash)), maxId: maxIncomingReadId))
-                    |> `catch` { _ -> Signal<Api.Bool, NoError> in
-                        return .complete()
+                    let payload = PeerReadStatePushLedger.Payload(maxIncomingReadId: maxIncomingReadId, markedUnread: markedUnread)
+                    if ledger?.lastPush(peerId: peerId) == payload {
+                        Logger.shared.log("SynchronizePeerReadStates", "\(peerId): read mark \(maxIncomingReadId) already accepted by the server, not sent again")
+                        return .single(readState)
                     }
-                    |> mapToSignal { _ -> Signal<Void, NoError> in
-                        return .complete()
+                    let generation = ledger?.generation(peerId: peerId) ?? 0
+                    var pushSignal: Signal<Bool, NoError> = network.request(Api.functions.channels.readHistory(channel: Api.InputChannel.inputChannel(.init(channelId: channelId, accessHash: accessHash)), maxId: maxIncomingReadId))
+                    |> map { _ -> Bool in
+                        return true
+                    }
+                    |> `catch` { _ -> Signal<Bool, NoError> in
+                        return .single(false)
                     }
                     if markedUnread {
                         pushSignal = pushSignal
-                        |> then(network.request(Api.functions.messages.markDialogUnread(flags: 1 << 0, parentPeer: nil, peer: .inputDialogPeer(.init(peer: inputPeer))))
-                        |> `catch` { _ -> Signal<Api.Bool, NoError> in
-                            return .complete()
+                        |> mapToSignal { readSucceeded -> Signal<Bool, NoError> in
+                            return network.request(Api.functions.messages.markDialogUnread(flags: 1 << 0, parentPeer: nil, peer: .inputDialogPeer(.init(peer: inputPeer))))
+                            |> map { _ -> Bool in
+                                return readSucceeded
+                            }
+                            |> `catch` { _ -> Signal<Bool, NoError> in
+                                return .single(false)
+                            }
                         }
-                        |> mapToSignal { _ -> Signal<Void, NoError> in
-                            return .complete()
-                        })
                     }
-                    return pushSignal
-                    |> mapError { _ -> PeerReadStateValidationError in
-                    }
-                    |> mapToSignal { _ -> Signal<PeerReadState, PeerReadStateValidationError> in
-                        return .complete()
-                    }
-                    |> then(Signal<PeerReadState, PeerReadStateValidationError>.single(readState))
+                    return recordingPush(pushSignal, ledger: ledger, peerId: peerId, payload: payload, generation: generation, readState: readState)
                 case .indexBased:
                     return .single(readState)
                 }
             default:
                 switch readState {
                 case let .idBased(maxIncomingReadId, _, _, _, markedUnread):
-                    var pushSignal: Signal<Void, NoError> = network.request(Api.functions.messages.readHistory(peer: inputPeer, maxId: maxIncomingReadId))
+                    let payload = PeerReadStatePushLedger.Payload(maxIncomingReadId: maxIncomingReadId, markedUnread: markedUnread)
+                    if ledger?.lastPush(peerId: peerId) == payload {
+                        Logger.shared.log("SynchronizePeerReadStates", "\(peerId): read mark \(maxIncomingReadId) already accepted by the server, not sent again")
+                        return .single(readState)
+                    }
+                    let generation = ledger?.generation(peerId: peerId) ?? 0
+                    var pushSignal: Signal<Bool, NoError> = network.request(Api.functions.messages.readHistory(peer: inputPeer, maxId: maxIncomingReadId))
                     |> map(Optional.init)
                     |> `catch` { _ -> Signal<Api.messages.AffectedMessages?, NoError> in
                         return .single(nil)
                     }
-                    |> mapToSignal { result -> Signal<Void, NoError> in
+                    |> mapToSignal { result -> Signal<Bool, NoError> in
                         if let result = result {
                             switch result {
                                 case let .affectedMessages(affectedMessagesData):
@@ -333,27 +359,22 @@ private func pushPeerReadState(network: Network, postbox: Postbox, stateManager:
                                     stateManager.addUpdateGroups([.updatePts(pts: pts, ptsCount: ptsCount)])
                             }
                         }
-                        return .complete()
+                        return .single(result != nil)
                     }
 
                     if markedUnread {
                         pushSignal = pushSignal
-                        |> then(network.request(Api.functions.messages.markDialogUnread(flags: 1 << 0, parentPeer: nil, peer: .inputDialogPeer(.init(peer: inputPeer))))
-                        |> `catch` { _ -> Signal<Api.Bool, NoError> in
-                            return .complete()
+                        |> mapToSignal { readSucceeded -> Signal<Bool, NoError> in
+                            return network.request(Api.functions.messages.markDialogUnread(flags: 1 << 0, parentPeer: nil, peer: .inputDialogPeer(.init(peer: inputPeer))))
+                            |> map { _ -> Bool in
+                                return readSucceeded
+                            }
+                            |> `catch` { _ -> Signal<Bool, NoError> in
+                                return .single(false)
+                            }
                         }
-                        |> mapToSignal { _ -> Signal<Void, NoError> in
-                            return .complete()
-                        })
                     }
-                    
-                    return pushSignal
-                    |> mapError { _ -> PeerReadStateValidationError in
-                    }
-                    |> mapToSignal { _ -> Signal<PeerReadState, PeerReadStateValidationError> in
-                        return .complete()
-                    }
-                    |> then(Signal<PeerReadState, PeerReadStateValidationError>.single(readState))
+                    return recordingPush(pushSignal, ledger: ledger, peerId: peerId, payload: payload, generation: generation, readState: readState)
                 case .indexBased:
                     return .single(readState)
                 }
@@ -362,7 +383,7 @@ private func pushPeerReadState(network: Network, postbox: Postbox, stateManager:
     }
 }
 
-private func pushPeerReadState(network: Network, postbox: Postbox, stateManager: AccountStateManager, peerId: PeerId, willValidate: Bool) -> Signal<Never, PeerReadStateValidationError> {
+private func pushPeerReadState(network: Network, postbox: Postbox, stateManager: AccountStateManager, peerId: PeerId, willValidate: Bool, ledger: PeerReadStatePushLedger?) -> Signal<Never, PeerReadStateValidationError> {
     let currentReadState = postbox.transaction { transaction -> (MessageId.Namespace, PeerReadState)? in
         if let readStates = transaction.getPeerReadStates(peerId) {
             for (namespace, readState) in readStates {
@@ -377,7 +398,7 @@ private func pushPeerReadState(network: Network, postbox: Postbox, stateManager:
     let pushedState = currentReadState
     |> mapToSignalPromotingError { namespaceAndReadState -> Signal<(MessageId.Namespace, PeerReadState), PeerReadStateValidationError> in
         if let (namespace, readState) = namespaceAndReadState {
-            return pushPeerReadState(network: network, postbox: postbox, stateManager: stateManager, peerId: peerId, readState: readState)
+            return pushPeerReadState(network: network, postbox: postbox, stateManager: stateManager, peerId: peerId, readState: readState, ledger: ledger)
             |> map { updatedReadState -> (MessageId.Namespace, PeerReadState) in
                 return (namespace, updatedReadState)
             }
@@ -424,7 +445,7 @@ private func pushPeerReadState(network: Network, postbox: Postbox, stateManager:
     return verifiedState
 }
 
-func synchronizePeerReadState(network: Network, postbox: Postbox, stateManager: AccountStateManager, peerId: PeerId, push: Bool, validate: Bool) -> Signal<Never, PeerReadStateValidationError> {
+func synchronizePeerReadState(network: Network, postbox: Postbox, stateManager: AccountStateManager, peerId: PeerId, push: Bool, validate: Bool, ledger: PeerReadStatePushLedger? = nil) -> Signal<Never, PeerReadStateValidationError> {
     // A channel the account is not a member of has no read state on the server
     // (NonMemberChannelReadState.swift): nothing is pushed or validated, and the queued operation
     // is confirmed so the manager does not pick it up again. This also covers paths that queue one
@@ -444,11 +465,11 @@ func synchronizePeerReadState(network: Network, postbox: Postbox, stateManager: 
         var signal: Signal<Never, PeerReadStateValidationError> = .complete()
         if push {
             signal = signal
-            |> then(pushPeerReadState(network: network, postbox: postbox, stateManager: stateManager, peerId: peerId, willValidate: validate))
+            |> then(pushPeerReadState(network: network, postbox: postbox, stateManager: stateManager, peerId: peerId, willValidate: validate, ledger: ledger))
         }
         if validate {
             signal = signal
-            |> then(validatePeerReadState(network: network, postbox: postbox, stateManager: stateManager, peerId: peerId))
+            |> then(validatePeerReadState(network: network, postbox: postbox, stateManager: stateManager, peerId: peerId, ledger: ledger))
         }
         return signal
     }
