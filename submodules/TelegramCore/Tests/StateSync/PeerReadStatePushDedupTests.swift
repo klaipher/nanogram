@@ -42,7 +42,7 @@ final class PeerReadStatePushDedupTests: StateSyncTestCase {
             return .result(Api.messages.AffectedMessages.affectedMessages(.init(pts: 100, ptsCount: 0)))
         })
         self.server.always(self.getHistoryName, { _ in
-            return .result(StateSyncApi.messages([StateSyncApi.privateMessage(id: 5, peerUserId: userId, fromUserId: userId, date: self.baseDate + 5)]))
+            return .result(StateSyncApi.messages([StateSyncApi.privateMessage(id: 5, peerUserId: userId, fromUserId: userId, date: Int32(clamping: Int64(self.baseDate) + 5))]))
         })
         self.server.always(StateSyncRequestName.getPeerDialogs, { _ in
             return .result(StateSyncApi.peerDialogs(dialogs: [StateSyncApi.dialog(peer: StateSyncApi.peerUser(userId), topMessage: 5, readInboxMaxId: 5, unreadCount: 0)], state: StateSyncApi.state(pts: 100, qts: 5, date: self.baseDate, seq: 10)))
@@ -163,7 +163,7 @@ final class PeerReadStatePushDedupTests: StateSyncTestCase {
             return .result(Api.messages.AffectedMessages.affectedMessages(.init(pts: 100, ptsCount: 0)))
         })
         self.server.always(self.getHistoryName, { _ in
-            return .result(StateSyncApi.messages([StateSyncApi.privateMessage(id: 5, peerUserId: 2003, fromUserId: 2003, date: self.baseDate + 5)]))
+            return .result(StateSyncApi.messages([StateSyncApi.privateMessage(id: 5, peerUserId: 2003, fromUserId: 2003, date: Int32(clamping: Int64(self.baseDate) + 5))]))
         })
         self.server.always(StateSyncRequestName.getPeerDialogs, { _ in
             return .result(StateSyncApi.peerDialogs(dialogs: [StateSyncApi.dialog(peer: StateSyncApi.peerUser(2003), topMessage: 5, readInboxMaxId: 5, unreadCount: 0)], state: StateSyncApi.state(pts: 100, qts: 5, date: self.baseDate, seq: 10)))
