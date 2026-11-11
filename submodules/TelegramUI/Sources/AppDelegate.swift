@@ -1328,6 +1328,7 @@ private func extractAccountManagerState(records: AccountRecordsView<TelegramAcco
             Logger.shared.logToFile = loggingSettings.logToFile
             Logger.shared.logToConsole = loggingSettings.logToConsole
             Logger.shared.redactSensitiveData = loggingSettings.redactSensitiveData
+            Logger.shared.logNetworkDumps = loggingSettings.logNetworkDumps
             
             return .single(sharedApplicationContext)
         })

@@ -4,17 +4,19 @@ public final class LoggingSettings: Codable {
     public let logToFile: Bool
     public let logToConsole: Bool
     public let redactSensitiveData: Bool
+    public let logNetworkDumps: Bool
     
     #if DEBUG
-    public static var defaultSettings = LoggingSettings(logToFile: false, logToConsole: false, redactSensitiveData: true)
+    public static var defaultSettings = LoggingSettings(logToFile: false, logToConsole: false, redactSensitiveData: true, logNetworkDumps: false)
     #else
-    public static var defaultSettings = LoggingSettings(logToFile: false, logToConsole: false, redactSensitiveData: true)
+    public static var defaultSettings = LoggingSettings(logToFile: false, logToConsole: false, redactSensitiveData: true, logNetworkDumps: false)
     #endif
     
-    public init(logToFile: Bool, logToConsole: Bool, redactSensitiveData: Bool) {
+    public init(logToFile: Bool, logToConsole: Bool, redactSensitiveData: Bool, logNetworkDumps: Bool = false) {
         self.logToFile = logToFile
         self.logToConsole = logToConsole
         self.redactSensitiveData = redactSensitiveData
+        self.logNetworkDumps = logNetworkDumps
     }
     
     public init(from decoder: Decoder) throws {
@@ -23,6 +25,7 @@ public final class LoggingSettings: Codable {
         self.logToFile = ((try? container.decode(Int32.self, forKey: "logToFile")) ?? 0) != 0
         self.logToConsole = ((try? container.decode(Int32.self, forKey: "logToConsole")) ?? 0) != 0
         self.redactSensitiveData = ((try? container.decode(Int32.self, forKey: "redactSensitiveData")) ?? 1) != 0
+        self.logNetworkDumps = ((try? container.decode(Int32.self, forKey: "logNetworkDumps")) ?? 0) != 0
     }
     
     public func encode(to encoder: Encoder) throws {
@@ -31,18 +34,23 @@ public final class LoggingSettings: Codable {
         try container.encode((self.logToFile ? 1 : 0) as Int32, forKey: "logToFile")
         try container.encode((self.logToConsole ? 1 : 0) as Int32, forKey: "logToConsole")
         try container.encode((self.redactSensitiveData ? 1 : 0) as Int32, forKey: "redactSensitiveData")
+        try container.encode((self.logNetworkDumps ? 1 : 0) as Int32, forKey: "logNetworkDumps")
     }
     
     public func withUpdatedLogToFile(_ logToFile: Bool) -> LoggingSettings {
-        return LoggingSettings(logToFile: logToFile, logToConsole: self.logToConsole, redactSensitiveData: self.redactSensitiveData)
+        return LoggingSettings(logToFile: logToFile, logToConsole: self.logToConsole, redactSensitiveData: self.redactSensitiveData, logNetworkDumps: self.logNetworkDumps)
     }
     
     public func withUpdatedLogToConsole(_ logToConsole: Bool) -> LoggingSettings {
-        return LoggingSettings(logToFile: self.logToFile, logToConsole: logToConsole, redactSensitiveData: self.redactSensitiveData)
+        return LoggingSettings(logToFile: self.logToFile, logToConsole: logToConsole, redactSensitiveData: self.redactSensitiveData, logNetworkDumps: self.logNetworkDumps)
     }
     
     public func withUpdatedRedactSensitiveData(_ redactSensitiveData: Bool) -> LoggingSettings {
-        return LoggingSettings(logToFile: self.logToFile, logToConsole: self.logToConsole, redactSensitiveData: redactSensitiveData)
+        return LoggingSettings(logToFile: self.logToFile, logToConsole: self.logToConsole, redactSensitiveData: redactSensitiveData, logNetworkDumps: self.logNetworkDumps)
+    }
+    
+    public func withUpdatedLogNetworkDumps(_ logNetworkDumps: Bool) -> LoggingSettings {
+        return LoggingSettings(logToFile: self.logToFile, logToConsole: self.logToConsole, redactSensitiveData: self.redactSensitiveData, logNetworkDumps: logNetworkDumps)
     }
     
     public static func ==(lhs: LoggingSettings, rhs: LoggingSettings) -> Bool {
@@ -53,6 +61,9 @@ public final class LoggingSettings: Codable {
             return false
         }
         if lhs.redactSensitiveData != rhs.redactSensitiveData {
+            return false
+        }
+        if lhs.logNetworkDumps != rhs.logNetworkDumps {
             return false
         }
         return true

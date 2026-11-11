@@ -305,6 +305,7 @@ enum DebugControllerEntry: ItemListNodeEntry {
     case logToFile(PresentationTheme, Bool)
     case logToConsole(PresentationTheme, Bool)
     case redactSensitiveData(PresentationTheme, Bool)
+    case logNetworkDumps(PresentationTheme, Bool)
     case crashReports
     case keepChatNavigationStack(PresentationTheme, Bool)
     case skipReadHistory(PresentationTheme, Bool)
@@ -375,7 +376,7 @@ enum DebugControllerEntry: ItemListNodeEntry {
             return DebugControllerSection.logs.rawValue
         case .crashReports:
             return DebugControllerSection.logs.rawValue
-        case .logToFile, .logToConsole, .redactSensitiveData:
+        case .logToFile, .logToConsole, .redactSensitiveData, .logNetworkDumps:
             return DebugControllerSection.logs.rawValue
         case .resetAppHeader, .resetDatabase, .resetDatabaseAndCache, .resetNotifications, .reindexUnread, .reindexCache, .optimizeDatabase:
             return DebugControllerSection.resetApp.rawValue
@@ -407,7 +408,7 @@ enum DebugControllerEntry: ItemListNodeEntry {
         case .logsHeader:
             return -2
         case .logsInfo:
-            return 13
+            return 15
         case .resetAppHeader:
             return 14
         case .experimentsHeader:
@@ -420,6 +421,8 @@ enum DebugControllerEntry: ItemListNodeEntry {
             return 11
         case .redactSensitiveData:
             return 12
+        case .logNetworkDumps:
+            return 13
         case .crashReports:
             return 2
         case .resetWebViewCache:
@@ -661,6 +664,12 @@ enum DebugControllerEntry: ItemListNodeEntry {
             return ItemListSwitchItem(presentationData: presentationData, systemStyle: .glass, title: "Remove Sensitive Data", value: value, sectionId: self.section, style: .blocks, updated: { value in
                 let _ = updateLoggingSettings(accountManager: arguments.sharedContext.accountManager, {
                     $0.withUpdatedRedactSensitiveData(value)
+                }).start()
+            })
+        case let .logNetworkDumps(_, value):
+            return ItemListSwitchItem(presentationData: presentationData, systemStyle: .glass, title: "Network protocol dumps", value: value, sectionId: self.section, style: .blocks, updated: { value in
+                let _ = updateLoggingSettings(accountManager: arguments.sharedContext.accountManager, {
+                    $0.withUpdatedLogNetworkDumps(value)
                 }).start()
             })
         case let .keepChatNavigationStack(_, value):
@@ -1333,6 +1342,7 @@ func debugControllerEntries(environment: DebugControllerEntriesEnvironment, them
     entries.append(.logToFile(theme, loggingSettings.logToFile))
     entries.append(.logToConsole(theme, loggingSettings.logToConsole))
     entries.append(.redactSensitiveData(theme, loggingSettings.redactSensitiveData))
+    entries.append(.logNetworkDumps(theme, loggingSettings.logNetworkDumps))
     entries.append(.logsInfo(theme))
 
     entries.append(.resetAppHeader(theme))

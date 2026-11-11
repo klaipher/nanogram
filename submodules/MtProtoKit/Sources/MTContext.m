@@ -483,7 +483,7 @@ static void copyKeychainDictionaryKey(NSString * _Nonnull group, NSString * _Non
             NSDictionary *datacenterAddressSetById = [keychain dictionaryForKey:@"datacenterAddressSetById" group:@"persistent"];
             if (datacenterAddressSetById != nil) {
                 _datacenterAddressSetById = [[NSMutableDictionary alloc] initWithDictionary:datacenterAddressSetById];
-                if (MTLogEnabled()) {
+                if (MTLogContextDumpEnabled()) {
                     MTLog(@"[MTContext loaded datacenterAddressSetById: %@]", _datacenterAddressSetById);
                 }
             }
@@ -491,7 +491,7 @@ static void copyKeychainDictionaryKey(NSString * _Nonnull group, NSString * _Non
             NSDictionary *datacenterManuallySelectedSchemeById = [keychain dictionaryForKey:@"datacenterManuallySelectedSchemeById_v1" group:@"persistent"];
             if (datacenterManuallySelectedSchemeById != nil) {
                 _datacenterManuallySelectedSchemeById = [[NSMutableDictionary alloc] initWithDictionary:datacenterManuallySelectedSchemeById];
-                if (MTLogEnabled()) {
+                if (MTLogContextDumpEnabled()) {
                     MTLog(@"[MTContext loaded datacenterManuallySelectedSchemeById: %@]", _datacenterManuallySelectedSchemeById);
                 }
             }
@@ -531,7 +531,7 @@ static void copyKeychainDictionaryKey(NSString * _Nonnull group, NSString * _Non
                 [transportSchemeStats enumerateKeysAndObjectsUsingBlock:^(NSNumber *nDatacenterId, NSDictionary<MTDatacenterAddress *, MTTransportSchemeStats *> *values, __unused BOOL *stop) {
                     _transportSchemeStats[nDatacenterId] = [[NSMutableDictionary alloc] initWithDictionary:values];
                 }];
-                if (MTLogEnabled()) {
+                if (MTLogContextDumpEnabled()) {
                     MTLog(@"[MTContext] loaded transportSchemeStats:\n%@", [MTTransportSchemeStats formatStats:_transportSchemeStats]);
                 }
             }
@@ -544,7 +544,7 @@ static void copyKeychainDictionaryKey(NSString * _Nonnull group, NSString * _Non
             if (cleanupSessionIdsByAuthKeyId != nil)
                 _cleanupSessionIdsByAuthKeyId = [[NSMutableDictionary alloc] initWithDictionary:cleanupSessionIdsByAuthKeyId];
             
-            if (MTLogEnabled()) {
+            if (MTLogContextDumpEnabled()) {
                 MTLog(@"[MTContext#%" PRIxPTR ": received keychain globalTimeDifference:%f datacenterAuthInfoById:%@]", (intptr_t)self, _globalTimeDifference, _datacenterAuthInfoById);
             }
         } else {

@@ -162,6 +162,20 @@ public final class Logger {
         self.statsLock.unlock()
     }
 
+    /// Whether MtProtoKit's verbose lines (request and response dumps) are on: only when something is logged AND the
+    /// "Network protocol dumps" switch is on. Logging to file or console alone keeps MtProtoKit's short lines.
+    public static func isNetworkLoggingEnabled(logToFile: Bool, logToConsole: Bool, logNetworkDumps: Bool) -> Bool {
+        return (logToFile || logToConsole) && logNetworkDumps
+    }
+
+    private func updateNetworkLogging(oldLogToFile: Bool, oldLogToConsole: Bool, oldLogNetworkDumps: Bool) {
+        let oldEnabled = Logger.isNetworkLoggingEnabled(logToFile: oldLogToFile, logToConsole: oldLogToConsole, logNetworkDumps: oldLogNetworkDumps)
+        let newEnabled = Logger.isNetworkLoggingEnabled(logToFile: self.logToFile, logToConsole: self.logToConsole, logNetworkDumps: self.logNetworkDumps)
+        if oldEnabled != newEnabled {
+            NetworkSetLoggingEnabled(newEnabled)
+        }
+    }
+
     public var logToFile: Bool = true {
         didSet {
             if oldValue && !self.logToFile {
@@ -169,20 +183,18 @@ public final class Logger {
                     self.flushLog()
                 }
             }
-            let oldEnabled = self.logToConsole || oldValue
-            let newEnabled = self.logToConsole || self.logToFile
-            if oldEnabled != newEnabled {
-                NetworkSetLoggingEnabled(newEnabled)
-            }
+            self.updateNetworkLogging(oldLogToFile: oldValue, oldLogToConsole: self.logToConsole, oldLogNetworkDumps: self.logNetworkDumps)
         }
     }
     public var logToConsole: Bool = true {
         didSet {
-            let oldEnabled = self.logToFile || oldValue
-            let newEnabled = self.logToFile || self.logToConsole
-            if oldEnabled != newEnabled {
-                NetworkSetLoggingEnabled(newEnabled)
-            }
+            self.updateNetworkLogging(oldLogToFile: self.logToFile, oldLogToConsole: oldValue, oldLogNetworkDumps: self.logNetworkDumps)
+        }
+    }
+    /// Debug Settings "Network protocol dumps" (off by default): MtProtoKit's request and response dumps.
+    public var logNetworkDumps: Bool = false {
+        didSet {
+            self.updateNetworkLogging(oldLogToFile: self.logToFile, oldLogToConsole: self.logToConsole, oldLogNetworkDumps: oldValue)
         }
     }
     public var redactSensitiveData: Bool = true

@@ -20,6 +20,7 @@ public func updateLoggingSettings(accountManager: AccountManager<TelegramAccount
             Logger.shared.logToFile = updated.logToFile
             Logger.shared.logToConsole = updated.logToConsole
             Logger.shared.redactSensitiveData = updated.redactSensitiveData
+            Logger.shared.logNetworkDumps = updated.logNetworkDumps
         }
     }
 }
