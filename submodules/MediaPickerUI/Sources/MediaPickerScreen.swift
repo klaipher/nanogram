@@ -446,7 +446,7 @@ public final class MediaPickerScreenImpl: ViewController, MediaPickerScreen, Att
     public var editCover: (CGSize, @escaping (UIImage) -> Void) -> Void = { _, _ in }
     public var editCoverInOverlay: ((CGSize, @escaping (UIImage) -> Void, @escaping () -> Void) -> Void)?
     
-    private class Node: ViewControllerTracingNode, ASGestureRecognizerDelegate {
+    fileprivate class Node: ViewControllerTracingNode, ASGestureRecognizerDelegate {
         enum DisplayMode {
             case all
             case selected
