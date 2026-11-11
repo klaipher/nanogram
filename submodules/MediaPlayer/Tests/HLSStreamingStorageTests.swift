@@ -193,7 +193,8 @@ final class HLSStreamingStorageTests: XCTestCase {
             return XCTFail("expected a temporary file, got \(content)")
         }
         XCTAssertEqual(try Data(contentsOf: URL(fileURLWithPath: tempFile.file.path)), initialization + changed)
-        XCTAssertEqual(self.dataBytesWritten(since: before), Int64(initialization.count + changed.count))
+        // Only the temp file's own category: the counter is process-wide, and the fetch's MediaBox store can land in this window.
+        XCTAssertEqual(DiskWriteAccounting.shared.snapshot().subtracting(before).bytes[DiskWriteCategory.tempBoxHLS] ?? 0, Int64(initialization.count + changed.count))
     }
 
     // MARK: - Parts of the native player (HLSNativePartStore)
