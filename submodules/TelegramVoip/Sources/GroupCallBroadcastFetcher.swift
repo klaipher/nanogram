@@ -84,7 +84,8 @@ public final class GroupCallBroadcastFetcher {
             for index in 0 ..< min(info.endpointCount, endpoints.count) {
                 var endpoint = endpoints[index]
                 let name = withUnsafeBytes(of: &endpoint.endpointId) { bytes -> String in
-                    return String(cString: bytes.bindMemory(to: CChar.self).baseAddress!)
+                    let length = bytes.firstIndex(of: 0) ?? bytes.count
+                    return String(decoding: UnsafeRawBufferPointer(rebasing: bytes[0 ..< length]), as: UTF8.self)
                 }
                 channels[name] = endpoint.channelId
             }

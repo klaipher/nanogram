@@ -110,13 +110,17 @@ public final class GroupCallBroadcastVideoOutput {
     }
 
     private func pipe(_ endpointId: String) -> ValuePipe<OngoingGroupCallContext.VideoFrameData> {
-        return self.pipes.modify { pipes in
+        let pipes = self.pipes.modify { pipes in
             var pipes = pipes
             if pipes[endpointId] == nil {
                 pipes[endpointId] = ValuePipe()
             }
             return pipes
-        }[endpointId]!
+        }
+        if let pipe = pipes[endpointId] {
+            return pipe
+        }
+        return ValuePipe()
     }
 
     private func endpoint(_ id: String) -> Endpoint {
