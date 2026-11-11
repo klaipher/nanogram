@@ -355,6 +355,7 @@ func widgetSignDataRequest(json: String, walletAddress: String) throws -> Wallet
 
 /// TON Connect's `signData` result (`SignDataResponse`): the signature in standard base64, the wallet's raw address, the
 /// timestamp, the domain and the payload as the widget sent it.
+@available(macOS 10.15, *)
 func widgetSignDataResponse(signature: Data, rawAddress: String, timestamp: UInt64, domain: String, payloadJson: String) -> String {
     let payload: Any = (try? JSONSerialization.jsonObject(with: Data(payloadJson.utf8))) ?? payloadJson
     let object: [String: Any] = [
@@ -386,6 +387,7 @@ private func widgetJSONObject(_ json: String) -> [String: Any]? {
 }
 
 /// Base64 or base64url, padded or not, as standard padded base64; `previewFailed` otherwise.
+@available(macOS 10.15, *)
 private func widgetBase64(_ value: String) throws -> String {
     var normalized = value.replacingOccurrences(of: "-", with: "+").replacingOccurrences(of: "_", with: "/")
     while normalized.hasSuffix("=") {

@@ -586,13 +586,16 @@ public final class MediaBox {
                     self.dataQueue.async {
                         if let (fileContext, releaseContext) = self.fileContext(for: id) {
                             let waitUntilAfterInitialFetch: Bool
+                            let incremental: Bool
                             switch option {
                                 case let .complete(waitUntilFetchStatus):
                                     waitUntilAfterInitialFetch = waitUntilFetchStatus
+                                    incremental = false
                                 case let .incremental(waitUntilFetchStatus):
                                     waitUntilAfterInitialFetch = waitUntilFetchStatus
+                                    incremental = true
                             }
-                            let dataDisposable = fileContext.data(range: 0 ..< Int64.max, waitUntilAfterInitialFetch: waitUntilAfterInitialFetch, next: { value in
+                            let dataDisposable = fileContext.data(range: 0 ..< Int64.max, incremental: incremental, waitUntilAfterInitialFetch: waitUntilAfterInitialFetch, next: { value in
                                 self.dataQueue.async {
                                     if value.complete {
                                         if let pathExtension = pathExtension {
@@ -819,7 +822,7 @@ public final class MediaBox {
                     return
                 }
                 
-                let dataDisposable = fileContext.data(range: range, waitUntilAfterInitialFetch: false, next: { result in
+                let dataDisposable = fileContext.data(range: range, incremental: false, waitUntilAfterInitialFetch: false, next: { result in
                     if let file = ManagedFile(queue: self.dataQueue, path: result.path, mode: .read), let fileSize = file.getSize() {
                         if result.complete {
                             let clippedLowerBound = min(result.offset, fileSize)

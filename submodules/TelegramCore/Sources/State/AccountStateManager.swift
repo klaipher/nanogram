@@ -136,6 +136,10 @@ public final class AccountStateManager {
         let auxiliaryMethods: AccountAuxiliaryMethods
         private let ignoresShortSentMessages: Bool
         
+        #if os(macOS)
+        let audioFileTranscriptionUpdatesPipe = ValuePipe<AudioFileTranscription>()
+        #endif
+
         private var updateService: UpdateMessageService?
         private let updateServiceDisposable = MetaDisposable()
         
@@ -457,6 +461,11 @@ public final class AccountStateManager {
         
         func addUpdateGroups(_ groups: [UpdateGroup]) {
             self.queue.async {
+                #if os(macOS)
+                for result in audioFileTranscriptionsFromUpdates(groups.flatMap { $0.updates }) {
+                    self.audioFileTranscriptionUpdatesPipe.putNext(result)
+                }
+                #endif
                 if self.operations.absorbUpdateGroups(groups) {
                     self.startFirstOperation()
                 } else {
@@ -1305,6 +1314,14 @@ public final class AccountStateManager {
         }
     }
     
+    #if os(macOS)
+    func audioFileTranscriptionUpdates() -> Signal<AudioFileTranscription, NoError> {
+        return self.impl.signalWith { impl, subscriber in
+            return impl.audioFileTranscriptionUpdatesPipe.signal().start(next: subscriber.putNext)
+        }
+    }
+    #endif
+
     public func updatedStarsBalance() -> Signal<[PeerId: StarsAmount], NoError> {
         return self.impl.signalWith { impl, subscriber in
             return impl.updatedStarsBalance().start(next: subscriber.putNext, error: subscriber.putError, completed: subscriber.putCompletion)

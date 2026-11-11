@@ -879,6 +879,16 @@ public extension TelegramEngine {
             return _internal_summarizeMessage(account: self.account, messageId: messageId, translateToLang: translateToLang)
         }
         
+        #if os(macOS)
+        public func transcribeAudioFile(data: Data, duration: Double) -> Signal<AudioFileTranscription, AudioFileTranscriptionError> {
+            return _internal_transcribeAudioFile(account: self.account, data: data, duration: duration)
+        }
+
+        public func getTranscriptionLanguages(peerId: EnginePeer.Id? = nil) -> Signal<[String], NoError> {
+            return _internal_getTranscriptionLanguages(account: self.account, peerId: peerId)
+        }
+        #endif
+
         public func transcribeAudio(messageId: MessageId) -> Signal<EngineAudioTranscriptionResult, NoError> {
             return _internal_transcribeAudio(postbox: self.account.postbox, network: self.account.network, messageId: messageId)
         }

@@ -16,6 +16,8 @@ let package = Package(
         // Dependencies declare other packages that this package depends on.
         // .package(url: /* package url */, from: "1.0.0"),
         .package(name: "TgVoipWebrtc", path: "../../../tgcalls"),
+        .package(name: "HLSPlayback", path: "../../../../packages/HLSPlayback"),
+        .package(name: "BroadcastPlayback", path: "../../../../packages/BroadcastPlayback"),
         .package(name: "SSignalKit", path: "../SSignalKit"),
         .package(name: "FFMpegBinding", path: "../FFMpegBinding"),
         .package(name: "TelegramCore", path: "../TelegramCore")
@@ -28,6 +30,8 @@ let package = Package(
             name: "TelegramVoip",
             dependencies: [
                 .product(name: "TgVoipWebrtc", package: "TgVoipWebrtc", condition: nil),
+                .product(name: "HLSPlayback", package: "HLSPlayback"),
+                .product(name: "BroadcastPlayback", package: "BroadcastPlayback"),
                 .product(name: "SwiftSignalKit", package: "SSignalKit", condition: nil),
                 .product(name: "FFMpegBinding", package: "FFMpegBinding", condition: nil),
                 .product(name: "TelegramCore", package: "TelegramCore", condition: nil),

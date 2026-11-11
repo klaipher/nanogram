@@ -22,14 +22,16 @@ public class OutgoingMessageInfoAttribute: MessageAttribute {
     public let correlationId: Int64?
     public let bubbleUpEmojiOrStickersets: [ItemCollectionId]
     public let partialReference: PartialMediaReference?
+    public let sendErrorCode: String?
     
-    public init(uniqueId: Int64, flags: OutgoingMessageInfoFlags, acknowledged: Bool, correlationId: Int64?, bubbleUpEmojiOrStickersets: [ItemCollectionId], partialReference: PartialMediaReference?) {
+    public init(uniqueId: Int64, flags: OutgoingMessageInfoFlags, acknowledged: Bool, correlationId: Int64?, bubbleUpEmojiOrStickersets: [ItemCollectionId], partialReference: PartialMediaReference?, sendErrorCode: String? = nil) {
         self.uniqueId = uniqueId
         self.flags = flags
         self.acknowledged = acknowledged
         self.correlationId = correlationId
         self.bubbleUpEmojiOrStickersets = bubbleUpEmojiOrStickersets
         self.partialReference = partialReference
+        self.sendErrorCode = sendErrorCode
     }
     
     required public init(decoder: PostboxDecoder) {
@@ -37,6 +39,7 @@ public class OutgoingMessageInfoAttribute: MessageAttribute {
         self.flags = OutgoingMessageInfoFlags(rawValue: decoder.decodeInt32ForKey("f", orElse: 0))
         self.acknowledged = decoder.decodeInt32ForKey("ack", orElse: 0) != 0
         self.correlationId = decoder.decodeOptionalInt64ForKey("cid")
+        self.sendErrorCode = decoder.decodeOptionalStringForKey("sendErrorCode")
         if let data = decoder.decodeDataForKey("bubbleUpEmojiOrStickersets") {
             self.bubbleUpEmojiOrStickersets = ItemCollectionId.decodeArrayFromBuffer(ReadBuffer(data: data))
         } else {
@@ -58,6 +61,9 @@ public class OutgoingMessageInfoAttribute: MessageAttribute {
         } else {
             encoder.encodeNil(forKey: "cid")
         }
+        if let sendErrorCode = self.sendErrorCode {
+            encoder.encodeString(sendErrorCode, forKey: "sendErrorCode")
+        }
         let bubbleUpEmojiOrStickersetsBuffer = WriteBuffer()
         ItemCollectionId.encodeArrayToBuffer(self.bubbleUpEmojiOrStickersets, buffer: bubbleUpEmojiOrStickersetsBuffer)
         encoder.encodeData(bubbleUpEmojiOrStickersetsBuffer.makeData(), forKey: "bubbleUpEmojiOrStickersets")
@@ -69,10 +75,14 @@ public class OutgoingMessageInfoAttribute: MessageAttribute {
     }
     
     public func withUpdatedFlags(_ flags: OutgoingMessageInfoFlags) -> OutgoingMessageInfoAttribute {
-        return OutgoingMessageInfoAttribute(uniqueId: self.uniqueId, flags: flags, acknowledged: self.acknowledged, correlationId: self.correlationId, bubbleUpEmojiOrStickersets: self.bubbleUpEmojiOrStickersets, partialReference: self.partialReference)
+        return OutgoingMessageInfoAttribute(uniqueId: self.uniqueId, flags: flags, acknowledged: self.acknowledged, correlationId: self.correlationId, bubbleUpEmojiOrStickersets: self.bubbleUpEmojiOrStickersets, partialReference: self.partialReference, sendErrorCode: self.sendErrorCode)
     }
     
+    func withSendErrorCode(_ code: String) -> OutgoingMessageInfoAttribute {
+        return OutgoingMessageInfoAttribute(uniqueId: self.uniqueId, flags: self.flags, acknowledged: self.acknowledged, correlationId: self.correlationId, bubbleUpEmojiOrStickersets: self.bubbleUpEmojiOrStickersets, partialReference: self.partialReference, sendErrorCode: code)
+    }
+
     public func withUpdatedAcknowledged(_ acknowledged: Bool) -> OutgoingMessageInfoAttribute {
-        return OutgoingMessageInfoAttribute(uniqueId: self.uniqueId, flags: self.flags, acknowledged: acknowledged, correlationId: self.correlationId, bubbleUpEmojiOrStickersets: self.bubbleUpEmojiOrStickersets, partialReference: self.partialReference)
+        return OutgoingMessageInfoAttribute(uniqueId: self.uniqueId, flags: self.flags, acknowledged: acknowledged, correlationId: self.correlationId, bubbleUpEmojiOrStickersets: self.bubbleUpEmojiOrStickersets, partialReference: self.partialReference, sendErrorCode: self.sendErrorCode)
     }
 }

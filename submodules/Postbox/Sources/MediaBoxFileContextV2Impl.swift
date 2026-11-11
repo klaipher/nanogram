@@ -47,6 +47,7 @@ public final class MediaBoxFileContextV2Impl: MediaBoxFileContext {
     
     private final class PartialDataRequest {
         let range: Range<Int64>
+        let incremental: Bool
         let next: (MediaResourceData) -> Void
         
         var waitingUntilAfterInitialFetch: Bool
@@ -54,10 +55,12 @@ public final class MediaBoxFileContextV2Impl: MediaBoxFileContext {
         
         init(
             range: Range<Int64>,
+            incremental: Bool,
             waitUntilAfterInitialFetch: Bool,
             next: @escaping (MediaResourceData) -> Void
         ) {
             self.range = range
+            self.incremental = incremental
             self.waitingUntilAfterInitialFetch = waitUntilAfterInitialFetch
             self.next = next
         }
@@ -300,9 +303,10 @@ public final class MediaBoxFileContextV2Impl: MediaBoxFileContext {
             }
         }
         
-        func partialData(range: Range<Int64>, waitUntilAfterInitialFetch: Bool, next: @escaping (MediaResourceData) -> Void) -> Disposable {
+        func partialData(range: Range<Int64>, incremental: Bool, waitUntilAfterInitialFetch: Bool, next: @escaping (MediaResourceData) -> Void) -> Disposable {
             let request = PartialDataRequest(
                 range: range,
+                incremental: incremental,
                 waitUntilAfterInitialFetch: waitUntilAfterInitialFetch && !self.hasPerformedAnyFetch,
                 next: next
             )
@@ -720,7 +724,11 @@ public final class MediaBoxFileContextV2Impl: MediaBoxFileContext {
                 }
                 return true
             } else {
-                let updatedStatus = MediaResourceData(path: self.partialPath, offset: request.range.lowerBound, size: 0, complete: false)
+                var size: Int64 = 0
+                if request.incremental, let availableRange = self.fileMap.ranges.ranges.first(where: { $0.contains(request.range.lowerBound) }) {
+                    size = min(request.range.upperBound, availableRange.upperBound) - request.range.lowerBound
+                }
+                let updatedStatus = MediaResourceData(path: self.partialPath, offset: request.range.lowerBound, size: size, complete: false)
                 if request.reportedStatus != updatedStatus {
                     if request.waitingUntilAfterInitialFetch {
                         if self.hasPerformedAnyFetch {
@@ -874,7 +882,7 @@ public final class MediaBoxFileContextV2Impl: MediaBoxFileContext {
         }
     }
     
-    public func data(range: Range<Int64>, waitUntilAfterInitialFetch: Bool, next: @escaping (MediaResourceData) -> Void) -> Disposable {
+    public func data(range: Range<Int64>, incremental: Bool = false, waitUntilAfterInitialFetch: Bool, next: @escaping (MediaResourceData) -> Void) -> Disposable {
         assert(self.queue.isCurrent())
         
         if let size = fileSize(self.path) {
@@ -892,6 +900,7 @@ public final class MediaBoxFileContextV2Impl: MediaBoxFileContext {
             return self.withPartialState { partialState in
                 return partialState.partialData(
                     range: range,
+                    incremental: incremental,
                     waitUntilAfterInitialFetch: waitUntilAfterInitialFetch,
                     next: next
                 )

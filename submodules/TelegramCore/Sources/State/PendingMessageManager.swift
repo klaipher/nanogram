@@ -86,7 +86,7 @@ public enum PendingMessageFailureReason {
     case nonPremiumMessagesForbidden
 }
 
-func sendMessageReasonForError(_ error: String) -> PendingMessageFailureReason? {
+public func sendMessageReasonForError(_ error: String) -> PendingMessageFailureReason? {
     if error.hasPrefix("PEER_FLOOD") {
         return .flood
     } else if error.hasPrefix("SENDING_TOO_FAST") {
@@ -122,7 +122,7 @@ public struct PeerPendingMessageDelivered {
 
 private final class PeerPendingMessagesSummaryContext {
     var messageDeliveredSubscribers = Bag<([PeerPendingMessageDelivered]) -> Void>()
-    var messageFailedSubscribers = Bag<(MessageId.Namespace, PendingMessageFailureReason) -> Void>()
+    var messageFailedSubscribers = Bag<(MessageId.Namespace, String) -> Void>()
     var newTopicEvents = Bag<(PendingMessageManager.NewTopicEvent) -> Void>()
     
     var isEmpty: Bool {
@@ -172,7 +172,7 @@ private func shouldPassFetchProgressForMessage(_ message: Message) -> Bool {
     return false
 }
 
-private func failMessages(postbox: Postbox, ids: [MessageId]) -> Signal<Void, NoError> {
+private func failMessages(postbox: Postbox, ids: [MessageId], errorCode: String = "internal") -> Signal<Void, NoError> {
     let modify = postbox.transaction { transaction -> Void in
         for id in ids {
             transaction.updateMessage(id, update: { currentMessage in
@@ -180,7 +180,13 @@ private func failMessages(postbox: Postbox, ids: [MessageId]) -> Signal<Void, No
                 if let forwardInfo = currentMessage.forwardInfo {
                     storeForwardInfo = StoreMessageForwardInfo(authorId: forwardInfo.author?.id, sourceId: forwardInfo.source?.id, sourceMessageId: forwardInfo.sourceMessageId, date: forwardInfo.date, authorSignature: forwardInfo.authorSignature, psaType: forwardInfo.psaType, flags: forwardInfo.flags)
                 }
-                return .update(StoreMessage(id: id, customStableId: nil, globallyUniqueId: currentMessage.globallyUniqueId, groupingKey: currentMessage.groupingKey, threadId: currentMessage.threadId, timestamp: currentMessage.timestamp, flags: [.Failed], tags: currentMessage.tags, globalTags: currentMessage.globalTags, localTags: currentMessage.localTags, forwardInfo: storeForwardInfo, authorId: currentMessage.author?.id, text: currentMessage.text, attributes: currentMessage.attributes, media: currentMessage.media))
+                let attributes: [MessageAttribute] = currentMessage.attributes.map { attribute in
+                    if let info = attribute as? OutgoingMessageInfoAttribute {
+                        return info.withSendErrorCode(errorCode)
+                    }
+                    return attribute
+                }
+                return .update(StoreMessage(id: id, customStableId: nil, globallyUniqueId: currentMessage.globallyUniqueId, groupingKey: currentMessage.groupingKey, threadId: currentMessage.threadId, timestamp: currentMessage.timestamp, flags: [.Failed], tags: currentMessage.tags, globalTags: currentMessage.globalTags, localTags: currentMessage.localTags, forwardInfo: storeForwardInfo, authorId: currentMessage.author?.id, text: currentMessage.text, attributes: attributes, media: currentMessage.media))
             })
         }
     }
@@ -1052,6 +1058,24 @@ public final class PendingMessageManager {
         }))
     }
     
+    private func notifyMessageFailure(ids: [MessageId], code: String) {
+        if let reason = sendMessageReasonForError(code) {
+            for id in ids {
+                if let context = self.messageContexts[id] {
+                    context.error = reason
+                    for subscriber in context.statusSubscribers.copyItems() {
+                        subscriber(context.status, context.error)
+                    }
+                }
+            }
+        }
+        if let id = ids.first, let context = self.peerSummaryContexts[id.peerId] {
+            for subscriber in context.messageFailedSubscribers.copyItems() {
+                subscriber(id.namespace, code)
+            }
+        }
+    }
+
     private func beginUploadingMessage(messageContext: PendingMessageContext, id: MessageId, threadId: Int64?, groupId: Int64?, uploadSignal: Signal<PendingMessageUploadedContentResult, PendingMessageUploadError>) {
         messageContext.state = .uploading(groupId: groupId)
         pendingMessageLog("begin uploading message \(id.id) in peer \(id.peerId.id._internalGetInt64Value())")
@@ -1079,22 +1103,14 @@ public final class PendingMessageManager {
         |> `catch` { [weak self] _ -> Signal<PendingMessageUploadedContentResult, NoError> in
             contentReceived = true
             pendingMessageFailureLog("message \(id.id) upload failed")
-            if let strongSelf = self {
-                let modify = strongSelf.postbox.transaction { transaction -> Void in
-                    transaction.updateMessage(id, update: { currentMessage in
-                        var storeForwardInfo: StoreMessageForwardInfo?
-                        if let forwardInfo = currentMessage.forwardInfo {
-                            storeForwardInfo = StoreMessageForwardInfo(authorId: forwardInfo.author?.id, sourceId: forwardInfo.source?.id, sourceMessageId: forwardInfo.sourceMessageId, date: forwardInfo.date, authorSignature: forwardInfo.authorSignature, psaType: forwardInfo.psaType, flags: forwardInfo.flags)
-                        }
-                        return .update(StoreMessage(id: id, customStableId: nil, globallyUniqueId: currentMessage.globallyUniqueId, groupingKey: currentMessage.groupingKey, threadId: currentMessage.threadId, timestamp: currentMessage.timestamp, flags: [.Failed], tags: currentMessage.tags, globalTags: currentMessage.globalTags, localTags: currentMessage.localTags, forwardInfo: storeForwardInfo, authorId: currentMessage.author?.id, text: currentMessage.text, attributes: currentMessage.attributes, media: currentMessage.media))
-                    })
-                }
-                return modify
-                |> mapToSignal { _ in
-                    return .complete()
-                }
+            guard let self else {
+                return .complete()
             }
-            return .complete()
+            self.notifyMessageFailure(ids: [id], code: "internal")
+            return failMessages(postbox: self.postbox, ids: [id])
+            |> mapToSignal { _ in
+                return .complete()
+            }
         }
         |> deliverOn(queue)).start(next: { [weak self] next in
             if let strongSelf = self {
@@ -1633,24 +1649,10 @@ public final class PendingMessageManager {
                                         return .complete()
                                     }
                                 }
-                            } else if let failureReason = sendMessageReasonForError(error.errorDescription), let message = messages.first?.0 {
-                                for (message, _) in messages {
-                                    if let context = strongSelf.messageContexts[message.id] {
-                                        context.error = failureReason
-                                        for f in context.statusSubscribers.copyItems() {
-                                            f(context.status, context.error)
-                                        }
-                                    }
-                                }
-                                
-                                if let context = strongSelf.peerSummaryContexts[message.id.peerId] {
-                                    for subscriber in context.messageFailedSubscribers.copyItems() {
-                                        subscriber(message.id.namespace, failureReason)
-                                    }
-                                }
                             }
+                            strongSelf.notifyMessageFailure(ids: messages.map { $0.0.id }, code: errorText)
                         }
-                        return failMessages(postbox: postbox, ids: group.map { $0.0 })
+                        return failMessages(postbox: postbox, ids: group.map { $0.0 }, errorCode: error.errorDescription)
                     } |> runOn(queue)
                 }
             } else {
@@ -2202,43 +2204,15 @@ public final class PendingMessageManager {
                                 strongSelf.beginSendingMessages([messageId])
                                 return
                             }
-                        } else if let failureReason = sendMessageReasonForError(error.errorDescription) {
-                            if let context = strongSelf.messageContexts[message.id] {
-                                context.error = failureReason
-                                for f in context.statusSubscribers.copyItems() {
-                                    f(context.status, context.error)
-                                }
-                            }
-                            
-                            if let context = strongSelf.peerSummaryContexts[message.id.peerId] {
-                                for subscriber in context.messageFailedSubscribers.copyItems() {
-                                    subscriber(message.id.namespace, failureReason)
-                                }
-                            }
                         }
-                        let _ = (postbox.transaction { transaction -> Void in
-                            transaction.updateMessage(message.id, update: { currentMessage in
-                                var storeForwardInfo: StoreMessageForwardInfo?
-                                if let forwardInfo = currentMessage.forwardInfo {
-                                    storeForwardInfo = StoreMessageForwardInfo(authorId: forwardInfo.author?.id, sourceId: forwardInfo.source?.id, sourceMessageId: forwardInfo.sourceMessageId, date: forwardInfo.date, authorSignature: forwardInfo.authorSignature, psaType: forwardInfo.psaType, flags: forwardInfo.flags)
-                                }
-                                return .update(StoreMessage(id: message.id, customStableId: nil, globallyUniqueId: currentMessage.globallyUniqueId, groupingKey: currentMessage.groupingKey, threadId: currentMessage.threadId, timestamp: currentMessage.timestamp, flags: [.Failed], tags: currentMessage.tags, globalTags: currentMessage.globalTags, localTags: currentMessage.localTags, forwardInfo: storeForwardInfo, authorId: currentMessage.author?.id, text: currentMessage.text, attributes: currentMessage.attributes, media: currentMessage.media))
-                            })
-                        }).start()
+                        strongSelf.notifyMessageFailure(ids: [messageId], code: error.errorDescription)
+                        let _ = failMessages(postbox: postbox, ids: [messageId], errorCode: error.errorDescription).start()
                     }
                     
                     return .complete()
                 }
             } else {
-                return postbox.transaction { transaction -> Void in
-                    transaction.updateMessage(message.id, update: { currentMessage in
-                        var storeForwardInfo: StoreMessageForwardInfo?
-                        if let forwardInfo = currentMessage.forwardInfo {
-                            storeForwardInfo = StoreMessageForwardInfo(authorId: forwardInfo.author?.id, sourceId: forwardInfo.source?.id, sourceMessageId: forwardInfo.sourceMessageId, date: forwardInfo.date, authorSignature: forwardInfo.authorSignature, psaType: forwardInfo.psaType, flags: forwardInfo.flags)
-                        }
-                        return .update(StoreMessage(id: message.id, customStableId: nil, globallyUniqueId: currentMessage.globallyUniqueId, groupingKey: currentMessage.groupingKey, threadId: currentMessage.threadId, timestamp: currentMessage.timestamp, flags: [.Failed], tags: currentMessage.tags, globalTags: currentMessage.globalTags, localTags: currentMessage.localTags, forwardInfo: storeForwardInfo, authorId: currentMessage.author?.id, text: currentMessage.text, attributes: currentMessage.attributes, media: currentMessage.media))
-                    })
-                }
+                return failMessages(postbox: postbox, ids: [messageId])
             }
         } |> switchToLatest
     }
@@ -2416,6 +2390,16 @@ public final class PendingMessageManager {
     }
     
     public func failedMessageEvents(peerId: PeerId, isScheduled: Bool) -> Signal<PendingMessageFailureReason, NoError> {
+        return self.failedMessageErrorEvents(peerId: peerId, isScheduled: isScheduled)
+        |> mapToSignal { code -> Signal<PendingMessageFailureReason, NoError> in
+            if let reason = sendMessageReasonForError(code) {
+                return .single(reason)
+            }
+            return .complete()
+        }
+    }
+
+    public func failedMessageErrorEvents(peerId: PeerId, isScheduled: Bool) -> Signal<String, NoError> {
         return Signal { subscriber in
             let disposable = MetaDisposable()
             
@@ -2428,15 +2412,9 @@ public final class PendingMessageManager {
                     self.peerSummaryContexts[peerId] = summaryContext
                 }
                 
-                let index = summaryContext.messageFailedSubscribers.add({ namespace, reason in
-                    if isScheduled {
-                        if Namespaces.Message.allScheduled.contains(namespace) {
-                            subscriber.putNext(reason)
-                        }
-                    } else {
-                        if !Namespaces.Message.allScheduled.contains(namespace) {
-                            subscriber.putNext(reason)
-                        }
+                let index = summaryContext.messageFailedSubscribers.add({ namespace, code in
+                    if Namespaces.Message.allScheduled.contains(namespace) == isScheduled {
+                        subscriber.putNext(code)
                     }
                 })
                 

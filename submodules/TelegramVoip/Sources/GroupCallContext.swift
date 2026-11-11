@@ -2,6 +2,9 @@ import Foundation
 import SwiftSignalKit
 import TgVoipWebrtc
 import TelegramCore
+#if os(macOS)
+import BroadcastPlayback
+#endif
 import CoreMedia
 
 #if os(macOS)
@@ -124,7 +127,7 @@ final class NetworkBroadcastPartSource: BroadcastPartSource {
                 }
             })
         } else {
-            return self.engine.calls.serverTime().start(next: { result in
+            return (self.engine.calls.serverTime() |> deliverOn(self.queue)).start(next: { result in
                 completion(result)
             })
         }
@@ -369,42 +372,102 @@ public final class OngoingGroupCallContext {
         }
 
         public final class I420Buffer {
-            private let wrapped: CallVideoFrameI420Buffer
+            private struct Planes {
+                let width: Int
+                let height: Int
+                let y: Data
+                let strideY: Int
+                let u: Data
+                let strideU: Int
+                let v: Data
+                let strideV: Int
+            }
+
+            private enum Storage {
+                case wrapped(CallVideoFrameI420Buffer)
+                case planes(Planes)
+            }
+
+            private let storage: Storage
 
             public var width: Int {
-                return Int(self.wrapped.width)
+                switch self.storage {
+                case let .wrapped(wrapped):
+                    return Int(wrapped.width)
+                case let .planes(planes):
+                    return planes.width
+                }
             }
 
             public var height: Int {
-                return Int(self.wrapped.height)
+                switch self.storage {
+                case let .wrapped(wrapped):
+                    return Int(wrapped.height)
+                case let .planes(planes):
+                    return planes.height
+                }
             }
 
             public var y: Data {
-                return self.wrapped.y
+                switch self.storage {
+                case let .wrapped(wrapped):
+                    return wrapped.y
+                case let .planes(planes):
+                    return planes.y
+                }
             }
 
             public var strideY: Int {
-                return Int(self.wrapped.strideY)
+                switch self.storage {
+                case let .wrapped(wrapped):
+                    return Int(wrapped.strideY)
+                case let .planes(planes):
+                    return planes.strideY
+                }
             }
 
             public var u: Data {
-                return self.wrapped.u
+                switch self.storage {
+                case let .wrapped(wrapped):
+                    return wrapped.u
+                case let .planes(planes):
+                    return planes.u
+                }
             }
 
             public var strideU: Int {
-                return Int(self.wrapped.strideU)
+                switch self.storage {
+                case let .wrapped(wrapped):
+                    return Int(wrapped.strideU)
+                case let .planes(planes):
+                    return planes.strideU
+                }
             }
 
             public var v: Data {
-                return self.wrapped.v
+                switch self.storage {
+                case let .wrapped(wrapped):
+                    return wrapped.v
+                case let .planes(planes):
+                    return planes.v
+                }
             }
 
             public var strideV: Int {
-                return Int(self.wrapped.strideV)
+                switch self.storage {
+                case let .wrapped(wrapped):
+                    return Int(wrapped.strideV)
+                case let .planes(planes):
+                    return planes.strideV
+                }
             }
 
             init(wrapped: CallVideoFrameI420Buffer) {
-                self.wrapped = wrapped
+                self.storage = .wrapped(wrapped)
+            }
+
+            init(width: Int, height: Int, y: Data, strideY: Int, u: Data, strideU: Int, v: Data, strideV: Int) {
+                self.storage = .planes(Planes(width: width, height: height, y: y, strideY: strideY, u: u, strideU: strideU, v: v, strideV: strideV))
             }
         }
 
@@ -452,6 +515,41 @@ public final class OngoingGroupCallContext {
             self.mirrorHorizontally = frameData.mirrorHorizontally
             self.mirrorVertically = frameData.mirrorVertically
         }
+
+        public init(pixelBuffer: CVPixelBuffer, rotation: Int32) {
+            let pixelFormat = CVPixelBufferGetPixelFormatType(pixelBuffer)
+            if pixelFormat == kCVPixelFormatType_32ARGB {
+                self.buffer = .argb(NativeBuffer(pixelBuffer: pixelBuffer))
+            } else if pixelFormat == kCVPixelFormatType_32BGRA {
+                self.buffer = .bgra(NativeBuffer(pixelBuffer: pixelBuffer))
+            } else {
+                self.buffer = .native(NativeBuffer(pixelBuffer: pixelBuffer))
+            }
+            self.width = CVPixelBufferGetWidth(pixelBuffer)
+            self.height = CVPixelBufferGetHeight(pixelBuffer)
+            self.orientation = Self.orientation(rotation: rotation)
+            self.deviceRelativeOrientation = nil
+            self.mirrorHorizontally = false
+            self.mirrorVertically = false
+        }
+
+        public init(i420Width width: Int, height: Int, y: Data, strideY: Int, u: Data, strideU: Int, v: Data, strideV: Int, rotation: Int32) {
+            self.buffer = .i420(I420Buffer(width: width, height: height, y: y, strideY: strideY, u: u, strideU: strideU, v: v, strideV: strideV))
+            self.width = width
+            self.height = height
+            self.orientation = Self.orientation(rotation: rotation)
+            self.deviceRelativeOrientation = nil
+            self.mirrorHorizontally = false
+            self.mirrorVertically = false
+        }
+        private static func orientation(rotation: Int32) -> OngoingCallVideoOrientation {
+            switch rotation {
+            case 90: return .rotation90
+            case 180: return .rotation180
+            case 270: return .rotation270
+            default: return .rotation0
+            }
+        }
     }
 
     public struct Stats {
@@ -482,6 +580,16 @@ public final class OngoingGroupCallContext {
         let audioDevice: OngoingCallContext.AudioDevice?
 #endif
         
+#if os(macOS)
+        private var listenerSession: BroadcastListenerSession?
+        private var listenerPlatform: GroupCallBroadcastPlatform?
+        private var listenerVideo: GroupCallBroadcastVideoOutput?
+        private var listenerLevels = GroupCallBroadcastLevels()
+        private let listenerNetworkType = MetaDisposable()
+        private var usesLegacyUnifiedBroadcast = false
+        private var engineMode: ConnectionMode = .none
+#endif
+
         let joinPayload = Promise<(String, UInt32)>()
         let networkState = ValuePromise<NetworkState>(NetworkState(isConnected: false, isTransitioningFromBroadcastToRtc: false, isBroadcast: false), ignoreRepeated: true)
         let isMuted = ValuePromise<Bool>(true, ignoreRepeated: true)
@@ -520,7 +628,8 @@ public final class OngoingGroupCallContext {
             audioIsActiveByDefault: Bool,
             isStream: Bool,
             sharedAudioDevice: OngoingCallContext.AudioDevice?,
-            encryptionContext: OngoingGroupCallEncryptionContext?
+            encryptionContext: OngoingGroupCallEncryptionContext?,
+            broadcastPlayer: Bool
         ) {
             self.queue = queue
             
@@ -791,12 +900,18 @@ public final class OngoingGroupCallContext {
                     guard let strongSelf = self else {
                         return
                     }
+#if os(macOS)
+                    if let listenerSession = strongSelf.listenerSession, !strongSelf.usesLegacyUnifiedBroadcast {
+                        listenerSession.setRtcConnected(state.isConnected)
+                        return
+                    }
+#endif
                     strongSelf.networkState.set(NetworkState(isConnected: state.isConnected, isTransitioningFromBroadcastToRtc: state.isTransitioningFromBroadcastToRtc, isBroadcast: state.isBroadcast))
                 }
             }
             
             let audioLevels = self.audioLevels
-            audioLevelsUpdatedImpl = { levels in
+            audioLevelsUpdatedImpl = { [weak self] levels in
                 var mappedLevels: [(AudioLevelKey, Float, Bool)] = []
                 var i = 0
                 while i < levels.count {
@@ -811,6 +926,12 @@ public final class OngoingGroupCallContext {
                     i += 3
                 }
                 queue.async {
+#if os(macOS)
+                    if let self, self.listenerSession != nil {
+                        audioLevels.putNext(self.listenerLevels.merged(into: mappedLevels))
+                        return
+                    }
+#endif
                     audioLevels.putNext(mappedLevels)
                 }
             }
@@ -838,6 +959,26 @@ public final class OngoingGroupCallContext {
                 }
             })
             
+#if os(macOS)
+            if broadcastPlayer && videoContentType == .generic && !isConference {
+                let output = GroupCallBroadcastVideoOutput()
+                let platform = GroupCallBroadcastPlatform(queue: queue, audioCore: self.context.broadcastAudioCore, fetcher: {
+                    broadcastPartsSource.with { $0 }.map { GroupCallBroadcastFetcher(source: $0) }
+                }, videoOutput: output, rejoinNeeded: rejoinNeeded)
+                let session = BroadcastListenerSession(platform: platform)
+                let networkState = self.networkState
+                session.networkStateUpdated = { state in
+                    networkState.set(NetworkState(isConnected: state.isConnected, isTransitioningFromBroadcastToRtc: state.isTransitioningFromBroadcastToRtc, isBroadcast: state.mode == .broadcast))
+                }
+                session.levelsUpdated = { [weak self] levels in
+                    self?.listenerLevels.add(levels)
+                }
+                self.listenerSession = session
+                self.listenerPlatform = platform
+                self.listenerVideo = output
+            }
+#endif
+
             if sharedAudioDevice == nil {
                 self.audioSessionActiveDisposable.set((audioSessionActive
                 |> deliverOn(queue)).start(next: { [weak self] isActive in
@@ -854,6 +995,11 @@ public final class OngoingGroupCallContext {
         
         deinit {
             self.audioSessionActiveDisposable.dispose()
+#if os(macOS)
+            self.listenerNetworkType.dispose()
+            self.listenerSession?.stop()
+            self.listenerPlatform?.close()
+#endif
         }
         
         func setJoinResponse(payload: String) {
@@ -864,6 +1010,13 @@ public final class OngoingGroupCallContext {
             if let audioStreamData = audioStreamData {
                 let broadcastPartsSource = NetworkBroadcastPartSource(queue: self.queue, engine: audioStreamData.engine, callId: audioStreamData.callId, accessHash: audioStreamData.accessHash, isExternalStream: audioStreamData.isExternalStream)
                 let _ = self.broadcastPartsSource.swap(broadcastPartsSource)
+#if os(macOS)
+                if let session = self.listenerSession {
+                    self.listenerNetworkType.set((audioStreamData.engine.account.networkType |> deliverOn(self.queue)).start(next: { [weak session] networkType in
+                        session?.setNetworkClass(broadcastNetworkClass(networkType))
+                    }))
+                }
+#endif
             }
         }
         
@@ -885,6 +1038,9 @@ public final class OngoingGroupCallContext {
         
         func setVolume(ssrc: UInt32, volume: Double) {
             self.context.setVolumeForSsrc(ssrc, volume: volume)
+#if os(macOS)
+            self.listenerSession?.setVolume(ssrc: ssrc, volume: Float(volume))
+#endif
         }
 
         func setRequestedVideoChannels(_ channels: [VideoChannel]) {
@@ -923,10 +1079,30 @@ public final class OngoingGroupCallContext {
                         maxQuality: mappedMaxQuality
                     )
                 })
+#if os(macOS)
+                self.listenerSession?.setRequestedVideoChannels(channels.map {
+                    BroadcastVideoChannelRequest(endpointId: $0.endpointId, minQuality: Self.broadcastQuality($0.minQuality), maxQuality: Self.broadcastQuality($0.maxQuality))
+                })
+#endif
             }
         }
-        
+
+#if os(macOS)
+        private static func broadcastQuality(_ quality: VideoChannel.Quality) -> BroadcastQuality {
+            switch quality {
+            case .thumbnail: return .thumbnail
+            case .medium: return .medium
+            case .full: return .full
+            }
+        }
+#endif
+
         func stop(account: Account?, reportCallId: CallId?, debugLog: Promise<String?>) {
+#if os(macOS)
+            self.listenerNetworkType.dispose()
+            self.listenerSession?.stop()
+            self.listenerPlatform?.close()
+#endif
             self.context.stop()
             
             let logPath = self.logPath
@@ -962,6 +1138,31 @@ public final class OngoingGroupCallContext {
         }
         
         func setConnectionMode(_ connectionMode: ConnectionMode, keepBroadcastConnectedIfWasEnabled: Bool, isUnifiedBroadcast: Bool) {
+#if os(macOS)
+            if isUnifiedBroadcast {
+                self.usesLegacyUnifiedBroadcast = true
+                self.listenerSession?.setMode(.none, keepBroadcastIfWasEnabled: false)
+            } else if self.usesLegacyUnifiedBroadcast {
+                self.usesLegacyUnifiedBroadcast = false
+            }
+            if let session = self.listenerSession, !isUnifiedBroadcast {
+                let mode: BroadcastHandoffCoordinator.Mode
+                switch connectionMode {
+                case .none: mode = .none
+                case .rtc: mode = .rtc
+                case .broadcast: mode = .broadcast
+                }
+                session.setMode(mode, keepBroadcastIfWasEnabled: keepBroadcastConnectedIfWasEnabled)
+                if connectionMode == .broadcast {
+                    if self.engineMode != .none {
+                        self.context.setConnectionMode(.none, keepBroadcastConnectedIfWasEnabled: false, isUnifiedBroadcast: false)
+                        self.engineMode = .none
+                    }
+                    return
+                }
+                self.engineMode = connectionMode
+            }
+#endif
             let mappedConnectionMode: OngoingCallConnectionMode
             switch connectionMode {
             case .none:
@@ -973,7 +1174,12 @@ public final class OngoingGroupCallContext {
             }
             self.context.setConnectionMode(mappedConnectionMode, keepBroadcastConnectedIfWasEnabled: keepBroadcastConnectedIfWasEnabled, isUnifiedBroadcast: isUnifiedBroadcast)
             
-            if (mappedConnectionMode != .rtc) {
+#if os(macOS)
+            let emitsJoinPayload = mappedConnectionMode == .none
+#else
+            let emitsJoinPayload = mappedConnectionMode != .rtc
+#endif
+            if emitsJoinPayload {
                 self.joinPayload.set(.never())
                 
                 let queue = self.queue
@@ -1080,6 +1286,23 @@ public final class OngoingGroupCallContext {
 
 
         func video(endpointId: String) -> Signal<OngoingGroupCallContext.VideoFrameData, NoError> {
+            let engineVideo = self.engineVideo(endpointId: endpointId)
+#if os(macOS)
+            if let listenerVideo = self.listenerVideo {
+                return Signal { subscriber in
+                    let rtc = engineVideo.start(next: subscriber.putNext)
+                    let broadcast = listenerVideo.video(endpointId: endpointId).start(next: subscriber.putNext)
+                    return ActionDisposable {
+                        rtc.dispose()
+                        broadcast.dispose()
+                    }
+                }
+            }
+#endif
+            return engineVideo
+        }
+
+        private func engineVideo(endpointId: String) -> Signal<OngoingGroupCallContext.VideoFrameData, NoError> {
             let queue = self.queue
             return Signal { [weak self] subscriber in
                 let disposable = MetaDisposable()
@@ -1222,10 +1445,10 @@ public final class OngoingGroupCallContext {
         }
     }
     
-    public init(inputDeviceId: String = "", outputDeviceId: String = "", audioSessionActive: Signal<Bool, NoError>, video: OngoingCallVideoCapturer?, requestMediaChannelDescriptions: @escaping (Set<UInt32>, @escaping ([MediaChannelDescription]) -> Void) -> Disposable, rejoinNeeded: @escaping () -> Void, outgoingAudioBitrateKbit: Int32?, videoContentType: VideoContentType, enableNoiseSuppression: Bool, disableAudioInput: Bool, enableSystemMute: Bool, useReferenceImpl: Bool, prioritizeVP8: Bool, logPath: String, onMutedSpeechActivityDetected: @escaping (Bool) -> Void, isConference: Bool, audioIsActiveByDefault: Bool, isStream: Bool, sharedAudioDevice: OngoingCallContext.AudioDevice?, encryptionContext: OngoingGroupCallEncryptionContext?) {
+    public init(inputDeviceId: String = "", outputDeviceId: String = "", audioSessionActive: Signal<Bool, NoError>, video: OngoingCallVideoCapturer?, requestMediaChannelDescriptions: @escaping (Set<UInt32>, @escaping ([MediaChannelDescription]) -> Void) -> Disposable, rejoinNeeded: @escaping () -> Void, outgoingAudioBitrateKbit: Int32?, videoContentType: VideoContentType, enableNoiseSuppression: Bool, disableAudioInput: Bool, enableSystemMute: Bool, useReferenceImpl: Bool, prioritizeVP8: Bool, logPath: String, onMutedSpeechActivityDetected: @escaping (Bool) -> Void, isConference: Bool, audioIsActiveByDefault: Bool, isStream: Bool, sharedAudioDevice: OngoingCallContext.AudioDevice?, encryptionContext: OngoingGroupCallEncryptionContext?, broadcastPlayer: Bool = false) {
         let queue = self.queue
         self.impl = QueueLocalObject(queue: queue, generate: {
-            return Impl(queue: queue, inputDeviceId: inputDeviceId, outputDeviceId: outputDeviceId, audioSessionActive: audioSessionActive, video: video, requestMediaChannelDescriptions: requestMediaChannelDescriptions, rejoinNeeded: rejoinNeeded, outgoingAudioBitrateKbit: outgoingAudioBitrateKbit, videoContentType: videoContentType, enableNoiseSuppression: enableNoiseSuppression, disableAudioInput: disableAudioInput, enableSystemMute: enableSystemMute, useReferenceImpl: useReferenceImpl, prioritizeVP8: prioritizeVP8, logPath: logPath, onMutedSpeechActivityDetected: onMutedSpeechActivityDetected, isConference: isConference, audioIsActiveByDefault: audioIsActiveByDefault, isStream: isStream, sharedAudioDevice: sharedAudioDevice, encryptionContext: encryptionContext)
+            return Impl(queue: queue, inputDeviceId: inputDeviceId, outputDeviceId: outputDeviceId, audioSessionActive: audioSessionActive, video: video, requestMediaChannelDescriptions: requestMediaChannelDescriptions, rejoinNeeded: rejoinNeeded, outgoingAudioBitrateKbit: outgoingAudioBitrateKbit, videoContentType: videoContentType, enableNoiseSuppression: enableNoiseSuppression, disableAudioInput: disableAudioInput, enableSystemMute: enableSystemMute, useReferenceImpl: useReferenceImpl, prioritizeVP8: prioritizeVP8, logPath: logPath, onMutedSpeechActivityDetected: onMutedSpeechActivityDetected, isConference: isConference, audioIsActiveByDefault: audioIsActiveByDefault, isStream: isStream, sharedAudioDevice: sharedAudioDevice, encryptionContext: encryptionContext, broadcastPlayer: broadcastPlayer)
         })
     }
     
