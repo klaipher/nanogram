@@ -541,17 +541,18 @@ static void test_memory_limit_func(void)
     CHECK(js_calloc_rt(rt, SIZE_MAX / 2, 4) == NULL);
     CHECK(limit_hook.calls == 3);
 
-    /* A script that passes the limit: the refusal calls it, and the script still sees QuickJS's out-of-memory error. */
+    /* A script that passes the limit: the refusal calls it, and the out-of-memory error escapes the script's catch to
+       the host (quickjs-ng #1810, change 14 in VENDOR.md: a script cannot catch it and go on). */
     char s[64];
     eval_str(ctx, "try { 'x'.repeat(16 << 20); 'allocated' } catch (e) { e.message }", s, sizeof s);
-    CHECK(strcmp(s, "out of memory") == 0);
+    CHECK(strcmp(s, "<exception>") == 0);
     CHECK(limit_hook.calls == 4);
 
     /* NULL removes it: a refusal still returns NULL, and nothing is called. */
     JS_SetMemoryLimitFunc(rt, NULL, NULL);
     CHECK(js_malloc_rt(rt, 16 << 20) == NULL);
     eval_str(ctx, "try { 'x'.repeat(16 << 20); 'allocated' } catch (e) { e.message }", s, sizeof s);
-    CHECK(strcmp(s, "out of memory") == 0);
+    CHECK(strcmp(s, "<exception>") == 0);
     CHECK(limit_hook.calls == 4);
     JS_FreeContext(ctx);
     JS_FreeRuntime(rt);

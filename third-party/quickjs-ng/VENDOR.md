@@ -296,3 +296,21 @@ Re-apply these after upgrading; `git diff 55b3934a98 -- third-party/quickjs-ng/q
     - Pinned by `tests/quickjs_host_test.c`, `test_dumps_never_follow_ndebug`: in the suite's default build (no
       `NDEBUG`) `JS_SetDumpFlags(rt, ~0)` keeps nothing and `JS_GetDumpFlags` answers 0, which is what both do with the
       dumps compiled out. Before the change it answered the 24 bits of the flags field (the RED run).
+
+14. **Security fixes from TelegramMessenger/quickjs master (b526a81)** (Nanogram, 2026-11-11, after tg-widget-rce).
+    - What: 21 of the fork's commits since v0.17.0 (6d46d07), cherry-picked onto this copy with git's three-way merge:
+      19dbe85, 8e14a39, 293ba08, 90aa2c4, 53dd884, 2dfeee3, ebd139b, f4fe478, 2b62af1 (#1827, stale RegExp bytecode),
+      f4dd164, 1a402cb, 9184c72, a11af65 (parser scope bounds), 09bb809, b02310a, 7ca4ac5, 3ad65ad, 45c5b9b, 3e236cb,
+      8f0d3b6, ca3594d (`await using` and the suspending-opcode guard). Left out: the performance commits, c359cac and
+      b06baf9 (spec fixes that regenerate builtin bytecode headers), db0fe52 and 9ddb1b8 (uncatchable InternalErrors:
+      change 10 here does the same its own way and they conflict with it).
+    - 90aa2c4 makes an out-of-memory error uncatchable by script: `quickjs_host_test.c`'s memory-limit hook test now
+      expects the error to reach the host (`<exception>`), not the script's `catch`.
+    - Pinned by `tests/quickjs_security_test.c` (`:QuickJSSecurityTests`, also run with `--features=asan`): the
+      published triggers of 3e236cb, 8f0d3b6, ca3594d, 2b62af1, 3ad65ad, 7ca4ac5 and 45c5b9b. Before the change one of
+      them is a heap-buffer-overflow under ASan (the RED run); after it all pass, with and without ASan.
+    - **Still open:** the report's parser trigger (`"use strict"; function f([] = eval("1")) {} f();`) still crashes
+      this copy after the change, so the fork's published commits do not close it for us. Message widgets are off by
+      default in Nanogram until it is fixed (Debug Settings, `MessageWidgetLocalSettings`); re-check when Telegram
+      publishes 13.2.1's source or a newer quickjs-ng fix, and add the trigger to the security test then.
+

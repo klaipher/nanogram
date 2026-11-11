@@ -24,7 +24,7 @@ import UndoUI
 /// default since 2026-10-22, when the debug flag went). Off, a widget message shows as unsupported media with its
 /// caption.
 ///
-/// Nanogram adds two more offs: this device's switch for message widgets (Debug Settings, on by default;
+/// Nanogram adds two more offs: this device's switch for message widgets (Debug Settings, off by default since 2026-11-11;
 /// `MessageWidgetLocalSettings`) and the hardened media policy (Lockdown Mode, `HardenedMediaPolicy.allowsMessageWidgets`),
 /// since a widget is code from the sender that runs in the app's process.
 public func chatMessageWidgetRenderingEnabled() -> Bool {

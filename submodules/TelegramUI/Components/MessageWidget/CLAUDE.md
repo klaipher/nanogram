@@ -18,7 +18,10 @@ state, the message context, requests) is `docs/superpowers/specs/2026-10-26-mess
 `submodules/TelegramUI/Components/MessageWidget/{MessageWidget,MessageWidgetRendering,WidgetRuntimeIOS,WidgetRuntime}`
 and `…/Chat/ChatMessageWidgetBubbleContentNode`.
 
-On by default, by user decision, with no Debug Settings flag. `chatMessageWidgetRenderingEnabled()` is false only
+**Off by default in Nanogram since 2026-11-11** (the owner, after tg-widget-rce: Telegram 13.2's engine has a published
+zero-click remote code execution): Debug Settings ▸ "Message widgets" (`MessageWidgetLocalSettings`, key
+`nanogram.messageWidgets.enabled.2`) turns them on, Lockdown Mode keeps them off. The widget harness turns them on at
+launch (`SceneDelegate`). Upstream's own gate: `chatMessageWidgetRenderingEnabled()` is also false
 while the app config carries `ios_killswitch_disable_message_widgets` (`MessageWidgetKillSwitch.isEngaged`, set once
 per app configuration by `AccountContextImpl`, because `getAppConfigValue` is expensive). Then, or when the payload
 does not decode or the widget fails to start, the bubble shows the shared "please update" pill

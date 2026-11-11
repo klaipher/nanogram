@@ -2901,6 +2901,7 @@ JSContext *JS_NewContextRaw(JSRuntime *rt)
     ctx->class_proto = js_malloc_rt(rt, sizeof(ctx->class_proto[0]) *
                                     rt->class_count);
     if (!ctx->class_proto) {
+        remove_gc_object(&ctx->header);
         js_free_rt(rt, ctx);
         return NULL;
     }
@@ -8740,6 +8741,7 @@ JSValue JS_ThrowOutOfMemory(JSContext *ctx)
     if (!rt->in_out_of_memory) {
         rt->in_out_of_memory = true;
         JS_ThrowInternalError(ctx, "out of memory");
+        JS_SetUncatchableError(ctx, ctx->rt->current_exception);
         rt->in_out_of_memory = false;
     }
     return JS_EXCEPTION;
@@ -21071,17 +21073,28 @@ static JSValue JS_CallInternal(JSContext *caller_ctx, JSValueConst func_obj,
 
         CASE(OP_await):
             ret_val = js_int32(FUNC_RET_AWAIT);
-            goto done_generator;
+            goto generator_exit;
         CASE(OP_yield):
             ret_val = js_int32(FUNC_RET_YIELD);
-            goto done_generator;
+            goto generator_exit;
         CASE(OP_yield_star):
         CASE(OP_async_yield_star):
             ret_val = js_int32(FUNC_RET_YIELD_STAR);
-            goto done_generator;
+            goto generator_exit;
         CASE(OP_return_async):
         CASE(OP_initial_yield):
             ret_val = JS_UNDEFINED;
+        generator_exit:
+            /* These opcodes suspend the frame, which only a generator or an
+               async function can do: their frame outlives the call. A normal
+               function's frame is on the C stack, and leaving it through
+               done_generator would skip close_var_refs(), so closures would
+               keep references into a frame that no longer exists. The parser
+               never emits them there; refuse it if bytecode ever does. */
+            if (unlikely(b->func_kind == JS_FUNC_NORMAL)) {
+                JS_ThrowInternalError(ctx, "suspending opcode in a normal function");
+                goto exception;
+            }
             goto done_generator;
 
         CASE(OP_nop):
@@ -24633,6 +24646,12 @@ static void pop_scope(JSParseState *s) {
         /* disable scoped variables */
         JSFunctionDef *fd = s->cur_func;
         int scope = fd->scope_level;
+        /* Defense in depth: a negative scope_level would make the
+           fd->scopes[scope] read below go out of bounds (see add_scope_var).
+           It can only be reached if a push_scope() failure went
+           unpropagated. */
+        if (scope < 0)
+            return;
         emit_op(s, OP_leave_scope);
         emit_u16(s, scope);
         fd->scope_level = fd->scopes[scope].parent;
@@ -24676,7 +24695,14 @@ static int add_var(JSContext *ctx, JSFunctionDef *fd, JSAtom name)
 static int add_scope_var(JSContext *ctx, JSFunctionDef *fd, JSAtom name,
                          JSVarKindEnum var_kind)
 {
-    int idx = add_var(ctx, fd, name);
+    int idx;
+    /* Defense in depth: a negative scope_level would turn the
+       fd->scopes[fd->scope_level] write below into an out-of-bounds access.
+       It can only be reached if a push_scope() allocation failure went
+       unpropagated; refuse rather than corrupt memory. */
+    if (fd->scope_level < 0)
+        return -1;
+    idx = add_var(ctx, fd, name);
     if (idx >= 0) {
         JSVarDef *vd = &fd->vars[idx];
         vd->var_kind = var_kind;
@@ -25735,7 +25761,10 @@ static __exception int js_parse_class_default_ctor(JSParseState *s,
     fd->has_this_binding = true;
     fd->new_target_allowed = true;
 
-    push_scope(s);  /* enter body scope */
+    if (push_scope(s) < 0) {
+        s->cur_func = fd->parent;
+        return -1;
+    }
     fd->body_scope = fd->scope_level;
     if (has_super) {
         fd->is_derived_class_constructor = true;
@@ -25813,7 +25842,8 @@ static __exception int js_parse_class(JSParseState *s, bool is_class_expr,
         class_var_name = JS_DupAtom(ctx, class_var_name);
     }
 
-    push_scope(s);
+    if (push_scope(s) < 0)
+        goto fail;
 
     if (s->token.val == TOK_EXTENDS) {
         class_flags = JS_DEFINE_CLASS_HAS_HERITAGE;
@@ -25836,7 +25866,8 @@ static __exception int js_parse_class(JSParseState *s, bool is_class_expr,
         goto fail;
 
     /* this scope contains the private fields */
-    push_scope(s);
+    if (push_scope(s) < 0)
+        goto fail;
 
     emit_op(s, OP_push_const);
     ctor_cpool_offset = fd->byte_code.size;
@@ -25898,7 +25929,8 @@ static __exception int js_parse_class(JSParseState *s, bool is_class_expr,
                     goto fail;
                 }
                 // stack is now: fclosure
-                push_scope(s);
+                if (push_scope(s) < 0)
+                    goto fail;
                 emit_op(s, OP_scope_get_var);
                 emit_atom(s, JS_ATOM_this);
                 emit_u16(s, 0);
@@ -26847,6 +26879,8 @@ static int js_parse_destructuring_element(JSParseState *s, int tok,
 
     label_parse = new_label(s);
     label_assign = new_label(s);
+    if (label_parse < 0 || label_assign < 0)
+        return -1;
 
     start_addr = s->cur_func->byte_code.size;
     if (hasval) {
@@ -29003,7 +29037,8 @@ static __exception int js_parse_block(JSParseState *s)
         int has_using_be = 0;
         int scope_level;
 
-        push_scope(s);
+        if (push_scope(s) < 0)
+            return -1;
         scope_level = fd->scope_level;
         for(;;) {
             if (js_parse_statement_or_decl(s, DECL_MASK_ALL))
@@ -29297,11 +29332,14 @@ static __exception int js_parse_for_in_of(JSParseState *s, int label_name,
     label_body = new_label(s);
     label_break = new_label(s);
     label_next = new_label(s);
+    if (label_cont < 0 || label_body < 0 || label_break < 0 || label_next < 0)
+        return -1;
 
     /* create scope for the lexical variables declared in the enumeration
        expressions. XXX: Not completely correct because of weird capturing
        semantics in `for (i of o) a.push(function(){return i})` */
-    push_scope(s);
+    if (push_scope(s) < 0)
+        return -1;
 
     /* local for_in scope starts here so individual elements
        can be closed in statement. */
@@ -29327,6 +29365,12 @@ static __exception int js_parse_for_in_of(JSParseState *s, int label_name,
     bool is_await_using = false;
     if (tok == TOK_AWAIT) {
         int u;
+        /* `await` is a keyword token outside async functions too (modules,
+           class static blocks), but an `await using` binding may only be
+           declared where the function can await: its disposal emits
+           OP_await, which a normal function cannot execute. */
+        if (!(s->cur_func->func_kind & JS_FUNC_ASYNC))
+            return js_parse_error(s, "await using declaration is only valid in async functions");
         if (next_token(s))
             return -1;
         u = is_using(s, false);
@@ -29748,7 +29792,8 @@ static __exception int js_parse_statement_or_decl(JSParseState *s,
             if (next_token(s))
                 goto fail;
             /* create a new scope for `let f;if(1) function f(){}` */
-            push_scope(s);
+            if (push_scope(s) < 0)
+                goto fail;
             set_eval_ret_undefined(s);
             if (js_parse_expr_paren(s))
                 goto fail;
@@ -29889,7 +29934,8 @@ static __exception int js_parse_statement_or_decl(JSParseState *s,
 
             /* create scope for the lexical variables declared in the initial,
                test and increment expressions */
-            push_scope(s);
+            if (push_scope(s) < 0)
+                goto fail;
             for_scope_level = s->cur_func->scope_level;
             /* initial expression */
             tok = s->token.val;
@@ -29963,6 +30009,9 @@ static __exception int js_parse_statement_or_decl(JSParseState *s,
             label_cont = new_label(s);
             label_body = new_label(s);
             label_break = new_label(s);
+            if (label_test < 0 || label_cont < 0 || label_body < 0
+                || label_break < 0)
+                goto fail;
 
             push_break_entry(s->cur_func, &break_entry,
                              label_name, label_break, label_cont, 0);
@@ -30097,7 +30146,8 @@ static __exception int js_parse_statement_or_decl(JSParseState *s,
             if (js_parse_expr_paren(s))
                 goto fail;
 
-            push_scope(s);
+            if (push_scope(s) < 0)
+                goto fail;
             label_break = new_label(s);
             push_break_entry(s->cur_func, &break_entry,
                              label_name, label_break, -1, 1);
@@ -30251,7 +30301,8 @@ static __exception int js_parse_statement_or_decl(JSParseState *s,
                 if (next_token(s))
                     goto fail;
 
-                push_scope(s);  /* catch variable */
+                if (push_scope(s) < 0)  /* catch variable */
+                    goto fail;
                 emit_label(s, label_catch);
 
                 if (s->token.val == '{') {
@@ -30287,7 +30338,8 @@ static __exception int js_parse_statement_or_decl(JSParseState *s,
                 /* XXX: should keep the address to nop it out if there is no finally block */
                 emit_goto(s, OP_catch, label_catch2);
 
-                push_scope(s);  /* catch block */
+                if (push_scope(s) < 0)  /* catch block */
+                    goto fail;
                 push_break_entry(s->cur_func, &block_env, JS_ATOM_NULL,
                                  -1, -1, 1);
                 block_env.label_finally = label_finally;
@@ -30384,7 +30436,8 @@ static __exception int js_parse_statement_or_decl(JSParseState *s,
             if (js_parse_expr_paren(s))
                 goto fail;
 
-            push_scope(s);
+            if (push_scope(s) < 0)
+                goto fail;
             with_idx = define_var(s, s->cur_func, JS_ATOM__with_,
                                   JS_VAR_DEF_WITH);
             if (with_idx < 0)
@@ -34986,6 +35039,18 @@ static __exception int add_closure_variables(JSContext *ctx, JSFunctionDef *s,
         cv->var_idx = i;
         cv->var_name = JS_DupAtom(ctx, cv0->var_name);
     }
+    /* Direct eval combines the caller's arguments, locals and inherited
+       closure variables into one environment. Each set is individually
+       bounded, but their sum can exceed the 16-bit closure_var_count field,
+       truncating it so js_closure2() under-allocates the var_ref array while
+       the eval bytecode still indexes the full environment. A count of
+       JS_MAX_LOCAL_VARS still fits (its highest index is JS_MAX_LOCAL_VARS-1),
+       matching what add_closure_var() permits; reject only a larger total. */
+    if (s->closure_var_count > JS_MAX_LOCAL_VARS) {
+        JS_ThrowSyntaxError(ctx, "too many closure variables used (only %d allowed)",
+                            JS_MAX_LOCAL_VARS);
+        return -1;
+    }
     return 0;
 }
 
@@ -37281,6 +37346,24 @@ static JSValue js_create_function(JSContext *ctx, JSFunctionDef *fd)
     if (resolve_labels(ctx, fd))
         goto fail;
 
+    /* resolve_variables() and resolve_labels() capture local variables into
+       the per-frame var_ref array; in particular resolve_labels() captures
+       every parameter when the function needs a mapped arguments object. The
+       argument and local counts are each individually bounded below
+       JS_MAX_LOCAL_VARS, but a mapped arguments object (which captures all
+       arguments) combined with an independently captured local can push the
+       total one past the limit, overflowing the 16-bit
+       JSFunctionBytecode.var_ref_count field. The field then truncates so
+       JS_CallInternal() under-allocates the sf->var_refs array while the
+       bytecode keeps indexing the full set -- get_var_ref() then reads past
+       the allocation. A count of JS_MAX_LOCAL_VARS still fits (its highest
+       index is JS_MAX_LOCAL_VARS-1); reject only a larger total. */
+    if (fd->var_ref_count > JS_MAX_LOCAL_VARS) {
+        JS_ThrowSyntaxError(ctx, "too many captured variables (only %d allowed)",
+                            JS_MAX_LOCAL_VARS);
+        goto fail;
+    }
+
     if (compute_stack_size(ctx, fd, &stack_size) < 0)
         goto fail;
 
@@ -37992,7 +38075,8 @@ static __exception int js_parse_function_decl2(JSParseState *s,
     /* in generators, yield expression is forbidden during the parsing
        of the arguments */
     fd->in_function_body = true;
-    push_scope(s);  /* enter body scope */
+    if (push_scope(s) < 0)  /* enter body scope */
+        goto fail;
     fd->body_scope = fd->scope_level;
 
     if (s->token.val == TOK_ARROW) {
@@ -38456,7 +38540,8 @@ static JSValue __JS_EvalInternal(JSContext *ctx, JSValueConst this_obj,
     s->is_module = (m != NULL);
     s->allow_html_comments = !s->is_module;
 
-    push_scope(s); /* body scope */
+    if (push_scope(s) < 0) /* body scope */
+        goto fail;
     fd->body_scope = fd->scope_level;
 
     err = js_parse_program(s);
@@ -39872,9 +39957,8 @@ static int JS_ReadFunctionBytecode(BCReaderState *s, JSFunctionBytecode *b,
 
 static JSValue JS_ReadBigInt(BCReaderState *s)
 {
-    JSValue obj = JS_UNDEFINED;
     uint32_t len, i, n;
-    JSBigInt *p;
+    JSBigInt *p = NULL;
     js_limb_t v;
     uint8_t v8;
 
@@ -39913,7 +39997,7 @@ static JSValue JS_ReadBigInt(BCReaderState *s)
     bc_read_trace(s, "}\n");
     return JS_CompactBigInt(s->ctx, p);
  fail:
-    JS_FreeValue(s->ctx, obj);
+    js_free(s->ctx, p);
     return JS_EXCEPTION;
 }
 
@@ -40518,6 +40602,7 @@ static JSValue JS_ReadRegExp(BCReaderState *s)
     JSContext *ctx = s->ctx;
     JSString *pattern;
     JSString *bc;
+    JSValue obj;
 
     pattern = JS_ReadString(s);
     if (!pattern)
@@ -40536,9 +40621,16 @@ static JSValue JS_ReadRegExp(BCReaderState *s)
         return JS_ThrowInternalError(ctx, "bad regexp bytecode");
     }
 
-    return js_regexp_constructor_internal(ctx, JS_UNDEFINED,
-                                          JS_MKPTR(JS_TAG_STRING, pattern),
-                                          JS_MKPTR(JS_TAG_STRING, bc));
+    obj = js_regexp_constructor_internal(ctx, JS_UNDEFINED,
+                                         JS_MKPTR(JS_TAG_STRING, pattern),
+                                         JS_MKPTR(JS_TAG_STRING, bc));
+    if (JS_IsException(obj))
+        return JS_EXCEPTION;
+    if (BC_add_object_ref(s, obj)) {
+        JS_FreeValue(ctx, obj);
+        return JS_EXCEPTION;
+    }
+    return obj;
 }
 
 static JSValue JS_ReadDate(BCReaderState *s)
@@ -44246,6 +44338,7 @@ static JSValue js_array_find(JSContext *ctx, JSValueConst this_val,
             }
         }
         JS_FreeValue(ctx, val);
+        val = JS_UNDEFINED;
         JS_FreeValue(ctx, index_val);
     }
     JS_FreeValue(ctx, obj);
@@ -48298,27 +48391,35 @@ static JSValue js_string_repeat(JSContext *ctx, JSValueConst this_val,
     JSValue str;
     StringBuffer b_s, *b = &b_s;
     JSString *p;
-    int64_t val;
+    double val;
     int n, len;
 
     str = JS_ToStringCheckObject(ctx, this_val);
     if (JS_IsException(str))
         goto fail;
-    if (JS_ToInt64Sat(ctx, &val, argv[0]))
+    if (JS_ToFloat64(ctx, &val, argv[0]))
         goto fail;
-    if (val < 0 || val > 2147483647) {
+    // ToIntegerOrInfinity: NaN maps to zero, everything else truncates
+    if (isnan(val))
+        val = 0;
+    else
+        val = trunc(val);
+    // only a negative or infinite count is out of range; a large finite
+    // count is not, it merely risks exceeding the maximum string length
+    if (val < 0 || val == INFINITY) {
         JS_ThrowRangeError(ctx, "invalid repeat count");
         goto fail;
     }
-    n = val;
     p = JS_VALUE_GET_STRING(str);
     len = p->len;
-    if (len == 0 || n == 1)
+    // any number of copies of the empty string is the empty string
+    if (len == 0 || val == 1)
         return str;
     if (val * len > JS_STRING_LEN_MAX) {
-        JS_ThrowRangeError(ctx, "invalid string length");
+        JS_ThrowRangeError(ctx, "string too long");
         goto fail;
     }
+    n = val;
     if (string_buffer_init2(ctx, b, n * len, p->is_wide_char))
         goto fail;
     if (len == 1) {
@@ -50005,7 +50106,7 @@ static JSValue js_regexp_exec(JSContext *ctx, JSValueConst this_val,
                 JS_ThrowInterrupted(ctx);
                 break;
             case LRE_RET_MEMORY_ERROR:
-                JS_ThrowInternalError(ctx, "out of memory in regexp execution");
+                JS_ThrowOutOfMemory(ctx);
                 break;
             case LRE_RET_BYTECODE_ERROR:
                 JS_ThrowInternalError(ctx, "corrupted bytecode in regexp execution");
@@ -50184,14 +50285,13 @@ static JSValue JS_RegExpDelete(JSContext *ctx, JSValueConst this_val, JSValue ar
     if (JS_IsException(str_val))
         goto fail;
     str = JS_VALUE_GET_STRING(str_val);
+    val = JS_GetProperty(ctx, this_val, JS_ATOM_lastIndex);
+    if (JS_IsException(val) || JS_ToLengthFree(ctx, &last_index, val))
+        goto fail;
     re_bytecode = str8(re->bytecode);
     re_flags = lre_get_flags(re_bytecode);
     if ((re_flags & (LRE_FLAG_GLOBAL | LRE_FLAG_STICKY)) == 0) {
         last_index = 0;
-    } else {
-        val = JS_GetProperty(ctx, this_val, JS_ATOM_lastIndex);
-        if (JS_IsException(val) || JS_ToLengthFree(ctx, &last_index, val))
-            goto fail;
     }
     /* size by alloc_count: the register executor uses capture[] beyond
        the capture positions for its registers (see js_regexp_exec). */
@@ -51837,8 +51937,10 @@ static int js_json_to_str(JSContext *ctx, JSONStringifyContext *jsc,
                     goto exception;
                 /* XXX: could do this string conversion only when needed */
                 prop = JS_ToStringFree(ctx, js_int64(i));
-                if (JS_IsException(prop))
+                if (JS_IsException(prop)) {
+                    JS_FreeValue(ctx, v);
                     goto exception;
+                }
                 v = js_json_check(ctx, jsc, val, v, prop);
                 JS_FreeValue(ctx, prop);
                 prop = JS_UNDEFINED;
@@ -53916,14 +54018,22 @@ static JSValue js_map_clear(JSContext *ctx, JSValueConst this_val,
                             int argc, JSValueConst *argv, int magic)
 {
     JSMapState *s = JS_GetOpaque2(ctx, this_val, JS_CLASS_MAP + magic);
-    struct list_head *el, *el1;
+    struct list_head *el;
     JSMapRecord *mr;
 
     if (!s)
         return JS_EXCEPTION;
-    list_for_each_safe(el, el1, &s->records) {
+    /* Deleting a record frees its value, which may run a finalizer (e.g. a
+       map iterator stored as a value) that frees other records, including
+       the next one. Lock the current record and read the next link only
+       after the deletion, like js_map_forEach, instead of caching it. */
+    el = s->records.next;
+    while (el != &s->records) {
         mr = list_entry(el, JSMapRecord, link);
+        mr->ref_count++;
         map_delete_record(ctx->rt, s, mr);
+        el = el->next;
+        map_decref_record(ctx->rt, mr);
     }
     return JS_UNDEFINED;
 }
@@ -54082,12 +54192,20 @@ static void js_map_finalizer(JSRuntime *rt, JSValueConst val)
     if (s) {
         /* if the object is deleted we are sure that no iterator is
            using it */
+        if (s->is_weak) {
+            /* first pass to remove the weak references, so that freeing
+               a value (e.g. a symbol that is also a key of this map)
+               cannot reset and free records we have yet to visit */
+            list_for_each(el, &s->records) {
+                mr = list_entry(el, JSMapRecord, link);
+                if (!mr->empty)
+                    delete_map_weak_ref(rt, mr);
+            }
+        }
         list_for_each_safe(el, el1, &s->records) {
             mr = list_entry(el, JSMapRecord, link);
             if (!mr->empty) {
-                if (s->is_weak)
-                    delete_map_weak_ref(rt, mr);
-                else
+                if (!s->is_weak)
                     JS_FreeValueRT(rt, mr->key);
                 JS_FreeValueRT(rt, mr->value);
             }
@@ -63522,19 +63640,29 @@ static JSValue js_finrec_unregister(JSContext *ctx, JSValueConst this_val, int a
     if (!is_valid_weakref_target(token))
         return JS_ThrowTypeError(ctx, "invalid unregister token");
 
-    struct list_head *el, *el1;
-    bool removed = false;
+    struct list_head *el, *el1, removed;
+    JSFinRecEntry *fre;
+    init_list_head(&removed);
+    /* first pass to unlink the matching entries and their weak refs:
+       freeing a held value can finalize the target of another entry,
+       and reset_weak_ref() would then free entries we have yet to visit */
     list_for_each_safe(el, el1, &frd->entries) {
-        JSFinRecEntry *fre = list_entry(el, JSFinRecEntry, link);
+        fre = list_entry(el, JSFinRecEntry, link);
         if (js_same_value(ctx, fre->token, token)) {
             list_del(&fre->link);
             delete_finrec_weakref(ctx->rt, fre);
-            js_finrec_free(ctx->rt, fre);
-            removed = true;
+            list_add_tail(&fre->link, &removed);
         }
     }
+    bool found = !list_empty(&removed);
+    /* second pass to actually free the entries */
+    while (!list_empty(&removed)) {
+        fre = list_entry(removed.next, JSFinRecEntry, link);
+        list_del(&fre->link);
+        js_finrec_free(ctx->rt, fre);
+    }
 
-    return js_bool(removed);
+    return js_bool(found);
 }
 
 static const JSCFunctionListEntry js_finrec_proto_funcs[] = {
@@ -63615,6 +63743,12 @@ static void reset_weak_ref(JSRuntime *rt, JSWeakRefRecord **first_weak_ref)
         case JS_WEAK_REF_KIND_WEAK_REF:
             wrd = wr->u.weak_ref_data;
             wrd->target = JS_UNDEFINED;
+            /* Detach the WeakRef object now: the second pass can drop its
+               last reference (it may be a WeakMap value or a held value
+               for this same target, freed synchronously when the target is
+               a symbol), and its finalizer must then find the sentinel, not
+               a cleared target and a record still in this list. */
+            JS_SetOpaqueInternal(wrd->obj, &js_weakref_sentinel);
             break;
         case JS_WEAK_REF_KIND_FINALIZATION_REGISTRY_ENTRY:
             fre = wr->u.fin_rec_entry;
@@ -63636,9 +63770,8 @@ static void reset_weak_ref(JSRuntime *rt, JSWeakRefRecord **first_weak_ref)
             js_free_rt(rt, mr);
             break;
         case JS_WEAK_REF_KIND_WEAK_REF:
-            wrd = wr->u.weak_ref_data;
-            JS_SetOpaqueInternal(wrd->obj, &js_weakref_sentinel);
-            js_free_rt(rt, wrd);
+            /* the WeakRef object may already be freed, do not touch it */
+            js_free_rt(rt, wr->u.weak_ref_data);
             break;
         case JS_WEAK_REF_KIND_FINALIZATION_REGISTRY_ENTRY: {
             fre = wr->u.fin_rec_entry;

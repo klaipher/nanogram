@@ -1,5 +1,6 @@
 import Foundation
 import UIKit
+import MessageWidget
 import MessageWidgetStress
 
 @objc(Application)
@@ -35,6 +36,8 @@ public final class SceneDelegate: NSObject, UIWindowSceneDelegate {
             return
         }
         let window = UIWindow(windowScene: windowScene)
+        // Message widgets are off by default in the app (Debug Settings); the harness exists to run them.
+        MessageWidgetLocalSettings.setWidgetsEnabled(true)
         // `-widget-stress measure|production`: widget-sandbox v0.3.0's stress kit instead of the chat; the run file goes
         // to the app's Documents and its path to the log.
         let arguments = ProcessInfo.processInfo.arguments

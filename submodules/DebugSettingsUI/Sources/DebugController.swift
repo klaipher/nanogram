@@ -1043,7 +1043,7 @@ enum DebugControllerEntry: ItemListNodeEntry {
                 }).start()
             })
         case let .messageWidgets(value):
-            return ItemListSwitchItem(presentationData: presentationData, systemStyle: .glass, title: "Message widgets", text: "A bot's widget in a message runs its own script in this app. Off (or in Lockdown Mode) a widget message shows the unsupported-content pill and runs nothing. Turning it on forgets widgets stopped after a crash.", value: value, maximumNumberOfLines: 0, sectionId: self.section, style: .blocks, updated: { value in
+            return ItemListSwitchItem(presentationData: presentationData, systemStyle: .glass, title: "Message widgets", text: "A bot's widget in a message runs its own script in this app as soon as the chat shows it. Off by default: Telegram 13.2's widget engine has a published remote code execution (tg-widget-rce). Off (or in Lockdown Mode) a widget message shows the unsupported-content pill and runs nothing. Turning it on forgets widgets stopped after a crash.", value: value, maximumNumberOfLines: 0, sectionId: self.section, style: .blocks, updated: { value in
                 MessageWidgetLocalSettings.setWidgetsEnabled(value)
             })
         case let .messageWidgetWallet(value):
@@ -1312,7 +1312,7 @@ struct DebugControllerEntriesEnvironment {
     var networkEngineKind: String?
     var useBetaFeatures: Bool
     /// This device's switches for message widgets (`MessageWidgetLocalSettings`): widgets on by default, the wallet off.
-    var messageWidgetsEnabled: Bool = true
+    var messageWidgetsEnabled: Bool = false
     var messageWidgetWalletEnabled: Bool = false
 }
 

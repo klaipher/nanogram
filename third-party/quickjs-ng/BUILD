@@ -59,6 +59,15 @@ cc_test(
     deps = [":quickjs"],
 )
 
+# Published triggers for memory-safety bugs reachable from a message widget's script (VENDOR.md change 14). Also run it
+# with --features=asan: the use-after-free cases only show under AddressSanitizer.
+cc_test(
+    name = "QuickJSSecurityTests",
+    srcs = ["tests/quickjs_security_test.c"],
+    copts = quickjs_copts,
+    deps = [":quickjs"],
+)
+
 # The sources :quickjs compiles, for WidgetRuntime's no-I/O scan (NoIOScanTests).
 filegroup(
     name = "ScanSources",

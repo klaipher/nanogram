@@ -69,20 +69,20 @@ final class DebugControllerEntriesTests: XCTestCase {
         }
     }
 
-    /// The message widgets rows are in the main app's list; the widgets switch is on by default and the wallet one off.
+    /// The message widgets rows are in the main app's list; both switches are off by default.
     func testMessageWidgetRowsFollowTheLocalSwitches() {
         let environment = DebugControllerEntriesEnvironment(isMainApp: true, hasAccount: false, isDevAccount: false, modernVideoMessagePipelineKilled: false, networkEngineKind: nil, useBetaFeatures: false)
-        XCTAssertTrue(environment.messageWidgetsEnabled)
+        XCTAssertFalse(environment.messageWidgetsEnabled)
         XCTAssertFalse(environment.messageWidgetWalletEnabled)
         let entries = debugControllerEntries(environment: environment, theme: defaultPresentationTheme, loggingSettings: LoggingSettings.defaultSettings, experimentalSettings: .defaultSettings, networkSettings: nil, networkEngineSettings: NetworkEngineSettings.defaultSettings)
-        XCTAssertTrue(entries.contains(DebugControllerEntry.messageWidgets(true)))
+        XCTAssertTrue(entries.contains(DebugControllerEntry.messageWidgets(false)))
         XCTAssertTrue(entries.contains(DebugControllerEntry.messageWidgetWallet(false)))
-        var off = environment
-        off.messageWidgetsEnabled = false
-        off.messageWidgetWalletEnabled = true
-        let offEntries = debugControllerEntries(environment: off, theme: defaultPresentationTheme, loggingSettings: LoggingSettings.defaultSettings, experimentalSettings: .defaultSettings, networkSettings: nil, networkEngineSettings: NetworkEngineSettings.defaultSettings)
-        XCTAssertTrue(offEntries.contains(DebugControllerEntry.messageWidgets(false)))
-        XCTAssertTrue(offEntries.contains(DebugControllerEntry.messageWidgetWallet(true)))
+        var on = environment
+        on.messageWidgetsEnabled = true
+        on.messageWidgetWalletEnabled = true
+        let onEntries = debugControllerEntries(environment: on, theme: defaultPresentationTheme, loggingSettings: LoggingSettings.defaultSettings, experimentalSettings: .defaultSettings, networkSettings: nil, networkEngineSettings: NetworkEngineSettings.defaultSettings)
+        XCTAssertTrue(onEntries.contains(DebugControllerEntry.messageWidgets(true)))
+        XCTAssertTrue(onEntries.contains(DebugControllerEntry.messageWidgetWallet(true)))
     }
 
     func testCircleCloseFocusSwitchFollowsTheVideoMessageCameraRow() {

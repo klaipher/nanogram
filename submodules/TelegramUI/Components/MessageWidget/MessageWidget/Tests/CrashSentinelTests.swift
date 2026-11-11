@@ -125,7 +125,7 @@ class CrashSentinelTests: MessageWidgetTestCase {
         XCTAssertFalse(self.peek().isBlocked(source: "<!doctype html><p>fine</p>"))
     }
 
-    func testTheLocalSwitchForWidgetsIsOnByDefaultAndTheWalletIsOff() {
+    func testTheLocalSwitchesForWidgetsAndTheWalletAreOffByDefault() {
         let suite = "MessageWidgetLocalSettingsTests-\(UUID().uuidString)"
         guard let defaults = UserDefaults(suiteName: suite) else {
             XCTFail("no suite")
@@ -134,7 +134,7 @@ class CrashSentinelTests: MessageWidgetTestCase {
         defer {
             defaults.removePersistentDomain(forName: suite)
         }
-        XCTAssertTrue(MessageWidgetLocalSettings.widgetsEnabled(defaults: defaults))
+        XCTAssertFalse(MessageWidgetLocalSettings.widgetsEnabled(defaults: defaults))
         XCTAssertFalse(MessageWidgetLocalSettings.walletEnabled(defaults: defaults))
         let sentinel = MessageWidgetCrashSentinel(url: nil)
         MessageWidgetLocalSettings.setWidgetsEnabled(false, defaults: defaults, sentinel: sentinel)
