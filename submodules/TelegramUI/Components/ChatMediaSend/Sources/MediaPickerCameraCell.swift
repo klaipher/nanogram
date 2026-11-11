@@ -58,11 +58,14 @@ public struct MediaPickerChatCameraHandOff: Equatable {
     }
 }
 
-/// Without a live preview in the tile (Power Saving), the tile has disabled its preview connection and stopped the
-/// camera. The full-screen camera keeps the same preview view and never enables it again, so the hand-off does: else
-/// the camera runs (green indicator on) behind a frozen picture.
-public func mediaPickerChatCameraHandOff(hasLivePreview: Bool) -> MediaPickerChatCameraHandOff {
-    return MediaPickerChatCameraHandOff(enablesPreview: true, startsCapture: !hasLivePreview)
+/// The full-screen camera keeps the tile's camera and preview view and starts neither, so the hand-off makes both run.
+/// `tileCaptureState` is what the tile last asked its camera to do: `true` started, `false` stopped, `nil` nothing yet.
+/// The tile stops its camera (and disables the preview connection) whenever it is not visible: with Power Saving it never
+/// runs, and when the picker opens it is stopped until the tile is on screen, which takes up to ~2 s. A tap in that time
+/// handed a stopped camera to the full-screen screen, which showed a still frame. Starting an already running camera is
+/// a no-op, so only the tile's own start is trusted.
+public func mediaPickerChatCameraHandOff(tileCaptureState: Bool?) -> MediaPickerChatCameraHandOff {
+    return MediaPickerChatCameraHandOff(enablesPreview: true, startsCapture: tileCaptureState != true)
 }
 
 public func mediaPickerChatCameraCellCaptureAction(isActive: Bool, hasLivePreview: Bool, isInvalidated: Bool, isInWindow: Bool, isHandedOff: Bool) -> MediaPickerCameraCellCaptureAction {

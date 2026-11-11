@@ -89,8 +89,17 @@ final class MediaPickerCameraCellTests: XCTestCase {
     // Power Saving (no live preview in the tile) leaves the tile's preview connection disabled; the full-screen camera
     // that takes over the same preview view never enables it, so it showed a frozen picture while the camera ran.
     func testChatCameraHandOffAlwaysEnablesThePreview() {
-        XCTAssertEqual(mediaPickerChatCameraHandOff(hasLivePreview: false), MediaPickerChatCameraHandOff(enablesPreview: true, startsCapture: true))
-        XCTAssertEqual(mediaPickerChatCameraHandOff(hasLivePreview: true), MediaPickerChatCameraHandOff(enablesPreview: true, startsCapture: false))
+        XCTAssertTrue(mediaPickerChatCameraHandOff(tileCaptureState: nil).enablesPreview)
+        XCTAssertTrue(mediaPickerChatCameraHandOff(tileCaptureState: false).enablesPreview)
+        XCTAssertTrue(mediaPickerChatCameraHandOff(tileCaptureState: true).enablesPreview)
+    }
+
+    func testChatCameraHandOffStartsTheCameraUnlessTheTileStartedIt() {
+        // A tap in the moment between the picker opening and the tile's first start (the tile is not visible yet,
+        // so its camera was stopped or never started), and the tile without a live preview (Power Saving).
+        XCTAssertTrue(mediaPickerChatCameraHandOff(tileCaptureState: nil).startsCapture)
+        XCTAssertTrue(mediaPickerChatCameraHandOff(tileCaptureState: false).startsCapture)
+        XCTAssertFalse(mediaPickerChatCameraHandOff(tileCaptureState: true).startsCapture)
     }
 
     func testCellPreviewSizeFollowsFeedAspect() {

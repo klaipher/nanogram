@@ -199,8 +199,8 @@ marked (check) were not re-verified against the code; correct them on the next c
 - Upstream: no (could be offered). Nothing changes what is sent to the server.
 - Sync: the action block in `NotificationService.swift` is wrapped in a closure without re-indenting; on a conflict keep upstream's block and re-wrap it.
 
-### Chat camera hand-off enables the preview (iOS)
-- What: tapping the attach-menu camera tile turns the shared preview back on before the full-screen camera takes it; upstream left it off when Power Saving had disabled the tile's live preview (frozen picture).
+### Chat camera hand-off enables the preview and starts the camera (iOS)
+- What: tapping the attach-menu camera tile turns the shared preview back on and starts the camera unless the tile itself had started it, before the full-screen camera takes both; upstream left the preview off when Power Saving had disabled the tile's live preview, and left the camera stopped when the tile was tapped before it first came on screen (frozen picture in both cases).
 - Where: `submodules/TelegramUI/Components/ChatMediaSend/Sources/MediaPickerCameraCell.swift` (`mediaPickerChatCameraHandOff`), `submodules/MediaPickerUI/Sources/MediaPickerScreen.swift` (`cameraTapped`).
 - Upstream: no (upstream bug, 13.2).
 
