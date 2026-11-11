@@ -32,7 +32,7 @@ final class ReadStateValidationProbeTests: StateSyncTestCase {
         if empty {
             return .result(StateSyncApi.messages([]))
         }
-        return .result(StateSyncApi.messages([StateSyncApi.privateMessage(id: 5, peerUserId: userId, fromUserId: userId, date: self.baseDate + 5)]))
+        return .result(StateSyncApi.messages([StateSyncApi.privateMessage(id: 5, peerUserId: userId, fromUserId: userId, date: Int32(clamping: Int64(self.baseDate) + 5))]))
     }
 
     private func setUpChat(userId: Int64, storedMessages: Bool) -> PeerId {
