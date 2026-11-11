@@ -1,21 +1,26 @@
 import Foundation
 import SwiftSignalKit
+import Postbox
 import TelegramCore
 import UniversalMediaPlayer
 import HLSPlayback
 
-// Turns on-disk segments into the player's parts: the bytes (the level's init, then the segment) go to a temp file
-// that is probed for its media times, as SourceBuffer.appendBuffer did in the JavaScript player.
+// Turns on-disk segments into the player's parts. The bytes (the level's init, then the segment) are read from the
+// media cache and probed in memory for their media times, then played in place from those ranges
+// (`ChunkMediaPlayerPart.MediaBoxRanges`, which holds the resource against clean-up while the part lives): a cached
+// segment is never written again. Only hardware AV1, which AVFoundation reads from a path, goes through a temp file
+// (`HLSStreamingStorage.nativePartContent`, which accounts the write).
 //
-// The store owns the temp files. A removed part's file is disposed on the main-queue turn after the next parts list
+// The store owns those temp files. A removed part's file is disposed on the main-queue turn after the next parts list
 // is built, by which time the player has that list: SwiftSignalKit delivers a main-queue signal synchronously on
 // the main queue, so the player switches lists during the emission. (ChunkMediaPlayerPart.TempFile does not dispose
-// its file; livestreams depend on that.)
+// its file; livestreams depend on that.) A part read from MediaBox has no file; releasing it releases the resource.
 final class HLSNativePartStore {
     // A range MediaBox lost (a cleared cache) never completes a read; give up on it.
     private static let readTimeout: Double = 10.0
     
     private let engine: TelegramEngine
+    private let mediaBox: MediaBox
     private let files: [HLSNativeQualityFile]
     private let queue = Queue(name: "HLSNativePartStore")
     
@@ -23,8 +28,9 @@ final class HLSNativePartStore {
     private var pendingDisposal: [EngineTempBoxFile] = []
     private var makeDisposables: [HLSSegmentKey: Disposable] = [:]
     
-    init(engine: TelegramEngine, files: [HLSNativeQualityFile]) {
+    init(engine: TelegramEngine, mediaBox: MediaBox, files: [HLSNativeQualityFile]) {
         self.engine = engine
+        self.mediaBox = mediaBox
         self.files = files
     }
     
@@ -41,6 +47,9 @@ final class HLSNativePartStore {
         let qualityFile = self.files[level]
         let resource = EngineMediaResource(qualityFile.file.media.resource)
         let size = qualityFile.size
+        let mediaBox = self.mediaBox
+        let initRange = request.initRange
+        let dataRange = request.dataRange
         let queue = self.queue
         
         let initData: Signal<Data?, NoError>
@@ -68,7 +77,7 @@ final class HLSNativePartStore {
         }
         |> timeout(HLSNativePartStore.readTimeout, queue: queue, alternate: .single(nil))
         
-        // Written and probed on the store's queue. A make cancelled meanwhile disposes the file it wrote.
+        // Probed on the store's queue; nothing is written unless the codec needs a file.
         let part: Signal<ChunkMediaPlayerPart?, NoError> = Signal { subscriber in
             let isCancelled = Atomic<Bool>(value: false)
             let disposable = (bytes |> deliverOn(queue)).start(next: { value in
@@ -77,25 +86,34 @@ final class HLSNativePartStore {
                     subscriber.putCompletion()
                     return
                 }
-                let tempFile = EngineTempBox.shared.tempFile(fileName: "data.mp4")
+                // The parsers want the init and the segment as one buffer; this copy stays in memory.
                 var combined = Data()
                 combined.reserveCapacity(initData.count + segmentData.count)
                 combined.append(initData)
                 combined.append(segmentData)
-                guard let _ = try? combined.write(to: URL(fileURLWithPath: tempFile.path), options: .atomic), let trackTiming = HLSNativePartStore.trackTiming(data: combined, path: tempFile.path), let timing = HLSPartTiming.range(audio: trackTiming.audio, video: trackTiming.video) else {
-                    EngineTempBox.shared.dispose(tempFile)
+                guard let trackTiming = HLSNativePartStore.trackTiming(data: combined), let timing = HLSPartTiming.range(audio: trackTiming.audio, video: trackTiming.video) else {
                     subscriber.putNext(nil)
                     subscriber.putCompletion()
                     return
                 }
                 if isCancelled.with({ $0 }) {
-                    EngineTempBox.shared.dispose(tempFile)
+                    return
+                }
+                guard let content = HLSStreamingStorage.nativePartContent(mediaBox: mediaBox, resource: resource._asResource(), resourceSize: size, initRange: initRange, dataRange: dataRange, initData: initData, segmentData: segmentData, codecName: trackTiming.videoCodecName) else {
+                    subscriber.putNext(nil)
+                    subscriber.putCompletion()
+                    return
+                }
+                if isCancelled.with({ $0 }) {
+                    if let file = content.file {
+                        EngineTempBox.shared.dispose(file)
+                    }
                     return
                 }
                 subscriber.putNext(ChunkMediaPlayerPart(
                     startTime: timing.start,
                     endTime: timing.end,
-                    content: ChunkMediaPlayerPart.TempFile(file: tempFile, ignoreAudioEditList: true),
+                    content: content,
                     codecName: trackTiming.videoCodecName,
                     offsetTime: 0.0
                 ))
@@ -130,12 +148,12 @@ final class HLSNativePartStore {
     }
     
     // Each track's start and duration and the video codec, from the part's boxes (`HLSFragmentTiming`), else from
-    // FFmpeg's probe of the written file, which costs 15–80 ms a part on a phone.
-    private static func trackTiming(data: Data, path: String) -> (audio: (start: Double, duration: Double)?, video: (start: Double, duration: Double)?, videoCodecName: String?)? {
+    // FFmpeg's probe of the bytes in memory, which costs 15–80 ms a part on a phone.
+    private static func trackTiming(data: Data) -> (audio: (start: Double, duration: Double)?, video: (start: Double, duration: Double)?, videoCodecName: String?)? {
         if let info = HLSFragmentTiming.parse(data) {
             return (info.audio.map { ($0.start, $0.duration) }, info.video.map { ($0.start, $0.duration) }, info.videoCodecName)
         }
-        guard let mediaInfo = extractFFMpegMediaInfo(path: path) else {
+        guard let mediaInfo = extractFFMpegMediaInfo(data: data) else {
             return nil
         }
         return (mediaInfo.audio.map { ($0.startTime.seconds, $0.duration.seconds) }, mediaInfo.video.map { ($0.startTime.seconds, $0.duration.seconds) }, mediaInfo.video?.codecName)

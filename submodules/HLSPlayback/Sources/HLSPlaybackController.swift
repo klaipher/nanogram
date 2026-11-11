@@ -143,7 +143,7 @@ public final class HLSPlaybackController {
     
 private let levels: [HLSLevel]
     private let preloadLevel: Int
-    private let configuration: Configuration
+    private var configuration: Configuration
     private let environment: HLSPlaybackEnvironment
     private let bandwidthStore: HLSBandwidthStore
     // hls.js's manifest-derived default, for a class with no estimate yet.
@@ -275,6 +275,17 @@ self.playlists = Array(repeating: nil, count: levels.count)
         self.levelErrors[level] = max(self.levelErrors[level], self.configuration.levelErrorLimit)
         self.log("playlist rejected level=\(self.levelKey(level))")
         self.tryStart()
+        self.scheduleNext()
+    }
+    
+    // The seconds of forward buffer to keep from now on (`hlsForwardBufferSeconds`). Cancels and drops nothing: a lower
+    // limit only stops further loads until playback catches up, a higher one lets them go on.
+    public func setMaxBufferAhead(_ seconds: Double) {
+        let clamped = seconds.isFinite ? max(seconds, 1.0) : Configuration().maxBufferAhead
+        if self.configuration.maxBufferAhead == clamped {
+            return
+        }
+        self.configuration.maxBufferAhead = clamped
         self.scheduleNext()
     }
     

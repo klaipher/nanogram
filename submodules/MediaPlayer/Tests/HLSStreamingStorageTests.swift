@@ -196,6 +196,86 @@ final class HLSStreamingStorageTests: XCTestCase {
         XCTAssertEqual(self.dataBytesWritten(since: before), Int64(initialization.count + changed.count))
     }
 
+    // MARK: - Parts of the native player (HLSNativePartStore)
+
+    private func nativeContent(initRange: Range<Int64>?, codecName: String?, isHardwareAv1Supported: Bool) throws -> (content: ChunkMediaPlayerPart.Content, initData: Data, segmentData: Data) {
+        let initData = initRange == nil ? Data() : try self.segment(HLSStreamingStorageTests.initializationRange)
+        let segmentData = try self.segment(HLSStreamingStorageTests.segmentRange)
+        let content = try XCTUnwrap(HLSStreamingStorage.nativePartContent(
+            mediaBox: self.mediaBox,
+            resource: self.resource,
+            resourceSize: Int64(self.fileData.count),
+            initRange: initRange,
+            dataRange: HLSStreamingStorageTests.segmentRange,
+            initData: initData,
+            segmentData: segmentData,
+            codecName: codecName,
+            isHardwareAv1Supported: isHardwareAv1Supported
+        ))
+        return (content, initData, segmentData)
+    }
+
+    func testACachedNativeSegmentIsAMediaBoxPartAndWritesNothing() throws {
+        let initData = try self.segment(HLSStreamingStorageTests.initializationRange)
+        let segmentData = try self.segment(HLSStreamingStorageTests.segmentRange)
+
+        let before = DiskWriteAccounting.shared.snapshot()
+        let content = try XCTUnwrap(HLSStreamingStorage.nativePartContent(mediaBox: self.mediaBox, resource: self.resource, resourceSize: Int64(self.fileData.count), initRange: HLSStreamingStorageTests.initializationRange, dataRange: HLSStreamingStorageTests.segmentRange, initData: initData, segmentData: segmentData, codecName: "h264", isHardwareAv1Supported: false))
+        XCTAssertEqual(self.dataBytesWritten(since: before), 0)
+        XCTAssertEqual(DiskWriteAccounting.shared.snapshot().subtracting(before).bytes[DiskWriteCategory.tempBoxHLS] ?? 0, 0)
+
+        guard case let .mediaBoxRanges(ranges) = content else {
+            return XCTFail("expected a part read from MediaBox, got \(content)")
+        }
+        XCTAssertEqual(ranges.ranges, [HLSStreamingStorageTests.initializationRange, HLSStreamingStorageTests.segmentRange])
+        XCTAssertEqual(ranges.resourceSize, Int64(self.fileData.count))
+        XCTAssertTrue(ranges.ignoreAudioEditList)
+        XCTAssertNil(content.file, "no temp file to dispose")
+
+        // The chunk player decodes the same frames as from the file itself.
+        let copy = TempBox.shared.tempFile(fileName: "native-copy.mp4")
+        try self.fileData.write(to: URL(fileURLWithPath: copy.path))
+        let fromFile = self.readVideoTimestamps(.tempFile(ChunkMediaPlayerPart.TempFile(file: copy)))
+        TempBox.shared.dispose(copy)
+        XCTAssertFalse(fromFile.isEmpty)
+        XCTAssertEqual(self.readVideoTimestamps(.mediaBoxRanges(ranges)), fromFile)
+    }
+
+    func testANativeSegmentWithoutAnInitRangeIsOneRange() throws {
+        let result = try self.nativeContent(initRange: nil, codecName: "h264", isHardwareAv1Supported: false)
+        guard case let .mediaBoxRanges(ranges) = result.content else {
+            return XCTFail("expected a part read from MediaBox, got \(result.content)")
+        }
+        XCTAssertEqual(ranges.ranges, [HLSStreamingStorageTests.segmentRange])
+    }
+
+    func testSoftwareAv1StaysAMediaBoxPart() throws {
+        for codec in ["av1", "av01"] {
+            let result = try self.nativeContent(initRange: HLSStreamingStorageTests.initializationRange, codecName: codec, isHardwareAv1Supported: false)
+            guard case .mediaBoxRanges = result.content else {
+                return XCTFail("software AV1 (\(codec)) is read by FFmpeg from MediaBox, got \(result.content)")
+            }
+        }
+    }
+
+    func testHardwareAv1IsWrittenToATempFileAndAccounted() throws {
+        for codec in ["av1", "av01"] {
+            let initData = try self.segment(HLSStreamingStorageTests.initializationRange)
+            let segmentData = try self.segment(HLSStreamingStorageTests.segmentRange)
+            let before = DiskWriteAccounting.shared.snapshot()
+            let content = try XCTUnwrap(HLSStreamingStorage.nativePartContent(mediaBox: self.mediaBox, resource: self.resource, resourceSize: Int64(self.fileData.count), initRange: HLSStreamingStorageTests.initializationRange, dataRange: HLSStreamingStorageTests.segmentRange, initData: initData, segmentData: segmentData, codecName: codec, isHardwareAv1Supported: true))
+            guard case let .tempFile(tempFile) = content else {
+                return XCTFail("hardware AV1 (\(codec)) plays from a path, got \(content)")
+            }
+            XCTAssertEqual(try Data(contentsOf: URL(fileURLWithPath: tempFile.file.path)), initData + segmentData)
+            // The store, not the part, disposes the file: a removed part's file outlives the list switch.
+            XCTAssertFalse(tempFile.deletesFileOnRelease)
+            let delta = DiskWriteAccounting.shared.snapshot().subtracting(before)
+            XCTAssertEqual(delta.bytes[DiskWriteCategory.tempBoxHLS] ?? 0, Int64(initData.count + segmentData.count))
+            TempBox.shared.dispose(tempFile.file)
+        }
+    }
+
     func testTheProbeReadsTheAppendedBytesFromMemory() throws {
         let probe = try XCTUnwrap(extractFFMpegMediaInfo(data: self.fileData))
         let filePath = try MediaTestSupport.resourcePath("h264_bframes_cmaf", "mp4")

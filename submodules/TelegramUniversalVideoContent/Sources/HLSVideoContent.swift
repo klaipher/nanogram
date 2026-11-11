@@ -25,7 +25,8 @@ public struct HLSCodecConfiguration {
 public extension HLSCodecConfiguration {
     init(context: AccountContext) {
         var isSoftwareAv1Supported = false
-        var isHardwareAv1Supported = false
+        // The device's answer (VideoToolbox); the app-config key is only a kill switch.
+        var hardwareAv1Flag: Bool?
         
         var length: Int = 4
         var cpuCount: UInt32 = 0
@@ -34,14 +35,14 @@ public extension HLSCodecConfiguration {
             isSoftwareAv1Supported = true
         }
         
-        if let data = context.currentAppConfiguration.with({ $0 }).data, let value = data["ios_enable_hardware_av1"] as? Double {
-            isHardwareAv1Supported = value != 0.0
+        if let data = context.currentAppConfiguration.with({ $0 }).data {
+            hardwareAv1Flag = VideoRenditionCodecPreference.hardwareAv1Flag(configurationValue: data["ios_enable_hardware_av1"])
         }
         if let data = context.currentAppConfiguration.with({ $0 }).data, let value = data["ios_enable_software_av1"] as? Double {
             isSoftwareAv1Supported = value != 0.0
         }
         
-        self.init(isHardwareAv1Supported: isHardwareAv1Supported, isSoftwareAv1Supported: isSoftwareAv1Supported)
+        self.init(isHardwareAv1Supported: VideoRenditionCodecPreference.isHardwareAv1Enabled(deviceSupportsHardwareAv1: internal_isHardwareAv1Supported, configurationFlag: hardwareAv1Flag), isSoftwareAv1Supported: isSoftwareAv1Supported)
     }
 }
 
@@ -172,7 +173,7 @@ public final class HLSVideoContent: UniversalVideoContent {
                 if !data.complete {
                     return
                 }
-                guard let data = try? Data(contentsOf: URL(fileURLWithPath: data.path)), let text = String(data: data, encoding: .utf8), let playlist = try? HLSMediaPlaylist.parse(text) else {
+                guard let data = try? Data(contentsOf: URL(fileURLWithPath: data.path)), let text = String(data: data, encoding: .utf8), let playlist = try? HLSMediaPlaylist.parse(text), let fileSize = fileSet.file.media.size, playlist.rangesFit(fileSize: fileSize) else {
                     subscriber.putNext(nil)
                     subscriber.putCompletion()
                     return
@@ -249,7 +250,7 @@ public final class HLSVideoContent: UniversalVideoContent {
         }
         let thumbnailVideoReference = HLSVideoContent.minimizedHLSQuality(file: self.fileReference, codecConfiguration: self.codecConfiguration)?.file ?? self.fileReference
         let thumbnail = internalMediaGridMessageVideo(postbox: postbox, userLocation: self.userLocation, videoReference: thumbnailVideoReference, previewSourceFileReference: self.fileReference, imageReference: nil, onlyFullSize: self.onlyFullSizeThumbnail, useLargeThumbnail: self.useLargeThumbnail, autoFetchFullSizeThumbnail: self.autoFetchFullSizeThumbnail || self.fileReference.media.isInstantVideo)
-        return HLSVideoNativeContentNode(context: context, audioSessionManager: audioSession, userLocation: self.userLocation, fileReference: self.fileReference, levels: qualities.levels, qualityFiles: qualities.files, loopVideo: self.loopVideo, enableSound: self.enableSound, baseRate: self.baseRate, captureProtected: self.captureProtected, startTimestamp: self.startTimestamp, thumbnail: thumbnail)
+        return HLSVideoNativeContentNode(context: context, audioSessionManager: audioSession, userLocation: self.userLocation, fileReference: self.fileReference, levels: qualities.levels, qualityFiles: qualities.files, partStore: HLSNativePartStore(engine: context.engine, mediaBox: postbox.mediaBox, files: qualities.files), loopVideo: self.loopVideo, enableSound: self.enableSound, baseRate: self.baseRate, captureProtected: self.captureProtected, startTimestamp: self.startTimestamp, thumbnail: thumbnail)
     }
     
     public func isEqual(to other: UniversalVideoContent) -> Bool {

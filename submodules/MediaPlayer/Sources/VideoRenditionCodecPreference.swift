@@ -21,4 +21,22 @@ public enum VideoRenditionCodecPreference {
         // Software only: AV1 never replaces another codec, and anything else replaces AV1.
         return !candidateIsAv1
     }
+
+    /// Whether hardware AV1 is used: what the device reports (VideoToolbox), unless the app configuration's
+    /// `ios_enable_hardware_av1` key is present and false, which switches it off. The key never enables what the device
+    /// cannot decode; absent means the device decides.
+    public static func isHardwareAv1Enabled(deviceSupportsHardwareAv1: Bool, configurationFlag: Bool?) -> Bool {
+        if configurationFlag == false {
+            return false
+        }
+        return deviceSupportsHardwareAv1
+    }
+
+    /// The configuration's value of the key as a flag: nil when it is absent (or not a number), so absent is not false.
+    public static func hardwareAv1Flag(configurationValue: Any?) -> Bool? {
+        guard let value = configurationValue as? Double else {
+            return nil
+        }
+        return value != 0.0
+    }
 }
