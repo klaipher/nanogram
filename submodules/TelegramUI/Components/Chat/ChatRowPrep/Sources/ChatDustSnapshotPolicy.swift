@@ -1,4 +1,4 @@
-import CoreGraphics
+public import CoreGraphics
 
 /// How the delete "dust" effect snapshots a bubble. `drawHierarchy` at screen scale for a tall bubble can hold the main
 /// thread for ~400 ms, so the snapshot is drawn at scale 1.0, and a bubble taller than `maximumHeight` takes the list's
