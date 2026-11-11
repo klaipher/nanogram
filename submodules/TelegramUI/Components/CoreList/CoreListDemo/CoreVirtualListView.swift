@@ -1409,6 +1409,11 @@ public final class CoreVirtualListView: UIView {
                       absorbsEdgeChangeIntoOverscroll: Bool = false,
                       animatesInsertions: Bool = true,
                       transition: CoreListTransition) {
+        if window == nil {
+            // A list out of every window (a screen beneath another) is not drawn: the navigation container redraws it when
+            // it prepares that screen for a swipe back.
+            NotificationCenter.default.post(name: Notification.Name("NanogramCoveredContentDidChange"), object: self)
+        }
         let animationDuration = transition.duration
         if isApplyingChanges {
             scheduler.schedule { [weak self] in

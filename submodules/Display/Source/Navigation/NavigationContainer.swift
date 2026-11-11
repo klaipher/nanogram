@@ -198,6 +198,13 @@ public final class NavigationContainer: ASDisplayNode, ASGestureRecognizerDelega
         
         super.init()
         
+        self.contentChangeObserver = NotificationCenter.default.addObserver(forName: NavigationPopPreparation<ContainerViewLayout>.contentDidChangeNotification, object: nil, queue: .main, using: { [weak self] notification in
+            guard let self, let view = notification.object as? UIView, let controller = self.preparedPopController, controller.isNodeLoaded, view.isDescendant(of: controller.displayNode.view) else {
+                return
+            }
+            self.popPreparation.noteContentChange(controller: ObjectIdentifier(controller))
+            self.schedulePopPreparation()
+        })
         self.memoryWarningObserver = NotificationCenter.default.addObserver(forName: UIApplication.didReceiveMemoryWarningNotification, object: nil, queue: .main, using: { [weak self] _ in
             self?.releasePreparedPopController()
         })
@@ -206,6 +213,9 @@ public final class NavigationContainer: ASDisplayNode, ASGestureRecognizerDelega
     deinit {
         if let memoryWarningObserver = self.memoryWarningObserver {
             NotificationCenter.default.removeObserver(memoryWarningObserver)
+        }
+        if let contentChangeObserver = self.contentChangeObserver {
+            NotificationCenter.default.removeObserver(contentChangeObserver)
         }
         self.popPreparationWork?.cancel()
     }
@@ -393,6 +403,7 @@ public final class NavigationContainer: ASDisplayNode, ASGestureRecognizerDelega
     /// the type of the screen that appears).
     private var hitchWindow = NavigationHitchWindow()
     private var memoryWarningObserver: NSObjectProtocol?
+    private var contentChangeObserver: NSObjectProtocol?
 
     private func canPreparePop() -> Bool {
         return NavigationPopPreparation<ContainerViewLayout>.canPrepare(isEnabled: NavigationPopPreparationSettings.isEnabled, isInFocus: self.isInFocus, hasTransition: self.state.transition != nil, hasInteractivePop: self.interactivePop != nil, hasPendingChild: self.state.pending != nil, controllerCount: self.controllers.count)
