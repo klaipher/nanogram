@@ -1,4 +1,4 @@
-import CoreGraphics
+public import CoreGraphics
 
 /// Which rows of a synchronous-loads pass (the first view of a chat opened without an animation) may decode their
 /// photos on the main thread. A row's position is not known while it is built (its height places it), so the rows are
