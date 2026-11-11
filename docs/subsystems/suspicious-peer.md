@@ -13,8 +13,9 @@ dismissed or the account sends them a message:
   its label as plain text.
 - Their emoji status is hidden in the chat title, in the panel's "is a mark for Premium" note and in the
   profile header, including the cover and colours of a collectible status.
-- Nothing is marked read (`ChatHistoryListNode.holdsReadsForSender`). Reads also wait while a non-contact's
-  settings are still unknown, as on the first open of a chat they started: a read cannot be taken back.
+- Reads are NOT held any more: upstream 13.2 removed `ChatHistoryListNode.holdsReadsForSender` (13.1.x held reads
+  while the panel showed and while a non-contact's settings were unknown), and the merge kept upstream's behaviour,
+  since read state is server-visible. Owner decision pending on bringing the hold back (CHANGELOG, 13.2 merge, F7).
 
 Non-obvious:
 

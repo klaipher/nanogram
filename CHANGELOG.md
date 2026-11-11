@@ -4,6 +4,8 @@ Newest first. Internal notes for each TestFlight build; testers see the What to 
 
 ## Unreleased
 
+- **13.2 lost-fix audit** (read-only, both repos): no unrecorded loss. Open as recorded: F4 (history-fill request size), F7 (reads for strangers, upstream removed the hold; `docs/subsystems/suspicious-peer.md` corrected), the HLS part store (fixed in this round by perf/hls-native-port). Not fixed, minor: `MediaGridView`'s own `CADisplayLink` for its short scroll animations, and `PresentChatMediaEditor`'s lazy `UIImage(contentsOfFile:)` on the main queue.
+
 - **rlottie removed** (`submodules/rlottie`, its `.gitmodules` entry, the `pin rlottie` / `share submodules/rlottie` lines of `docs/mac-core-paths.txt`, the upstream-sync pin). Upstream 13.2 deleted it and our iOS has rendered with tlottie only since the 13.2 merge; we kept it for the Mac, whose 13.2 merge drops it too. Nothing built it any more, so no behaviour change. The Watch app keeps its own `RLottieKit`.
 
 - **Native HLS player: crash fix, no re-writing of cached segments, smaller buffer for muted inline videos, hardware AV1 on capable iPhones** (owner-approved port of our old-player work to 13.2's native player; five commits on `perf/hls-native-port`, built and run by the owner, not by this change).
