@@ -1241,8 +1241,25 @@ final class CoreListChatHistoryBackend: ASDisplayNode, ChatHistoryListViewBacken
                 updated.insert(entry, at: clamped)
             }
             // Updates: same index, keep the stable serial, swap the ListViewItem so content refreshes.
+            var previousEntriesByStableId: [UInt64: CoreListEntryItem]?
             for update in updateIndicesAndItems {
                 if update.index >= 0 && update.index < updated.count {
+                    if update.keepsStableVersion {
+                        // `allUpdated` re-submits every entry; this one's content and inputs are the same as before, so the
+                        // old entry stays (same stable version, so CoreList sees an equal item and does not lay the row
+                        // out again). Its neighbors are recomputed below, and a changed inset makes it a new entry.
+                        if previousEntriesByStableId == nil {
+                            var map: [UInt64: CoreListEntryItem] = [:]
+                            for entry in self.entries {
+                                map[entry.stableId] = entry
+                            }
+                            previousEntriesByStableId = map
+                        }
+                        if let previous = previousEntriesByStableId?[update.stableId], previous.leftInset == self.currentInsets.left, previous.rightInset == self.currentInsets.right {
+                            updated[update.index] = previous
+                            continue
+                        }
+                    }
                     let stableVersion = self.nextStableVersion
                     self.nextStableVersion += 1
                     updated[update.index] = CoreListEntryItem(stableId: update.stableId, stableVersion: stableVersion, listItem: update.item, backend: self, leftInset: self.currentInsets.left, rightInset: self.currentInsets.right)

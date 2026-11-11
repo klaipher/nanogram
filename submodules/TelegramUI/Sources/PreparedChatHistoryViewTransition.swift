@@ -6,6 +6,7 @@ import MergeLists
 import AccountContext
 import ChatControllerInteraction
 import ChatHistoryEntry
+import ChatRowPrep
 import ChatMessageBubbleItemNode
 
 /// The list index (newest first, as `ListViewScrollToItem` counts) of the entry that is, or whose album
@@ -28,6 +29,21 @@ func chatHistoryListIndex(ofMessageId messageId: EngineMessage.Id, in view: Chat
         index -= 1
     }
     return nil
+}
+
+private func chatHistoryEntryPresentationDataIdentity(_ entry: ChatHistoryEntry) -> ObjectIdentifier? {
+    switch entry {
+    case let .MessageEntry(_, presentationData, _, _, _, _):
+        return ObjectIdentifier(presentationData)
+    case let .MessageGroupEntry(_, _, presentationData):
+        return ObjectIdentifier(presentationData)
+    case let .UnreadEntry(_, presentationData):
+        return ObjectIdentifier(presentationData)
+    case let .ReplyCountEntry(_, _, _, presentationData):
+        return ObjectIdentifier(presentationData)
+    case let .ChatInfoEntry(_, presentationData):
+        return ObjectIdentifier(presentationData)
+    }
 }
 
 func preparedChatHistoryViewTransition(from fromView: ChatHistoryView?, to toView: ChatHistoryView, reason: ChatHistoryViewTransitionReason, reverse: Bool, chatLocation: ChatLocation, source: ChatHistoryListSource, controllerInteraction: ChatControllerInteraction, scrollPosition: ChatHistoryViewScrollPosition?, scrollAnimationCurve: ListViewAnimationCurve?, initialData: EngineInitialMessageHistoryData?, keyboardButtonsMessage: EngineRawMessage?, cachedData: EngineCachedPeerData?, cachedDataMessages: [EngineMessage.Id: EngineRawMessage]?, readStateData: [EnginePeer.Id: ChatHistoryCombinedInitialReadStateData]?, flashIndicators: Bool, updatedMessageSelection: Bool, messageTransitionNode: ChatMessageTransitionNodeImpl?, allUpdated: Bool) -> ChatHistoryViewTransition {
@@ -156,7 +172,15 @@ func preparedChatHistoryViewTransition(from fromView: ChatHistoryView?, to toVie
         let adjustedPreviousIndex = previousCount - 1 - previousIndex
         
         let directionHint: ListViewItemOperationDirectionHint? = nil
-        adjustedUpdateItems.append(ChatHistoryViewTransitionUpdateEntry(index: adjustedIndex, previousIndex: adjustedPreviousIndex, entry: entry, directionHint: directionHint))
+        var keepsStableVersion = false
+        if let fromView, previousIndex >= 0, previousIndex < fromView.filteredEntries.count {
+            let previousEntry = fromView.filteredEntries[previousIndex]
+            keepsStableVersion = shouldKeepStableVersion(
+                old: ChatRowStableVersionInputs(entry: previousEntry, presentationData: chatHistoryEntryPresentationDataIdentity(previousEntry), associatedData: fromView.associatedData, rowPrepEpoch: fromView.rowPrepEpoch),
+                new: ChatRowStableVersionInputs(entry: entry, presentationData: chatHistoryEntryPresentationDataIdentity(entry), associatedData: toView.associatedData, rowPrepEpoch: toView.rowPrepEpoch)
+            )
+        }
+        adjustedUpdateItems.append(ChatHistoryViewTransitionUpdateEntry(index: adjustedIndex, previousIndex: adjustedPreviousIndex, entry: entry, directionHint: directionHint, keepsStableVersion: keepsStableVersion))
     }
     
     var scrolledToIndex: MessageHistoryScrollToSubject?
