@@ -54,6 +54,7 @@ swift_library(
     ) + [
         "CoreListDemoTests/AttachmentKeyframeParityTests.swift",
         "CoreListDemoTests/AttachmentFlightTrackReuseTests.swift",
+        "CoreListDemoTests/PhysicsScrollEngineRefreshRateTests.swift",
     ],
     deps = [
         ":CoreListDemoForTests",

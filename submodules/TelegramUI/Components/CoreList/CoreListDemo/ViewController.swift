@@ -307,7 +307,7 @@ final class ViewController: UIViewController {
     /// Takes effect on the NEXT flight — an in-flight animation keeps the range it was emitted with.
     @objc private func rateChanged() {
         switch rateControl.selectedSegmentIndex {
-        case 0:     // shipped: animation AND sampling link pinned to the max rate
+        case 0:     // the former default: animation AND sampling link pinned to the max rate
             PhysicsScrollEngine.pinsMaximumRefreshRate = true
             PhysicsScrollEngine.pinsSamplingLinkRate = true
         case 1:     // keep the animation's rate guarantee, halve the main-thread row work
