@@ -212,4 +212,19 @@ final class FrameHitchMonitorTests: XCTestCase {
         XCTAssertGreaterThan(cpu.mainThread, 0.02, "50 ms of busy work on this thread")
         XCTAssertGreaterThanOrEqual(cpu.app, cpu.mainThread - 0.001, "the process clock includes this thread (to the kernel's granularity)")
     }
+
+    func testAWindowKeepsOnlyItsLongestStack() {
+        XCTAssertEqual(FrameHitchMonitor.keptStallLimit, 1)
+        var stats = FrameHitchStats(startTime: 0.0)
+        XCTAssertTrue(stats.keep(FrameHitchStats.Stall(start: 1.0, end: 1.06), limit: FrameHitchMonitor.keptStallLimit))
+        XCTAssertTrue(stats.keep(FrameHitchStats.Stall(start: 2.0, end: 2.12), limit: FrameHitchMonitor.keptStallLimit))
+        XCTAssertFalse(stats.keep(FrameHitchStats.Stall(start: 3.0, end: 3.03), limit: FrameHitchMonitor.keptStallLimit))
+        XCTAssertEqual(stats.keptStalls.count, 1)
+        XCTAssertEqual(stats.keptStalls.first?.start, 2.0)
+    }
+
+    func testStacksAreLoggedOnlyWhileTheSwitchIsOn() {
+        XCTAssertTrue(FrameHitchMonitor.shouldLogStacks(isEnabled: true))
+        XCTAssertFalse(FrameHitchMonitor.shouldLogStacks(isEnabled: false))
+    }
 }

@@ -196,7 +196,15 @@ public final class FrameHitchMonitor {
     /// the app; runs on the main thread when a keyboard window ends.
     public static var keyboardState: (() -> String)?
 
-    static let keptStallLimit = 4
+    /// One stack per window: every stack is a few KB of log text, and a long window with 4 of them, repeated on each
+    /// back swipe, added to the daily log volume.
+    static let keptStallLimit = 1
+
+    /// Stacks are logged only while the Frame hitches switch is on (a window the switch's turn-off closes logs its
+    /// summary, but no stack).
+    static func shouldLogStacks(isEnabled: Bool) -> Bool {
+        return isEnabled
+    }
 
     /// What the monitor holds, for the memory log: open windows, kept stack captures with their bytes, whether the
     /// display link runs, how many stack reports were queued and not yet built. Readable from any thread.
@@ -419,7 +427,7 @@ public final class FrameHitchMonitor {
             summary += " kb=" + keyboardState
         }
         FrameHitchMonitor.log?(summary)
-        guard let report = FrameHitchMonitor.report, let log = FrameHitchMonitor.log else {
+        guard FrameHitchMonitor.shouldLogStacks(isEnabled: FrameHitchMonitor.isEnabled), let report = FrameHitchMonitor.report, let log = FrameHitchMonitor.log else {
             return
         }
         var pending: [(String, AnyObject)] = []
