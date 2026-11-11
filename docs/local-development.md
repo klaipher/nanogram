@@ -168,9 +168,9 @@ the versions needed are not in the Bazel Central Registry yet; switch them to pl
   all read `TEST_SIMULATOR_DEVICE` / `TEST_SIMULATOR_OS` from `build-system/bazel-utils/test_simulator.bzl`
   (iPhone 17 / iOS 27.2, the runtime matching Xcode 27.2) now; after an Xcode update, install its simulator (`xcodebuild -downloadPlatform iOS`) and change the pair there.
 
-- **Absolute submodule URLs.** Upstream uses `../rlottie.git` and `../tgcalls.git`, which resolve relative to the
-  remote. From this fork they would point at `github.com/klaipher/rlottie.git`, which doesn't exist; they now point
-  at `TelegramMessenger/…` directly.
+- **Absolute submodule URLs.** Upstream used `../rlottie.git` and `../tgcalls.git`, which resolve relative to the
+  remote. From this fork they would have pointed at repositories that did not exist then; they point at our
+  forks or `TelegramMessenger/…` directly (rlottie is gone since 2026-11-11).
 - **`.bazelversion`** matches `versions.json`, so plain `bazel` (via Bazelisk) works for the host-only test targets
   described in `CLAUDE.md`. The `Sanity` workflow checks that the two stay in sync.
 - **`user.bazelrc`** (gitignored, loaded with `try-import`) for personal settings such as `--jobs` or a different
@@ -276,7 +276,7 @@ take either side and let the next build rewrite it.
 
 `docs/mac-core-paths.txt` lists what the Mac shares; `tools/dev/parity/parity.py` (identical in both repos) checks it.
 `tools/dev/tg parity` (also run by `tg lint` without arguments) and the pre-push hook run only fast checks: every push
-must be rooted at the import `b46f1ec6`, a pushed tgcalls/rlottie/tlottie pin must be on a `klaipher` remote, and a
+must be rooted at the import `b46f1ec6`, a pushed tgcalls/tlottie pin must be on a `klaipher` remote, and a
 push that touches shared paths prints a reminder to run `tools/dev/tg core-bump` on the Mac. Differences with the Mac
 are warnings here; the Mac side enforces the lag limit, so an iOS hotfix never waits for a Mac build. The hook checks
 only the pins the pushed commits change: a new branch is compared with the commit it leaves the remote's history at,

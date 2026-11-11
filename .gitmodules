@@ -1,11 +1,6 @@
 # Submodules are fetched shallow (shallow = true): only the pinned commit, not
 # the full history (~400 MB more for webrtc, libvpx and td alone). Relative URLs
 # were made absolute so they resolve to TelegramMessenger from this fork too.
-[submodule "submodules/rlottie/rlottie"]
-	path = submodules/rlottie/rlottie
-	url = https://github.com/klaipher/rlottie.git
-	shallow = true
-	branch = telegram-ios-dev
 [submodule "submodules/TgVoipWebrtc/tgcalls"]
 	path = submodules/TgVoipWebrtc/tgcalls
 	url = https://github.com/klaipher/tgcalls.git

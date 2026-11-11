@@ -47,7 +47,7 @@ marked (check) were not re-verified against the code; correct them on the next c
 - Upstream: no.
 - Sync: a change to a shared path needs the Mac `tg core-bump`; the pre-push hook reminds.
 
-### Calls (tgcalls, WebRTC, rlottie forks)
+### Calls (tgcalls, WebRTC forks)
 - What: tgcalls runs from `klaipher/tgcalls` `nanogram-shared` (iOS and Mac in one implementation), WebRTC from
   `klaipher/webrtc` `nanogram-security-fixes`, runtime switches (`CallsRuntimeSwitches`), CallKit/Siri call-back fixes,
   Phone Recents switch.
@@ -205,7 +205,7 @@ marked (check) were not re-verified against the code; correct them on the next c
 - Upstream: no (upstream bug, 13.2).
 
 ### Differences added or changed by the 13.2 merge (2026-11-06)
-- rlottie: upstream removed it and `LottieSettings`; iOS now renders only with tlottie. Our rlottie fork and `submodules/rlottie` wrappers stay for the macOS app and the Watch app (`docs/mac-core-paths.txt`). Upstream: no.
+- rlottie: upstream removed it and `LottieSettings`; iOS now renders only with tlottie. Since 2026-11-11 `submodules/rlottie` is gone here too: the Mac 13.2 merge dropped it as Telegram for macOS 13.2 did, so neither app builds it, as upstream. The Watch app keeps its own vendored copy (`RLottieKit`). Upstream: yes.
 - Glass: matches upstream 13.2 by default (owner decision, revised). The luma clamp is installed on iOS 26 and 27 with upstream's ranges (`GlassBackgroundView.adaptiveLumaRange`: dark 0-0.874; light 0.22-1.0 on iOS 26, 0.125-1.0 on iOS 27). The Debug Settings switch for Apple's fully native glass was removed on 2026-11-07 (owner: it saves no battery; the clamp is one number per luma callback), so the clamp is always installed. Where: `GlassFixedLook`, `UIViewController+Navigation.m`. Upstream: same look; the only difference is that `registerEffectViewOverrides` does one class lookup for the running OS instead of upstream's loop over both names (keeps the launch-time gain). Sync: keep the single lookup when merging upstream's loop.
 - HLS: upstream's native player replaces the JS player we had optimised; our zero-copy `MediaBoxRanges` parts are still read by the FFmpeg reader (with `startAt`), but the native part store writes temp files (open: use our parts for cached segments).
 - State sync: the `State/Sync/` layout is upstream's. We differ in four small places inside it: `applyUpdateChannelState` writes nothing when the pts is unchanged and `applyUpdateMessageImpressionCount` writes nothing unless the view count grows (`UnchangedStateUpdates.swift`; the equal participants-count skip sits in `AccountMutableState.mergeChats`); and the `StaleChannelDiagnostics` log hooks (`UpdateInterpreter+Channels`, `ChannelPolling.pollChannelOnce`, `DifferencePolicy.applyDifferenceAnswer`). Nothing changes what is sent to the server. Sync: expect small conflicts in those three Sync files.

@@ -11,7 +11,7 @@ in this order (conflicts were context only, resolved to the upstream side):
     25648ae 2cab35d 27f2f23 8de0d9e 480a2ad ea06d2f
 
 One local change: `kMaxModelTreeDepth` (`src/lottie/lottiemodel.h`) is 65, not upstream's 32,
-as in the iOS app's rlottie (`submodules/rlottie`), so nothing tlottie accepts is cut.
+as the iOS app's rlottie had (`submodules/rlottie`, removed 2026-11-11), so nothing tlottie accepts is cut.
 
 Deliberately NOT taken, because they change how valid Telegram stickers render:
 

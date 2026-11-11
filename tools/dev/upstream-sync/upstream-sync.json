@@ -85,13 +85,6 @@
    "fork_branch": "nanogram-security-fixes"
   },
   {
-   "name": "rlottie",
-   "path": "submodules/rlottie/rlottie",
-   "upstream_url": "https://github.com/TelegramMessenger/rlottie.git",
-   "fork_url": "https://github.com/klaipher/rlottie.git",
-   "fork_branch": "telegram-ios-dev"
-  },
-  {
    "name": "mtproto-engine",
    "path": "third-party/mtproto-engine",
    "upstream_url": "https://github.com/TelegramMessenger/mtproto-engine.git"

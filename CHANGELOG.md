@@ -4,6 +4,8 @@ Newest first. Internal notes for each TestFlight build; testers see the What to 
 
 ## Unreleased
 
+- **rlottie removed** (`submodules/rlottie`, its `.gitmodules` entry, the `pin rlottie` / `share submodules/rlottie` lines of `docs/mac-core-paths.txt`, the upstream-sync pin). Upstream 13.2 deleted it and our iOS has rendered with tlottie only since the 13.2 merge; we kept it for the Mac, whose 13.2 merge drops it too. Nothing built it any more, so no behaviour change. The Watch app keeps its own `RLottieKit`.
+
 ## 13.2 (202611112014) — 2026-11-11 — c2a45687
 
 TestFlight build (processed VALID, What to Test set). Previous TestFlight build: 202611092335 (7e19e458); changes since are `git log 7e19e458..c2a45687`: the attachment camera opening as a still frame when tapped right after the menu appeared (ff5ed8f6), message widgets off by default with the QuickJS-ng security fixes (5004b51d), Telegram for macOS 13.2's core patch and tgcalls 9bfb76f for the Mac merge (4c07ad72, 2370d9b0; no iOS behaviour change), and the broadcast player's bounded endpoint-id read (c2a45687, Mac-only code). Entries below.
