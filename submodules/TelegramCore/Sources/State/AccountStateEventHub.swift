@@ -228,7 +228,7 @@ final class AccountStateEventHub {
     /// result reaches `notificationMessages` on the queue and is followed there by `completed`, then hands the
     /// events that need no storage read to their pipes.
     func dispatch(_ events: AccountFinalStateEvents, completed: @escaping () -> Void) {
-        let signal = self.postbox.transaction { transaction -> [([Message], PeerGroupId, Bool, MessageHistoryThreadData?)] in
+        let readNotificationMessages = self.postbox.transaction { transaction -> [([Message], PeerGroupId, Bool, MessageHistoryThreadData?)] in
             var messageList: [([Message], PeerGroupId, Bool, MessageHistoryThreadData?)] = []
 
             for id in events.addedIncomingMessageIds {
@@ -258,14 +258,26 @@ final class AccountStateEventHub {
             return messageList
         }
 
-        let _ = (signal
-        |> deliverOn(self.queue)).start(next: { [weak self] messages in
-            if let strongSelf = self {
-                strongSelf.notificationMessagesPipe.putNext(messages)
+        if events.addedIncomingMessageIds.isEmpty && events.wasScheduledMessageIds.isEmpty {
+            // Nothing to read: no Postbox transaction. The empty delivery and `completed` still arrive on the queue in
+            // a block of their own, after phases 1 and 2 below, as they did when the read hopped through Postbox
+            // (`justDispatch`, not `async`, which would run inline when this is the queue).
+            self.queue.justDispatch { [weak self] in
+                if let strongSelf = self {
+                    strongSelf.notificationMessagesPipe.putNext([])
+                }
+                completed()
             }
-        }, completed: {
-            completed()
-        })
+        } else {
+            let _ = (readNotificationMessages
+            |> deliverOn(self.queue)).start(next: { [weak self] messages in
+                if let strongSelf = self {
+                    strongSelf.notificationMessagesPipe.putNext(messages)
+                }
+            }, completed: {
+                completed()
+            })
+        }
 
         let timestamp = Int32(Date().timeIntervalSince1970)
         let minReactionTimestamp = Int32(clamping: Int64(timestamp) - 20)
