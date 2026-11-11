@@ -1515,12 +1515,13 @@ public final class MediaPickerScreenImpl: ViewController, MediaPickerScreen, Att
                     
                     if !controller.didSetupGroups {
                         controller.didSetupGroups = true
-                        Queue.concurrentDefaultQueue().after(0.4) {
+                        // The album list is only read by the albums menu: it is built when the menu opens, not here.
+                        do {
                             var isCreateSticker = false
                             if case .assets(_, .createSticker) = controller.subject {
                                 isCreateSticker = true
                             }
-                            controller.groupsPromise.set(
+                            controller.setGroupsSource(
                                 combineLatest(
                                     self.mediaAssetsContext.fetchAssetsCollections(.album),
                                     self.mediaAssetsContext.fetchAssetsCollections(.smartAlbum)
@@ -3360,9 +3361,28 @@ public final class MediaPickerScreenImpl: ViewController, MediaPickerScreen, Att
     
     private var didSetupGroups = false
     private let groupsPromise = Promise<[MediaGroupItem]>()
+    private var groupsSource: Signal<[MediaGroupItem], NoError>?
+    private var isGroupsMenuRequested = false
+    private var didActivateGroups = false
+    
+    // Starts reading the album list (`groupsSource` runs only when `groupsPromise` is subscribed to), once the menu was asked for.
+    private func activateGroupsIfNeeded() {
+        guard self.isGroupsMenuRequested, !self.didActivateGroups, let source = self.groupsSource else {
+            return
+        }
+        self.didActivateGroups = true
+        self.groupsPromise.set(source)
+    }
+    
+    fileprivate func setGroupsSource(_ source: Signal<[MediaGroupItem], NoError>) {
+        self.groupsSource = source
+        self.activateGroupsIfNeeded()
+    }
     
     public func presentGroupsMenu() {
         self.groupsPresented()
+        self.isGroupsMenuRequested = true
+        self.activateGroupsIfNeeded()
         
         let _ = (self.groupsPromise.get()
         |> take(1)
