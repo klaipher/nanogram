@@ -340,4 +340,11 @@ final class MediaGridPhotoLibraryDataSourceTests: XCTestCase {
         XCTAssertNil(store.hookOwner)
         XCTAssertNil(store.onThumbnailsChanged)
     }
+
+    func testWholeLibraryPassRunsAtUtilityAfterTheFirstScreens() {
+        XCTAssertEqual(MediaGridPhotoLibraryDataSource.fullCatalogQoS, .utility)
+        XCTAssertEqual(MediaGridPhotoLibraryDataSource.prefixCatalogQoS, .userInitiated)
+        XCTAssertEqual(MediaGridPhotoLibraryDataSource.initialCatalogPrefix, 4096)
+        XCTAssertEqual(MediaGridPhotoLibraryDataSource.makePrefixCatalog(PHFetchResult<PHAsset>(), reversed: true, count: 4096).count, 0)
+    }
 }

@@ -223,7 +223,9 @@ public final class MediaGridPhotoLibraryDataSource: NSObject, MediaGridDataSourc
         let filler = self.filler?.filler
         let snapshotURL = self.snapshotURL
         let reversed = self.reversed
-        self.changeQueue.async { [weak self] in
+        // The first screens come from a short pass at user-initiated QoS; the pass over the whole library (every
+        // asset's id and date, 10-100k PhotoKit reads) then runs at utility QoS so it does not compete with scrolling.
+        self.prefixQueue.async { [weak self] in
             if let snapshotURL, let data = try? Data(contentsOf: snapshotURL), let snapshot = ThumbnailLaunchSnapshot.decode(data), snapshot.count == fetchResult.count {
                 DispatchQueue.main.async { [weak self] in
                     guard let self, self.fetchResult === fetchResult, self.catalogGeneration == 0, self.catalog.count == 0 else {
@@ -233,9 +235,10 @@ public final class MediaGridPhotoLibraryDataSource: NSObject, MediaGridDataSourc
                     self.installLaunchSnapshot(snapshot)
                 }
             }
-            let start = CACurrentMediaTime()
-            let catalog = MediaGridPhotoLibraryDataSource.makeCatalog(fetchResult, reversed: reversed, prefix: MediaGridPhotoLibraryDataSource.initialCatalogPrefix, onPrefix: { prefix in
-                let duration = CACurrentMediaTime() - start
+            let prefixStart = CACurrentMediaTime()
+            if fetchResult.count > MediaGridPhotoLibraryDataSource.initialCatalogPrefix {
+                let prefix = MediaGridPhotoLibraryDataSource.makePrefixCatalog(fetchResult, reversed: reversed, count: MediaGridPhotoLibraryDataSource.initialCatalogPrefix)
+                let duration = CACurrentMediaTime() - prefixStart
                 DispatchQueue.main.async { [weak self] in
                     guard let self, self.fetchResult === fetchResult, self.catalogGeneration == 0 else {
                         return
@@ -243,7 +246,11 @@ public final class MediaGridPhotoLibraryDataSource: NSObject, MediaGridDataSourc
                     self.onLog?(String(format: "THUMBS catalog prefix=%d build=%.1fms", prefix.count, duration * 1000.0))
                     self.installCatalog(prefix, generation: 0)
                 }
-            })
+            }
+        }
+        self.changeQueue.async { [weak self] in
+            let start = CACurrentMediaTime()
+            let catalog = MediaGridPhotoLibraryDataSource.makeCatalog(fetchResult, reversed: reversed)
             let duration = CACurrentMediaTime() - start
             guard let self else {
                 return
@@ -374,6 +381,30 @@ public final class MediaGridPhotoLibraryDataSource: NSObject, MediaGridDataSourc
     }
 
     static let initialCatalogPrefix = 4096
+
+    /// Quality of service of the pass over the whole library (`changeQueue`), after the first `initialCatalogPrefix` items.
+    static let fullCatalogQoS = DispatchQoS.QoSClass.utility
+    static let prefixCatalogQoS = DispatchQoS.QoSClass.userInitiated
+
+    /// The first `count` items of the library in display order, without walking the rest.
+    static func makePrefixCatalog(_ fetchResult: PHFetchResult<PHAsset>, reversed: Bool, count: Int) -> ThumbnailCatalog {
+        var ids: [String] = []
+        var versions: [String] = []
+        let limit = min(count, fetchResult.count)
+        if limit <= 0 {
+            return ThumbnailCatalog.empty
+        }
+        ids.reserveCapacity(limit)
+        versions.reserveCapacity(limit)
+        fetchResult.enumerateObjects(options: reversed ? .reverse : []) { asset, _, stop in
+            ids.append(asset.localIdentifier)
+            versions.append(MediaGridPhotoLibraryDataSource.version(of: asset))
+            if ids.count >= limit {
+                stop.pointee = true
+            }
+        }
+        return ThumbnailCatalog(ids: ids, versions: versions)
+    }
 
     static func makeCatalog(_ fetchResult: PHFetchResult<PHAsset>, reversed: Bool, prefix: Int = 0, onPrefix: ((ThumbnailCatalog) -> Void)? = nil) -> ThumbnailCatalog {
         var ids: [String] = []
@@ -547,7 +578,8 @@ public final class MediaGridPhotoLibraryDataSource: NSObject, MediaGridDataSourc
         var plan: ThumbnailFillPlan?
     }
 
-    private let changeQueue = DispatchQueue(label: "org.telegram.MediaGridPhotoLibrary.libraryChanges")
+    private let changeQueue = DispatchQueue(label: "org.telegram.MediaGridPhotoLibrary.libraryChanges", qos: MediaGridPhotoLibraryDataSource.fullCatalogQoS)
+    private let prefixQueue = DispatchQueue(label: "org.telegram.MediaGridPhotoLibrary.libraryPrefix", qos: MediaGridPhotoLibraryDataSource.prefixCatalogQoS)
     private var observedFetchResult: PHFetchResult<PHAsset>
     private var observedCatalog = ThumbnailCatalog.empty
     private var observedCatalogGeneration = 0

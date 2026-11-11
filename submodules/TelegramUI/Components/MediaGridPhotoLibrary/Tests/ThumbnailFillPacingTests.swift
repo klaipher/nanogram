@@ -15,6 +15,34 @@ final class ThumbnailFillPacingTests: XCTestCase {
         XCTAssertFalse(ThumbnailFillPacing.allowsFilling(self.conditions(foreground: false)))
     }
 
+    func testPausedWhileThePickerIsCovered() {
+        var covered = self.conditions()
+        covered.isPickerCovered = true
+        XCTAssertFalse(ThumbnailFillPacing.allowsFilling(covered))
+        covered.isPickerCovered = false
+        XCTAssertTrue(ThumbnailFillPacing.allowsFilling(covered))
+    }
+
+    func testPacerPausesWhileCoveredAndResumesWhenUncovered() {
+        let fixture = Fixture()
+        let owner = NSObject()
+        fixture.pacer.pickerOpened()
+        fixture.pacer.setPickerCovered(true, by: owner)
+        XCTAssertFalse(fixture.pacer.isAllowed)
+        fixture.pacer.setPickerCovered(false, by: owner)
+        XCTAssertTrue(fixture.pacer.isAllowed)
+        XCTAssertEqual(fixture.changes, [true, false, true])
+    }
+
+    func testCoveredPickerDoesNotPauseAnotherOpenPicker() {
+        let fixture = Fixture()
+        let owner = NSObject()
+        fixture.pacer.pickerOpened()
+        fixture.pacer.pickerOpened()
+        fixture.pacer.setPickerCovered(true, by: owner)
+        XCTAssertTrue(fixture.pacer.isAllowed)
+    }
+
     func testSkippedInLowPowerMode() {
         XCTAssertFalse(ThumbnailFillPacing.allowsFilling(self.conditions(lowPower: true)))
     }
@@ -162,5 +190,40 @@ final class ThumbnailFillPacingTests: XCTestCase {
         self.wait(for: [cleared], timeout: 5.0)
         XCTAssertTrue(services.store.storedIds().isEmpty)
         XCTAssertEqual(services.filler.retryEntryCount, 0)
+    }
+
+    func testLastLeaseReleaseDropsDecodedPagesAndTheFillerIndex() {
+        let directory = FileManager.default.temporaryDirectory.appendingPathComponent("ThumbnailFillPacingTests-\(UUID().uuidString)", isDirectory: true)
+        addTeardownBlock {
+            try? FileManager.default.removeItem(at: directory)
+        }
+        let services = MediaGridPhotoLibraryServices(directory: directory.appendingPathComponent("thumbs", isDirectory: true), launchDirectory: nil, retryRegistryURL: nil, snapshotURL: nil)
+        let loaded = self.expectation(description: "loaded")
+        services.store.load {
+            loaded.fulfill()
+        }
+        self.wait(for: [loaded], timeout: 20.0)
+        guard let image = UIGraphicsImageRenderer(size: CGSize(width: 10, height: 10)).image(actions: { _ in }).cgImage else {
+            return XCTFail("no image")
+        }
+        services.store.write(image, id: "a", version: "1")
+        services.filler.acquirePickerLease()
+        services.filler.acquirePickerLease()
+        services.store.trimToVisible(ids: ["a"])
+        // One picker is still open: nothing is released.
+        services.filler.releasePickerLease()
+        XCTAssertEqual(services.filler.pickerLeaseCount, 1)
+        let released = self.expectation(description: "released")
+        services.filler.onLastPickerReleased = {
+            services.releaseMemoryAfterLastPicker(completion: {
+                released.fulfill()
+            })
+        }
+        services.filler.releasePickerLease()
+        XCTAssertEqual(services.filler.pickerLeaseCount, 0)
+        self.wait(for: [released], timeout: 10.0)
+        XCTAssertEqual(services.store.decodedPageCount, 0)
+        XCTAssertEqual(services.filler.filledCount, 0)
+        XCTAssertFalse(services.filler.filler.hasPlan)
     }
 }

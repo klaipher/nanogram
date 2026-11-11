@@ -398,7 +398,13 @@ public final class MediaPickerScreenImpl: ViewController, MediaPickerScreen, Att
     public var cancelPanGesture: () -> Void = { }
     public var isContainerPanning: () -> Bool = { return false }
     public var isContainerExpanded: () -> Bool = { return false }
-    public var isMinimized: Bool = false
+    public var isMinimized: Bool = false {
+        didSet {
+            if self.isNodeLoaded {
+                self.controllerNode.isSheetMinimized = self.isMinimized
+            }
+        }
+    }
     
     public var getCurrentSendMessageContextMediaPreview: (() -> ChatSendMessageContextScreenMediaPreview?)? = nil
     
@@ -479,7 +485,11 @@ public final class MediaPickerScreenImpl: ViewController, MediaPickerScreen, Att
         fileprivate var cameraCellBranch: MediaPickerCameraCellBranch = .none
         fileprivate var modernCameraHasLivePreview = true
         fileprivate var isModernCameraInvalidated = false
-        fileprivate var isModernCameraHandedOff = false
+        fileprivate var isModernCameraHandedOff = false {
+            didSet {
+                self.updateFillerCover()
+            }
+        }
         fileprivate var chatCameraCaptureState: Bool?
         private var isChatCameraCaptureUpdateScheduled = false
         
@@ -534,7 +544,22 @@ public final class MediaPickerScreenImpl: ViewController, MediaPickerScreen, Att
         }
         
         fileprivate var isSuspended = false
-        fileprivate var hasGallery = false
+        fileprivate var hasGallery = false {
+            didSet {
+                self.updateFillerCover()
+                if oldValue && !self.hasGallery {
+                    self.flushDeferredSelectionRelayout()
+                }
+            }
+        }
+        private var selectionRelayoutGate = MediaPickerSelectionRelayoutGate()
+        fileprivate var deferredSelectionCountPushes: [() -> Void] = []
+        fileprivate var isSheetMinimized = false {
+            didSet {
+                self.updateFillerCover()
+            }
+        }
+        private var isFillerCoverRegistered = false
         private var isCameraPreviewVisible = true
         
         private var validLayout: (ContainerViewLayout, CGFloat)?
@@ -758,7 +783,10 @@ public final class MediaPickerScreenImpl: ViewController, MediaPickerScreen, Att
                 self.selectionChangedDisposable = (selectionChangedSignal(selectionState: selectionState)
                 |> deliverOnMainQueue).start(next: { [weak self] animated in
                     if let self {
-                        self.updateSelectionState(animated: animated)
+                        // Hidden behind the gallery or editor: relay out once when it is visible again.
+                        if self.selectionRelayoutGate.selectionChanged(isCovered: self.hasGallery) {
+                            self.updateSelectionState(animated: animated)
+                        }
                     }
                 })
             }
@@ -836,6 +864,9 @@ public final class MediaPickerScreenImpl: ViewController, MediaPickerScreen, Att
             self.fastScrollDisposable?.dispose()
             self.currentAssetDownloadDisposable.dispose()
             self.chatMediaSendDisposable.dispose()
+            if self.isFillerCoverRegistered {
+                MediaGridPhotoLibraryServices.shared.filler.setPickerCovered(false, by: self)
+            }
             if self.cameraCellBranch == .chatCamera, self.chatCameraCaptureState != false, !self.isModernCameraHandedOff {
                 self.modernCamera?.stopCapture()
             }
@@ -1040,20 +1071,8 @@ public final class MediaPickerScreenImpl: ViewController, MediaPickerScreen, Att
                 }
                 self.gridHost.headerHostNode.addSubnode(self.cameraActivateAreaNode)
                 
-                let camera = cameraImpl.makeCamera(
-                    configuration: Camera.Configuration(
-                        preset: .hd1920x1080,
-                        position: .back,
-                        isDualEnabled: false,
-                        audio: false,
-                        photo: true,
-                        metadata: true,
-                        captureMode: .photo
-                    ),
-                    previewView: cameraPreviewView,
-                    secondaryPreviewView: nil
-                )
-                self.modernCamera = camera
+                // The camera itself is created on the first start or tap (`ensureChatCamera`): creating it is a
+                // blocking IPC on the main thread and it often never runs.
                 let enableAnimations = controller.context.sharedContext.energyUsageSettings.fullTranslucency
                 self.modernCameraHasLivePreview = enableAnimations
             case .editorCamera:
@@ -1199,11 +1218,70 @@ public final class MediaPickerScreenImpl: ViewController, MediaPickerScreen, Att
             self.selectionGesture = selectionGesture
         }
         
-        @objc private func cameraTapped() {
-            guard let camera = self.modernCamera, let previewView = self.modernCameraView else {
+        // Creates the chat tile's camera when `mediaPickerChatCameraShouldCreateNow` says so.
+        private func ensureChatCamera(tileActive: Bool, tapped: Bool) -> CameraProtocol? {
+            if let camera = self.modernCamera {
+                return camera
+            }
+            guard self.cameraCellBranch == .chatCamera, let previewView = self.modernCameraView else {
+                return nil
+            }
+            guard mediaPickerChatCameraShouldCreateNow(hasCamera: false, isInvalidated: self.isModernCameraInvalidated, hasLivePreview: self.modernCameraHasLivePreview, tileActive: tileActive, tapped: tapped) else {
+                return nil
+            }
+            let camera = LegacyCameraImpl.shared.makeCamera(
+                configuration: Camera.Configuration(
+                    preset: .hd1920x1080,
+                    position: .back,
+                    isDualEnabled: false,
+                    audio: false,
+                    photo: true,
+                    metadata: true,
+                    captureMode: .photo
+                ),
+                previewView: previewView,
+                secondaryPreviewView: nil
+            )
+            self.modernCamera = camera
+            return camera
+        }
+        
+        // The background thumbnail filler pauses while this picker is behind the full-screen editor or camera,
+        // or while the sheet is minimized.
+        private func flushDeferredSelectionRelayout() {
+            if self.selectionRelayoutGate.coverEnded() {
+                self.updateSelectionState(animated: false)
+            }
+            let pushes = self.deferredSelectionCountPushes
+            self.deferredSelectionCountPushes = []
+            for push in pushes {
+                push()
+            }
+        }
+        
+        private func updateFillerCover() {
+            let covered = self.hasGallery || self.isModernCameraHandedOff || self.isSheetMinimized
+            if covered == self.isFillerCoverRegistered || self.controller?.usesMediaGridV2 != true {
                 return
             }
+            self.isFillerCoverRegistered = covered
+            MediaGridPhotoLibraryServices.shared.filler.setPickerCovered(covered, by: self)
+        }
+        
+        @objc private func cameraTapped() {
             let isChatCamera = self.cameraCellBranch == .chatCamera
+            guard let previewView = self.modernCameraView else {
+                return
+            }
+            let existingOrNewCamera: CameraProtocol?
+            if isChatCamera {
+                existingOrNewCamera = self.ensureChatCamera(tileActive: false, tapped: true)
+            } else {
+                existingOrNewCamera = self.modernCamera
+            }
+            guard let camera = existingOrNewCamera else {
+                return
+            }
             if isChatCamera {
                 if self.openingMedia {
                     return
@@ -1258,10 +1336,12 @@ public final class MediaPickerScreenImpl: ViewController, MediaPickerScreen, Att
                 } else {
                     cameraView.pausePreview()
                 }
-            } else if let camera = self.modernCamera, let cameraView = self.modernCameraView {
-                if self.cameraCellBranch == .chatCamera {
+            } else if self.cameraCellBranch == .chatCamera {
+                if self.modernCameraView != nil {
                     self.scheduleChatCameraCaptureUpdate()
-                } else if isCameraActive {
+                }
+            } else if let camera = self.modernCamera, let cameraView = self.modernCameraView {
+                if isCameraActive {
                     cameraView.isEnabled = true
                     camera.startCapture()
                 } else {
@@ -1283,7 +1363,7 @@ public final class MediaPickerScreenImpl: ViewController, MediaPickerScreen, Att
         
         private func applyChatCameraCaptureUpdate() {
             self.isChatCameraCaptureUpdateScheduled = false
-            guard let camera = self.modernCamera, let cameraView = self.modernCameraView else {
+            guard let cameraView = self.modernCameraView else {
                 return
             }
             let isCameraActive = !self.isSuspended && !self.hasGallery && self.isCameraPreviewVisible
@@ -1291,16 +1371,17 @@ public final class MediaPickerScreenImpl: ViewController, MediaPickerScreen, Att
             case .none:
                 break
             case .start:
-                if self.chatCameraCaptureState != true {
+                if self.chatCameraCaptureState != true, let camera = self.ensureChatCamera(tileActive: true, tapped: false) {
                     self.chatCameraCaptureState = true
                     cameraView.isEnabled = true
                     camera.startCapture()
                 }
             case .stop:
+                // No camera yet means nothing runs: only record the state so the hand-off still starts it.
                 if self.chatCameraCaptureState != false {
                     self.chatCameraCaptureState = false
                     cameraView.isEnabled = false
-                    camera.stopCapture()
+                    self.modernCamera?.stopCapture()
                 }
             }
         }
@@ -1434,12 +1515,13 @@ public final class MediaPickerScreenImpl: ViewController, MediaPickerScreen, Att
                     
                     if !controller.didSetupGroups {
                         controller.didSetupGroups = true
-                        Queue.concurrentDefaultQueue().after(0.4) {
+                        // The album list is only read by the albums menu: it is built when the menu opens, not here.
+                        do {
                             var isCreateSticker = false
                             if case .assets(_, .createSticker) = controller.subject {
                                 isCreateSticker = true
                             }
-                            controller.groupsPromise.set(
+                            controller.setGroupsSource(
                                 combineLatest(
                                     self.mediaAssetsContext.fetchAssetsCollections(.album),
                                     self.mediaAssetsContext.fetchAssetsCollections(.smartAlbum)
@@ -2697,6 +2779,10 @@ public final class MediaPickerScreenImpl: ViewController, MediaPickerScreen, Att
         return self.displayNode as! Node
     }
     
+    fileprivate var controllerNodeForSelectionDeferral: Node? {
+        return self.isNodeLoaded ? self.controllerNode : nil
+    }
+    
     private let _ready = Promise<Bool>()
     override public var ready: Promise<Bool> {
         return self._ready
@@ -3275,9 +3361,28 @@ public final class MediaPickerScreenImpl: ViewController, MediaPickerScreen, Att
     
     private var didSetupGroups = false
     private let groupsPromise = Promise<[MediaGroupItem]>()
+    private var groupsSource: Signal<[MediaGroupItem], NoError>?
+    private var isGroupsMenuRequested = false
+    private var didActivateGroups = false
+    
+    // Starts reading the album list (`groupsSource` runs only when `groupsPromise` is subscribed to), once the menu was asked for.
+    private func activateGroupsIfNeeded() {
+        guard self.isGroupsMenuRequested, !self.didActivateGroups, let source = self.groupsSource else {
+            return
+        }
+        self.didActivateGroups = true
+        self.groupsPromise.set(source)
+    }
+    
+    fileprivate func setGroupsSource(_ source: Signal<[MediaGroupItem], NoError>) {
+        self.groupsSource = source
+        self.activateGroupsIfNeeded()
+    }
     
     public func presentGroupsMenu() {
         self.groupsPresented()
+        self.isGroupsMenuRequested = true
+        self.activateGroupsIfNeeded()
         
         let _ = (self.groupsPromise.get()
         |> take(1)
@@ -4131,7 +4236,16 @@ final class MediaPickerContext: AttachmentMediaPickerContext {
         } else {
             return Signal { [weak self] subscriber in
                 let disposable = self?.controller?.interaction?.selectionState?.selectionChangedSignal().start(next: { [weak self] value in
-                    subscriber.putNext(Int(self?.controller?.interaction?.selectionState?.count() ?? 0))
+                    let push = { [weak self] in
+                        subscriber.putNext(Int(self?.controller?.interaction?.selectionState?.count() ?? 0))
+                    }
+                    // The attachment panel relays out on every count: while the picker is hidden behind the
+                    // gallery or editor, push the latest count once when it is visible again.
+                    if let self, self.controller?.isNodeLoaded == true, let node = self.controller?.controllerNodeForSelectionDeferral, node.hasGallery {
+                        node.deferredSelectionCountPushes = [push]
+                    } else {
+                        push()
+                    }
                 }, error: { _ in }, completed: { })
                 return ActionDisposable {
                     disposable?.dispose()

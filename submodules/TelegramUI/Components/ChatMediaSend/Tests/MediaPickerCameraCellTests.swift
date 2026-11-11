@@ -102,6 +102,21 @@ final class MediaPickerCameraCellTests: XCTestCase {
         XCTAssertFalse(mediaPickerChatCameraHandOff(tileCaptureState: true).startsCapture)
     }
 
+    func testChatCameraIsCreatedOnlyWhenTheTileRunsItOrATapNeedsIt() {
+        // Opened but never shown: no camera.
+        XCTAssertFalse(mediaPickerChatCameraShouldCreateNow(hasCamera: false, isInvalidated: false, hasLivePreview: true, tileActive: false, tapped: false))
+        // Power Saving: the tile never runs the camera, even when active.
+        XCTAssertFalse(mediaPickerChatCameraShouldCreateNow(hasCamera: false, isInvalidated: false, hasLivePreview: false, tileActive: true, tapped: false))
+        // The tile starts it.
+        XCTAssertTrue(mediaPickerChatCameraShouldCreateNow(hasCamera: false, isInvalidated: false, hasLivePreview: true, tileActive: true, tapped: false))
+        // A tap always needs a camera, with or without live preview, active or not.
+        XCTAssertTrue(mediaPickerChatCameraShouldCreateNow(hasCamera: false, isInvalidated: false, hasLivePreview: false, tileActive: false, tapped: true))
+        XCTAssertTrue(mediaPickerChatCameraShouldCreateNow(hasCamera: false, isInvalidated: false, hasLivePreview: true, tileActive: false, tapped: true))
+        // Never twice, and never after the picker was dismissed.
+        XCTAssertFalse(mediaPickerChatCameraShouldCreateNow(hasCamera: true, isInvalidated: false, hasLivePreview: true, tileActive: true, tapped: true))
+        XCTAssertFalse(mediaPickerChatCameraShouldCreateNow(hasCamera: false, isInvalidated: true, hasLivePreview: true, tileActive: true, tapped: true))
+    }
+
     func testCellPreviewSizeFollowsFeedAspect() {
         let chat = mediaPickerCameraCellPreviewSize(branch: .chatCamera, layoutWidth: 402.0, screenWidth: 402.0)
         XCTAssertEqual(chat.width, 402.0)

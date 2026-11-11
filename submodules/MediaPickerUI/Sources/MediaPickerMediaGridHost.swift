@@ -501,6 +501,10 @@ final class MediaPickerMediaGridItem: MediaPickerGridHostItem {
     }
 }
 
+let mediaPickerFrameHitchScrollWindow = "attachGridScroll"
+let mediaPickerFrameHitchZoomWindow = "attachGridZoom"
+let mediaPickerFrameHitchScrollSettleDelay: Double = 0.25
+
 final class MediaPickerMediaGridHost: MediaPickerGridHost, MediaPickerGridCellStateProvider, SparseItemGridScrollingTarget {
     private let containerView: MediaPickerMediaGridContainerView
     private let containerNode: ASDisplayNode
@@ -576,7 +580,48 @@ final class MediaPickerMediaGridHost: MediaPickerGridHost, MediaPickerGridCellSt
         self.subscribeToEdits()
     }
 
+    // Frame-hitch windows (`[FrameHitch]` log, experimental setting): a grid scroll runs from the touch to the end of the
+    // fling (no offset change for `mediaPickerFrameHitchScrollSettleDelay`), a pinch zoom for as long as it lasts.
+    private var isScrollWindowDragging = false
+    private var scrollWindowEnd: DispatchWorkItem?
+
+    private func scrollWindowDragBegan() {
+        guard FrameHitchMonitor.isEnabled else {
+            return
+        }
+        self.isScrollWindowDragging = true
+        self.scrollWindowEnd?.cancel()
+        self.scrollWindowEnd = nil
+        FrameHitchMonitor.shared.begin(mediaPickerFrameHitchScrollWindow)
+    }
+
+    private func scrollWindowDragEnded() {
+        self.isScrollWindowDragging = false
+        self.scheduleScrollWindowEnd()
+    }
+
+    private func scrollWindowMoved() {
+        if self.scrollWindowEnd != nil && !self.isScrollWindowDragging {
+            self.scheduleScrollWindowEnd()
+        }
+    }
+
+    private func scheduleScrollWindowEnd() {
+        guard FrameHitchMonitor.isEnabled else {
+            return
+        }
+        self.scrollWindowEnd?.cancel()
+        let work = DispatchWorkItem { [weak self] in
+            self?.scrollWindowEnd = nil
+            FrameHitchMonitor.shared.end(mediaPickerFrameHitchScrollWindow)
+        }
+        self.scrollWindowEnd = work
+        DispatchQueue.main.asyncAfter(deadline: .now() + mediaPickerFrameHitchScrollSettleDelay, execute: work)
+    }
+
     deinit {
+        FrameHitchMonitor.shared.end(mediaPickerFrameHitchScrollWindow)
+        FrameHitchMonitor.shared.end(mediaPickerFrameHitchZoomWindow)
         for disposable in self.editingDisposables {
             disposable.dispose()
         }
@@ -871,11 +916,16 @@ final class MediaPickerMediaGridHost: MediaPickerGridHost, MediaPickerGridCellSt
         }
         gridView.onWillBeginDragging = { [weak self] in
             self?.scrollingInitiated?()
+            self?.scrollWindowDragBegan()
+        }
+        gridView.onDidEndDragging = { [weak self] in
+            self?.scrollWindowDragEnded()
         }
         gridView.onScroll = { [weak self] offset in
             guard let self else {
                 return
             }
+            self.scrollWindowMoved()
             self.visibleContentOffsetChanged(.known(offset))
             self.visibleItemsUpdated?()
             if !self.spoilerIdentifiers.isEmpty || !self.overlays.isEmpty {
@@ -895,6 +945,9 @@ final class MediaPickerMediaGridHost: MediaPickerGridHost, MediaPickerGridCellSt
         gridView.onZoomingChanged = { [weak self] isZooming in
             if isZooming {
                 self?.zoomingStarted?()
+                FrameHitchMonitor.shared.begin(mediaPickerFrameHitchZoomWindow)
+            } else {
+                FrameHitchMonitor.shared.end(mediaPickerFrameHitchZoomWindow)
             }
             self?.updateOverlays()
         }

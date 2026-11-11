@@ -3,6 +3,12 @@ import UIKit
 import Display
 import SwiftSignalKit
 
+/// Whether reading the caption commits the keyboard's pending autocorrection. Only a send needs it. A caption saved
+/// because the field lost focus does not: the autocorrect round trip to the keyboard process blocked the "Done" press.
+public func chatMediaEditorCaptionReadAppliesAutocorrection(focusLost: Bool) -> Bool {
+    return !focusLost
+}
+
 extension ChatMediaEditorScreen.Node {
     func captionEditingUpdated(_ isEditing: Bool) {
         guard self.isGallery else {
@@ -35,7 +41,12 @@ extension ChatMediaEditorScreen.Node {
         guard let captionModel = self.captionModel, let captionPanelView = self.captionPanelView else {
             return
         }
-        let caption = captionPanelView.caption()
+        let caption: NSAttributedString
+        if chatMediaEditorCaptionReadAppliesAutocorrection(focusLost: true) {
+            caption = captionPanelView.caption()
+        } else {
+            caption = captionPanelView.captionWithoutAutocorrection?() ?? captionPanelView.caption()
+        }
         captionModel.commit(caption)
         self.selectionCaptionCommitted(caption)
     }

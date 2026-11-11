@@ -273,4 +273,9 @@ final class ChatMediaEditorCaptionTests: XCTestCase {
         XCTAssertFalse(model.isHighQualityPhoto)
         XCTAssertFalse(adapter.isHighQualityPhoto)
     }
+
+    func testCaptionSavedOnFocusLossSkipsAutocorrection() {
+        XCTAssertFalse(chatMediaEditorCaptionReadAppliesAutocorrection(focusLost: true))
+        XCTAssertTrue(chatMediaEditorCaptionReadAppliesAutocorrection(focusLost: false))
+    }
 }

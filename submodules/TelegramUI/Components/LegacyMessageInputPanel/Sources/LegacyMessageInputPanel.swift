@@ -203,7 +203,17 @@ public class LegacyMessageInputPanelNode: ASDisplayNode, TGCaptionPanelView {
     }
 
     public func caption() -> NSAttributedString {
-        if let view = self.inputPanel.view as? MessageInputPanelComponent.View, case let .text(caption) = view.getSendMessageInput() {
+        return self.caption(applyAutocorrection: true)
+    }
+
+    /// Reads the text as typed, without committing the keyboard's pending autocorrection (a synchronous round trip to
+    /// the keyboard process): for a caption saved when the field loses focus.
+    @objc public func captionWithoutAutocorrection() -> NSAttributedString {
+        return self.caption(applyAutocorrection: false)
+    }
+
+    private func caption(applyAutocorrection: Bool) -> NSAttributedString {
+        if let view = self.inputPanel.view as? MessageInputPanelComponent.View, case let .text(caption) = view.getSendMessageInput(applyAutocorrection: applyAutocorrection) {
             return caption
         } else {
             return NSAttributedString()

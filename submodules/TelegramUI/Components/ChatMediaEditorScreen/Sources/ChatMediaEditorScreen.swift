@@ -121,6 +121,9 @@ public func chatMediaEditorRestingPreviewFrame(size: CGSize, safeInsets: UIEdgeI
 
 let chatMediaEditorScheduleWhenOnlineTimestamp: Int32 = 0x7ffffffe
 
+/// Frame-hitch window of the chat media editor: from its first appearance to its disappearance.
+let chatMediaEditorFrameHitchWindow = "attachEditor"
+
 public final class ChatMediaEditorScreen: ViewController, ChatMediaGalleryController {
     final class Node: ASDisplayNode {
         weak var controller: ChatMediaEditorScreen?
@@ -505,6 +508,7 @@ public final class ChatMediaEditorScreen: ViewController, ChatMediaGalleryContro
         }
 
         deinit {
+            FrameHitchMonitor.shared.end(chatMediaEditorFrameHitchWindow)
             self.playerStateDisposable?.dispose()
             self.sourceLoadStateDisposable?.dispose()
             self.gifConversionDisposable.dispose()
@@ -1158,6 +1162,7 @@ public final class ChatMediaEditorScreen: ViewController, ChatMediaGalleryContro
         self.node.coveredContent.setIsVisible(true)
         if !self.didAppear {
             self.didAppear = true
+            FrameHitchMonitor.shared.begin(chatMediaEditorFrameHitchWindow)
             if self.gallery != nil {
                 self.node.animateGalleryIn()
                 self.node.scheduleTimerTooltipIfNeeded()
@@ -1252,6 +1257,7 @@ public final class ChatMediaEditorScreen: ViewController, ChatMediaGalleryContro
         if self.isNodeLoaded {
             self.node.coveredContent.setIsVisible(false)
         }
+        FrameHitchMonitor.shared.end(chatMediaEditorFrameHitchWindow)
     }
 
     override public func dismiss(completion: (() -> Void)? = nil) {

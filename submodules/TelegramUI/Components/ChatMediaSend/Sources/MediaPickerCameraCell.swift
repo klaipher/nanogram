@@ -68,6 +68,19 @@ public func mediaPickerChatCameraHandOff(tileCaptureState: Bool?) -> MediaPicker
     return MediaPickerChatCameraHandOff(enablesPreview: true, startsCapture: tileCaptureState != true)
 }
 
+/// Whether the chat camera tile creates its `Camera` now. Creating it is a blocking IPC (about 7 ms on the main thread), so the
+/// tile does not do it at every picker open: only when the tile wants to run it (active, on screen, live preview on), or when
+/// a tap needs a running camera for the full-screen hand-off (also in Power Saving, where the tile never runs it).
+public func mediaPickerChatCameraShouldCreateNow(hasCamera: Bool, isInvalidated: Bool, hasLivePreview: Bool, tileActive: Bool, tapped: Bool) -> Bool {
+    if hasCamera || isInvalidated {
+        return false
+    }
+    if tapped {
+        return true
+    }
+    return hasLivePreview && tileActive
+}
+
 public func mediaPickerChatCameraCellCaptureAction(isActive: Bool, hasLivePreview: Bool, isInvalidated: Bool, isInWindow: Bool, isHandedOff: Bool) -> MediaPickerCameraCellCaptureAction {
     if isHandedOff {
         return .none
