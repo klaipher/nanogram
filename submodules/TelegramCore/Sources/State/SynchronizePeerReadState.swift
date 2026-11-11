@@ -68,66 +68,100 @@ private func dialogTopMessage(network: Network, postbox: Postbox, peerId: PeerId
     }
 }
 
-private func dialogReadState(network: Network, postbox: Postbox, peerId: PeerId) -> Signal<(PeerReadState, PeerReadStateMarker)?, PeerReadStateValidationError> {
-    return dialogTopMessage(network: network, postbox: postbox, peerId: peerId)
-    |> mapToSignal { topMessage -> Signal<(PeerReadState, PeerReadStateMarker)?, PeerReadStateValidationError> in
-        guard let _ = topMessage else {
-            return .single(nil)
-        }
-        
-        return inputPeer(postbox: postbox, peerId: peerId)
-        |> mapToSignal { inputPeer -> Signal<(PeerReadState, PeerReadStateMarker)?, PeerReadStateValidationError> in
-            return network.request(Api.functions.messages.getPeerDialogs(peers: [.inputDialogPeer(.init(peer: inputPeer))]))
-            |> retryRequest
-            |> mapToSignalPromotingError { result -> Signal<(PeerReadState, PeerReadStateMarker)?, PeerReadStateValidationError> in
-                switch result {
-                case let .peerDialogs(peerDialogsData):
-                    let (dialogs, state) = (peerDialogsData.dialogs, peerDialogsData.state)
-                    if let dialog = dialogs.filter({ $0.peerId == peerId }).first {
-                        let apiTopMessage: Int32
-                        let apiReadInboxMaxId: Int32
-                        let apiReadOutboxMaxId: Int32
-                        let apiUnreadCount: Int32
-                        let apiMarkedUnread: Bool
-                        var apiChannelPts: Int32 = 0
-                        switch dialog {
-                            case let .dialog(dialogData):
-                                let (flags, topMessage, readInboxMaxId, readOutboxMaxId, unreadCount, pts) = (dialogData.flags, dialogData.topMessage, dialogData.readInboxMaxId, dialogData.readOutboxMaxId, dialogData.unreadCount, dialogData.pts)
-                                apiTopMessage = topMessage
-                                apiReadInboxMaxId = readInboxMaxId
-                                apiReadOutboxMaxId = readOutboxMaxId
-                                apiUnreadCount = unreadCount
-                                apiMarkedUnread = (flags & (1 << 3)) != 0
-                                if let pts = pts {
-                                    apiChannelPts = pts
-                                }
-                            case .dialogCommunity:
-                                return .single(nil)
-                            case .dialogFolder:
-                                assertionFailure()
-                                return .fail(.retry)
-                        }
-                        
-                        let marker: PeerReadStateMarker
-                        if peerId.namespace == Namespaces.Peer.CloudChannel {
-                            marker = .Channel(apiChannelPts)
-                        } else {
-                            let pts: Int32
-                            switch state {
-                            case let .state(stateData):
-                                let (statePts) = (stateData.pts)
-                                pts = statePts
+/// Whether the peer has a cloud message stored here, which is as good as the probe at telling the chat is not empty.
+private func hasStoredCloudMessage(postbox: Postbox, peerId: PeerId) -> Signal<Bool, PeerReadStateValidationError> {
+    return postbox.transaction { transaction -> Bool in
+        return transaction.getTopPeerMessageId(peerId: peerId, namespace: Namespaces.Message.Cloud) != nil
+    }
+    |> castError(PeerReadStateValidationError.self)
+}
+
+/// The dialog's read state from `messages.getPeerDialogs`. `noDialog` is what the answer decides when it holds no
+/// dialog for the peer.
+private func peerDialogReadState(network: Network, postbox: Postbox, peerId: PeerId, noDialog: Signal<(PeerReadState, PeerReadStateMarker)?, PeerReadStateValidationError>) -> Signal<(PeerReadState, PeerReadStateMarker)?, PeerReadStateValidationError> {
+    return inputPeer(postbox: postbox, peerId: peerId)
+    |> mapToSignal { inputPeer -> Signal<(PeerReadState, PeerReadStateMarker)?, PeerReadStateValidationError> in
+        return network.request(Api.functions.messages.getPeerDialogs(peers: [.inputDialogPeer(.init(peer: inputPeer))]))
+        |> retryRequest
+        |> mapToSignalPromotingError { result -> Signal<(PeerReadState, PeerReadStateMarker)?, PeerReadStateValidationError> in
+            switch result {
+            case let .peerDialogs(peerDialogsData):
+                let (dialogs, state) = (peerDialogsData.dialogs, peerDialogsData.state)
+                if let dialog = dialogs.filter({ $0.peerId == peerId }).first {
+                    let apiTopMessage: Int32
+                    let apiReadInboxMaxId: Int32
+                    let apiReadOutboxMaxId: Int32
+                    let apiUnreadCount: Int32
+                    let apiMarkedUnread: Bool
+                    var apiChannelPts: Int32 = 0
+                    switch dialog {
+                        case let .dialog(dialogData):
+                            let (flags, topMessage, readInboxMaxId, readOutboxMaxId, unreadCount, pts) = (dialogData.flags, dialogData.topMessage, dialogData.readInboxMaxId, dialogData.readOutboxMaxId, dialogData.unreadCount, dialogData.pts)
+                            apiTopMessage = topMessage
+                            apiReadInboxMaxId = readInboxMaxId
+                            apiReadOutboxMaxId = readOutboxMaxId
+                            apiUnreadCount = unreadCount
+                            apiMarkedUnread = (flags & (1 << 3)) != 0
+                            if let pts = pts {
+                                apiChannelPts = pts
                             }
-                            
-                            marker = .Global(pts)
+                        case .dialogCommunity:
+                            return .single(nil)
+                        case .dialogFolder:
+                            assertionFailure()
+                            return .fail(.retry)
+                    }
+                    
+                    let marker: PeerReadStateMarker
+                    if peerId.namespace == Namespaces.Peer.CloudChannel {
+                        marker = .Channel(apiChannelPts)
+                    } else {
+                        let pts: Int32
+                        switch state {
+                        case let .state(stateData):
+                            let (statePts) = (stateData.pts)
+                            pts = statePts
                         }
                         
-                        return .single((.idBased(maxIncomingReadId: apiReadInboxMaxId, maxOutgoingReadId: apiReadOutboxMaxId, maxKnownId: apiTopMessage, count: apiUnreadCount, markedUnread: apiMarkedUnread), marker))
-                    } else {
-                        return .fail(.retry)
+                        marker = .Global(pts)
                     }
+                    
+                    return .single((.idBased(maxIncomingReadId: apiReadInboxMaxId, maxOutgoingReadId: apiReadOutboxMaxId, maxKnownId: apiTopMessage, count: apiUnreadCount, markedUnread: apiMarkedUnread), marker))
+                } else {
+                    return noDialog
                 }
             }
+        }
+    }
+}
+
+/// The server's read state of the dialog, or nil when the chat is empty (nothing to validate).
+///
+/// The probe (`getHistory(limit: 1)`) only tells whether the chat is empty before `getPeerDialogs` is asked. A cloud
+/// message stored here already tells it is not, so the probe is left out. If `getPeerDialogs` then has no dialog for
+/// the peer (a chat emptied or deleted on the server while a message is still stored here), the probe is asked once:
+/// empty confirms (nil), non-empty retries as it always did.
+private func dialogReadState(network: Network, postbox: Postbox, peerId: PeerId) -> Signal<(PeerReadState, PeerReadStateMarker)?, PeerReadStateValidationError> {
+    let probeThenRetry = dialogTopMessage(network: network, postbox: postbox, peerId: peerId)
+    |> mapToSignal { topMessage -> Signal<(PeerReadState, PeerReadStateMarker)?, PeerReadStateValidationError> in
+        if topMessage == nil {
+            return .single(nil)
+        } else {
+            return .fail(.retry)
+        }
+    }
+
+    return hasStoredCloudMessage(postbox: postbox, peerId: peerId)
+    |> mapToSignal { hasStoredMessage -> Signal<(PeerReadState, PeerReadStateMarker)?, PeerReadStateValidationError> in
+        if hasStoredMessage {
+            return peerDialogReadState(network: network, postbox: postbox, peerId: peerId, noDialog: probeThenRetry)
+        }
+        return dialogTopMessage(network: network, postbox: postbox, peerId: peerId)
+        |> mapToSignal { topMessage -> Signal<(PeerReadState, PeerReadStateMarker)?, PeerReadStateValidationError> in
+            guard let _ = topMessage else {
+                return .single(nil)
+            }
+            return peerDialogReadState(network: network, postbox: postbox, peerId: peerId, noDialog: .fail(.retry))
         }
     }
 }
