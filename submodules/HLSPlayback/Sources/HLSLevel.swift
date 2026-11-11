@@ -19,6 +19,21 @@ public struct HLSLevel: Equatable {
 }
 
 public enum HLSLevels {
+    // Bits per second of a file of `size` bytes and `duration` seconds, clamped so a hostile duration or size cannot trap.
+    public static func estimatedBandwidth(size: Int64, duration: Double) -> Int {
+        let safeDuration = duration.isFinite ? max(duration, 0.1) : 0.1
+        let bitsPerSecond = Double(max(size, 0)) / safeDuration * 8.0
+        return Int(min(bitsPerSecond, 1e12))
+    }
+    
+    // A server-supplied dimension as an Int: non-finite is 0, the rest is clamped to 0...1e6.
+    public static func clampedDimension(_ value: Double) -> Int {
+        guard value.isFinite else {
+            return 0
+        }
+        return Int(min(max(value, 0.0), 1e6))
+    }
+    
     // hls.js's level order for levels that carry RESOLUTION and BANDWIDTH only: ascending height, ties by ascending
     // bandwidth, otherwise stable. Every level index in this module is into this order.
     public static func sorted(_ levels: [HLSLevel]) -> [HLSLevel] {

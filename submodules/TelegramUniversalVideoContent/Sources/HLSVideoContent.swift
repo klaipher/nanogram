@@ -172,7 +172,7 @@ public final class HLSVideoContent: UniversalVideoContent {
                 if !data.complete {
                     return
                 }
-                guard let data = try? Data(contentsOf: URL(fileURLWithPath: data.path)), let text = String(data: data, encoding: .utf8), let playlist = try? HLSMediaPlaylist.parse(text) else {
+                guard let data = try? Data(contentsOf: URL(fileURLWithPath: data.path)), let text = String(data: data, encoding: .utf8), let playlist = try? HLSMediaPlaylist.parse(text), let fileSize = fileSet.file.media.size, playlist.rangesFit(fileSize: fileSize) else {
                     subscriber.putNext(nil)
                     subscriber.putCompletion()
                     return
