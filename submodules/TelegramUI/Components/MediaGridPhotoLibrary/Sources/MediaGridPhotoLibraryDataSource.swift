@@ -383,8 +383,8 @@ public final class MediaGridPhotoLibraryDataSource: NSObject, MediaGridDataSourc
     static let initialCatalogPrefix = 4096
 
     /// Quality of service of the pass over the whole library (`changeQueue`), after the first `initialCatalogPrefix` items.
-    static let fullCatalogQoS = DispatchQoS.QoSClass.utility
-    static let prefixCatalogQoS = DispatchQoS.QoSClass.userInitiated
+    static let fullCatalogQoS = DispatchQoS.utility
+    static let prefixCatalogQoS = DispatchQoS.userInitiated
 
     /// The first `count` items of the library in display order, without walking the rest.
     static func makePrefixCatalog(_ fetchResult: PHFetchResult<PHAsset>, reversed: Bool, count: Int) -> ThumbnailCatalog {
