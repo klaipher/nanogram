@@ -1040,20 +1040,8 @@ public final class MediaPickerScreenImpl: ViewController, MediaPickerScreen, Att
                 }
                 self.gridHost.headerHostNode.addSubnode(self.cameraActivateAreaNode)
                 
-                let camera = cameraImpl.makeCamera(
-                    configuration: Camera.Configuration(
-                        preset: .hd1920x1080,
-                        position: .back,
-                        isDualEnabled: false,
-                        audio: false,
-                        photo: true,
-                        metadata: true,
-                        captureMode: .photo
-                    ),
-                    previewView: cameraPreviewView,
-                    secondaryPreviewView: nil
-                )
-                self.modernCamera = camera
+                // The camera itself is created on the first start or tap (`ensureChatCamera`): creating it is a
+                // blocking IPC on the main thread and it often never runs.
                 let enableAnimations = controller.context.sharedContext.energyUsageSettings.fullTranslucency
                 self.modernCameraHasLivePreview = enableAnimations
             case .editorCamera:
@@ -1199,11 +1187,48 @@ public final class MediaPickerScreenImpl: ViewController, MediaPickerScreen, Att
             self.selectionGesture = selectionGesture
         }
         
+        // Creates the chat tile's camera when `mediaPickerChatCameraShouldCreateNow` says so.
+        private func ensureChatCamera(tileActive: Bool, tapped: Bool) -> CameraProtocol? {
+            if let camera = self.modernCamera {
+                return camera
+            }
+            guard self.cameraCellBranch == .chatCamera, let previewView = self.modernCameraView else {
+                return nil
+            }
+            guard mediaPickerChatCameraShouldCreateNow(hasCamera: false, isInvalidated: self.isModernCameraInvalidated, hasLivePreview: self.modernCameraHasLivePreview, tileActive: tileActive, tapped: tapped) else {
+                return nil
+            }
+            let camera = LegacyCameraImpl.shared.makeCamera(
+                configuration: Camera.Configuration(
+                    preset: .hd1920x1080,
+                    position: .back,
+                    isDualEnabled: false,
+                    audio: false,
+                    photo: true,
+                    metadata: true,
+                    captureMode: .photo
+                ),
+                previewView: previewView,
+                secondaryPreviewView: nil
+            )
+            self.modernCamera = camera
+            return camera
+        }
+        
         @objc private func cameraTapped() {
-            guard let camera = self.modernCamera, let previewView = self.modernCameraView else {
+            let isChatCamera = self.cameraCellBranch == .chatCamera
+            guard let previewView = self.modernCameraView else {
                 return
             }
-            let isChatCamera = self.cameraCellBranch == .chatCamera
+            let existingOrNewCamera: CameraProtocol?
+            if isChatCamera {
+                existingOrNewCamera = self.ensureChatCamera(tileActive: false, tapped: true)
+            } else {
+                existingOrNewCamera = self.modernCamera
+            }
+            guard let camera = existingOrNewCamera else {
+                return
+            }
             if isChatCamera {
                 if self.openingMedia {
                     return
@@ -1258,10 +1283,12 @@ public final class MediaPickerScreenImpl: ViewController, MediaPickerScreen, Att
                 } else {
                     cameraView.pausePreview()
                 }
-            } else if let camera = self.modernCamera, let cameraView = self.modernCameraView {
-                if self.cameraCellBranch == .chatCamera {
+            } else if self.cameraCellBranch == .chatCamera {
+                if self.modernCameraView != nil {
                     self.scheduleChatCameraCaptureUpdate()
-                } else if isCameraActive {
+                }
+            } else if let camera = self.modernCamera, let cameraView = self.modernCameraView {
+                if isCameraActive {
                     cameraView.isEnabled = true
                     camera.startCapture()
                 } else {
@@ -1283,7 +1310,7 @@ public final class MediaPickerScreenImpl: ViewController, MediaPickerScreen, Att
         
         private func applyChatCameraCaptureUpdate() {
             self.isChatCameraCaptureUpdateScheduled = false
-            guard let camera = self.modernCamera, let cameraView = self.modernCameraView else {
+            guard let cameraView = self.modernCameraView else {
                 return
             }
             let isCameraActive = !self.isSuspended && !self.hasGallery && self.isCameraPreviewVisible
@@ -1291,16 +1318,17 @@ public final class MediaPickerScreenImpl: ViewController, MediaPickerScreen, Att
             case .none:
                 break
             case .start:
-                if self.chatCameraCaptureState != true {
+                if self.chatCameraCaptureState != true, let camera = self.ensureChatCamera(tileActive: true, tapped: false) {
                     self.chatCameraCaptureState = true
                     cameraView.isEnabled = true
                     camera.startCapture()
                 }
             case .stop:
+                // No camera yet means nothing runs: only record the state so the hand-off still starts it.
                 if self.chatCameraCaptureState != false {
                     self.chatCameraCaptureState = false
                     cameraView.isEnabled = false
-                    camera.stopCapture()
+                    self.modernCamera?.stopCapture()
                 }
             }
         }
