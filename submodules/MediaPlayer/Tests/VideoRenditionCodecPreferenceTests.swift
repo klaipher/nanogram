@@ -28,4 +28,26 @@ final class VideoRenditionCodecPreferenceTests: XCTestCase {
         XCTAssertFalse(VideoRenditionCodecPreference.isAv1("avc1"))
         XCTAssertFalse(VideoRenditionCodecPreference.isAv1(nil))
     }
+
+    // The device's answer decides; the app-config key is only a kill switch (present and false turns hardware AV1 off).
+    func testTheDeviceDecidesWhenTheKeyIsAbsent() {
+        XCTAssertTrue(VideoRenditionCodecPreference.isHardwareAv1Enabled(deviceSupportsHardwareAv1: true, configurationFlag: nil))
+        XCTAssertFalse(VideoRenditionCodecPreference.isHardwareAv1Enabled(deviceSupportsHardwareAv1: false, configurationFlag: nil))
+    }
+
+    func testTheKeyPresentAndFalseDisablesHardwareAv1OnACapableDevice() {
+        XCTAssertFalse(VideoRenditionCodecPreference.isHardwareAv1Enabled(deviceSupportsHardwareAv1: true, configurationFlag: false))
+    }
+
+    func testTheKeyPresentAndTrueNeverEnablesWhatTheDeviceCannotDecode() {
+        XCTAssertFalse(VideoRenditionCodecPreference.isHardwareAv1Enabled(deviceSupportsHardwareAv1: false, configurationFlag: true))
+        XCTAssertTrue(VideoRenditionCodecPreference.isHardwareAv1Enabled(deviceSupportsHardwareAv1: true, configurationFlag: true))
+    }
+
+    func testTheConfigurationValueMapsToAKillSwitch() {
+        XCTAssertNil(VideoRenditionCodecPreference.hardwareAv1Flag(configurationValue: nil), "absent is not false")
+        XCTAssertNil(VideoRenditionCodecPreference.hardwareAv1Flag(configurationValue: "0"), "a non-number is ignored")
+        XCTAssertEqual(VideoRenditionCodecPreference.hardwareAv1Flag(configurationValue: 0.0), false)
+        XCTAssertEqual(VideoRenditionCodecPreference.hardwareAv1Flag(configurationValue: 1.0), true)
+    }
 }
