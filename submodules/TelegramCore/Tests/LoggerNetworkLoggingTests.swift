@@ -21,6 +21,6 @@ final class LoggerNetworkLoggingTests: XCTestCase {
         XCTAssertTrue(on.withUpdatedLogToFile(true).logNetworkDumps)
         XCTAssertTrue(on.withUpdatedLogToConsole(true).logNetworkDumps)
         XCTAssertTrue(on.withUpdatedRedactSensitiveData(false).logNetworkDumps)
-        XCTAssertNotEqual(on, LoggingSettings.defaultSettings)
+        XCTAssertFalse(on == LoggingSettings.defaultSettings)
     }
 }
