@@ -58,6 +58,7 @@
 @property (nonatomic, copy) void(^ _Nullable captionIsAboveUpdated)(BOOL value);
 
 @optional
+- (NSAttributedString * _Nonnull)captionWithoutAutocorrection;
 - (CGFloat)updateContainerLayoutSize:(CGSize)size safeAreaInset:(UIEdgeInsets)safeAreaInset bottomInset:(CGFloat)bottomInset keyboardHeight:(CGFloat)keyboardHeight animated:(bool)animated;
 
 @required

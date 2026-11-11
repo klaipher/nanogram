@@ -547,8 +547,13 @@ public final class MediaPickerScreenImpl: ViewController, MediaPickerScreen, Att
         fileprivate var hasGallery = false {
             didSet {
                 self.updateFillerCover()
+                if oldValue && !self.hasGallery {
+                    self.flushDeferredSelectionRelayout()
+                }
             }
         }
+        private var selectionRelayoutGate = MediaPickerSelectionRelayoutGate()
+        fileprivate var deferredSelectionCountPushes: [() -> Void] = []
         fileprivate var isSheetMinimized = false {
             didSet {
                 self.updateFillerCover()
@@ -778,7 +783,10 @@ public final class MediaPickerScreenImpl: ViewController, MediaPickerScreen, Att
                 self.selectionChangedDisposable = (selectionChangedSignal(selectionState: selectionState)
                 |> deliverOnMainQueue).start(next: { [weak self] animated in
                     if let self {
-                        self.updateSelectionState(animated: animated)
+                        // Hidden behind the gallery or editor: relay out once when it is visible again.
+                        if self.selectionRelayoutGate.selectionChanged(isCovered: self.hasGallery) {
+                            self.updateSelectionState(animated: animated)
+                        }
                     }
                 })
             }
@@ -1240,6 +1248,17 @@ public final class MediaPickerScreenImpl: ViewController, MediaPickerScreen, Att
         
         // The background thumbnail filler pauses while this picker is behind the full-screen editor or camera,
         // or while the sheet is minimized.
+        private func flushDeferredSelectionRelayout() {
+            if self.selectionRelayoutGate.coverEnded() {
+                self.updateSelectionState(animated: false)
+            }
+            let pushes = self.deferredSelectionCountPushes
+            self.deferredSelectionCountPushes = []
+            for push in pushes {
+                push()
+            }
+        }
+        
         private func updateFillerCover() {
             let covered = self.hasGallery || self.isModernCameraHandedOff || self.isSheetMinimized
             if covered == self.isFillerCoverRegistered || self.controller?.usesMediaGridV2 != true {
@@ -2759,6 +2778,10 @@ public final class MediaPickerScreenImpl: ViewController, MediaPickerScreen, Att
         return self.displayNode as! Node
     }
     
+    fileprivate var controllerNodeForSelectionDeferral: Node? {
+        return self.isNodeLoaded ? self.controllerNode : nil
+    }
+    
     private let _ready = Promise<Bool>()
     override public var ready: Promise<Bool> {
         return self._ready
@@ -4193,7 +4216,16 @@ final class MediaPickerContext: AttachmentMediaPickerContext {
         } else {
             return Signal { [weak self] subscriber in
                 let disposable = self?.controller?.interaction?.selectionState?.selectionChangedSignal().start(next: { [weak self] value in
-                    subscriber.putNext(Int(self?.controller?.interaction?.selectionState?.count() ?? 0))
+                    let push = { [weak self] in
+                        subscriber.putNext(Int(self?.controller?.interaction?.selectionState?.count() ?? 0))
+                    }
+                    // The attachment panel relays out on every count: while the picker is hidden behind the
+                    // gallery or editor, push the latest count once when it is visible again.
+                    if let self, self.controller?.isNodeLoaded == true, let node = self.controller?.controllerNodeForSelectionDeferral, node.hasGallery {
+                        node.deferredSelectionCountPushes = [push]
+                    } else {
+                        push()
+                    }
                 }, error: { _ in }, completed: { })
                 return ActionDisposable {
                     disposable?.dispose()
