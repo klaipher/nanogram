@@ -4,6 +4,11 @@ Newest first. Internal notes for each TestFlight build; testers see the What to 
 
 ## Unreleased
 
+## 13.2 (202611112014) — 2026-11-11 — c2a45687
+
+TestFlight build (processed VALID, What to Test set). Previous TestFlight build: 202611092335 (7e19e458); changes since are `git log 7e19e458..c2a45687`: the attachment camera opening as a still frame when tapped right after the menu appeared (ff5ed8f6), message widgets off by default with the QuickJS-ng security fixes (5004b51d), Telegram for macOS 13.2's core patch and tgcalls 9bfb76f for the Mac merge (4c07ad72, 2370d9b0; no iOS behaviour change), and the broadcast player's bounded endpoint-id read (c2a45687, Mac-only code). Entries below.
+What to Test: the attach menu's camera tile tapped at once, several times (live picture each time); a chat with a widget message shows the unsupported-content pill and nothing runs.
+
 - **tgcalls 9bfb76f: Telegram for macOS 13.2's broadcast playback** (Telegram's `38dcea1`): the Mac's livestream part reader and video decoder, and in shared code an optional playout callback on `GroupInstanceDescriptor`, empty by default, so iOS is unchanged. TgVoipWebrtc compiles for the simulator.
 
 - **Shared core: Telegram for macOS 13.2's core patch** (for the Mac 13.2 merge). Telegram's Mac 13.2 builds its core from Telegram-iOS release-13.2 plus `scripts/telegram-ios-macos.patch` (telegram-macos ec221d85, 18 files): MediaBox incremental data reads, a message's failure code (`OutgoingMessageInfoAttribute`, `notifyMessageFailure`, `failMessages`), audio file transcription (`AudioFileTranscription`), the group-call broadcast player (`GroupCallBroadcastFetcher`, `…Levels`, `…Platform`, `…VideoOutput`, `BroadcastPartSlice`) and two lines in `WalletWidgetCalls`. Applied with git's three-way merge; one conflict in `PendingMessageManager`'s upload failure, resolved to keep our failure log line and take upstream's helpers. Upstream's own code: what it sends to the server is upstream's. iOS: TelegramVoip, TelegramCore, Postbox and WalletContext compile for the simulator; the new `MediaBoxIncrementalDataTests` and `AudioFileTranscriptionTests` run with the round's build.
