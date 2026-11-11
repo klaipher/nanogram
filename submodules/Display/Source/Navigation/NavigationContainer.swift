@@ -391,7 +391,7 @@ public final class NavigationContainer: ASDisplayNode, ASGestureRecognizerDelega
     private weak var preparedPopController: ViewController?
     /// Debug Settings "Frame hitches": the window of the transition running now (`navPush:`, `navPop:`, `backSwipe:` and
     /// the type of the screen that appears).
-    private var hitchWindow: String?
+    private var hitchWindow = NavigationHitchWindow()
     private var memoryWarningObserver: NSObjectProtocol?
 
     private func canPreparePop() -> Bool {
@@ -613,6 +613,7 @@ public final class NavigationContainer: ASDisplayNode, ASGestureRecognizerDelega
                     guard let strongSelf = self, let transition = strongSelf.state.transition else {
                         return
                     }
+                    strongSelf.endHitchWindow()
                     strongSelf.state.transition = nil
                     transition.destination.value.viewDidAppear(true)
                     transition.previous.value.viewDidDisappear(true)
@@ -645,6 +646,7 @@ public final class NavigationContainer: ASDisplayNode, ASGestureRecognizerDelega
                     guard let strongSelf = self, let transition = strongSelf.state.transition else {
                         return
                     }
+                    strongSelf.endHitchWindow()
                     strongSelf.state.transition = nil
                     
                     transition.destination.value.viewDidAppear(true)
@@ -1065,6 +1067,7 @@ public final class NavigationContainer: ASDisplayNode, ASGestureRecognizerDelega
     /// navigation controller always does); if it kept it, the transition just ends and the stack's next update lays the
     /// container out, since the removal is not repeated.
     private func endCommittedSwipe(_ transition: TopTransition, leaving: ViewController) {
+        self.endHitchWindow()
         if transition.committedTopLeftStack {
             self.landOnScreenBeneath(transition, leaving: leaving)
         } else {
@@ -1080,6 +1083,7 @@ public final class NavigationContainer: ASDisplayNode, ASGestureRecognizerDelega
     /// A transition heading to the screen beneath, whose top the stack has dropped, lands: the top screen leaves and the
     /// screen beneath appears, laid out as the container's top.
     private func landOnScreenBeneath(_ transition: TopTransition, leaving: ViewController) {
+        self.endHitchWindow()
         self.state.transition = nil
         self.expansionStatusBar = nil
         if viewTreeContainsFirstResponder(view: leaving.view) {
@@ -1105,20 +1109,18 @@ public final class NavigationContainer: ASDisplayNode, ASGestureRecognizerDelega
         guard FrameHitchMonitor.isEnabled else {
             return
         }
-        if let previous = self.hitchWindow {
+        let name = kind + ":" + String(describing: type(of: screen))
+        if let previous = self.hitchWindow.begin(name) {
             FrameHitchMonitor.shared.end(previous)
         }
-        let name = kind + ":" + String(describing: type(of: screen))
-        self.hitchWindow = name
         FrameHitchMonitor.shared.begin(name)
     }
 
     /// Kept open a little after the transition lands: a pushed chat finishes its deferred setup in those frames.
     private func endHitchWindow() {
-        guard let name = self.hitchWindow else {
+        guard let name = self.hitchWindow.end() else {
             return
         }
-        self.hitchWindow = nil
         FrameHitchMonitor.shared.observe(name, duration: 0.25)
     }
 
