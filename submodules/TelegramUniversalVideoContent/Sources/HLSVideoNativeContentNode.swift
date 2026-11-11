@@ -129,7 +129,7 @@ final class HLSVideoNativeContentNode: ASDisplayNode, UniversalVideoContentNode 
     private var downloadPriorityDisposables: [Disposable]?
     private var networkClass = "unknown"
     
-    init(context: AccountContext, audioSessionManager: ManagedAudioSession, userLocation: MediaResourceUserLocation, fileReference: FileMediaReference, levels: [HLSLevel], qualityFiles: [HLSNativeQualityFile], loopVideo: Bool, enableSound: Bool, baseRate: Double, captureProtected: Bool, startTimestamp: Double?, thumbnail: Signal<(() -> CGSize?, (TransformImageArguments) -> DrawingContext?), NoError>) {
+    init(context: AccountContext, audioSessionManager: ManagedAudioSession, userLocation: MediaResourceUserLocation, fileReference: FileMediaReference, levels: [HLSLevel], qualityFiles: [HLSNativeQualityFile], partStore: HLSNativePartStore, loopVideo: Bool, enableSound: Bool, baseRate: Double, captureProtected: Bool, startTimestamp: Double?, thumbnail: Signal<(() -> CGSize?, (TransformImageArguments) -> DrawingContext?), NoError>) {
         self.fileReference = fileReference
         self.approximateDuration = fileReference.media.duration ?? 0.0
         self.captureProtected = captureProtected
@@ -163,7 +163,7 @@ final class HLSVideoNativeContentNode: ASDisplayNode, UniversalVideoContentNode 
         let engine = context.engine
         self.engine = engine
         self.qualityResourceIds = qualityFiles.map { EngineMediaResource($0.file.media.resource).id.stringRepresentation }
-        self.partStore = HLSNativePartStore(engine: engine, files: qualityFiles)
+        self.partStore = partStore
         self.environment = HLSNativeEnvironment(engine: engine, userLocation: userLocation, files: qualityFiles, partStore: self.partStore)
         self.playlistLoader = HLSNativePlaylistLoader(engine: engine, userLocation: userLocation, files: qualityFiles, startLevel: self.preloadLevel)
         self.controller = HLSPlaybackController(levels: levels, preloadLevel: self.preloadLevel, environment: self.environment)

@@ -249,7 +249,7 @@ public final class HLSVideoContent: UniversalVideoContent {
         }
         let thumbnailVideoReference = HLSVideoContent.minimizedHLSQuality(file: self.fileReference, codecConfiguration: self.codecConfiguration)?.file ?? self.fileReference
         let thumbnail = internalMediaGridMessageVideo(postbox: postbox, userLocation: self.userLocation, videoReference: thumbnailVideoReference, previewSourceFileReference: self.fileReference, imageReference: nil, onlyFullSize: self.onlyFullSizeThumbnail, useLargeThumbnail: self.useLargeThumbnail, autoFetchFullSizeThumbnail: self.autoFetchFullSizeThumbnail || self.fileReference.media.isInstantVideo)
-        return HLSVideoNativeContentNode(context: context, audioSessionManager: audioSession, userLocation: self.userLocation, fileReference: self.fileReference, levels: qualities.levels, qualityFiles: qualities.files, loopVideo: self.loopVideo, enableSound: self.enableSound, baseRate: self.baseRate, captureProtected: self.captureProtected, startTimestamp: self.startTimestamp, thumbnail: thumbnail)
+        return HLSVideoNativeContentNode(context: context, audioSessionManager: audioSession, userLocation: self.userLocation, fileReference: self.fileReference, levels: qualities.levels, qualityFiles: qualities.files, partStore: HLSNativePartStore(engine: context.engine, mediaBox: postbox.mediaBox, files: qualities.files), loopVideo: self.loopVideo, enableSound: self.enableSound, baseRate: self.baseRate, captureProtected: self.captureProtected, startTimestamp: self.startTimestamp, thumbnail: thumbnail)
     }
     
     public func isEqual(to other: UniversalVideoContent) -> Bool {

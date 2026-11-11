@@ -55,7 +55,24 @@ public enum HLSStreamingStorage {
         return self.tempFilePartContent(initializationData: initializationData, segmentData: segmentData)
     }
 
-    private static func tempFilePartContent(initializationData: Data?, segmentData: Data) -> ChunkMediaPlayerPart.Content? {
+    /// What the chunk player plays for one segment of the native HLS player, whose bytes (`initData`, then
+    /// `segmentData`) were just read from `initRange` and `dataRange` of `resource` in the media cache. They are played
+    /// in place from those ranges: no copy, no write. A temporary file is written only for hardware AV1, which
+    /// AVFoundation reads from a path. The file is not deleted when the part is released: its owner disposes it.
+    public static func nativePartContent(mediaBox: MediaBox, resource: MediaResource, resourceSize: Int64, initRange: Range<Int64>?, dataRange: Range<Int64>, initData: Data, segmentData: Data, codecName: String?, isHardwareAv1Supported: Bool = internal_isHardwareAv1Supported) -> ChunkMediaPlayerPart.Content? {
+        let isHardwareAV1 = VideoRenditionCodecPreference.isAv1(codecName) && isHardwareAv1Supported
+        if isHardwareAV1 {
+            return self.tempFilePartContent(initializationData: initRange == nil ? nil : initData, segmentData: segmentData, deletesFileOnRelease: false)
+        }
+        var ranges: [Range<Int64>] = []
+        if let initRange {
+            ranges.append(initRange)
+        }
+        ranges.append(dataRange)
+        return .mediaBoxRanges(ChunkMediaPlayerPart.MediaBoxRanges(mediaBox: mediaBox, resource: resource, resourceSize: resourceSize, ranges: ranges, ignoreAudioEditList: true))
+    }
+
+    private static func tempFilePartContent(initializationData: Data?, segmentData: Data, deletesFileOnRelease: Bool = true) -> ChunkMediaPlayerPart.Content? {
         let tempFile = TempBox.shared.tempFile(fileName: "data.mp4")
         var combinedData = Data()
         if let initializationData {
@@ -67,7 +84,7 @@ public enum HLSStreamingStorage {
             return nil
         }
         DiskWriteAccounting.shared.add(DiskWriteCategory.tempBoxHLS, bytes: combinedData.count)
-        return .tempFile(ChunkMediaPlayerPart.TempFile(file: tempFile, ignoreAudioEditList: true, deletesFileOnRelease: true))
+        return .tempFile(ChunkMediaPlayerPart.TempFile(file: tempFile, ignoreAudioEditList: true, deletesFileOnRelease: deletesFileOnRelease))
     }
 }
 
