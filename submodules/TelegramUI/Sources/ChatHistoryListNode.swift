@@ -42,6 +42,7 @@ import TextFormat
 import ChatNewThreadInfoItem
 import PhoneNumberFormat
 import ChatHistoryListViewBackend
+import ChatRowPrep
 import Postbox
 import LaunchSignpostSupport
 
@@ -4317,7 +4318,7 @@ public final class ChatHistoryListNodeImpl: ASDisplayNode, ChatHistoryNode, Chat
                     }
                 }
             }
-            if !foundItemNodes.isEmpty && foundItemNodes.allSatisfy({ $0.bounds.height <= 1800.0 }) {
+            if ChatDustSnapshotPolicy.isEligible(heights: foundItemNodes.map { $0.bounds.height }) {
                 if self.dustEffectLayer == nil {
                     let dustEffectLayer = DustEffectLayer()
                     dustEffectLayer.position = self.bounds.center
@@ -4338,7 +4339,7 @@ public final class ChatHistoryListNodeImpl: ASDisplayNode, ChatHistoryNode, Chat
                 }
                 if let dustEffectLayer = self.dustEffectLayer {
                     for itemNode in foundItemNodes {
-                        guard let (image, subFrame) = itemNode.makeContentSnapshot() else {
+                        guard let (image, subFrame) = itemNode.makeContentSnapshot(scale: ChatDustSnapshotPolicy.snapshotScale) else {
                             continue
                         }
                         let itemFrame = itemNode.layer.convert(subFrame, to: dustEffectLayer)

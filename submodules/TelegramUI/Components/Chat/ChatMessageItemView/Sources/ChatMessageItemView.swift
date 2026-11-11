@@ -951,6 +951,12 @@ open class ChatMessageItemView: ListViewItemNode, ChatMessageItemNodeProtocol {
         return nil
     }
 
+    /// The same snapshot drawn at `scale` (0.0 is the screen's scale). Nodes that only have the screen-scale snapshot
+    /// answer with it.
+    open func makeContentSnapshot(scale: CGFloat) -> (UIImage, CGRect)? {
+        return self.makeContentSnapshot()
+    }
+
     /// Whether `gesture` at `point` (in this node) is the message's own: a tap on a link, a mention or its media, a
     /// long press on a link. A host laying the message out among its own content (the News tab's post row) leaves
     /// those to the message and takes the rest itself, taps on plain text and long presses included.
