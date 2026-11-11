@@ -15,6 +15,34 @@ final class ThumbnailFillPacingTests: XCTestCase {
         XCTAssertFalse(ThumbnailFillPacing.allowsFilling(self.conditions(foreground: false)))
     }
 
+    func testPausedWhileThePickerIsCovered() {
+        var covered = self.conditions()
+        covered.isPickerCovered = true
+        XCTAssertFalse(ThumbnailFillPacing.allowsFilling(covered))
+        covered.isPickerCovered = false
+        XCTAssertTrue(ThumbnailFillPacing.allowsFilling(covered))
+    }
+
+    func testPacerPausesWhileCoveredAndResumesWhenUncovered() {
+        let fixture = Fixture()
+        let owner = NSObject()
+        fixture.pacer.pickerOpened()
+        fixture.pacer.setPickerCovered(true, by: owner)
+        XCTAssertFalse(fixture.pacer.isAllowed)
+        fixture.pacer.setPickerCovered(false, by: owner)
+        XCTAssertTrue(fixture.pacer.isAllowed)
+        XCTAssertEqual(fixture.changes, [true, false, true])
+    }
+
+    func testCoveredPickerDoesNotPauseAnotherOpenPicker() {
+        let fixture = Fixture()
+        let owner = NSObject()
+        fixture.pacer.pickerOpened()
+        fixture.pacer.pickerOpened()
+        fixture.pacer.setPickerCovered(true, by: owner)
+        XCTAssertTrue(fixture.pacer.isAllowed)
+    }
+
     func testSkippedInLowPowerMode() {
         XCTAssertFalse(ThumbnailFillPacing.allowsFilling(self.conditions(lowPower: true)))
     }

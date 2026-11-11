@@ -92,6 +92,12 @@ public final class MediaGridPhotoLibraryFiller {
         }
     }
 
+    /// The picker `owner` is covered by a full-screen editor or camera, or minimized: the filler pauses
+    /// until it is uncovered. The owner must uncover before it goes away. Main thread only.
+    public func setPickerCovered(_ covered: Bool, by owner: AnyObject) {
+        self.pacer?.setPickerCovered(covered, by: owner)
+    }
+
     /// The app's settings: a few requests at a time, a cap on the store, no iCloud lane.
     public func applyAppPacing() {
         self.isNetworkLaneEnabled = false

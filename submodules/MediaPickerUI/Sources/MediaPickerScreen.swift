@@ -398,7 +398,13 @@ public final class MediaPickerScreenImpl: ViewController, MediaPickerScreen, Att
     public var cancelPanGesture: () -> Void = { }
     public var isContainerPanning: () -> Bool = { return false }
     public var isContainerExpanded: () -> Bool = { return false }
-    public var isMinimized: Bool = false
+    public var isMinimized: Bool = false {
+        didSet {
+            if self.isNodeLoaded {
+                self.controllerNode.isSheetMinimized = self.isMinimized
+            }
+        }
+    }
     
     public var getCurrentSendMessageContextMediaPreview: (() -> ChatSendMessageContextScreenMediaPreview?)? = nil
     
@@ -479,7 +485,11 @@ public final class MediaPickerScreenImpl: ViewController, MediaPickerScreen, Att
         fileprivate var cameraCellBranch: MediaPickerCameraCellBranch = .none
         fileprivate var modernCameraHasLivePreview = true
         fileprivate var isModernCameraInvalidated = false
-        fileprivate var isModernCameraHandedOff = false
+        fileprivate var isModernCameraHandedOff = false {
+            didSet {
+                self.updateFillerCover()
+            }
+        }
         fileprivate var chatCameraCaptureState: Bool?
         private var isChatCameraCaptureUpdateScheduled = false
         
@@ -534,7 +544,17 @@ public final class MediaPickerScreenImpl: ViewController, MediaPickerScreen, Att
         }
         
         fileprivate var isSuspended = false
-        fileprivate var hasGallery = false
+        fileprivate var hasGallery = false {
+            didSet {
+                self.updateFillerCover()
+            }
+        }
+        fileprivate var isSheetMinimized = false {
+            didSet {
+                self.updateFillerCover()
+            }
+        }
+        private var isFillerCoverRegistered = false
         private var isCameraPreviewVisible = true
         
         private var validLayout: (ContainerViewLayout, CGFloat)?
@@ -836,6 +856,9 @@ public final class MediaPickerScreenImpl: ViewController, MediaPickerScreen, Att
             self.fastScrollDisposable?.dispose()
             self.currentAssetDownloadDisposable.dispose()
             self.chatMediaSendDisposable.dispose()
+            if self.isFillerCoverRegistered {
+                MediaGridPhotoLibraryServices.shared.filler.setPickerCovered(false, by: self)
+            }
             if self.cameraCellBranch == .chatCamera, self.chatCameraCaptureState != false, !self.isModernCameraHandedOff {
                 self.modernCamera?.stopCapture()
             }
@@ -1213,6 +1236,17 @@ public final class MediaPickerScreenImpl: ViewController, MediaPickerScreen, Att
             )
             self.modernCamera = camera
             return camera
+        }
+        
+        // The background thumbnail filler pauses while this picker is behind the full-screen editor or camera,
+        // or while the sheet is minimized.
+        private func updateFillerCover() {
+            let covered = self.hasGallery || self.isModernCameraHandedOff || self.isSheetMinimized
+            if covered == self.isFillerCoverRegistered || self.controller?.usesMediaGridV2 != true {
+                return
+            }
+            self.isFillerCoverRegistered = covered
+            MediaGridPhotoLibraryServices.shared.filler.setPickerCovered(covered, by: self)
         }
         
         @objc private func cameraTapped() {
