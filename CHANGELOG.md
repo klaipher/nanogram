@@ -4,6 +4,11 @@ Newest first. Internal notes for each TestFlight build; testers see the What to 
 
 ## Unreleased
 
+## 13.2 (202611121002) — 2026-11-12 — 25edb39c
+
+TestFlight build (processed VALID, What to Test set). Previous TestFlight build: 202611112014 (c2a45687); changes since are `git log c2a45687..25edb39c`: the native HLS player port (crash fix on malformed playlists, no re-writing of cached segments, 15 s buffer for muted inline videos, hardware AV1), state sync (read marks sent once, fewer probes and transactions), attach menu performance, chat list and navigation performance, smaller logs (network dumps behind a Debug switch), chat themes requested once per 10 minutes, rlottie removed.
+What to Test: open and scroll several chats and swipe back; send messages quickly; play videos in channels (muted and full screen); open the attach menu, edit a photo, tap Done.
+
 - **13.2 lost-fix audit** (read-only, both repos): no unrecorded loss. Open as recorded: F4 (history-fill request size), F7 (reads for strangers, upstream removed the hold; `docs/subsystems/suspicious-peer.md` corrected), the HLS part store (fixed in this round by perf/hls-native-port). Not fixed, minor: `MediaGridView`'s own `CADisplayLink` for its short scroll animations, and `PresentChatMediaEditor`'s lazy `UIImage(contentsOfFile:)` on the main queue.
 
 - **rlottie removed** (`submodules/rlottie`, its `.gitmodules` entry, the `pin rlottie` / `share submodules/rlottie` lines of `docs/mac-core-paths.txt`, the upstream-sync pin). Upstream 13.2 deleted it and our iOS has rendered with tlottie only since the 13.2 merge; we kept it for the Mac, whose 13.2 merge drops it too. Nothing built it any more, so no behaviour change. The Watch app keeps its own `RLottieKit`.
