@@ -47,8 +47,30 @@ public final class CrashReportCollector: NSObject, MXMetricManagerSubscriber {
         self.metricTasks.append(Task.detached(priority: .utility) {
             for await report in metricManager.diagnosticReports {
                 CrashReportCollector.storeReport(report, kind: .diagnostics, intervalEnd: report.timeRange.end)
+                CrashReportCollector.storeMemoryException(report)
             }
         })
+    }
+
+    @available(iOS 27.0, *)
+    private static func storeMemoryException(_ report: DiagnosticReport) {
+        guard case let .memoryException(diagnostic) = report.result else {
+            return
+        }
+        do {
+            let environment = report.environment
+            let metadata = CrashReportMetadata(
+                applicationVersion: environment.applicationVersion,
+                buildVersion: environment.applicationBuildVersion,
+                osVersion: "\(environment.osVersion.platform) \(environment.osVersion.number) (\(environment.osVersion.buildNumber))",
+                deviceType: environment.deviceType,
+                architecture: environment.platformArchitecture
+            )
+            let input = try MemoryExceptionReport.input(encodedDiagnostic: JSONEncoder().encode(diagnostic), metadata: metadata)
+            try CrashReportStore.shared.importDiagnostics([input], intervalStart: report.timeRange.start, intervalEnd: report.timeRange.end)
+        } catch {
+            NSLog("MetricKit: could not persist a memory exception (%@)", String(describing: type(of: error)))
+        }
     }
 
     private static func storeReport<T: Encodable>(_ report: T, kind: MetricReportStore.Kind, intervalEnd: Date) {
