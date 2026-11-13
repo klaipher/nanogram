@@ -675,7 +675,7 @@ private struct NotificationContent: CustomStringConvertible {
     @available(iOS 15.0, *)
     private func updatedForCall(_ content: UNNotificationContent, call: Call) -> UNNotificationContent {
         guard call.drawsCaller, self.isLockedMessage == nil, let sender = self.sender, let caller = IncomingCallCommunication.caller(accountId: call.accountId, peerId: sender.peerId.toInt64(), callerName: sender.name, recipientAccountName: self.recipientAccountName, contactIdentifier: sender.contactIdentifier) else {
-            let name = (self.title?.isEmpty == false) ? self.title! : "Incoming Call"
+            let name = (self.title?.isEmpty == false) ? self.title! : ((self.body?.isEmpty == false) ? self.body! : "Incoming Call")
             let intent = IncomingCallCommunication.intent(caller: IncomingCallCommunication.anonymousPerson(name: name), callId: call.callId, isVideo: call.isVideo, date: Date(), callsBack: !call.isGroupCall)
             let updated = IncomingCallCommunication.updatedContent(content, intent: intent, update: { content, intent in
                 do {
@@ -948,9 +948,9 @@ private func getCurrentRenderedTotalUnreadCount(accountManager: AccountManager<T
 /// caller's photo (see `IncomingCallCommunication`) unless the app is locked or names are hidden on
 /// the lock screen. Made only to be shown (`IncomingCallPushPresentation.present`): the caller's
 /// device contact and photo are looked up then, never before CallKit is offered the call.
-private func makeIncomingCallNotificationContent(postbox: Postbox, accountPeerId: PeerId, callerName: String?, callerPeer: Peer?, incomingCallMessage: String, recipientAccountName: String?, accountId: Int64, fromId: PeerId, isAppLocked: Bool, displayNameOnLockscreen: Bool, isGroupCall: Bool, callId: Int64?, isVideo: Bool, showCallsInRecents: Bool, callRoute: IncomingCallNotificationRouting.Call?, completion: @escaping (NotificationContent) -> Void) {
+private func makeIncomingCallNotificationContent(postbox: Postbox, accountPeerId: PeerId, callerName: String?, callerPeer: Peer?, incomingCallMessage: String, incomingCallTitle: String, recipientAccountName: String?, accountId: Int64, fromId: PeerId, isAppLocked: Bool, displayNameOnLockscreen: Bool, isGroupCall: Bool, callId: Int64?, isVideo: Bool, showCallsInRecents: Bool, callRoute: IncomingCallNotificationRouting.Call?, completion: @escaping (NotificationContent) -> Void) {
     let shownCallerName = IncomingCallPushPresentation.shownCallerName(callerName, isAppLocked: isAppLocked, displayNameOnLockscreen: displayNameOnLockscreen)
-    let alert = IncomingCallPushPresentation.alert(callerName: shownCallerName, incomingCallMessage: incomingCallMessage)
+    let alert = IncomingCallPushPresentation.alert(callerName: shownCallerName, incomingCallMessage: incomingCallMessage, anonymousBody: incomingCallTitle)
     var content = NotificationContent(isLockedMessage: nil)
     content.recipientAccountName = recipientAccountName
     content.title = alert.title
@@ -1096,10 +1096,17 @@ private final class NotificationServiceHandler {
         }
         
         let incomingCallMessage: String
+        let incomingCallTitle: String
         if let notificationsPresentationData = try? Data(contentsOf: URL(fileURLWithPath: notificationsPresentationDataPath(rootPath: rootPath))), let notificationsPresentationDataValue = try? JSONDecoder().decode(NotificationsPresentationData.self, from: notificationsPresentationData) {
             incomingCallMessage = notificationsPresentationDataValue.incomingCallString
+            if let title = notificationsPresentationDataValue.incomingCallTitleString, !title.isEmpty {
+                incomingCallTitle = title
+            } else {
+                incomingCallTitle = "Incoming Call"
+            }
         } else {
             incomingCallMessage = "is calling you"
+            incomingCallTitle = "Incoming Call"
         }
         let canFilterNotifications = ServicePushPresentation.appCanFilterNotifications(infoDictionary: Bundle.main.infoDictionary)
 
@@ -1714,6 +1721,7 @@ private final class NotificationServiceHandler {
                                                 callerName: callData.peer?.debugDisplayTitle,
                                                 callerPeer: storedPeer ?? callData.peer?._asPeer(),
                                                 incomingCallMessage: incomingCallMessage,
+                                                incomingCallTitle: incomingCallTitle,
                                                 recipientAccountName: recipientAccountName,
                                                 accountId: callData.accountId,
                                                 fromId: callData.fromId,
@@ -1734,10 +1742,13 @@ private final class NotificationServiceHandler {
                                         acknowledgeRing: { done in
                                             Logger.shared.log("NotificationService \(episode)", "Acknowledging the call")
                                             let startedAt = CFAbsoluteTimeGetCurrent()
+                                            let keepConnection = stateManager.network.shouldKeepConnection
+                                            keepConnection.set(.single(true))
                                             strongSelf.acknowledgeCallDisposable.set((_internal_acknowledgeIncomingCall(network: stateManager.network, id: callData.id, accessHash: callData.accessHash)
                                             |> timeout(IncomingCallPushPresentation.acknowledgementTimeout, queue: strongSelf.queue, alternate: .single(false))
                                             |> take(1)).start(next: { acknowledged in
                                                 Logger.shared.log("NotificationService \(episode)", "Call acknowledged: \(acknowledged) after \(String(format: "%.2f", CFAbsoluteTimeGetCurrent() - startedAt)) s")
+                                                keepConnection.set(.single(false))
                                                 done()
                                             }))
                                         },
@@ -1797,6 +1808,7 @@ private final class NotificationServiceHandler {
                                                 callerName: fromPeer?.debugDisplayTitle ?? groupCallData.fromTitle,
                                                 callerPeer: callerPeer,
                                                 incomingCallMessage: incomingCallMessage,
+                                                incomingCallTitle: incomingCallTitle,
                                                 recipientAccountName: recipientAccountName,
                                                 accountId: groupCallData.accountId,
                                                 fromId: groupCallData.fromId,

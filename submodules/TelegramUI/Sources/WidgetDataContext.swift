@@ -377,7 +377,8 @@ final class WidgetDataContext {
             return NotificationsPresentationData(
                 applicationLockedMessageString: presentationData.strings.PUSH_LOCKED_MESSAGE("").string,
                 applicationLockedStoryString: presentationData.strings.PUSH_LOCKED_STORY("").string,
-                incomingCallString: incomingCallString
+                incomingCallString: incomingCallString,
+                incomingCallTitleString: presentationData.strings.Notification_CallIncoming
             )
         }
         |> distinctUntilChanged).startStrict(next: { value in

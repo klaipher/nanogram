@@ -45,8 +45,8 @@ enum IncomingCallPushPresentation {
     }
 
     /// How long the extension waits for the server to take the call's acknowledgement before it
-    /// hands the ring back: the ring is never held back longer, and the extension has about 30 s.
-    static let acknowledgementTimeout: Double = 3.0
+    /// hands the ring back: a ring is held back by at most this long, as the caller's window is short.
+    static let acknowledgementTimeout: Double = 0.8
 
     /// Runs `action` once `count` completions arrived, from any thread; further ones do nothing.
     final class CompletionJoin: @unchecked Sendable {
@@ -153,11 +153,11 @@ enum IncomingCallPushPresentation {
 
     /// "<caller>" / "is calling you" (`NotificationsPresentationData.incomingCallString`), as the
     /// official app words it without CallKit.
-    static func alert(callerName: String?, incomingCallMessage: String) -> Alert {
+    static func alert(callerName: String?, incomingCallMessage: String, anonymousBody: String = "Incoming Call") -> Alert {
         if let callerName, !callerName.isEmpty {
             return Alert(title: callerName, body: incomingCallMessage)
         } else {
-            return Alert(title: nil, body: "Incoming Call")
+            return Alert(title: nil, body: anonymousBody)
         }
     }
 

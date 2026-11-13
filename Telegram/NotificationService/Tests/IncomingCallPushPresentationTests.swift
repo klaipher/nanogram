@@ -214,9 +214,9 @@ final class IncomingCallPushPresentationTests: XCTestCase {
         XCTAssertNotEqual(IncomingCallPushPresentation.fallbackSound, UNNotificationSound.default)
     }
 
-    func testAcknowledgementIsCappedAtAFewSeconds() {
+    func testAcknowledgementHoldsTheRingBackForUnderASecond() {
         XCTAssertGreaterThan(IncomingCallPushPresentation.acknowledgementTimeout, 0.0)
-        XCTAssertLessThanOrEqual(IncomingCallPushPresentation.acknowledgementTimeout, 3.0)
+        XCTAssertLessThanOrEqual(IncomingCallPushPresentation.acknowledgementTimeout, 1.0)
     }
 
     func testCompletionJoinRunsOnceAfterAllCompletions() {
