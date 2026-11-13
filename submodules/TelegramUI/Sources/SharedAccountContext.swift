@@ -594,9 +594,20 @@ public final class SharedAccountContextImpl: SharedAccountContext {
             Logger.shared.log("FrameHitch", line)
         }
         FrameHitchMonitor.context = frameRateContext
+        FrameHitchMonitor.autoDisabled = { [weak self] reason in
+            Logger.shared.log("FrameHitch", "Frame hitches switched off automatically (\(reason.rawValue)); it stays off until it is turned on again in Debug Settings")
+            guard let self else {
+                return
+            }
+            let _ = updateExperimentalUISettingsInteractively(accountManager: self.accountManager, { settings in
+                var settings = settings
+                settings.frameHitchLog = false
+                return settings
+            }).start()
+        }
         FrameHitchMonitor.sampler = { start in
             if start {
-                MainThreadSampler.start(withInterval: 0.003)
+                MainThreadSampler.start(withInterval: 0.01)
             } else {
                 MainThreadSampler.stop()
             }

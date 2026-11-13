@@ -164,7 +164,8 @@ struct FrameHitchStats {
 /// at the screen's top rate times every frame (so the screen stays at its top rate: a diagnostics mode), and a window
 /// (a scroll of the chat, the chat list or any list, a keyboard animation, a push, pop or back swipe) counts the frames
 /// it spans. At the window's end one summary line is logged, followed by the main thread's stacks during its longest
-/// stalls, taken from a sampler the app starts while a window is open. Main thread only.
+/// stalls, taken from a sampler the app starts while the switch is on. The switch turns itself off after
+/// `autoDisableSeconds` and when the app enters the background. Main thread only.
 public final class FrameHitchMonitor {
     public static let shared = FrameHitchMonitor()
 
@@ -179,10 +180,27 @@ public final class FrameHitchMonitor {
             // The sampler runs for as long as the switch is on, so a stall that begins before a window opens (the tap
             // that raises the keyboard) still has its samples.
             if isEnabled != oldValue {
+                if isEnabled {
+                    FrameHitchMonitor.shared.armAutoDisable()
+                } else {
+                    FrameHitchMonitor.shared.disarmAutoDisable()
+                }
                 FrameHitchMonitor.sampler?(isEnabled)
             }
         }
     }
+
+    /// Why the monitor switched itself off.
+    public enum AutoDisableReason: String {
+        case timeout
+        case background
+    }
+
+    /// The switch turns itself off after this long, so a diagnostics mode left on (a display link at the top rate and a
+    /// main-thread sampler) cannot cost CPU and battery for days (MetricKit, 2026-11-13).
+    public static var autoDisableSeconds: Double = 30.0 * 60.0
+    /// Called after the monitor switched itself off, so the app can log it and clear the stored setting.
+    public static var autoDisabled: ((AutoDisableReason) -> Void)?
     public static var log: ((String) -> Void)?
     /// The A/B switch state, appended to each summary as ` ab=…`.
     public static var context: (() -> String)?
@@ -288,7 +306,39 @@ public final class FrameHitchMonitor {
     private var lastTickTimestamp: Double?
     private var lastExpectedDuration: Double?
 
+    private var autoDisableTimer: Timer?
+    private var backgroundObserver: NSObjectProtocol?
+
     private init() {
+    }
+
+    private func armAutoDisable() {
+        self.disarmAutoDisable()
+        let timer = Timer(timeInterval: FrameHitchMonitor.autoDisableSeconds, repeats: false, block: { [weak self] _ in
+            self?.autoDisable(.timeout)
+        })
+        RunLoop.main.add(timer, forMode: .common)
+        self.autoDisableTimer = timer
+        self.backgroundObserver = NotificationCenter.default.addObserver(forName: UIApplication.didEnterBackgroundNotification, object: nil, queue: .main, using: { [weak self] _ in
+            self?.autoDisable(.background)
+        })
+    }
+
+    private func disarmAutoDisable() {
+        self.autoDisableTimer?.invalidate()
+        self.autoDisableTimer = nil
+        if let backgroundObserver = self.backgroundObserver {
+            NotificationCenter.default.removeObserver(backgroundObserver)
+            self.backgroundObserver = nil
+        }
+    }
+
+    private func autoDisable(_ reason: AutoDisableReason) {
+        guard FrameHitchMonitor.isEnabled else {
+            return
+        }
+        FrameHitchMonitor.isEnabled = false
+        FrameHitchMonitor.autoDisabled?(reason)
     }
 
     /// Opens `name` (or keeps it open with no end time if it is already open).

@@ -1,4 +1,5 @@
 import XCTest
+import UIKit
 @testable import Display
 
 /// Debug Settings "Frame hitches: log with main-thread stacks": a frame is a hitch when the display link fires
@@ -126,6 +127,72 @@ final class FrameHitchMonitorTests: XCTestCase {
         XCTAssertTrue(lines.last?.hasSuffix("\ntree") == true, lines.last ?? "")
         FrameHitchMonitor.isEnabled = false
         XCTAssertEqual(samplerStates, [true, false])
+    }
+
+    /// A switch left on keeps a top-rate display link and a main-thread sampler running for days; it expires.
+    func test_theSwitchTurnsItselfOffAfterTheTimeLimit() {
+        var reasons: [FrameHitchMonitor.AutoDisableReason] = []
+        var samplerStates: [Bool] = []
+        let previousSeconds = FrameHitchMonitor.autoDisableSeconds
+        FrameHitchMonitor.autoDisableSeconds = 0.05
+        FrameHitchMonitor.log = { _ in }
+        FrameHitchMonitor.sampler = { samplerStates.append($0) }
+        FrameHitchMonitor.autoDisabled = { reasons.append($0) }
+        defer {
+            FrameHitchMonitor.isEnabled = false
+            FrameHitchMonitor.autoDisableSeconds = previousSeconds
+            FrameHitchMonitor.log = nil
+            FrameHitchMonitor.sampler = nil
+            FrameHitchMonitor.autoDisabled = nil
+        }
+        XCTAssertEqual(previousSeconds, 30.0 * 60.0)
+        FrameHitchMonitor.isEnabled = true
+        let deadline = Date().addingTimeInterval(3.0)
+        while FrameHitchMonitor.isEnabled && Date() < deadline {
+            RunLoop.current.run(until: Date().addingTimeInterval(0.01))
+        }
+        XCTAssertFalse(FrameHitchMonitor.isEnabled)
+        XCTAssertEqual(reasons, [.timeout])
+        XCTAssertEqual(samplerStates, [true, false])
+    }
+
+    func test_theSwitchTurnsItselfOffInTheBackground() {
+        var reasons: [FrameHitchMonitor.AutoDisableReason] = []
+        var samplerStates: [Bool] = []
+        FrameHitchMonitor.log = { _ in }
+        FrameHitchMonitor.sampler = { samplerStates.append($0) }
+        FrameHitchMonitor.autoDisabled = { reasons.append($0) }
+        defer {
+            FrameHitchMonitor.isEnabled = false
+            FrameHitchMonitor.log = nil
+            FrameHitchMonitor.sampler = nil
+            FrameHitchMonitor.autoDisabled = nil
+        }
+        FrameHitchMonitor.isEnabled = true
+        NotificationCenter.default.post(name: UIApplication.didEnterBackgroundNotification, object: nil)
+        let deadline = Date().addingTimeInterval(3.0)
+        while FrameHitchMonitor.isEnabled && Date() < deadline {
+            RunLoop.current.run(until: Date().addingTimeInterval(0.01))
+        }
+        XCTAssertFalse(FrameHitchMonitor.isEnabled)
+        XCTAssertEqual(reasons, [.background])
+        XCTAssertEqual(samplerStates, [true, false])
+    }
+
+    func test_turningTheSwitchOffByHandDoesNotReportAnAutoDisable() {
+        var reasons: [FrameHitchMonitor.AutoDisableReason] = []
+        FrameHitchMonitor.log = { _ in }
+        FrameHitchMonitor.autoDisabled = { reasons.append($0) }
+        defer {
+            FrameHitchMonitor.isEnabled = false
+            FrameHitchMonitor.log = nil
+            FrameHitchMonitor.autoDisabled = nil
+        }
+        FrameHitchMonitor.isEnabled = true
+        FrameHitchMonitor.isEnabled = false
+        NotificationCenter.default.post(name: UIApplication.didEnterBackgroundNotification, object: nil)
+        RunLoop.current.run(until: Date().addingTimeInterval(0.1))
+        XCTAssertEqual(reasons, [])
     }
 
     /// A window whose `end` never comes (a list released mid-gesture) would keep the top-rate display link ticking.
