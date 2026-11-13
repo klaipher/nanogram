@@ -46,4 +46,22 @@ final class VoIPPushCallReportTests: XCTestCase {
         report.complete()
         XCTAssertEqual(self.events, ["failed call", "completion"])
     }
+
+    func testAPushThatNeedsNoReportCompletesWithoutAPlaceholderCall() {
+        var events: [String] = []
+        let report = VoIPPushCallReport(mustReport: false, reportFailedCall: {
+            events.append("failed call")
+        }, completion: {
+            events.append("completion")
+        })
+        report.complete()
+        XCTAssertEqual(events, ["completion"])
+    }
+
+    func testAPushThatNeedsNoReportStillReportsARealCall() {
+        let report = self.makeReport()
+        report.callReported()
+        report.complete()
+        XCTAssertEqual(self.events, ["completion"])
+    }
 }

@@ -2643,12 +2643,19 @@ private func extractAccountManagerState(records: AccountRecordsView<TelegramAcco
         self.pushRegistryImpl(registry, didReceiveIncomingPushWith: payload, for: type, completion: {})
     }
     
-    private func pushRegistryImpl(_ registry: PKPushRegistry, didReceiveIncomingPushWith payload: PKPushPayload, for type: PKPushType, completion: @escaping () -> Void) {
+    @available(iOS 26.4, *)
+    public func pushRegistry(_ registry: PKPushRegistry, didReceiveIncomingVoIPPushWith payload: PKPushPayload, metadata: PKVoIPPushMetadata, completion: @escaping () -> Void) {
+        Logger.shared.log("App \(self.episodeId) PushRegistry", "pushRegistry didReceiveIncomingVoIPPushWith \(payload.dictionaryPayload), mustReport: \(metadata.mustReport)")
+        
+        self.pushRegistryImpl(registry, didReceiveIncomingPushWith: payload, for: .voIP, mustReport: metadata.mustReport, completion: completion)
+    }
+    
+    private func pushRegistryImpl(_ registry: PKPushRegistry, didReceiveIncomingPushWith payload: PKPushPayload, for type: PKPushType, mustReport: Bool = true, completion: @escaping () -> Void) {
         Logger.shared.log("App \(self.episodeId) PushRegistry", "pushRegistry processing push notification")
 
         // Every way out reports a call to CallKit (a placeholder ended at once if this push carries
         // none we can use): iOS stops delivering VoIP pushes to an app that skips that.
-        let callReport = VoIPPushCallReport(reportFailedCall: { [self] in
+        let callReport = VoIPPushCallReport(mustReport: mustReport, reportFailedCall: { [self] in
             if case PKPushType.voIP = type {
                 self.reportFailedIncomingCallKitCall()
             }
