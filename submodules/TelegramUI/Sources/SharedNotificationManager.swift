@@ -491,9 +491,8 @@ public final class SharedNotificationManager {
                 let peer = notificationCall.peer
                 let internalId = notificationCall.internalId
                 let peerId = notificationCall.peerId
-                let isIntegratedWithCallKit = notificationCall.isIntegratedWithCallKit
-                self.notificationCallStateDisposable.set((notificationCall.state
-                    |> map { state -> (EnginePeer?, CallSessionInternalId, EnginePeer.Id)? in
+                self.notificationCallStateDisposable.set((combineLatest(queue: .mainQueue(), notificationCall.state, notificationCall.isIntegratedWithCallKitSignal)
+                    |> map { state, isIntegratedWithCallKit -> (EnginePeer?, CallSessionInternalId, EnginePeer.Id)? in
                         if isIntegratedWithCallKit {
                             return nil
                         }

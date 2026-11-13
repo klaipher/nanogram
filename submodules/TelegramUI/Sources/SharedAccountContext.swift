@@ -1056,30 +1056,33 @@ public final class SharedAccountContextImpl: SharedAccountContext {
                         if call.isOutgoing {
                             self.presentControllerWithCurrentCall()
                         } else {
-                            if !call.isIntegratedWithCallKit {
-                                self.callPeerDisposable?.dispose()
-                                self.callPeerDisposable = (call.context.engine.data.get(TelegramEngine.EngineData.Item.Peer.Peer(id: call.peerId))
-                                |> deliverOnMainQueue).startStrict(next: { [weak self, weak call] peer in
-                                    guard let self, let call, let peer else {
-                                        return
-                                    }
-                                    if self.call !== call {
-                                        return
-                                    }
-                                    
-                                    let presentationData = self.currentPresentationData.with { $0 }
-                                    self.notificationController?.setBlocking(ChatCallNotificationItem(context: call.context, strings: presentationData.strings, nameDisplayOrder: presentationData.nameDisplayOrder, peer: peer, isVideo: call.isVideo, action: { [weak call] answerAction in
-                                        guard let call else {
-                                            return
-                                        }
-                                        if answerAction {
-                                            call.answer()
-                                        } else {
-                                            let _ = call.hangUp().startStandalone()
-                                        }
-                                    }))
-                                })
+                            self.callPeerDisposable?.dispose()
+                            self.callPeerDisposable = (call.isIntegratedWithCallKitSignal
+                            |> filter { !$0 }
+                            |> take(1)
+                            |> mapToSignal { _ in
+                                return call.context.engine.data.get(TelegramEngine.EngineData.Item.Peer.Peer(id: call.peerId))
                             }
+                            |> deliverOnMainQueue).startStrict(next: { [weak self, weak call] peer in
+                                guard let self, let call, let peer else {
+                                    return
+                                }
+                                if self.call !== call {
+                                    return
+                                }
+                                
+                                let presentationData = self.currentPresentationData.with { $0 }
+                                self.notificationController?.setBlocking(ChatCallNotificationItem(context: call.context, strings: presentationData.strings, nameDisplayOrder: presentationData.nameDisplayOrder, peer: peer, isVideo: call.isVideo, action: { [weak call] answerAction in
+                                    guard let call else {
+                                        return
+                                    }
+                                    if answerAction {
+                                        call.answer()
+                                    } else {
+                                        let _ = call.hangUp().startStandalone()
+                                    }
+                                }))
+                            })
                             
                             self.awaitingCallConnectionDisposable = (call.state
                             |> filter { state in
@@ -1428,38 +1431,41 @@ public final class SharedAccountContextImpl: SharedAccountContext {
             } else {
                 self.hasGroupCallOnScreenPromise.set(thisCallIsOnScreenPromise.get())
                 
-                if !call.isIntegratedWithCallKit {
-                    self.callPeerDisposable = (call.context.engine.data.get(TelegramEngine.EngineData.Item.Peer.Peer(id: call.peerId))
-                    |> deliverOnMainQueue).startStrict(next: { [weak self, weak call] peer in
-                        guard let self, let call, let peer else {
-                            return
-                        }
-                        if self.currentCall != .call(call) {
-                            return
-                        }
-                        
-                        let presentationData = self.currentPresentationData.with({ $0 })
-                        self.notificationController?.setBlocking(ChatCallNotificationItem(
-                            context: call.context,
-                            strings: presentationData.strings,
-                            nameDisplayOrder: presentationData.nameDisplayOrder,
-                            peer: peer,
-                            isVideo: call.isVideo,
-                            action: { [weak call] answerAction in
-                                guard let call else {
-                                    return
-                                }
-                                if answerAction {
-                                    self.notificationController?.setBlocking(nil)
-                                    call.answer()
-                                } else {
-                                    self.notificationController?.setBlocking(nil)
-                                    let _ = call.hangUp().startStandalone()
-                                }
-                            }
-                        ))
-                    })
+                self.callPeerDisposable = (call.isIntegratedWithCallKitSignal
+                |> filter { !$0 }
+                |> take(1)
+                |> mapToSignal { _ in
+                    return call.context.engine.data.get(TelegramEngine.EngineData.Item.Peer.Peer(id: call.peerId))
                 }
+                |> deliverOnMainQueue).startStrict(next: { [weak self, weak call] peer in
+                    guard let self, let call, let peer else {
+                        return
+                    }
+                    if self.currentCall != .call(call) {
+                        return
+                    }
+                    
+                    let presentationData = self.currentPresentationData.with({ $0 })
+                    self.notificationController?.setBlocking(ChatCallNotificationItem(
+                        context: call.context,
+                        strings: presentationData.strings,
+                        nameDisplayOrder: presentationData.nameDisplayOrder,
+                        peer: peer,
+                        isVideo: call.isVideo,
+                        action: { [weak call] answerAction in
+                            guard let call else {
+                                return
+                            }
+                            if answerAction {
+                                self.notificationController?.setBlocking(nil)
+                                call.answer()
+                            } else {
+                                self.notificationController?.setBlocking(nil)
+                                let _ = call.hangUp().startStandalone()
+                            }
+                        }
+                    ))
+                })
                 
                 // The notification service extension may have rung this call as a notification
                 // (`IncomingCallNotifications`): it goes once CallKit rings the call or it stops ringing.

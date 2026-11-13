@@ -146,6 +146,7 @@ public enum PresentationCallConferenceState {
 public protocol PresentationCall: AnyObject {
     var context: AccountContext { get }
     var isIntegratedWithCallKit: Bool { get }
+    var isIntegratedWithCallKitSignal: Signal<Bool, NoError> { get }
     var internalId: CallSessionInternalId { get }
     var peerId: EnginePeer.Id { get }
     var isOutgoing: Bool { get }

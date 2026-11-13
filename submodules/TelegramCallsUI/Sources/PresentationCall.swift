@@ -19,9 +19,13 @@ public final class PresentationCallImpl: PresentationCall {
     public let context: AccountContext
     private let audioSession: ManagedAudioSession
     private let callSessionManager: CallSessionManager
-    private let callKitIntegration: CallKitIntegration?
+    private var callKitIntegration: CallKitIntegration?
+    private let isIntegratedWithCallKitPromise: ValuePromise<Bool>
     public var isIntegratedWithCallKit: Bool {
         return self.callKitIntegration != nil
+    }
+    public var isIntegratedWithCallKitSignal: Signal<Bool, NoError> {
+        return self.isIntegratedWithCallKitPromise.get()
     }
     
     private let getDeviceAccessData: () -> (presentationData: PresentationData, present: (ViewController, Any?) -> Void, openSettings: () -> Void)
@@ -215,6 +219,7 @@ public final class PresentationCallImpl: PresentationCall {
         self.audioSession = audioSession
         self.callSessionManager = callSessionManager
         self.callKitIntegration = callKitIntegration
+        self.isIntegratedWithCallKitPromise = ValuePromise(callKitIntegration != nil, ignoreRepeated: true)
         self.getDeviceAccessData = getDeviceAccessData
         self.auxiliaryServers = auxiliaryServers.map { server -> OngoingCallContext.AuxiliaryServer in
             let mappedConnection: OngoingCallContext.AuxiliaryServer.Connection
@@ -798,22 +803,29 @@ public final class PresentationCallImpl: PresentationCall {
                             isVideo: sessionState.type == .video,
                             displayTitle: self.peer?.debugDisplayTitle ?? "Unknown",
                             completion: { [weak self] error in
-                                if let error = error {
-                                    if error.domain == "com.apple.CallKit.error.incomingcall" && (error.code == -3 || error.code == 3) {
-                                        Logger.shared.log("PresentationCall", "reportIncomingCall device in DND mode")
-                                        Queue.mainQueue().async {
-                                            /*if let strongSelf = self {
-                                                strongSelf.callSessionManager.drop(internalId: strongSelf.internalId, reason: .busy, debugLog: .single(nil))
-                                            }*/
-                                        }
-                                    } else {
-                                        Logger.shared.log("PresentationCall", "reportIncomingCall error \(error)")
-                                        CallDiagnostics.log("call \(self?.internalId.description ?? "-") reportIncomingCall failed: \(error.domain) \(error.code), hanging up")
-                                        Queue.mainQueue().async {
-                                            if let strongSelf = self {
-                                                strongSelf.callSessionManager.drop(internalId: strongSelf.internalId, reason: .hangUp, debugLog: .single(nil))
+                                guard let error else {
+                                    return
+                                }
+                                let action = callKitReportFailureAction(domain: error.domain, code: error.code)
+                                Logger.shared.log("PresentationCall", "reportIncomingCall error \(error), \(action)")
+                                Queue.mainQueue().async {
+                                    guard let strongSelf = self else {
+                                        return
+                                    }
+                                    switch action {
+                                    case .keepRinging:
+                                        break
+                                    case .fallBackToNotification:
+                                        CallDiagnostics.log("call \(strongSelf.internalId) reportIncomingCall failed: \(error.domain) \(error.code), ringing without CallKit")
+                                        strongSelf.callKitIntegration = nil
+                                        if strongSelf.proximityManagerIndex == nil {
+                                            strongSelf.proximityManagerIndex = DeviceProximityManager.shared().add { _ in
                                             }
                                         }
+                                        strongSelf.isIntegratedWithCallKitPromise.set(false)
+                                    case .hangUp:
+                                        CallDiagnostics.log("call \(strongSelf.internalId) reportIncomingCall failed: \(error.domain) \(error.code), hanging up")
+                                        strongSelf.callSessionManager.drop(internalId: strongSelf.internalId, reason: .hangUp, debugLog: .single(nil))
                                     }
                                 }
                             }
