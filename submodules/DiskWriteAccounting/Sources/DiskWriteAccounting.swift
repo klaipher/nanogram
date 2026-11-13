@@ -14,8 +14,20 @@ public final class DiskWriteAccounting: @unchecked Sendable {
     private let lock = NSLock()
     private var bytes: [String: Int64] = [:]
     private var writes: [String: Int64] = [:]
+    private var siteBytes: [String: Int64] = [:]
+    private var siteWrites: [String: Int64] = [:]
 
     public init() {
+    }
+
+    /// Records `bytes` bytes a Postbox transaction call site (`file.swift:123`) made SQLite append to the WAL. These are
+    /// a breakdown of the `sqlite.wal.postbox/db` category, kept apart so they are never added to the totals twice.
+    public func addSite(_ site: String, bytes: Int) {
+        let value = Int64(max(0, bytes))
+        self.lock.lock()
+        self.siteBytes[site, default: 0] += value
+        self.siteWrites[site, default: 0] += 1
+        self.lock.unlock()
     }
 
     /// Records one write of `bytes` bytes. Zero-byte calls still count as a write event (a file created empty
@@ -30,7 +42,7 @@ public final class DiskWriteAccounting: @unchecked Sendable {
 
     public func snapshot() -> DiskWriteSnapshot {
         self.lock.lock()
-        let result = DiskWriteSnapshot(bytes: self.bytes, writes: self.writes)
+        let result = DiskWriteSnapshot(bytes: self.bytes, writes: self.writes, siteBytes: self.siteBytes, siteWrites: self.siteWrites)
         self.lock.unlock()
         return result
     }
@@ -114,10 +126,19 @@ public enum DiskWriteCategory {
 public struct DiskWriteSnapshot: Sendable, Equatable {
     public var bytes: [String: Int64]
     public var writes: [String: Int64]
+    /// WAL bytes and commits per Postbox transaction call site; not part of `totalBytes`.
+    public var siteBytes: [String: Int64]
+    public var siteWrites: [String: Int64]
 
-    public init(bytes: [String: Int64] = [:], writes: [String: Int64] = [:]) {
+    public init(bytes: [String: Int64] = [:], writes: [String: Int64] = [:], siteBytes: [String: Int64] = [:], siteWrites: [String: Int64] = [:]) {
         self.bytes = bytes
         self.writes = writes
+        self.siteBytes = siteBytes
+        self.siteWrites = siteWrites
+    }
+
+    public var isEmpty: Bool {
+        return self.bytes.isEmpty && self.writes.isEmpty && self.siteBytes.isEmpty && self.siteWrites.isEmpty
     }
 
     public var totalBytes: Int64 {
@@ -141,7 +162,21 @@ public struct DiskWriteSnapshot: Sendable, Equatable {
                 writes[key] = delta
             }
         }
-        return DiskWriteSnapshot(bytes: bytes, writes: writes)
+        var siteBytes: [String: Int64] = [:]
+        var siteWrites: [String: Int64] = [:]
+        for (key, value) in self.siteBytes {
+            let delta = value - (earlier.siteBytes[key] ?? 0)
+            if delta > 0 {
+                siteBytes[key] = delta
+            }
+        }
+        for (key, value) in self.siteWrites {
+            let delta = value - (earlier.siteWrites[key] ?? 0)
+            if delta > 0 {
+                siteWrites[key] = delta
+            }
+        }
+        return DiskWriteSnapshot(bytes: bytes, writes: writes, siteBytes: siteBytes, siteWrites: siteWrites)
     }
 
     public func adding(_ other: DiskWriteSnapshot) -> DiskWriteSnapshot {
@@ -152,7 +187,29 @@ public struct DiskWriteSnapshot: Sendable, Equatable {
         for (key, value) in other.writes {
             result.writes[key, default: 0] += value
         }
+        for (key, value) in other.siteBytes {
+            result.siteBytes[key, default: 0] += value
+        }
+        for (key, value) in other.siteWrites {
+            result.siteWrites[key, default: 0] += value
+        }
         return result
+    }
+
+    /// The call sites that appended the most WAL, largest first; ties by name.
+    public func topSites(limit: Int) -> [(site: String, bytes: Int64, commits: Int64)] {
+        let ranked = self.siteBytes.sorted { lhs, rhs in
+            if lhs.value != rhs.value {
+                return lhs.value > rhs.value
+            }
+            return lhs.key < rhs.key
+        }
+        return ranked.prefix(limit).map { (site: $0.key, bytes: $0.value, commits: self.siteWrites[$0.key] ?? 0) }
+    }
+
+    /// `PeerStateManager.swift:210 4.2 MB (310 commits), …`
+    public func formattedSites(limit: Int = 10) -> String {
+        return self.topSites(limit: limit).map { "\($0.site) \(DiskWriteSnapshot.formatBytes($0.bytes)) (\($0.commits) commits)" }.joined(separator: ", ")
     }
 
     /// Categories by bytes written, largest first; ties by name.

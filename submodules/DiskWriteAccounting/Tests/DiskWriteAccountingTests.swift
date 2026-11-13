@@ -127,6 +127,53 @@ final class DiskWriteAccountingTests: XCTestCase {
         XCTAssertNil(ledger.days["2026-10-06"])
         XCTAssertNotNil(ledger.days["2026-10-07"])
     }
+
+    func testCallSitesAreKeptApartFromTheTotalsAndReachTheLedger() throws {
+        let directory = NSTemporaryDirectory() + "DiskWriteLedgerSites-" + UUID().uuidString
+        try FileManager.default.createDirectory(atPath: directory, withIntermediateDirectories: true)
+        defer {
+            let _ = try? FileManager.default.removeItem(atPath: directory)
+        }
+        let ledgerPath = directory + "/disk-writes.json"
+        let accounting = DiskWriteAccounting()
+        let reporter = DiskWriteAccountingReporter(accounting: accounting, ledgerPath: ledgerPath)
+        accounting.add(DiskWriteCategory.sqliteWal(database: "postbox/db"), bytes: 8192)
+        accounting.addSite("A.swift:1", bytes: 4096)
+        accounting.addSite("A.swift:1", bytes: 4096)
+        accounting.addSite("B.swift:2", bytes: 100)
+        reporter.report(reason: "hourly")
+        accounting.addSite("B.swift:2", bytes: 50)
+        reporter.report(reason: "hourly")
+
+        let day = try XCTUnwrap(DiskWriteLedger.load(path: ledgerPath).days.values.first)
+        XCTAssertEqual(day.snapshot.totalBytes, 8192, "call sites are a breakdown, not extra bytes")
+        XCTAssertEqual(day.siteBytes, ["A.swift:1": 8192, "B.swift:2": 150])
+        XCTAssertEqual(day.siteWrites, ["A.swift:1": 2, "B.swift:2": 2])
+        XCTAssertEqual(day.snapshot.topSites(limit: 1).first?.site, "A.swift:1")
+        XCTAssertTrue(DiskWriteLedger.load(path: ledgerPath).formattedDays().contains("A.swift:1 8.0 KB (2 commits)"))
+    }
+
+    func testTheLedgerKeepsTheBiggestCallSitesOfADay() {
+        var ledger = DiskWriteLedger()
+        var siteBytes: [String: Int64] = [:]
+        var siteWrites: [String: Int64] = [:]
+        for index in 1 ... 30 {
+            siteBytes["S.swift:\(index)"] = Int64(index)
+            siteWrites["S.swift:\(index)"] = 1
+        }
+        ledger.add(DiskWriteSnapshot(siteBytes: siteBytes, siteWrites: siteWrites), day: "2026-11-13")
+        let day = ledger.days["2026-11-13"]
+        XCTAssertEqual(day?.siteBytes.count, DiskWriteLedger.keptSites)
+        XCTAssertNotNil(day?.siteBytes["S.swift:30"])
+        XCTAssertNil(day?.siteBytes["S.swift:1"])
+    }
+
+    func testALedgerWrittenBeforeCallSitesStillLoads() throws {
+        let json = #"{"days":{"2026-11-12":{"bytes":{"logs":5},"writes":{"logs":1}}}}"#
+        let ledger = try JSONDecoder().decode(DiskWriteLedger.self, from: Data(json.utf8))
+        XCTAssertEqual(ledger.days["2026-11-12"]?.bytes["logs"], 5)
+        XCTAssertEqual(ledger.days["2026-11-12"]?.siteBytes, [:])
+    }
 }
 
 final class DiskWriteAccountingReportingTests: XCTestCase {

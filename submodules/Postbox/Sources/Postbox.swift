@@ -1,4 +1,5 @@
 import Foundation
+import DiskWriteAccounting
 
 import SwiftSignalKit
 
@@ -3474,6 +3475,7 @@ final class PostboxImpl {
                 postboxLogSync()
             }
             self.transactionWriteAttribution.note(site: siteName, frames: appendedFrames)
+            DiskWriteAccounting.shared.addSite(siteName, bytes: appendedFrames * self.valueBox.walFrameSize)
             if let attributionLine = self.transactionWriteAttribution.takeLogLine(now: Date().timeIntervalSince1970) {
                 postboxLog(attributionLine)
             }

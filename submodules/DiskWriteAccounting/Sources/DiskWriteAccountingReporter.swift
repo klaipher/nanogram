@@ -7,18 +7,41 @@ public struct DiskWriteLedger: Codable, Equatable, Sendable {
     public struct Day: Codable, Equatable, Sendable {
         public var bytes: [String: Int64]
         public var writes: [String: Int64]
+        /// The Postbox transaction call sites that appended the most WAL that day (`DiskWriteLedger.keptSites`).
+        public var siteBytes: [String: Int64]
+        public var siteWrites: [String: Int64]
 
-        public init(bytes: [String: Int64] = [:], writes: [String: Int64] = [:]) {
+        public init(bytes: [String: Int64] = [:], writes: [String: Int64] = [:], siteBytes: [String: Int64] = [:], siteWrites: [String: Int64] = [:]) {
             self.bytes = bytes
             self.writes = writes
+            self.siteBytes = siteBytes
+            self.siteWrites = siteWrites
+        }
+
+        private enum CodingKeys: String, CodingKey {
+            case bytes
+            case writes
+            case siteBytes
+            case siteWrites
+        }
+
+        public init(from decoder: Decoder) throws {
+            let container = try decoder.container(keyedBy: CodingKeys.self)
+            self.bytes = try container.decode([String: Int64].self, forKey: .bytes)
+            self.writes = try container.decode([String: Int64].self, forKey: .writes)
+            self.siteBytes = try container.decodeIfPresent([String: Int64].self, forKey: .siteBytes) ?? [:]
+            self.siteWrites = try container.decodeIfPresent([String: Int64].self, forKey: .siteWrites) ?? [:]
         }
 
         public var snapshot: DiskWriteSnapshot {
-            return DiskWriteSnapshot(bytes: self.bytes, writes: self.writes)
+            return DiskWriteSnapshot(bytes: self.bytes, writes: self.writes, siteBytes: self.siteBytes, siteWrites: self.siteWrites)
         }
     }
 
     public static let keptDays = 14
+    /// Call sites kept per day. More than the ten shown, so a site that is mid-rank in each report is not dropped
+    /// before its total adds up.
+    public static let keptSites = 20
 
     /// Keyed by local calendar day, `yyyy-MM-dd`.
     public var days: [String: Day]
@@ -28,11 +51,17 @@ public struct DiskWriteLedger: Codable, Equatable, Sendable {
     }
 
     public mutating func add(_ delta: DiskWriteSnapshot, day: String) {
-        if delta.bytes.isEmpty && delta.writes.isEmpty {
+        if delta.isEmpty {
             return
         }
         let updated = (self.days[day]?.snapshot ?? DiskWriteSnapshot()).adding(delta)
-        self.days[day] = Day(bytes: updated.bytes, writes: updated.writes)
+        var siteBytes: [String: Int64] = [:]
+        var siteWrites: [String: Int64] = [:]
+        for entry in updated.topSites(limit: DiskWriteLedger.keptSites) {
+            siteBytes[entry.site] = entry.bytes
+            siteWrites[entry.site] = entry.commits
+        }
+        self.days[day] = Day(bytes: updated.bytes, writes: updated.writes, siteBytes: siteBytes, siteWrites: siteWrites)
         if self.days.count > DiskWriteLedger.keptDays {
             for key in self.days.keys.sorted().prefix(self.days.count - DiskWriteLedger.keptDays) {
                 self.days.removeValue(forKey: key)
@@ -64,7 +93,11 @@ public struct DiskWriteLedger: Codable, Equatable, Sendable {
                 continue
             }
             let snapshot = day.snapshot
-            lines.append("\(key): \(DiskWriteSnapshot.formatBytes(snapshot.totalBytes)); \(snapshot.formattedCategories(limit: limit))")
+            var line = "\(key): \(DiskWriteSnapshot.formatBytes(snapshot.totalBytes)); \(snapshot.formattedCategories(limit: limit))"
+            if !snapshot.siteBytes.isEmpty {
+                line += "\n  Postbox WAL by call site: \(snapshot.formattedSites(limit: 10))"
+            }
+            lines.append(line)
         }
         return lines.joined(separator: "\n")
     }
@@ -111,7 +144,7 @@ public final class DiskWriteAccountingReporter: @unchecked Sendable {
         let dayKey = DiskWriteAccountingReporter.dayKey(date)
         ledger.add(delta, day: dayKey)
         self.ledger = ledger
-        if let ledgerPath = self.ledgerPath, !(delta.bytes.isEmpty && delta.writes.isEmpty) {
+        if let ledgerPath = self.ledgerPath, !delta.isEmpty {
             ledger.save(path: ledgerPath)
         }
         let today = ledger.days[dayKey]?.snapshot ?? DiskWriteSnapshot()
