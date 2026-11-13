@@ -51,6 +51,10 @@ final class BrowserPdfContent: UIView, BrowserContent, UIScrollViewDelegate, PDF
     var getNavigationController: () -> NavigationController? = { return nil }
     
     private var tempFile: EngineTempBoxFile?
+    private var documentUrl: URL?
+    private var releasedPageIndex: Int?
+    private var isSuspended = false
+    private var memoryWarningObserver: NSObjectProtocol?
     
     init(context: AccountContext, presentationData: PresentationData, file: FileMediaReference) {
         self.context = context
@@ -90,7 +94,9 @@ final class BrowserPdfContent: UIView, BrowserContent, UIScrollViewDelegate, PDF
                 title = fileName
                 url = updatedPath
             }
-            self.pdfView.document = PDFDocument(url: URL(fileURLWithPath: updatedPath))
+            let documentUrl = URL(fileURLWithPath: updatedPath)
+            self.documentUrl = documentUrl
+            self.pdfView.document = PDFDocument(url: documentUrl)
         }
          
         self._state = BrowserContentState(title: title, url: url, estimatedProgress: 0.0, readingProgress: 0.0, contentType: .document)
@@ -125,6 +131,12 @@ final class BrowserPdfContent: UIView, BrowserContent, UIScrollViewDelegate, PDF
         }
         
         NotificationCenter.default.addObserver(self, selector: #selector(self.pageChangeHandler(_:)), name: .PDFViewPageChanged, object: nil)
+        
+        self.memoryWarningObserver = NotificationCenter.default.addObserver(forName: UIApplication.didReceiveMemoryWarningNotification, object: nil, queue: .main) { [weak self] _ in
+            MainActor.assumeIsolated {
+                self?.handleMemoryWarning()
+            }
+        }
     }
     
     required init?(coder: NSCoder) {
@@ -133,6 +145,55 @@ final class BrowserPdfContent: UIView, BrowserContent, UIScrollViewDelegate, PDF
     
     deinit {
         NotificationCenter.default.removeObserver(self, name: .PDFViewPageChanged, object: nil)
+        if let memoryWarningObserver = self.memoryWarningObserver {
+            NotificationCenter.default.removeObserver(memoryWarningObserver)
+        }
+    }
+    
+    /// A minimized document keeps no `PDFDocument` (its decoded pages and caches are what a large file costs); it is
+    /// opened again at the same page when the browser is maximized.
+    func setSuspended(_ suspended: Bool) {
+        guard self.isSuspended != suspended else {
+            return
+        }
+        self.isSuspended = suspended
+        if suspended {
+            self.releaseDocument(reason: "minimized")
+        } else {
+            self.restoreDocument()
+        }
+    }
+    
+    private func handleMemoryWarning() {
+        if self.isSuspended || self.window == nil {
+            self.releaseDocument(reason: "memory warning")
+        }
+    }
+    
+    private func releaseDocument(reason: String) {
+        guard let document = self.pdfView.document else {
+            return
+        }
+        if let page = self.pdfView.currentPage {
+            self.releasedPageIndex = document.index(for: page)
+        }
+        document.cancelFindString()
+        document.delegate = nil
+        self.searchResults = []
+        self.pdfView.highlightedSelections = nil
+        self.pdfView.document = nil
+        Logger.shared.log("BrowserPdf", "Released the PDF document (\(reason))")
+    }
+    
+    private func restoreDocument() {
+        guard self.pdfView.document == nil, let documentUrl = self.documentUrl, let document = PDFDocument(url: documentUrl) else {
+            return
+        }
+        self.pdfView.document = document
+        if let index = self.releasedPageIndex, index < document.pageCount, let page = document.page(at: index) {
+            self.pdfView.go(to: page)
+        }
+        self.releasedPageIndex = nil
     }
     
     @objc func pageChangeHandler(_ notification: Notification) {

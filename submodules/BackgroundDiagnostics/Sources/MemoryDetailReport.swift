@@ -89,8 +89,11 @@ public struct MemoryDetailReport: Sendable, Equatable {
     public var zones: [MallocZoneUsage]
     public var caches: [MemoryProbeRegistry.Entry]
     public var instances: [MemoryProbeRegistry.Entry]
+    /// What the app may still allocate before the system ends it (`ProcessMemory.availableHeadroom()`), when known.
+    public var headroom: UInt64?
 
-    public init(memory: ProcessMemory?, threads: Int?, zones: [MallocZoneUsage], caches: [MemoryProbeRegistry.Entry], instances: [MemoryProbeRegistry.Entry]) {
+    public init(memory: ProcessMemory?, threads: Int?, zones: [MallocZoneUsage], caches: [MemoryProbeRegistry.Entry], instances: [MemoryProbeRegistry.Entry], headroom: UInt64? = nil) {
+        self.headroom = headroom
         self.memory = memory
         self.threads = threads
         self.zones = zones
@@ -104,6 +107,9 @@ public struct MemoryDetailReport: Sendable, Equatable {
             parts.append(MemoryFormat.summary(memory))
         } else {
             parts.append("footprint unavailable")
+        }
+        if let headroom = self.headroom {
+            parts.append("headroom \(MemoryFormat.megabytes(headroom))")
         }
         if let threads = self.threads {
             parts.append("threads \(threads)")

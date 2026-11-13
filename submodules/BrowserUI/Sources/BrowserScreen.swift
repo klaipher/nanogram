@@ -1803,6 +1803,9 @@ public class BrowserScreen: ViewController, MinimizableController {
     
     public var isMinimized = false {
         didSet {
+            if let pdfContent = self.node.content.last as? BrowserPdfContent {
+                pdfContent.setSuspended(self.isMinimized)
+            }
             if let webContent = self.node.content.last as? BrowserWebContent {
                 if !self.isMinimized {
                     webContent.webView.setNeedsLayout()

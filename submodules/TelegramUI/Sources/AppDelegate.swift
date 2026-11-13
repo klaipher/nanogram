@@ -1775,6 +1775,7 @@ private func extractAccountManagerState(records: AccountRecordsView<TelegramAcco
         
         var previousReportedMemoryConsumption = 0
         self.registerMemoryProbes()
+        Logger.shared.log("App \(self.episodeId)", "Memory headroom at launch: \(ProcessMemory.availableHeadroom().map { "\($0 / (1024 * 1024)) MB" } ?? "unknown"), footprint \(ProcessMemory.current().map { "\($0.footprint / (1024 * 1024)) MB" } ?? "unknown")")
         var memoryDetailTick = 0
         // Every 5 s (was 0.5 s, for the life of the app, background included). The value is only
         // logged on a >1 MB change and shown by a debug overlay; 2 Hz kept the main thread waking.
@@ -2278,7 +2279,8 @@ private func extractAccountManagerState(records: AccountRecordsView<TelegramAcco
                 threads: MemoryRelief.threadCount(),
                 zones: MallocZoneUsage.largest(limit: 4),
                 caches: snapshot.caches,
-                instances: snapshot.instances
+                instances: snapshot.instances,
+                headroom: ProcessMemory.availableHeadroom()
             )
             Logger.shared.log("App \(episodeId)", report.logLine)
         }

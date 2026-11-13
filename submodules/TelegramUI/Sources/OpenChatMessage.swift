@@ -264,16 +264,34 @@ func openChatMessageImpl(_ params: OpenChatMessageParams) -> Bool {
                             } else {
                                 subject = .document(file: fileReference, canShare: canShare)
                             }
-                            let controller = BrowserScreen(context: params.context, subject: subject)
-                            controller.openDocument = { [weak controller] file, canShare in
-                                guard let controller else {
-                                    return
-                                }
-                                controller.dismiss()
-                                
+                            let openPreview: (TelegramMediaFile, Bool) -> Void = { file, canShare in
                                 presentDocumentPreviewController(rootController: rootController, theme: presentationData.theme, strings: presentationData.strings, postbox: params.context.account.postbox, file: file, canShare: canShare)
                             }
-                            params.navigationController?.pushViewController(controller)
+                            let pushBrowser = {
+                                let controller = BrowserScreen(context: params.context, subject: subject)
+                                controller.openDocument = { [weak controller] file, canShare in
+                                    guard let controller else {
+                                        return
+                                    }
+                                    controller.dismiss()
+                                    
+                                    openPreview(file, canShare)
+                                }
+                                params.navigationController?.pushViewController(controller)
+                            }
+                            if case .pdfDocument = subject {
+                                let path = params.context.engine.resources.completedResourcePath(id: EngineMediaResource.Id(file.resource.id))
+                                resolvePdfViewingRoute(path: path, completion: { route in
+                                    switch route {
+                                    case .inline:
+                                        pushBrowser()
+                                    case .quickLook:
+                                        openPreview(file, canShare)
+                                    }
+                                })
+                            } else {
+                                pushBrowser()
+                            }
                         } else {
                             presentDocumentPreviewController(rootController: rootController, theme: presentationData.theme, strings: presentationData.strings, postbox: params.context.account.postbox, file: file, canShare: canShare)
                         }
