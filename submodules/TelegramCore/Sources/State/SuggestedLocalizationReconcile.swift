@@ -4,11 +4,11 @@ import Postbox
 /// Language codes whose suggestion the person has already seen. Kept under its own preferences key (not inside the
 /// upstream `SuggestedLocalizationEntry`) so a suggestion that flips A, B, A is not shown a second time.
 final class SuggestedLocalizationSeenCodes: Codable {
-    static let key: ValueBoxKey = {
+    static var key: ValueBoxKey {
         let key = ValueBoxKey(length: 4)
         key.setInt32(0, value: 7001)
         return key
-    }()
+    }
     
     static let maxCount = 16
     

@@ -26,7 +26,7 @@ enum CallRingTimeout {
         return Double(serverTimeoutMs ?? defaultServerTimeoutMs) / 1000.0 + grace
     }
 
-    static let systemTimer: CallRingTimerFactory = { delay, queue, fire in
+    static func systemTimer(delay: Double, queue: Queue, fire: @escaping () -> Void) -> Disposable {
         let timer = SwiftSignalKit.Timer(timeout: delay, repeat: false, completion: {
             fire()
         }, queue: queue)
