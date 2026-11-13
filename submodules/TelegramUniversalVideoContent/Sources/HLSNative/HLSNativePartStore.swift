@@ -11,7 +11,8 @@ import HLSPlayback
 // segment is never written again. Only hardware AV1, which AVFoundation reads from a path, goes through a temp file
 // (`HLSStreamingStorage.nativePartContent`, which accounts the write).
 //
-// The store owns those temp files. A removed part's file is disposed on the main-queue turn after the next parts list
+// The store owns those temp files and gives them back to `HLSTempFileCache`, which keeps the unused ones for a while so
+// a segment made into a part again reuses its file. A removed part's file is disposed on the main-queue turn after the next parts list
 // is built, by which time the player has that list: SwiftSignalKit delivers a main-queue signal synchronously on
 // the main queue, so the player switches lists during the emission. (ChunkMediaPlayerPart.TempFile does not dispose
 // its file; livestreams depend on that.) A part read from MediaBox has no file; releasing it releases the resource.
@@ -106,7 +107,7 @@ final class HLSNativePartStore {
                 }
                 if isCancelled.with({ $0 }) {
                     if let file = content.file {
-                        EngineTempBox.shared.dispose(file)
+                        HLSStreamingStorage.releaseTempFile(file)
                     }
                     return
                 }
@@ -130,7 +131,7 @@ final class HLSNativePartStore {
         self.makeDisposables[key] = (part |> deliverOnMainQueue).startStrict(next: { [weak self] part in
             guard let self else {
                 if let part {
-                    if let file = part.content.file { EngineTempBox.shared.dispose(file) }
+                    if let file = part.content.file { HLSStreamingStorage.releaseTempFile(file) }
                 }
                 return
             }
@@ -188,11 +189,11 @@ final class HLSNativePartStore {
         }
         self.makeDisposables.removeAll()
         for (_, part) in self.parts {
-            if let file = part.content.file { EngineTempBox.shared.dispose(file) }
+            if let file = part.content.file { HLSStreamingStorage.releaseTempFile(file) }
         }
         self.parts.removeAll()
         for file in self.pendingDisposal {
-            EngineTempBox.shared.dispose(file)
+            HLSStreamingStorage.releaseTempFile(file)
         }
         self.pendingDisposal.removeAll()
     }
@@ -206,7 +207,7 @@ final class HLSNativePartStore {
         // A real dispatch: Queue.mainQueue().async would run at once on the main queue, before the emission.
         DispatchQueue.main.async {
             for file in files {
-                EngineTempBox.shared.dispose(file)
+                HLSStreamingStorage.releaseTempFile(file)
             }
         }
     }

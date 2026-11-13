@@ -261,10 +261,11 @@ final class HLSStreamingStorageTests: XCTestCase {
 
     func testHardwareAv1IsWrittenToATempFileAndAccounted() throws {
         for codec in ["av1", "av01"] {
+            let cache = HLSTempFileCache()
             let initData = try self.segment(HLSStreamingStorageTests.initializationRange)
             let segmentData = try self.segment(HLSStreamingStorageTests.segmentRange)
             let before = DiskWriteAccounting.shared.snapshot()
-            let content = try XCTUnwrap(HLSStreamingStorage.nativePartContent(mediaBox: self.mediaBox, resource: self.resource, resourceSize: Int64(self.fileData.count), initRange: HLSStreamingStorageTests.initializationRange, dataRange: HLSStreamingStorageTests.segmentRange, initData: initData, segmentData: segmentData, codecName: codec, isHardwareAv1Supported: true))
+            let content = try XCTUnwrap(HLSStreamingStorage.nativePartContent(mediaBox: self.mediaBox, resource: self.resource, resourceSize: Int64(self.fileData.count), initRange: HLSStreamingStorageTests.initializationRange, dataRange: HLSStreamingStorageTests.segmentRange, initData: initData, segmentData: segmentData, codecName: codec, isHardwareAv1Supported: true, tempFileCache: cache))
             guard case let .tempFile(tempFile) = content else {
                 return XCTFail("hardware AV1 (\(codec)) plays from a path, got \(content)")
             }
@@ -273,8 +274,80 @@ final class HLSStreamingStorageTests: XCTestCase {
             XCTAssertFalse(tempFile.deletesFileOnRelease)
             let delta = DiskWriteAccounting.shared.snapshot().subtracting(before)
             XCTAssertEqual(delta.bytes[DiskWriteCategory.tempBoxHLS] ?? 0, Int64(initData.count + segmentData.count))
-            TempBox.shared.dispose(tempFile.file)
+            HLSStreamingStorage.releaseTempFile(tempFile.file, tempFileCache: cache)
         }
+    }
+
+    func testHardwareAv1MakingTheSamePartAgainReusesTheFileAndCountsTheBytesOnce() throws {
+        let cache = HLSTempFileCache()
+        let initData = try self.segment(HLSStreamingStorageTests.initializationRange)
+        let segmentData = try self.segment(HLSStreamingStorageTests.segmentRange)
+        func make() throws -> TempBoxFile {
+            let content = try XCTUnwrap(HLSStreamingStorage.nativePartContent(mediaBox: self.mediaBox, resource: self.resource, resourceSize: Int64(self.fileData.count), initRange: HLSStreamingStorageTests.initializationRange, dataRange: HLSStreamingStorageTests.segmentRange, initData: initData, segmentData: segmentData, codecName: "av1", isHardwareAv1Supported: true, tempFileCache: cache))
+            return try XCTUnwrap(content.file)
+        }
+
+        let before = DiskWriteAccounting.shared.snapshot()
+        let first = try make()
+        HLSStreamingStorage.releaseTempFile(first, tempFileCache: cache)
+        let second = try make()
+        XCTAssertEqual(first.path, second.path)
+        XCTAssertEqual(DiskWriteAccounting.shared.snapshot().subtracting(before).bytes[DiskWriteCategory.tempBoxHLS] ?? 0, Int64(initData.count + segmentData.count))
+        XCTAssertEqual(try Data(contentsOf: URL(fileURLWithPath: second.path)), initData + segmentData)
+        HLSStreamingStorage.releaseTempFile(second, tempFileCache: cache)
+        cache.trimUnused()
+        XCTAssertEqual(cache.count, 0)
+        XCTAssertFalse(FileManager.default.fileExists(atPath: second.path))
+    }
+
+    // MARK: - Temp file cache
+
+    private func cacheKey(_ index: Int) -> HLSTempFileCache.Key {
+        return HLSTempFileCache.Key(resourceId: "r", initRange: 0 ..< 10, dataRange: Int64(index * 100) ..< Int64(index * 100 + 50))
+    }
+
+    private func writeFile(bytes: Int) -> (file: TempBoxFile, bytes: Int)? {
+        let file = TempBox.shared.tempFile(fileName: "data.mp4")
+        FileManager.default.createFile(atPath: file.path, contents: Data(count: bytes))
+        return (file, bytes)
+    }
+
+    func testTempFileCacheEvictsTheLeastRecentlyUsedUnusedFile() throws {
+        let cache = HLSTempFileCache(maxEntries: 2, maxBytes: 1024)
+        let a = try XCTUnwrap(cache.acquire(key: self.cacheKey(1), write: { self.writeFile(bytes: 10) }))
+        let b = try XCTUnwrap(cache.acquire(key: self.cacheKey(2), write: { self.writeFile(bytes: 10) }))
+        XCTAssertTrue(cache.release(a))
+        XCTAssertTrue(cache.release(b))
+        // Touch `a`, so `b` is the least recently used.
+        let aAgain = try XCTUnwrap(cache.acquire(key: self.cacheKey(1), write: { XCTFail("must be cached"); return nil }))
+        XCTAssertEqual(aAgain.path, a.path)
+        XCTAssertTrue(cache.release(aAgain))
+        let c = try XCTUnwrap(cache.acquire(key: self.cacheKey(3), write: { self.writeFile(bytes: 10) }))
+        XCTAssertEqual(cache.count, 2)
+        XCTAssertFalse(FileManager.default.fileExists(atPath: b.path), "the least recently used file is disposed")
+        XCTAssertTrue(FileManager.default.fileExists(atPath: a.path))
+        XCTAssertTrue(cache.release(c))
+        cache.trimUnused()
+    }
+
+    func testTempFileCacheNeverEvictsAFileInUseAndHonoursTheByteLimit() throws {
+        let cache = HLSTempFileCache(maxEntries: 8, maxBytes: 25)
+        let inUse = try XCTUnwrap(cache.acquire(key: self.cacheKey(1), write: { self.writeFile(bytes: 20) }))
+        let other = try XCTUnwrap(cache.acquire(key: self.cacheKey(2), write: { self.writeFile(bytes: 20) }))
+        XCTAssertTrue(cache.release(other))
+        XCTAssertTrue(FileManager.default.fileExists(atPath: inUse.path))
+        XCTAssertFalse(FileManager.default.fileExists(atPath: other.path), "over the byte limit, the unused file goes")
+        XCTAssertEqual(cache.count, 1)
+        XCTAssertTrue(cache.release(inUse))
+        cache.trimUnused()
+        XCTAssertEqual(cache.count, 0)
+    }
+
+    func testTempFileCacheDoesNotOwnForeignFiles() {
+        let cache = HLSTempFileCache()
+        let foreign = TempBox.shared.tempFile(fileName: "data.mp4")
+        XCTAssertFalse(cache.release(foreign))
+        TempBox.shared.dispose(foreign)
     }
 
     func testTheProbeReadsTheAppendedBytesFromMemory() throws {

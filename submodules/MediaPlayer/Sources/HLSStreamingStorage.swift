@@ -58,11 +58,20 @@ public enum HLSStreamingStorage {
     /// What the chunk player plays for one segment of the native HLS player, whose bytes (`initData`, then
     /// `segmentData`) were just read from `initRange` and `dataRange` of `resource` in the media cache. They are played
     /// in place from those ranges: no copy, no write. A temporary file is written only for hardware AV1, which
-    /// AVFoundation reads from a path. The file is not deleted when the part is released: its owner disposes it.
-    public static func nativePartContent(mediaBox: MediaBox, resource: MediaResource, resourceSize: Int64, initRange: Range<Int64>?, dataRange: Range<Int64>, initData: Data, segmentData: Data, codecName: String?, isHardwareAv1Supported: Bool = internal_isHardwareAv1Supported) -> ChunkMediaPlayerPart.Content? {
+    /// AVFoundation reads from a path. That file comes from `tempFileCache`, so the same segment made into a part
+    /// again is not written again. It is not deleted when the part is released: its owner gives it back with
+    /// `releaseTempFile`.
+    public static func nativePartContent(mediaBox: MediaBox, resource: MediaResource, resourceSize: Int64, initRange: Range<Int64>?, dataRange: Range<Int64>, initData: Data, segmentData: Data, codecName: String?, isHardwareAv1Supported: Bool = internal_isHardwareAv1Supported, tempFileCache: HLSTempFileCache = HLSTempFileCache.shared) -> ChunkMediaPlayerPart.Content? {
         let isHardwareAV1 = VideoRenditionCodecPreference.isAv1(codecName) && isHardwareAv1Supported
         if isHardwareAV1 {
-            return self.tempFilePartContent(initializationData: initRange == nil ? nil : initData, segmentData: segmentData, deletesFileOnRelease: false)
+            let key = HLSTempFileCache.Key(resourceId: resource.id.stringRepresentation, initRange: initRange, dataRange: dataRange)
+            let file = tempFileCache.acquire(key: key, write: {
+                return self.writeTempFile(initializationData: initRange == nil ? nil : initData, segmentData: segmentData)
+            })
+            guard let file else {
+                return nil
+            }
+            return .tempFile(ChunkMediaPlayerPart.TempFile(file: file, ignoreAudioEditList: true, deletesFileOnRelease: false))
         }
         var ranges: [Range<Int64>] = []
         if let initRange {
@@ -72,7 +81,22 @@ public enum HLSStreamingStorage {
         return .mediaBoxRanges(ChunkMediaPlayerPart.MediaBoxRanges(mediaBox: mediaBox, resource: resource, resourceSize: resourceSize, ranges: ranges, ignoreAudioEditList: true))
     }
 
+    /// Gives back the file of a part made by `nativePartContent`: a cached file stays cached for the next part made
+    /// from the same bytes, any other is disposed.
+    public static func releaseTempFile(_ file: TempBoxFile, tempFileCache: HLSTempFileCache = HLSTempFileCache.shared) {
+        if !tempFileCache.release(file) {
+            TempBox.shared.dispose(file)
+        }
+    }
+
     private static func tempFilePartContent(initializationData: Data?, segmentData: Data, deletesFileOnRelease: Bool = true) -> ChunkMediaPlayerPart.Content? {
+        guard let written = self.writeTempFile(initializationData: initializationData, segmentData: segmentData) else {
+            return nil
+        }
+        return .tempFile(ChunkMediaPlayerPart.TempFile(file: written.file, ignoreAudioEditList: true, deletesFileOnRelease: deletesFileOnRelease))
+    }
+
+    private static func writeTempFile(initializationData: Data?, segmentData: Data) -> (file: TempBoxFile, bytes: Int)? {
         let tempFile = TempBox.shared.tempFile(fileName: "data.mp4")
         var combinedData = Data()
         if let initializationData {
@@ -84,7 +108,7 @@ public enum HLSStreamingStorage {
             return nil
         }
         DiskWriteAccounting.shared.add(DiskWriteCategory.tempBoxHLS, bytes: combinedData.count)
-        return .tempFile(ChunkMediaPlayerPart.TempFile(file: tempFile, ignoreAudioEditList: true, deletesFileOnRelease: deletesFileOnRelease))
+        return (tempFile, combinedData.count)
     }
 }
 
