@@ -168,6 +168,35 @@ final class DiskWriteAccountingTests: XCTestCase {
         XCTAssertNil(day?.siteBytes["S.swift:1"])
     }
 
+    func testLaunchAndResumeDurationsFormADayHistogramInTheLedger() throws {
+        let directory = NSTemporaryDirectory() + "DiskWriteLedgerLaunch-" + UUID().uuidString
+        try FileManager.default.createDirectory(atPath: directory, withIntermediateDirectories: true)
+        defer {
+            let _ = try? FileManager.default.removeItem(atPath: directory)
+        }
+        let ledgerPath = directory + "/disk-writes.json"
+        let accounting = DiskWriteAccounting()
+        let reporter = DiskWriteAccountingReporter(accounting: accounting, ledgerPath: ledgerPath)
+        LaunchHistogram.record("launch.firstFrame", seconds: 0.18, accounting: accounting)
+        LaunchHistogram.record("launch.firstFrame", seconds: 0.2, accounting: accounting)
+        LaunchHistogram.record("launch.firstFrame", seconds: 7.5, accounting: accounting)
+        LaunchHistogram.record("resume.firstFrame", seconds: 0.012, accounting: accounting)
+        LaunchHistogram.record("resume.firstFrame", seconds: -1.0, accounting: accounting)
+        reporter.report(reason: "hourly")
+
+        let day = try XCTUnwrap(DiskWriteLedger.load(path: ledgerPath).days.values.first)
+        XCTAssertEqual(day.counters["launch.firstFrame.le250ms"], 2)
+        XCTAssertEqual(day.counters["launch.firstFrame.gt5000ms"], 1)
+        XCTAssertEqual(day.counters["launch.firstFrame.count"], 3)
+        XCTAssertEqual(day.counters["launch.firstFrame.sumMs"], 180 + 200 + 7500)
+        XCTAssertEqual(day.counters["resume.firstFrame.le100ms"], 1)
+        XCTAssertEqual(day.counters["resume.firstFrame.count"], 1)
+        XCTAssertEqual(day.snapshot.totalBytes, 0, "counters are not disk writes")
+        XCTAssertTrue(DiskWriteLedger.load(path: ledgerPath).formattedDays().contains("launch.firstFrame.count=3"))
+        XCTAssertEqual(LaunchHistogram.bucketName(milliseconds: 100), "le100ms")
+        XCTAssertEqual(LaunchHistogram.bucketName(milliseconds: 101), "le250ms")
+    }
+
     func testALedgerWrittenBeforeCallSitesStillLoads() throws {
         let json = #"{"days":{"2026-11-12":{"bytes":{"logs":5},"writes":{"logs":1}}}}"#
         let ledger = try JSONDecoder().decode(DiskWriteLedger.self, from: Data(json.utf8))

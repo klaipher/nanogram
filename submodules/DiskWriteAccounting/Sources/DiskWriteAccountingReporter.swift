@@ -10,12 +10,15 @@ public struct DiskWriteLedger: Codable, Equatable, Sendable {
         /// The Postbox transaction call sites that appended the most WAL that day (`DiskWriteLedger.keptSites`).
         public var siteBytes: [String: Int64]
         public var siteWrites: [String: Int64]
+        /// `DiskWriteAccounting.addCounter` totals of that day (launch and resume histograms).
+        public var counters: [String: Int64]
 
-        public init(bytes: [String: Int64] = [:], writes: [String: Int64] = [:], siteBytes: [String: Int64] = [:], siteWrites: [String: Int64] = [:]) {
+        public init(bytes: [String: Int64] = [:], writes: [String: Int64] = [:], siteBytes: [String: Int64] = [:], siteWrites: [String: Int64] = [:], counters: [String: Int64] = [:]) {
             self.bytes = bytes
             self.writes = writes
             self.siteBytes = siteBytes
             self.siteWrites = siteWrites
+            self.counters = counters
         }
 
         private enum CodingKeys: String, CodingKey {
@@ -23,6 +26,7 @@ public struct DiskWriteLedger: Codable, Equatable, Sendable {
             case writes
             case siteBytes
             case siteWrites
+            case counters
         }
 
         public init(from decoder: Decoder) throws {
@@ -31,10 +35,11 @@ public struct DiskWriteLedger: Codable, Equatable, Sendable {
             self.writes = try container.decode([String: Int64].self, forKey: .writes)
             self.siteBytes = try container.decodeIfPresent([String: Int64].self, forKey: .siteBytes) ?? [:]
             self.siteWrites = try container.decodeIfPresent([String: Int64].self, forKey: .siteWrites) ?? [:]
+            self.counters = try container.decodeIfPresent([String: Int64].self, forKey: .counters) ?? [:]
         }
 
         public var snapshot: DiskWriteSnapshot {
-            return DiskWriteSnapshot(bytes: self.bytes, writes: self.writes, siteBytes: self.siteBytes, siteWrites: self.siteWrites)
+            return DiskWriteSnapshot(bytes: self.bytes, writes: self.writes, siteBytes: self.siteBytes, siteWrites: self.siteWrites, counters: self.counters)
         }
     }
 
@@ -61,7 +66,7 @@ public struct DiskWriteLedger: Codable, Equatable, Sendable {
             siteBytes[entry.site] = entry.bytes
             siteWrites[entry.site] = entry.commits
         }
-        self.days[day] = Day(bytes: updated.bytes, writes: updated.writes, siteBytes: siteBytes, siteWrites: siteWrites)
+        self.days[day] = Day(bytes: updated.bytes, writes: updated.writes, siteBytes: siteBytes, siteWrites: siteWrites, counters: updated.counters)
         if self.days.count > DiskWriteLedger.keptDays {
             for key in self.days.keys.sorted().prefix(self.days.count - DiskWriteLedger.keptDays) {
                 self.days.removeValue(forKey: key)
@@ -96,6 +101,9 @@ public struct DiskWriteLedger: Codable, Equatable, Sendable {
             var line = "\(key): \(DiskWriteSnapshot.formatBytes(snapshot.totalBytes)); \(snapshot.formattedCategories(limit: limit))"
             if !snapshot.siteBytes.isEmpty {
                 line += "\n  Postbox WAL by call site: \(snapshot.formattedSites(limit: 10))"
+            }
+            if !snapshot.counters.isEmpty {
+                line += "\n  Counters: " + snapshot.counters.sorted(by: { $0.key < $1.key }).map { "\($0.key)=\($0.value)" }.joined(separator: ", ")
             }
             lines.append(line)
         }

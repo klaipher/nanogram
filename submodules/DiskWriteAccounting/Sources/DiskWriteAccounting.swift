@@ -16,8 +16,17 @@ public final class DiskWriteAccounting: @unchecked Sendable {
     private var writes: [String: Int64] = [:]
     private var siteBytes: [String: Int64] = [:]
     private var siteWrites: [String: Int64] = [:]
+    private var counters: [String: Int64] = [:]
 
     public init() {
+    }
+
+    /// Adds `value` to a named counter that is not a disk write (launch and resume durations, `LaunchHistogram`). It is
+    /// kept per day in the ledger beside the writes, so a report that carries the ledger carries these too.
+    public func addCounter(_ name: String, value: Int64 = 1) {
+        self.lock.lock()
+        self.counters[name, default: 0] += value
+        self.lock.unlock()
     }
 
     /// Records `bytes` bytes a Postbox transaction call site (`file.swift:123`) made SQLite append to the WAL. These are
@@ -42,7 +51,7 @@ public final class DiskWriteAccounting: @unchecked Sendable {
 
     public func snapshot() -> DiskWriteSnapshot {
         self.lock.lock()
-        let result = DiskWriteSnapshot(bytes: self.bytes, writes: self.writes, siteBytes: self.siteBytes, siteWrites: self.siteWrites)
+        let result = DiskWriteSnapshot(bytes: self.bytes, writes: self.writes, siteBytes: self.siteBytes, siteWrites: self.siteWrites, counters: self.counters)
         self.lock.unlock()
         return result
     }
@@ -129,16 +138,19 @@ public struct DiskWriteSnapshot: Sendable, Equatable {
     /// WAL bytes and commits per Postbox transaction call site; not part of `totalBytes`.
     public var siteBytes: [String: Int64]
     public var siteWrites: [String: Int64]
+    /// Named counters that are not disk writes (`DiskWriteAccounting.addCounter`).
+    public var counters: [String: Int64]
 
-    public init(bytes: [String: Int64] = [:], writes: [String: Int64] = [:], siteBytes: [String: Int64] = [:], siteWrites: [String: Int64] = [:]) {
+    public init(bytes: [String: Int64] = [:], writes: [String: Int64] = [:], siteBytes: [String: Int64] = [:], siteWrites: [String: Int64] = [:], counters: [String: Int64] = [:]) {
         self.bytes = bytes
         self.writes = writes
         self.siteBytes = siteBytes
         self.siteWrites = siteWrites
+        self.counters = counters
     }
 
     public var isEmpty: Bool {
-        return self.bytes.isEmpty && self.writes.isEmpty && self.siteBytes.isEmpty && self.siteWrites.isEmpty
+        return self.bytes.isEmpty && self.writes.isEmpty && self.siteBytes.isEmpty && self.siteWrites.isEmpty && self.counters.isEmpty
     }
 
     public var totalBytes: Int64 {
@@ -176,7 +188,14 @@ public struct DiskWriteSnapshot: Sendable, Equatable {
                 siteWrites[key] = delta
             }
         }
-        return DiskWriteSnapshot(bytes: bytes, writes: writes, siteBytes: siteBytes, siteWrites: siteWrites)
+        var counters: [String: Int64] = [:]
+        for (key, value) in self.counters {
+            let delta = value - (earlier.counters[key] ?? 0)
+            if delta > 0 {
+                counters[key] = delta
+            }
+        }
+        return DiskWriteSnapshot(bytes: bytes, writes: writes, siteBytes: siteBytes, siteWrites: siteWrites, counters: counters)
     }
 
     public func adding(_ other: DiskWriteSnapshot) -> DiskWriteSnapshot {
@@ -192,6 +211,9 @@ public struct DiskWriteSnapshot: Sendable, Equatable {
         }
         for (key, value) in other.siteWrites {
             result.siteWrites[key, default: 0] += value
+        }
+        for (key, value) in other.counters {
+            result.counters[key, default: 0] += value
         }
         return result
     }
@@ -259,4 +281,29 @@ public struct DiskWriteSnapshot: Sendable, Equatable {
 private func oneDecimal(_ value: Double) -> String {
     let tenths = Int64((value * 10.0).rounded())
     return "\(tenths / 10).\(tenths % 10)"
+}
+
+/// Launch and resume durations as a day histogram in the ledger, for when MetricKit delivers none (its launch, resume
+/// and hitch histograms were empty from 2026-11-07 on). Counters `launch.firstFrame.le250ms` … `.gt5000ms`, plus
+/// `.count` and `.sumMs`.
+public enum LaunchHistogram {
+    public static let bucketLimitsMs: [Int] = [100, 250, 500, 1000, 2000, 5000]
+
+    public static func bucketName(milliseconds: Int) -> String {
+        for limit in LaunchHistogram.bucketLimitsMs where milliseconds <= limit {
+            return "le\(limit)ms"
+        }
+        return "gt\(LaunchHistogram.bucketLimitsMs.last ?? 0)ms"
+    }
+
+    /// Counts one measurement of `kind` (`launch.firstFrame`, `resume.firstFrame`) that took `seconds`.
+    public static func record(_ kind: String, seconds: Double, accounting: DiskWriteAccounting = .shared) {
+        if !seconds.isFinite || seconds < 0.0 {
+            return
+        }
+        let milliseconds = Int((seconds * 1000.0).rounded())
+        accounting.addCounter("\(kind).\(LaunchHistogram.bucketName(milliseconds: milliseconds))")
+        accounting.addCounter("\(kind).count")
+        accounting.addCounter("\(kind).sumMs", value: Int64(milliseconds))
+    }
 }
