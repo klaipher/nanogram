@@ -412,8 +412,8 @@ public final class SharedNotificationManager {
         }
     }
     
-    private var currentNotificationCall: (peer: EnginePeer?, internalId: CallSessionInternalId)?
-    private func updateNotificationCall(call: (peer: EnginePeer?, internalId: CallSessionInternalId)?, strings: PresentationStrings, nameOrder: PresentationPersonNameOrder) {
+    private var currentNotificationCall: (peer: EnginePeer?, internalId: CallSessionInternalId, peerId: EnginePeer.Id)?
+    private func updateNotificationCall(call: (peer: EnginePeer?, internalId: CallSessionInternalId, peerId: EnginePeer.Id)?, strings: PresentationStrings, nameOrder: PresentationPersonNameOrder) {
         if let previousCall = currentNotificationCall {
             if #available(iOS 10.0, *) {
                 let center = UNUserNotificationCenter.current()
@@ -449,17 +449,22 @@ public final class SharedNotificationManager {
                 }
                 content.body = body
                 content.sound = UNNotificationSound(named: UNNotificationSoundName(rawValue: "0.m4a"))
-                content.categoryIdentifier = "incomingCall"
-                content.userInfo = [:]
+                content.categoryIdentifier = IncomingCallNotificationRouting.categoryIdentifier
+                content.userInfo = IncomingCallResponse.localRingUserInfo(peerId: notificationCall.peerId.toInt64())
+                content.interruptionLevel = .timeSensitive
+                content.relevanceScore = 1.0
                 
                 let request = UNNotificationRequest(identifier: "call_\(notificationCall.internalId)", content: content, trigger: nil)
                 
                 let center = UNUserNotificationCenter.current()
                 Logger.shared.log("NotificationManager", "adding call \(notificationCall.internalId)")
-                center.add(request, withCompletionHandler: { error in
-                    if let error = error {
-                        Logger.shared.log("NotificationManager", "error adding call \(notificationCall.internalId), error: \(String(describing: error))")
-                    }
+                // The app rings the call now: the extension's ring for the same caller must not ring beside it.
+                IncomingCallResponse.removeDeliveredRings(peerId: notificationCall.peerId.toInt64(), completion: { _ in
+                    center.add(request, withCompletionHandler: { error in
+                        if let error = error {
+                            Logger.shared.log("NotificationManager", "error adding call \(notificationCall.internalId), error: \(String(describing: error))")
+                        }
+                    })
                 })
                 
             } else {
@@ -485,14 +490,15 @@ public final class SharedNotificationManager {
             if let notificationCall = self.notificationCall {
                 let peer = notificationCall.peer
                 let internalId = notificationCall.internalId
+                let peerId = notificationCall.peerId
                 let isIntegratedWithCallKit = notificationCall.isIntegratedWithCallKit
                 self.notificationCallStateDisposable.set((notificationCall.state
-                    |> map { state -> (EnginePeer?, CallSessionInternalId)? in
+                    |> map { state -> (EnginePeer?, CallSessionInternalId, EnginePeer.Id)? in
                         if isIntegratedWithCallKit {
                             return nil
                         }
                         if case .ringing = state.state {
-                            return (peer, internalId)
+                            return (peer, internalId, peerId)
                         } else {
                             return nil
                         }
@@ -511,15 +517,9 @@ public final class SharedNotificationManager {
 /// Takes down the ringing notification the notification service extension showed for a call from
 /// `peerId` (`IncomingCallNotifications`), once the app rings that call itself or it has stopped.
 func removeDeliveredIncomingCallNotifications(peerId: EnginePeer.Id) {
-    let center = UNUserNotificationCenter.current()
-    center.getDeliveredNotifications(completionHandler: { notifications in
-        let delivered = notifications.map { notification -> (identifier: String, userInfo: [AnyHashable: Any]) in
-            return (notification.request.identifier, notification.request.content.userInfo)
-        }
-        let identifiers = IncomingCallNotifications.identifiers(delivered: delivered, peerId: peerId.toInt64())
-        if !identifiers.isEmpty {
-            Logger.shared.log("NotificationManager", "removing \(identifiers.count) incoming call notifications")
-            center.removeDeliveredNotifications(withIdentifiers: identifiers)
+    IncomingCallResponse.removeDeliveredRings(peerId: peerId.toInt64(), completion: { count in
+        if count != 0 {
+            Logger.shared.log("NotificationManager", "removed \(count) incoming call notifications")
         }
     })
 }

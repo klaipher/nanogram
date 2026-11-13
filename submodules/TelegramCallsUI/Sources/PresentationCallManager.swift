@@ -1,4 +1,5 @@
 import Foundation
+import UIKit
 import AsyncDisplayKit
 import TelegramCore
 import SwiftSignalKit
@@ -11,6 +12,7 @@ import TelegramVoip
 import TelegramUIPreferences
 import AccountContext
 import CallKit
+import NotificationsPresentationData
 import PhoneNumberFormat
 
 private func callKitIntegrationIfEnabled(_ integration: CallKitIntegration?, settings: VoiceCallSettings?) -> CallKitIntegration?  {
@@ -193,11 +195,19 @@ public final class PresentationCallManagerImpl: PresentationCallManager {
         |> distinctUntilChanged
         
         let enabledMicrophoneAccess = Signal<Bool, NoError> { subscriber in
-            subscriber.putNext(DeviceAccess.isMicrophoneAccessAuthorized() == true)
-            subscriber.putCompletion()
-            return EmptyDisposable
+            let publish: () -> Void = {
+                subscriber.putNext(DeviceAccess.isMicrophoneAccessAuthorized() == true)
+            }
+            publish()
+            let observer = NotificationCenter.default.addObserver(forName: UIApplication.didBecomeActiveNotification, object: nil, queue: .main, using: { _ in
+                publish()
+            })
+            return ActionDisposable {
+                NotificationCenter.default.removeObserver(observer)
+            }
         }
         |> runOn(Queue.mainQueue())
+        |> distinctUntilChanged
         
         let ringingStatesByAccount: Signal<[(AccountContext, CallSessionRingingState, NetworkType)], NoError> = activeAccounts
         |> mapToSignal { accounts -> Signal<[(AccountContext, CallSessionRingingState, NetworkType)], NoError> in
@@ -479,6 +489,7 @@ public final class PresentationCallManagerImpl: PresentationCallManager {
             } else {
                 for (context, _, state, _, _) in ringingStates {
                     if state.id != self.currentCall?.internalId {
+                        IncomingCallResponse.removeDeliveredRings(peerId: state.peerId.toInt64())
                         self.callKitIntegration?.dropCall(uuid: state.id)
                         context.account.callSessionManager.drop(internalId: state.id, reason: .busy, debugLog: .single(nil))
                     }
