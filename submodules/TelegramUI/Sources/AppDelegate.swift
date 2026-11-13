@@ -3533,6 +3533,11 @@ private func extractAccountManagerState(records: AccountRecordsView<TelegramAcco
             return
         }
         
+        if let plan = IncomingCallResponse.plan(actionIdentifier: response.actionIdentifier, userInfo: response.notification.request.content.userInfo) {
+            self.handleIncomingCallResponse(plan: plan, userInfo: response.notification.request.content.userInfo, completionHandler: completionHandler)
+            return
+        }
+        
         let _ = (accountIdFromNotification(response.notification, sharedContext: self.sharedContextPromise.get())
         |> deliverOnMainQueue).start(next: { accountId in
             if response.actionIdentifier == UNNotificationDefaultActionIdentifier {
@@ -3631,6 +3636,124 @@ private func extractAccountManagerState(records: AccountRecordsView<TelegramAcco
         })
     }
     
+    /// A tap, Answer or Decline on a ringing call notification. The extension's ring carries the call,
+    /// so the app rings it from the push's update instead of waiting for the account's difference, and
+    /// Decline ends it the same way. Anything the app cannot do from the notification opens the app.
+    private func handleIncomingCallResponse(plan: IncomingCallResponse.Plan, userInfo: [AnyHashable: Any], completionHandler: @escaping () -> Void) {
+        let kind = plan.kind
+        let caller = IncomingCallResponse.caller(userInfo: userInfo)
+        Logger.shared.log("App \(self.episodeId)", "incoming call notification response: \(kind), carries the call: \(plan.call != nil)")
+        
+        let openCaller: () -> Void = { [weak self] in
+            guard let self, kind != .decline, let caller else {
+                return
+            }
+            self.openChatWhenReady(accountId: caller.accountId.flatMap { AccountRecordId(rawValue: $0) }, peerId: PeerId(caller.peerId), threadId: nil, storyId: nil)
+        }
+        let finish: () -> Void = {
+            if let caller {
+                removeDeliveredIncomingCallNotifications(peerId: PeerId(caller.peerId))
+            }
+            completionHandler()
+        }
+        
+        let _ = (self.sharedContextPromise.get()
+        |> take(1)
+        |> deliverOnMainQueue).start(next: { [weak self] sharedApplicationContext in
+            guard let self else {
+                completionHandler()
+                return
+            }
+            sharedApplicationContext.wakeupManager.allowBackgroundTimeExtension(timeout: 12.0, extendNow: true)
+            let sharedContext = sharedApplicationContext.sharedContext
+            
+            let perform: (PresentationCall, @escaping () -> Void) -> Void = { call, done in
+                switch kind {
+                case .open:
+                    sharedContext.navigateToCurrentCall()
+                    done()
+                case .answer:
+                    call.answer()
+                    sharedContext.navigateToCurrentCall()
+                    done()
+                case .decline:
+                    let _ = (call.hangUp()
+                    |> take(1)
+                    |> timeout(6.0, queue: Queue.mainQueue(), alternate: .single(false))
+                    |> deliverOnMainQueue).start(next: { _ in
+                        done()
+                    })
+                }
+            }
+            let withCall: (CallSessionInternalId?) -> Void = { internalId in
+                guard let callManager = sharedContext.callManager else {
+                    openCaller()
+                    finish()
+                    return
+                }
+                let _ = (callManager.currentCallSignal
+                |> filter { call in
+                    if let internalId {
+                        return call?.internalId == internalId
+                    } else {
+                        return call != nil
+                    }
+                }
+                |> take(1)
+                |> timeout(internalId == nil ? 0.5 : 8.0, queue: Queue.mainQueue(), alternate: .single(nil))
+                |> deliverOnMainQueue).start(next: { call in
+                    if let call {
+                        perform(call, finish)
+                    } else {
+                        Logger.shared.log("App \(self.episodeId)", "incoming call notification response: no call to act on, opening the app")
+                        openCaller()
+                        finish()
+                    }
+                })
+            }
+            
+            guard let call = plan.call, let updateData = IncomingCallResponse.updatesData(call.updates) else {
+                withCall(nil)
+                return
+            }
+            
+            let _ = (sharedContext.activeAccountContexts
+            |> take(1)
+            |> deliverOnMainQueue).start(next: { activeAccounts in
+                guard let context = activeAccounts.accounts.first(where: { $0.1.account.id.int64 == call.accountId })?.1 else {
+                    Logger.shared.log("App \(self.episodeId)", "incoming call notification response: account \(call.accountId) is not active")
+                    withCall(nil)
+                    return
+                }
+                let internalId = CallSessionManager.getStableIncomingUUID(stableId: call.callId)
+                switch kind {
+                case .open, .answer:
+                    context.account.stateManager.processIncomingCallUpdate(data: updateData, completion: { _ in })
+                    withCall(internalId)
+                case .decline:
+                    let callSessionManager = context.account.callSessionManager
+                    context.account.stateManager.processIncomingCallUpdate(data: updateData, completion: { _ in
+                        Queue.mainQueue().async {
+                            callSessionManager.drop(internalId: internalId, reason: .hangUp, debugLog: .single(nil))
+                        }
+                    })
+                    let _ = (callSessionManager.callState(internalId: internalId)
+                    |> filter { session in
+                        if case .terminated = session.state {
+                            return true
+                        }
+                        return false
+                    }
+                    |> take(1)
+                    |> timeout(6.0, queue: Queue.mainQueue(), alternate: .complete())
+                    |> deliverOnMainQueue).start(completed: {
+                        finish()
+                    })
+                }
+            })
+        })
+    }
+    
     private func registerForNotifications(context: AccountContextImpl, authorize: Bool = true, completion: @escaping (Bool) -> Void = { _ in }) {
         let presentationData = context.sharedContext.currentPresentationData.with { $0 }
         let _ = (context.sharedContext.accountManager.transaction { transaction -> Bool in
@@ -3638,11 +3761,11 @@ private func extractAccountManagerState(records: AccountRecordsView<TelegramAcco
             return settings.displayNameOnLockscreen
         }
         |> deliverOnMainQueue).start(next: { displayNames in
-            self.registerForNotifications(replyString: presentationData.strings.Notification_Reply, messagePlaceholderString: presentationData.strings.Conversation_InputTextPlaceholder, hiddenContentString: presentationData.strings.Watch_MessageView_Title, hiddenReactionContentString: presentationData.strings.Notification_LockScreenReactionPlaceholder, hiddenStoryContentString: presentationData.strings.Notification_LockScreenStoryPlaceholder, hiddenStoryReactionContentString: presentationData.strings.PUSH_REACT_STORY_HIDDEN, callUnlockVideoString: UIDevice.current.userInterfaceIdiom == .pad ? presentationData.strings.Call_UnlockToSeeVideoNotificationPad : presentationData.strings.Call_UnlockToSeeVideoNotification, includeNames: displayNames, authorize: authorize, completion: completion)
+            self.registerForNotifications(replyString: presentationData.strings.Notification_Reply, messagePlaceholderString: presentationData.strings.Conversation_InputTextPlaceholder, hiddenContentString: presentationData.strings.Watch_MessageView_Title, hiddenReactionContentString: presentationData.strings.Notification_LockScreenReactionPlaceholder, hiddenStoryContentString: presentationData.strings.Notification_LockScreenStoryPlaceholder, hiddenStoryReactionContentString: presentationData.strings.PUSH_REACT_STORY_HIDDEN, callUnlockVideoString: UIDevice.current.userInterfaceIdiom == .pad ? presentationData.strings.Call_UnlockToSeeVideoNotificationPad : presentationData.strings.Call_UnlockToSeeVideoNotification, callAnswerString: presentationData.strings.Call_Accept, callDeclineString: presentationData.strings.Call_Decline, includeNames: displayNames, authorize: authorize, completion: completion)
         })
     }
 
-    private func registerForNotifications(replyString: String, messagePlaceholderString: String, hiddenContentString: String, hiddenReactionContentString: String, hiddenStoryContentString: String, hiddenStoryReactionContentString: String, callUnlockVideoString: String, includeNames: Bool, authorize: Bool = true, completion: @escaping (Bool) -> Void = { _ in }) {
+    private func registerForNotifications(replyString: String, messagePlaceholderString: String, hiddenContentString: String, hiddenReactionContentString: String, hiddenStoryContentString: String, hiddenStoryReactionContentString: String, callUnlockVideoString: String, callAnswerString: String, callDeclineString: String, includeNames: Bool, authorize: Bool = true, completion: @escaping (Bool) -> Void = { _ in }) {
         let notificationCenter = UNUserNotificationCenter.current()
         Logger.shared.log("App \(self.episodeId)", "register for notifications: get settings (authorize: \(authorize))")
         notificationCenter.getNotificationSettings(completionHandler: { settings in
@@ -3692,6 +3815,10 @@ private func extractAccountManagerState(records: AccountRecordsView<TelegramAcco
                                 // The unlock-video notification is read on the lock screen: its own text stands in while previews
                                 // are hidden.
                                 let callUnlockVideoCategory = UNNotificationCategory(identifier: CallUnlockVideoNotificationState.categoryIdentifier, actions: [], intentIdentifiers: [], hiddenPreviewsBodyPlaceholder: callUnlockVideoString, options: [])
+                                // Answer opens the app, and needs the device unlocked; Decline works from the lock screen.
+                                let callAnswerAction = UNNotificationAction(identifier: IncomingCallNotificationRouting.answerActionIdentifier, title: callAnswerString, options: [.foreground, .authenticationRequired])
+                                let callDeclineAction = UNNotificationAction(identifier: IncomingCallNotificationRouting.declineActionIdentifier, title: callDeclineString, options: [.destructive])
+                                let incomingCallCategory = UNNotificationCategory(identifier: IncomingCallNotificationRouting.categoryIdentifier, actions: [callAnswerAction, callDeclineAction], intentIdentifiers: [], options: options)
                                 
                                 UNUserNotificationCenter.current().setNotificationCategories([
                                     unknownMessageCategory,
@@ -3703,7 +3830,8 @@ private func extractAccountManagerState(records: AccountRecordsView<TelegramAcco
                                     groupRepliableMediaMessageCategory,
                                     storyCategory,
                                     storyReactionCategory,
-                                    callUnlockVideoCategory
+                                    callUnlockVideoCategory,
+                                    incomingCallCategory
                                 ])
                                 
                                 Logger.shared.log("App \(self.episodeId)", "register for notifications: invoke registerForRemoteNotifications")
@@ -3729,7 +3857,7 @@ private func extractAccountManagerState(records: AccountRecordsView<TelegramAcco
         |> take(1)
         |> deliverOnMainQueue).start(next: { accountId in
             let showsBanner = ForegroundNotificationPresentation.showsBanner(notificationAccountId: accountId?.int64, currentAccountId: self.contextValue?.context.account.id.int64, hasUrl: notification.request.content.userInfo["url"] != nil)
-            completionHandler(showsBanner ? [.banner, .list] : [])
+            completionHandler(IncomingCallResponse.foregroundOptions(userInfo: notification.request.content.userInfo, showsBanner: showsBanner))
         })
     }
     
