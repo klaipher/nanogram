@@ -3746,22 +3746,11 @@ private func extractAccountManagerState(records: AccountRecordsView<TelegramAcco
                     context.account.stateManager.processIncomingCallUpdate(data: updateData, completion: { _ in })
                     withCall(internalId)
                 case .decline:
-                    let callSessionManager = context.account.callSessionManager
-                    context.account.stateManager.processIncomingCallUpdate(data: updateData, completion: { _ in
-                        Queue.mainQueue().async {
-                            callSessionManager.drop(internalId: internalId, reason: .hangUp, debugLog: .single(nil))
-                        }
-                    })
-                    let _ = (callSessionManager.callState(internalId: internalId)
-                    |> filter { session in
-                        if case .terminated = session.state {
-                            return true
-                        }
-                        return false
-                    }
+                    let _ = (_internal_declineIncomingCall(network: context.account.network, id: call.callId, accessHash: call.accessHash, isVideo: call.isVideo)
                     |> take(1)
-                    |> timeout(6.0, queue: Queue.mainQueue(), alternate: .complete())
-                    |> deliverOnMainQueue).start(completed: {
+                    |> timeout(6.0, queue: Queue.mainQueue(), alternate: .single(false))
+                    |> deliverOnMainQueue).start(next: { declined in
+                        Logger.shared.log("App \(self.episodeId)", "incoming call notification response: declined on the server: \(declined)")
                         finish()
                     })
                 }
