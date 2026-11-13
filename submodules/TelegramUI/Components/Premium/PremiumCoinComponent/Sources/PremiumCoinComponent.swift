@@ -75,6 +75,7 @@ public final class PremiumCoinComponent: Component {
         private var hasIdleAnimations = false
         
         private let isIntro: Bool
+        private var deferredSetup: DeferredSetup?
         
         init(frame: CGRect, isIntro: Bool) {
             self.isIntro = isIntro
@@ -92,7 +93,11 @@ public final class PremiumCoinComponent: Component {
             
             self.addSubview(self.sceneView)
             
-            self.setup()
+            let deferredSetup = DeferredSetup(work: { [weak self] in
+                self?.setup()
+            })
+            self.deferredSetup = deferredSetup
+            deferredSetup.request()
             
             let panGestureRecoginzer = UIPanGestureRecognizer(target: self, action: #selector(self.handlePan(_:)))
             self.addGestureRecognizer(panGestureRecoginzer)
@@ -109,6 +114,7 @@ public final class PremiumCoinComponent: Component {
         }
         
         deinit {
+            self.deferredSetup?.cancel()
             self.timer?.invalidate()
         }
         
