@@ -391,6 +391,7 @@ private final class CallSessionContext {
     
     let signalingDisposables = DisposableSet()
     let acknowledgeIncomingCallDisposable = MetaDisposable()
+    let ringTimeoutDisposable = MetaDisposable()
     var createConferenceCallDisposable: Disposable?
     
     var isEmpty: Bool {
@@ -412,6 +413,7 @@ private final class CallSessionContext {
     deinit {
         self.signalingDisposables.dispose()
         self.acknowledgeIncomingCallDisposable.dispose()
+        self.ringTimeoutDisposable.dispose()
         self.createConferenceCallDisposable?.dispose()
     }
 }
@@ -566,7 +568,10 @@ private final class CallSessionManagerContext {
     private let disposables = DisposableSet()
     private let rejectConferenceInvitationDisposables = DisposableSet()
 
-    init(queue: Queue, postbox: Postbox, network: Network, accountPeerId: PeerId, maxLayer: Int32, versions: [CallSessionManagerImplementationVersion], addUpdates: @escaping (Api.Updates) -> Void) {
+    private let makeRingTimer: CallRingTimerFactory
+
+    init(queue: Queue, postbox: Postbox, network: Network, accountPeerId: PeerId, maxLayer: Int32, versions: [CallSessionManagerImplementationVersion], addUpdates: @escaping (Api.Updates) -> Void, makeRingTimer: @escaping CallRingTimerFactory = CallRingTimeout.systemTimer) {
+        self.makeRingTimer = makeRingTimer
         self.queue = queue
         self.postbox = postbox
         self.network = network
@@ -791,6 +796,7 @@ private final class CallSessionManagerContext {
                 }
             }))
             self.contextIdByStableId[stableId] = internalId
+            self.armRingTimeout(internalId: internalId, stableId: stableId, context: context)
             self.contextUpdated(internalId: internalId)
             self.deliverCallSignalingData(id: stableId)
             self.ringingStatesUpdated()
@@ -798,6 +804,33 @@ private final class CallSessionManagerContext {
         } else {
             return nil
         }
+    }
+    
+    private func armRingTimeout(internalId: CallSessionInternalId, stableId: CallSessionStableId, context: CallSessionContext) {
+        let queue = self.queue
+        let makeRingTimer = self.makeRingTimer
+        context.ringTimeoutDisposable.set((self.postbox.transaction { transaction -> Int32? in
+            let appConfiguration = transaction.getPreferencesEntry(key: PreferencesKeys.appConfiguration)?.get(AppConfiguration.self)
+            return CallRingTimeout.serverTimeoutMs(appConfiguration: appConfiguration?.data)
+        }
+        |> deliverOn(queue)).start(next: { [weak self, weak context] serverTimeoutMs in
+            guard let self, let context else {
+                return
+            }
+            let delay = CallRingTimeout.delay(serverTimeoutMs: serverTimeoutMs)
+            context.ringTimeoutDisposable.set(CallRingTimeout.arm(delay: delay, queue: queue, makeTimer: makeRingTimer, isRinging: { [weak self, weak context] in
+                guard let self, let context, self.contexts[internalId] === context else {
+                    return false
+                }
+                if case .ringing = context.state {
+                    return true
+                }
+                return false
+            }, expire: { [weak self] in
+                CallDiagnostics.log("call \(stableId) rang past the server timeout without an update, dropped as missed")
+                self?.drop(internalId: internalId, reason: .missed, debugLog: .single(nil))
+            }))
+        }))
     }
     
     func dropOutgoingConferenceRequest(messageId: MessageId) {
