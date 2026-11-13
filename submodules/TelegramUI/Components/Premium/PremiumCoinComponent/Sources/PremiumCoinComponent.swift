@@ -73,6 +73,7 @@ public final class PremiumCoinComponent: Component {
         private var previousInteractionTimestamp: Double = 0.0
         private var timer: SwiftSignalKit.Timer?
         private var hasIdleAnimations = false
+        private var visibleLogo: String?
         
         private let isIntro: Bool
         private var deferredSetup: DeferredSetup?
@@ -252,6 +253,7 @@ public final class PremiumCoinComponent: Component {
             }
             
             self.sceneView.scene = scene
+            self.applyVisibleLogo()
             self.sceneView.delegate = self
             
             let _ = self.sceneView.snapshot()
@@ -518,6 +520,17 @@ public final class PremiumCoinComponent: Component {
             node.addAnimation(springAnimation, forKey: "rotate")
         }
         
+        private func applyVisibleLogo() {
+            guard let visibleLogo = self.visibleLogo, let scene = self.sceneView.scene, let node = scene.rootNode.childNode(withName: "star", recursively: false) else {
+                return
+            }
+            for node in node.childNodes {
+                if ["Business", "Affiliate"].contains(node.name) {
+                    node.isHidden = node.name != visibleLogo
+                }
+            }
+        }
+        
         func update(component: PremiumCoinComponent, availableSize: CGSize, transition: ComponentTransition) -> CGSize {
             self.sceneView.bounds = CGRect(origin: .zero, size: CGSize(width: availableSize.width * 2.0, height: availableSize.height * 2.0))
             if self.sceneView.superview == self {
@@ -532,13 +545,8 @@ public final class PremiumCoinComponent: Component {
                 visibleLogo = "Affiliate"
             }
             
-            if let scene = self.sceneView.scene, let node = scene.rootNode.childNode(withName: "star", recursively: false) {
-                for node in node.childNodes {
-                    if ["Business", "Affiliate"].contains(node.name) {
-                        node.isHidden = node.name != visibleLogo
-                    }
-                }
-            }
+            self.visibleLogo = visibleLogo
+            self.applyVisibleLogo()
             
             self.hasIdleAnimations = component.hasIdleAnimations
             
