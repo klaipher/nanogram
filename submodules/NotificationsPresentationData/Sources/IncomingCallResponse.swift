@@ -93,6 +93,7 @@ public enum IncomingCallResponse {
     /// Takes down the delivered rings of a call from `peerId` (`PeerId.toInt64()`), the extension's and
     /// the app's own alike.
     public static func removeDeliveredRings(peerId: Int64, center: UNUserNotificationCenter = .current(), completion: @escaping @Sendable (Int) -> Void = { _ in }) {
+        nonisolated(unsafe) let center = center
         center.getDeliveredNotifications(completionHandler: { notifications in
             let delivered = notifications.map { notification -> (identifier: String, userInfo: [AnyHashable: Any]) in
                 return (notification.request.identifier, notification.request.content.userInfo)

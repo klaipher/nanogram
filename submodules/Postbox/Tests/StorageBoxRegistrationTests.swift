@@ -24,7 +24,7 @@ final class StorageBoxRegistrationTests: XCTestCase {
     }
 
     private func makeBox(isMainProcess: Bool = true) -> StorageBox {
-        return StorageBox(logger: StorageBox.Logger(impl: { _ in }), basePath: self.basePath, isMainProcess: isMainProcess)
+        return StorageBox(logger: StorageBox.Logger(impl: { _ in }), basePath: self.basePath, isMainProcess: isMainProcess, sizeUpdateDelay: 1.0, maxPendingSizeUpdates: 64)
     }
 
     private func itemId(_ index: Int) -> Data {

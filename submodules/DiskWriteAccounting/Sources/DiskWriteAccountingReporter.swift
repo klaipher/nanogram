@@ -29,7 +29,7 @@ public struct DiskWriteLedger: Codable, Equatable, Sendable {
             case counters
         }
 
-        public init(from decoder: Decoder) throws {
+        public init(from decoder: any Decoder) throws {
             let container = try decoder.container(keyedBy: CodingKeys.self)
             self.bytes = try container.decode([String: Int64].self, forKey: .bytes)
             self.writes = try container.decode([String: Int64].self, forKey: .writes)

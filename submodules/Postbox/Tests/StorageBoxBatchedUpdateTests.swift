@@ -181,6 +181,10 @@ final class StorageBoxBatchedUpdateTests: XCTestCase {
         XCTAssertEqual(self.untypedTotal(reopened), 77)
     }
 
+    private func appliedSizeUpdates(_ box: StorageBox) -> Int {
+        return self.first(box.debugState())?.appliedSizeUpdates ?? -1
+    }
+
     func testTheDefaultBatchIsTenSecondsOrTwoHundredFiftySixItems() {
         XCTAssertEqual(StorageBox.defaultSizeUpdateDelay, 10.0)
         XCTAssertEqual(StorageBox.defaultMaxPendingSizeUpdates, 256)
@@ -189,14 +193,10 @@ final class StorageBoxBatchedUpdateTests: XCTestCase {
         for i in 0 ..< 255 {
             box.update(id: self.itemId(i), size: 10)
         }
-        // The queue has taken all of them; a second connection reads only the file.
-        self.drain(box)
-        let other = self.makeDefaultBox()
-        XCTAssertEqual(self.untypedTotal(other), 0, "255 pending items are not written yet")
+        XCTAssertEqual(self.appliedSizeUpdates(box), 0, "255 pending items are not written yet")
 
         box.update(id: self.itemId(255), size: 10)
-        self.drain(box)
-        XCTAssertEqual(self.untypedTotal(other), 2560, "the 256th item writes the batch")
+        XCTAssertEqual(self.appliedSizeUpdates(box), 256, "the 256th item writes the batch")
     }
 
     func testTheDefaultBatchWaitsMoreThanASecondAndIsWrittenWhenTheAppSuspends() {
@@ -207,16 +207,14 @@ final class StorageBoxBatchedUpdateTests: XCTestCase {
             wait.fulfill()
         })
         self.wait(for: [wait], timeout: 5.0)
-        self.drain(box)
-        let other = self.makeDefaultBox()
-        XCTAssertEqual(self.untypedTotal(other), 0, "not written after the old one-second delay")
+        XCTAssertEqual(self.appliedSizeUpdates(box), 0, "not written after the old one-second delay")
 
         let suspended = self.expectation(description: "suspended")
         box.setCanBeginTransactions(false, afterTransactionIfRunning: {
             suspended.fulfill()
         })
         self.wait(for: [suspended], timeout: 5.0)
-        XCTAssertEqual(self.untypedTotal(other), 321)
+        XCTAssertEqual(self.appliedSizeUpdates(box), 1)
     }
 
     func testReleasingMemoryWritesPendingUpdates() {

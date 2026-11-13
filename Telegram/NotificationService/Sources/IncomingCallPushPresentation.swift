@@ -130,8 +130,8 @@ enum IncomingCallPushPresentation {
         guard let error else {
             return "none"
         }
-        let error = error as NSError
-        return "domain: \(error.domain), code: \(error.code), rings: \(ringsAfterCallKitError(error))"
+        let nsError = error as NSError
+        return "domain: \(nsError.domain), code: \(nsError.code), rings: \(ringsAfterCallKitError(nsError))"
     }
 
     /// Whether a fetched message is the service message of a finished call (answered, missed or
