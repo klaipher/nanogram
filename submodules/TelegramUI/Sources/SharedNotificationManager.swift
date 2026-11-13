@@ -430,48 +430,34 @@ public final class SharedNotificationManager {
         }
         self.currentNotificationCall = call
         
+        self.callRingGeneration += 1
+        let generation = self.callRingGeneration
+        
         if let notificationCall = call {
-            let rawText = strings.PUSH_PHONE_CALL_REQUEST(notificationCall.peer?.displayTitle(strings: strings, displayOrder: nameOrder) ?? "").string
-            let title: String?
-            let body: String
-            if let index = rawText.firstIndex(of: "|") {
-                title = String(rawText[rawText.startIndex ..< index])
-                body = String(rawText[rawText.index(after: index)...])
-            } else {
-                title = nil
-                body = rawText
-            }
-            
             if #available(iOS 10.0, *) {
-                let content = UNMutableNotificationContent()
-                if let title = title {
-                    content.title = title
-                }
-                content.body = body
-                content.sound = UNNotificationSound(named: UNNotificationSoundName(rawValue: "0.m4a"))
-                content.categoryIdentifier = IncomingCallNotificationRouting.categoryIdentifier
-                content.userInfo = IncomingCallResponse.localRingUserInfo(peerId: notificationCall.peerId.toInt64())
-                content.interruptionLevel = .timeSensitive
-                content.relevanceScore = 1.0
-                
-                let request = UNNotificationRequest(identifier: "call_\(notificationCall.internalId)", content: content, trigger: nil)
-                
-                let center = UNUserNotificationCenter.current()
                 Logger.shared.log("NotificationManager", "adding call \(notificationCall.internalId)")
                 // The app rings the call now: the extension's ring for the same caller must not ring beside it.
-                IncomingCallResponse.removeDeliveredRings(peerId: notificationCall.peerId.toInt64(), completion: { _ in
-                    center.add(request, withCompletionHandler: { error in
-                        if let error = error {
-                            Logger.shared.log("NotificationManager", "error adding call \(notificationCall.internalId), error: \(String(describing: error))")
+                IncomingCallResponse.removeDeliveredRings(peerId: notificationCall.peerId.toInt64(), completion: { [weak self] _ in
+                    Queue.mainQueue().async {
+                        guard let self, self.callRingGeneration == generation else {
+                            return
                         }
-                    })
+                        let _ = (self.callerNameVisibility
+                        |> take(1)
+                        |> deliverOnMainQueue).start(next: { [weak self] isCallerNameVisible in
+                            guard let self, self.callRingGeneration == generation else {
+                                return
+                            }
+                            self.addLocalRing(call: notificationCall, strings: strings, nameOrder: nameOrder, isCallerNameVisible: isCallerNameVisible)
+                        })
+                    }
                 })
-                
             } else {
                 let notification = UILocalNotification()
-                
-                notification.alertTitle = title
-                notification.alertBody = body
+                let rawText = strings.PUSH_PHONE_CALL_REQUEST(notificationCall.peer?.displayTitle(strings: strings, displayOrder: nameOrder) ?? "").string
+                let parts = Self.callRingText(rawText)
+                notification.alertTitle = parts.title
+                notification.alertBody = parts.body
                 
                 notification.category = "incomingCall"
                 notification.userInfo = ["callId": String(describing: notificationCall.internalId)]
@@ -479,6 +465,44 @@ public final class SharedNotificationManager {
                 self.application.presentLocalNotificationNow(notification)
             }
         }
+    }
+    
+    private var callRingGeneration = 0
+    var callerNameVisibility: Signal<Bool, NoError> = .single(true)
+    
+    private static func callRingText(_ rawText: String) -> (title: String?, body: String) {
+        if let index = rawText.firstIndex(of: "|") {
+            return (String(rawText[rawText.startIndex ..< index]), String(rawText[rawText.index(after: index)...]))
+        } else {
+            return (nil, rawText)
+        }
+    }
+    
+    @available(iOS 10.0, *)
+    private func addLocalRing(call notificationCall: (peer: EnginePeer?, internalId: CallSessionInternalId, peerId: EnginePeer.Id), strings: PresentationStrings, nameOrder: PresentationPersonNameOrder, isCallerNameVisible: Bool) {
+        let rawText = strings.PUSH_PHONE_CALL_REQUEST(isCallerNameVisible ? (notificationCall.peer?.displayTitle(strings: strings, displayOrder: nameOrder) ?? "") : "").string
+        let parts = Self.callRingText(rawText)
+        let content = UNMutableNotificationContent()
+        if isCallerNameVisible, let title = parts.title, !title.isEmpty {
+            content.title = title
+            content.body = parts.body
+        } else if isCallerNameVisible {
+            content.body = parts.body
+        } else {
+            content.body = strings.Notification_CallIncoming
+        }
+        content.sound = UNNotificationSound(named: UNNotificationSoundName(rawValue: "0.m4a"))
+        content.categoryIdentifier = IncomingCallNotificationRouting.categoryIdentifier
+        content.userInfo = IncomingCallResponse.localRingUserInfo(peerId: notificationCall.peerId.toInt64())
+        content.interruptionLevel = .timeSensitive
+        content.relevanceScore = 1.0
+        
+        let request = UNNotificationRequest(identifier: "call_\(notificationCall.internalId)", content: content, trigger: nil)
+        UNUserNotificationCenter.current().add(request, withCompletionHandler: { error in
+            if let error = error {
+                Logger.shared.log("NotificationManager", "error adding call \(notificationCall.internalId), error: \(String(describing: error))")
+            }
+        })
     }
     
     private let notificationCallStateDisposable = MetaDisposable()

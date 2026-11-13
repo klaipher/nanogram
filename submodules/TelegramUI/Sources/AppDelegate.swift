@@ -54,6 +54,7 @@ import ProxyServerPreviewScreen
 import WalletContext
 import WalletSendScreen
 import PasscodeCore
+import AppLockState
 import LiquidGlassShapes
 import AnimatedStickerNode
 import MTProtoRustEngine
@@ -1273,6 +1274,15 @@ private func extractAccountManagerState(records: AccountRecordsView<TelegramAcco
                     }
                 })
             })
+            notificationManager.callerNameVisibility = sharedContext.accountManager.transaction { transaction -> Bool in
+                let settings = transaction.getSharedData(ApplicationSpecificSharedDataKeys.inAppNotificationSettings)?.get(InAppNotificationSettings.self) ?? InAppNotificationSettings.defaultSettings
+                return settings.displayNameOnLockscreen
+            }
+            |> map { displayNameOnLockscreen -> Bool in
+                let lockState = (try? Data(contentsOf: URL(fileURLWithPath: appLockStatePath(rootPath: rootPath)))).flatMap { try? JSONDecoder().decode(LockState.self, from: $0) }
+                let isLocked = lockState.map { isAppLocked(state: $0) } ?? false
+                return displayNameOnLockscreen && !isLocked
+            }
             setPresentationCall = { call in
                 notificationManager.setNotificationCall(call, strings: sharedContext.currentPresentationData.with({ $0 }).strings)
             }

@@ -604,6 +604,7 @@ swift_library(
         "//submodules/TelegramUI/Components/Chat/ChatRichTextEditorComposer",
         "//submodules/WalletContext",
         "//submodules/PasscodeCore",
+        "//submodules/AppLockState",
         "//submodules/MTProtoRustEngine:MTProtoRustEngine",
     ],
     visibility = [
