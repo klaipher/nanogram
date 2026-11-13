@@ -77,11 +77,11 @@ public final class CallKitIntegration {
         sharedProviderDelegate?.answerCall(uuid: uuid)
     }
     
-    public func dropCall(uuid: UUID) {
+    public func dropCall(uuid: UUID, reason: CXCallEndedReason = .remoteEnded) {
         #if DEBUG
         print("CallKitIntegration: Drop call \(uuid)")
         #endif
-        sharedProviderDelegate?.dropCall(uuid: uuid)
+        sharedProviderDelegate?.dropCall(uuid: uuid, reason: reason)
     }
     
     public func reportIncomingCall(uuid: UUID, stableId: Int64, handle: String, phoneNumber: String?, isVideo: Bool, displayTitle: String, completion: ((NSError?) -> Void)?) {
@@ -255,12 +255,12 @@ class CallKitProviderDelegate: NSObject, CXProviderDelegate {
         self.activeCalls.remove(uuid)
     }
     
-    func dropCall(uuid: UUID) {
+    func dropCall(uuid: UUID, reason: CXCallEndedReason = .remoteEnded) {
         self.alreadyReportedIncomingCalls.insert(uuid)
         
-        Logger.shared.log("CallKitIntegration", "report call ended \(uuid)")
+        Logger.shared.log("CallKitIntegration", "report call ended \(uuid), reason \(reason.rawValue)")
         
-        self.provider.reportCall(with: uuid, endedAt: nil, reason: CXCallEndedReason.remoteEnded)
+        self.provider.reportCall(with: uuid, endedAt: nil, reason: reason)
         
         self.activeCalls.remove(uuid)
     }

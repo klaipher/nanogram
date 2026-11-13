@@ -1075,7 +1075,7 @@ public final class SharedAccountContextImpl: SharedAccountContext {
                                         if answerAction {
                                             call.answer()
                                         } else {
-                                            call.rejectBusy()
+                                            let _ = call.hangUp().startStandalone()
                                         }
                                     }))
                                 })
@@ -1454,7 +1454,7 @@ public final class SharedAccountContextImpl: SharedAccountContext {
                                     call.answer()
                                 } else {
                                     self.notificationController?.setBlocking(nil)
-                                    call.rejectBusy()
+                                    let _ = call.hangUp().startStandalone()
                                 }
                             }
                         ))

@@ -1384,7 +1384,14 @@ public final class PresentationCallImpl: PresentationCall {
                     dropCallKitCallTimer.start()
                 }
             } else {
-                self.callKitIntegration?.dropCall(uuid: self.internalId)
+                var terminationReason: CallSessionTerminationReason?
+                switch sessionState.state {
+                case let .terminated(_, reason, _), let .dropping(reason):
+                    terminationReason = reason
+                default:
+                    break
+                }
+                self.callKitIntegration?.dropCall(uuid: self.internalId, reason: callKitEndedReason(terminationReason))
             }
         }
         
