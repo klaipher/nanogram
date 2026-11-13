@@ -1,7 +1,6 @@
 import Foundation
 import UserNotifications
 import CallKit
-import Postbox
 import TelegramCore
 import NotificationsPresentationData
 
@@ -137,7 +136,7 @@ enum IncomingCallPushPresentation {
 
     /// Whether a fetched message is the service message of a finished call (answered, missed or
     /// declined): the moment a ring for that caller is over.
-    static func isPhoneCallServiceMessage(media: [Media]) -> Bool {
+    static func isPhoneCallServiceMessage(media: [Any]) -> Bool {
         for item in media {
             if let action = item as? TelegramMediaAction, case .phoneCall = action.action {
                 return true

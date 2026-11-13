@@ -37,6 +37,7 @@ submodules/MediaPlayer/Sources/FFMpegFileReader.swift
 submodules/MediaPlayer/Sources/FFMpegMediaFrameSource.swift
 submodules/MediaPlayer/Sources/FFMpegMediaFrameSourceContext.swift
 submodules/MediaPlayer/Sources/HLSStreamingStorage.swift
+submodules/MediaPlayer/Sources/HLSTempFileCache.swift
 submodules/MediaPlayer/Sources/MediaPlayer.swift
 submodules/MediaPlayer/Sources/MediaPlayerFramePreview.swift
 submodules/MediaPlayer/Sources/TimeBasedVideoPreload.swift
