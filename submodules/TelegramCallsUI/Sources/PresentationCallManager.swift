@@ -113,6 +113,7 @@ public final class PresentationCallManagerImpl: PresentationCallManager {
     private var callSettingsDisposable: Disposable?
     
     private var resumeMedia: Bool = false
+    private var callKitPendingActions = CallKitPendingActions()
     
     public static var voipMaxLayer: Int32 {
         return OngoingCallContext.maxLayer
@@ -272,6 +273,8 @@ public final class PresentationCallManagerImpl: PresentationCallManager {
                 CallDiagnostics.log("CXAnswerCallAction \(uuid), current call \(strongSelf.currentCall?.internalId.description ?? "none"), \(matches ? "answering it" : "ignored: another call")")
                 if matches {
                     strongSelf.currentCall?.answer(fromCallKitAction: true)
+                } else {
+                    strongSelf.callKitPendingActions.store(.answer, uuid: uuid, now: Date())
                 }
             }
         }
@@ -296,7 +299,9 @@ public final class PresentationCallManagerImpl: PresentationCallManager {
                     return .single(true)
                 }
             case .none:
-                // A CallKit call the app does not hold (stale or placeholder): there is nothing to hang up.
+                // A CallKit call the app does not hold yet: the end waits for exactly that call, and a stale
+                // or placeholder one never gets created.
+                self.callKitPendingActions.store(.end, uuid: uuid, now: Date())
                 return .single(true)
             }
         }
@@ -774,6 +779,16 @@ public final class PresentationCallManagerImpl: PresentationCallManager {
             self.currentUpgradedToConferenceCallId = nil
             
             if let currentCallValue = self.currentCallValue {
+                if let pendingAction = self.callKitPendingActions.take(uuid: currentCallValue.internalId, now: Date()) {
+                    CallDiagnostics.log("CallKit \(pendingAction) for \(currentCallValue.internalId) arrived before the call, applying it now")
+                    switch pendingAction {
+                    case .answer:
+                        currentCallValue.answer(fromCallKitAction: true)
+                    case .end:
+                        let _ = currentCallValue.hangUp().startStandalone()
+                    }
+                }
+                
                 self.callToConferenceDisposable = (currentCallValue.conferenceState
                 |> filter { conferenceState in
                     return conferenceState != nil
