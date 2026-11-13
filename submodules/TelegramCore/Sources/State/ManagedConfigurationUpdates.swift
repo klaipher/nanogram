@@ -48,17 +48,15 @@ func managedConfigurationUpdates(accountManager: AccountManager<TelegramAccountM
                     
                     updateRemoteStorageConfiguration(transaction: transaction, configuration: RemoteStorageConfiguration(webDocumentsHostDatacenterId: webfileDcId))
                     
+                    let seenLocalizationCodes = transaction.getPreferencesEntry(key: SuggestedLocalizationSeenCodes.key)?.get(SuggestedLocalizationSeenCodes.self)?.codes ?? []
                     transaction.updatePreferencesEntry(key: PreferencesKeys.suggestedLocalization, { entry in
-                        var currentLanguageCode: String?
-                        if let entry = entry?.get(SuggestedLocalizationEntry.self) {
-                            currentLanguageCode = entry.languageCode
+                        let current = entry?.get(SuggestedLocalizationEntry.self)
+                        let result = reconcileSuggestedLocalization(current: current, serverCode: suggestedLangCode, seenCodes: seenLocalizationCodes)
+                        if current?.languageCode != result?.languageCode || current?.isSeen != result?.isSeen {
+                            Logger.shared.log("SuggestedLocalization", suggestedLocalizationTransitionDescription(current: current, serverCode: suggestedLangCode, result: result))
                         }
-                        if currentLanguageCode != suggestedLangCode {
-                            if let suggestedLangCode = suggestedLangCode {
-                                return PreferencesEntry(SuggestedLocalizationEntry(languageCode: suggestedLangCode, isSeen: false))
-                            } else {
-                                return nil
-                            }
+                        if let result, current?.languageCode != result.languageCode || current?.isSeen != result.isSeen {
+                            return PreferencesEntry(result)
                         }
                         return entry
                     })

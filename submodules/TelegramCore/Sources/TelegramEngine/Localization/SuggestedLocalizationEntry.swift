@@ -5,6 +5,10 @@ import SwiftSignalKit
 
 func _internal_markSuggestedLocalizationAsSeenInteractively(postbox: Postbox, languageCode: String) -> Signal<Void, NoError> {
     return postbox.transaction { transaction -> Void in
+        transaction.updatePreferencesEntry(key: SuggestedLocalizationSeenCodes.key, { current in
+            let seen = current?.get(SuggestedLocalizationSeenCodes.self) ?? SuggestedLocalizationSeenCodes(codes: [])
+            return PreferencesEntry(seen.inserting(languageCode))
+        })
         transaction.updatePreferencesEntry(key: PreferencesKeys.suggestedLocalization, { current in
             if let current = current?.get(SuggestedLocalizationEntry.self) {
                 if current.languageCode == languageCode, !current.isSeen {
