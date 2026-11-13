@@ -818,6 +818,7 @@ public final class PresentationCallImpl: PresentationCall {
                                     case .fallBackToNotification:
                                         CallDiagnostics.log("call \(strongSelf.internalId) reportIncomingCall failed: \(error.domain) \(error.code), ringing without CallKit")
                                         strongSelf.callKitIntegration = nil
+                                        strongSelf.sharedAudioContext?.detachFromCallKit()
                                         if strongSelf.proximityManagerIndex == nil {
                                             strongSelf.proximityManagerIndex = DeviceProximityManager.shared().add { _ in
                                             }

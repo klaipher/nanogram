@@ -9,7 +9,7 @@ public final class SharedCallAudioContext {
     private static weak var current: SharedCallAudioContext? 
 
     let audioDevice: OngoingCallContext.AudioDevice?
-    let callKitIntegration: CallKitIntegration?
+    private(set) var callKitIntegration: CallKitIntegration?
     
     /// What the owning call asked for: the loudspeaker unless a headset is connected.
     private let wantsSpeakerByDefault: Bool
@@ -105,6 +105,38 @@ public final class SharedCallAudioContext {
             previous.retire()
         }
         return context
+    }
+    
+    var isBoundToCallKit: Bool {
+        return self.callKitIntegration != nil
+    }
+    
+    /// CallKit refused the owning call, so it will never activate the audio session: from now on
+    /// the session is activated directly, as for a call that never had CallKit. Main queue.
+    func detachFromCallKit() {
+        guard self.callKitIntegration != nil, !self.isRetired else {
+            return
+        }
+        self.callKitIntegration = nil
+        guard let audioSessionControl = self.audioSessionControl else {
+            self.isInitialOutputPending = self.wantsSpeakerByDefault
+            return
+        }
+        if self.isInitialOutputPending {
+            audioSessionControl.setOutputMode(.system)
+        } else {
+            audioSessionControl.setOutputMode(.custom(self.currentAudioOutputValue))
+        }
+        audioSessionControl.setup(synchronous: true)
+        audioSessionControl.activate({ [weak self] state in
+            Queue.mainQueue().async {
+                guard let self, !self.isRetired else {
+                    return
+                }
+                self.resolveInitialOutput(isHeadsetConnected: state.isHeadsetConnected)
+            }
+        })
+        self.isAudioSessionActivePromise.set(.single(true))
     }
     
     /// The owning call has terminated for good. Lets the next `get` retire this context.

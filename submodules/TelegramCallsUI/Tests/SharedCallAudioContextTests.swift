@@ -61,11 +61,13 @@ private final class FakeAudioSession: ManagedAudioSession {
 /// test chooses. Every output mode the call applies is recorded in order.
 private final class FakeControl {
     private(set) var appliedOutputModes: [AudioSessionOutputMode] = []
+    private(set) var activationCount = 0
     private var pendingActivations: [(AudioSessionActivationState) -> Void] = []
 
     private(set) lazy var control: ManagedAudioSessionControl = ManagedAudioSessionControl(
         setup: { _ in },
         activate: { [unowned self] completion in
+            self.activationCount += 1
             self.pendingActivations.append(completion)
         },
         setOutputMode: { [unowned self] mode in
@@ -170,6 +172,19 @@ final class SharedCallAudioContextTests: XCTestCase {
 
         XCTAssertFalse(self.control.appliedOutputModes.contains(.custom(.speaker)), "the speaker must not be forced over connected headphones; applied: \(self.control.appliedOutputModes)")
         XCTAssertEqual(context.currentAudioOutputValue, .headphones)
+    }
+
+    func testAContextWithoutCallKitStaysOutOfCallKitModeAfterDetaching() {
+        self.session.isHeadsetPluggedIn = false
+        let context = self.makeContext(defaultToSpeaker: false)
+        XCTAssertFalse(context.isBoundToCallKit)
+
+        context.detachFromCallKit()
+        self.handOutControl()
+        self.completeActivation(reporting: [.builtin], current: .builtin, isHeadsetConnected: false)
+
+        XCTAssertFalse(context.isBoundToCallKit)
+        XCTAssertEqual(self.control.activationCount, 1, "the session is activated directly")
     }
 
     func testSpeakerDefaultIsAppliedWhenActivationReportsNoHeadset() {
