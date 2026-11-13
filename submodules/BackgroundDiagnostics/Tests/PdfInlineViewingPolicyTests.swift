@@ -38,4 +38,15 @@ final class PdfInlineViewingPolicyTests: XCTestCase {
         let without = MemoryDetailReport(memory: nil, threads: nil, zones: [], caches: [], instances: [])
         XCTAssertFalse(without.logLine.contains("headroom"))
     }
+
+    func testSmallBudgetLowersTheThreshold() {
+        let budget = 2 * gigabyte
+        XCTAssertEqual(PdfInlineViewingPolicy.route(pageCount: 1, fileSize: 1024, headroom: gigabyte, budget: budget), .inline)
+        XCTAssertEqual(PdfInlineViewingPolicy.route(pageCount: 1, fileSize: 1024, headroom: gigabyte / 4, budget: budget), .quickLook)
+    }
+
+    func testLargeBudgetKeepsTheFullThreshold() {
+        XCTAssertEqual(PdfInlineViewingPolicy.minimumHeadroom(budget: 10 * gigabyte), PdfInlineViewingPolicy.minimumHeadroom)
+        XCTAssertEqual(PdfInlineViewingPolicy.minimumHeadroom(budget: nil), PdfInlineViewingPolicy.minimumHeadroom)
+    }
 }

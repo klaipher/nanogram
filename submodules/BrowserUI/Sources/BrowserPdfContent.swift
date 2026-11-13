@@ -15,6 +15,7 @@ import UndoUI
 import UrlEscaping
 import PDFKit
 import GlassBackgroundComponent
+import BackgroundDiagnostics
 
 final class BrowserPdfContent: UIView, BrowserContent, UIScrollViewDelegate, PDFDocumentDelegate {
     private let context: AccountContext
@@ -164,6 +165,13 @@ final class BrowserPdfContent: UIView, BrowserContent, UIScrollViewDelegate, PDF
         }
     }
     
+    override func didMoveToWindow() {
+        super.didMoveToWindow()
+        if self.window != nil, !self.isSuspended {
+            self.restoreDocument()
+        }
+    }
+    
     private func handleMemoryWarning() {
         if self.isSuspended || self.window == nil {
             self.releaseDocument(reason: "memory warning")
@@ -186,7 +194,13 @@ final class BrowserPdfContent: UIView, BrowserContent, UIScrollViewDelegate, PDF
     }
     
     private func restoreDocument() {
-        guard self.pdfView.document == nil, let documentUrl = self.documentUrl, let document = PDFDocument(url: documentUrl) else {
+        guard self.pdfView.document == nil, let documentUrl = self.documentUrl else {
+            return
+        }
+        if let headroom = ProcessMemory.availableHeadroom(), headroom < PdfInlineViewingPolicy.minimumHeadroom(budget: ProcessMemory.currentBudget()) {
+            MemoryProbeRegistry.shared.purgeAll()
+        }
+        guard let document = PDFDocument(url: documentUrl) else {
             return
         }
         self.pdfView.document = document
