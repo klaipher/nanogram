@@ -259,10 +259,12 @@ public final class StorageBox {
             return self.registrations.count
         }
         
-        init(queue: Queue, logger: StorageBox.Logger, basePath: String, isMainProcess: Bool) {
+        init(queue: Queue, logger: StorageBox.Logger, basePath: String, isMainProcess: Bool, sizeUpdateDelay: Double, maxPendingSizeUpdates: Int) {
             self.queue = queue
             self.logger = logger
             self.basePath = basePath
+            self.pendingSizeUpdatesDelay = sizeUpdateDelay
+            self.maxPendingSizeUpdates = maxPendingSizeUpdates
             
             let databasePath = self.basePath + "/db"
             let _ = try? FileManager.default.createDirectory(atPath: databasePath, withIntermediateDirectories: true)
@@ -623,14 +625,16 @@ public final class StorageBox {
         }
         
         // Size updates arrive for every cached file and downloaded chunk. They are applied in one
-        // transaction per batch instead of one each: after `pendingSizeUpdatesDelay`, at
-        // `maxPendingSizeUpdates` distinct items, or before any other operation
-        // (beginInternalTransaction), so every reader and writer sees them in order. Within a
+        // transaction per batch instead of one each: after `pendingSizeUpdatesDelay` (ten seconds: a
+        // download reports a new size with every chunk, and each batch costs about eight WAL pages),
+        // at `maxPendingSizeUpdates` distinct items, before any other operation
+        // (beginInternalTransaction), so every reader and writer sees them in order, and when
+        // the app is about to suspend (setCanBeginTransactions, releaseMemory). Within a
         // batch only the last size of an item is applied: the result is the same, since an
         // update only sets the size. A crash loses at most one batch of size bookkeeping; the
         // MediaBox scan re-adds files it does not know.
-        private static let maxPendingSizeUpdates = 64
-        private static let pendingSizeUpdatesDelay = 1.0
+        private let maxPendingSizeUpdates: Int
+        private let pendingSizeUpdatesDelay: Double
         private var pendingSizeUpdates: [(id: Data, size: Int64)] = []
         private var pendingSizeUpdateIndices: [Data: Int] = [:]
         private var isPendingSizeUpdatesFlushScheduled = false
@@ -643,11 +647,11 @@ public final class StorageBox {
             }
             self.pendingSizeUpdateIndices[id] = self.pendingSizeUpdates.count
             self.pendingSizeUpdates.append((id, size))
-            if self.pendingSizeUpdates.count >= Impl.maxPendingSizeUpdates {
+            if self.pendingSizeUpdates.count >= self.maxPendingSizeUpdates {
                 self.flushPendingSizeUpdates()
             } else if !self.isPendingSizeUpdatesFlushScheduled {
                 self.isPendingSizeUpdatesFlushScheduled = true
-                self.queue.after(Impl.pendingSizeUpdatesDelay, { [weak self] in
+                self.queue.after(self.pendingSizeUpdatesDelay, { [weak self] in
                     guard let self else {
                         return
                     }
@@ -1379,12 +1383,16 @@ public final class StorageBox {
     private let queue: Queue
     private let impl: LazyImpl
     
-    public init(logger: StorageBox.Logger, basePath: String, isMainProcess: Bool) {
+    /// Seconds and item count after which pending size updates are written (`Impl.update`).
+    public static let defaultSizeUpdateDelay: Double = 10.0
+    public static let defaultMaxPendingSizeUpdates: Int = 256
+
+    public init(logger: StorageBox.Logger, basePath: String, isMainProcess: Bool, sizeUpdateDelay: Double = StorageBox.defaultSizeUpdateDelay, maxPendingSizeUpdates: Int = StorageBox.defaultMaxPendingSizeUpdates) {
         let queue = StorageBox.sharedQueue
         self.queue = queue
         self.impl = LazyImpl(holder: QueueLocalObject(queue: queue, generate: {
             return ImplHolder(open: {
-                return Impl(queue: queue, logger: logger, basePath: basePath, isMainProcess: isMainProcess)
+                return Impl(queue: queue, logger: logger, basePath: basePath, isMainProcess: isMainProcess, sizeUpdateDelay: sizeUpdateDelay, maxPendingSizeUpdates: maxPendingSizeUpdates)
             }, openNow: isMainProcess)
         }))
     }

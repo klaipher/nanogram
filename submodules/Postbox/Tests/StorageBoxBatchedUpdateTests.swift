@@ -22,7 +22,12 @@ final class StorageBoxBatchedUpdateTests: XCTestCase {
         super.tearDown()
     }
 
+    /// With the one-second, 64-item batching these tests were written for; the shipped defaults are checked apart.
     private func makeBox() -> StorageBox {
+        return StorageBox(logger: StorageBox.Logger(impl: { _ in }), basePath: self.basePath, isMainProcess: true, sizeUpdateDelay: 1.0, maxPendingSizeUpdates: 64)
+    }
+
+    private func makeDefaultBox() -> StorageBox {
         return StorageBox(logger: StorageBox.Logger(impl: { _ in }), basePath: self.basePath, isMainProcess: true)
     }
 
@@ -174,6 +179,53 @@ final class StorageBoxBatchedUpdateTests: XCTestCase {
 
         let reopened = self.makeBox()
         XCTAssertEqual(self.untypedTotal(reopened), 77)
+    }
+
+    func testTheDefaultBatchIsTenSecondsOrTwoHundredFiftySixItems() {
+        XCTAssertEqual(StorageBox.defaultSizeUpdateDelay, 10.0)
+        XCTAssertEqual(StorageBox.defaultMaxPendingSizeUpdates, 256)
+
+        let box = self.makeDefaultBox()
+        for i in 0 ..< 255 {
+            box.update(id: self.itemId(i), size: 10)
+        }
+        // The queue has taken all of them; a second connection reads only the file.
+        self.drain(box)
+        let other = self.makeDefaultBox()
+        XCTAssertEqual(self.untypedTotal(other), 0, "255 pending items are not written yet")
+
+        box.update(id: self.itemId(255), size: 10)
+        self.drain(box)
+        XCTAssertEqual(self.untypedTotal(other), 2560, "the 256th item writes the batch")
+    }
+
+    func testTheDefaultBatchWaitsMoreThanASecondAndIsWrittenWhenTheAppSuspends() {
+        let box = self.makeDefaultBox()
+        box.update(id: self.itemId(0), size: 321)
+        let wait = self.expectation(description: "delay")
+        DispatchQueue.global().asyncAfter(deadline: .now() + 2.5, execute: {
+            wait.fulfill()
+        })
+        self.wait(for: [wait], timeout: 5.0)
+        self.drain(box)
+        let other = self.makeDefaultBox()
+        XCTAssertEqual(self.untypedTotal(other), 0, "not written after the old one-second delay")
+
+        let suspended = self.expectation(description: "suspended")
+        box.setCanBeginTransactions(false, afterTransactionIfRunning: {
+            suspended.fulfill()
+        })
+        self.wait(for: [suspended], timeout: 5.0)
+        XCTAssertEqual(self.untypedTotal(other), 321)
+    }
+
+    func testReleasingMemoryWritesPendingUpdates() {
+        let box = self.makeDefaultBox()
+        box.update(id: self.itemId(0), size: 654)
+        box.releaseMemory()
+        self.drain(box)
+        let other = self.makeDefaultBox()
+        XCTAssertEqual(self.untypedTotal(other), 654)
     }
 
     func testSuspendingTransactionsFlushesPendingUpdatesFirst() {
