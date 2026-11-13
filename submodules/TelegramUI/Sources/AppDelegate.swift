@@ -2654,7 +2654,7 @@ private func extractAccountManagerState(records: AccountRecordsView<TelegramAcco
     }
     
     @available(iOS 26.4, *)
-    public func pushRegistry(_ registry: PKPushRegistry, didReceiveIncomingVoIPPushWith payload: PKPushPayload, metadata: PKVoIPPushMetadata, completion: @escaping () -> Void) {
+    public func pushRegistry(_ registry: PKPushRegistry, didReceiveIncomingVoIPPushWith payload: PKPushPayload, metadata: PKVoIPPushMetadata, withCompletionHandler completion: @escaping () -> Void) {
         Logger.shared.log("App \(self.episodeId) PushRegistry", "pushRegistry didReceiveIncomingVoIPPushWith \(payload.dictionaryPayload), mustReport: \(metadata.mustReport)")
         
         self.pushRegistryImpl(registry, didReceiveIncomingPushWith: payload, for: .voIP, mustReport: metadata.mustReport, completion: completion)
