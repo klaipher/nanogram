@@ -1,6 +1,9 @@
 import XCTest
 import UserNotifications
 import CallKit
+import Postbox
+import TelegramCore
+import NotificationsPresentationData
 @testable import NotificationServiceExtensionLib
 
 final class IncomingCallPushPresentationTests: XCTestCase {
@@ -126,5 +129,197 @@ final class IncomingCallPushPresentationTests: XCTestCase {
         let flow = Flow()
         flow.present(reportsToCallKit: false)
         XCTAssertEqual(flow.events, ["make", "show ringing", "completed"])
+    }
+
+    // MARK: - Routing, delivery, acknowledgement, cleanup
+
+    private func route() -> IncomingCallNotificationRouting.Call {
+        return IncomingCallNotificationRouting.Call(accountId: 42, peerId: 1234, fromId: 1234, callId: 777, accessHash: -5, updates: "AAAA", isVideo: true)
+    }
+
+    // The app injects the call from these keys: they are the ones of the VoIP push payload.
+    func testUserInfoCarriesTheCallForTheApp() throws {
+        let userInfo = IncomingCallPushPresentation.userInfo(accountId: 42, peerId: 1234, fromUserId: 1234, call: self.route())
+        XCTAssertEqual(userInfo["call_id"] as? String, "777")
+        XCTAssertEqual(userInfo["call_ah"] as? String, "-5")
+        XCTAssertEqual(userInfo["updates"] as? String, "AAAA")
+        XCTAssertEqual(userInfo["isVideo"] as? Bool, true)
+        XCTAssertTrue(IncomingCallPushPresentation.isIncomingCall(userInfo: userInfo))
+        XCTAssertEqual(IncomingCallNotificationRouting.call(userInfo: userInfo), self.route())
+    }
+
+    func testUserInfoWithoutACallRoutesNothing() {
+        let userInfo = IncomingCallPushPresentation.userInfo(accountId: 42, peerId: 1234, fromUserId: 1234)
+        XCTAssertNil(userInfo["call_id"])
+        XCTAssertNil(IncomingCallNotificationRouting.call(userInfo: userInfo))
+        XCTAssertNil(IncomingCallNotificationRouting.call(userInfo: ["call_id": "1"]))
+    }
+
+    func testCategoryOnlyForOneToOneCalls() {
+        XCTAssertEqual(IncomingCallPushPresentation.categoryIdentifier(isGroupCall: false), "incomingCall")
+        XCTAssertNil(IncomingCallPushPresentation.categoryIdentifier(isGroupCall: true))
+        XCTAssertEqual(IncomingCallNotificationRouting.categoryIdentifier, "incomingCall")
+        XCTAssertEqual(IncomingCallNotificationRouting.answerActionIdentifier, "incomingCall.answer")
+        XCTAssertEqual(IncomingCallNotificationRouting.declineActionIdentifier, "incomingCall.decline")
+    }
+
+    func testThreadPerAccountAndCaller() {
+        XCTAssertEqual(IncomingCallPushPresentation.threadIdentifier(accountId: 42, peerId: 1234), "nanogram.call.42.1234")
+        XCTAssertNotEqual(IncomingCallPushPresentation.threadIdentifier(accountId: 43, peerId: 1234), IncomingCallPushPresentation.threadIdentifier(accountId: 42, peerId: 1234))
+    }
+
+    // A locked app and hidden names show no caller, as a message shows no sender.
+    func testCallerNameIsHiddenWhenLockedOrNamesHidden() {
+        XCTAssertEqual(IncomingCallPushPresentation.shownCallerName("Alice", isAppLocked: false, displayNameOnLockscreen: true), "Alice")
+        XCTAssertNil(IncomingCallPushPresentation.shownCallerName("Alice", isAppLocked: true, displayNameOnLockscreen: true))
+        XCTAssertNil(IncomingCallPushPresentation.shownCallerName("Alice", isAppLocked: false, displayNameOnLockscreen: false))
+        XCTAssertNil(IncomingCallPushPresentation.shownCallerName(nil, isAppLocked: false, displayNameOnLockscreen: true))
+        let alert = IncomingCallPushPresentation.alert(callerName: IncomingCallPushPresentation.shownCallerName("Alice", isAppLocked: true, displayNameOnLockscreen: true), incomingCallMessage: "is calling you")
+        XCTAssertNil(alert.title)
+        XCTAssertEqual(alert.body, "Incoming Call")
+    }
+
+    // Time Sensitive is set on the mutable content before the system updates it from the intent,
+    // and has to survive that update.
+    func testTimeSensitiveDelivery() {
+        let content = UNMutableNotificationContent()
+        IncomingCallPushPresentation.applyDelivery(to: content)
+        XCTAssertEqual(content.interruptionLevel, .timeSensitive)
+        XCTAssertEqual(content.relevanceScore, 1.0)
+        let copy = content.mutableCopy() as? UNMutableNotificationContent
+        XCTAssertEqual(copy?.interruptionLevel, .timeSensitive)
+        XCTAssertEqual(copy?.relevanceScore, 1.0)
+    }
+
+    @available(iOS 15.0, *)
+    func testTimeSensitiveSurvivesTheSystemUpdate() throws {
+        let content = UNMutableNotificationContent()
+        content.title = "Alice"
+        content.body = "is calling you"
+        IncomingCallPushPresentation.applyDelivery(to: content)
+        let person = IncomingCallCommunication.anonymousPerson(name: "Alice")
+        let intent = IncomingCallCommunication.intent(caller: person, callId: 1, isVideo: false, date: Date())
+        let updated: UNNotificationContent
+        do {
+            updated = try content.updating(from: intent)
+        } catch let error {
+            throw XCTSkip("the test process cannot update content from an intent: \(error)")
+        }
+        XCTAssertEqual(updated.interruptionLevel, .timeSensitive)
+        XCTAssertEqual(updated.relevanceScore, 1.0)
+    }
+
+    func testFallbackSoundIsABundledNamedSound() {
+        XCTAssertEqual(IncomingCallPushPresentation.fallbackSoundName, "0.m4a")
+        XCTAssertNotEqual(IncomingCallPushPresentation.fallbackSound, UNNotificationSound.default)
+    }
+
+    func testAcknowledgementIsCappedAtAFewSeconds() {
+        XCTAssertGreaterThan(IncomingCallPushPresentation.acknowledgementTimeout, 0.0)
+        XCTAssertLessThanOrEqual(IncomingCallPushPresentation.acknowledgementTimeout, 3.0)
+    }
+
+    func testCompletionJoinRunsOnceAfterAllCompletions() {
+        var runs = 0
+        let join = IncomingCallPushPresentation.CompletionJoin(count: 2, action: { runs += 1 })
+        join.complete()
+        XCTAssertEqual(runs, 0)
+        join.complete()
+        XCTAssertEqual(runs, 1)
+        join.complete()
+        XCTAssertEqual(runs, 1)
+    }
+
+    private final class AcknowledgedFlow {
+        var events: [String] = []
+        var acknowledgeCompletion: (() -> Void)?
+
+        func present(reportsToCallKit: Bool, reportError: Error? = nil) {
+            IncomingCallPushPresentation.present(
+                reportsToCallKit: reportsToCallKit,
+                reportToCallKit: { completion in
+                    self.events.append("report")
+                    completion(reportError)
+                },
+                makeRingingContent: { (done: @escaping (String) -> Void) in
+                    self.events.append("make")
+                    done("ringing")
+                },
+                showRingingContent: { _ in
+                    self.events.append("show")
+                },
+                acknowledgeRing: { done in
+                    self.events.append("acknowledge")
+                    self.acknowledgeCompletion = done
+                },
+                completed: {
+                    self.events.append("completed")
+                }
+            )
+        }
+    }
+
+    // A ring is acknowledged (the caller sees "Ringing") and the extension is not done until
+    // the acknowledgement arrived or was cut off.
+    func testRingIsHandedBackAfterTheAcknowledgement() {
+        let flow = AcknowledgedFlow()
+        flow.present(reportsToCallKit: false)
+        XCTAssertEqual(flow.events, ["acknowledge", "make", "show"])
+        flow.acknowledgeCompletion?()
+        XCTAssertEqual(flow.events, ["acknowledge", "make", "show", "completed"])
+    }
+
+    func testAcknowledgementFinishingFirstStillWaitsForTheBanner() {
+        var events: [String] = []
+        var madeContent: ((String) -> Void)?
+        IncomingCallPushPresentation.present(
+            reportsToCallKit: false,
+            reportToCallKit: { _ in },
+            makeRingingContent: { (done: @escaping (String) -> Void) in madeContent = done },
+            showRingingContent: { _ in events.append("show") },
+            acknowledgeRing: { done in
+                events.append("acknowledged")
+                done()
+            },
+            completed: { events.append("completed") }
+        )
+        XCTAssertEqual(events, ["acknowledged"])
+        madeContent?("ringing")
+        XCTAssertEqual(events, ["acknowledged", "show", "completed"])
+    }
+
+    // A call CallKit takes is acknowledged by the app CallKit launches, not by the extension.
+    func testCallKitTakingTheCallIsNotAcknowledgedHere() {
+        let flow = AcknowledgedFlow()
+        flow.present(reportsToCallKit: true)
+        XCTAssertEqual(flow.events, ["report", "completed"])
+    }
+
+    func testCallKitFailureAcknowledgesTheRing() {
+        let flow = AcknowledgedFlow()
+        flow.present(reportsToCallKit: true, reportError: NSError(domain: CXErrorDomainIncomingCall, code: CXErrorCodeIncomingCallError.Code.unentitled.rawValue))
+        XCTAssertEqual(flow.events, ["report", "acknowledge", "make", "show"])
+    }
+
+    func testCallKitResultDescription() {
+        XCTAssertEqual(IncomingCallPushPresentation.callKitResultDescription(nil), "none")
+        let description = IncomingCallPushPresentation.callKitResultDescription(NSError(domain: CXErrorDomainIncomingCall, code: CXErrorCodeIncomingCallError.Code.unentitled.rawValue))
+        XCTAssertTrue(description.contains(CXErrorDomainIncomingCall))
+        XCTAssertTrue(description.contains("code: \(CXErrorCodeIncomingCallError.Code.unentitled.rawValue)"))
+    }
+
+    func testInterruptionLevelNames() {
+        XCTAssertEqual(IncomingCallPushPresentation.interruptionLevelName(.timeSensitive), "timeSensitive")
+        XCTAssertEqual(IncomingCallPushPresentation.interruptionLevelName(.active), "active")
+        XCTAssertEqual(IncomingCallPushPresentation.interruptionLevelName(.passive), "passive")
+    }
+
+    // The ring for a caller goes when that caller's call ended: the phone-call service message.
+    func testPhoneCallServiceMessageEndsTheRing() {
+        let call = TelegramMediaAction(action: .phoneCall(callId: 777, discardReason: .missed, duration: nil, isVideo: false))
+        XCTAssertTrue(IncomingCallPushPresentation.isPhoneCallServiceMessage(media: [call]))
+        let other = TelegramMediaAction(action: .historyCleared)
+        XCTAssertFalse(IncomingCallPushPresentation.isPhoneCallServiceMessage(media: [other]))
+        XCTAssertFalse(IncomingCallPushPresentation.isPhoneCallServiceMessage(media: []))
     }
 }

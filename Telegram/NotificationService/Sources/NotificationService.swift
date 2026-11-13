@@ -578,6 +578,11 @@ private struct NotificationContent: CustomStringConvertible {
         var isVideo: Bool
         /// `IncomingCallCommunication.donatesCall`: false while calls are hidden from Phone Recents.
         var donatesCall: Bool
+        /// A group call invite: no call to call back.
+        var isGroupCall: Bool
+        /// Whether the notification names the caller (`IncomingCallCommunication.drawsCaller`). A call
+        /// not drawn is still updated from an anonymous call intent, which keeps its ringtone.
+        var drawsCaller: Bool
     }
     var call: Call?
     
@@ -664,11 +669,23 @@ private struct NotificationContent: CustomStringConvertible {
     }
 
     /// The ringing call notification as a communication notification for a call, so the system
-    /// draws the caller's photo; unchanged when there is no caller or the system refuses the intent.
+    /// draws the caller's photo. A call that is not drawn (passcode lock, names hidden, a group
+    /// invite) is updated from an anonymous call intent instead, which keeps the ringtone; when the
+    /// system refuses the intent the content stays as it is, with a bundled sound.
     @available(iOS 15.0, *)
     private func updatedForCall(_ content: UNNotificationContent, call: Call) -> UNNotificationContent {
-        guard self.isLockedMessage == nil, let sender = self.sender, let caller = IncomingCallCommunication.caller(accountId: call.accountId, peerId: sender.peerId.toInt64(), callerName: sender.name, recipientAccountName: self.recipientAccountName, contactIdentifier: sender.contactIdentifier) else {
-            return content
+        guard call.drawsCaller, self.isLockedMessage == nil, let sender = self.sender, let caller = IncomingCallCommunication.caller(accountId: call.accountId, peerId: sender.peerId.toInt64(), callerName: sender.name, recipientAccountName: self.recipientAccountName, contactIdentifier: sender.contactIdentifier) else {
+            let name = (self.title?.isEmpty == false) ? self.title! : "Incoming Call"
+            let intent = IncomingCallCommunication.intent(caller: IncomingCallCommunication.anonymousPerson(name: name), callId: call.callId, isVideo: call.isVideo, date: Date(), callsBack: !call.isGroupCall)
+            let updated = IncomingCallCommunication.updatedContent(content, intent: intent, update: { content, intent in
+                do {
+                    return try content.updating(from: intent)
+                } catch let e {
+                    Logger.shared.log("NotificationService", "Anonymous call notification kept as it was: \(e)")
+                    throw e
+                }
+            })
+            return IncomingCallCommunication.withFallbackSound(original: content, updated: updated)
         }
         let date = Date()
         let donatedIntent = IncomingCallCommunication.intent(caller: IncomingCallCommunication.person(caller, name: caller.donatedName, image: self.senderImage), callId: call.callId, isVideo: call.isVideo, date: date)
@@ -685,7 +702,7 @@ private struct NotificationContent: CustomStringConvertible {
         } else {
             displayedIntent = IncomingCallCommunication.intent(caller: IncomingCallCommunication.person(caller, name: caller.displayedName, image: self.senderImage), callId: call.callId, isVideo: call.isVideo, date: date)
         }
-        return IncomingCallCommunication.updatedContent(content, intent: displayedIntent, update: { content, intent in
+        let updated = IncomingCallCommunication.updatedContent(content, intent: displayedIntent, update: { content, intent in
             do {
                 return try content.updating(from: intent)
             } catch let e {
@@ -693,6 +710,7 @@ private struct NotificationContent: CustomStringConvertible {
                 throw e
             }
         })
+        return IncomingCallCommunication.withFallbackSound(original: content, updated: updated)
     }
 
     func generate() -> UNNotificationContent {
@@ -791,6 +809,9 @@ private struct NotificationContent: CustomStringConvertible {
         }
         if !self.userInfo.isEmpty {
             content.userInfo = self.userInfo
+        }
+        if IncomingCallPushPresentation.isIncomingCall(userInfo: self.userInfo), !content.body.isEmpty {
+            IncomingCallPushPresentation.applyDelivery(to: content)
         }
         if self.isLockedMessage == nil {
             if !self.attachments.isEmpty {
@@ -927,27 +948,33 @@ private func getCurrentRenderedTotalUnreadCount(accountManager: AccountManager<T
 /// caller's photo (see `IncomingCallCommunication`) unless the app is locked or names are hidden on
 /// the lock screen. Made only to be shown (`IncomingCallPushPresentation.present`): the caller's
 /// device contact and photo are looked up then, never before CallKit is offered the call.
-private func makeIncomingCallNotificationContent(postbox: Postbox, accountPeerId: PeerId, callerName: String?, callerPeer: Peer?, incomingCallMessage: String, recipientAccountName: String?, accountId: Int64, fromId: PeerId, isAppLocked: Bool, displayNameOnLockscreen: Bool, isGroupCall: Bool, callId: Int64?, isVideo: Bool, showCallsInRecents: Bool, completion: @escaping (NotificationContent) -> Void) {
-    let alert = IncomingCallPushPresentation.alert(callerName: callerName, incomingCallMessage: incomingCallMessage)
+private func makeIncomingCallNotificationContent(postbox: Postbox, accountPeerId: PeerId, callerName: String?, callerPeer: Peer?, incomingCallMessage: String, recipientAccountName: String?, accountId: Int64, fromId: PeerId, isAppLocked: Bool, displayNameOnLockscreen: Bool, isGroupCall: Bool, callId: Int64?, isVideo: Bool, showCallsInRecents: Bool, callRoute: IncomingCallNotificationRouting.Call?, completion: @escaping (NotificationContent) -> Void) {
+    let shownCallerName = IncomingCallPushPresentation.shownCallerName(callerName, isAppLocked: isAppLocked, displayNameOnLockscreen: displayNameOnLockscreen)
+    let alert = IncomingCallPushPresentation.alert(callerName: shownCallerName, incomingCallMessage: incomingCallMessage)
     var content = NotificationContent(isLockedMessage: nil)
     content.recipientAccountName = recipientAccountName
     content.title = alert.title
     content.body = alert.body
     content.systemSound = IncomingCallPushPresentation.sound
-    content.userInfo = IncomingCallPushPresentation.userInfo(accountId: accountId, peerId: fromId.toInt64(), fromUserId: fromId.id._internalGetInt64Value())
+    content.category = IncomingCallPushPresentation.categoryIdentifier(isGroupCall: isGroupCall)
+    content.threadId = IncomingCallPushPresentation.threadIdentifier(accountId: accountId, peerId: fromId.toInt64())
+    content.userInfo = IncomingCallPushPresentation.userInfo(accountId: accountId, peerId: fromId.toInt64(), fromUserId: fromId.id._internalGetInt64Value(), call: isGroupCall ? nil : callRoute)
     if #available(iOS 15.0, *) {
-        if IncomingCallCommunication.drawsCaller(isAppLocked: isAppLocked, displayNameOnLockscreen: displayNameOnLockscreen, isGroupCall: isGroupCall), let callerName = alert.title {
+        let drawsCaller = IncomingCallCommunication.drawsCaller(isAppLocked: isAppLocked, displayNameOnLockscreen: displayNameOnLockscreen, isGroupCall: isGroupCall)
+        let call = NotificationContent.Call(accountId: accountId, callId: callId, isVideo: isVideo, donatesCall: IncomingCallCommunication.donatesCall(showCallsInRecents: showCallsInRecents), isGroupCall: isGroupCall, drawsCaller: drawsCaller)
+        if drawsCaller, let callerName = alert.title {
             let _ = (postbox.transaction { transaction -> String? in
                 return localContactIdentifier(transaction: transaction, peerId: fromId)
             }).start(next: { contactIdentifier in
                 var content = content
                 content.sender = NotificationContent.Sender(peerId: fromId, name: callerName, contactIdentifier: contactIdentifier)
                 content.senderImage = callerAvatar(mediaBox: postbox.mediaBox, accountPeerId: accountPeerId, callerId: fromId, callerPeer: callerPeer, callerName: callerName, displayNameOnLockscreen: displayNameOnLockscreen)
-                content.call = NotificationContent.Call(accountId: accountId, callId: callId, isVideo: isVideo, donatesCall: IncomingCallCommunication.donatesCall(showCallsInRecents: showCallsInRecents))
+                content.call = call
                 completion(content)
             })
             return
         }
+        content.call = call
     }
     completion(content)
 }
@@ -961,12 +988,13 @@ private final class NotificationServiceHandler {
 
     private let notificationKeyDisposable = MetaDisposable()
     private let pollDisposable = MetaDisposable()
+    private let acknowledgeCallDisposable = MetaDisposable()
     private let noneToneDisposable = MetaDisposable()
     // Handler creation is, for practical purposes, when the system's ~30 s extension
     // budget started ticking; the connection deadline on the poll path counts from here.
     private let startTimestamp = CFAbsoluteTimeGetCurrent()
 
-    init?(queue: Queue, episode: String, updateCurrentContent: @escaping (NotificationContent) -> Void, completed: @escaping () -> Void, requestIdentifier: String, payload: [AnyHashable: Any]) {
+    init?(queue: Queue, episode: String, updateCurrentContent: @escaping (NotificationContent) -> Void, completed: @escaping () -> Void, requestIdentifier: String, payload: [AnyHashable: Any], initialInterruptionLevel: UNNotificationInterruptionLevel) {
         //debug_linker_fail_test()
         self.queue = queue
 
@@ -1076,6 +1104,7 @@ private final class NotificationServiceHandler {
         let canFilterNotifications = ServicePushPresentation.appCanFilterNotifications(infoDictionary: Bundle.main.infoDictionary)
 
         Logger.shared.log("NotificationService \(episode)", "Begin processing payload")
+        Logger.shared.log("NotificationService \(episode)", "Push received, server interruption level: \(IncomingCallPushPresentation.interruptionLevelName(initialInterruptionLevel))")
 
         guard var encryptedPayload = payload["p"] as? String else {
             Logger.shared.log("NotificationService \(episode)", "Invalid payload 1")
@@ -1639,6 +1668,8 @@ private final class NotificationServiceHandler {
                                 var content = NotificationContent(isLockedMessage: nil)
                                 content.userInfo = IncomingCallPushPresentation.markerUserInfo
                                 updateCurrentContent(content)
+                                Logger.shared.log("NotificationService \(episode)", "Call push: handler running for \(String(format: "%.2f", CFAbsoluteTimeGetCurrent() - strongSelf.startTimestamp)) s, server interruption level: \(IncomingCallPushPresentation.interruptionLevelName(initialInterruptionLevel)), low power: \(ProcessInfo.processInfo.isLowPowerModeEnabled), thermal state: \(ProcessInfo.processInfo.thermalState.rawValue), app locked: \(isLockedMessage != nil), names on lock screen: \(inAppNotificationSettings.displayNameOnLockscreen), system integration: \(voiceCallSettings.enableSystemIntegration), can filter: \(canFilterNotifications)")
+                                let callRoute = IncomingCallNotificationRouting.Call(accountId: callData.accountId, peerId: callData.fromId.toInt64(), fromId: callData.fromId.id._internalGetInt64Value(), callId: callData.id, accessHash: callData.accessHash, updates: callData.updates, isVideo: callData.isVideo)
                                 
                                 let _ = (stateManager.postbox.transaction { transaction -> Peer? in
                                     return transaction.getPeer(callData.fromId)
@@ -1671,7 +1702,7 @@ private final class NotificationServiceHandler {
                                             updateCurrentContent(content)
 
                                             CXProvider.reportNewIncomingVoIPPushPayload(voipPayload, completion: { error in
-                                                Logger.shared.log("NotificationService \(episode)", "Did report voip notification, error: \(String(describing: error))")
+                                                Logger.shared.log("NotificationService \(episode)", "Did report voip notification, error: \(String(describing: error)), \(IncomingCallPushPresentation.callKitResultDescription(error))")
                                                 done(error)
                                             })
                                         },
@@ -1692,12 +1723,23 @@ private final class NotificationServiceHandler {
                                                 callId: callData.id,
                                                 isVideo: callData.isVideo,
                                                 showCallsInRecents: voiceCallSettings.showCallsInRecents,
+                                                callRoute: callRoute,
                                                 completion: done
                                             )
                                         },
                                         showRingingContent: { content in
-                                            Logger.shared.log("NotificationService \(episode)", "Showing the call as a notification")
+                                            Logger.shared.log("NotificationService \(episode)", "Showing the call as a notification after \(String(format: "%.2f", CFAbsoluteTimeGetCurrent() - strongSelf.startTimestamp)) s, drawn as the caller: \(content.call?.drawsCaller ?? false), time sensitive requested")
                                             updateCurrentContent(content)
+                                        },
+                                        acknowledgeRing: { done in
+                                            Logger.shared.log("NotificationService \(episode)", "Acknowledging the call")
+                                            let startedAt = CFAbsoluteTimeGetCurrent()
+                                            strongSelf.acknowledgeCallDisposable.set((_internal_acknowledgeIncomingCall(network: stateManager.network, id: callData.id, accessHash: callData.accessHash)
+                                            |> timeout(IncomingCallPushPresentation.acknowledgementTimeout, queue: strongSelf.queue, alternate: .single(false))
+                                            |> take(1)).start(next: { acknowledged in
+                                                Logger.shared.log("NotificationService \(episode)", "Call acknowledged: \(acknowledged) after \(String(format: "%.2f", CFAbsoluteTimeGetCurrent() - startedAt)) s")
+                                                done()
+                                            }))
                                         },
                                         completed: completed
                                     )
@@ -1743,7 +1785,7 @@ private final class NotificationServiceHandler {
                                             updateCurrentContent(content)
 
                                             CXProvider.reportNewIncomingVoIPPushPayload(voipPayload, completion: { error in
-                                                Logger.shared.log("NotificationService \(episode)", "Did report voip notification, error: \(String(describing: error))")
+                                                Logger.shared.log("NotificationService \(episode)", "Did report voip notification, error: \(String(describing: error)), \(IncomingCallPushPresentation.callKitResultDescription(error))")
                                                 done(error)
                                             })
                                         },
@@ -1764,6 +1806,7 @@ private final class NotificationServiceHandler {
                                                 callId: groupCallData.id,
                                                 isVideo: groupCallData.isVideo,
                                                 showCallsInRecents: voiceCallSettings.showCallsInRecents,
+                                                callRoute: nil,
                                                 completion: done
                                             )
                                         },
@@ -1814,6 +1857,26 @@ private final class NotificationServiceHandler {
                                             updateCurrentContent(content)
                                             completed()
                                             return
+                                        }
+                                        
+                                        if let messageId {
+                                            let _ = (stateManager.postbox.transaction { transaction -> Bool in
+                                                guard let message = transaction.getMessage(messageId) else {
+                                                    return false
+                                                }
+                                                return IncomingCallPushPresentation.isPhoneCallServiceMessage(media: message.media)
+                                            }).start(next: { isCallMessage in
+                                                guard isCallMessage else {
+                                                    return
+                                                }
+                                                UNUserNotificationCenter.current().getDeliveredNotifications(completionHandler: { notifications in
+                                                    let identifiers = IncomingCallPushPresentation.ringIdentifiers(notifications, accountId: recordId.int64, peerId: peerId.toInt64())
+                                                    if !identifiers.isEmpty {
+                                                        Logger.shared.log("NotificationService \(episode)", "The call ended, removing \(identifiers.count) ringing notifications")
+                                                        UNUserNotificationCenter.current().removeDeliveredNotifications(withIdentifiers: identifiers)
+                                                    }
+                                                })
+                                            })
                                         }
                                         
                                         // Lockdown Mode: no automatic download of a stranger's photo, sticker, video preview or voice
@@ -2895,6 +2958,7 @@ private final class NotificationServiceHandler {
                                             }
                                         }
                                     }
+                                    removeIdentifiers.append(contentsOf: IncomingCallPushPresentation.ringIdentifiers(notifications, accountId: recordId.int64, peerId: id.peerId.toInt64()))
 
                                     let completeRemoval: () -> Void = {
                                         guard let strongSelf = self else {
@@ -3036,6 +3100,7 @@ private final class NotificationServiceHandler {
 
     deinit {
         self.pollDisposable.dispose()
+        self.acknowledgeCallDisposable.dispose()
         self.stateManager?.network.shouldKeepConnection.set(.single(false))
     }
 
@@ -3096,6 +3161,8 @@ final class NotificationService: UNNotificationServiceExtension {
         if !self.canFilterNotifications {
             ServicePushPresentation.removeDeliveredPlaceholders()
         }
+        IncomingCallPushPresentation.removeStaleRings()
+        let initialInterruptionLevel = request.content.interruptionLevel
 
         // Keeps the process running until the databases are paused; a request replaced before
         // it finished ends its activity when released.
@@ -3139,7 +3206,8 @@ final class NotificationService: UNNotificationServiceExtension {
                     }
                 },
                 requestIdentifier: request.identifier,
-                payload: request.content.userInfo
+                payload: request.content.userInfo,
+                initialInterruptionLevel: initialInterruptionLevel
             ))
         })
     }

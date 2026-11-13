@@ -53,6 +53,29 @@ enum IncomingCallCommunication {
         )
     }
 
+    /// The handle of a caller that is not drawn: no account, no peer, so the app's call-back handler
+    /// (`callBack(identifier:)`) rejects it and nothing can call a person back from it.
+    static let anonymousHandle = "nanogram-call-anonymous"
+
+    /// A caller the notification does not name (the passcode lock, names hidden on the lock screen,
+    /// a group call invite): no photo, no device contact, never donated. It only keeps the content an
+    /// update from an `INStartCallIntent`, which is what lets `UNNotificationSound.defaultRingtone` ring.
+    /// `name` is what the banner already shows (or the generic "Incoming Call").
+    static func anonymousPerson(name: String) -> INPerson {
+        var nameComponents = PersonNameComponents()
+        nameComponents.nickname = name
+        return INPerson(
+            personHandle: INPersonHandle(value: anonymousHandle, type: .unknown),
+            nameComponents: nameComponents,
+            displayName: name,
+            image: nil,
+            contactIdentifier: nil,
+            customIdentifier: nil,
+            isMe: false,
+            suggestionType: .none
+        )
+    }
+
     /// Whether the ringing notification is drawn as the caller's (their photo, the interaction
     /// donated) rather than kept as the plain banner. Not while the passcode lock is on, nor with
     /// names hidden on the lock screen: a message then names no sender either. Nor for a group call
@@ -103,7 +126,9 @@ enum IncomingCallCommunication {
         return result
     }
 
-    static func intent(caller: INPerson, callId: Int64?, isVideo: Bool, date: Date) -> INStartCallIntent {
+    /// `callsBack: false` (a group call invite) leaves out the call record to call back, so nothing
+    /// offers a 1:1 call to the inviter.
+    static func intent(caller: INPerson, callId: Int64?, isVideo: Bool, date: Date, callsBack: Bool = true) -> INStartCallIntent {
         let capability: INCallCapability = isVideo ? .videoCall : .audioCall
         // The Swift overlay has no initializer with participants (`caller` is deprecated), so this
         // is the refined Objective-C one.
@@ -120,7 +145,7 @@ enum IncomingCallCommunication {
         )
         return INStartCallIntent(
             callRecordFilter: nil,
-            callRecordToCallBack: record,
+            callRecordToCallBack: callsBack ? record : nil,
             audioRoute: .unknown,
             destinationType: .normal,
             contacts: [caller],
@@ -142,5 +167,18 @@ enum IncomingCallCommunication {
         } catch {
             return content
         }
+    }
+
+    /// `updated` when the system took the intent. The content unchanged (`updatedContent` hands the
+    /// same object back) cannot play the ringtone constant, so it gets a bundled sound instead.
+    static func withFallbackSound(original: UNNotificationContent, updated: UNNotificationContent) -> UNNotificationContent {
+        guard updated === original else {
+            return updated
+        }
+        guard let content = original.mutableCopy() as? UNMutableNotificationContent else {
+            return original
+        }
+        content.sound = IncomingCallPushPresentation.fallbackSound
+        return content
     }
 }

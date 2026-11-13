@@ -218,4 +218,65 @@ final class IncomingCallCommunicationTests: XCTestCase {
         XCTAssertEqual(updated.userInfo["accountId"] as? String, "42")
         XCTAssertEqual(updated.userInfo["peerId"] as? String, "1234")
     }
+
+    // MARK: - A caller that is not drawn
+
+    // The ringtone needs content updated from a call intent, so a call that is not drawn gets an
+    // anonymous one: no photo, no device contact, and a handle nothing can call back.
+    @available(iOS 15.0, *)
+    func testAnonymousPersonCarriesNothingToCallBack() {
+        let person = IncomingCallCommunication.anonymousPerson(name: "Incoming Call")
+        XCTAssertEqual(person.displayName, "Incoming Call")
+        XCTAssertNil(person.image)
+        XCTAssertNil(person.contactIdentifier)
+        XCTAssertNil(person.customIdentifier)
+        XCTAssertFalse(person.isMe)
+        XCTAssertNil(person.personHandle?.value.flatMap(IncomingCallNotifications.callBack(identifier:)))
+        XCTAssertEqual(person.personHandle?.value, IncomingCallCommunication.anonymousHandle)
+    }
+
+    @available(iOS 15.0, *)
+    func testAnonymousIntentStillRingsAsANormalCall() {
+        let person = IncomingCallCommunication.anonymousPerson(name: "Incoming Call")
+        let intent = IncomingCallCommunication.intent(caller: person, callId: 9, isVideo: false, date: Date())
+        XCTAssertEqual(intent.destinationType, .normal)
+        XCTAssertEqual(intent.callCapability, .audioCall)
+        XCTAssertNotNil(intent.callRecordToCallBack)
+    }
+
+    // A group call invite is no call to the inviter: nothing to call back.
+    @available(iOS 15.0, *)
+    func testGroupInviteIntentHasNoCallRecordToCallBack() {
+        let person = IncomingCallCommunication.anonymousPerson(name: "Group")
+        let intent = IncomingCallCommunication.intent(caller: person, callId: 9, isVideo: true, date: Date(), callsBack: false)
+        XCTAssertNil(intent.callRecordToCallBack)
+        XCTAssertEqual(intent.destinationType, .normal)
+        XCTAssertEqual(intent.callCapability, .videoCall)
+    }
+
+    // The system refusing the intent leaves the banner, which then rings with a bundled sound.
+    @available(iOS 15.0, *)
+    func testRefusedUpdateFallsBackToABundledSound() {
+        let content = self.ringingContent()
+        let person = IncomingCallCommunication.anonymousPerson(name: "Alice")
+        let intent = IncomingCallCommunication.intent(caller: person, callId: 1, isVideo: false, date: Date())
+        let updated = IncomingCallCommunication.updatedContent(content, intent: intent, update: { _, _ in
+            throw UpdateFailure.refused
+        })
+        let result = IncomingCallCommunication.withFallbackSound(original: content, updated: updated)
+        XCTAssertEqual(result.sound, IncomingCallPushPresentation.fallbackSound)
+        XCTAssertEqual(result.title, "Alice")
+        XCTAssertEqual(result.body, "is calling you")
+        XCTAssertTrue(IncomingCallPushPresentation.isIncomingCall(userInfo: result.userInfo))
+    }
+
+    @available(iOS 15.0, *)
+    func testAcceptedUpdateKeepsItsSound() {
+        let content = self.ringingContent()
+        let updated = UNMutableNotificationContent()
+        updated.sound = .default
+        let result = IncomingCallCommunication.withFallbackSound(original: content, updated: updated)
+        XCTAssertTrue(result === updated)
+        XCTAssertEqual(result.sound, UNNotificationSound.default)
+    }
 }
