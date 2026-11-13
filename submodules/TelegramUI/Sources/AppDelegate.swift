@@ -1482,6 +1482,12 @@ private func extractAccountManagerState(records: AccountRecordsView<TelegramAcco
                     // The launch ends at the first committed frame of the root controller, not when it is assigned.
                     SignpostCommit.afterNextCommit {
                         LaunchTrace.end(.firstFrame)
+                        // Our own launch histogram, since MetricKit delivers none. A process a push started in the
+                        // background and the user opened much later is not a launch the user waited for.
+                        let launchSeconds = CFAbsoluteTimeGetCurrent() - launchStartTime
+                        if firstTime && launchSeconds < 60.0 {
+                            LaunchHistogram.record("launch.firstFrame", seconds: launchSeconds)
+                        }
                     }
                     
                     #if DEBUG
@@ -2434,10 +2440,12 @@ private func extractAccountManagerState(records: AccountRecordsView<TelegramAcco
     func handleWillEnterForeground() {
         // Foreground until the first committed frame (what the user waits for after the app comes back).
         let resumeSignpost = PerformanceSignposts.OneShot(PerformanceSignpostName.resumeToFirstFrame)
+        let resumeStartTime = CFAbsoluteTimeGetCurrent()
         self.resumeSignpost?.end()
         self.resumeSignpost = resumeSignpost
         SignpostCommit.afterNextCommit { [weak self] in
             resumeSignpost.end()
+            LaunchHistogram.record("resume.firstFrame", seconds: CFAbsoluteTimeGetCurrent() - resumeStartTime)
             if self?.resumeSignpost === resumeSignpost {
                 self?.resumeSignpost = nil
             }
