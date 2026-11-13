@@ -297,10 +297,19 @@ final class HLSStreamingStorageTests: XCTestCase {
         HLSStreamingStorage.releaseTempFile(second, tempFileCache: cache)
         cache.trimUnused()
         XCTAssertEqual(cache.count, 0)
-        XCTAssertFalse(FileManager.default.fileExists(atPath: second.path))
+        XCTAssertTrue(self.waitUntilGone(second.path))
     }
 
     // MARK: - Temp file cache
+
+    /// TempBox removes disposed files on a background queue.
+    private func waitUntilGone(_ path: String) -> Bool {
+        let deadline = Date().addingTimeInterval(5.0)
+        while FileManager.default.fileExists(atPath: path) && Date() < deadline {
+            Thread.sleep(forTimeInterval: 0.02)
+        }
+        return !FileManager.default.fileExists(atPath: path)
+    }
 
     private func cacheKey(_ index: Int) -> HLSTempFileCache.Key {
         return HLSTempFileCache.Key(resourceId: "r", initRange: 0 ..< 10, dataRange: Int64(index * 100) ..< Int64(index * 100 + 50))
@@ -324,7 +333,7 @@ final class HLSStreamingStorageTests: XCTestCase {
         XCTAssertTrue(cache.release(aAgain))
         let c = try XCTUnwrap(cache.acquire(key: self.cacheKey(3), write: { self.writeFile(bytes: 10) }))
         XCTAssertEqual(cache.count, 2)
-        XCTAssertFalse(FileManager.default.fileExists(atPath: b.path), "the least recently used file is disposed")
+        XCTAssertTrue(self.waitUntilGone(b.path), "the least recently used file is disposed")
         XCTAssertTrue(FileManager.default.fileExists(atPath: a.path))
         XCTAssertTrue(cache.release(c))
         cache.trimUnused()
@@ -336,7 +345,7 @@ final class HLSStreamingStorageTests: XCTestCase {
         let other = try XCTUnwrap(cache.acquire(key: self.cacheKey(2), write: { self.writeFile(bytes: 20) }))
         XCTAssertTrue(cache.release(other))
         XCTAssertTrue(FileManager.default.fileExists(atPath: inUse.path))
-        XCTAssertFalse(FileManager.default.fileExists(atPath: other.path), "over the byte limit, the unused file goes")
+        XCTAssertTrue(self.waitUntilGone(other.path), "over the byte limit, the unused file goes")
         XCTAssertEqual(cache.count, 1)
         XCTAssertTrue(cache.release(inUse))
         cache.trimUnused()
