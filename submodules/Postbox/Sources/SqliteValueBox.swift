@@ -423,6 +423,7 @@ public final class SqliteValueBox: ValueBox {
     /// How long a statement waits for another connection's lock before it fails with
     /// SQLITE_BUSY. Tests shorten it to simulate a database that stays locked.
     nonisolated(unsafe) static var busyTimeoutMilliseconds: Int32 = 5 * 1000
+    nonisolated(unsafe) static var openRetryBusyTimeoutMilliseconds: Int32 = 1000
 
     /// WAL frames after which a commit checkpoints. SQLite's default, and upstream's, is 1000 (about 4 MB).
     /// A checkpoint copies the newest version of each page in the WAL into the database file once, so the pages
@@ -864,8 +865,19 @@ public final class SqliteValueBox: ValueBox {
         
         // A disposable database whose setup cannot be read or written (locked by another
         // process, I/O error) reports no database; closing the connection rolls the setup back.
-        if !self.beginInternal(database: database) && self.isDisposable {
-            return self.failDisposableSetup("begin")
+        // A non-owner (an extension) that cannot take the write lock while opening reports no database, as for every
+        // other open failure it sees: nothing has been written yet, and the app or another extension holds the lock.
+        // It waits once more, briefly, in case the lock was just released. Every later BEGIN still traps.
+        let mayFailOpen = self.isDisposable || !self.removeDatabaseOnError
+        if !self.beginInternal(database: database, mayTrapOverride: mayFailOpen ? false : nil) && mayFailOpen {
+            postboxLog("Could not begin the opening transaction, retrying once")
+            sqlite3_busy_timeout(database.handle, SqliteValueBox.openRetryBusyTimeoutMilliseconds)
+            let retried = self.beginInternal(database: database, mayTrapOverride: false)
+            sqlite3_busy_timeout(database.handle, SqliteValueBox.busyTimeoutMilliseconds)
+            if !retried {
+                postboxLogSync()
+                return self.failDisposableSetup("begin")
+            }
         }
 
         postboxLog("Did begin transaction")
@@ -996,11 +1008,11 @@ public final class SqliteValueBox: ValueBox {
     }
     
     @discardableResult
-    private func beginInternal(database: Database) -> Bool {
+    private func beginInternal(database: Database, mayTrapOverride: Bool? = nil) -> Bool {
         precondition(self.queue.isCurrent())
         let sql = self.isReadOnly ? "BEGIN DEFERRED" : "BEGIN IMMEDIATE"
         let resultCode = database.execute(sql)
-        checkTransactionResult(resultCode, database: database, operation: sql, mayTrap: self.mayTrap)
+        checkTransactionResult(resultCode, database: database, operation: sql, mayTrap: mayTrapOverride ?? self.mayTrap)
         return resultCode
     }
 
@@ -1012,8 +1024,8 @@ public final class SqliteValueBox: ValueBox {
         return resultCode
     }
 
-    /// Ends the open of a disposable database whose setup failed. Only reached when disposable:
-    /// every other database traps at the failing step.
+    /// Ends the open of a database whose setup failed. Reached for a disposable database and, at the opening
+    /// transaction only, for a non-owner connection; every other database traps at the failing step.
     private func failDisposableSetup(_ step: String) -> Database? {
         postboxLog("Disposable database setup failed at \(step), reporting none [\(self.databasePath)]")
         return nil
