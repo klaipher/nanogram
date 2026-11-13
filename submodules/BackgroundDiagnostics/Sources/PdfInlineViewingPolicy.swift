@@ -28,7 +28,7 @@ public enum PdfInlineViewingPolicy {
         guard let budget else {
             return minimumHeadroom
         }
-        return min(minimumHeadroom, UInt64(Double(budget) * minimumHeadroomShare))
+        return min(minimumHeadroom, UInt64(exactly: (Double(budget) * minimumHeadroomShare).rounded(.down)) ?? minimumHeadroom)
     }
 
     /// `headroom` is the memory the app may still allocate (`ProcessMemory.availableHeadroom()`), nil when unknown;
@@ -62,7 +62,7 @@ extension ProcessMemory {
     public static func availableHeadroom() -> UInt64? {
         #if os(iOS)
         let value = os_proc_available_memory()
-        return value > 0 ? UInt64(value) : nil
+        return value > 0 ? UInt64(truncatingIfNeeded: value) : nil
         #else
         return nil
         #endif

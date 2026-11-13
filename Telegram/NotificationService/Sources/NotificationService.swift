@@ -675,7 +675,7 @@ private struct NotificationContent: CustomStringConvertible {
     @available(iOS 15.0, *)
     private func updatedForCall(_ content: UNNotificationContent, call: Call) -> UNNotificationContent {
         guard call.drawsCaller, self.isLockedMessage == nil, let sender = self.sender, let caller = IncomingCallCommunication.caller(accountId: call.accountId, peerId: sender.peerId.toInt64(), callerName: sender.name, recipientAccountName: self.recipientAccountName, contactIdentifier: sender.contactIdentifier) else {
-            let name = (self.title?.isEmpty == false) ? self.title! : ((self.body?.isEmpty == false) ? self.body! : "Incoming Call")
+            let name = [self.title, self.body].compactMap({ $0 }).first(where: { !$0.isEmpty }) ?? "Incoming Call"
             let intent = IncomingCallCommunication.intent(caller: IncomingCallCommunication.anonymousPerson(name: name), callId: call.callId, isVideo: call.isVideo, date: Date(), callsBack: !call.isGroupCall)
             let updated = IncomingCallCommunication.updatedContent(content, intent: intent, update: { content, intent in
                 do {

@@ -18,7 +18,7 @@ enum CallRingTimeout {
         guard value.isFinite, value >= 1_000, value <= 600_000 else {
             return nil
         }
-        return Int32(value)
+        return Int32(exactly: value.rounded(.towardZero))
     }
 
     /// Seconds from the local receipt of the call.
