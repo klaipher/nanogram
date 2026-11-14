@@ -6,7 +6,7 @@ import WebPKit
 @preconcurrency import TDShim
 
 /// One tappable sticker tile. Downloads its render file when visible and decodes
-/// it (WebPKit for webp, UIImage for jpeg/png, rlottie frame-0 for tgs) once the
+/// it (WebPKit for webp, UIImage for jpeg/png, tlottie frame-0 for tgs) once the
 /// local path lands. WEBM (`.none`) shows a neutral placeholder but stays
 /// tappable — sending works by remote id regardless.
 struct StickerCellView: View {
