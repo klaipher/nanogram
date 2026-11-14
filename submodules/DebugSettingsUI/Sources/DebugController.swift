@@ -3,6 +3,7 @@ import DiskWriteAccounting
 import UIKit
 import Display
 import SwiftSignalKit
+import MediaCapabilities
 import TelegramCore
 import MtProtoKit
 import MessageUI
@@ -173,7 +174,7 @@ private enum DebugLogAction {
     private func prepare(arguments: DebugControllerArguments) -> (URL, DebugLogExportSpec) -> Signal<[DebugLogExportFile], NoError> {
         switch self {
         case .sendLogs:
-            return debugLogConcatenatedArchiveSignal(Logger.shared.collectLogs(), additionalInfo: performanceExperimentsReport(modelIdentifier: debugDeviceModelIdentifier()))
+            return debugLogConcatenatedArchiveSignal(Logger.shared.collectLogs(), additionalInfo: performanceExperimentsReport(modelIdentifier: debugDeviceModelIdentifier()) + "\n" + MediaCapabilities.shared.reportLines().joined(separator: "\n"))
         case .sendShareLogs:
             return debugLogConcatenatedArchiveSignal(Logger.shared.collectLogs(prefix: "/logs/share-logs"))
         case .sendGroupCallLogs:

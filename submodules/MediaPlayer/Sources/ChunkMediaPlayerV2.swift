@@ -6,11 +6,9 @@ import TelegramAudio
 import SwiftSignalKit
 import Postbox
 import VideoToolbox
+import MediaCapabilities
 
-public let internal_isHardwareAv1Supported: Bool = {
-    let value = VTIsHardwareDecodeSupported(kCMVideoCodecType_AV1)
-    return value
-}()
+public let internal_isHardwareAv1Supported: Bool = MediaCapabilities.isHardwareAv1Supported
 
 // What feeds a ChunkMediaPlayerV2 its parts. The player reports every seek and its playback position back to it.
 public protocol ChunkMediaPlayerSourceImpl: AnyObject {

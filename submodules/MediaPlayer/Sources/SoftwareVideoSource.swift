@@ -8,6 +8,7 @@ import TGUIKit
 import CoreMedia
 import SwiftSignalKit
 import FFMpegBinding
+import MediaCapabilities
 
 private func SoftwareVideoSource_readPacketCallback(userData: UnsafeMutableRawPointer?, buffer: UnsafeMutablePointer<UInt8>?, bufferSize: Int32) -> Int32 {
     let context = Unmanaged<SoftwareVideoSource>.fromOpaque(userData!).takeUnretainedValue()
@@ -155,7 +156,7 @@ public final class SoftwareVideoSource {
             let rotationAngle: Double = metrics.rotationAngle
             let aspect = Double(metrics.width) / Double(metrics.height)
             
-            if passthroughDecoder {
+            if VideoDecodePolicy.usesPassthrough(requested: passthroughDecoder, isAv1: codecId == FFMpegCodecIdAV1, hardwareAv1: MediaCapabilities.isHardwareAv1Supported) {
                 var videoFormatData: FFMpegMediaPassthroughVideoFrameDecoder.VideoFormatData?
                 if codecId == FFMpegCodecIdMPEG4 {
                     videoFormatData = FFMpegMediaPassthroughVideoFrameDecoder.VideoFormatData(codecType: kCMVideoCodecType_MPEG4Video, width: metrics.width, height: metrics.height, extraData: Data(bytes: metrics.extradata, count: Int(metrics.extradataSize)))
@@ -172,16 +173,19 @@ public final class SoftwareVideoSource {
                     break
                 }
             } else {
-                if let codec = FFMpegAVCodec.find(forId: codecId, preferHardwareAccelerationCapable: useHardwareAcceleration) {
+                // The native AV1 decoder only works through the hwaccel; without hardware AV1 dav1d decodes.
+                let useHardware = VideoDecodePolicy.usesHardwareAcceleration(requested: useHardwareAcceleration, isAv1: codecId == FFMpegCodecIdAV1, hardwareAv1: MediaCapabilities.isHardwareAv1Supported, longSide: 0, minimumLongSide: 0)
+                if let codec = FFMpegAVCodec.find(forId: codecId, preferHardwareAccelerationCapable: useHardware) {
                     let codecContext = FFMpegAVCodecContext(codec: codec)
                     if avFormatContext.codecParams(atStreamIndex: streamIndex, to: codecContext) {
-                        if useHardwareAcceleration {
+                        if useHardware {
                             codecContext.setupHardwareAccelerationIfPossible()
                         }
                         if skipLoopFilter {
                             codecContext.setSkipLoopFilterToAll()
                         }
                         if codecContext.open() {
+                            DecodePathLog.report(codecId: codecId, hardware: useHardware)
                             let decoder = FFMpegMediaVideoFrameDecoder(codecContext: codecContext)
                             decoder.reusesPixelBuffers = reusePixelBuffers
                             #if os(macOS)
@@ -737,7 +741,7 @@ final class SoftwareVideoReader {
             let rotationAngle: Double = metrics.rotationAngle
             let aspect = Double(metrics.width) / Double(metrics.height)
             
-            if passthroughDecoder {
+            if VideoDecodePolicy.usesPassthrough(requested: passthroughDecoder, isAv1: codecId == FFMpegCodecIdAV1, hardwareAv1: MediaCapabilities.isHardwareAv1Supported) {
                 var videoFormatData: FFMpegMediaPassthroughVideoFrameDecoder.VideoFormatData?
                 if codecId == FFMpegCodecIdMPEG4 {
                     videoFormatData = FFMpegMediaPassthroughVideoFrameDecoder.VideoFormatData(codecType: kCMVideoCodecType_MPEG4Video, width: metrics.width, height: metrics.height, extraData: Data(bytes: metrics.extradata, count: Int(metrics.extradataSize)))

@@ -8,6 +8,7 @@ import TGUIKit
 import CoreMedia
 import SwiftSignalKit
 import FFMpegBinding
+import MediaCapabilities
 import Postbox
 import ManagedFile
 
@@ -379,7 +380,7 @@ public final class FFMpegFileReader {
                 switch mediaType {
                 case .video:
                     self.videoRotationAngle = rotationAngle
-                    if passthroughDecoder {
+                    if VideoDecodePolicy.usesPassthrough(requested: passthroughDecoder, isAv1: codecId == FFMpegCodecIdAV1, hardwareAv1: MediaCapabilities.isHardwareAv1Supported) {
                         var videoFormatData: FFMpegMediaPassthroughVideoFrameDecoder.VideoFormatData?
                         if codecId == FFMpegCodecIdMPEG4 {
                             videoFormatData = FFMpegMediaPassthroughVideoFrameDecoder.VideoFormatData(codecType: kCMVideoCodecType_MPEG4Video, width: metrics.width, height: metrics.height, extraData: Data(bytes: metrics.extradata, count: Int(metrics.extradataSize)))
@@ -400,7 +401,7 @@ public final class FFMpegFileReader {
                         }
                     } else {
                         // Below the size threshold software decoding costs less CPU than a hardware session.
-                        let useHardware = useHardwareAcceleration && max(Int(metrics.width), Int(metrics.height)) >= hardwareAccelerationMinimumLongSide
+                        let useHardware = VideoDecodePolicy.usesHardwareAcceleration(requested: useHardwareAcceleration, isAv1: codecId == FFMpegCodecIdAV1, hardwareAv1: MediaCapabilities.isHardwareAv1Supported, longSide: max(Int(metrics.width), Int(metrics.height)), minimumLongSide: hardwareAccelerationMinimumLongSide)
                         if let codec = FFMpegAVCodec.find(forId: codecId, preferHardwareAccelerationCapable: useHardware) {
                             let codecContext = FFMpegAVCodecContext(codec: codec)
                             if avFormatContext.codecParams(atStreamIndex: Int32(streamIndex), to: codecContext) {
@@ -421,6 +422,7 @@ public final class FFMpegFileReader {
                                 
                                 if codecContext.open() {
                                     self.isHardwareAccelerated = useHardware
+                                    DecodePathLog.report(codecId: codecId, hardware: useHardware)
                                     let decoder = FFMpegMediaVideoFrameDecoder(codecContext: codecContext)
                                     decoder.reusesPixelBuffers = reusesPixelBuffers
                                     decoder.measuresAV1Decode = codecId == FFMpegCodecIdAV1 && !useHardware

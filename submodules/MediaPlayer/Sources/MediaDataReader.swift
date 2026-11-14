@@ -3,12 +3,10 @@ import AVFoundation
 import CoreMedia
 import FFMpegBinding
 import VideoToolbox
+import MediaCapabilities
 
 #if os(macOS)
-public let internal_isHardwareAv1Supported: Bool = {
-    let value = VTIsHardwareDecodeSupported(kCMVideoCodecType_AV1)
-    return value
-}()
+public let internal_isHardwareAv1Supported: Bool = MediaCapabilities.isHardwareAv1Supported
 #endif
 
 public enum MediaDataReaderReadSampleBufferResult {
