@@ -17,8 +17,6 @@
 #   lib <name> [ios=<path>] [mac=<path>] [android=<path>]   a library whose single pin lives in shared/shared-libraries.json
 #   share <path>            a shared path inside the core
 #   allow core <path-prefix> [until=DATE] | reason   an intended difference in the core, with its reason
-#   mirror ios=<file> mac=<file> [warn-until=DATE]   a file kept as an identical copy in both repos (blob ids are
-#                           compared on every check: an error on the Mac side, a warning on the iOS side)
 #
 # Process: a fix to anything listed under `share` is committed to iOS main first; the same day run
 # tools/dev/tg core-bump on the Mac (or cherry-pick -x into mac/core-lts). Mac-only code in shared
@@ -49,12 +47,12 @@ lib libvpx ios=third-party/libvpx/libvpx mac=third-party/libvpx/libvpx android=T
 lib dav1d ios=third-party/dav1d/dav1d mac=third-party/dav1d/dav1d android=TMessagesProj/jni/third_party/dav1d
 lib td ios=third-party/td/td mac=third-party/td/td android=TMessagesProj/jni/td
 lib mtproto-engine ios=third-party/mtproto-engine mac=third-party/mtproto-engine
-lib openh264 ios=third-party/openh264/openh264 mac=core-xprojects/OpenH264/OpenH264/build.sh android=TMessagesProj/jni/third_party/openh264
-lib rnnoise ios=third-party/rnnoise/rnnoise mac=third-party/rnnoise android=TMessagesProj/jni/voip/rnnoise
-lib libprisma ios=third-party/libprisma/libprisma mac=submodules/CodeSyntax android=TMessagesProj/jni/third_party/libprisma
-lib sqlcipher-amalgamation ios=submodules/sqlcipher/amalgamation mac=submodules/sqlcipher android=TMessagesProj/jni/sqlite
-lib libyuv ios=third-party/libyuv/third_party/libyuv mac=submodules/tg_owt/src/third_party/libyuv android=TMessagesProj/jni/third_party/libyuv
-lib quickjs ios=third-party/quickjs-ng/quickjs mac=third-party/widget-sandbox/packages/ios/Sources/CQuickJS/quickjs android=TMessagesProj/jni/twidget/widget-sandbox/packages/ios/Sources/CQuickJS/quickjs
+lib openh264 ios=third-party/openh264/openh264 mac=third-party/openh264/openh264 android=TMessagesProj/jni/third_party/openh264
+lib rnnoise ios=third-party/rnnoise/rnnoise mac=third-party/rnnoise/rnnoise android=TMessagesProj/jni/third_party/xiph/rnnoise
+lib libprisma ios=third-party/libprisma/libprisma mac=third-party/libprisma/libprisma android=TMessagesProj/jni/third_party/libprisma
+lib sqlcipher-amalgamation ios=submodules/sqlcipher/amalgamation mac=submodules/sqlcipher/amalgamation android=TMessagesProj/jni/third_party/sqlite
+lib libyuv ios=third-party/libyuv/third_party/libyuv mac=third-party/libyuv/third_party/libyuv android=TMessagesProj/jni/third_party/libyuv
+lib quickjs ios=third-party/quickjs-ng/quickjs mac=third-party/widget-sandbox/third_party/quickjs android=TMessagesProj/jni/twidget/widget-sandbox/third_party/quickjs
 lib widget-sandbox ios=third-party/widget-sandbox/widget-sandbox mac=third-party/widget-sandbox android=TMessagesProj/jni/twidget/widget-sandbox
 lib twidget ios=third-party/twidget/twidget mac=third-party/twidget android=TMessagesProj/jni/twidget/twidget
 
@@ -106,11 +104,21 @@ share third-party/webp
 share third-party/libprisma
 share third-party/boost_regex
 share submodules/HardenedMedia
-
-# Files that exist as identical copies in both repos (the Mac has no Package.swift for the core module yet).
-# A change to one side must land on the other the same day.
-mirror ios=submodules/AnimatedStickerNode/VP9Hardware/Sources/VP9HardwareDecoder.swift mac=packages/VP9Hardware/Sources/VP9Hardware/VP9HardwareDecoder.swift
-mirror ios=submodules/AnimatedStickerNode/VP9Hardware/Sources/WebMStickerDemuxer.swift mac=packages/VP9Hardware/Sources/VP9Hardware/WebMStickerDemuxer.swift
+share third-party/libyuv
+share third-party/SwiftMath
+share submodules/TelegramUI/Resources/Fonts/latinmodern-math.otf
+share submodules/TelegramUI/Resources/Fonts/latinmodern-math.plist
+share submodules/HLSPlayback
+share submodules/RingBuffer
+share submodules/Sunrise
+share submodules/AnimatedStickerNode/VP9Hardware
+share submodules/TelegramUI/Components/QrStudioLogic
+share submodules/TelegramUI/Components/LiquidGlassShapes/Metal/LiquidGlassShapes.metal
+share submodules/TelegramUI/Components/LiquidGlassShapes/Sources/LiquidGlassSurfaceReleasePolicy.swift
+share submodules/TelegramUI/Components/LiquidGlassShapes/Sources/LiquidGlassShapesTypes.swift
+share submodules/TelegramUI/Components/Premium/PremiumDiamondComponent/MetalResources/GramDiamond.metal
+share submodules/TelegramUI/Components/Premium/PremiumDiamondComponent/Sources/InteractiveDiamond/DiamondAnimation.swift
+share submodules/TelegramUI/Components/Premium/PremiumDiamondComponent/Sources/InteractiveDiamond/DiamondGeometry.swift
 
 # WebRTC is one pin (klaipher/webrtc nanogram) for iOS, Mac and Android: there is no per-file difference list and no
-# WebRTC parity gate any more (the Mac moves from tg_owt to the same submodule in W5.4).
+# WebRTC parity gate any more (the Mac builds the same submodule, submodules/webrtc).

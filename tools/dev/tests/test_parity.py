@@ -22,12 +22,10 @@ class RepositoryConfigTests(unittest.TestCase):
         self.assertTrue(config.core_roots and config.shares and config.pins)
         self.assertTrue(all(a.reason for a in config.allows))
 
-    def test_repository_mirrors_name_the_vp9_copies(self):
+    def test_no_mirror_lines_remain(self):
+        """The Mac builds the iOS sources (VP9Hardware and the rest), so no file is kept as an identical copy."""
         config = parity.load_config(ROOT)
-        names = {m.ios.rsplit("/", 1)[-1] for m in config.mirrors}
-        self.assertEqual(names, {"VP9HardwareDecoder.swift", "WebMStickerDemuxer.swift"})
-        for mirror in config.mirrors:
-            self.assertEqual(mirror.ios.rsplit("/", 1)[-1], mirror.mac.rsplit("/", 1)[-1])
+        self.assertEqual(config.mirrors, [])
 
     def test_every_lib_line_is_known_to_the_manifest(self):
         config = parity.load_config(ROOT)

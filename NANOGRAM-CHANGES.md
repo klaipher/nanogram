@@ -50,6 +50,7 @@ marked (check) were not re-verified against the code; correct them on the next c
 - - VP9Hardware (W7): the Mac references `submodules/AnimatedStickerNode/VP9Hardware` for the decoder, demuxer, both tests and the two WebM fixtures; its sticker reader (`VP9HardwareStickerReader`) stays Mac-only on `YuvConversion`.
 - - QR Studio (W7): shared logic in `submodules/TelegramUI/Components/QrStudioLogic` (source set; iOS and Mac compile the same files); views, look colours and sticker decoders stay per app. Sync: a change in QrStudioLogic needs the Mac core bump and a Mac build.
 - - SceneEffects (W7): the Mac uses the iOS DiamondGeometry, DiamondAnimation, both Metal sources and LiquidGlassSurfaceReleasePolicy; views and Metal bundle glue stay per app.
+- - Shared libraries final state (W6): `shared/shared-libraries.json` has one source and one commit per library; BoringSSL stays vendored until its fork exists. The Mac copy of `docs/mac-core-paths.txt` and `native-libs.json` must equal these files byte for byte at the core pin.
 
 ### Calls (tgcalls, WebRTC forks)
 - What: tgcalls runs from `klaipher/tgcalls` `nanogram-shared` (iOS and Mac in one implementation), WebRTC from
