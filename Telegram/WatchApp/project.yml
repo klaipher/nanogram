@@ -69,8 +69,6 @@ targets:
           - audio
         TG_API_ID: $(TG_API_ID)
         TG_API_HASH: $(TG_API_HASH)
-        NSAppTransportSecurity:
-          NSAllowsArbitraryLoads: true
         NSMicrophoneUsageDescription: Record voice messages to send in chats.
         NSLocationWhenInUseUsageDescription: Share your current location in chats.
     settings:
