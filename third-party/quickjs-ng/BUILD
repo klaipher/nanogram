@@ -6,7 +6,6 @@ quickjs_copts = [
     "-O2",
     "-w",
     "-D_GNU_SOURCE",
-    "-DQUICKJS_NG_BUILD",
     "-Ithird-party/quickjs-ng/include",
     "-Ithird-party/quickjs-ng/quickjs",
 ]
@@ -21,10 +20,13 @@ cc_library(
         "shim/qjs_shim.c",
     ] + glob(["quickjs/*.h"]),
     hdrs = [
-        "include/quickjs.h",
+        "quickjs/quickjs.h",
         "include/qjs_shim.h",
     ],
-    includes = ["include"],
+    includes = [
+        "include",
+        "quickjs",
+    ],
     copts = quickjs_copts,
     visibility = ["//visibility:public"],
 )
@@ -34,10 +36,13 @@ objc_library(
     module_name = "CQuickJS",
     enable_modules = True,
     hdrs = [
-        "include/quickjs.h",
+        "quickjs/quickjs.h",
         "include/qjs_shim.h",
     ],
-    includes = ["include"],
+    includes = [
+        "include",
+        "quickjs",
+    ],
     deps = [":quickjs"],
     visibility = ["//visibility:public"],
 )
@@ -49,9 +54,9 @@ cc_test(
     deps = [":quickjs"],
 )
 
-# Fork changes 3-10 and 12 (VENDOR.md): host auto-init properties, class prototypes on first use, string access, a
-# host-class global object, host time and randomness, an uncatchable error through a Promise executor, a host hook at the
-# memory limit, the host's stop, no dumps without an explicit opt-in.
+# The fork's host API (klaipher/quickjs `nanogram`, its NANOGRAM-CHANGES.md; the numbered changes 3-10 and 12 of the
+# retired VENDOR.md): host auto-init properties, class prototypes on first use, string access, a host-class global object,
+# host time and randomness, a host hook at the memory limit, the host's stop, no dumps without an explicit opt-in.
 cc_test(
     name = "QuickJSHostTests",
     srcs = ["tests/quickjs_host_test.c"],
@@ -59,7 +64,8 @@ cc_test(
     deps = [":quickjs"],
 )
 
-# Published triggers for memory-safety bugs reachable from a message widget's script (VENDOR.md change 14). Also run it
+# Published triggers for memory-safety bugs reachable from a message widget's script (the fixes come with the fork's base,
+# TelegramMessenger/quickjs b526a817). Also run it
 # with --features=asan: the use-after-free cases only show under AddressSanitizer.
 cc_test(
     name = "QuickJSSecurityTests",

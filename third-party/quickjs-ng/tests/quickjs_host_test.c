@@ -430,7 +430,7 @@ static void arm_stop_latch(uint64_t calls)
     stop_latch.limit = calls;
 }
 
-static int latching_interrupt(JSRuntime *rt, void *opaque)
+static int latching_interrupt(JSContext *ctx, void *opaque)
 {
     if (stop_latch.latched)
         return 1;
@@ -570,7 +570,7 @@ static void test_memory_limit_func(void)
 
 static int counted_polls = 0;
 
-static int counting_interrupt(JSRuntime *rt, void *opaque)
+static int counting_interrupt(JSContext *ctx, void *opaque)
 {
     counted_polls++;
     return 0;
@@ -774,7 +774,7 @@ static void test_stopped(void)
 }
 
 /* The host's handler once it has stopped the runtime: says stop, and counts. */
-static int counting_stop_interrupt(JSRuntime *rt, void *opaque)
+static int counting_stop_interrupt(JSContext *ctx, void *opaque)
 {
     counted_polls++;
     return 1;
@@ -791,9 +791,10 @@ static int call_throws(JSContext *ctx, JSValueConst f)
     return threw;
 }
 
-/* On a stopped runtime the poll site after the stop, and after each stop's throw, asks the handler again, whatever
-   absorbed that exception (here the test itself). Error.stackTraceLimit 0 and the first stop's error kept alive make the next interrupt error small
-   (its shape is cached), so its allocation alone does not cross the work check that would force that poll. */
+/* On a stopped runtime (klaipher/quickjs `nanogram`: JS_SetStopped holds the runtime's uncatchable state for good) the
+   poll site after the stop, and after each stop's throw, throws the uncatchable "interrupted" error itself, whatever
+   absorbed the one before (here the test itself): it does not ask the handler again, so the handler's count stays where
+   it was at the stop. Error.stackTraceLimit 0 keeps the interrupt errors small. */
 static void test_stopped_next_poll(void)
 {
     JSRuntime *rt = JS_NewRuntime();
@@ -802,14 +803,14 @@ static void test_stopped_next_poll(void)
     JSValue fns = JS_Eval(ctx, code, strlen(code), "<test>", JS_EVAL_TYPE_GLOBAL);
     JSValue loop = JS_GetPropertyUint32(ctx, fns, 0);
     JSValue f = JS_GetPropertyUint32(ctx, fns, 1);
-    /* The stop itself, set outside any poll (as a host's native or memory hook does), makes the next poll site ask. */
+    /* The stop itself, set outside any poll (as a host's native or memory hook does), makes the next poll site throw. */
     JS_SetInterruptHandler(rt, counting_interrupt, NULL);
     call_until_polled(ctx, f);
     JS_SetStopped(rt);
     JS_SetInterruptHandler(rt, counting_stop_interrupt, NULL);
     int stopped_at = counted_polls;
     CHECK(call_throws(ctx, f));
-    CHECK(counted_polls == stopped_at + 1);
+    CHECK(counted_polls == stopped_at);
 
     JSValue r = JS_Call(ctx, loop, JS_UNDEFINED, 0, NULL);
     CHECK(JS_IsException(r));
@@ -817,10 +818,10 @@ static void test_stopped_next_poll(void)
     for (int i = 0; i < 3; i++) {
         int polls = counted_polls;
         CHECK(call_throws(ctx, loop));
-        CHECK(counted_polls == polls + 1);
-        /* The next poll site, a call that allocates nothing, asks the handler at once and throws. */
+        CHECK(counted_polls == polls);
+        /* The next poll site, a call that allocates nothing, throws at once, with no question to the handler. */
         CHECK(call_throws(ctx, f));
-        CHECK(counted_polls == polls + 2);
+        CHECK(counted_polls == polls);
     }
 
     JS_SetInterruptHandler(rt, NULL, NULL);

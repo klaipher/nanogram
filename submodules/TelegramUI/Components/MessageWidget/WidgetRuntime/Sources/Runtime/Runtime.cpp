@@ -425,7 +425,7 @@ std::string wholeMs(double ms) {
 
 } // namespace
 
-int Runtime::interrupt(JSRuntime* rt, void* opaque) {
+int Runtime::interrupt(JSContext* /*ctx*/, void* opaque) {
     auto* runtime = static_cast<Runtime*>(opaque);
     if (runtime->m_stopReason != StopReason::None) {
         return 1;

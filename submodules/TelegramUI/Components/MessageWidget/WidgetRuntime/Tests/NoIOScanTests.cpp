@@ -35,8 +35,13 @@ struct Allowed {
     const char* reason;
 };
 
-// Each entry is a hit that is not I/O the runtime performs. Start empty; add only with a reason that names the line.
+// Each entry is a hit that is not I/O the runtime performs. Add only with a reason that names the line.
 const std::vector<Allowed> kAllowed = {
+    // klaipher/quickjs `nanogram` (TelegramMessenger/quickjs b526a817's arenas): a slab of the runtime's own heap, mapped
+    // anonymously (MAP_ANON, no file descriptor, no path); the slabs go back to the system with madvise.
+    {"quickjs-ng/quickjs/quickjs.c",
+     "void *base = mmap(NULL, JS_ARENA_SLAB_BYTES, PROT_READ | PROT_WRITE, MAP_PRIVATE | MAP_ANON, JS_ARENA_SLAB_TAG, 0);",
+     "an anonymous memory map for the engine's allocator: not a file, a socket or a URL"},
 };
 
 using wr_test::identChar;

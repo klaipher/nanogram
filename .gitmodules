@@ -91,3 +91,8 @@
 	url = https://github.com/klaipher/libyuv.git
 	branch = nanogram
 	shallow = true
+[submodule "third-party/quickjs-ng/quickjs"]
+	path = third-party/quickjs-ng/quickjs
+	url = https://github.com/klaipher/quickjs.git
+	branch = nanogram
+	shallow = true

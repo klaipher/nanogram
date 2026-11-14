@@ -4,6 +4,8 @@ Newest first. Internal notes for each TestFlight build; testers see the What to 
 
 ## Unreleased
 
+- **QuickJS is the klaipher/quickjs submodule** (W3.4, step 1). `third-party/quickjs-ng/quickjs` (`nanogram`, f6fc68b9, shallow) replaces the vendored quickjs-ng v0.17.0 sources and `include/quickjs.h`; the shim, the three C test suites and the BUILD targets stay. The engine is now TelegramMessenger/quickjs b526a817 (the Mac's engine) plus the host API of the widget runtime, so `JSInterruptHandler` takes the `JSContext*` (Runtime::interrupt and the test handlers changed) and, after `JS_SetStopped`, polls throw by themselves instead of asking the handler again (`test_stopped_next_poll` re-written). The arenas' anonymous `mmap` is allowlisted in `WidgetRuntimeNoIOScanTests`. Not built (risk: `QuickJSHostTests` and `QuickJSSecurityTests` were written for quickjs-ng; the first run decides).
+
 - **Handoff notes for Mac and Android** (W2.I1) in `docs/shared/w2-i1-identity-proofs.md`; BoringSSL stays vendored until its fork and a build exist.
 
 - **libyuv is the klaipher/libyuv submodule** (W2.I1; the plan's S1 fallback: a fork without the upstream Bazel files, because a root BUILD.bazel/WORKSPACE.bazel would make the submodule its own package and repository). Same path, same BUILD, byte-identical sources (version 1977). Not built.

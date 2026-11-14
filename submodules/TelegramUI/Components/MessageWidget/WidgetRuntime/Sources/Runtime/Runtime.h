@@ -402,7 +402,7 @@ private:
     static JSValue pairIteratorNext(JSContext* ctx, JSValueConst thisVal, int argc, JSValueConst* argv, int magic);
     static JSValue hostAutoInit(JSContext* ctx, JSValueConst obj, JSAtom prop, void* opaque);
     static JSValue classProtoInit(JSContext* ctx, JSClassID classId);
-    static int interrupt(JSRuntime* rt, void* opaque);
+    static int interrupt(JSContext* ctx, void* opaque);
     /// QuickJS's hook for an allocation refused at the memory limit (quickjs-ng change 9): latches Memory, unless a stop
     /// is latched already. Whatever the refusal throws (an out-of-memory error, or bare null when QuickJS could not even
     /// build that error) cannot be caught, and a promise propagates it rather than rejecting with it (change 10); the
