@@ -45,6 +45,7 @@
 		5D217805BCCE97B2A4B14F2B /* VoiceNoteBubbleView.swift in Sources */ = {isa = PBXBuildFile; fileRef = D479FDCEDD7792FC03E7DE03 /* VoiceNoteBubbleView.swift */; };
 		5DF5B3342BFBC50C1E211068 /* StickerBubbleView.swift in Sources */ = {isa = PBXBuildFile; fileRef = C99A867714B28B54D5B3DF98 /* StickerBubbleView.swift */; };
 		5E9A6B94F1B917CB849B3EBC /* AvatarView.swift in Sources */ = {isa = PBXBuildFile; fileRef = 35B32555B3686A7A4884B215 /* AvatarView.swift */; };
+		5FA05991BA56C10C50AAD322 /* ProgressiveVideo.swift in Sources */ = {isa = PBXBuildFile; fileRef = 215DF03E331DD76E29BE0EB9 /* ProgressiveVideo.swift */; };
 		62E23F09E892DE847642EDB1 /* EmojiText.swift in Sources */ = {isa = PBXBuildFile; fileRef = 4DB3C8238D41374CBAC66303 /* EmojiText.swift */; };
 		641846C985430AD34793F0D3 /* ReplyHeader.swift in Sources */ = {isa = PBXBuildFile; fileRef = F595E3DA02BF871A797A649A /* ReplyHeader.swift */; };
 		6475073E5937A447F70599A8 /* StickerCellView.swift in Sources */ = {isa = PBXBuildFile; fileRef = E3496CF0F6E1D25422AF9DB0 /* StickerCellView.swift */; };
@@ -145,6 +146,7 @@
 		1932CC94F39BD57A56E59C08 /* ChatRow.swift */ = {isa = PBXFileReference; lastKnownFileType = sourcecode.swift; path = ChatRow.swift; sourceTree = "<group>"; };
 		1FFA0FBD5453516C970B9217 /* ChatListIndex.swift */ = {isa = PBXFileReference; lastKnownFileType = sourcecode.swift; path = ChatListIndex.swift; sourceTree = "<group>"; };
 		20DF1E1C15EBF3931AC3843C /* VideoVisual.swift */ = {isa = PBXFileReference; lastKnownFileType = sourcecode.swift; path = VideoVisual.swift; sourceTree = "<group>"; };
+		215DF03E331DD76E29BE0EB9 /* ProgressiveVideo.swift */ = {isa = PBXFileReference; lastKnownFileType = sourcecode.swift; path = ProgressiveVideo.swift; sourceTree = "<group>"; };
 		21CA9D1BA5774F79F84E9AC6 /* FileUpdateGate.swift */ = {isa = PBXFileReference; lastKnownFileType = sourcecode.swift; path = FileUpdateGate.swift; sourceTree = "<group>"; };
 		22AAEA9EF0EC8A548BB916EC /* StickerRow.swift */ = {isa = PBXFileReference; lastKnownFileType = sourcecode.swift; path = StickerRow.swift; sourceTree = "<group>"; };
 		23B6E36BD1D21CA9073903BF /* AccountManager.swift */ = {isa = PBXFileReference; lastKnownFileType = sourcecode.swift; path = AccountManager.swift; sourceTree = "<group>"; };
@@ -402,6 +404,7 @@
 				6B11F6105ABCE7E74B89A881 /* PollBubbleView.swift */,
 				FE4D691106D7EA2FEE35F37F /* PollVisual.swift */,
 				DF0F4F15CB43635717B31B92 /* PollVoteView.swift */,
+				215DF03E331DD76E29BE0EB9 /* ProgressiveVideo.swift */,
 				B3FE50540F5B531E15364E1C /* RecordFeedback.swift */,
 				E43D94B6C349AF9240929F5D /* RecordingMath.swift */,
 				7584BF25A84BAD24AB992A79 /* ReplyBar.swift */,
@@ -618,6 +621,7 @@
 				488B0EBEDE035351B1E649CB /* PollBubbleView.swift in Sources */,
 				AA3F067A7BC4CDA579CFFC39 /* PollVisual.swift in Sources */,
 				25F6B3EFED8EDDD9983CB0F7 /* PollVoteView.swift in Sources */,
+				5FA05991BA56C10C50AAD322 /* ProgressiveVideo.swift in Sources */,
 				F95C046A6C043344F0955815 /* QrLinkPublisher.swift in Sources */,
 				B9F6D473AA0F1DAF77799E77 /* QrLoginView.swift in Sources */,
 				C4301D05D79806A88D19CB88 /* RecordFeedback.swift in Sources */,

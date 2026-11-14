@@ -3,6 +3,7 @@ import UIKit
 import AVKit
 import AVFoundation
 import OSLog
+@preconcurrency import TDShim
 
 /// Full-screen sheet that plays a round video note inside a 180pt masked circle
 /// with AVKit chrome suppressed. State machine mirrors `VideoPlayerView`:
@@ -22,6 +23,8 @@ struct VideoNotePlayerView: View {
     @State private var hasReachedEnd = false
     @State private var endObserver: NSObjectProtocol?
     @State private var statusObserver: NSKeyValueObservation?
+    /// WATCH-VIDEO-1: the playback that started before the download finished (flag `progressiveVideoStart`).
+    @State private var progressive: ProgressiveVideoSession?
 
     private let logger = Logger(watchCategory: "videoplayer")
 
@@ -41,16 +44,7 @@ struct VideoNotePlayerView: View {
         .onAppear { start() }
         .onChange(of: store.fileSnapshot(fileId: note.videoFileId)) { _, snap in
             guard let snap else { return }
-            if snap.local.isDownloadingCompleted, !snap.local.path.isEmpty {
-                if player == nil {
-                    setupPlayer(path: snap.local.path)
-                    phase = .playing
-                }
-            } else {
-                let total = max(1, snap.expectedSize)
-                let progress = Double(snap.local.downloadedSize) / Double(total)
-                phase = .preparing(progress: min(1, max(0, progress)))
-            }
+            handleSnapshot(snap)
         }
         .onDisappear {
             tearDownPlayer()
@@ -142,7 +136,38 @@ struct VideoNotePlayerView: View {
         }
     }
 
+    private func handleSnapshot(_ snap: File) {
+        if let progressive {
+            progressive.update(file: snap)
+            if case .preparing = phase { phase = .preparing(progress: downloadProgress(of: snap)) }
+            return
+        }
+        if snap.local.isDownloadingCompleted, !snap.local.path.isEmpty {
+            if player == nil {
+                setupPlayer(path: snap.local.path)
+                phase = .playing
+            }
+            return
+        }
+        // Round notes are short MP4s, so the progressive start applies to them as to any MP4.
+        if player == nil, WatchFeatureFlags.isEnabled(.progressiveVideoStart),
+           ProgressiveVideoPolicy.shouldStart(file: snap, mimeType: "video/mp4"),
+           let session = ProgressiveVideoSession(file: snap, mimeType: "video/mp4") {
+            progressive = session
+            setupPlayer(item: session.item, isProgressive: true)
+            return
+        }
+        phase = .preparing(progress: downloadProgress(of: snap))
+    }
+
+    private func downloadProgress(of snap: File) -> Double {
+        let total = max(1, snap.expectedSize)
+        return min(1, max(0, Double(snap.local.downloadedSize) / Double(total)))
+    }
+
     private func tearDownPlayer() {
+        progressive?.invalidate()
+        progressive = nil
         player?.pause()
         player = nil
         hasReachedEnd = false
@@ -155,7 +180,12 @@ struct VideoNotePlayerView: View {
     }
 
     private func setupPlayer(path: String) {
-        let p = AVPlayer(url: URL(fileURLWithPath: path))
+        setupPlayer(item: AVPlayerItem(url: URL(fileURLWithPath: path)), isProgressive: false)
+    }
+
+    /// A progressive player stays in `.preparing` (preview and percentage) until AVPlayer reports it can play.
+    private func setupPlayer(item playerItem: AVPlayerItem, isProgressive: Bool) {
+        let p = AVPlayer(playerItem: playerItem)
         if let item = p.currentItem {
             endObserver = NotificationCenter.default.addObserver(
                 forName: .AVPlayerItemDidPlayToEndTime,
@@ -170,6 +200,10 @@ struct VideoNotePlayerView: View {
                 if item.status == .failed {
                     Task { @MainActor in
                         phase = .failed("Could not play video")
+                    }
+                } else if item.status == .readyToPlay, isProgressive {
+                    Task { @MainActor in
+                        if case .preparing = phase { phase = .playing }
                     }
                 }
             }
