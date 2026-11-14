@@ -98,3 +98,19 @@ cc_library(
         "//visibility:public",
     ],
 )
+
+# The same headers with Public/opus on the include path, for sources that include <opus_multistream.h> without the
+# opus/ prefix (xiph/opusfile).
+cc_library(
+    name = "opus_flat_headers",
+    hdrs = [":Public/opus/" + x for x in headers],
+    includes = [
+        "Public/opus",
+    ],
+    deps = [
+        ":opus_lib",
+    ],
+    visibility = [
+        "//visibility:public",
+    ],
+)

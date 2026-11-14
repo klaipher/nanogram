@@ -52,3 +52,7 @@
 	path = third-party/ogg/ogg
 	url = https://github.com/xiph/ogg.git
 	shallow = true
+[submodule "third-party/opusfile/opusfile"]
+	path = third-party/opusfile/opusfile
+	url = https://github.com/xiph/opusfile.git
+	shallow = true

@@ -127,6 +127,7 @@ cmd_doctor() {
     third-party/boost_regex/regex/include/boost/regex.hpp \
     third-party/wamr/wamr/LICENSE \
     third-party/ogg/ogg/src/framing.c \
+    third-party/opusfile/opusfile/src/opusfile.c \
     ; do
     [ -f "$ROOT/$sentinel" ] || { warn "Source submodule is empty: ${sentinel%/*} (run: tools/dev/tg setup)"; ok=1; }
   done
