@@ -61,35 +61,6 @@ class ChatDocumentGalleryItem: GalleryItem {
     }
 }
 
-private let registeredURLProtocol: Void = {
-    URLProtocol.registerClass(ChatDocumentURLProtocol.self)
-}()
-
-private final class ChatDocumentURLProtocol: URLProtocol {
-    override class func canonicalRequest(for request: URLRequest) -> URLRequest {
-        return request
-    }
-    
-    override class func canInit(with request: URLRequest) -> Bool {
-        if let mainDocumentURL = request.mainDocumentURL {
-            if mainDocumentURL.scheme == "file" && request.url != mainDocumentURL {
-                return true
-            }
-        }
-        return false
-    }
-    
-    override class func requestIsCacheEquivalent(_ a: URLRequest, to b: URLRequest) -> Bool {
-        return super.requestIsCacheEquivalent(a, to: b)
-    }
-    
-    override func startLoading() {
-    }
-    
-    override func stopLoading() {
-    }
-}
-
 class ChatDocumentGalleryItemNode: ZoomableContentGalleryItemNode, WKNavigationDelegate {
     fileprivate let _title = Promise<String>()
     
@@ -112,20 +83,12 @@ class ChatDocumentGalleryItemNode: ZoomableContentGalleryItemNode, WKNavigationD
     private var status: EngineMediaResource.FetchStatus?
     
     init(context: AccountContext, presentationData: PresentationData) {
-        if #available(iOSApplicationExtension 11.0, iOS 11.0, *) {
-            let configuration = WKWebViewConfiguration()
-            configuration.defaultWebpagePreferences.allowsContentJavaScript = false
-            let webView = WKWebView(frame: CGRect(), configuration: configuration)
-            webView.allowsLinkPreview = false
-            webView.allowsBackForwardNavigationGestures = false
-            self.webView = webView
-        } else {
-            let _ = registeredURLProtocol
-            let webView = UIWebView()
-            
-            webView.scalesPageToFit = true
-            self.webView = webView
-        }
+        let configuration = WKWebViewConfiguration()
+        configuration.defaultWebpagePreferences.allowsContentJavaScript = false
+        let webView = WKWebView(frame: CGRect(), configuration: configuration)
+        webView.allowsLinkPreview = false
+        webView.allowsBackForwardNavigationGestures = false
+        self.webView = webView
         self.footerContentNode = ChatItemGalleryFooterContentNode(context: context, presentationData: presentationData)
         
         self.statusNodeContainer = HighlightableButtonNode()

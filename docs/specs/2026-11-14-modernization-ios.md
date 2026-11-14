@@ -125,7 +125,7 @@ Repo: `klaipher/nanogram` (local `~/Projects/nanogram-ios`). Base for all new br
 - **Risk:** low.
 - **Measurement:** `nm` the release binary for UIWebView; altool validate warnings.
 - **Effort:** small
-- **Status:** open
+- **Status:** done (branches in one commit, `Telegram/Watch` deletion in its own commit); verify with `nm` for UIWebView after the combined build
 
 ### IOS-DEPR-3: Microphone permission uses deprecated AVAudioSession.requestRecordPermission
 - **Severity:** low

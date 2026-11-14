@@ -415,18 +415,8 @@ public final class SharedNotificationManager {
     private var currentNotificationCall: (peer: EnginePeer?, internalId: CallSessionInternalId, peerId: EnginePeer.Id)?
     private func updateNotificationCall(call: (peer: EnginePeer?, internalId: CallSessionInternalId, peerId: EnginePeer.Id)?, strings: PresentationStrings, nameOrder: PresentationPersonNameOrder) {
         if let previousCall = currentNotificationCall {
-            if #available(iOS 10.0, *) {
-                let center = UNUserNotificationCenter.current()
-                center.removeDeliveredNotifications(withIdentifiers: ["call_\(previousCall.internalId)"])
-            } else {
-                if let notifications = self.application.scheduledLocalNotifications {
-                    for notification in notifications {
-                        if let userInfo = notification.userInfo, let callId = userInfo["callId"] as? String, callId == String(describing: previousCall.internalId) {
-                            self.application.cancelLocalNotification(notification)
-                        }
-                    }
-                }
-            }
+            let center = UNUserNotificationCenter.current()
+            center.removeDeliveredNotifications(withIdentifiers: ["call_\(previousCall.internalId)"])
         }
         self.currentNotificationCall = call
         
@@ -434,36 +424,23 @@ public final class SharedNotificationManager {
         let generation = self.callRingGeneration
         
         if let notificationCall = call {
-            if #available(iOS 10.0, *) {
-                Logger.shared.log("NotificationManager", "adding call \(notificationCall.internalId)")
-                // The app rings the call now: the extension's ring for the same caller must not ring beside it.
-                IncomingCallResponse.removeDeliveredRings(peerId: notificationCall.peerId.toInt64(), completion: { [weak self] _ in
-                    Queue.mainQueue().async {
+            Logger.shared.log("NotificationManager", "adding call \(notificationCall.internalId)")
+            // The app rings the call now: the extension's ring for the same caller must not ring beside it.
+            IncomingCallResponse.removeDeliveredRings(peerId: notificationCall.peerId.toInt64(), completion: { [weak self] _ in
+                Queue.mainQueue().async {
+                    guard let self, self.callRingGeneration == generation else {
+                        return
+                    }
+                    let _ = (self.callerNameVisibility
+                    |> take(1)
+                    |> deliverOnMainQueue).start(next: { [weak self] isCallerNameVisible in
                         guard let self, self.callRingGeneration == generation else {
                             return
                         }
-                        let _ = (self.callerNameVisibility
-                        |> take(1)
-                        |> deliverOnMainQueue).start(next: { [weak self] isCallerNameVisible in
-                            guard let self, self.callRingGeneration == generation else {
-                                return
-                            }
-                            self.addLocalRing(call: notificationCall, strings: strings, nameOrder: nameOrder, isCallerNameVisible: isCallerNameVisible)
-                        })
-                    }
-                })
-            } else {
-                let notification = UILocalNotification()
-                let rawText = strings.PUSH_PHONE_CALL_REQUEST(notificationCall.peer?.displayTitle(strings: strings, displayOrder: nameOrder) ?? "").string
-                let parts = Self.callRingText(rawText)
-                notification.alertTitle = parts.title
-                notification.alertBody = parts.body
-                
-                notification.category = "incomingCall"
-                notification.userInfo = ["callId": String(describing: notificationCall.internalId)]
-                notification.soundName = "0.m4a"
-                self.application.presentLocalNotificationNow(notification)
-            }
+                        self.addLocalRing(call: notificationCall, strings: strings, nameOrder: nameOrder, isCallerNameVisible: isCallerNameVisible)
+                    })
+                }
+            })
         }
     }
     
