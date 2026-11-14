@@ -49,7 +49,12 @@ if [ -z "${TG_WATCH_SPM_LOCKED:-}" ]; then
 fi
 
 DD="$(mktemp -d)"
-trap 'rm -rf "$DD"' EXIT
+# TG_WATCH_KEEP_DD=1 keeps the DerivedData (compile flags, .resp files) for inspection.
+if [ -n "${TG_WATCH_KEEP_DD:-}" ]; then
+  echo "TG_WATCH_KEEP_DD set: keeping DerivedData at $DD" >&2
+else
+  trap 'rm -rf "$DD"' EXIT
+fi
 
 # Build from a writable copy so xcodebuild/SwiftPM never write into the source tree (it
 # writes the resolved pins into Packages/TDShim/Package.resolved). Without a sandbox $SRC is
@@ -89,7 +94,7 @@ if ! xcodebuild_resolve; then
 fi
 
 # GCC_OPTIMIZATION_LEVEL=3 on the command line overrides the -Os that Xcode's SwiftPM
-# package defaults give the C packages (COpus, COgg, WebPCore, RLottieCore) in Release.
+# package defaults give the C packages (COpus, COgg, COpusHelpers, WebPCore) in Release.
 #
 # MARKETING_VERSION / CURRENT_PROJECT_VERSION are placeholders; the patch action
 # overwrites CFBundleShortVersionString / CFBundleVersion afterwards. They only ever
