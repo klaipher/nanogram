@@ -305,11 +305,16 @@ def cmd_profiles(args):
 
     for name, target_bundle_id, _ in targets:
         print('Signing {} ({})'.format(name, target_bundle_id), flush=True)
-        result = subprocess.run(['xcodebuild', '-project', os.path.join(work, 'App.xcodeproj'), '-scheme', name,
-                                 '-configuration', 'Debug', '-destination', 'id=' + device,
-                                 '-derivedDataPath', os.path.join(work, 'dd'),
-                                 '-allowProvisioningUpdates', '-allowProvisioningDeviceRegistration', 'build'],
-                                capture_output=True, text=True)
+        command = ['xcodebuild', '-project', os.path.join(work, 'App.xcodeproj'), '-scheme', name,
+                   '-configuration', 'Debug', '-destination', 'id=' + device,
+                   '-derivedDataPath', os.path.join(work, 'dd'),
+                   '-allowProvisioningUpdates', '-allowProvisioningDeviceRegistration', 'build']
+        # Without an Apple ID in Xcode, the App Store Connect key lets xcodebuild create and refresh the profiles.
+        key = app_store_connect_key()
+        if key:
+            command += ['-authenticationKeyPath', key['path'], '-authenticationKeyID', key['id'],
+                        '-authenticationKeyIssuerID', key['issuer']]
+        result = subprocess.run(command, capture_output=True, text=True)
         if result.returncode != 0:
             errors = [l for l in result.stdout.splitlines() + result.stderr.splitlines() if 'error:' in l]
             sys.exit('Xcode could not sign {}:\n{}'.format(name, '\n'.join(errors[:10]) or result.stdout[-2000:]))
