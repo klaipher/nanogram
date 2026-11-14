@@ -4,6 +4,16 @@ Newest first. Internal notes for each TestFlight build; testers see the What to 
 
 ## Unreleased
 
+Modernization stream ios-media-ui (specs from docs/specs modernization review; status lines for the iOS spec doc are owned by the ios-platform stream). No builds or tests were run; commands are in the stream report.
+
+- **IOS-CI-1** (329b25e1): one process-wide `CIContext` (`SharedStickerCIContext`, same `options: nil` as before, so colour is unchanged) for sticker cutout (two sites), cutout outline and sticker generation. Status: done. Test: `ImageObjectSeparationTests`.
+- **IOS-IO-1** (80d78bbb): `readMediaFileData(path:complete:)` maps the file (`.mappedIfSafe`) only where the call site knows the resource is complete; 17 of the 31 `options: []` reads in `PhotoResources.swift` use it. Reads of possibly partial files (`size`/`availableSize` guards only) keep the copying read. Status: done for the complete-guarded sites. Test: `PhotoResourcesTests`.
+- **iOS-CONC-2** (b8a81c3a): wallpaper `BlurView` hops to main with `async` and the unused `sync(on:)` helper is gone. TGCache/PGVideoMovie left as is: the verdict says TGCache has no Swift callers and needs its synchronous return. Status: done (BlurView only).
+- **iOS-METAL-STICKERS-1** (b1c0f456): `AnimationCompressor.SharedContext.renderCommandQueue`, one queue per device shared by all `CompressedImageRenderer`s; the DCT compression queue stays separate so compute jobs do not queue ahead of drawing. Status: done. Test: `AnimationCompressionTests`.
+- **iOS-STICKERS-1** (f9d6f041): `AnimatedStickerQueuePool`, 3 serial `.userInitiated` queues assigned round-robin to nodes created while Debug Settings > "Stickers: parallel queues" (`ExperimentalUISettings.stickerParallelQueues`) is on; default off keeps the single shared queue. `AnimatedStickerBackgroundGate` parked timers are now lock-protected. Status: done behind flag, default off. Not done: parsing the lottie instance off the pool for invisible nodes. Test: `AnimatedStickerQueuePoolTests`.
+- **iOS-STICKERS-2** (bff3527a): `AnimatedStickerStatusPublisher` skips the Promise set while nobody observes `status`, remembers the latest value and hands it to the first subscriber. Status: Promise skip done; per-tick coalescing of main hops not done (verdict: speculative). Test: `AnimatedStickerStatusPublisherTests`.
+- **iOS-GIFGRID-1**: `BatchVideoRenderingContext` with Debug Settings > "GIF grid: parallel decode" (`gifGridParallelDecode`) on decodes one pass per tile on a pool of 2-4 serial queues (no global `isRendering` barrier); default off keeps the single queue. Status: done behind flag, default off. Not done: separate reader-open step. Test: `BatchVideoRenderingTests`.
+
 ## 13.2 (202611132038) — 2026-11-13 — 3c4e6399
 
 TestFlight build (processed VALID, What to Test set). Previous TestFlight build: 202611121002 (25edb39c); changes since are `git log 800c5c6a..3c4e6399` (32 commits). Source: the owner's MetricKit export (memory-limit kill opening a 1-page PDF, the language prompt on the next launch) and a tester's report that a call to a locked iPhone showed nothing; plan with 83 finding ids, statuses below.
