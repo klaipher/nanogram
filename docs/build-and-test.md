@@ -23,7 +23,7 @@ The build needs `TELEGRAM_CODESIGNING_GIT_PASSWORD` in the environment. It is se
 
 **Native-library builds (genrules in `third-party/*` and `submodules/ffmpeg`).** The build tools are pinned external repos in
 `MODULE.bazel`, extracted once and listed in each genrule's `tools`: CMake 4.5.0 (`@cmake//:cmake`, only the CLI and its
-Modules/Templates), Ninja 1.13.2 (`@ninja//:ninja`), Meson 1.12.1 (`@meson//:meson.py`). A genrule puts their absolute
+Modules/Templates), Ninja 1.13.2 (`@ninja//:ninja`), Meson 1.6.0 (`@meson//:meson.py`). A genrule puts their absolute
 directories at the front of `PATH`; nothing resolves a host `cmake`. The CMake-built libraries (libwebp, libjpeg-turbo,
 libjxl, td, yasm, flatc) use `-G Ninja` and `cmake --build . --parallel N`. Every genrule fails on an unknown
 `$(TARGET_CPU)` and deletes its scratch tree (source copy, build tree, objects) once the declared outputs are copied out.
