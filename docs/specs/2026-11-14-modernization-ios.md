@@ -136,7 +136,7 @@ Repo: `klaipher/nanogram` (local `~/Projects/nanogram-ios`). Base for all new br
 - **Risk:** very low.
 - **Measurement:** fresh-install prompts on iOS 17+ and 16; two fewer warnings.
 - **Effort:** small
-- **Status:** open
+- **Status:** done (branch mod/ios-platform); no unit test possible (system permission API), verify by the fresh-install prompts
 
 ### iOS-CONC-1: GraphCore DisplayLinkService is a 60 Hz timer with main.sync
 - **Severity:** low

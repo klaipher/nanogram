@@ -4,6 +4,7 @@ Newest first. Internal notes for each TestFlight build; testers see the What to 
 
 ## Unreleased
 
+- **Microphone permission** (IOS-DEPR-3). `DeviceAccess` (new `MicrophonePermission`) and the video-message capture controller use `AVAudioApplication.shared.recordPermission` / `requestRecordPermission` on iOS 17+ and keep the `AVAudioSession` calls for iOS 15-16; two deprecation warnings fewer.
 - **Voice transcription** (IOS-SPEECH-1). `LocalAudioTranscription` reads the converted m4a in place instead of copying it into `NSTemporaryDirectory` (the copy was never deleted), and an empty transcription gets confidence 0 instead of NaN (`averageTranscriptionConfidence`). New iOS 26 path through `SpeechTranscriber`/`SpeechAnalyzer.analyzeSequence(from:)` with `AssetInventory` model download in the background (missing model or locale falls back to SFSpeechRecognizer on-device); off unless the launch argument/default `NanogramSpeechAnalyzer` is set. Still behind the experimental `localTranscription` switch. Tests: `//submodules/Media/LocalAudioTranscription:LocalAudioTranscriptionTests`.
 
 ## 13.2 (202611132038) — 2026-11-13 — 3c4e6399

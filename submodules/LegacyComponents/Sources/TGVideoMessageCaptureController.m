@@ -1444,14 +1444,18 @@ static UIImage *startImage = nil;
     }
     
     bool wasNotDetermined = ([AVCaptureDevice authorizationStatusForMediaType:AVMediaTypeAudio] == AVAuthorizationStatusNotDetermined);
-    [[AVAudioSession sharedInstance] requestRecordPermission:^(BOOL granted)
+    void (^completion)(BOOL) = ^(BOOL granted)
     {
         TGDispatchOnMainThread(^
         {
             if (resultBlock != nil)
                 resultBlock(granted, wasNotDetermined);
         });
-    }];
+    };
+    if (@available(iOS 17.0, *))
+        [AVAudioApplication requestRecordPermissionWithCompletionHandler:completion];
+    else
+        [[AVAudioSession sharedInstance] requestRecordPermission:completion];
 }
 
 #pragma mark - Scrubbing
