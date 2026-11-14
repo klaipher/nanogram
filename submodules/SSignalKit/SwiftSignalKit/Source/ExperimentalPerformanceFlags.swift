@@ -21,9 +21,23 @@ public final class ExperimentalPerformanceFlags: @unchecked Sendable {
     private let defaults: UserDefaults
     private let lock = NSLock()
     private var overrides: [PerformanceExperiment: Bool] = [:]
+    private let launchValues: [PerformanceExperiment: Bool]
 
     public init(defaults: UserDefaults) {
         self.defaults = defaults
+        var launchValues: [PerformanceExperiment: Bool] = [:]
+        for experiment in PerformanceExperiment.allCases {
+            launchValues[experiment] = defaults.bool(forKey: experiment.defaultsKey)
+        }
+        self.launchValues = launchValues
+    }
+
+    /// The state the numbers were measured under: the stored value at launch, not a switch flipped since.
+    public func launchState(_ experiment: PerformanceExperiment) -> Bool {
+        self.lock.lock()
+        let override = self.overrides[experiment]
+        self.lock.unlock()
+        return override ?? self.launchValues[experiment] ?? false
     }
 
     public func isEnabled(_ experiment: PerformanceExperiment) -> Bool {
@@ -129,7 +143,7 @@ public final class PerformanceExperimentStats: @unchecked Sendable {
     /// One line per experiment: its state and the numbers measured since launch (or the last reset).
     public func summaryLines(flags: ExperimentalPerformanceFlags = .shared) -> [String] {
         return PerformanceExperiment.allCases.map { experiment in
-            let state = flags.isEnabled(experiment) ? "on" : "off"
+            let state = flags.launchState(experiment) ? "on" : "off"
             let summary = self.summary(experiment.metric)
             let numbers: String
             if summary.count == 0 {

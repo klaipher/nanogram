@@ -20,13 +20,13 @@ watch). Never message text. Smart Stack relevance rises with the unread count (`
 `python3 tools/dev/device_signing.py profiles` with an iPhone connected. Xcode registers the App Group
 `group.org.klaipher.Nanogram.watch` from the entitlements of the generated `WatchApp` and `WatchWidget` targets, assigns
 it to both App IDs and creates their profiles in `~/.config/telegram-ios/codesigning/profiles`. `tools/dev/tg device
---watch` and `tg testflight --watch` pick `WatchApp.mobileprovision` and `WatchWidget.mobileprovision` up by themselves
+--watch` and `tools/dev/tg testflight --notes <file>` (it always embeds the watch app) pick `WatchApp.mobileprovision` and `WatchWidget.mobileprovision` up by themselves
 and stop with this command in the message when only one exists. With neither, the watch app and the widget are signed
 ad hoc with the group (good for a TestFlight export, not installable on a device).
 
 ## Checks on a watch (needs a device; nothing here was run)
 
-1. Install the TestFlight or device build, open Nanogram on the watch once and sign in; wait for the chat list.
+1. Install the TestFlight build (a device build installs on a watch only if its UDID is registered on the team and in the regenerated profiles; `profiles` registers just the connected iPhone), open Nanogram on the watch once and sign in; wait for the chat list.
 2. Add the Nanogram complication to a watch face (circular, rectangular, inline or corner) and to the Smart Stack.
    Expect the unread total; with the watch locked and private content hidden, expect no chat names.
 3. Receive a message in a chat with the watch app closed. Expect the widget to update within the background refresh

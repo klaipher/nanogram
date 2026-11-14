@@ -3,7 +3,7 @@ import Foundation
 /// The unread summary the watch app writes and the widget extension reads (IOS-WATCH-WIDGET-1).
 ///
 /// Counts and chat titles only, never message text. The widget hides the titles when the system asks it to redact
-/// private content (locked watch). Compiled into the app and, when the widget variant is built, into the extension.
+/// private content (locked watch). Compiled into both the watch app and the widget extension.
 struct WatchUnreadSnapshot: Codable, Equatable, Sendable {
     static let currentVersion = 1
 

@@ -333,3 +333,9 @@ marked (check) were not re-verified against the code; correct them on the next c
 - Where: `submodules/NanogramGlance` (pure model, policy, app-group store, intent bridge; host tests), `submodules/NanogramAppIntents`, `Telegram/WidgetKitWidget/{GlanceWidgets,GlanceControls,GlanceActivityWidget}.swift`, `submodules/TelegramUI/Sources/GlanceCoordinator.swift`, `Telegram/BUILD`.
 - Upstream: no (upstream has no AppIntents or accessory families). Shared edits to keep in step on sync: `TodayViewController.swift` (`getCommonTimeline` split into `loadWidgetPeers`, `WidgetExtensionEnvironment` and `buildConfig` no longer private, three entries in `AllWidgets`), `ExperimentalUISettings` (`nanogramGlanceables`), `DebugController` (entry id 145), `SharedAccountContext` (coordinator creation), `Telegram/BUILD` (deps, `app_intents`, `NSSupportsLiveActivities`).
 - Sync: if upstream converts the widgets to AppIntents, drop our `SelectChatsIntent` in favour of theirs and keep `GlanceVisibility`.
+
+### A/B report labels (iOS, 2026-11-14)
+- What: the "Performance experiments" block in Send Logs labels each switch with its state at launch, not the stored value at send time.
+- Why: a tester who flips the switch before sending logs would otherwise label run A as "on".
+- Where: `ExperimentalPerformanceFlags.swift` (`launchState`, SwiftSignalKit and SwiftSignalKit2).
+- Upstream: no.

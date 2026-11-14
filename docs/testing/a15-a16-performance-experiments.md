@@ -17,10 +17,10 @@ Three experiments, each with its own switch:
 
 1. **Check your phone.** Settings > General > About > **Model Name** (and Model Number). Note it. Model Name
    "iPhone 14" or "iPhone 14 Plus" is A15; "iPhone 14 Pro" or "14 Pro Max" is A16. The Debug Settings also show
-   it (step 3).
+   it (step 4).
 2. Update Nanogram to the newest TestFlight build.
 3. **Open the debug menu:** in Nanogram, go to the **Settings** tab and tap the Settings tab icon **10 times quickly**
-   (less than half a second between taps). The "Debug Settings" list opens. It exists in TestFlight builds.
+   (tap about 3 times a second or faster: less than 0.4 s between taps). The "Debug Settings" list opens. It exists in TestFlight builds.
 4. Scroll to the section **PERFORMANCE EXPERIMENTS**. It shows three switches (all off at first), your device
    ("iPhone 14 Pro (A16), iPhone15,2") and measured numbers. Check the device line matches your phone.
 5. Turn on **Log to File** (top of the Debug Settings) so the numbers and logs are saved.
@@ -53,12 +53,16 @@ Watch for: choppy picture or sound out of sync, the phone getting warm, how long
 ## Test 2: Gallery scrubbing (switch "Gallery scrubbing: hardware decode")
 
 Content: a long (more than 3 minutes) H.264 or HEVC video of 4K or 1080p. Most phone-recorded videos are HEVC
-(iPhone camera) and fine. Open it from a chat or from Shared Media.
+(iPhone camera) and fine. Use a video you recorded and sent yourself (for example to Saved Messages), not a channel video with a quality
+selector: those use a different preview path that this switch does not change.
 
 Script (about 3 minutes per run):
 1. Open the video full screen, pause it.
 2. Slowly drag the playback bar from start to end and back, taking about 10 seconds each way. Repeat 3 times.
 3. Drag quickly, 5 times, across the whole bar.
+
+After the run, the `scrubPreviewFrame` line in Debug Settings must show n greater than 0. If it says
+"no samples", discard the run and repeat with another video.
 
 Watch for: how soon preview pictures follow your finger, blank or wrong previews, any stutter.
 
@@ -91,11 +95,13 @@ For each experiment and each of A and B send (a message is enough):
 - **Stutter:** yes or no (and where).
 - **Warm / hot** after the 10 minutes: cool, warm or hot.
 - **Battery drop** over the 10 minutes (e.g. 4%).
-- The **diagnostics export**: Debug Settings > **Send Logs** after each run (A and B separately, right after
-  finishing the test and before relaunching). The export contains a block "Performance experiments" with the state
+- The **diagnostics export**: Debug Settings > **Send Logs** > **Logs** > Via Email or Other Apps, after each run (A and B
+  separately, right after finishing the test, **before** flipping the switch and relaunching). Only "Logs" carries the
+  performance block; "All Logs" and the others do not. The export contains a block "Performance experiments" with the state
   of each switch and numbers measured since launch (count, average and longest time per frame, preview or
-  waiting task). Choose Email or Other Apps and send it to the project owner. It holds no message text,
-  chat names or personal details, only durations and the phone model.
+  waiting task). Send it to the project owner. The performance block holds only durations and the phone
+  model, but the attached app log is the normal diagnostic log of the app (it can contain account ids and other
+  technical details), so send it only if you are fine with that.
 
 The same numbers show in the grey text under the switches in the Debug Settings (reopen the screen to refresh).
 

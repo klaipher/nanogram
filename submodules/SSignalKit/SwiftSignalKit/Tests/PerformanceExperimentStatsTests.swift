@@ -38,6 +38,20 @@ final class PerformanceExperimentStatsTests: XCTestCase {
         XCTAssertEqual(lines[1], "softwareDecodeThreads=on av1FrameDecode: n=1 avg=12.5 ms max=12.5 ms")
     }
 
+    func testLinesReportTheStateAtLaunchNotTheSwitchFlippedSince() throws {
+        let suite = "PerformanceExperimentStatsTests.launch"
+        let defaults = try XCTUnwrap(UserDefaults(suiteName: suite))
+        defaults.removePersistentDomain(forName: suite)
+        defer {
+            defaults.removePersistentDomain(forName: suite)
+        }
+        defaults.set(false, forKey: PerformanceExperiment.threadPoolQualityOfService.defaultsKey)
+        let flags = ExperimentalPerformanceFlags(defaults: defaults)
+        defaults.set(true, forKey: PerformanceExperiment.threadPoolQualityOfService.defaultsKey)
+        let lines = PerformanceExperimentStats().summaryLines(flags: flags)
+        XCTAssertEqual(lines[0], "threadPoolQualityOfService=off threadPoolQueueWait: no samples")
+    }
+
     func testResetClearsTheNumbers() {
         let stats = PerformanceExperimentStats()
         stats.record(.scrubPreviewFrame, seconds: 0.1)

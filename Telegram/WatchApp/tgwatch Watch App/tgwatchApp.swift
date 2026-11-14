@@ -4,7 +4,7 @@ import WatchKit
 
 @main
 struct TgwatchApp: App {
-    /// Background refresh tasks and APNs token callbacks (WATCH-INT-1); both are flag-gated and inert by default.
+    /// Background refresh tasks and APNs token callbacks (WATCH-INT-1); background refresh is on by default, push stays off.
     @WKApplicationDelegateAdaptor(WatchAppDelegate.self) private var appDelegate
     @State private var manager: AccountManager
     @Environment(\.scenePhase) private var scenePhase
