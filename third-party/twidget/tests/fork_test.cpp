@@ -79,7 +79,7 @@ int main() {
     c.fonts.clear();
     litehtml_test::layout(c, "<p style='font-variant-numeric:tabular-nums'>1</p>");
     bool tabular = false;
-    for (const auto& f : c.fonts) tabular |= f.features.find("tnum") != std::string::npos;
+    for (const auto& f : c.fonts) tabular |= f.tabular_nums;
     CHECK(tabular);
 
     // Non-finite transform and box-shadow values parse as unset (css_effects.h: box_shadow{x, y, blur,
