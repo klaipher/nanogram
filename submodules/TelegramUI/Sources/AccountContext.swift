@@ -31,6 +31,7 @@ import WalletConnectScreen
 import AlertUI
 import MetalEngine
 import AnimatedStickerNode
+import BatchVideoRendering
 import MessageWidget
 
 private final class DeviceSpecificContactImportContext {
@@ -395,6 +396,7 @@ public final class AccountContextImpl: AccountContext {
         (self.animationRenderer as? DCTMultiAnimationRendererImpl)?.useYuvA = sharedContext.immediateExperimentalUISettings.compressedEmojiCache
         AnimatedStickerRendererMode.processWide = AnimatedStickerRendererMode(sharedContext.immediateExperimentalUISettings.stickerRendererMode)
         AnimatedStickerQueuePool.isEnabled = sharedContext.immediateExperimentalUISettings.stickerParallelQueues
+        BatchVideoRenderingContext.isParallelDecodeEnabled = sharedContext.immediateExperimentalUISettings.gifGridParallelDecode
         
         let updatedLimitsConfiguration = self.engine.data.subscribe(TelegramEngine.EngineData.Item.Configuration.ApplicationSpecificPreference(key: PreferencesKeys.limitsConfiguration))
         |> map { preferences -> LimitsConfiguration in
@@ -626,6 +628,7 @@ public final class AccountContextImpl: AccountContext {
             (self.animationRenderer as? DCTMultiAnimationRendererImpl)?.useYuvA = settings.compressedEmojiCache
             AnimatedStickerRendererMode.processWide = AnimatedStickerRendererMode(settings.stickerRendererMode)
             AnimatedStickerQueuePool.isEnabled = settings.stickerParallelQueues
+            BatchVideoRenderingContext.isParallelDecodeEnabled = settings.gifGridParallelDecode
         })
 
         self.twoStepAuthData.set(

@@ -45,6 +45,7 @@ final class DebugControllerEntriesTests: XCTestCase {
         settings.videoMessageCameraMatrix = on ? .cameraTag : .bt709
         settings.stickerRendererMode = on ? .gpuAll : .cpu
         settings.stickerParallelQueues = on
+        settings.gifGridParallelDecode = on
         return settings
     }
 
@@ -137,8 +138,10 @@ final class DebugControllerEntriesTests: XCTestCase {
 
     func testPerformanceExperimentsAreOffByDefault() {
         XCTAssertFalse(ExperimentalUISettings.defaultSettings.stickerParallelQueues)
+        XCTAssertFalse(ExperimentalUISettings.defaultSettings.gifGridParallelDecode)
         let entries = self.entries(isMainApp: true, isDevAccount: false, engineKind: nil, settings: .defaultSettings)
         XCTAssertTrue(entries.contains(DebugControllerEntry.stickerParallelQueues(false)))
+        XCTAssertTrue(entries.contains(DebugControllerEntry.gifGridParallelDecode(false)))
     }
 
     func testCpuSavingSwitchesAreShown() {
@@ -204,10 +207,13 @@ final class ExperimentalUISettingsCompatibilityTests: XCTestCase {
     func testStickerParallelQueuesIsOffInOldBlobsAndSurvivesARoundTrip() throws {
         let old = try EngineDecoder.decode(ExperimentalUISettings.self, from: try EngineEncoder.encode(OldSettings()))
         XCTAssertFalse(old.stickerParallelQueues)
+        XCTAssertFalse(old.gifGridParallelDecode)
         var settings = ExperimentalUISettings.defaultSettings
         settings.stickerParallelQueues = true
+        settings.gifGridParallelDecode = true
         let decoded = try EngineDecoder.decode(ExperimentalUISettings.self, from: try EngineEncoder.encode(settings))
         XCTAssertTrue(decoded.stickerParallelQueues)
+        XCTAssertTrue(decoded.gifGridParallelDecode)
     }
 
     private struct CloseFocusOffUnderOldKey: Encodable {
