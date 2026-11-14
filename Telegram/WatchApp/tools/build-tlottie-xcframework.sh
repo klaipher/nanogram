@@ -10,6 +10,8 @@
 #                  runs on the Mac (off for the embedded app build)
 #   --force        ignore the cache
 #
+# The simulator slice is aarch64 only (Apple Silicon Macs only, by policy).
+#
 # Targets (Rust tier 3, hence a pinned nightly and -Zbuild-std=core,alloc):
 #   arm64_32-apple-watchos     device, Series 4-8 / SE / Ultra-era ILP32 slice
 #   aarch64-apple-watchos      device, 64-bit slice
@@ -22,8 +24,8 @@
 # that the app links) and an aborting panic handler, so the archive links into a Swift app with no Rust std.
 #
 # Caching: the result is stored under ~/.cache/telegram-ios/watch-tlottie/<key>, where <key> hashes the
-# tlottie sources (Cargo.toml, Cargo.lock, src/, include/), this script, the toolchain pin and the deployment
-# target. An unchanged input is a copy, not a build. TG_WATCH_TLOTTIE_CACHE overrides the directory.
+# tlottie sources (Cargo.toml, Cargo.lock, src/, include/), this script, the toolchain pin, the Xcode version and
+# the deployment target. An unchanged input is a copy, not a build. TG_WATCH_TLOTTIE_CACHE overrides the directory.
 set -euo pipefail
 
 HERE="$(cd "$(dirname "${BASH_SOURCE[0]}")" && pwd)"
@@ -65,6 +67,7 @@ CACHE_ROOT="${TG_WATCH_TLOTTIE_CACHE:-$USER_HOME/.cache/telegram-ios/watch-tlott
 
 hash_inputs() {
   {
+    echo "xcode=$(xcodebuild -version 2>/dev/null | tr '\n' ' ')"
     echo "toolchain=$TOOLCHAIN watchos=$DEPLOYMENT_TARGET macos=$MACOS_DEPLOYMENT_TARGET targets=$TARGETS"
     (cd "$TLOTTIE_DIR" && find Cargo.toml Cargo.lock src include -type f | LC_ALL=C sort | xargs /usr/bin/shasum -a 256)
     /usr/bin/shasum -a 256 "${BASH_SOURCE[0]}" "$HERE/tlottie-toolchain.txt"
@@ -176,8 +179,13 @@ fi
 mkdir -p "$WORK/out"
 xcodebuild -create-xcframework "${XC_ARGS[@]}" -output "$WORK/out/TLottieCore.xcframework" 1>&2
 
-# Publish into the cache atomically, then into the package.
-mkdir -p "$ENTRY"
-rm -rf "$ENTRY/TLottieCore.xcframework"
-mv "$WORK/out/TLottieCore.xcframework" "$ENTRY/TLottieCore.xcframework"
+# Publish into the cache atomically: stage a complete entry next to it, then rename it into place. A reader sees
+# either no entry or a whole one. If a concurrent run won the race (or --force replaces an entry), the loser's
+# rename fails or the old entry is moved aside first; either way no entry is ever half written.
+STAGE="$CACHE_ROOT/.stage.$KEY.$$"
+rm -rf "$STAGE"; mkdir -p "$STAGE"
+mv "$WORK/out/TLottieCore.xcframework" "$STAGE/TLottieCore.xcframework"
+if [ -e "$ENTRY" ]; then mv "$ENTRY" "$CACHE_ROOT/.old.$KEY.$$" 2>/dev/null || true; fi
+mv "$STAGE" "$ENTRY" 2>/dev/null || rm -rf "$STAGE"
+rm -rf "$CACHE_ROOT/.old.$KEY.$$"
 install_result
