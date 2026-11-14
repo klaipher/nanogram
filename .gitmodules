@@ -5,7 +5,7 @@
 	path = submodules/TgVoipWebrtc/tgcalls
 	url = https://github.com/klaipher/tgcalls.git
 	shallow = true
-	branch = nanogram-shared
+	branch = nanogram
 [submodule "third-party/libvpx/libvpx"]
 	path = third-party/libvpx/libvpx
 	url = https://github.com/webmproject/libvpx.git
