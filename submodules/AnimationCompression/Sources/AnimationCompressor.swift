@@ -261,7 +261,7 @@ public final class AnimationCompressor {
             }
             self.commandQueue = commandQueue
             
-            guard let renderCommandQueue = self.device.makeCommandQueue() else {
+            guard let renderCommandQueue = self.device.makeCommandQueue(maxCommandBufferCount: 256) else {
                 return nil
             }
             renderCommandQueue.label = "AnimationCompression.render"
