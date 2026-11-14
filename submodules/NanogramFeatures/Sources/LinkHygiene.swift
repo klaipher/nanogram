@@ -1,4 +1,4 @@
-public import Foundation
+import Foundation
 
 // Rules: docs/specs/search-operators.md (link hygiene) and docs/specs/link-tracking-params.txt.
 

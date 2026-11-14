@@ -1,4 +1,4 @@
-public import Foundation
+import Foundation
 
 /// "<accountId>:<peerId>": the same form the SiriKit widget configuration stores for a chosen chat.
 public enum GlanceIdentifier {

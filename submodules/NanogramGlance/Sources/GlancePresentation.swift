@@ -1,4 +1,4 @@
-public import Foundation
+import Foundation
 
 /// The passcode lock as a widget or Live Activity sees it. Same shape as AppLockState's `AppLockSchedule`, which
 /// the widget extension maps from.

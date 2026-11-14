@@ -1,4 +1,4 @@
-public import Foundation
+import Foundation
 
 public enum GlanceSendResult: Sendable, Equatable {
     case queued

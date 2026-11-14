@@ -1,4 +1,4 @@
-public import Foundation
+import Foundation
 
 /// What the coordinator derives every surface from. `locked` is the app passcode lock only: an app that is merely in
 /// the background, with no passcode set, is not locked.
