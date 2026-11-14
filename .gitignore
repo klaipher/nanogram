@@ -90,3 +90,4 @@ submodules/TelegramApi/Tests/SwiftPMGenerated/
 /build-system/dev-configuration.json
 /Telegram.app/
 build/accessibility/
+/build-output/profile/

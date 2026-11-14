@@ -83,5 +83,12 @@ common --repo_env=APPLE_SUPPORT_LAYERING_CHECK_BETA=0
 # https://github.com/bazelbuild/rules_rust/blob/0.75.0/rust/settings/settings.bzl (pipelined_compilation)
 build --@rules_rust//rust/settings:pipelined_compilation=true
 
+# Every build already writes command.profile.gz (generate_json_trace_profile=auto). Put the target label and the
+# primary output on each action event so the trace in ui.perfetto.dev names what an action built. Neither flag changes
+# the configuration, so the analysis cache survives. `tg profile` copies and summarises the profile.
+# https://bazel.build/reference/command-line-reference#flag--experimental_profile_include_target_label
+build --experimental_profile_include_target_label
+build --experimental_profile_include_primary_output
+
 # Per-developer overrides (disk cache path, jobs, ...). Not checked in.
 try-import %workspace%/user.bazelrc
