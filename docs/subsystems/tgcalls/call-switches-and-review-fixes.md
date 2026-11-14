@@ -31,7 +31,7 @@ wire (no SDP, signalling, negotiation or codec-list change), and each falls back
 Host tests for the pure policies are header-only `cc_test`s declared with `policy_cc_test` (`policy_test.bzl`, builds in
 seconds, no tgcalls_core): `livestream_decode_policy_test`, `capture_frame_policy_test`, `encoder_mode_policy_test`,
 `video_plane_layout_test`. Their `.cpp` files have a `main()`, so they are in `tgcalls/Package.swift`'s exclude list.
-**Shared tgcalls code: every commit here must also reach the Mac branch (`nanogram-mac-integration`); use `tools/dev/tgcalls-port` (see the repo CLAUDE.md, "Shared tgcalls code").**
+**Shared tgcalls code: one branch (`nanogram-shared`) serves iOS, Mac and Android; a fix is one fork commit and the three pins move to it (see `docs/subsystems/tgcalls.md`, "Shared tgcalls code"). `tools/dev/tgcalls-port` no longer exists.**
 
 ## Local call-audio switches (Batch B, 2026-11)
 

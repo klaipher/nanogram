@@ -120,17 +120,17 @@ genrule(
     name = "reference_core_embedded_src",
     srcs = [
         ":reference_core_wasm",
-        "tools/wasm_to_source.py",
+        "tgcalls/tools/wasm_to_source.py",
     ],
     outs = ["ReferenceCoreEmbedded.cpp"],
-    cmd = "python3 $(location tools/wasm_to_source.py) $(location :reference_core_wasm) $@",
+    cmd = "python3 $(location tgcalls/tools/wasm_to_source.py) $(location :reference_core_wasm) $@",
     visibility = ["//visibility:public"],
 )
 
 sources = glob([
-    "Sources/**/*.m",
-    "Sources/**/*.mm",
-    "Sources/**/*.h",
+    "tgcalls/ios/Sources/**/*.m",
+    "tgcalls/ios/Sources/**/*.mm",
+    "tgcalls/ios/Sources/**/*.h",
     "tgcalls/tgcalls/**/*.h",
     "tgcalls/tgcalls/**/*.hpp",
     "tgcalls/tgcalls/**/*.cpp",
@@ -166,9 +166,9 @@ sources = glob([
 ])
 
 sources = glob([
-    "Sources/**/*.m",
-    "Sources/**/*.mm",
-    "Sources/**/*.h",
+    "tgcalls/ios/Sources/**/*.m",
+    "tgcalls/ios/Sources/**/*.mm",
+    "tgcalls/ios/Sources/**/*.h",
     "tgcalls/tgcalls/**/*.h",
     "tgcalls/tgcalls/**/*.hpp",
     "tgcalls/tgcalls/platform/darwin/**/*.cpp",
@@ -276,7 +276,7 @@ objc_library(
     module_name = "TgVoipWebrtc",
     srcs = sources,
     hdrs = glob([
-        "PublicHeaders/**/*.h",
+        "tgcalls/ios/PublicHeaders/**/*.h",
     ]),
     copts = [
         "-I{}/tgcalls/tgcalls".format(package_name()),
@@ -300,7 +300,7 @@ objc_library(
         #"-Werror",
     ] + optimization_flags,
     includes = [
-        "PublicHeaders",
+        "tgcalls/ios/PublicHeaders",
     ],
     deps = [
         "//third-party/webrtc",
