@@ -17,3 +17,11 @@ copy (`origin/main` 466d8350) with the new source. Nothing was built.
 
 Open items: `submodules/OpusBinding/Sources/opusfile` is a second in-tree copy of opusfile (own sources, includes `opusfile/opusfile.h`),
 not covered by this wave. The plan's "145 WAMR files" is 144 `core/` files plus LICENSE (BUILD excluded).
+
+## Mac handoff for the W1.2 core bump (review findings)
+
+Do these in the Mac core-bump commit:
+
+- `submodules/CodeSyntax/CodeSyntax/CodeSyntax.xcodeproj/project.pbxproj` (lines ~349, ~387): HEADER_SEARCH_PATHS `.../third-party/boost_regex/include/` becomes `.../third-party/boost_regex/regex/include/`; update `tools/dev/tests/test_libprisma_shared.py:37` the same way.
+- `scripts/configure_frameworks.sh` (~98-100): remove the td `sync-headers.sh` call into `third-party/td/TdBinding/SharedHeaders/td`; `tools/dev/nanogram/fwcache.py:43`: remove `TD_PAIR` (and any fwcache test expecting it). Otherwise every configure recreates 793 untracked files in the core submodule. The iOS `.gitignore` now also ignores that directory as a guard.
+- After the bump run `swift package describe` in `third-party/td/TdBinding` (header path is now the in-package `td-headers`).
