@@ -44,22 +44,19 @@ public func fetchCachedResourceRepresentation(account: Account, resource: MediaR
         return Signal { subscriber in
             if let size = resource.size {
                 let videoSource = UniversalSoftwareVideoSource(mediaBox: account.postbox.mediaBox, source: .direct(resource: resource, size: size), automaticallyFetchHeader: false, hintVP9: false)
+                subscriber.keepAlive(videoSource)
                 let disposable = videoSource.takeFrame(at: 0.0).start(next: { value in
-                    switch value {
-                    case let .image(image):
-                        if let image {
-                            if let imageData = image.jpegData(compressionQuality: 0.6) {
-                                subscriber.putNext(.data(imageData))
-                                subscriber.putNext(.done)
-                                subscriber.putCompletion()
-                            }
-                        }
-                    case .waitingForData:
+                    switch value.firstFrame(compressionQuality: 0.6) {
+                    case let .jpeg(imageData):
+                        subscriber.putNext(.data(imageData))
+                        subscriber.putNext(.done)
+                        subscriber.putCompletion()
+                    case .failed:
+                        subscriber.putCompletion()
+                    case .pending:
                         break
                     }
                 })
-                
-                subscriber.keepAlive(videoSource)
                 
                 return ActionDisposable {
                     disposable.dispose()
@@ -72,22 +69,19 @@ public func fetchCachedResourceRepresentation(account: Account, resource: MediaR
         return Signal { subscriber in
             if let size = resource.size {
                 let videoSource = UniversalSoftwareVideoSource(mediaBox: account.postbox.mediaBox, source: .direct(resource: resource, size: size), automaticallyFetchHeader: false, hintVP9: false)
+                subscriber.keepAlive(videoSource)
                 let disposable = videoSource.takeFrame(at: 0.0).start(next: { value in
-                    switch value {
-                    case let .image(image):
-                        if let image {
-                            if let imageData = image.jpegData(compressionQuality: 0.6) {
-                                subscriber.putNext(.data(imageData))
-                                subscriber.putNext(.done)
-                                subscriber.putCompletion()
-                            }
-                        }
-                    case .waitingForData:
+                    switch value.firstFrame(compressionQuality: 0.6) {
+                    case let .jpeg(imageData):
+                        subscriber.putNext(.data(imageData))
+                        subscriber.putNext(.done)
+                        subscriber.putCompletion()
+                    case .failed:
+                        subscriber.putCompletion()
+                    case .pending:
                         break
                     }
                 })
-                
-                subscriber.keepAlive(videoSource)
                 
                 /*let reader = FFMpegFileReader(source: .resource(mediaBox: account.postbox.mediaBox, resource: resource, resourceSize: size, mappedRanges: [0 ..< size]), useHardwareAcceleration: false, selectedStream: .mediaType(.video), seek: nil, maxReadablePts: nil)
                 reader?.readFrame()

@@ -6,6 +6,7 @@ import TGUIKit
 #endif
 import CoreMedia
 import Accelerate
+import VideoToolbox
 import FFMpegBinding
 import YuvConversion
 
@@ -384,6 +385,17 @@ public final class FFMpegMediaVideoFrameDecoder: MediaTrackFrameDecoder {
     }
 
     private func convertVideoFrameToImage(_ frame: FFMpegAVFrame) -> UIImage? {
+        if frame.nativePixelFormat() == FFMpegAVFrameNativePixelFormat.videoToolbox {
+            guard let pixelBufferRef = frame.data[3] else {
+                return nil
+            }
+            let pixelBuffer = Unmanaged<CVPixelBuffer>.fromOpaque(UnsafeRawPointer(pixelBufferRef)).takeUnretainedValue()
+            var cgImage: CGImage?
+            guard VTCreateCGImageFromCVPixelBuffer(pixelBuffer, options: nil, imageOut: &cgImage) == noErr, let cgImage else {
+                return nil
+            }
+            return UIImage(cgImage: cgImage, scale: 1.0, orientation: .up)
+        }
         guard let frame = self.planarFrameFor420Conversion(frame) else {
             return nil
         }

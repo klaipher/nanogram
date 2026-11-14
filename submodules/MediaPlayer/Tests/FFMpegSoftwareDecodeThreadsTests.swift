@@ -20,6 +20,26 @@ final class FFMpegSoftwareDecodeThreadsTests: XCTestCase {
         XCTAssertEqual(FFMpegSoftwareDecodeThreads.threadCount(codecId: FFMpegCodecIdVP9, width: 512, height: 512, processorCount: 10), 1)
     }
 
+    func testIOSCapsThreadsAtFourPerformanceCores() {
+        XCTAssertEqual(FFMpegSoftwareDecodeThreads.iOSThreadCount(codecId: FFMpegCodecIdAV1, width: 1920, height: 1080, processorCount: 6, isLowPowerModeEnabled: false, thermalState: .nominal), 4)
+        XCTAssertEqual(FFMpegSoftwareDecodeThreads.iOSThreadCount(codecId: FFMpegCodecIdAV1, width: 1920, height: 1080, processorCount: 2, isLowPowerModeEnabled: false, thermalState: .fair), 2)
+    }
+
+    func testIOSDropsToOneThreadInLowPowerModeOrWhenHot() {
+        XCTAssertEqual(FFMpegSoftwareDecodeThreads.iOSThreadCount(codecId: FFMpegCodecIdAV1, width: 1920, height: 1080, processorCount: 6, isLowPowerModeEnabled: true, thermalState: .nominal), 1)
+        XCTAssertEqual(FFMpegSoftwareDecodeThreads.iOSThreadCount(codecId: FFMpegCodecIdAV1, width: 1920, height: 1080, processorCount: 6, isLowPowerModeEnabled: false, thermalState: .serious), 1)
+        XCTAssertEqual(FFMpegSoftwareDecodeThreads.iOSThreadCount(codecId: FFMpegCodecIdAV1, width: 1920, height: 1080, processorCount: 6, isLowPowerModeEnabled: false, thermalState: .critical), 1)
+    }
+
+    func testIOSKeepsSmallClipsAndOtherCodecsSingleThreaded() {
+        XCTAssertEqual(FFMpegSoftwareDecodeThreads.iOSThreadCount(codecId: FFMpegCodecIdAV1, width: 640, height: 360, processorCount: 6, isLowPowerModeEnabled: false, thermalState: .nominal), 1)
+        XCTAssertEqual(FFMpegSoftwareDecodeThreads.iOSThreadCount(codecId: FFMpegCodecIdH264, width: 1920, height: 1080, processorCount: 6, isLowPowerModeEnabled: false, thermalState: .nominal), 1)
+    }
+
+    func testMacCapStaysAtEight() {
+        XCTAssertEqual(FFMpegSoftwareDecodeThreads.threadCount(codecId: FFMpegCodecIdAV1, width: 1920, height: 1080, processorCount: 16), 8)
+    }
+
 #if os(macOS)
     func testCodecContextTakesTheThreadCount() throws {
         let codec = try XCTUnwrap(FFMpegAVCodec.find(forId: FFMpegCodecIdAV1, preferHardwareAccelerationCapable: false))
