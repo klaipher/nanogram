@@ -37,6 +37,10 @@
 	<string>$(TG_API_ID)</string>
 	<key>WKApplication</key>
 	<true/>
+	<key>WKBackgroundModes</key>
+	<array>
+		<string>audio</string>
+	</array>
 	<key>WKCompanionAppBundleIdentifier</key>
 	<string>$(PRODUCT_BUNDLE_IDENTIFIER:base)</string>
 	<key>WKRunsIndependentlyOfCompanionApp</key>

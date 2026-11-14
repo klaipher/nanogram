@@ -19,6 +19,12 @@ protocol AudioPlayerBackend: AnyObject {
     var onEnded: (() -> Void)? { get set }
     /// Fired when the player item transitions to `.failed`.
     var onFailed: ((String) -> Void)? { get set }
+    /// Moves the playhead by `seconds` (negative: back), clamped to the track. Now Playing skip commands.
+    func skip(by seconds: Double)
+}
+
+extension AudioPlayerBackend {
+    func skip(by seconds: Double) {}
 }
 
 enum AudioGlyph: Equatable {
@@ -47,12 +53,27 @@ final class AudioPlaybackController {
     private(set) var currentElapsed: Double = 0
 
     private let backend: AudioPlayerBackend
+    /// Now Playing / remote commands; nil leaves the system out (flag off, tests).
+    private let nowPlaying: NowPlayingPublishing?
+    /// The track that is playing or paused, for the Now Playing entry.
+    private var activeAudio: AudioVisual?
 
-    init(backend: AudioPlayerBackend) {
+    init(backend: AudioPlayerBackend, nowPlaying: NowPlayingPublishing? = nil) {
         self.backend = backend
+        self.nowPlaying = nowPlaying
         self.backend.onProgress = { [weak self] t in self?.handleProgress(t) }
         self.backend.onEnded = { [weak self] in self?.handleEnded() }
         self.backend.onFailed = { [weak self] msg in self?.handleFailed(msg) }
+        self.nowPlaying?.onCommand = { [weak self] command in self?.handleRemote(command) }
+    }
+
+    /// The production controller: long-form audio and Now Playing only with `WatchFeature.longFormAudio`.
+    static func makeProduction() -> AudioPlaybackController {
+        let longForm = WatchFeatureFlags.isEnabled(.longFormAudio)
+        return AudioPlaybackController(
+            backend: AVPlayerBackend(longForm: longForm),
+            nowPlaying: longForm ? SystemNowPlayingPublisher() : nil
+        )
     }
 
     func isActive(_ audioFileId: Int) -> Bool {
@@ -86,10 +107,12 @@ final class AudioPlaybackController {
         case .playing(let id) where id == audio.audioFileId:
             backend.pause()
             state = .paused(audioFileId: id)
+            publishNowPlaying()
             return
         case .paused(let id) where id == audio.audioFileId:
             backend.play()
             state = .playing(audioFileId: id)
+            publishNowPlaying()
             return
         case .preparing(let id) where id == audio.audioFileId:
             // Second tap during preparing = cancel.
@@ -119,6 +142,8 @@ final class AudioPlaybackController {
         currentElapsed = 0
         backend.stop()
         state = .idle
+        activeAudio = nil
+        nowPlaying?.publish(nil)
     }
 
     // MARK: - Private
@@ -129,6 +154,8 @@ final class AudioPlaybackController {
             try backend.load(url: URL(fileURLWithPath: path))
             backend.play()
             state = .playing(audioFileId: audio.audioFileId)
+            activeAudio = audio
+            publishNowPlaying()
         } catch {
             state = .failed(audioFileId: audio.audioFileId, message: "Could not play audio")
         }
@@ -147,13 +174,61 @@ final class AudioPlaybackController {
         state = .idle
         currentElapsed = 0
         backend.stop()
+        activeAudio = nil
+        nowPlaying?.publish(nil)
     }
 
     private func handleFailed(_ message: String) {
         switch state {
         case .playing(let id), .preparing(let id), .paused(let id):
             state = .failed(audioFileId: id, message: message)
+            activeAudio = nil
+            nowPlaying?.publish(nil)
         case .idle, .failed:
+            break
+        }
+    }
+
+    // MARK: - Now Playing
+
+    private func publishNowPlaying() {
+        guard let nowPlaying, let audio = activeAudio else { return }
+        let rate: Double
+        switch state {
+        case .playing: rate = 1
+        case .paused: rate = 0
+        default: return
+        }
+        nowPlaying.publish(NowPlayingInfo(
+            title: audio.title,
+            artist: audio.performer,
+            duration: Double(audio.duration),
+            elapsed: currentElapsed,
+            rate: rate
+        ))
+    }
+
+    /// Transport commands from the Now Playing app, the Smart Stack and headphone buttons.
+    func handleRemote(_ command: RemoteTransportCommand) {
+        guard let audio = activeAudio else { return }
+        switch (command, state) {
+        case (.play, .paused), (.togglePlayPause, .paused):
+            backend.play()
+            state = .playing(audioFileId: audio.audioFileId)
+            publishNowPlaying()
+        case (.pause, .playing), (.togglePlayPause, .playing):
+            backend.pause()
+            state = .paused(audioFileId: audio.audioFileId)
+            publishNowPlaying()
+        case (.skipForward(let seconds), .playing), (.skipForward(let seconds), .paused):
+            backend.skip(by: seconds)
+            currentElapsed = min(Double(audio.duration), max(0, currentElapsed + seconds))
+            publishNowPlaying()
+        case (.skipBackward(let seconds), .playing), (.skipBackward(let seconds), .paused):
+            backend.skip(by: -seconds)
+            currentElapsed = max(0, currentElapsed - seconds)
+            publishNowPlaying()
+        default:
             break
         }
     }
@@ -165,6 +240,10 @@ final class AudioPlaybackController {
 /// requires for `AVPlayer` audibility (mirrors `VideoPlayerView`). Removing all
 /// observers on `stop()` / `load()` means stale end/failure callbacks can't
 /// reach the controller after a switch.
+///
+/// With `longForm` (WatchFeature.longFormAudio) the session uses the long-form route policy and activates
+/// asynchronously, so the system route picker can show for Bluetooth headphones; `play()` then waits for
+/// the activation. Without it the old synchronous `.playback` session is used.
 @MainActor
 final class AVPlayerBackend: AudioPlayerBackend {
     var onProgress: ((Double) -> Void)?
@@ -176,6 +255,15 @@ final class AVPlayerBackend: AudioPlayerBackend {
     private var endObserver: NSObjectProtocol?
     private var statusObserver: AnyCancellable?
     private let logger = Logger(watchCategory: "audioplayer")
+    private let session: AudioSessionActivating
+    private let configuration: AudioSessionConfiguration
+    private let playGate = DeferredPlayGate()
+    private var activationTask: Task<Void, Never>?
+
+    init(session: AudioSessionActivating = SystemAudioSession(), longForm: Bool = false) {
+        self.session = session
+        self.configuration = AudioSessionConfiguration.forMusic(longForm: longForm)
+    }
 
     var elapsed: Double {
         guard let player else { return 0 }
@@ -185,6 +273,9 @@ final class AVPlayerBackend: AudioPlayerBackend {
 
     func load(url: URL) throws {
         teardownObservers()
+        activationTask?.cancel()
+        activationTask = nil
+        playGate.reset()
         let p = AVPlayer(url: url)
         let interval = CMTime(seconds: 0.5, preferredTimescale: 600)
         // Both observers are delivered on the main queue.
@@ -206,20 +297,61 @@ final class AVPlayerBackend: AudioPlayerBackend {
             .sink { [weak self] status in
                 if status == .failed { self?.onFailed?("Could not play audio") }
             }
-        try activatePlaybackSession()
+        try session.configure(configuration)
+        if configuration.activatesAsynchronously {
+            beginAsyncActivation()
+        } else {
+            try session.activateNow()
+            _ = playGate.markReady()
+        }
         player = p
         logger.info("audio load \(url.lastPathComponent, privacy: .private)")
     }
 
-    func play()  { player?.play() }
-    func pause() { player?.pause() }
+    func play() {
+        if playGate.requestPlay() { player?.play() }
+    }
+
+    func pause() {
+        playGate.requestPause()
+        player?.pause()
+    }
 
     func stop() {
+        activationTask?.cancel()
+        activationTask = nil
+        playGate.reset()
         player?.pause()
         teardownObservers()
         player?.replaceCurrentItem(with: nil)
         player = nil
-        try? AVAudioSession.sharedInstance().setActive(false)
+        session.deactivate()
+    }
+
+    func skip(by seconds: Double) {
+        guard let player, let item = player.currentItem else { return }
+        let duration = CMTimeGetSeconds(item.duration)
+        var target = elapsed + seconds
+        if duration.isFinite { target = min(target, max(0, duration - 0.5)) }
+        target = max(0, target)
+        player.seek(to: CMTime(seconds: target, preferredTimescale: 600))
+    }
+
+    /// Activates off the call path: the route picker may stay open for seconds. A failure (the user
+    /// dismissed the picker, no route) is reported like any playback failure.
+    private func beginAsyncActivation() {
+        activationTask = Task { [weak self] in
+            guard let self else { return }
+            do {
+                try await self.session.activate()
+                guard !Task.isCancelled else { return }
+                if self.playGate.markReady() { self.player?.play() }
+            } catch {
+                guard !Task.isCancelled else { return }
+                self.logger.error("audio activation failed: \(error.localizedDescription, privacy: .public)")
+                self.onFailed?("Could not play audio")
+            }
+        }
     }
 
     /// All observers are delivered on the main queue, so removing their
@@ -230,16 +362,5 @@ final class AVPlayerBackend: AudioPlayerBackend {
         if let e = endObserver { NotificationCenter.default.removeObserver(e); endObserver = nil }
         statusObserver?.cancel()
         statusObserver = nil
-    }
-
-    /// watchOS routes AVPlayer audio to the speaker only under an active
-    /// `.playback` session — same requirement as `VideoPlayerView`.
-    private func activatePlaybackSession() throws {
-        let session = AVAudioSession.sharedInstance()
-        // Music uses `.default` (preserves the user's chosen output route); video
-        // uses `.moviePlayback` (forces speaker). Both keep `.playback` so audio is
-        // audible on watchOS.
-        try session.setCategory(.playback, mode: .default)
-        try session.setActive(true)
     }
 }

@@ -78,7 +78,7 @@ final class ChatHistoryStore {
             backend: AVEngineBackend(),
             decoder: OpusDecoderAdapter()
         )
-        self.audioPlayback = audioPlayback ?? AudioPlaybackController(backend: AVPlayerBackend())
+        self.audioPlayback = audioPlayback ?? AudioPlaybackController.makeProduction()
         self.draftText = draftText
         self.coalesceUpdates = coalesceUpdates
         self.unreadDividerAfterIdSnapshot = lastReadInboxMessageId

@@ -63,6 +63,10 @@ targets:
         # Intentional: keeps the watch app independently installable on the watch
         # while still shipping inside the Nanogram IPA. Do not change to false.
         WKRunsIndependentlyOfCompanionApp: true
+        # Long-form music playback keeps going with the wrist down (WATCH-AUDIO-1). Only a session with the
+        # long-form route policy uses it, which stays behind WatchFeature.longFormAudio.
+        WKBackgroundModes:
+          - audio
         TG_API_ID: $(TG_API_ID)
         TG_API_HASH: $(TG_API_HASH)
         NSAppTransportSecurity:
