@@ -15,6 +15,9 @@ enum WatchFeature: String, CaseIterable, Sendable {
     /// WATCH-MEM-1: voice notes decode in ~1 s chunks and start playing after the first, instead of decoding
     /// the whole note (up to ~115 MB for a 5-minute note) before any sound.
     case chunkedVoiceDecode
+    /// WATCH-GPU-1: animated stickers rasterise off the main actor (late frames are dropped, not queued), and
+    /// the timeline ticks at 24 Hz instead of 30 in Low Power Mode.
+    case offMainStickerRender
 
     var defaultsKey: String { "nanogram.watch." + rawValue }
 
