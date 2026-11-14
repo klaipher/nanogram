@@ -131,7 +131,9 @@ private enum NanogramFeaturesEntry: ItemListNodeEntry {
     }
 
     func item(presentationData: ItemListPresentationData, arguments: Any) -> ListViewItem {
-        let arguments = arguments as! NanogramFeaturesControllerArguments
+        guard let arguments = arguments as? NanogramFeaturesControllerArguments else {
+            return ItemListSectionHeaderItem(presentationData: presentationData, text: "", sectionId: self.section)
+        }
         switch self {
         case .searchHeader:
             return ItemListSectionHeaderItem(presentationData: presentationData, text: "SEARCH", sectionId: self.section)

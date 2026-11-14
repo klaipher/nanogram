@@ -274,7 +274,7 @@ func settingsItems(data: PeerInfoScreenData?, context: AccountContext, presentat
     items[.advanced]!.append(PeerInfoScreenDisclosureItem(id: 6, label: .text(data.isPowerSavingEnabled == true ? presentationData.strings.Settings_PowerSavingOn : presentationData.strings.Settings_PowerSavingOff), text: presentationData.strings.Settings_PowerSaving, icon: PresentationResourcesSettings.powerSaving, action: {
         interaction.openSettings(.powerSaving)
     }))
-    items[.advanced]!.append(PeerInfoScreenDisclosureItem(id: 7, text: "Nanogram Features", icon: PresentationResourcesSettings.aiTools, action: {
+    items[.advanced, default: []].append(PeerInfoScreenDisclosureItem(id: 7, text: "Nanogram Features", icon: PresentationResourcesSettings.aiTools, action: {
         interaction.openSettings(.nanogramFeatures)
     }))
     
@@ -359,7 +359,7 @@ func settingsItems(data: PeerInfoScreenData?, context: AccountContext, presentat
     items[.support]!.append(PeerInfoScreenDisclosureItem(id: 2, text: presentationData.strings.Settings_Tips, icon: PresentationResourcesSettings.tips, action: {
         interaction.openSettings(.tips)
     }))
-    items[.support]!.append(PeerInfoScreenDisclosureItem(id: 3, text: "Send Report", icon: PresentationResourcesSettings.support, action: {
+    items[.support, default: []].append(PeerInfoScreenDisclosureItem(id: 3, text: "Send Report", icon: PresentationResourcesSettings.support, action: {
         interaction.openSettings(.sendReport)
     }))
     
