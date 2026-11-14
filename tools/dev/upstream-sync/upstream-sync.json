@@ -1,8 +1,8 @@
 {
  "description": "Settings for tools/dev/upstream-sync/sync.py (the upstream sync dry run). base_commit is the commit in OUR history whose tree equals the upstream release we imported; this repo has no upstream ancestry, so releases are applied as a three-way merge against that tree.",
  "upstream_url": "https://github.com/TelegramMessenger/Telegram-iOS.git",
- "base_commit": "0650eac5",
- "base_label": "release-13.1.2",
+ "base_commit": "5083532f",
+ "base_label": "release-13.2",
  "branch": "main",
  "areas": [
   {
