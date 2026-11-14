@@ -1,6 +1,6 @@
 # Vendored code that is not linked into the app
 
-Compiled 2026-11-02 for Round J of the deep audit. Documentation only: nothing is deleted.
+Compiled 2026-11-02 for Round J of the deep audit. **Update 2026-11-14:** `third-party/libjxl`, `third-party/XMLCoder` and `third-party/Swift2D` are removed (re-checked in the iOS tree, the Mac repo and the Android tree: no `BUILD`/`.bzl`, `Package.swift`, `project.pbxproj`, script, `mac-core-paths.txt` or `#include` referred to them; `upstream-sync.json` lists them under `removed_libraries`). The other entries below are still only documented.
 
 **Method.** The audit compared `bazel query 'deps(//Telegram:Telegram)'` with every rule under
 `//submodules` and `//third-party` (84 rules not reached, kept in the audit's
@@ -13,9 +13,9 @@ in dependency and CVE scans.
 
 | Code | Size | Why it is not linked | Recommendation |
 |---|---|---|---|
-| `third-party/libjxl` (`:jxl`, `:jxl_lib`, `:libjxl_build`, `:libjxl_sources`) | 28 MB, 1,579 files, 510 C/C++ sources | The only reference is a commented-out dep in `submodules/MozjpegBinding/BUILD` (`#"//third-party/libjxl:jxl"`); `USE_JPEGXL` is not defined anywhere. It was still updated to 0.12.0 (d234a8d2). | **Remove.** It is the largest item and is updated for nothing. If JPEG XL is ever needed, ImageIO decodes it natively on iOS 17 and later. |
-| `third-party/XMLCoder` | 52 files | No `BUILD` file or Swift import refers to it. | **Remove.** |
-| `third-party/Swift2D` | 7 files | No references. | **Remove.** |
+| `third-party/libjxl` (`:jxl`, `:jxl_lib`, `:libjxl_build`, `:libjxl_sources`) | 28 MB, 1,579 files, 510 C/C++ sources | The only reference is a commented-out dep in `submodules/MozjpegBinding/BUILD` (`#"//third-party/libjxl:jxl"`); `USE_JPEGXL` is not defined anywhere. It was still updated to 0.12.0 (d234a8d2). | **Removed 2026-11-14.** It was the largest item and was updated for nothing. If JPEG XL is ever needed, ImageIO decodes it natively on iOS 17 and later. |
+| `third-party/XMLCoder` | 52 files | No `BUILD` file or Swift import refers to it. | **Removed 2026-11-14.** |
+| `third-party/Swift2D` | 7 files | No references. | **Removed 2026-11-14.** |
 | `submodules/TelegramUI/Components/SpaceWarpView/STCMeshView` | 2 ObjC sources | `SpaceWarpView` depends on `MeshTransform` instead; nothing depends on `STCMeshView`. | **Remove.** |
 | `submodules/TelegramUI/Components/ChatScheduleTimeScreen` | 1 Swift source | Superseded: the screen lives in `Components/ChatScheduleTimeController` (its own `ChatScheduleTimeScreen.swift`), which is what the app uses. | **Remove**, after checking that nothing in the old copy is newer than the one in `ChatScheduleTimeController`. |
 | `submodules/TelegramUI/Components/Wallet/WalletCollectibleItemComponent` | 1 Swift source | No dependents. | **Remove**, or wire it in if the wallet's collectibles screen was meant to use it (ask the wallet owner). |

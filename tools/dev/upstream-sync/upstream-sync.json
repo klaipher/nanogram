@@ -255,5 +255,29 @@
    "official_tag": "WAMR-2.4.5"
   }
  ],
+ "removed_libraries": [
+  {
+   "name": "libjxl",
+   "paths": [
+    "third-party/libjxl/"
+   ],
+   "note": "deleted 2026-11-14: nothing linked it (USE_JPEGXL is never defined); ImageIO decodes JPEG XL on iOS 17 and later"
+  },
+  {
+   "name": "XMLCoder",
+   "paths": [
+    "third-party/XMLCoder/"
+   ],
+   "note": "deleted 2026-11-14: no BUILD file or Swift import used it"
+  },
+  {
+   "name": "Swift2D",
+   "paths": [
+    "third-party/Swift2D/"
+   ],
+   "note": "deleted 2026-11-14: no BUILD file or Swift import used it"
+  }
+ ],
+ "description_removed_libraries": "Vendored libraries we deleted because nothing builds them. When a release changes a file under these prefixes, sync.py names the library so the merge does not bring it back silently.",
  "description_moved_libraries": "Paths that Telegram-iOS ships as vendored source (or, for the official pins, as a copy) and that we replaced by a submodule of a fork or an official pin. When a release changes a file under these prefixes, sync.py names the library and the fork branch to patch, so the upstream fix is not lost by the merge."
 }

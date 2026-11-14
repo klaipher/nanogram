@@ -91,6 +91,25 @@ class MovedLibraries(unittest.TestCase):
         self.assertIn("lib: 1 file(s) -> patch fork https://example/lib.git branch nanogram", text)
 
 
+class RemovedLibraries(unittest.TestCase):
+    LIBS = [{"name": "gone", "paths": ["third-party/gone/"], "note": "deleted: unused"}]
+
+    def test_shipped_config_lists_the_deleted_libraries(self):
+        names = {lib["name"] for lib in sync.load_config()["removed_libraries"]}
+        self.assertEqual(names, {"libjxl", "XMLCoder", "Swift2D"})
+
+    def test_report_names_the_deleted_library(self):
+        config = {"areas": AREAS, "removed_libraries": self.LIBS, "base_commit": "x"}
+        text = sync.format_report("v2", config, "main", sync.MergeResult(tree="t"),
+                                  ["third-party/gone/a.c", "Telegram/x.swift"], [])
+        self.assertIn("gone: 1 file(s); deleted: unused", text)
+
+    def test_report_is_quiet_without_changes(self):
+        config = {"areas": AREAS, "removed_libraries": self.LIBS, "base_commit": "x"}
+        text = sync.format_report("v2", config, "main", sync.MergeResult(tree="t"), ["Telegram/x.swift"], [])
+        self.assertIn("Removed libraries: upstream did not change", text)
+
+
 class DryRun(unittest.TestCase):
     def setUp(self):
         self.tmp = tempfile.TemporaryDirectory()

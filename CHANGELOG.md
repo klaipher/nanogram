@@ -4,6 +4,7 @@ Newest first. Internal notes for each TestFlight build; testers see the What to 
 
 ## Unreleased
 
+- **Removed three vendored libraries nothing built** (2026-11-14, not built or run by its author; no behaviour change): `third-party/libjxl` (1,579 files; its only reference was a commented-out dep in `submodules/MozjpegBinding/BUILD`, and `USE_JPEGXL` is never defined, so the JPEG XL functions were already stubs), `third-party/XMLCoder` (52 files) and `third-party/Swift2D` (7 files). Checked first in the iOS tree, the Mac repo (`Package.swift`, `project.pbxproj`, `core-xprojects`, `docs/mac-core-paths.txt`, `tools`, `scripts`: no hit) and the Android tree (only a prose mention in `docs/shared-libraries-plan.md`). Also removed: the libjxl script from `test_outline_atomics.py`, the commented dep, libjxl mentions in `docs/build-and-test.md` and `docs/bazel-build-profiling.md`. `upstream-sync.json` gains `removed_libraries` (and `sync.py` reports files a release changes there) so the next upstream sync does not bring them back silently. Spec: `docs/research/vendored-unlinked.md` (Round J).
 - **tgcalls pin 73cc1f8d -> 7afc0b25** (fork `nanogram-shared`): ports upstream defea4a, so a group-call incoming video description with an empty ssrc group no longer reads `ssrcs[0]` of an empty vector (possible crash). `shared/` moves to nanogram-deps a17304db. The Mac and Android pins move to the same commit.
 
 Release optimization audit (branch `build/release-opt`; not built or run by its author). Verification is in `docs/bazel-build-profiling.md`.

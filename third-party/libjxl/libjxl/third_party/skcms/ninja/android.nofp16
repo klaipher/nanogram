@@ -1,3 +1,0 @@
-mode         = .nofp16
-target_flags = -march=armv8.2a+fp16
-include ninja/android

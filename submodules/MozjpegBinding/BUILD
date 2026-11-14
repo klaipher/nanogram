@@ -22,7 +22,6 @@ objc_library(
     ],
     deps = [
         "//third-party/libjpeg-turbo:libjpeg_turbo",
-        #"//third-party/libjxl:jxl",
     ],
     sdk_frameworks = [
         "Accelerate",

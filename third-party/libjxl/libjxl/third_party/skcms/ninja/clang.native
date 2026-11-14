@@ -1,3 +1,0 @@
-mode         = .native
-target_flags = -march=native
-include ninja/clang

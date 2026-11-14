@@ -6,6 +6,7 @@ This repository starts at its own root, so there is no upstream ancestry to merg
 
 - Config: `tools/dev/upstream-sync/upstream-sync.json` (base commit and label, branch, areas, pins with upstream and fork URLs).
 - Moved libraries: `moved_libraries` in the config lists the paths Telegram-iOS ships as vendored source that we replaced by a submodule of a fork (FFmpeg, openh264, rnnoise, libprisma, sqlcipher-amalgamation, libyuv, boringssl, quickjs, widget-sandbox, twidget, the webrtc third_party dirs) or by an official pin (ogg, opus, opusfile, libwebp, boost_regex, wamr). The report names every library whose files upstream changed and the fork branch to patch (or the pin to bump), so an upstream fix to a moved library is ported by hand instead of vanishing in a modify/delete conflict. Add a library here whenever one more path moves out of the tree.
+- Removed libraries: `removed_libraries` in the config lists vendored libraries we deleted because nothing builds them (libjxl, XMLCoder, Swift2D); the report names every file a release changes under those paths so the merge does not bring them back silently.
 - Options: `--ours <branch>`, `--offline` (skip the fork checks), `--json`, `--fail-on-conflict`.
 - After a release is merged, move `base_commit` to the commit that holds the new release tree.
 - `tg setup` turns on `rerere`, so a conflict resolved once (DebugController, branding) is replayed on the next merge.

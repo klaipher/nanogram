@@ -9,7 +9,6 @@ ROOT = Path(__file__).resolve().parents[3]
 SCRIPTS = [
     "third-party/webp/build-webp-bazel.sh",
     "third-party/libjpeg-turbo/build-libjpeg-turbo-bazel.sh",
-    "third-party/libjxl/build-libjxl-bazel.sh",
     "third-party/td/build-td-bazel.sh",
     "third-party/opus/build-opus-bazel.sh",
     "submodules/ffmpeg/Sources/FFMpeg/build-ffmpeg-bazel.sh",

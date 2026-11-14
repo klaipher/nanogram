@@ -25,7 +25,7 @@ The build needs `TELEGRAM_CODESIGNING_GIT_PASSWORD` in the environment. It is se
 `MODULE.bazel`, extracted once and listed in each genrule's `tools`: CMake 4.5.0 (`@cmake//:cmake`, only the CLI and its
 Modules/Templates), Ninja 1.13.2 (`@ninja//:ninja`), Meson 1.6.0 (`@meson//:meson.py`). A genrule puts their absolute
 directories at the front of `PATH`; nothing resolves a host `cmake`. The CMake-built libraries (libwebp, libjpeg-turbo,
-libjxl, td, yasm, flatc) use `-G Ninja` and `cmake --build . --parallel N`. Every genrule fails on an unknown
+td, yasm, flatc) use `-G Ninja` and `cmake --build . --parallel N`. Every genrule fails on an unknown
 `$(TARGET_CPU)` and deletes its scratch tree (source copy, build tree, objects) once the declared outputs are copied out.
 Each genrule's action key also carries `--action_env=NANOGRAM_XCODE_ID=xcode-<build>.iphoneos-<sdk build>.iphonesimulator-<sdk build>`,
 which `Make.py` computes from the Xcode that `xcode-select` selects, so an Xcode or SDK update re-runs the native libraries

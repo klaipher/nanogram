@@ -65,6 +65,11 @@ def load_config(path: Path = DEFAULT_CONFIG) -> dict:
         if key not in data:
             raise ValueError(f"{path}: missing '{key}'")
     data.setdefault("moved_libraries", [])
+    data.setdefault("removed_libraries", [])
+    for lib in data["removed_libraries"]:
+        for key in ("name", "paths", "note"):
+            if key not in lib:
+                raise ValueError(f"{path}: a removed library is missing '{key}'")
     for lib in data["moved_libraries"]:
         for key in ("name", "paths"):
             if key not in lib:
@@ -129,6 +134,11 @@ def moved_library_changes(paths: list[str], libraries: list[dict]) -> dict[str, 
                 found.setdefault(lib["name"], []).append(path)
                 break
     return found
+
+
+def removed_library_changes(paths: list[str], libraries: list[dict]) -> dict[str, list[str]]:
+    """The files of `paths` under a vendored library we deleted on purpose, by library name (first match wins)."""
+    return moved_library_changes(paths, libraries)
 
 
 def moved_library_target(lib: dict) -> str:
@@ -196,6 +206,19 @@ def format_report(tag: str, config: dict, ours_ref: str, result: MergeResult, up
                 out.append(f"    ... and {len(files) - 20} more")
     else:
         out.append("Moved libraries: upstream did not change any file under a path we moved to a fork or an official pin.")
+    out.append("")
+    removed = removed_library_changes(upstream_changed, config.get("removed_libraries", []))
+    if removed:
+        out.append("Upstream changed libraries that we deleted on purpose (a merge can bring them back as new or "
+                   "modify/delete files; delete them again, do not keep them):")
+        by_name = {lib["name"]: lib for lib in config.get("removed_libraries", [])}
+        for name, files in removed.items():
+            out.append(f"  {name}: {len(files)} file(s); {by_name[name]['note']}")
+            out.extend(f"    {f}" for f in files[:20])
+            if len(files) > 20:
+                out.append(f"    ... and {len(files) - 20} more")
+    else:
+        out.append("Removed libraries: upstream did not change any file under a path we deleted on purpose.")
     out.append("")
     if not pins:
         out.append("Pins: upstream did not bump any watched dependency.")

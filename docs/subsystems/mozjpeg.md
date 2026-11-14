@@ -14,4 +14,4 @@ byte-identical and the decoder pixel-identical (`MozjpegBindingTests` pins golde
   it was 2-9x slower on cache-sized JPEGs and differs by up to 122 levels from what is shown today.
 - **`decompressImage` decodes untrusted data** (tiny thumbnails from chats, the media cache) for DirectMediaImageCache:
   any failure returns nil so the caller falls back to `UIImage(data:)`; sides over 8192 are refused.
-- The JPEG XL functions compile to stubs returning nil: `USE_JPEGXL` is undefined and libjxl is not linked.
+- The JPEG XL functions compile to stubs returning nil: `USE_JPEGXL` is undefined and libjxl is not linked (its sources were deleted on 2026-11-14).
