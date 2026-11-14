@@ -109,20 +109,6 @@ cc_library(
 )
 
 cc_library(
-    name = "opus_cc",
-    hdrs = [":Public/opus/" + x for x in headers],
-    includes = [
-        "Public",
-    ],
-    deps = [
-        ":opus_lib",
-    ],
-    visibility = [
-        "//visibility:public",
-    ],
-)
-
-cc_library(
     name = "opus",
     hdrs = [":Public/opus/" + x for x in headers],
     includes = [

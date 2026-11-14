@@ -24,7 +24,6 @@ in dependency and CVE scans.
 
 | Target | What it is | Recommendation |
 |---|---|---|
-| `//third-party/opus:opus_cc` | A second `cc_library` over the same prebuilt Opus archives as `:opus`. | Keep or delete the 10-line target; no code is duplicated. |
 | `//third-party/boringssl:bssl` | BoringSSL's command-line tool (`cc_binary`). | Keep: part of the upstream tree, useful for debugging TLS. |
 | `//submodules/TgVoipWebrtc:tgcalls_core`, `:variant_core_wasm`, `:is_macos`, `tgcalls/tools/cli`, `tgcalls/tools/go_sfu` | tgcalls for host tools, the WebAssembly call core, a config setting, a CLI and a Go SFU for testing. | Keep: build and test tooling. |
 | `third-party/mtproto-engine/bench/*/Vendor/{MtProtoKit,OpenSSLEncryptionProvider}` | Vendored copies for the engine's benchmark clients (inside the `mtproto-engine` submodule). | Keep: benchmark-only, owned by the engine repository. |
