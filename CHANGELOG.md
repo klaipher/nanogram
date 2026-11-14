@@ -4,6 +4,8 @@ Newest first. Internal notes for each TestFlight build; testers see the What to 
 
 ## Unreleased
 
+- **Watch app: libogg and libwebp are no longer third copies** (review fix). `OpusKit` links `framing.c`, `bitwise.c`, `crctable.h` and `ogg.h` of `third-party/ogg/ogg` (same commit be05b13e, byte-identical files), `WebPKit` links its 133 libwebp files into `third-party/webp/libwebp` (v1.6.0, all byte-identical; only `src/webp/config.h` stays hand-written), through relative symlinks as `OpusBinding/SwiftPMLinks` does. libopus 1.6.1 (313 files) stays vendored in `OpusKit/Sources/COpus`: iOS keeps opus only as `third-party/opus/opus-1.6.1.tar.gz`, so there is no source tree to link; it is the same version (probe in the Package.swift comment) and is listed as a deferred manifest entry. Not built (no builds allowed); the watch target needs the `third-party/ogg/ogg` and `third-party/webp/libwebp` submodules checked out, as the app already requires.
+
 - **native-libs.json takes the Mac copy** (review fix): the Mac copy describes the current layout (libwebp version from the iOS submodule's configure.ac, openh264 from `codec_ver.h`, flatc from `prepare-flat-serialization.py`, no Mac tarball probes); the iOS copy still probed Mac files that no longer exist. `check_native_libs.py --sibling` reports no difference now; the Mac core bump to this commit makes both repos hold the same blob.
 
 - **Review fix: QuickJSHostTests compile against the fork's `JSInterruptHandler(JSContext*, void*)`.** `stopping_interrupt`, `always_interrupt` and `disposer_interrupt` still took `JSRuntime*`; the first now stops the runtime through `JS_GetRuntime(ctx)`. Checked with `clang -fsyntax-only` (no build run).

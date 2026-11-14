@@ -11,8 +11,9 @@ let package = Package(
         .library(name: "OpusKit", targets: ["OpusKit"]),
     ],
     targets: [
-        // Vendored: libogg 1.3.6 (xiph/ogg tag v1.3.6, be05b13e98b048f0b5a0f5fa8ce514d56db5f822):
-        // src/ and include/ogg/ogg.h; os_types.h and src/config.h are hand-written for Apple.
+        // libogg 1.3.6 (xiph/ogg tag v1.3.6, be05b13e98b048f0b5a0f5fa8ce514d56db5f822): framing.c, bitwise.c,
+        // crctable.h and ogg.h are symlinks into the shared third-party/ogg/ogg submodule (one copy for the app);
+        // os_types.h and src/config.h are hand-written for Apple.
         .target(
             name: "COgg",
             path: "Sources/COgg",
