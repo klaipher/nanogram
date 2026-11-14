@@ -48,3 +48,7 @@
 	path = third-party/wamr/wamr
 	url = https://github.com/bytecodealliance/wasm-micro-runtime.git
 	shallow = true
+[submodule "third-party/ogg/ogg"]
+	path = third-party/ogg/ogg
+	url = https://github.com/xiph/ogg.git
+	shallow = true

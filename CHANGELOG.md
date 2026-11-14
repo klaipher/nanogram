@@ -4,6 +4,8 @@ Newest first. Internal notes for each TestFlight build; testers see the What to 
 
 ## Unreleased
 
+- **ogg is the xiph/ogg submodule** (W1.1). `third-party/ogg/ogg` at v1.3.6 (be05b13e, shallow; Android pins the same commit) replaces the vendored `Sources/` and `include/`; the generated `config_types.h` stays as `third-party/ogg/overlay/ogg/config_types.h`. Proof: blobs of bitwise.c, crctable.h, framing.c, ogg.h and os_types.h are identical to the tag; config_types.h is the generated header (upstream only has `config_types.h.in`) and is carried unchanged.
+
 - **WAMR is the bytecodealliance submodule** (W1.1). `third-party/wamr/wamr` at WAMR-2.4.5 (25bd7eb6, shallow; Android pins the same commit, from the same upstream) replaces the 144 vendored `core/` files; `BUILD` paths moved to `wamr/core/` and the compiled source set is unchanged (interpreter only, no JIT/AOT). Proof: all 144 old `core/` blobs and `LICENSE` are identical in the tag; every compiled glob matches the same file set before and after.
 
 - **boost_regex is the boostorg/regex submodule** (W1.1). `third-party/boost_regex/regex` at boost-1.92.0 (7760ef2a, shallow; Android pins the same commit) replaces the vendored `include/` copy; `BUILD` uses `regex/include`. Proof: tree hash 831656cc of the old `third-party/boost_regex/include` equals `HEAD:include` of the submodule (byte-identical headers).
