@@ -24,10 +24,7 @@ public enum NanogramIntentError: Error, CustomLocalizedStringResourceConvertible
 }
 
 private func currentSnapshot() -> GlanceSnapshot? {
-    guard let rootPath = GlanceLocation.rootPath() else {
-        return nil
-    }
-    return GlanceStore.read(rootPath: rootPath)
+    return NanogramIntentEnvironment.snapshotReader()
 }
 
 @available(iOS 16.0, *)

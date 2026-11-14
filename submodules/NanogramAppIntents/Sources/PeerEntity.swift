@@ -25,31 +25,31 @@ public struct PeerEntity: AppEntity {
     }
 }
 
-/// Candidates come from the snapshot the app writes in the app group. It holds no chats while the app is
-/// passcode-locked or the feature is off, so the picker is empty then.
+/// Suggestions and search come from the snapshot the app writes in the app group. It holds no chats while the app is
+/// passcode-locked or the feature is off, so the picker is empty then. A stored identifier always resolves (the
+/// snapshot title when listed, a generic one otherwise), so a configured widget or a saved shortcut survives the
+/// chat leaving the top chats and the passcode lock.
 @available(iOS 16.0, *)
 public struct PeerEntityQuery: EntityStringQuery {
+    public static let genericTitle = "Chat"
+
     public init() {
     }
 
-    private func peers() -> [GlancePeerRef] {
-        guard let rootPath = GlanceLocation.rootPath(), let snapshot = GlanceStore.read(rootPath: rootPath), snapshot.enabled else {
-            return []
-        }
-        return snapshot.peers
+    private func candidates() -> [GlancePeerRef] {
+        return GlanceEntityResolver.candidates(snapshot: NanogramIntentEnvironment.snapshotReader())
     }
 
     public func entities(for identifiers: [String]) async throws -> [PeerEntity] {
-        let wanted = Set(identifiers)
-        return self.peers().filter { wanted.contains($0.identifier) }.map(PeerEntity.init)
+        return GlanceEntityResolver.resolve(identifiers: identifiers, snapshot: NanogramIntentEnvironment.snapshotReader(), genericTitle: PeerEntityQuery.genericTitle).map(PeerEntity.init)
     }
 
     public func entities(matching string: String) async throws -> [PeerEntity] {
         let needle = string.lowercased()
-        return self.peers().filter { $0.title.lowercased().contains(needle) }.map(PeerEntity.init)
+        return self.candidates().filter { $0.title.lowercased().contains(needle) }.map(PeerEntity.init)
     }
 
     public func suggestedEntities() async throws -> [PeerEntity] {
-        return self.peers().map(PeerEntity.init)
+        return self.candidates().map(PeerEntity.init)
     }
 }
