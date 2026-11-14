@@ -673,15 +673,11 @@ final class UserAppearanceScreenComponent: Component {
                         return
                     }
                     let needed = resellAmount.amount - tonState.balance
-                    var fragmentUrl = "https://fragment.com/ads/topup"
-                    if let data = component.context.currentAppConfiguration.with({ $0 }).data, let value = data["ton_topup_url"] as? String {
-                        fragmentUrl = value
-                    }
                     controller.push(BalanceNeededScreen(
                         context: component.context,
                         amount: needed,
                         buttonAction: {
-                            component.context.sharedContext.applicationBindings.openUrl(fragmentUrl)
+                            openTonTopUp(context: component.context)
                         }
                     ))
                 } else {

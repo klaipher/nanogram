@@ -11,6 +11,7 @@ public struct StorePurchasePolicy: Equatable {
         case starsTopUp
         case starsGiftPurchase
         case paidBoostPurchase
+        case tonTopUp
         case storeKitProductRequests
         case receiptRestore
 
@@ -41,7 +42,7 @@ public struct StorePurchasePolicy: Equatable {
 
     public func allows(_ entryPoint: EntryPoint) -> Bool {
         switch entryPoint {
-        case .premiumSubscription, .premiumGiftPurchase, .premiumGiveawayPurchase, .starsTopUp, .starsGiftPurchase, .paidBoostPurchase, .storeKitProductRequests, .receiptRestore:
+        case .premiumSubscription, .premiumGiftPurchase, .premiumGiveawayPurchase, .starsTopUp, .starsGiftPurchase, .paidBoostPurchase, .tonTopUp, .storeKitProductRequests, .receiptRestore:
             return !self.isStoreBuild
         case .viewPremiumStatus, .usePremiumFeatures, .spendOwnedStars, .receiveOrConvertGift, .physicalGoodsPayment, .redeemGiftCode:
             return true

@@ -4,7 +4,7 @@ import InAppPurchaseManager
 final class StorePurchasePolicyTests: XCTestCase {
     private let purchases: [StorePurchasePolicy.EntryPoint] = [
         .premiumSubscription, .premiumGiftPurchase, .premiumGiveawayPurchase, .starsTopUp,
-        .starsGiftPurchase, .paidBoostPurchase, .storeKitProductRequests, .receiptRestore
+        .starsGiftPurchase, .paidBoostPurchase, .tonTopUp, .storeKitProductRequests, .receiptRestore
     ]
 
     func testStoreBuildBlocksEveryPurchase() {

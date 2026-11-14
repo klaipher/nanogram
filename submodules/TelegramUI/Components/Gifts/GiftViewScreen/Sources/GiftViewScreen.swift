@@ -3121,10 +3121,6 @@ private final class GiftViewSheetContent: CombinedComponent {
                     return
                 }
                 let needed = price.amount - tonState.balance
-                var fragmentUrl = "https://fragment.com/ads/topup"
-                if let data = self.context.currentAppConfiguration.with({ $0 }).data, let value = data["ton_topup_url"] as? String {
-                    fragmentUrl = value
-                }
                 controller.push(BalanceNeededScreen(
                     context: self.context,
                     amount: needed,
@@ -3132,7 +3128,7 @@ private final class GiftViewSheetContent: CombinedComponent {
                         guard let self else {
                             return
                         }
-                        self.context.sharedContext.applicationBindings.openUrl(fragmentUrl)
+                        openTonTopUp(context: self.context)
                     }
                 ))
             } else {
@@ -7278,11 +7274,7 @@ public class GiftViewScreen: ViewControllerComponentContainer {
                                     navigationController.pushViewController(controller)
                                 })
                             case .ton:
-                                var fragmentUrl = "https://fragment.com/ads/topup"
-                                if let data = context.currentAppConfiguration.with({ $0 }).data, let value = data["ton_topup_url"] as? String {
-                                    fragmentUrl = value
-                                }
-                                context.sharedContext.applicationBindings.openUrl(fragmentUrl)
+                                openTonTopUp(context: context)
                             }
                             self.dismissAnimated()
                         }

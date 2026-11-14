@@ -1000,10 +1000,6 @@ private final class SheetContent: CombinedComponent {
                                         case .ton:
                                             if let balance = state.tonBalance, amount > balance {
                                                 let needed = amount - balance
-                                                var fragmentUrl = "https://fragment.com/ads/topup"
-                                                if let data = state.context.currentAppConfiguration.with({ $0 }).data, let value = data["ton_topup_url"] as? String {
-                                                    fragmentUrl = value
-                                                }
                                                 controller.push(BalanceNeededScreen(
                                                     context: state.context,
                                                     amount: needed,
@@ -1011,7 +1007,7 @@ private final class SheetContent: CombinedComponent {
                                                         guard let state else {
                                                             return
                                                         }
-                                                        state.context.sharedContext.applicationBindings.openUrl(fragmentUrl)
+                                                        openTonTopUp(context: state.context)
                                                     }
                                                 ))
                                                 return

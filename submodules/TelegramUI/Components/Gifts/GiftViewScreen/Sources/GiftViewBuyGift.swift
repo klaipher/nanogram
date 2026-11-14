@@ -209,15 +209,11 @@ public func buyStarGiftImpl(
                 return
             }
             let needed = finalPrice.amount - tonState.balance
-            var fragmentUrl = "https://fragment.com/ads/topup"
-            if let data = context.currentAppConfiguration.with({ $0 }).data, let value = data["ton_topup_url"] as? String {
-                fragmentUrl = value
-            }
             controller.push(BalanceNeededScreen(
                 context: context,
                 amount: needed,
                 buttonAction: {
-                    context.sharedContext.applicationBindings.openUrl(fragmentUrl)
+                    openTonTopUp(context: context)
                 }
             ))
             

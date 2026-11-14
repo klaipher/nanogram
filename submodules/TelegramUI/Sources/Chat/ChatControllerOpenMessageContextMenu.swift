@@ -184,7 +184,7 @@ extension ChatControllerImpl {
                                     hasTrending: false,
                                     topReactionItems: reactionItems,
                                     areUnicodeEmojiEnabled: false,
-                                    areCustomEmojiEnabled: !premiumConfiguration.isPremiumDisabled,
+                                    areCustomEmojiEnabled: !premiumConfiguration.isPremiumDisabled || self.presentationInterfaceState.isPremium,
                                     chatPeerId: self.chatLocation.peerId,
                                     selectedItems: selectedReactions.files
                                 )

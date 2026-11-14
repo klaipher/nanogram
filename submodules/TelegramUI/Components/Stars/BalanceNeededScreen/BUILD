@@ -15,6 +15,8 @@ swift_library(
         "//submodules/TelegramPresentationData",
         "//submodules/SSignalKit/SwiftSignalKit",
         "//submodules/AccountContext",
+        "//submodules/PresentationDataUtils",
+        "//submodules/InAppPurchaseManager",
         "//submodules/Components/MultilineTextComponent",
         "//submodules/Components/BalancedTextComponent",
         "//submodules/Components/BundleIconComponent",

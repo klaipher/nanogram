@@ -3021,10 +3021,6 @@ public final class ChatControllerImpl: TelegramBaseController, ChatController, G
                                     
                                     if let balance, funds.amount.amount > balance {
                                         let needed = funds.amount.amount - balance
-                                        var fragmentUrl = "https://fragment.com/ads/topup"
-                                        if let data = strongSelf.context.currentAppConfiguration.with({ $0 }).data, let value = data["ton_topup_url"] as? String {
-                                            fragmentUrl = value
-                                        }
                                         strongSelf.push(BalanceNeededScreen(
                                             context: strongSelf.context,
                                             amount: needed,
@@ -3032,7 +3028,7 @@ public final class ChatControllerImpl: TelegramBaseController, ChatController, G
                                                 guard let strongSelf else {
                                                     return
                                                 }
-                                                strongSelf.context.sharedContext.applicationBindings.openUrl(fragmentUrl)
+                                                openTonTopUp(context: strongSelf.context)
                                             }
                                         ))
                                         return

@@ -589,15 +589,11 @@ public final class EmojiGameStakeScreen: ViewControllerComponentContainer {
     func complete(amount: StarsAmount) {
         if let tonState = self.context.tonContext?.currentState, tonState.balance < amount {
             let needed = amount - tonState.balance
-            var fragmentUrl = "https://fragment.com/ads/topup"
-            if let data = self.context.currentAppConfiguration.with({ $0 }).data, let value = data["ton_topup_url"] as? String {
-                fragmentUrl = value
-            }
             self.push(BalanceNeededScreen(
                 context: self.context,
                 amount: needed,
                 buttonAction: { [weak self] in
-                    self?.context.sharedContext.applicationBindings.openUrl(fragmentUrl)
+                    if let self { openTonTopUp(context: self.context) }
                 }
             ))
         } else {
@@ -635,11 +631,7 @@ public final class EmojiGameStakeScreen: ViewControllerComponentContainer {
                             guard let self else {
                                 return
                             }
-                            var fragmentUrl = "https://fragment.com/ads/topup"
-                            if let data = context.currentAppConfiguration.with({ $0 }).data, let value = data["ton_topup_url"] as? String {
-                                fragmentUrl = value
-                            }
-                            context.sharedContext.applicationBindings.openUrl(fragmentUrl)
+                            openTonTopUp(context: context)
                             
                             self.dismissAnimated()
                         }

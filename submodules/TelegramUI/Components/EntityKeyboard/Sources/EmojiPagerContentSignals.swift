@@ -69,7 +69,7 @@ public extension EmojiPagerContentComponent {
         maskEdge: EmojiPagerContentComponent.MaskEdgeMode = .none
     ) -> Signal<EmojiPagerContentComponent, NoError> {
         let premiumConfiguration = PremiumConfiguration.with(appConfiguration: context.currentAppConfiguration.with { $0 })
-        let isPremiumDisabled = premiumConfiguration.isPremiumDisabled
+        let isPremiumDisabledByConfiguration = premiumConfiguration.isPremiumDisabled
         
         let strings = context.sharedContext.currentPresentationData.with({ $0 }).strings
         
@@ -229,6 +229,7 @@ public extension EmojiPagerContentComponent {
             distinctDismissedTrendingEmojiPacks
         )
         |> map { view, hasPremium, featuredEmojiPacks, availableReactions, searchCategories, iconStatusEmoji, peerSpecificPack, dismissedTrendingEmojiPacks -> EmojiPagerContentComponent in
+            let isPremiumDisabled = isPremiumDisabledByConfiguration && !hasPremium
             var itemReusePass = itemReuseCache.beginPass()
             struct ItemGroup {
                 var supergroupId: AnyHashable
@@ -1672,7 +1673,7 @@ public extension EmojiPagerContentComponent {
         maskEdge: EmojiPagerContentComponent.MaskEdgeMode = .none
     ) -> Signal<EmojiPagerContentComponent, NoError> {
         let premiumConfiguration = PremiumConfiguration.with(appConfiguration: context.currentAppConfiguration.with { $0 })
-        let isPremiumDisabled = premiumConfiguration.isPremiumDisabled
+        let isPremiumDisabledByConfiguration = premiumConfiguration.isPremiumDisabled
         
         struct PeerSpecificPackData: Equatable {
             var info: StickerPackCollectionInfo.Accessor
@@ -1765,6 +1766,7 @@ public extension EmojiPagerContentComponent {
         )
         |> map { view, hasPremium, featuredStickerPacks, featuredStickersConfiguration, dismissedTrendingStickerPacks, peerSpecificPack, searchCategories -> EmojiPagerContentComponent in
             let hasPremium = forceHasPremium || hasPremium
+            let isPremiumDisabled = isPremiumDisabledByConfiguration && !hasPremium
             struct ItemGroup {
                 var supergroupId: AnyHashable
                 var id: AnyHashable
@@ -2239,7 +2241,7 @@ public extension EmojiPagerContentComponent {
         maskEdge: EmojiPagerContentComponent.MaskEdgeMode = .none
     ) -> Signal<EmojiPagerContentComponent, NoError> {
         let premiumConfiguration = PremiumConfiguration.with(appConfiguration: context.currentAppConfiguration.with { $0 })
-        let isPremiumDisabled = premiumConfiguration.isPremiumDisabled
+        let isPremiumDisabledByConfiguration = premiumConfiguration.isPremiumDisabled
         
         let strings = context.sharedContext.currentPresentationData.with({ $0 }).strings
         
@@ -2251,6 +2253,7 @@ public extension EmojiPagerContentComponent {
             searchCategories
         )
         |> map { hasPremium, availableMessageEffects, searchCategories -> EmojiPagerContentComponent in
+        let isPremiumDisabled = isPremiumDisabledByConfiguration && !hasPremium
             struct ItemGroup {
                 var supergroupId: AnyHashable
                 var id: AnyHashable

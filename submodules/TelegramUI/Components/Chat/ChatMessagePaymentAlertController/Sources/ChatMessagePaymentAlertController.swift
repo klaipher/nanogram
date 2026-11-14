@@ -17,6 +17,7 @@ import TextFormat
 import StarsBalanceOverlayComponent
 import AlertComponent
 import AlertCheckComponent
+import BalanceNeededScreen
 
 public class ChatMessagePaymentAlertController: AlertScreen {
     private let context: AccountContext?
@@ -188,11 +189,7 @@ public class ChatMessagePaymentAlertController: AlertScreen {
                                     navigationController.pushViewController(controller)
                                 })
                             case .ton:
-                                var fragmentUrl = "https://fragment.com/ads/topup"
-                                if let data = context.currentAppConfiguration.with({ $0 }).data, let value = data["ton_topup_url"] as? String {
-                                    fragmentUrl = value
-                                }
-                                context.sharedContext.applicationBindings.openUrl(fragmentUrl)
+                                openTonTopUp(context: context)
                             }
                             self.dismiss(completion: nil)
                         }
