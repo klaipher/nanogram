@@ -201,6 +201,12 @@ genrule(
 
 minimum_os_version = "15.0"
 
+# App Intents metadata (Metadata.appintents: Shortcuts, Control Center, Live Activity buttons) is extracted by rules_apple's
+# `app_intents` attribute. Not verified against rules_apple 5.4.0 without a build: set to False if analysis rejects it,
+# the widgets, Live Activities and the in-app handlers still build, but Shortcuts and the Control Center button
+# will not be discovered.
+nanogram_app_intents_metadata = True
+
 notificationServiceExtensionVersion = "v1"
 
 empty_languages = [
@@ -442,6 +448,7 @@ swift_library(
     ],
     deps = [
         "//submodules/TelegramUI:TelegramUI",
+        "//submodules/NanogramAppIntents:NanogramAppIntents",
         "//third-party/boringssl:crypto",
     ],
 )
@@ -1287,6 +1294,8 @@ swift_library(
         "//submodules/TelegramCore:TelegramCore",
         "//submodules/PasscodeCore",
         "//submodules/OpenSSLEncryptionProvider:OpenSSLEncryptionProvider",
+        "//submodules/NanogramGlance:NanogramGlance",
+        "//submodules/NanogramAppIntents:NanogramAppIntents",
         "//Telegram:GeneratedSources",
     ],
 )
@@ -1354,7 +1363,8 @@ ios_extension(
     ],
     visibility = [
         "//visibility:public",
-    ]
+    ],
+    **({"app_intents": ["//submodules/NanogramAppIntents:NanogramAppIntents"]} if nanogram_app_intents_metadata else {})
 )
 
 plist_fragment(
@@ -1811,6 +1821,8 @@ plist_fragment(
     <string>You can use Siri to send messages.</string>
     <key>NSSpeechRecognitionUsageDescription</key>
     <string>We need this to transcribe audio messages on your request.</string>
+    <key>NSSupportsLiveActivities</key>
+    <true/>
     <key>NSUserActivityTypes</key>
     <array>
         <string>INSendMessageIntent</string>
@@ -1993,6 +2005,7 @@ ios_application(
         ":Lib",
     ],
     visibility = ["//visibility:public"],
+    **({"app_intents": ["//submodules/NanogramAppIntents:NanogramAppIntents"]} if nanogram_app_intents_metadata else {})
 )
 
 xcodeproj(

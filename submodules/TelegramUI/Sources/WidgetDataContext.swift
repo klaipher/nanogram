@@ -9,6 +9,8 @@ import TelegramUIPreferences
 import WidgetItemsUtils
 import AccountContext
 import AppLock
+import AppIntents
+import NanogramAppIntents
 
 import GeneratedSources
 
@@ -163,6 +165,10 @@ final class WidgetDataContext {
                         guard let identifier = item.identifier else {
                             return
                         }
+                        processIdentifier(identifier)
+                    }
+                    
+                    func processIdentifier(_ identifier: String) {
                         guard let index = identifier.firstIndex(of: ":") else {
                             return
                         }
@@ -193,6 +199,11 @@ final class WidgetDataContext {
                                     for item in items {
                                         processFriend(item)
                                     }
+                                }
+                            }
+                            if #available(iOS 17.0, *), let configuration = info.widgetConfigurationIntent(of: SelectChatsIntent.self) {
+                                for item in configuration.chats ?? [] {
+                                    processIdentifier(item.id)
                                 }
                             }
                         }

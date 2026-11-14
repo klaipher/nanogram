@@ -111,6 +111,8 @@ public struct ExperimentalUISettings: Codable, Equatable {
     /// Debug Settings > "GIF grid: parallel decode". Off by default. GIF and inline video tiles decode on a few serial queues, one
     /// pass per tile, instead of one shared queue behind a global barrier (iOS-GIFGRID-1).
     public var gifGridParallelDecode: Bool
+    /// Widgets, Live Activities and App Intents beyond the SiriKit widgets. Off by default.
+    public var nanogramGlanceables: Bool
     public static let glassDebugNavigationBar: Int32 = 1
     public static let glassDebugInputPanel: Int32 = 2
     public static let glassDebugFloatingButtons: Int32 = 4
@@ -196,7 +198,8 @@ public struct ExperimentalUISettings: Codable, Equatable {
         callsThermalVideoLadder: Bool = true,
         glassDebugDisabledGroups: Int32 = 0,
         stickerParallelQueues: Bool = false,
-        gifGridParallelDecode: Bool = false
+        gifGridParallelDecode: Bool = false,
+        nanogramGlanceables: Bool = false
     ) {
         self.keepChatNavigationStack = keepChatNavigationStack
         self.skipReadHistory = skipReadHistory
@@ -243,6 +246,7 @@ public struct ExperimentalUISettings: Codable, Equatable {
         self.glassDebugDisabledGroups = glassDebugDisabledGroups
         self.stickerParallelQueues = stickerParallelQueues
         self.gifGridParallelDecode = gifGridParallelDecode
+        self.nanogramGlanceables = nanogramGlanceables
     }
     
     /// Revision of Nanogram's defaults that a saved blob was written with. Revision 1 turned on large
@@ -313,6 +317,7 @@ public struct ExperimentalUISettings: Codable, Equatable {
         self.glassDebugDisabledGroups = try container.decodeIfPresent(Int32.self, forKey: "glassDebugDisabledGroups") ?? 0
         self.stickerParallelQueues = try container.decodeIfPresent(Bool.self, forKey: "stickerParallelQueues") ?? false
         self.gifGridParallelDecode = try container.decodeIfPresent(Bool.self, forKey: "gifGridParallelDecode") ?? false
+        self.nanogramGlanceables = try container.decodeIfPresent(Bool.self, forKey: "nanogramGlanceables") ?? false
 
         if savedDefaultsRevision < 1 {
             // Saved before the GPU renderers became the default: both were the old CPU defaults.
@@ -371,6 +376,7 @@ public struct ExperimentalUISettings: Codable, Equatable {
         try container.encode(self.glassDebugDisabledGroups, forKey: "glassDebugDisabledGroups")
         try container.encode(self.stickerParallelQueues, forKey: "stickerParallelQueues")
         try container.encode(self.gifGridParallelDecode, forKey: "gifGridParallelDecode")
+        try container.encode(self.nanogramGlanceables, forKey: "nanogramGlanceables")
         try container.encode(ExperimentalUISettings.nanogramDefaultsRevision, forKey: "nanogramDefaultsRevision")
     }
 }

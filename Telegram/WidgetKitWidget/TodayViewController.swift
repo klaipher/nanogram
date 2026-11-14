@@ -70,7 +70,7 @@ private func rootPathForBasePath(_ appGroupPath: String) -> String {
 
 /// Set up once per widget-extension process; every timeline used to repeat it (a new TempBox, which deletes the
 /// previous one's directory, the passcode environment, the key-file reads).
-private final class WidgetExtensionEnvironment {
+final class WidgetExtensionEnvironment {
     static let shared: WidgetExtensionEnvironment? = WidgetExtensionEnvironment()
     
     let rootPath: String
@@ -105,7 +105,7 @@ private final class WidgetExtensionEnvironment {
 }
 
 /// The app asks WidgetKit to reload whenever a widget chat changes, so a timeline only needs a fallback refresh.
-private func widgetTimelinePolicy(now: Date) -> TimelineReloadPolicy {
+func widgetTimelinePolicy(now: Date) -> TimelineReloadPolicy {
     return .after(now.addingTimeInterval(30.0 * 60.0))
 }
 
@@ -126,31 +126,16 @@ private func widgetEntries(peers: ParsedPeers, lockSchedule: AppLockSchedule, no
     }
 }
 
+/// The chats named by their "<accountId>:<peerId>" identifiers, read from each account's store in the app group.
 @available(iOS 14.0, *)
-private func getCommonTimeline(friends: [Friend]?, in context: TimelineProviderContext, completion: @escaping (Timeline<SimpleEntry>) -> ()) {
-    if context.isPreview {
-        completion(Timeline(entries: [SimpleEntry(date: Date(), contents: .preview)], policy: .atEnd))
-        return
-    }
-    
-    let entryDate = Date()
-    
-    guard let environment = WidgetExtensionEnvironment.shared else {
-        completion(Timeline(entries: [SimpleEntry(date: entryDate, contents: .recent)], policy: .atEnd))
-        return
-    }
-    
+func loadWidgetPeers(identifiers: [String]?, environment: WidgetExtensionEnvironment, completion: @escaping (ParsedPeers) -> ()) {
     let rootPath = environment.rootPath
     let encryptionParameters = environment.encryptionParameters
-    let lockSchedule = appLockSchedule(state: readAppLockState(rootPath: rootPath), now: currentMonotonicTimestamp())
     
-    var itemsByAccount: [Int64: [(Int64, Friend)]] = [:]
+    var itemsByAccount: [Int64: [(Int64, String)]] = [:]
     var itemOrder: [(Int64, Int64)] = []
-    if let friends = friends {
-        for item in friends {
-            guard let identifier = item.identifier else {
-                continue
-            }
+    if let identifiers = identifiers {
+        for identifier in identifiers {
             guard let index = identifier.firstIndex(of: ":") else {
                 continue
             }
@@ -163,7 +148,7 @@ private func getCommonTimeline(friends: [Friend]?, in context: TimelineProviderC
             if itemsByAccount[accountId] == nil {
                 itemsByAccount[accountId] = []
             }
-            itemsByAccount[accountId]?.append((peerId, item))
+            itemsByAccount[accountId]?.append((peerId, identifier))
             itemOrder.append((accountId, peerId))
         }
     }
@@ -251,7 +236,26 @@ private func getCommonTimeline(friends: [Friend]?, in context: TimelineProviderC
             }
         }
         
-        let result = ParsedPeers(peers: orderedPeers, updateTimestamp: Int32(Date().timeIntervalSince1970))
+        completion(ParsedPeers(peers: orderedPeers, updateTimestamp: Int32(Date().timeIntervalSince1970)))
+    })
+}
+
+@available(iOS 14.0, *)
+private func getCommonTimeline(friends: [Friend]?, in context: TimelineProviderContext, completion: @escaping (Timeline<SimpleEntry>) -> ()) {
+    if context.isPreview {
+        completion(Timeline(entries: [SimpleEntry(date: Date(), contents: .preview)], policy: .atEnd))
+        return
+    }
+    
+    let entryDate = Date()
+    
+    guard let environment = WidgetExtensionEnvironment.shared else {
+        completion(Timeline(entries: [SimpleEntry(date: entryDate, contents: .recent)], policy: .atEnd))
+        return
+    }
+    
+    let lockSchedule = appLockSchedule(state: readAppLockState(rootPath: environment.rootPath), now: currentMonotonicTimestamp())
+    loadWidgetPeers(identifiers: friends?.compactMap { $0.identifier }, environment: environment, completion: { result in
         completion(Timeline(entries: widgetEntries(peers: result, lockSchedule: lockSchedule, now: entryDate), policy: widgetTimelinePolicy(now: entryDate)))
     })
 }
@@ -903,7 +907,7 @@ struct AvatarsWidgetView: View {
     }
 }
 
-private let buildConfig: BuildConfig = {
+let buildConfig: BuildConfig = {
     let appBundleIdentifier = Bundle.main.bundleIdentifier!
     guard let lastDotRange = appBundleIdentifier.range(of: ".", options: [.backwards]) else {
         preconditionFailure()
@@ -976,6 +980,15 @@ struct AllWidgets: WidgetBundle {
    var body: some Widget {
         Static_Widget()
         Static_AvatarsWidget()
+        if #available(iOS 17.0, *) {
+            GlanceChatsWidget()
+        }
+        if #available(iOS 18.0, *) {
+            SavedMessagesControl()
+        }
+        if #available(iOS 16.2, *) {
+            GlanceActivityWidget()
+        }
    }
 }
 

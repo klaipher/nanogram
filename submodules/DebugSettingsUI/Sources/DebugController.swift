@@ -362,6 +362,7 @@ enum DebugControllerEntry: ItemListNodeEntry {
     case glassGroupFloatingButtons(Bool)
     case performanceHeader(PresentationTheme)
     case frameHitchLog(Bool)
+    case nanogramGlanceables(Bool)
     case backSwipePreparePreviousScreen(Bool)
     case enableNetworkFramework(Bool)
     case enableNetworkExperiments(Bool)
@@ -392,7 +393,7 @@ enum DebugControllerEntry: ItemListNodeEntry {
             return DebugControllerSection.streamsAndCalls.rawValue
         case .glassGroupsHeader, .glassGroupNavigationBar, .glassGroupInputPanel, .glassGroupFloatingButtons:
             return DebugControllerSection.glassGroups.rawValue
-        case .performanceHeader, .frameHitchLog, .backSwipePreparePreviousScreen:
+        case .performanceHeader, .frameHitchLog, .nanogramGlanceables, .backSwipePreparePreviousScreen:
             return DebugControllerSection.performance.rawValue
         case .springSendAnimation, .fakeWalletTransfers, .stickerRendererMode, .disableImageContentAnalysis, .disableLanguageRecognition, .localTranscription, .enableVoipTcp, .chatMediaEditorLegacy, .mediaGridLegacy, .sharedMediaGridLegacy, .storyLegacyVideoWriter, .chatLegacyVideoWriter, .chatSideListLegacy, .messageWidgets, .messageWidgetWallet, .stickerParallelQueues, .gifGridParallelDecode:
             return DebugControllerSection.experiments.rawValue
@@ -551,6 +552,8 @@ enum DebugControllerEntry: ItemListNodeEntry {
         case .frameHitchLog:
             // Kept its id when the switches between it and the header were retired; see the ordering note at `springSendAnimation`.
             return 143
+        case .nanogramGlanceables:
+            return 145
         case .backSwipePreparePreviousScreen:
             // Kept its id when the switches before it were retired; see the ordering note at `springSendAnimation`.
             return 148
@@ -631,6 +634,14 @@ enum DebugControllerEntry: ItemListNodeEntry {
             return glassGroupSwitch(presentationData: presentationData, arguments: arguments, sectionId: self.section, title: "Floating buttons glass off", text: "Replaces the scroll-to-bottom, mentions and reactions buttons' glass with a solid fill. Default: off. Applies at once.", bit: ExperimentalUISettings.glassDebugFloatingButtons, value: value)
         case .performanceHeader:
             return ItemListSectionHeaderItem(presentationData: presentationData, text: "PERFORMANCE", sectionId: self.section)
+        case let .nanogramGlanceables(value):
+            return ItemListSwitchItem(presentationData: presentationData, systemStyle: .glass, title: "Glanceables: widgets, Live Activities, Shortcuts", text: "Turns on the chats widget (small and Lock Screen), the Saved Messages control, Live Activities for live location and calls without CallKit, and the Shortcuts actions. Chat names show only while the app is unlocked and, on the Lock Screen, only if names are allowed in notification settings. Default: off.", value: value, maximumNumberOfLines: 0, sectionId: self.section, style: .blocks, updated: { value in
+                let _ = updateExperimentalUISettingsInteractively(accountManager: arguments.sharedContext.accountManager, { settings in
+                    var settings = settings
+                    settings.nanogramGlanceables = value
+                    return settings
+                }).start()
+            })
         case let .frameHitchLog(value):
             return ItemListSwitchItem(presentationData: presentationData, systemStyle: .glass, title: "Frame hitches: log with main-thread stacks", text: "While you scroll a chat, the chat list or any list, and while the keyboard opens or closes, every frame is timed. One \"Frame hitches\" line per scroll or keyboard animation (frames, hitches, hitch time, longest gap), followed by what the main thread was doing during its longest stalls (\"Frame hitch stack\"). Holds the screen at its top rate and samples the main thread while measuring, so use it only to collect logs. Turns itself off after 30 minutes and when the app goes to the background. Needs Log to File; send with Send Logs. Default: off.", value: value, maximumNumberOfLines: 0, sectionId: self.section, style: .blocks, updated: { value in
                 let _ = updateExperimentalUISettingsInteractively(accountManager: arguments.sharedContext.accountManager, { settings in
@@ -1443,6 +1454,7 @@ func debugControllerEntries(environment: DebugControllerEntriesEnvironment, them
         // Performance: the frame-hitch log and the back-swipe preparation (the other performance switches are always on now).
         entries.append(.performanceHeader(theme))
         entries.append(.frameHitchLog(experimentalSettings.frameHitchLog))
+        entries.append(.nanogramGlanceables(experimentalSettings.nanogramGlanceables))
         entries.append(.backSwipePreparePreviousScreen(experimentalSettings.backSwipePreparePreviousScreen))
     }
 
