@@ -1,7 +1,7 @@
 # widget-sandbox (a submodule: klaipher/widget-sandbox `nanogram`)
 
 The framework is no longer a vendored subset. `widget-sandbox/` is the submodule https://github.com/klaipher/widget-sandbox.git,
-branch `nanogram`: Telegram's v0.6.3 line (Android's c498cef) plus the macOS app's Swift remote engine and bubble safe-area
+branch `nanogram`: Telegram's v0.6.5 line (v0.6.3 was Android's c498cef) plus the macOS app's Swift remote engine and bubble safe-area
 commits, with the nested QuickJS pointing at klaipher/quickjs. One framework for Nanogram on iOS, macOS and Android (the
 shared codebase plan, W3.2 and W3.4). The fork's record is `widget-sandbox/NANOGRAM-CHANGES.md`. The text of the old numbered
 vendoring notes (v0.5.0 subset, the tag-by-tag history, the unedited-copy commands) is in git history:
@@ -36,8 +36,9 @@ Resource bundles: the test groups `:WidgetCorpus` and `:WidgetConformance` now c
 ## v0.5.0 to the v0.6.3 line: what this runtime does not follow yet
 
 The tests were re-baselined (conformance 68 auto + 47 visual tests in 121 theme runs, channel 122 posts, corpus 279 files
-without `attacks/`, 127 attack pages), but WidgetRuntime was not ported to the new limits. Follow-ups, each deferred to a run:
+without `attacks/`, 133 attack pages as of v0.6.5), but WidgetRuntime was not ported to the new limits. Follow-ups, each deferred to a run:
 
+- the nesting-depth cap (profile decision L3, v0.6.5: 1024 levels, loop-based DOM walks; `attacks/deep-nesting`; this runtime's parser stops at `maxDepth = 256` and script-built DOM is bounded by the 50,000-node cap only, and the validator/NativeValidator are not used here), and the v0.6.5 `paint-filter-depth` / `paint-backdrop-replay` attack pages, whose stack depth and time on this runtime are unverified (watch them in the `InstanceTests` attack scan);
 - the paint limits (profile decision L2: at most 16 heavy boxes, 2 with a backdrop filter; `auto/37`-`43`, the `paint-*`
   attack pages) and the 2,000-node cap (`auto/44-stop-nodes`; this runtime allows 50,000, the old profile's number);
 - the canvas command cap (4,000 per canvas in one task, was 10,000; `auto/19-limits`) and the batch wording of `auto/33`;
