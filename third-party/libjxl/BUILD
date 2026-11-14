@@ -69,6 +69,7 @@ genrule(
         BUILD_ARCH="macos_arm64"
     else
         echo "Unsupported architecture $(TARGET_CPU)"
+        exit 1
     fi
 
     BUILD_DIR="$(RULEDIR)/build_$${BUILD_ARCH}"
@@ -104,7 +105,8 @@ genrule(
     "\n" +
     "\n".join([
         "cp -f \"$$BUILD_DIR/build/third_party/highway/{}.a\" \"$(location Public/jxl/lib/{}.a)\"".format(lib, lib) for lib in highway_libs
-    ]),
+    ]) +
+    "\n" + "rm -rf \"$$BUILD_DIR\"",
     outs = ["Public/" + x for x in headers] +
     ["Public/jxl/lib/lib{}.a".format(x) for x in libs] +
     ["Public/jxl/lib/{}.a".format(x) for x in brotli_libs] +

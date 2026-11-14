@@ -59,6 +59,7 @@ genrule(
         BUILD_ARCH="linux_arm64"
     else
         echo "Unsupported architecture $(TARGET_CPU)"
+        exit 1
     fi
 
     BUILD_DIR="$(RULEDIR)/build_$${BUILD_ARCH}"
@@ -107,7 +108,8 @@ genrule(
     "\n" +
     "\n".join([
         "cp -f \"$$BUILD_DIR/dav1d/build/src/lib{}.a\" \"$(location Public/dav1d/lib/lib{}.a)\"".format(lib, lib) for lib in libs
-    ]),
+    ]) +
+    "\n" + "rm -rf \"$$BUILD_DIR\"",
     outs = ["Public/" + x for x in generated_headers] +
     ["Public/" + x for x in headers] +
     ["Public/dav1d/lib/lib{}.a".format(x) for x in libs],

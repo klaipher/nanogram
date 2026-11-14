@@ -61,7 +61,8 @@ genrule(
     "\n".join([
         "cp -f \"$$BUILD_DIR/build/lib{}.a\" \"$(location Public/libjpeg-turbo/lib/lib{}.a)\"".format(lib, lib) for lib in libs
     ]) +
-    "\n" + "cp -f \"$$BUILD_DIR/build/jconfig.h\" \"$(location Public/libjpeg-turbo/jconfig.h)\"",
+    "\n" + "cp -f \"$$BUILD_DIR/build/jconfig.h\" \"$(location Public/libjpeg-turbo/jconfig.h)\"" +
+    "\n" + "rm -rf \"$$BUILD_DIR\"",
     outs = ["Public/libjpeg-turbo/" + x for x in headers] +
     ["Public/libjpeg-turbo/jconfig.h"] +
     ["Public/libjpeg-turbo/lib/lib{}.a".format(x) for x in libs],

@@ -42,6 +42,7 @@ genrule(
         BUILD_ARCH="macos_arm64"
     else
         echo "Unsupported architecture $(TARGET_CPU)"
+        exit 1
     fi
 
     BUILD_DIR="$(RULEDIR)/build_$${BUILD_ARCH}"
@@ -69,7 +70,8 @@ genrule(
     "\n" +
     "\n".join([
         "cp -f \"$$BUILD_DIR/build/lib{}.a\" \"$(location Public/webp/lib/lib{}.a)\"".format(lib, lib) for lib in libs
-    ]),
+    ]) +
+    "\n" + "rm -rf \"$$BUILD_DIR\"",
     outs = ["Public/webp/" + x for x in headers] +
     ["Public/webp/lib/lib{}.a".format(x) for x in libs],
     visibility = [

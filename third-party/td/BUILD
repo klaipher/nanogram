@@ -45,6 +45,7 @@ genrule(
         BUILD_ARCH="macos_arm64"
     else
         echo "Unsupported architecture $(TARGET_CPU)"
+        exit 1
     fi
 
     BUILD_DIR="$(RULEDIR)/build_$${BUILD_ARCH}"
@@ -91,7 +92,8 @@ genrule(
     "\n".join([
         "cp -f \"$$BUILD_DIR/build/tde2e/libtde2e.a\" \"$(location Public/td/lib/libtde2e.a)\"",
         "cp -f \"$$BUILD_DIR/build/tdutils/libtdutils.a\" \"$(location Public/td/lib/libtdutils.a)\"",
-    ]),
+    ]) +
+    "\n" + "rm -rf \"$$BUILD_DIR\"",
     outs = [
         "Public/td/" + x for x in headers
     ] +
