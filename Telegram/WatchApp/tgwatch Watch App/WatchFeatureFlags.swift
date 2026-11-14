@@ -12,6 +12,9 @@ enum WatchFeature: String, CaseIterable, Sendable {
     /// route picker) and Now Playing / remote commands for music files. The audio background mode in
     /// Info.plist is static and only matters while a long-form session plays.
     case longFormAudio
+    /// WATCH-MEM-1: voice notes decode in ~1 s chunks and start playing after the first, instead of decoding
+    /// the whole note (up to ~115 MB for a 5-minute note) before any sound.
+    case chunkedVoiceDecode
 
     var defaultsKey: String { "nanogram.watch." + rawValue }
 

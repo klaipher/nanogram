@@ -76,7 +76,8 @@ final class ChatHistoryStore {
         self.userNames = userNames ?? UserNamesStore()
         self.voicePlayback = voicePlayback ?? VoicePlaybackController(
             backend: AVEngineBackend(),
-            decoder: OpusDecoderAdapter()
+            decoder: OpusDecoderAdapter(),
+            chunkedDecode: WatchFeatureFlags.isEnabled(.chunkedVoiceDecode)
         )
         self.audioPlayback = audioPlayback ?? AudioPlaybackController.makeProduction()
         self.draftText = draftText

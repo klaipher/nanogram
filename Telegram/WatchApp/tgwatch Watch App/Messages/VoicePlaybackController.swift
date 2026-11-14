@@ -13,10 +13,43 @@ protocol VoicePlaybackBackend: AnyObject {
     func releaseHardware()
     var elapsed: Double { get }
     var lastBufferDuration: Double { get }
+
+    // Streaming playback (WATCH-MEM-1): successive buffers on one player node. Backends that only play a
+    // whole buffer keep the defaults below, and the controller never calls them.
+    /// Starts an empty stream; `completion` fires once every enqueued buffer has played after `finishStream`.
+    func beginStream(format: AVAudioFormat, expectedDuration: Double, completion: @escaping @MainActor () -> Void) throws
+    func enqueue(buffer: AVAudioPCMBuffer)
+    /// No more buffers will follow.
+    func finishStream()
+    /// Buffers scheduled but not yet played.
+    var queuedBufferCount: Int { get }
+}
+
+extension VoicePlaybackBackend {
+    func beginStream(format: AVAudioFormat, expectedDuration: Double, completion: @escaping @MainActor () -> Void) throws {
+        throw NSError(domain: "VoicePlaybackBackend", code: 1)
+    }
+    func enqueue(buffer: AVAudioPCMBuffer) {}
+    func finishStream() {}
+    var queuedBufferCount: Int { 0 }
+}
+
+/// A voice note decoded in pieces; calls are made one at a time.
+protocol VoiceChunkStream: AnyObject, Sendable {
+    /// Length in seconds when the file says so.
+    var totalDuration: Double? { get }
+    /// The next chunk of at most about `maxFrames` frames; nil at the end.
+    func nextChunk(maxFrames: Int) async throws -> DecodedOpus?
 }
 
 protocol VoiceDecoder: Sendable {
     func decodePCM(url: URL) async throws -> DecodedOpus
+    /// Opens the file for chunked decoding; nil when the decoder only does whole files.
+    func openChunks(url: URL) async throws -> VoiceChunkStream?
+}
+
+extension VoiceDecoder {
+    func openChunks(url: URL) async throws -> VoiceChunkStream? { nil }
 }
 
 enum VoiceGlyph: Equatable {
@@ -44,15 +77,24 @@ final class VoicePlaybackController {
 
     private let backend: VoicePlaybackBackend
     private let decoder: VoiceDecoder
+    /// WATCH-MEM-1: decode in chunks and play after the first one (flag `chunkedVoiceDecode`).
+    private let chunkedDecode: Bool
+
+    /// The first chunk is short so sound starts within ~100 ms of the tap; later chunks are 1 s.
+    static let firstChunkFrames = 4_800
+    static let chunkFrames = 48_000
+    /// Buffers kept scheduled ahead of the playhead.
+    static let maxBuffersInFlight = 3
 
     /// Identifies which decode/playback any pending completion belongs to.
     private var activeTok: Int = 0
     private var tickerTask: Task<Void, Never>? = nil
     private var decodeTask: Task<Void, Never>? = nil
 
-    init(backend: VoicePlaybackBackend, decoder: VoiceDecoder) {
+    init(backend: VoicePlaybackBackend, decoder: VoiceDecoder, chunkedDecode: Bool = false) {
         self.backend = backend
         self.decoder = decoder
+        self.chunkedDecode = chunkedDecode
     }
 
     func isActive(_ voiceFileId: Int) -> Bool {
@@ -147,6 +189,12 @@ final class VoicePlaybackController {
         let url = URL(fileURLWithPath: path)
         let decoder = self.decoder
         decodeTask?.cancel()
+        if chunkedDecode {
+            decodeTask = Task { [weak self] in
+                await self?.runChunkedPlayback(tok: tok, note: note, url: url)
+            }
+            return
+        }
         decodeTask = Task { [weak self] in
             do {
                 let decoded = try await decoder.decodePCM(url: url)
@@ -168,6 +216,68 @@ final class VoicePlaybackController {
             startTicker(tok: tok)
         } catch {
             state = .failed(voiceFileId: note.voiceFileId, message: "Audio unavailable")
+        }
+    }
+
+    // MARK: - Chunked playback
+
+    /// Opens the file, plays the first chunk as soon as it is decoded and keeps up to
+    /// `maxBuffersInFlight` buffers scheduled while the next ones decode. A decoder without chunk support
+    /// falls back to the whole-file path.
+    private func runChunkedPlayback(tok: Int, note: VoiceNoteVisual, url: URL) async {
+        let decoder = self.decoder
+        do {
+            guard let stream = try await decoder.openChunks(url: url) else {
+                let decoded = try await decoder.decodePCM(url: url)
+                handleDecoded(tok: tok, note: note, decoded: decoded)
+                return
+            }
+            guard let first = try await stream.nextChunk(maxFrames: Self.firstChunkFrames) else {
+                handleDecodeError(tok: tok, note: note, error: CancellationError())
+                return
+            }
+            guard tok == activeTok else { return }
+            do {
+                try backend.prepare()
+                try backend.beginStream(
+                    format: first.pcm.format,
+                    expectedDuration: stream.totalDuration ?? Double(note.duration)
+                ) { [weak self] in
+                    self?.handlePlaybackEnded(tok: tok, voiceFileId: note.voiceFileId)
+                }
+            } catch {
+                state = .failed(voiceFileId: note.voiceFileId, message: "Audio unavailable")
+                return
+            }
+            backend.enqueue(buffer: first.pcm)
+            state = .playing(voiceFileId: note.voiceFileId)
+            startTicker(tok: tok)
+            await pumpChunks(tok: tok, stream: stream)
+        } catch {
+            if !Task.isCancelled { handleDecodeError(tok: tok, note: note, error: error) }
+        }
+    }
+
+    private func pumpChunks(tok: Int, stream: VoiceChunkStream) async {
+        while !Task.isCancelled, tok == activeTok {
+            if backend.queuedBufferCount >= Self.maxBuffersInFlight {
+                try? await Task.sleep(nanoseconds: 100_000_000)
+                continue
+            }
+            do {
+                let chunk = try await stream.nextChunk(maxFrames: Self.chunkFrames)
+                guard tok == activeTok else { return }
+                guard let chunk else {
+                    backend.finishStream()
+                    return
+                }
+                backend.enqueue(buffer: chunk.pcm)
+            } catch {
+                // A bad packet mid-note ends the note where it is rather than failing what already played.
+                guard tok == activeTok else { return }
+                backend.finishStream()
+                return
+            }
         }
     }
 
@@ -218,6 +328,14 @@ final class AVEngineBackend: VoicePlaybackBackend {
     private(set) var lastBufferDuration: Double = 0
     private var lastSampleRate: Double = 48000
     private var pendingCompletion: (@MainActor () -> Void)?
+    // Streaming state; `streamGeneration` invalidates the completions of buffers from an earlier stream.
+    private var streamGeneration = 0
+    private var scheduledBuffers = 0
+    private var playedBuffers = 0
+    private var scheduledFrames = 0.0
+    private var streamFinished = false
+
+    var queuedBufferCount: Int { scheduledBuffers - playedBuffers }
 
     var elapsed: Double {
         guard let nodeTime = player.lastRenderTime,
@@ -240,13 +358,7 @@ final class AVEngineBackend: VoicePlaybackBackend {
         // smoke-test fixture is stereo. Reconnect on every format change so both
         // sources play back without raising NSInternalInconsistencyException.
         let bufFmt = buffer.format
-        if connectedFormat == nil || connectedFormat?.isEqual(bufFmt) == false {
-            if connectedFormat != nil {
-                engine.disconnectNodeOutput(player)
-            }
-            engine.connect(player, to: engine.mainMixerNode, format: bufFmt)
-            connectedFormat = bufFmt
-        }
+        connectIfNeeded(bufFmt)
         if !engine.isRunning {
             try engine.start()
         }
@@ -266,11 +378,69 @@ final class AVEngineBackend: VoicePlaybackBackend {
         player.play()
     }
 
+    func beginStream(format: AVAudioFormat, expectedDuration: Double, completion: @escaping @MainActor () -> Void) throws {
+        connectIfNeeded(format)
+        if !engine.isRunning {
+            try engine.start()
+        }
+        streamGeneration += 1
+        scheduledBuffers = 0
+        playedBuffers = 0
+        scheduledFrames = 0
+        streamFinished = false
+        lastSampleRate = format.sampleRate
+        lastBufferDuration = expectedDuration
+        pendingCompletion = completion
+        player.play()
+    }
+
+    func enqueue(buffer: AVAudioPCMBuffer) {
+        scheduledBuffers += 1
+        scheduledFrames += Double(buffer.frameLength)
+        lastBufferDuration = max(lastBufferDuration, scheduledFrames / lastSampleRate)
+        let generation = streamGeneration
+        player.scheduleBuffer(buffer, at: nil, options: []) { [weak self] in
+            // AVAudioEngine fires this on a non-main queue.
+            Task { @MainActor [weak self] in self?.bufferPlayed(generation: generation) }
+        }
+    }
+
+    func finishStream() {
+        streamFinished = true
+        completeStreamIfDone()
+    }
+
+    private func bufferPlayed(generation: Int) {
+        guard generation == streamGeneration else { return }
+        playedBuffers += 1
+        completeStreamIfDone()
+    }
+
+    private func completeStreamIfDone() {
+        guard streamFinished, playedBuffers >= scheduledBuffers, let done = pendingCompletion else { return }
+        pendingCompletion = nil
+        done()
+    }
+
+    private func connectIfNeeded(_ bufFmt: AVAudioFormat) {
+        if connectedFormat == nil || connectedFormat?.isEqual(bufFmt) == false {
+            if connectedFormat != nil {
+                engine.disconnectNodeOutput(player)
+            }
+            engine.connect(player, to: engine.mainMixerNode, format: bufFmt)
+            connectedFormat = bufFmt
+        }
+    }
+
     func pause()  { player.pause() }
     func resume() { player.play() }
 
     func stop() {
         pendingCompletion = nil
+        streamGeneration += 1
+        scheduledBuffers = 0
+        playedBuffers = 0
+        streamFinished = false
         player.stop()
         // The engine stays up while paused; the controller calls `releaseHardware` when a
         // note ends, on a switch to another note and when the chat closes.
@@ -287,6 +457,30 @@ struct OpusDecoderAdapter: VoiceDecoder {
     func decodePCM(url: URL) async throws -> DecodedOpus {
         try await Task.detached(priority: .userInitiated) {
             try OpusKit.OpusDecoder.decodePCM(url: url)
+        }.value
+    }
+
+    func openChunks(url: URL) async throws -> VoiceChunkStream? {
+        try await Task.detached(priority: .userInitiated) {
+            OpusChunkStream(decoder: try OpusKit.OpusChunkedDecoder(url: url))
+        }.value
+    }
+}
+
+/// Chunked decoding for one voice note. The controller awaits each chunk before asking for the next, so the
+/// decoder (which is not thread-safe) is never used by two tasks at once.
+final class OpusChunkStream: VoiceChunkStream, @unchecked Sendable {
+    private let decoder: OpusKit.OpusChunkedDecoder
+
+    init(decoder: OpusKit.OpusChunkedDecoder) {
+        self.decoder = decoder
+    }
+
+    var totalDuration: Double? { decoder.totalDuration }
+
+    func nextChunk(maxFrames: Int) async throws -> DecodedOpus? {
+        try await Task.detached(priority: .userInitiated) { [decoder] in
+            try decoder.nextChunk(maxFrames: maxFrames).map { DecodedOpus(pcm: $0) }
         }.value
     }
 }
