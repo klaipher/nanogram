@@ -104,6 +104,9 @@ final class WatchAppDelegate: NSObject, WKApplicationDelegate {
                     await BackgroundRefreshCoordinator.shared.runRefresh()
                     refresh.setTaskCompletedWithSnapshot(false)
                 }
+            } else if let snapshot = task as? WKSnapshotRefreshBackgroundTask {
+                // Snapshot tasks must report a snapshot state, or the Dock and app switcher image goes stale.
+                snapshot.setTaskCompleted(restoredDefaultState: true, estimatedSnapshotExpiration: .distantFuture, userInfo: nil)
             } else {
                 task.setTaskCompletedWithSnapshot(false)
             }
