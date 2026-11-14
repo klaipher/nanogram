@@ -1,6 +1,8 @@
 import Foundation
 import CoreGraphics
+#if canImport(QrCode)
 import QrCode
+#endif
 
 private func addRoundedRect(_ path: CGMutablePath, rect: CGRect, topLeft: CGFloat, topRight: CGFloat, bottomRight: CGFloat, bottomLeft: CGFloat) {
     path.move(to: CGPoint(x: rect.minX + topLeft, y: rect.minY))

@@ -15,6 +15,10 @@ extension QrStudioColor {
     var uiColor: UIColor {
         return UIColor(red: self.r, green: self.g, blue: self.b, alpha: 1.0)
     }
+
+    var cgColor: CGColor {
+        return self.uiColor.cgColor
+    }
 }
 
 struct QrStudioEmojiItem: Equatable {

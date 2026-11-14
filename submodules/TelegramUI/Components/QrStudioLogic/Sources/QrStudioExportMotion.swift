@@ -54,6 +54,9 @@ enum QrStudioExportMotion {
     }
 
     static func phase(hash: Double) -> Double {
-        return Double(qrStudioPhaseGroup(hash: hash)) / Double(QrStudioPhasedAnimation.groupCount)
+        return Double(qrStudioPhaseGroup(hash: hash)) / Double(qrStudioPhaseGroupCount)
     }
 }
+
+/// How many phase groups a sticker row is split into; `QrStudioPhasedAnimation.groupCount` is this value.
+let qrStudioPhaseGroupCount = 6

@@ -6,6 +6,10 @@ enum QrStudioCodeAction: Hashable {
     case permanent
     case restore
     case renew
+
+    func constrained(toTemporary temporary: Bool) -> QrStudioCodeAction {
+        return temporary && self == .permanent ? .expire : self
+    }
 }
 
 struct QrStudioCodeState: Equatable {

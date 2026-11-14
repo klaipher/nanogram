@@ -1,5 +1,12 @@
 import Foundation
+import CoreGraphics
+#if canImport(UIKit)
 import UIKit
+typealias QrStudioPlatformColor = UIColor
+#else
+import AppKit
+typealias QrStudioPlatformColor = NSColor
+#endif
 
 struct QrStudioExportPatternItem {
     enum Content: Equatable {
@@ -16,6 +23,11 @@ struct QrStudioExportPatternItem {
 }
 
 struct QrStudioExportScene {
+    struct Plane {
+        var sticker: QrStudioExportSticker
+        var rect: CGRect
+    }
+
     enum Background {
         case mesh([QrStudioColor])
         case image(CGImage)
@@ -28,20 +40,31 @@ struct QrStudioExportScene {
     var screenSize: CGSize
     var screenCard: CGRect
     var isLight: Bool
+    var plane: Plane?
 
-    init(background: Background, card: CGImage, screenSize: CGSize, screenCard: CGRect, isLight: Bool) {
+    init(background: Background, card: CGImage, screenSize: CGSize, screenCard: CGRect, isLight: Bool, plane: Plane? = nil) {
         self.background = background
         self.card = card
         self.screenSize = screenSize
         self.screenCard = screenCard
         self.isLight = isLight
+        self.plane = plane
     }
 }
 
-func qrStudioTinted(_ image: CGImage, color: UIColor) -> CGImage? {
+/// iOS draws in device RGB, the Mac in sRGB (each app keeps its own export colours).
+private func qrStudioExportColorSpace() -> CGColorSpace {
+#if canImport(UIKit)
+    return CGColorSpaceCreateDeviceRGB()
+#else
+    return CGColorSpace(name: CGColorSpace.sRGB) ?? CGColorSpaceCreateDeviceRGB()
+#endif
+}
+
+func qrStudioTinted(_ image: CGImage, color: QrStudioPlatformColor) -> CGImage? {
     let width = image.width
     let height = image.height
-    guard let context = CGContext(data: nil, width: width, height: height, bitsPerComponent: 8, bytesPerRow: 0, space: CGColorSpaceCreateDeviceRGB(), bitmapInfo: CGImageAlphaInfo.premultipliedFirst.rawValue | CGBitmapInfo.byteOrder32Little.rawValue) else {
+    guard let context = CGContext(data: nil, width: width, height: height, bitsPerComponent: 8, bytesPerRow: 0, space: qrStudioExportColorSpace(), bitmapInfo: CGImageAlphaInfo.premultipliedFirst.rawValue | CGBitmapInfo.byteOrder32Little.rawValue) else {
         return nil
     }
     let rect = CGRect(x: 0, y: 0, width: width, height: height)
@@ -87,7 +110,7 @@ private func qrStudioMeshImage(colors: [QrStudioColor], width: Int, height: Int)
         }
     }
     return pixels.withUnsafeMutableBytes { buffer -> CGImage? in
-        let context = CGContext(data: buffer.baseAddress, width: width, height: height, bitsPerComponent: 8, bytesPerRow: width * 4, space: CGColorSpaceCreateDeviceRGB(), bitmapInfo: CGImageAlphaInfo.noneSkipLast.rawValue)
+        let context = CGContext(data: buffer.baseAddress, width: width, height: height, bitsPerComponent: 8, bytesPerRow: width * 4, space: qrStudioExportColorSpace(), bitmapInfo: CGImageAlphaInfo.noneSkipLast.rawValue)
         return context?.makeImage()
     }
 }
@@ -162,10 +185,10 @@ func qrStudioDrawExportFrame(_ scene: QrStudioExportScene, canvas: QrStudioExpor
             return stickers[index].image(phase: QrStudioExportMotion.phase(hash: item.hash), at: time)
         })
     case let .gift(inner, outer, symbol, model, items):
-        context.setFillColor(outer.uiColor.cgColor)
+        context.setFillColor(outer.cgColor)
         context.fill(bounds)
         let scale = card.width / max(1.0, scene.screenCard.width)
-        if let gradient = CGGradient(colorsSpace: CGColorSpaceCreateDeviceRGB(), colors: [inner.uiColor.cgColor, outer.uiColor.cgColor] as CFArray, locations: [0.0, 1.0]) {
+        if let gradient = CGGradient(colorsSpace: qrStudioExportColorSpace(), colors: [inner.cgColor, outer.cgColor] as CFArray, locations: [0.0, 1.0]) {
             let center = QrStudioExportLayout.map(CGPoint(x: scene.screenSize.width * 0.5, y: scene.screenSize.height * 0.5), screenCard: scene.screenCard, card: card)
             context.drawRadialGradient(gradient, startCenter: center, startRadius: 0.0, endCenter: center, endRadius: 500.0 * scale, options: [.drawsAfterEndLocation])
         }
@@ -179,19 +202,33 @@ func qrStudioDrawExportFrame(_ scene: QrStudioExportScene, canvas: QrStudioExpor
 
     let k = card.width / max(1.0, scene.screenCard.width)
     context.saveGState()
-    context.setShadow(offset: CGSize(width: 0.0, height: -12.0 * k * canvas.scale), blur: 22.0 * k * canvas.scale, color: UIColor.black.withAlphaComponent(scene.isLight ? 0.12 : 0.08).cgColor)
+    context.setShadow(offset: CGSize(width: 0.0, height: -12.0 * k * canvas.scale), blur: 22.0 * k * canvas.scale, color: QrStudioPlatformColor.black.withAlphaComponent(scene.isLight ? 0.12 : 0.08).cgColor)
     context.translateBy(x: card.minX, y: card.maxY)
     context.scaleBy(x: 1.0, y: -1.0)
     context.draw(scene.card, in: CGRect(origin: CGPoint(), size: card.size))
     context.restoreGState()
+    if let plane = scene.plane, let image = plane.sticker.image(phase: 0.0, at: time) {
+        let rect = CGRect(x: card.minX + plane.rect.minX * k, y: card.minY + plane.rect.minY * k, width: plane.rect.width * k, height: plane.rect.height * k)
+        qrStudioDraw(image, center: CGPoint(x: rect.midX, y: rect.midY), side: rect.width, degrees: 0.0, alpha: 1.0, in: context)
+    }
     context.restoreGState()
 }
 
-func qrStudioExportImage(_ scene: QrStudioExportScene, canvas: QrStudioExportCanvas) -> UIImage? {
+func qrStudioExportCGImage(_ scene: QrStudioExportScene, canvas: QrStudioExportCanvas) -> CGImage? {
     let pixel = canvas.pixelSize
-    guard let context = CGContext(data: nil, width: Int(pixel.width), height: Int(pixel.height), bitsPerComponent: 8, bytesPerRow: 0, space: CGColorSpaceCreateDeviceRGB(), bitmapInfo: CGImageAlphaInfo.noneSkipFirst.rawValue | CGBitmapInfo.byteOrder32Little.rawValue) else {
+    guard let context = CGContext(data: nil, width: Int(pixel.width), height: Int(pixel.height), bitsPerComponent: 8, bytesPerRow: 0, space: qrStudioExportColorSpace(), bitmapInfo: CGImageAlphaInfo.noneSkipFirst.rawValue | CGBitmapInfo.byteOrder32Little.rawValue) else {
         return nil
     }
     qrStudioDrawExportFrame(scene, canvas: canvas, time: 0.0, in: context)
-    return context.makeImage().map { UIImage(cgImage: $0) }
+    return context.makeImage()
 }
+
+#if canImport(UIKit)
+func qrStudioExportImage(_ scene: QrStudioExportScene, canvas: QrStudioExportCanvas) -> UIImage? {
+    return qrStudioExportCGImage(scene, canvas: canvas).map { UIImage(cgImage: $0) }
+}
+#else
+func qrStudioExportImage(_ scene: QrStudioExportScene, canvas: QrStudioExportCanvas) -> CGImage? {
+    return qrStudioExportCGImage(scene, canvas: canvas)
+}
+#endif

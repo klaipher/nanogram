@@ -31,7 +31,7 @@ apple_resource_bundle(
 swift_library(
     name = "QrStudioScreen",
     module_name = "QrStudioScreen",
-    srcs = glob(["Sources/**/*.swift"]),
+    srcs = glob(["Sources/**/*.swift"]) + ["//submodules/TelegramUI/Components/QrStudioLogic:Sources"],
     copts = ["-warnings-as-errors"],
     data = [":QrStudioMetalSourcesBundle"],
     deps = [
