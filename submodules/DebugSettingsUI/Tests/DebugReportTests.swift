@@ -137,6 +137,30 @@ final class DebugReportTests: XCTestCase {
         XCTAssertFalse(FileManager.default.fileExists(atPath: output.appendingPathComponent("nanogram-logs-report").path), "staging is removed")
     }
 
+    func testCallLogsSurviveFullAppAndNotificationLogs() {
+        let limits = DebugReportLimits(totalBytes: 100, sectionBytes: 60, fileBytes: 100)
+        let plan = debugReportPlan(sources: [
+            source(.appLogs, "app", size: 60, age: 1),
+            source(.notificationLogs, "nse", size: 60, age: 1),
+            source(.callLogs, "call.log", size: 10, age: 1)
+        ], limits: limits)
+        XCTAssertTrue(plan.entries.contains { $0.source.name == "call.log" })
+    }
+
+    func testCrashFramesKeepTheirOffsets() throws {
+        let line = "TelegramUIFramework 0x10a3b2c10 +45678901 [UUID]"
+        let crash = DebugReportSource(section: .crashes, name: "crash.txt", text: line, treatment: .plainText, modified: Date())
+        let plan = debugReportPlan(sources: [crash])
+        let directory = FileManager.default.temporaryDirectory.appendingPathComponent("report-" + UUID().uuidString, isDirectory: true)
+        try FileManager.default.createDirectory(at: directory, withIntermediateDirectories: true)
+        defer { try? FileManager.default.removeItem(at: directory) }
+        let file = try XCTUnwrap(debugReportArchive(plan: plan, manifest: "m", baseName: "r", in: directory))
+        let unzipped = directory.appendingPathComponent("out", isDirectory: true)
+        XCTAssertTrue(SSZipArchive.unzipFile(atPath: file.path, toDestination: unzipped.path))
+        let text = try String(contentsOf: unzipped.appendingPathComponent("r/crashes/crash.txt"), encoding: .utf8)
+        XCTAssertEqual(text, line)
+    }
+
     func testInfoTextHasVersionDeviceExperimentsAndNoAccountDetails() {
         let info = DebugReportInfo(appVersion: "13.2", buildNumber: "202611140100", bundleId: "org.klaipher.Nanogram", osVersion: "iOS 26.1", deviceModelIdentifier: "iPhone15,2", deviceChip: "iPhone 14 Pro (A16), iPhone15,2", isMainApp: true, hasAccount: true, logToFile: true, redactSensitiveData: true, lowPowerMode: false, thermalState: "nominal", localeIdentifier: "en_US", experimentsReport: "Performance experiments (device iPhone15,2)\nthreadPoolQualityOfService=off")
         let text = debugReportInfoText(info)

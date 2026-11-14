@@ -9,14 +9,14 @@ import ZipArchive
 enum DebugReportSection: CaseIterable, Equatable {
     case info
     case crashes
-    case metricKit
+    case callLogs
+    case groupCallLogs
     case criticalLogs
+    case metricKit
     case appLogs
     case notificationLogs
     case shareLogs
     case otherExtensionLogs
-    case callLogs
-    case groupCallLogs
     case cpuProfiles
 
     var folder: String {
@@ -56,6 +56,8 @@ enum DebugReportSection: CaseIterable, Equatable {
 enum DebugReportTreatment: Equatable {
     /// A text log: the newest part is kept when it is over the per-file size, and phone numbers and emails are masked.
     case redactedText
+    /// Text written as it is: crash reports hold no user data and their offsets look like phone numbers.
+    case plainText
     /// Copied as it is (JSON reports, binary short logs); left out when over the per-file size.
     case unchanged
 }
@@ -81,7 +83,7 @@ struct DebugReportSource: Equatable {
         self.size = size
     }
 
-    init(section: DebugReportSection, name: String, text: String, modified: Date) {
+    init(section: DebugReportSection, name: String, text: String, treatment: DebugReportTreatment = .redactedText, modified: Date) {
         self.section = section
         self.name = name
         self.path = nil
@@ -168,7 +170,7 @@ private func debugReportEntryName(_ source: DebugReportSource, used: inout Set<S
 }
 
 /// The line shown before sending: what the report holds and what it never does.
-let debugReportPrivacyNote = "Includes device and app details, experiment numbers, app and extension logs, call logs, and crash and MetricKit reports. No message text, contacts or contact lists; phone numbers and emails are masked."
+let debugReportPrivacyNote = "Includes device and app details, experiment numbers, app and extension logs, call logs, and crash and MetricKit reports. No contacts or contact lists. Message text is left out of the logs while Remove Sensitive Data is on; phone numbers and emails are masked in the text logs."
 
 /// The README at the top of the zip.
 func debugReportManifest(infoLines: [String], plan: DebugReportPlan, created: Date, limits: DebugReportLimits = DebugReportLimits()) -> String {
@@ -178,7 +180,7 @@ func debugReportManifest(infoLines: [String], plan: DebugReportPlan, created: Da
     lines.append(contentsOf: infoLines)
     lines.append("")
     lines.append(debugReportPrivacyNote)
-    lines.append("Phone numbers (+...) and email addresses in the text files are replaced by [phone] and [email]. Each log file is cut to its newest \(debugReportSizeText(limits.fileBytes)), the report to \(debugReportSizeText(limits.totalBytes)).")
+    lines.append("Phone numbers (+...) and email addresses in the text logs (not the critical logs, JSON reports and crash reports) are replaced by [phone] and [email]. Each log file is cut to its newest \(debugReportSizeText(limits.fileBytes)), the report to \(debugReportSizeText(limits.totalBytes)).")
     lines.append("")
     lines.append("Parts")
     for section in DebugReportSection.allCases {
@@ -265,28 +267,40 @@ func debugReportArchive(plan: DebugReportPlan, manifest: String, baseName: Strin
     defer {
         let _ = try? fileManager.removeItem(at: staging)
     }
+    var unreadable: [String] = []
     do {
         try fileManager.createDirectory(at: staging, withIntermediateDirectories: true)
-        try Data(manifest.utf8).write(to: staging.appendingPathComponent("README.txt"))
         for entry in plan.entries {
             let target = staging.appendingPathComponent(entry.entryName)
             try fileManager.createDirectory(at: target.deletingLastPathComponent(), withIntermediateDirectories: true)
             let source = entry.source
             if let text = source.text {
-                try Data(debugReportRedacted(text).utf8).write(to: target)
+                let content = source.treatment == .plainText ? text : debugReportRedacted(text)
+                try Data(content.utf8).write(to: target)
             } else if let path = source.path {
                 let url = URL(fileURLWithPath: path)
                 switch source.treatment {
                 case .redactedText:
                     guard let data = debugReportTail(of: url, limit: entry.bytes) else {
+                        unreadable.append(entry.entryName)
                         continue
                     }
                     try Data(debugReportRedacted(String(decoding: data, as: UTF8.self)).utf8).write(to: target)
+                case .plainText:
+                    guard let data = debugReportTail(of: url, limit: entry.bytes) else {
+                        unreadable.append(entry.entryName)
+                        continue
+                    }
+                    try data.write(to: target)
                 case .unchanged:
-                    try fileManager.copyItem(at: url, to: target)
+                    if (try? fileManager.copyItem(at: url, to: target)) == nil {
+                        unreadable.append(entry.entryName)
+                    }
                 }
             }
         }
+        let note = unreadable.isEmpty ? "" : "\nCould not be read (rotated or removed while the report was made):\n" + unreadable.map { "    " + $0 }.joined(separator: "\n") + "\n"
+        try Data((manifest + note).utf8).write(to: staging.appendingPathComponent("README.txt"))
     } catch {
         return nil
     }

@@ -5,6 +5,7 @@ import Display
 import TelegramCore
 import AccountContext
 import CrashReporting
+import MediaCapabilities
 import DiskWriteAccounting
 import TelegramVoip
 
@@ -73,7 +74,7 @@ private func debugReportCurrentInfo(sharedContext: SharedAccountContext, context
         lowPowerMode: ProcessInfo.processInfo.isLowPowerModeEnabled,
         thermalState: debugReportThermalName(ProcessInfo.processInfo.thermalState),
         localeIdentifier: Locale.current.identifier,
-        experimentsReport: performanceExperimentsReport(modelIdentifier: identifier)
+        experimentsReport: performanceExperimentsReport(modelIdentifier: identifier) + "\n\n" + MediaCapabilities.shared.reportLines().joined(separator: "\n")
     )
 }
 
@@ -107,7 +108,7 @@ private func debugReportLocalSources(sharedContext: SharedAccountContext, contex
 
     if let reports = try? CrashReportStore.shared.reports() {
         for report in reports {
-            sources.append(DebugReportSource(section: .crashes, name: "crash-\(report.id.prefix(12)).txt", text: report.text, modified: report.receivedAt))
+            sources.append(DebugReportSource(section: .crashes, name: "crash-\(report.id.prefix(12)).txt", text: report.text, treatment: .plainText, modified: report.receivedAt))
         }
     }
     var metricFiles = MetricReportStore.shared.reports().map { ($0.name, $0.path) }
