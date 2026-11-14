@@ -1,3 +1,4 @@
+#if canImport(UIKit) && !os(macOS)
 import XCTest
 import UIKit
 #if canImport(UniversalMediaPlayer)
@@ -40,3 +41,4 @@ final class UniversalSoftwareVideoSourceFirstFrameTests: XCTestCase {
         XCTAssertEqual(Array(data.prefix(2)), [0xFF, 0xD8])
     }
 }
+#endif

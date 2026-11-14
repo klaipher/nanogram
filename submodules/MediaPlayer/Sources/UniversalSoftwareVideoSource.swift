@@ -464,6 +464,7 @@ public enum UniversalSoftwareVideoSourceFirstFrame {
     case failed
 }
 
+#if !os(macOS)
 public extension UniversalSoftwareVideoSourceTakeFrameResult {
     /// What a first-frame consumer should do with this result: keep waiting, store the JPEG, or give up.
     /// A nil image or a failed JPEG encode is `failed`, so the request completes instead of holding the source.
@@ -479,6 +480,7 @@ public extension UniversalSoftwareVideoSourceTakeFrameResult {
         }
     }
 }
+#endif
 
 public final class UniversalSoftwareVideoSource {
     public enum Source {
