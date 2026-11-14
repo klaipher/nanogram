@@ -148,7 +148,8 @@ private final class UniversalSoftwareVideoSourceImpl {
         state: ValuePromise<UniversalSoftwareVideoSourceState>,
         cancelInitialization: Signal<Bool, NoError>,
         automaticallyFetchHeader: Bool,
-        hintVP9: Bool = false
+        hintVP9: Bool = false,
+        hardwareDecode: Bool = false
     ) {
         switch source {
         case let .file(_, _, fileReference):
@@ -222,6 +223,17 @@ private final class UniversalSoftwareVideoSourceImpl {
             
             let rotationAngle: Double = metrics.rotationAngle
             let aspect = Double(metrics.width) / Double(metrics.height)
+            
+            if UniversalSoftwareVideoSource.shouldUseHardwareDecode(enabled: hardwareDecode, codecId: codecId, width: metrics.width, height: metrics.height), let codec = FFMpegAVCodec.find(forId: codecId, preferHardwareAccelerationCapable: true) {
+                let codecContext = FFMpegAVCodecContext(codec: codec)
+                if avFormatContext.codecParams(atStreamIndex: streamIndex, to: codecContext) {
+                    codecContext.setupHardwareAccelerationIfPossible()
+                    if codecContext.open() {
+                        videoStream = SoftwareVideoStream(index: Int(streamIndex), fps: fps, timebase: timebase, duration: duration, decoder: FFMpegMediaVideoFrameDecoder(codecContext: codecContext), rotationAngle: rotationAngle, aspect: aspect)
+                        break
+                    }
+                }
+            }
             
             if let codec = FFMpegAVCodec.find(forId: codecId, preferHardwareAccelerationCapable: false) {
                 let codecContext = FFMpegAVCodecContext(codec: codec)
@@ -363,6 +375,7 @@ private final class UniversalSoftwareVideoSourceThreadParams: NSObject {
     let cancelInitialization: Signal<Bool, NoError>
     let automaticallyFetchHeader: Bool
     let hintVP9: Bool
+    let hardwareDecode: Bool
     
     init(
         mediaBox: MediaBox,
@@ -370,8 +383,10 @@ private final class UniversalSoftwareVideoSourceThreadParams: NSObject {
         state: ValuePromise<UniversalSoftwareVideoSourceState>,
         cancelInitialization: Signal<Bool, NoError>,
         automaticallyFetchHeader: Bool,
-        hintVP9: Bool
+        hintVP9: Bool,
+        hardwareDecode: Bool
     ) {
+        self.hardwareDecode = hardwareDecode
         self.mediaBox = mediaBox
         self.source = source
         self.state = state
@@ -402,7 +417,7 @@ private final class UniversalSoftwareVideoSourceThread: NSObject {
         let timer = Timer(fireAt: .distantFuture, interval: 0.0, target: UniversalSoftwareVideoSourceThread.self, selector: #selector(UniversalSoftwareVideoSourceThread.none), userInfo: nil, repeats: false)
         runLoop.add(timer, forMode: .common)
         
-        let source = UniversalSoftwareVideoSourceImpl(mediaBox: params.mediaBox, source: params.source, state: params.state, cancelInitialization: params.cancelInitialization, automaticallyFetchHeader: params.automaticallyFetchHeader)
+        let source = UniversalSoftwareVideoSourceImpl(mediaBox: params.mediaBox, source: params.source, state: params.state, cancelInitialization: params.cancelInitialization, automaticallyFetchHeader: params.automaticallyFetchHeader, hardwareDecode: params.hardwareDecode)
         Thread.current.threadDictionary["source"] = source
         
         while true {
@@ -481,8 +496,19 @@ public final class UniversalSoftwareVideoSource {
         }
     }
     
-    public init(mediaBox: MediaBox, source: Source, automaticallyFetchHeader: Bool = false, hintVP9: Bool = false) {
-        self.thread = Thread(target: UniversalSoftwareVideoSourceThread.self, selector: #selector(UniversalSoftwareVideoSourceThread.entryPoint(_:)), object: UniversalSoftwareVideoSourceThreadParams(mediaBox: mediaBox, source: source, state: self.stateValue, cancelInitialization: self.cancelInitialization.get(), automaticallyFetchHeader: automaticallyFetchHeader, hintVP9: hintVP9))
+    static let hardwareDecodeMinimumLongSide = 1920
+    
+    /// Scrub previews only: H.264 and HEVC of at least 1080p on the long side, when the experiment is on.
+    /// Smaller clips and single first-frame decodes cost less in software than a VideoToolbox session.
+    static func shouldUseHardwareDecode(enabled: Bool, codecId: Int32, width: Int32, height: Int32) -> Bool {
+        guard enabled, codecId == FFMpegCodecIdH264 || codecId == FFMpegCodecIdHEVC else {
+            return false
+        }
+        return Int(max(width, height)) >= hardwareDecodeMinimumLongSide
+    }
+    
+    public init(mediaBox: MediaBox, source: Source, automaticallyFetchHeader: Bool = false, hintVP9: Bool = false, hardwareDecode: Bool = false) {
+        self.thread = Thread(target: UniversalSoftwareVideoSourceThread.self, selector: #selector(UniversalSoftwareVideoSourceThread.entryPoint(_:)), object: UniversalSoftwareVideoSourceThreadParams(mediaBox: mediaBox, source: source, state: self.stateValue, cancelInitialization: self.cancelInitialization.get(), automaticallyFetchHeader: automaticallyFetchHeader, hintVP9: hintVP9, hardwareDecode: hardwareDecode))
         self.thread.name = "UniversalSoftwareVideoSource"
         self.thread.start()
     }

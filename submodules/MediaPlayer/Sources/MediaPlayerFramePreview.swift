@@ -29,7 +29,7 @@ private final class FramePreviewContext {
 
 private func initializedPreviewContext(queue: Queue, postbox: Postbox, userLocation: MediaResourceUserLocation, userContentType: MediaResourceUserContentType, fileReference: FileMediaReference) -> Signal<QueueLocalObject<FramePreviewContext>, NoError> {
     return Signal { subscriber in
-        let source = UniversalSoftwareVideoSource(mediaBox: postbox.mediaBox, source: .file(userLocation: userLocation, userContentType: userContentType, fileReference: fileReference))
+        let source = UniversalSoftwareVideoSource(mediaBox: postbox.mediaBox, source: .file(userLocation: userLocation, userContentType: userContentType, fileReference: fileReference), hardwareDecode: ExperimentalPerformanceFlags.shared.isEnabled(.previewHardwareDecode))
         let readyDisposable = (source.ready
         |> filter { $0 }).start(next: { _ in
             subscriber.putNext(QueueLocalObject(queue: queue, generate: {
