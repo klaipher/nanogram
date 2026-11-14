@@ -23,8 +23,6 @@ struct VideoNotePlayerView: View {
     @State private var hasReachedEnd = false
     @State private var endObserver: NSObjectProtocol?
     @State private var statusObserver: NSKeyValueObservation?
-    /// WATCH-VIDEO-1: the playback that started before the download finished (flag `progressiveVideoStart`).
-    @State private var progressive: ProgressiveVideoSession?
 
     private let logger = Logger(watchCategory: "videoplayer")
 
@@ -137,24 +135,11 @@ struct VideoNotePlayerView: View {
     }
 
     private func handleSnapshot(_ snap: File) {
-        if let progressive {
-            progressive.update(file: snap)
-            if case .preparing = phase { phase = .preparing(progress: downloadProgress(of: snap)) }
-            return
-        }
         if snap.local.isDownloadingCompleted, !snap.local.path.isEmpty {
             if player == nil {
                 setupPlayer(path: snap.local.path)
                 phase = .playing
             }
-            return
-        }
-        // Round notes are short MP4s, so the progressive start applies to them as to any MP4.
-        if player == nil, WatchFeatureFlags.isEnabled(.progressiveVideoStart),
-           ProgressiveVideoPolicy.shouldStart(file: snap, mimeType: "video/mp4"),
-           let session = ProgressiveVideoSession(file: snap, mimeType: "video/mp4") {
-            progressive = session
-            setupPlayer(item: session.item, isProgressive: true)
             return
         }
         phase = .preparing(progress: downloadProgress(of: snap))
@@ -166,8 +151,6 @@ struct VideoNotePlayerView: View {
     }
 
     private func tearDownPlayer() {
-        progressive?.invalidate()
-        progressive = nil
         player?.pause()
         player = nil
         hasReachedEnd = false

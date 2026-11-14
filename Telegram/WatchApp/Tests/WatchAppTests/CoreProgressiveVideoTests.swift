@@ -64,10 +64,9 @@ final class CoreProgressiveVideoTests: XCTestCase {
         XCTAssertEqual(ProgressiveVideoPolicy.totalSize(of: try file(size: 900, expected: 700, prefix: 0)), 900)
     }
 
-    func testContentTypesAndURL() {
+    func testContentTypes() {
         XCTAssertEqual(ProgressiveVideoPolicy.contentType(forMimeType: "video/mp4"), "public.mpeg-4")
         XCTAssertEqual(ProgressiveVideoPolicy.contentType(forMimeType: "video/quicktime"), "com.apple.quicktime-movie")
-        XCTAssertEqual(ProgressiveVideoLoader.url(fileId: 42)?.absoluteString, "nanogram-td://file/42")
     }
 
     // MARK: range plan

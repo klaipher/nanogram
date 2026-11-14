@@ -29,8 +29,6 @@ struct VideoPlayerView: View {
     @State private var hasReachedEnd = false
     @State private var endObserver: NSObjectProtocol?
     @State private var statusObserver: AnyCancellable?
-    /// WATCH-VIDEO-1: the playback that started before the download finished (flag `progressiveVideoStart`).
-    @State private var progressive: ProgressiveVideoSession?
 
     private let logger = Logger(watchCategory: "videoplayer")
 
@@ -123,7 +121,6 @@ struct VideoPlayerView: View {
                     .foregroundStyle(.white)
                     .multilineTextAlignment(.center)
                 Button("Retry") {
-                    resetProgressivePlayback()
                     phase = .preparing(progress: 0)
                     store.requestFileDownload(fileId: video.videoFileId, priority: 2)
                     // If the file is already complete on disk, no further updateFile
@@ -165,8 +162,6 @@ struct VideoPlayerView: View {
     private func onDisappear() {
         player?.pause()
         player = nil
-        progressive?.invalidate()
-        progressive = nil
         if let obs = endObserver {
             NotificationCenter.default.removeObserver(obs)
             endObserver = nil
@@ -192,23 +187,10 @@ struct VideoPlayerView: View {
 
     private func handleSnapshot(_ snap: File?) {
         guard let snap else { return }
-        // A progressive playback keeps serving the same player as the file grows and completes.
-        if let progressive {
-            progressive.update(file: snap)
-            if case .preparing = phase { phase = .preparing(progress: downloadProgress(of: snap)) }
-            return
-        }
         if snap.local.isDownloadingCompleted, !snap.local.path.isEmpty {
             // Already in .playing? Don't reinit.
             if case .playing = phase { return }
             setupPlayer(path: snap.local.path)
-            return
-        }
-        if WatchFeatureFlags.isEnabled(.progressiveVideoStart),
-           ProgressiveVideoPolicy.shouldStart(file: snap, mimeType: video.mimeType),
-           let session = ProgressiveVideoSession(file: snap, mimeType: video.mimeType) {
-            progressive = session
-            attach(AVPlayer(playerItem: session.item), isProgressive: true)
             return
         }
         phase = .preparing(progress: downloadProgress(of: snap))
@@ -217,14 +199,6 @@ struct VideoPlayerView: View {
     private func downloadProgress(of snap: File) -> Double {
         let denom = max(1, snap.expectedSize)
         return min(max(Double(snap.local.downloadedSize) / Double(denom), 0), 1)
-    }
-
-    private func resetProgressivePlayback() {
-        guard progressive != nil else { return }
-        player?.pause()
-        player = nil
-        progressive?.invalidate()
-        progressive = nil
     }
 
     private func setupPlayer(path: String) {
