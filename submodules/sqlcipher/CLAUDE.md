@@ -1,7 +1,9 @@
 # Upgrading the vendored SQLCipher
 
-`submodules/sqlcipher` is the SQLCipher **amalgamation** (one `Sources/sqlite3.c` plus the three public headers), not
-the source tree; currently SQLCipher 4.19.0 / SQLite 3.53.4. Keep SQLite at 3.51.3 or later: it carries the WAL-reset
+`submodules/sqlcipher/amalgamation` is the klaipher/sqlcipher-amalgamation submodule (branch `nanogram`; one `sqlite3.c` plus
+the three public headers in `headers/sqlcipher/`), the single source for iOS, macOS and Android, not the source tree;
+currently SQLCipher 4.20.0 / SQLite 3.54.1. Regenerate and upgrade it in that repository (`tools/generate-amalgamation.sh`),
+then move the three pins; the paragraph below describes the generation. Keep SQLite at 3.51.3 or later: it carries the WAL-reset
 corruption fix, which matters because the app and the notification extension write and checkpoint the same WAL
 database.
 
@@ -15,7 +17,7 @@ make sqlite3.c sqlite3.h     # also copies sqlite3ext.h and ext/session/sqlite3s
 ```
 
 (needs `/usr/bin/tclsh`; the configure flags do not bake into the amalgamation, every feature is selected by the `-D`s
-in `BUILD`). Copy `sqlite3.c` to `Sources/` and the three headers to `PublicHeaders/sqlcipher/`. Then check
+in `BUILD`). Copy `sqlite3.c` and the three headers into the fork (`sqlite3.c`, `headers/sqlcipher/`), update its `SHA256SUMS`. Then check
 `sqlite3.c` for `#define SQLITE_VERSION` and `CIPHER_VERSION_NUMBER` rather than trusting the archive name.
 
 Non-obvious points:

@@ -1,21 +1,22 @@
 
 load("@rules_cc//cc:objc_library.bzl", "objc_library")
 
+# The amalgamation comes from the klaipher/sqlcipher-amalgamation submodule (nanogram, tag v4.20.0-nanogram1): sqlite3.c in
+# amalgamation/ and the public headers in amalgamation/headers/sqlcipher/, so `<sqlcipher/sqlite3.h>` keeps working.
 public_headers = glob([
-    "PublicHeaders/**/*.h",
+    "amalgamation/headers/**/*.h",
 ])
 
 objc_library(
     name = "sqlcipher",
     enable_modules = True,
     module_name = "sqlcipher",
-    srcs = glob([
-        "Sources/*.c",
-        "Sources/*.h",
-    ], exclude = public_headers, allow_empty=True),
+    srcs = [
+        "amalgamation/sqlite3.c",
+    ],
     hdrs = public_headers,
     includes = [
-        "PublicHeaders",
+        "amalgamation/headers",
     ],
     copts = [
         "-DSQLITE_HAS_CODEC=1",

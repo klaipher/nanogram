@@ -49,8 +49,8 @@ believing it is live.
 
 ### Upgrading the vendored SQLCipher
 
-`submodules/sqlcipher` is the SQLCipher **amalgamation** (one `Sources/sqlite3.c` plus the three
-public headers), not the source tree. Now SQLCipher 4.20.0/SQLite 3.54.1 (from 4.4.2/SQLite
+`submodules/sqlcipher/amalgamation` is the klaipher/sqlcipher-amalgamation submodule (branch `nanogram`; one `sqlite3.c`
+plus the three public headers; upgrade it in that repository, then move the three pins), not the source tree. Now SQLCipher 4.20.0/SQLite 3.54.1 (from 4.4.2/SQLite
 3.33.0, first upgraded on 2026-09-22), which picked up the upstream WAL-reset corruption fix (SQLite 3.51.3) that matters
 because the app and the notification extension write and checkpoint the same WAL database.
 

@@ -22,11 +22,11 @@ let package = Package(
         .target(
             name: "sqlcipher",
             dependencies: [],
-            path: ".",
-            exclude: ["BUILD"],
-            publicHeadersPath: "PublicHeaders",
+            path: "amalgamation",
+            sources: ["sqlite3.c"],
+            publicHeadersPath: "headers",
             cSettings: [
-                .headerSearchPath("PublicHeaders"),
+                .headerSearchPath("headers"),
                 .define("SQLITE_HAS_CODEC", to: "1"),
                 .define("SQLCIPHER_CRYPTO_CC", to: "1"),
                 // Required since SQLCipher 4.6: sqlcipher.c #errors without these.

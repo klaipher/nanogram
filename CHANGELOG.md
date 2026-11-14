@@ -4,6 +4,8 @@ Newest first. Internal notes for each TestFlight build; testers see the What to 
 
 ## Unreleased
 
+- **SQLCipher is the klaipher/sqlcipher-amalgamation submodule** (W2.I1). `submodules/sqlcipher/amalgamation` (`nanogram`, 9948d5af, shallow) replaces the vendored `Sources/sqlite3.c` and `PublicHeaders` (byte-identical; proof in `docs/shared/w2-i1-identity-proofs.md`). Include path and defines unchanged. Not built.
+
 - **libprisma is the klaipher/libprisma submodule** (W2.I1). `third-party/libprisma/libprisma` (`nanogram`, c061944d, shallow) replaces Sources, Resources and include (proof in `docs/shared/w2-i1-identity-proofs.md`); `Syntaxer.mm` is now the fork's single iOS+macOS glue. The fork also carries Android's regex move budget on top of iOS's depth and search caps. Not built (risk: include_prefix mapping of Syntaxer.h with enable_modules, the Swift import of the now implicitly unwrapped initializers).
 
 - **rnnoise is the klaipher/rnnoise submodule** (W2.I1). `third-party/rnnoise/rnnoise` (`nanogram`, d2d79970, shallow) replaces the vendored Sources (byte-identical, `cmp` proof in `docs/shared/w2-i1-identity-proofs.md`). BUILD and Package.swift read `rnnoise/src` and `rnnoise/include`; the Mac Xcode group paths move in its core bump. Android takes the same fork. Not built.

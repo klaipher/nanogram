@@ -36,3 +36,13 @@ comparisons made before the old copy was deleted.
 - `Syntaxer.mm` and `Syntaxer.h`: the iOS file differs from the fork's `apple/Syntaxer.mm` by the `SyntaxerColor/SyntaxerFont`
   platform aliases, the macOS `themeKeys` initializer and `static` helpers (the merged iOS+macOS version).
 - `Tests/SyntaxHighlighterRecursionTests.cpp` stays in this repository; its BUILD target reads the submodule files.
+
+## sqlcipher-amalgamation
+
+- Old copy: `submodules/sqlcipher/{Sources/sqlite3.c,PublicHeaders/sqlcipher/*.h}` (SQLCipher 4.20.0 / SQLite 3.54.1).
+- New source: submodule `submodules/sqlcipher/amalgamation` = klaipher/sqlcipher-amalgamation `nanogram` 9948d5af
+  (tag `v4.20.0-nanogram1`), which is this copy byte for byte.
+- `cmp`: `sqlite3.c` and the three headers (`sqlite3.h`, `sqlite3ext.h`, `sqlite3session.h`) are identical to the fork's
+  `sqlite3.c` and `headers/sqlcipher/*.h`.
+- BUILD and Package.swift keep every `-D` define; the `<sqlcipher/sqlite3.h>` include path is unchanged
+  (`includes = ["amalgamation/headers"]`).

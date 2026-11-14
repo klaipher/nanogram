@@ -54,6 +54,7 @@ lib mtproto-engine ios=third-party/mtproto-engine mac=third-party/mtproto-engine
 lib openh264 ios=third-party/openh264/openh264 mac=core-xprojects/OpenH264/OpenH264/build.sh android=TMessagesProj/jni/third_party/openh264
 lib rnnoise ios=third-party/rnnoise/rnnoise mac=third-party/rnnoise android=TMessagesProj/jni/voip/rnnoise
 lib libprisma ios=third-party/libprisma/libprisma mac=submodules/CodeSyntax android=TMessagesProj/jni/third_party/libprisma
+lib sqlcipher-amalgamation ios=submodules/sqlcipher/amalgamation mac=submodules/sqlcipher android=TMessagesProj/jni/sqlite
 
 share submodules/SSignalKit
 share submodules/Postbox

@@ -80,3 +80,8 @@
 	url = https://github.com/klaipher/libprisma.git
 	branch = nanogram
 	shallow = true
+[submodule "submodules/sqlcipher/amalgamation"]
+	path = submodules/sqlcipher/amalgamation
+	url = https://github.com/klaipher/sqlcipher-amalgamation.git
+	branch = nanogram
+	shallow = true
