@@ -52,7 +52,7 @@ lib rnnoise ios=third-party/rnnoise/rnnoise mac=third-party/rnnoise/rnnoise andr
 lib libprisma ios=third-party/libprisma/libprisma mac=third-party/libprisma/libprisma android=TMessagesProj/jni/third_party/libprisma
 lib sqlcipher-amalgamation ios=submodules/sqlcipher/amalgamation mac=submodules/sqlcipher/amalgamation android=TMessagesProj/jni/third_party/sqlite
 lib libyuv ios=third-party/libyuv/third_party/libyuv mac=third-party/libyuv/third_party/libyuv android=TMessagesProj/jni/third_party/libyuv
-lib quickjs ios=third-party/quickjs-ng/quickjs mac=third-party/widget-sandbox/third_party/quickjs android=TMessagesProj/jni/twidget/widget-sandbox/third_party/quickjs
+lib quickjs ios=third-party/quickjs-ng/quickjs mac=third-party/widget-sandbox/packages/ios/Sources/CQuickJS/quickjs android=TMessagesProj/jni/twidget/widget-sandbox/packages/ios/Sources/CQuickJS/quickjs
 lib widget-sandbox ios=third-party/widget-sandbox/widget-sandbox mac=third-party/widget-sandbox android=TMessagesProj/jni/twidget/widget-sandbox
 lib twidget ios=third-party/twidget/twidget mac=third-party/twidget android=TMessagesProj/jni/twidget/twidget
 
