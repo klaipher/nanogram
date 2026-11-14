@@ -125,6 +125,7 @@ cmd_doctor() {
   for sentinel in \
     submodules/ffmpeg/Sources/FFMpeg/ffmpeg-9.0.2/RELEASE \
     third-party/boost_regex/regex/include/boost/regex.hpp \
+    third-party/wamr/wamr/LICENSE \
     ; do
     [ -f "$ROOT/$sentinel" ] || { warn "Source submodule is empty: ${sentinel%/*} (run: tools/dev/tg setup)"; ok=1; }
   done

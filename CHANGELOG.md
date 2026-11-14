@@ -4,6 +4,8 @@ Newest first. Internal notes for each TestFlight build; testers see the What to 
 
 ## Unreleased
 
+- **WAMR is the bytecodealliance submodule** (W1.1). `third-party/wamr/wamr` at WAMR-2.4.5 (25bd7eb6, shallow; Android pins the same commit, from the same upstream) replaces the 144 vendored `core/` files; `BUILD` paths moved to `wamr/core/` and the compiled source set is unchanged (interpreter only, no JIT/AOT). Proof: all 144 old `core/` blobs and `LICENSE` are identical in the tag; every compiled glob matches the same file set before and after.
+
 - **boost_regex is the boostorg/regex submodule** (W1.1). `third-party/boost_regex/regex` at boost-1.92.0 (7760ef2a, shallow; Android pins the same commit) replaces the vendored `include/` copy; `BUILD` uses `regex/include`. Proof: tree hash 831656cc of the old `third-party/boost_regex/include` equals `HEAD:include` of the submodule (byte-identical headers).
 
 - **FFmpeg is the klaipher/FFmpeg submodule** (shared-libraries plan W1.1). `submodules/ffmpeg/Sources/FFMpeg/ffmpeg-9.0.2` is now a shallow submodule of `klaipher/FFmpeg` branch `nanogram` pinned at d84c50bc (same path, so the BUILD glob, `FFMPEG_VERSION` and the Mac `build.sh` autodetect are unchanged); the 10399 vendored files are gone. Android already builds the same commit. Proof: the old tree and d84c50bc differ in exactly two sources, `libavcodec/hevc/hevcdec.c` and `libavutil/encryption_info.c` (the Android fixes iOS now gains), plus dotfiles (`.gitignore`, `.gitattributes`) the BUILD glob excludes. `tg doctor` warns when the sources directory is empty.
