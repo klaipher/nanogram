@@ -213,10 +213,11 @@ public final class OpusChunkedDecoder: @unchecked Sendable {
                 if !haveHead {
                     var st = ogg_stream_state()
                     ogg_stream_init(&st, ogg_page_serialno(&page))
+                    // `pkt.packet` points into the stream's buffers: clear only after the header bytes are read.
+                    defer { ogg_stream_clear(&st) }
                     ogg_stream_pagein(&st, &page)
                     var pkt = ogg_packet()
                     let got = ogg_stream_packetout(&st, &pkt)
-                    ogg_stream_clear(&st)
                     guard got == 1, let base = pkt.packet, pkt.bytes >= 19 else { throw OpusDecoderError.notOggOpus }
                     let head = UnsafeBufferPointer(start: base, count: Int(pkt.bytes))
                     guard head[0] == 0x4F, head[1] == 0x70, head[2] == 0x75, head[3] == 0x73,
