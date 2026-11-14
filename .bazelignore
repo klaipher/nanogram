@@ -1,0 +1,2 @@
+# Official abseil checkout inside the webrtc fork: used as the Bazel module abseil-cpp (MODULE.bazel).
+third-party/webrtc/webrtc/third_party/abseil-cpp

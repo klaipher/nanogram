@@ -82,7 +82,7 @@
    "path": "third-party/webrtc/webrtc",
    "upstream_url": "https://github.com/ali-fareed/webrtc.git",
    "fork_url": "https://github.com/klaipher/webrtc.git",
-   "fork_branch": "nanogram-security-fixes"
+   "fork_branch": "nanogram"
   },
   {
    "name": "mtproto-engine",

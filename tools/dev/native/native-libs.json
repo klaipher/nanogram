@@ -11,7 +11,7 @@
    "tls": "iOS links BoringSSL; the Mac builds OpenSSL 3.5.9 (core-xprojects/openssl) and TDLib's tde2e against it",
    "rust_lto": "iOS builds Rust with fat LTO (Make.py); the Mac uses the Cargo release profile (thin LTO). Same compiler (rust version above). Details: docs/module-build-settings.md",
    "mac_order_file": "The Mac Release link uses an order file; iOS does not",
-   "webrtc": "iOS third-party/webrtc and Mac submodules/tg_owt: pin and fix-set parity is enforced by the phase 4 parity gate, not here"
+   "webrtc": "one pin for iOS, Mac and Android (klaipher/webrtc nanogram, shared/shared-libraries.json); the Mac moves from submodules/tg_owt to the same submodule in W5.4; no per-file parity gate"
   }
  },
  "libs": {

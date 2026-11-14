@@ -2991,9 +2991,9 @@ dcsctp_sources = [ "webrtc/net/dcsctp/" + path for path in [
     "timer/timer.h",
 ]]
 
+# Ooura fft4g (256): the single copy in the fork (the header is already in webrtc_headers).
 fft4g_sources = [
-    "fft4g/fft4g.h",
-    "fft4g/fft4g.cc",
+    "webrtc/common_audio/third_party/ooura/fft_size_256/fft4g.cc",
 ]
 
 raw_combined_cpp_sources = webrtc_headers + webrtc_sources
@@ -3033,6 +3033,172 @@ combined_cpp_sources = [
 combined_objcpp_sources = [
     "webrtc/" + path for path in raw_combined_objcpp_sources
 ]
+
+# ---------------------------------------------------------------------------------------------------------------
+# Single-source third-party libraries (W5.3). They are the nested submodules and trees of the klaipher/webrtc fork
+# (webrtc/third_party/...): abseil-cpp, libsrtp and crc32c are the official upstream commits the fork pins, pffft and
+# the Chromium rnnoise-vad extract are carried in the fork. None of these directories has a BUILD file, so their
+# files belong to this package.
+
+# Abseil LTS 20260817.0 is the fork's third_party/abseil-cpp checkout, used as the Bazel module `abseil-cpp`
+# (MODULE.bazel: local_path_override; .bazelignore keeps the main repository from loading it a second time).
+# Consumers add -Iexternal/abseil-cpp+ to their copts for the `#include <absl/...>` form (tgcalls uses it).
+cc_library(
+    name = "absl",
+    deps = [
+        "@abseil-cpp//absl/algorithm",
+        "@abseil-cpp//absl/algorithm:container",
+        "@abseil-cpp//absl/base:config",
+        "@abseil-cpp//absl/base:core_headers",
+        "@abseil-cpp//absl/base:nullability",
+        "@abseil-cpp//absl/cleanup",
+        "@abseil-cpp//absl/container:inlined_vector",
+        "@abseil-cpp//absl/functional:any_invocable",
+        "@abseil-cpp//absl/functional:bind_front",
+        "@abseil-cpp//absl/memory",
+        "@abseil-cpp//absl/meta:type_traits",
+        "@abseil-cpp//absl/numeric:bits",
+        "@abseil-cpp//absl/strings",
+        "@abseil-cpp//absl/strings:string_view",
+        "@abseil-cpp//absl/synchronization",
+        "@abseil-cpp//absl/types:optional",
+        "@abseil-cpp//absl/types:variant",
+    ],
+    visibility = ["//visibility:public"],
+)
+
+# The one libsrtp config.h (the fork's, shared with the Mac build): GCM, OPENSSL, CPU_CISC and the 2.5.0 version strings.
+cc_library(
+    name = "libsrtp_config",
+    hdrs = ["webrtc/third_party/libsrtp_config/config.h"],
+    includes = ["webrtc/third_party/libsrtp_config"],
+)
+
+# cisco/libsrtp v2.5.0 (the file list is the fork's cmake/libsrtp.cmake).
+cc_library(
+    name = "libsrtp",
+    srcs = ["webrtc/third_party/libsrtp/" + path for path in [
+        "crypto/cipher/aes_gcm_ossl.c",
+        "crypto/cipher/aes_icm_ossl.c",
+        "crypto/cipher/cipher.c",
+        "crypto/cipher/cipher_test_cases.c",
+        "crypto/cipher/null_cipher.c",
+        "crypto/hash/auth.c",
+        "crypto/hash/auth_test_cases.c",
+        "crypto/hash/hmac_ossl.c",
+        "crypto/hash/null_auth.c",
+        "crypto/kernel/alloc.c",
+        "crypto/kernel/crypto_kernel.c",
+        "crypto/kernel/err.c",
+        "crypto/kernel/key.c",
+        "crypto/math/datatypes.c",
+        "crypto/replay/rdb.c",
+        "crypto/replay/rdbx.c",
+        "srtp/srtp.c",
+    ]],
+    hdrs = glob([
+        "webrtc/third_party/libsrtp/include/*.h",
+        "webrtc/third_party/libsrtp/crypto/include/*.h",
+        "webrtc/third_party/libsrtp/crypto/cipher/*.h",
+        "webrtc/third_party/libsrtp/crypto/hash/*.h",
+    ]),
+    copts = [
+        "-w",
+        "-DHAVE_CONFIG_H",
+    ] + arch_specific_cflags + optimization_flags,
+    includes = [
+        "webrtc/third_party/libsrtp/include",
+        "webrtc/third_party/libsrtp/crypto/include",
+    ],
+    deps = [
+        ":libsrtp_config",
+        "//third-party/boringssl:crypto",
+        "//third-party/boringssl:ssl",
+    ],
+    visibility = ["//visibility:public"],
+)
+
+# crc32c_config.h is consumer-owned (the library's is a CMake template): the iOS values, unchanged from the vendored copy.
+cc_library(
+    name = "crc32c_config",
+    hdrs = ["config/crc32c/crc32c_config.h"],
+    includes = ["config"],
+)
+
+# google/crc32c 21fc8ef3 (the file list is the fork's cmake/libcrc32c.cmake).
+cc_library(
+    name = "crc32c",
+    srcs = ["webrtc/third_party/crc32c/src/src/" + x for x in [
+        "crc32c_portable.cc",
+        "crc32c.cc",
+        "crc32c_arm64.h",
+        "crc32c_internal.h",
+        "crc32c_prefetch.h",
+        "crc32c_read_le.h",
+        "crc32c_round_up.h",
+        "crc32c_sse42.h",
+        "crc32c_sse42_check.h",
+        "crc32c_arm64_check.h",
+    ]] + select({
+        "@build_bazel_rules_apple//apple:ios_arm64": ["webrtc/third_party/crc32c/src/src/crc32c_arm64.cc"],
+        "//build-system:ios_sim_arm64": ["webrtc/third_party/crc32c/src/src/crc32c_arm64.cc"],
+        "//conditions:default": [],
+    }),
+    hdrs = ["webrtc/third_party/crc32c/src/include/crc32c/crc32c.h"],
+    copts = ["-w"],
+    cxxopts = [
+        "-std=c++17",
+    ],
+    includes = [
+        "webrtc/third_party/crc32c/src/include",
+    ],
+    deps = [
+        ":crc32c_config",
+    ],
+    visibility = ["//visibility:public"],
+)
+
+# Chromium pffft snapshot with patches 01-05 (the fork's third_party/pffft).
+cc_library(
+    name = "pffft",
+    srcs = [
+        "webrtc/third_party/pffft/src/fftpack.c",
+        "webrtc/third_party/pffft/src/pffft.c",
+    ],
+    hdrs = [
+        "webrtc/third_party/pffft/src/fftpack.h",
+        "webrtc/third_party/pffft/src/pffft.h",
+    ],
+    copts = [
+        "-w",
+        "-D_USE_MATH_DEFINES",
+    ],
+    cxxopts = [
+        "-std=c++17",
+    ],
+    includes = [
+        "webrtc/third_party/pffft/src",
+    ],
+    visibility = ["//visibility:public"],
+)
+
+# Chromium rnnoise-vad extract (the fork's third_party/rnnoise); not the xiph rnnoise library in //third-party/rnnoise.
+cc_library(
+    name = "webrtc_rnnoise",
+    srcs = ["webrtc/third_party/rnnoise/src/rnn_vad_weights.cc"],
+    hdrs = [
+        "webrtc/third_party/rnnoise/src/rnn_activations.h",
+        "webrtc/third_party/rnnoise/src/rnn_vad_weights.h",
+    ],
+    copts = ["-w"],
+    cxxopts = [
+        "-std=c++17",
+    ],
+    includes = [
+        "webrtc/third_party/rnnoise/src",
+    ],
+    visibility = ["//visibility:public"],
+)
 
 genrule(
     name = "generate_field_trials_header",
@@ -3114,7 +3280,7 @@ objc_library(
         "-Ithird-party/webrtc/webrtc/sdk/objc",
         "-Ithird-party/webrtc/webrtc/sdk/objc/base",
         "-Ithird-party/libyuv",
-        "-Ithird-party/webrtc/absl",
+        "-Iexternal/abseil-cpp+",
         "-DBSD=1",
         "-DHAVE_PTHREAD",
         "-DWEBRTC_APM_DEBUG_DUMP=0",
@@ -3138,13 +3304,13 @@ objc_library(
         "//third-party/boringssl:ssl",
         "//third-party/opus",
         ":opus_headers",
-        "//third-party/webrtc/libsrtp",
+        ":libsrtp",
         "//third-party/libyuv",
         "//third-party/libvpx:vpx",
         "//submodules/ffmpeg",
         "//third-party/openh264",
         ":field_trials_header",
-        "//third-party/webrtc/absl",
+        ":absl",
     ],
     cxxopts = [
         "-std=c++17",
@@ -3175,12 +3341,12 @@ cc_library(
     copts = [
         "-w",
         "-include", "stdint.h",
-        "-Ithird-party/webrtc/libsrtp/third_party/libsrtp/include",
-        "-Ithird-party/webrtc/libsrtp/third_party/libsrtp/crypto/include",
-        "-Ithird-party/webrtc/libsrtp",
+        "-Ithird-party/webrtc/webrtc/third_party/libsrtp/include",
+        "-Ithird-party/webrtc/webrtc/third_party/libsrtp/crypto/include",
+        "-Ithird-party/webrtc/webrtc/third_party/libsrtp_config",
         "-Ithird-party/webrtc/webrtc/",
         "-Ithird-party/libyuv",
-        "-Ithird-party/webrtc/absl",
+        "-Iexternal/abseil-cpp+",
         "-DBSD=1",
         "-DHAVE_PTHREAD",
         "-DWEBRTC_APM_DEBUG_DUMP=0",
@@ -3211,12 +3377,12 @@ cc_library(
         "//submodules/ffmpeg",
         "//third-party/openh264",
         ":field_trials_header",
-        "//third-party/webrtc/crc32c",
-        "//third-party/webrtc/libsrtp_config",
-        "//third-party/webrtc/rnnoise:webrtc_rnnoise",
-        "//third-party/webrtc/pffft",
-        "//third-party/webrtc/libsrtp",
-        "//third-party/webrtc/absl",
+        ":crc32c",
+        ":libsrtp_config",
+        ":webrtc_rnnoise",
+        ":pffft",
+        ":libsrtp",
+        ":absl",
     ] + select({
         "@platforms//os:linux": [],
         "//conditions:default": [":webrtc_platform_helpers"],
@@ -3256,12 +3422,12 @@ objc_library(
     copts = [
         "-w",
         "-Ithird-party/webrtc/webrtc/",
-        "-Ithird-party/webrtc/absl",
+        "-Iexternal/abseil-cpp+",
         "-DWEBRTC_MAC",
         "-DWEBRTC_IOS",
     ],
     deps = [
-        "//third-party/webrtc/absl",
+        ":absl",
     ],
     visibility = ["//visibility:public"],
 )
@@ -3274,7 +3440,7 @@ cc_test(
         "-w",
         "-include", "stdint.h",
         "-Ithird-party/webrtc/webrtc/",
-        "-Ithird-party/webrtc/absl",
+        "-Iexternal/abseil-cpp+",
     ] + arch_specific_cflags + optimization_flags,
     cxxopts = [
         "-std=c++17",

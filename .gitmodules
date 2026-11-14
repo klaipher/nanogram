@@ -14,7 +14,7 @@
 	path = third-party/webrtc/webrtc
 	url = https://github.com/klaipher/webrtc.git
 	shallow = true
-	branch = nanogram-security-fixes
+	branch = nanogram
 [submodule "third-party/dav1d/dav1d"]
 	path = third-party/dav1d/dav1d
 	url = https://code.videolan.org/videolan/dav1d.git

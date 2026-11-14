@@ -16,7 +16,7 @@ def main(argv):
         print(f"parity: {TARGET} is missing; run `git submodule update --init shared`", file=sys.stderr)
         return 2
     args = list(argv)
-    if args and "--root" not in args and args[0] in ("check", "fast", "roots", "push", "suggest-allow"):
+    if args and "--root" not in args and args[0] in ("check", "fast", "roots", "push"):
         args = [args[0], "--root", ROOT] + args[1:]
     return subprocess.run([sys.executable, TARGET] + args).returncode
 

@@ -281,7 +281,6 @@ objc_library(
     copts = [
         "-I{}/tgcalls/tgcalls".format(package_name()),
         "-Ithird-party/webrtc/webrtc",
-        "-Ithird-party/webrtc/dependencies",
         "-Ithird-party/webrtc/webrtc/sdk/objc",
         "-Ithird-party/webrtc/webrtc/sdk/objc/base",
         "-Ithird-party/webrtc/webrtc/sdk/objc/components/renderer/metal",
@@ -289,7 +288,7 @@ objc_library(
         "-Ithird-party/webrtc/webrtc/sdk/objc/components/video_codec",
         "-Ithird-party/libyuv",
         "-Ithird-party/webrtc/webrtc/sdk/objc/api/video_codec",
-        "-Ithird-party/webrtc/absl",
+        "-Iexternal/abseil-cpp+",  # official abseil module (MODULE.bazel); tgcalls uses #include <absl/...>
         "-DWEBRTC_IOS",
         "-DWEBRTC_MAC",
         "-DWEBRTC_POSIX",
@@ -340,8 +339,7 @@ cc_test(
     copts = [
         "-I{}/tgcalls/tgcalls".format("submodules/TgVoipWebrtc"),
         "-Ithird-party/webrtc/webrtc",
-        "-Ithird-party/webrtc/dependencies",
-        "-Ithird-party/webrtc/absl",
+        "-Iexternal/abseil-cpp+",  # official abseil module (MODULE.bazel); tgcalls uses #include <absl/...>
         "-Ithird-party/libyuv",
         "-DRTC_ENABLE_VP9",
         "-std=c++17",
@@ -363,8 +361,7 @@ cc_test(
     copts = [
         "-I{}/tgcalls/tgcalls".format("submodules/TgVoipWebrtc"),
         "-Ithird-party/webrtc/webrtc",
-        "-Ithird-party/webrtc/dependencies",
-        "-Ithird-party/webrtc/absl",
+        "-Iexternal/abseil-cpp+",  # official abseil module (MODULE.bazel); tgcalls uses #include <absl/...>
         "-Ithird-party/libyuv",
         "-DRTC_ENABLE_VP9",
         "-std=c++17",
@@ -386,8 +383,7 @@ cc_test(
     copts = [
         "-I{}/tgcalls/tgcalls".format("submodules/TgVoipWebrtc"),
         "-Ithird-party/webrtc/webrtc",
-        "-Ithird-party/webrtc/dependencies",
-        "-Ithird-party/webrtc/absl",
+        "-Iexternal/abseil-cpp+",  # official abseil module (MODULE.bazel); tgcalls uses #include <absl/...>
         "-Ithird-party/libyuv",
         "-DRTC_ENABLE_VP9",
         "-DNDEBUG",
@@ -410,8 +406,7 @@ cc_test(
     copts = [
         "-I{}/tgcalls/tgcalls".format("submodules/TgVoipWebrtc"),
         "-Ithird-party/webrtc/webrtc",
-        "-Ithird-party/webrtc/dependencies",
-        "-Ithird-party/webrtc/absl",
+        "-Iexternal/abseil-cpp+",  # official abseil module (MODULE.bazel); tgcalls uses #include <absl/...>
         "-Ithird-party/libyuv",
         "-DRTC_ENABLE_VP9",
         "-std=c++17",
@@ -433,8 +428,7 @@ cc_test(
     copts = [
         "-I{}/tgcalls/tgcalls".format("submodules/TgVoipWebrtc"),
         "-Ithird-party/webrtc/webrtc",
-        "-Ithird-party/webrtc/dependencies",
-        "-Ithird-party/webrtc/absl",
+        "-Iexternal/abseil-cpp+",  # official abseil module (MODULE.bazel); tgcalls uses #include <absl/...>
         "-Ithird-party/libyuv",
         "-DRTC_ENABLE_VP9",
         "-std=c++17",
@@ -612,8 +606,7 @@ cc_library(
     copts = [
         "-I{}/tgcalls/tgcalls".format(package_name()),
         "-Ithird-party/webrtc/webrtc",
-        "-Ithird-party/webrtc/dependencies",
-        "-Ithird-party/webrtc/absl",
+        "-Iexternal/abseil-cpp+",  # official abseil module (MODULE.bazel); tgcalls uses #include <absl/...>
         "-Ithird-party/libyuv",
         "-DRTC_ENABLE_VP9",
         "-DTGVOIP_NAMESPACE=tgvoip_webrtc",

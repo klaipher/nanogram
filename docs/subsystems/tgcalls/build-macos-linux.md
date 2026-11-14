@@ -5,7 +5,7 @@
 This repo has been patched to support native macOS arm64 builds (`darwin_arm64` CPU) in addition to the original iOS targets. Changes made:
 - `third-party/webrtc/BUILD` — added `@platforms//os:linux` to `arch_specific_cflags` select (fixes macOS getting Linux flags via `//conditions:default`); moved `cocoa_threading.mm` from `cc_library` to `webrtc_platform_helpers` `objc_library` (Bazel 8 rejects `.mm` in `cc_library`); replaced UIKit with AppKit for macOS
 - `third-party/openh264/BUILD` — added `//conditions:default` to `select()` statements
-- `third-party/webrtc/absl/absl/base/attributes.h` — disabled `ABSL_ATTRIBUTE_LIFETIME_BOUND` (newer Xcode clang rejects it on void-returning functions)
+- abseil: the official LTS 20260817.0 (the fork's `third_party/abseil-cpp` checkout, Bazel module `abseil-cpp`, see `MODULE.bazel`); the old local `attributes.h` edit that disabled `ABSL_ATTRIBUTE_LIFETIME_BOUND` is gone. If Apple Clang rejects lifetimebound on 20260817.0, use the fork's `nanogram/apply_abseil_workaround.sh` (patched copy, never edit the submodule)
 
 ### Vendored webrtc seams for tgcalls (no behaviour patches)
 
