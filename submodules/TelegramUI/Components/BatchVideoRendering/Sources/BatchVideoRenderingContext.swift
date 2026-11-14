@@ -222,6 +222,7 @@ public final class BatchVideoRenderingContext {
         var fetchDisposable: Disposable?
         var dataDisposable: Disposable?
         var dataPath: String?
+        var isDecodeFailed: Bool = false
         
         init(
             target: Target,
@@ -371,7 +372,7 @@ public final class BatchVideoRenderingContext {
                 target.batchVideoRenderingTargetState = targetState
             }
             
-            if targetState.sampleBuffers.count < 2 {
+            if targetState.sampleBuffers.count < 2 && !(self.parallelDecode && targetContext.isDecodeFailed) {
                 renderIds[id] = 2 - targetState.sampleBuffers.count
             }
         }
@@ -443,18 +444,23 @@ public final class BatchVideoRenderingContext {
             }
             readingQueue.async { [weak self] in
                 var sampleBuffers: [CMSampleBuffer] = []
+                var isFailed = false
                 if let readingContext = readingContext.unsafeGet() {
                     for _ in 0 ..< count {
                         if let sampleBuffer = readingContext.advance() {
                             sampleBuffers.append(sampleBuffer)
                         }
                     }
+                    isFailed = readingContext.isFailed
                 }
                 Queue.mainQueue().async {
                     guard let self else {
                         return
                     }
                     self.decodeInFlight.finish(id)
+                    if isFailed && sampleBuffers.isEmpty {
+                        self.targetContexts[id]?.isDecodeFailed = true
+                    }
                     if let targetContext = self.targetContexts[id], let target = targetContext.target, let targetState = target.batchVideoRenderingTargetState {
                         targetState.addSampleBuffers(sampleBuffers: sampleBuffers)
                     }
