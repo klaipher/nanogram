@@ -16,9 +16,14 @@ libs = [
 # libwebp v1.6.0 (tag commit 4fa21912338357f89e4fd51cf2368325b59e9bd9)
 filegroup(
     name = "libwebp_sources",
-    srcs = glob([
-        "libwebp/**/*"
-    ]),
+    srcs = glob(
+        ["libwebp/**/*"],
+        # dotfiles (libwebp/.git holds a per-worktree gitdir path) and webp_js would change the action digest per worktree
+        exclude = [
+            "libwebp/**/.*",
+            "libwebp/webp_js/**",
+        ],
+    ),
 )
 
 genrule(
