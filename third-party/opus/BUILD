@@ -13,13 +13,28 @@ libs = [
     "opus",
 ]
 
+# libopus v1.6.1 (tag commit 22244de5a79bd1d6d623c32e72bf1954b56235be) from the xiph/opus submodule in opus/,
+# the same commit Android pins.
+filegroup(
+    name = "opus_sources",
+    srcs = glob(
+        ["opus/**/*"],
+        # dotfiles (opus/.git holds a per-worktree gitdir path) would change the action digest per worktree
+        exclude = [
+            "opus/**/.*",
+        ],
+    ),
+)
+
 genrule(
     name = "opus_build",
     srcs = [
         "build-opus-bazel.sh",
-        "opus-1.6.1.tar.gz",
+        ":opus_sources",
+        "@cmake_tar_gz//file",
+        "@ninja-mac_zip//file",
     ],
-    cmd_bash = 
+    cmd_bash =
     """
     set -ex
 
@@ -45,19 +60,39 @@ genrule(
     rm -rf "$$BUILD_DIR"
     mkdir -p "$$BUILD_DIR"
 
+    if [ "$${BUILD_ARCH}" = "linux_x86_64" ] || [ "$${BUILD_ARCH}" = "linux_arm64" ]; then
+        EXTRA_PATH=""
+    else
+        CMAKE_DIR="$$(pwd)/$$BUILD_DIR/cmake"
+        mkdir -p "$$CMAKE_DIR"
+        tar -xzf "$(location @cmake_tar_gz//file)" -C "$$CMAKE_DIR"
+
+        NINJA_DIR="$$(pwd)/$$BUILD_DIR/ninja"
+        mkdir -p "$$NINJA_DIR"
+        unzip "$(location @ninja-mac_zip//file)" -d "$$NINJA_DIR"
+        EXTRA_PATH="$$CMAKE_DIR/cmake-4.1.2-macos-universal/CMake.app/Contents/bin:$$NINJA_DIR"
+    fi
+
     cp $(location :build-opus-bazel.sh) "$$BUILD_DIR/"
-    cp $(location :opus-1.6.1.tar.gz) "$$BUILD_DIR/"
+
+    SOURCE_PATH="third-party/opus/opus"
+
+    cp -R "$$SOURCE_PATH" "$$BUILD_DIR/"
 
     mkdir -p "$$BUILD_DIR/Public/opus"
 
-    sh $$BUILD_DIR/build-opus-bazel.sh $$BUILD_ARCH "$$BUILD_DIR" opus-1.6.1.tar.gz
+    if [ -n "$$EXTRA_PATH" ]; then
+        PATH="$$EXTRA_PATH:$$PATH" sh $$BUILD_DIR/build-opus-bazel.sh $$BUILD_ARCH "$$BUILD_DIR/opus" "$$BUILD_DIR"
+    else
+        sh $$BUILD_DIR/build-opus-bazel.sh $$BUILD_ARCH "$$BUILD_DIR/opus" "$$BUILD_DIR"
+    fi
     """ +
     "\n".join([
-        "cp -f \"$$BUILD_DIR/built/include/opus/{}\" \"$(location Public/opus/{})\"".format(header, header) for header in headers
+        "cp -f \"$$BUILD_DIR/opus/include/{}\" \"$(location Public/opus/{})\"".format(header, header) for header in headers
     ]) +
     "\n" +
     "\n".join([
-        "cp -f \"$$BUILD_DIR/built/lib/lib{}.a\" \"$(location Public/opus/lib/lib{}.a)\"".format(lib, lib) for lib in libs
+        "cp -f \"$$BUILD_DIR/build/lib{}.a\" \"$(location Public/opus/lib/lib{}.a)\"".format(lib, lib) for lib in libs
     ]),
     outs = ["Public/opus/" + x for x in headers] +
     ["Public/opus/lib/lib{}.a".format(x) for x in libs],

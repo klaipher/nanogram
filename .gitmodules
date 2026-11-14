@@ -111,3 +111,7 @@
 	url = https://github.com/klaipher/boringssl.git
 	branch = nanogram
 	shallow = true
+[submodule "third-party/opus/opus"]
+	path = third-party/opus/opus
+	url = https://github.com/xiph/opus.git
+	shallow = true

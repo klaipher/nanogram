@@ -32,6 +32,7 @@ genrule(
         "build-webp-bazel.sh",
         ":libwebp_sources",
         "@cmake_tar_gz//file",
+        "@ninja-mac_zip//file",
     ],
     cmd_bash = 
     """
@@ -58,6 +59,10 @@ genrule(
     mkdir -p "$$CMAKE_DIR"
     tar -xzf "$(location @cmake_tar_gz//file)" -C "$$CMAKE_DIR"
 
+    NINJA_DIR="$$(pwd)/$$BUILD_DIR/ninja"
+    mkdir -p "$$NINJA_DIR"
+    unzip "$(location @ninja-mac_zip//file)" -d "$$NINJA_DIR"
+
     cp $(location :build-webp-bazel.sh) "$$BUILD_DIR/"
 
     SOURCE_PATH="third-party/webp/libwebp"
@@ -66,7 +71,7 @@ genrule(
 
     mkdir -p "$$BUILD_DIR/Public/libwebp"
 
-    PATH="$$CMAKE_DIR/cmake-4.1.2-macos-universal/CMake.app/Contents/bin:$$PATH" sh $$BUILD_DIR/build-webp-bazel.sh $$BUILD_ARCH "$$BUILD_DIR/libwebp" "$$BUILD_DIR"
+    PATH="$$CMAKE_DIR/cmake-4.1.2-macos-universal/CMake.app/Contents/bin:$$NINJA_DIR:$$PATH" sh $$BUILD_DIR/build-webp-bazel.sh $$BUILD_ARCH "$$BUILD_DIR/libwebp" "$$BUILD_DIR"
     """ +
     "\n".join([
         "cp -f \"$$BUILD_DIR/libwebp/src/webp/{}\" \"$(location Public/webp/{})\"".format(header, header) for header in headers
