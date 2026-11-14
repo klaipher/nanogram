@@ -23,7 +23,11 @@ public enum GlanceStore {
             return false
         }
         do {
-            try data.write(to: URL(fileURLWithPath: path(rootPath: rootPath)), options: [.atomic])
+            var options: Data.WritingOptions = [.atomic]
+            #if os(iOS)
+            options.insert(.completeFileProtectionUntilFirstUserAuthentication)
+            #endif
+            try data.write(to: URL(fileURLWithPath: path(rootPath: rootPath)), options: options)
             return true
         } catch {
             return false
