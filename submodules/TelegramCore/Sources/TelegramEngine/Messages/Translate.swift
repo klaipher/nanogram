@@ -217,10 +217,10 @@ func _internal_translateTexts(network: Network, texts: [(String, [MessageTextEnt
     }
 }
 
-func _internal_translateMessages(account: Account, messageIds: [EngineMessage.Id], fromLang: String?, toLang: String, enableLocalIfPossible: Bool, tone: TranslationTone = .neutral) -> Signal<Never, TranslationError> {
+func _internal_translateMessages(account: Account, messageIds: [EngineMessage.Id], fromLang: String?, toLang: String, enableLocalIfPossible: Bool, localOnly: Bool = false, tone: TranslationTone = .neutral) -> Signal<Never, TranslationError> {
     var signals: [Signal<Void, TranslationError>] = []
     for (peerId, messageIds) in messagesIdsGroupedByPeerId(messageIds) {
-        signals.append(_internal_translateMessagesByPeerId(account: account, peerId: peerId, messageIds: messageIds, fromLang: fromLang, toLang: toLang, enableLocalIfPossible: enableLocalIfPossible, tone: tone))
+        signals.append(_internal_translateMessagesByPeerId(account: account, peerId: peerId, messageIds: messageIds, fromLang: fromLang, toLang: toLang, enableLocalIfPossible: enableLocalIfPossible, localOnly: localOnly, tone: tone))
     }
     return combineLatest(signals)
     |> ignoreValues
@@ -230,11 +230,15 @@ public protocol ExperimentalInternalTranslationService: AnyObject {
     func translate(texts: [AnyHashable: String], fromLang: String, toLang: String) -> Signal<[AnyHashable: String]?, NoError>
 }
 
-/// With the on-device switch on, poll and voice-transcription texts go through the same Translation framework service as
-/// messages, so no text leaves the phone; a missing result (no language pair, a model not downloaded, the user
-/// dismissing the system download prompt) falls back to the server.
-private func translateTextsLocallyOrOnServer(network: Network, texts: [(String, [MessageTextEntity])], fromLang: String?, toLang: String, enableLocalIfPossible: Bool) -> Signal<[(String, [MessageTextEntity])], TranslationError> {
-    let server = _internal_translateTexts(network: network, texts: texts, toLang: toLang)
+/// With the user's on-device switch on (`localOnly`), nothing is sent to Telegram: a missing result (no language pair, a
+/// model not downloaded, the user dismissing the system download prompt) fails the translation instead of falling back
+/// to the server. Without it (the server asked for the system translator) the server stays the fallback, as upstream.
+func translationFallsBackToServer(localOnly: Bool) -> Bool {
+    return !localOnly
+}
+
+private func translateTextsLocallyOrOnServer(network: Network, texts: [(String, [MessageTextEntity])], fromLang: String?, toLang: String, enableLocalIfPossible: Bool, localOnly: Bool) -> Signal<[(String, [MessageTextEntity])], TranslationError> {
+    let server: Signal<[(String, [MessageTextEntity])], TranslationError> = translationFallsBackToServer(localOnly: localOnly) ? _internal_translateTexts(network: network, texts: texts, toLang: toLang) : .fail(.generic)
     guard enableLocalIfPossible, let service = engineExperimentalInternalTranslationService, let fromLang, fromLang != toLang else {
         return server
     }
@@ -311,7 +315,7 @@ func _internal_translateRichMessages(account: Account, inputPeer: Api.InputPeer,
     }
 }
 
-private func _internal_translateMessagesByPeerId(account: Account, peerId: EnginePeer.Id, messageIds: [EngineMessage.Id], fromLang: String?, toLang: String, enableLocalIfPossible: Bool, tone: TranslationTone = .neutral) -> Signal<Void, TranslationError> {
+private func _internal_translateMessagesByPeerId(account: Account, peerId: EnginePeer.Id, messageIds: [EngineMessage.Id], fromLang: String?, toLang: String, enableLocalIfPossible: Bool, localOnly: Bool, tone: TranslationTone = .neutral) -> Signal<Void, TranslationError> {
     return account.postbox.transaction { transaction -> (Api.InputPeer?, [Message]) in
         return (transaction.getPeer(peerId).flatMap(apiInputPeer), messageIds.compactMap({ transaction.getMessage($0) }))
     }
@@ -337,7 +341,7 @@ private func _internal_translateMessagesByPeerId(account: Account, peerId: Engin
             if let solution = poll.results.solution {
                 texts.append((solution.text, solution.entities))
             }
-            return translateTextsLocallyOrOnServer(network: account.network, texts: texts, fromLang: fromLang, toLang: toLang, enableLocalIfPossible: enableLocalIfPossible)
+            return translateTextsLocallyOrOnServer(network: account.network, texts: texts, fromLang: fromLang, toLang: toLang, enableLocalIfPossible: enableLocalIfPossible, localOnly: localOnly)
         }
         
         let audioTranscriptions = messages.compactMap { message in
@@ -348,7 +352,7 @@ private func _internal_translateMessagesByPeerId(account: Account, peerId: Engin
             }
         }
         let audioTranscriptionsSignals = audioTranscriptions.map { (text, id) in
-            return translateTextsLocallyOrOnServer(network: account.network, texts: [(text, [])], fromLang: fromLang, toLang: toLang, enableLocalIfPossible: enableLocalIfPossible)
+            return translateTextsLocallyOrOnServer(network: account.network, texts: [(text, [])], fromLang: fromLang, toLang: toLang, enableLocalIfPossible: enableLocalIfPossible, localOnly: localOnly)
             |> map { results -> (String, [MessageTextEntity])? in
                 return results.first
             }
@@ -366,7 +370,7 @@ private func _internal_translateMessagesByPeerId(account: Account, peerId: Engin
         let plainMessageIds = messageIds.filter { !richMessageIds.contains($0) }
 
         let richSignal: Signal<Void, TranslationError>
-        if richMessageIds.isEmpty {
+        if richMessageIds.isEmpty || localOnly {
             richSignal = .single(Void())
         } else {
             richSignal = _internal_translateRichMessages(account: account, inputPeer: inputPeer, messageIds: richMessageIds, toLang: toLang, tone: tone)
@@ -396,6 +400,8 @@ private func _internal_translateMessagesByPeerId(account: Account, peerId: Engin
         let msgs: Signal<Api.messages.TranslatedText?, TranslationError>
         if id.isEmpty {
             msgs = .single(nil)
+        } else if localOnly && (engineExperimentalInternalTranslationService == nil || fromLang == nil) {
+            msgs = .fail(.generic)
         } else {
             if enableLocalIfPossible, let engineExperimentalInternalTranslationService, let fromLang {
                 msgs = account.postbox.transaction { transaction -> [MessageId: String] in
@@ -417,7 +423,7 @@ private func _internal_translateMessagesByPeerId(account: Account, peerId: Engin
                     |> castError(TranslationError.self)
                     |> mapToSignal { resultTexts -> Signal<Api.messages.TranslatedText?, TranslationError> in
                         guard let resultTexts else {
-                            return serverTranslation
+                            return translationFallsBackToServer(localOnly: localOnly) ? serverTranslation : .fail(.generic)
                         }
                         var result: [Api.TextWithEntities] = []
                         for messageId in plainMessageIds {

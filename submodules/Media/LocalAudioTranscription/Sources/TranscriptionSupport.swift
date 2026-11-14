@@ -11,12 +11,6 @@ func isSpeechAnalyzerEnabled(defaults: UserDefaults = .standard) -> Bool {
     return defaults.bool(forKey: speechAnalyzerDefaultsKey)
 }
 
-/// A voice message is transcribed on the device whenever the switch is on; the server (a Premium feature with a free
-/// trial) only takes over when the device produced no text and the account may use it.
-public func shouldRetryTranscriptionOnServer(deviceProducedText: Bool, serverAllowed: Bool) -> Bool {
-    return !deviceProducedText && serverAllowed
-}
-
 /// What the locale's model needs before the analyzer can run.
 enum SpeechModelAction: Equatable {
     case none

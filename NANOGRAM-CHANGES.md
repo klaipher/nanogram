@@ -404,3 +404,10 @@ Patches to upstream bugs and one fix of our own code, found by the server-switch
 - `UrlHandling.swift` (upstream bug): `starref_start_param_prefixes` was read `as? String`, but the server sends an array. Now parsed by `StarRefStartParamPrefixes` (array, or a string for compatibility, default `_tgr_`).
 - `ChatMessagePollBubbleContentNode.swift` (upstream inconsistency): fallback of `poll_answers_max` 20 -> 10, same as the poll composer.
 - Our `CallRingTimeout` (4ff25ba7) read `call_ring_timeout_ms` from the app config; it is a `help.getConfig` field, now stored from `managedConfigurationUpdates`.
+
+## Review fixes: on-device switches and secret-chat delete (iOS and Mac, shared core, 2026-11-14)
+
+- Secret-chat termination: `queueSecretChatTermination` looks for a queued `.terminate` in the SecretOutgoing log first. If there is one, a second request only folds `reportSpam` into it, so Block + Delete (`terminateSecretChat` then `removePeerChat`) keeps the chat established until the flush `clearHistory` has been sent. Incoming secret messages are dropped while a terminate is queued (`secretChatTerminationQueued` in both incoming stages).
+- Translation: `translateMessages(..., localOnly:)` is set from the user's switch only (not from the server's system-translator hint). With it, messages, polls and voice transcriptions fail instead of reaching the server; rich messages are left untranslated.
+- Transcription: no server retry while the on-device switch is on.
+- Check in the build: translate a chat with polls and voice transcriptions while the download sheet is open (several Translation tasks start together; look for "Translation error" in the logs and for translateText requests, which must not appear with the switch on). If the batches cancel each other, queue the tasks per language pair.

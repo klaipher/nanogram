@@ -79,6 +79,9 @@ func processSecretChatIncomingEncryptedOperations(transaction: Transaction, peer
                                 
                                 let entryTagLocalIndex: StorePeerOperationLogEntryTagLocalIndex
                                 
+                                if secretChatTerminationQueued(transaction: transaction, peerId: peerId) {
+                                    throw MessagePreParsingError.invalidChatState
+                                }
                                 switch updatedState.embeddedState {
                                     case .terminated:
                                         throw MessagePreParsingError.invalidChatState

@@ -168,7 +168,7 @@ private enum NanogramFeaturesEntry: ItemListNodeEntry {
         case .onDeviceHeader:
             return ItemListSectionHeaderItem(presentationData: presentationData, text: "ON-DEVICE", sectionId: self.section)
         case let .onDeviceTranscription(value):
-            return ItemListSwitchItem(presentationData: presentationData, systemStyle: .glass, title: "On-Device Voice Transcription", text: "Voice messages are turned into text on this phone. Private: it runs on this phone. The first use downloads a language model. When off, Telegram's own transcription is used.", value: value, maximumNumberOfLines: 0, sectionId: self.section, style: .blocks, updated: { value in
+            return ItemListSwitchItem(presentationData: presentationData, systemStyle: .glass, title: "On-Device Voice Transcription", text: "Voice messages are turned into text on this phone, and the audio is never sent to Telegram for it. The first use downloads a language model of about 50-100 MB for your language; until it is there, or if your language is not supported, no text appears. When off, Telegram's own transcription is used.", value: value, maximumNumberOfLines: 0, sectionId: self.section, style: .blocks, updated: { value in
                 arguments.updateExperimental { settings in
                     var settings = settings
                     settings.localTranscription = value
@@ -176,7 +176,7 @@ private enum NanogramFeaturesEntry: ItemListNodeEntry {
                 }
             })
         case let .onDeviceTranslation(value):
-            return ItemListSwitchItem(presentationData: presentationData, systemStyle: .glass, title: "On-Device Translation", text: "Messages are translated on this phone with Apple's Translation. Private: it runs on this phone. The first use of a language pair asks to download its language model. When off, Telegram's own translation is used.", value: value, maximumNumberOfLines: 0, sectionId: self.section, style: .blocks, updated: { value in
+            return ItemListSwitchItem(presentationData: presentationData, systemStyle: .glass, title: "On-Device Translation", text: "Messages, polls and voice transcriptions in a translated chat are translated on this phone with Apple's Translation, and their text is not sent to Telegram for it. The first use of a language pair asks to download a language model of about 50-100 MB. If you cancel the download, the text stays untranslated. When off, Telegram's own translation is used.", value: value, maximumNumberOfLines: 0, sectionId: self.section, style: .blocks, updated: { value in
                 arguments.updateFeatures { settings in
                     var settings = settings
                     settings.onDeviceTranslation = value
@@ -184,7 +184,7 @@ private enum NanogramFeaturesEntry: ItemListNodeEntry {
                 }
             })
         case .onDeviceFooter:
-            return ItemListTextItem(presentationData: presentationData, text: .plain("Both are off by default. If the phone cannot do it (no model yet, a language it does not support, the download was cancelled), the usual Telegram behaviour takes over."), sectionId: self.section)
+            return ItemListTextItem(presentationData: presentationData, text: .plain("Both are off by default. With a switch on, nothing falls back to Telegram's servers for that job. Rich-text messages are not translated while the translation switch is on, and the Translate action in the message menu can still use Telegram."), sectionId: self.section)
         case .callsHeader:
             return ItemListSectionHeaderItem(presentationData: presentationData, text: "CALLS", sectionId: self.section)
         case let .callsSystemNoiseSuppression(value):

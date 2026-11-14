@@ -502,7 +502,6 @@ public final class ChatMessageInteractiveFileNode: ASDisplayNode {
                         return transcribeAudio(path: result, appLocale: appLocale)
                     }
                     
-                    var retriedOnServer = false
                     self.transcribeDisposable = (signal
                     |> deliverOnMainQueue).startStrict(next: { [weak self] result in
                         guard let strongSelf = self, let arguments = strongSelf.arguments else {
@@ -512,17 +511,11 @@ public final class ChatMessageInteractiveFileNode: ASDisplayNode {
                         if let result = result {
                             let _ = arguments.context.engine.messages.storeLocallyTranscribedAudio(messageId: arguments.message.id, text: result.text, isFinal: result.isFinal, error: nil).startStandalone()
                         } else {
-                            let serverAllowed = arguments.associatedData.isPremium || arguments.associatedData.alwaysDisplayTranscribeButton.providedByGroupBoost
-                            if shouldRetryTranscriptionOnServer(deviceProducedText: false, serverAllowed: serverAllowed) {
-                                retriedOnServer = true
-                                transcribeOnServer()
-                            } else {
-                                strongSelf.audioTranscriptionState = .collapsed
-                                strongSelf.requestUpdateLayout(true)
-                            }
+                            strongSelf.audioTranscriptionState = .collapsed
+                            strongSelf.requestUpdateLayout(true)
                         }
                     }, completed: { [weak self] in
-                        guard let strongSelf = self, !retriedOnServer else {
+                        guard let strongSelf = self else {
                             return
                         }
                         strongSelf.transcribeDisposable?.dispose()

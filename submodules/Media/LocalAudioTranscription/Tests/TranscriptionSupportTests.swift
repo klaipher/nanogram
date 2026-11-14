@@ -61,12 +61,6 @@ final class TranscriptionSupportTests: XCTestCase {
         XCTAssertEqual(result, .some("legacy"))
     }
 
-    func testTheServerOnlyTakesOverWhenTheDeviceHasNoTextAndTheAccountMayUseIt() {
-        XCTAssertTrue(shouldRetryTranscriptionOnServer(deviceProducedText: false, serverAllowed: true))
-        XCTAssertFalse(shouldRetryTranscriptionOnServer(deviceProducedText: false, serverAllowed: false))
-        XCTAssertFalse(shouldRetryTranscriptionOnServer(deviceProducedText: true, serverAllowed: true))
-    }
-
     func testAMissingModelIsInstalledAndAnUnsupportedLocaleIsNot() {
         XCTAssertEqual(speechModelAction(for: .installed), .none)
         XCTAssertEqual(speechModelAction(for: .supported), .install)

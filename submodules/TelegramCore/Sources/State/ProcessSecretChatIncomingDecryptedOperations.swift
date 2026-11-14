@@ -189,6 +189,9 @@ func processSecretChatIncomingDecryptedOperations(encryptionProvider: Encryption
                                 }
                         }
                         
+                        if secretChatTerminationQueued(transaction: transaction, peerId: peerId) {
+                            throw MessageParsingError.invalidChatState
+                        }
                         switch updatedState.embeddedState {
                             case .terminated:
                                 throw MessageParsingError.invalidChatState

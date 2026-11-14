@@ -13,13 +13,18 @@ func _internal_removePeerChat(account: Account, peerId: PeerId, reportChatSpam: 
 /// Delete for everyone on a secret chat: the peer only clears its copy when it receives a clear-history service message,
 /// and a service message is not sent once the chat is terminated (Mercurygram 01230d2c1). So the flush goes out first and
 /// the chat turns terminated only after discardEncryption was requested. Without the flush, or when the chat cannot
-/// send, it terminates right away as before.
+/// send, it terminates right away as before. A second request while a terminate is queued only folds into it: a second
+/// terminateNow would mark the chat terminated before the flush is sent.
 enum SecretChatTerminationPlan: Equatable {
     case terminateNow
     case flushHistoryThenTerminate(layer: SecretChatLayer)
+    case foldIntoQueuedTermination
 }
 
-func secretChatTerminationPlan(embeddedState: SecretChatEmbeddedState, requestRemoteHistoryRemoval: Bool) -> SecretChatTerminationPlan {
+func secretChatTerminationPlan(embeddedState: SecretChatEmbeddedState, requestRemoteHistoryRemoval: Bool, terminationQueued: Bool = false) -> SecretChatTerminationPlan {
+    if terminationQueued {
+        return .foldIntoQueuedTermination
+    }
     guard requestRemoteHistoryRemoval else {
         return .terminateNow
     }
@@ -33,11 +38,40 @@ func secretChatTerminationPlan(embeddedState: SecretChatEmbeddedState, requestRe
     }
 }
 
+private func queuedSecretChatTermination(transaction: Transaction, peerId: PeerId) -> (tagLocalIndex: Int32, operation: SecretChatOutgoingOperation)? {
+    var result: (tagLocalIndex: Int32, operation: SecretChatOutgoingOperation)?
+    transaction.operationLogEnumerateEntries(peerId: peerId, tag: OperationLogTags.SecretOutgoing, { entry in
+        if let operation = entry.contents as? SecretChatOutgoingOperation, case .terminate = operation.contents {
+            result = (entry.tagLocalIndex, operation)
+            return false
+        }
+        return true
+    })
+    return result
+}
+
+// Incoming messages of a chat the user already deleted are dropped like on a terminated chat.
+func secretChatTerminationQueued(transaction: Transaction, peerId: PeerId) -> Bool {
+    return queuedSecretChatTermination(transaction: transaction, peerId: peerId) != nil
+}
+
 private func queueSecretChatTermination(transaction: Transaction, peerId: PeerId, state: SecretChatState, reportSpam: Bool, requestRemoteHistoryRemoval: Bool) {
     var updatedState = state
-    let plan = secretChatTerminationPlan(embeddedState: state.embeddedState, requestRemoteHistoryRemoval: requestRemoteHistoryRemoval)
-    if case let .flushHistoryThenTerminate(layer) = plan {
-        updatedState = addSecretChatOutgoingOperation(transaction: transaction, peerId: peerId, operation: SecretChatOutgoingOperationContents.clearHistory(layer: layer, actionGloballyUniqueId: Int64.random(in: Int64.min ... Int64.max)), state: updatedState)
+    let queued = queuedSecretChatTermination(transaction: transaction, peerId: peerId)
+    let plan = secretChatTerminationPlan(embeddedState: state.embeddedState, requestRemoteHistoryRemoval: requestRemoteHistoryRemoval, terminationQueued: queued != nil)
+    switch plan {
+        case .foldIntoQueuedTermination:
+            if let queued, case let .terminate(queuedReportSpam, queuedRemoval) = queued.operation.contents, reportSpam, !queuedReportSpam {
+                let folded = SecretChatOutgoingOperation(contents: .terminate(reportSpam: true, requestRemoteHistoryRemoval: queuedRemoval), mutable: queued.operation.mutable, delivered: queued.operation.delivered)
+                transaction.operationLogUpdateEntry(peerId: peerId, tag: OperationLogTags.SecretOutgoing, tagLocalIndex: queued.tagLocalIndex, { _ in
+                    return PeerOperationLogEntryUpdate(mergedIndex: .none, contents: .update(folded))
+                })
+            }
+            return
+        case let .flushHistoryThenTerminate(layer):
+            updatedState = addSecretChatOutgoingOperation(transaction: transaction, peerId: peerId, operation: SecretChatOutgoingOperationContents.clearHistory(layer: layer, actionGloballyUniqueId: Int64.random(in: Int64.min ... Int64.max)), state: updatedState)
+        case .terminateNow:
+            break
     }
     updatedState = addSecretChatOutgoingOperation(transaction: transaction, peerId: peerId, operation: SecretChatOutgoingOperationContents.terminate(reportSpam: reportSpam, requestRemoteHistoryRemoval: requestRemoteHistoryRemoval), state: updatedState)
     if plan == .terminateNow {
