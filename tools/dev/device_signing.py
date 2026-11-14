@@ -265,13 +265,14 @@ def physical_devices(devicectl_output):
             continue
         udid = next((part for part in parts if len(part) == 25 and part[8] == '-'), None)
         if udid:
-            devices.append((udid, 'connected' in parts, 'iPhone' in line))
+            reachable = 'connected' in parts or 'available' in parts
+            devices.append((udid, reachable, 'iPhone' in line))
     return devices
 
 
 def first_physical_device(devicectl_output=None):
-    """A connected iPhone first, then any connected device, then any physical one (an unavailable iPad listed first
-    would otherwise be picked and xcodebuild fails to find its destination)."""
+    """A reachable (connected, or available over Wi-Fi) iPhone first, then any reachable device, then any physical one (an
+    unavailable iPad listed first would otherwise be picked and xcodebuild fails to find its destination)."""
     if devicectl_output is None:
         devicectl_output = subprocess.run(['xcrun', 'devicectl', 'list', 'devices'], capture_output=True, text=True).stdout
     devices = physical_devices(devicectl_output)

@@ -268,6 +268,10 @@ iPhone 17                                 2803824B-7F63-4010-97A0-CA0241828E1A (
         only_sim = "\n".join(l for l in self.LISTING.splitlines() if 'simulated' in l or 'Name' in l)
         self.assertIsNone(device_signing.first_physical_device(only_sim))
 
+    def test_an_iphone_available_over_wifi_wins_over_an_unavailable_ipad(self):
+        listing = self.LISTING.replace('connected     iPhone 17 Pro Max', 'available (paired)     iPhone 17 Pro Max')
+        self.assertEqual(device_signing.first_physical_device(listing), '00008150-001A2D1C34C1401C')
+
     def test_an_unavailable_device_is_the_last_resort(self):
         ipad_only = "\n".join(l for l in self.LISTING.splitlines() if 'iPad' in l)
         self.assertEqual(device_signing.first_physical_device(ipad_only), '00008132-000E21622E39001C')
