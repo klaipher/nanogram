@@ -12,13 +12,15 @@ final class TranscriptionSupportTests: XCTestCase {
         XCTAssertEqual(averageTranscriptionConfidence([0.5, 1.0, 0.75]), 0.75, accuracy: 0.0001)
     }
 
-    func testSpeechAnalyzerIsOffByDefault() {
+    func testSpeechAnalyzerIsOnByDefaultAndCanBeSwitchedOff() {
         let suiteName = "LocalAudioTranscriptionTests-\(UUID().uuidString)"
         guard let defaults = UserDefaults(suiteName: suiteName) else {
             XCTFail("no defaults suite")
             return
         }
         defer { defaults.removePersistentDomain(forName: suiteName) }
+        XCTAssertTrue(isSpeechAnalyzerEnabled(defaults: defaults))
+        defaults.set(false, forKey: speechAnalyzerDefaultsKey)
         XCTAssertFalse(isSpeechAnalyzerEnabled(defaults: defaults))
         defaults.set(true, forKey: speechAnalyzerDefaultsKey)
         XCTAssertTrue(isSpeechAnalyzerEnabled(defaults: defaults))
@@ -57,5 +59,18 @@ final class TranscriptionSupportTests: XCTestCase {
     func testMissingAnalyzerResultFallsBackToTheLegacyRecognizer() {
         let result = firstValue(transcriptionWithFallback(primary: .single(nil), fallback: { .single("legacy") }))
         XCTAssertEqual(result, .some("legacy"))
+    }
+
+    func testTheServerOnlyTakesOverWhenTheDeviceHasNoTextAndTheAccountMayUseIt() {
+        XCTAssertTrue(shouldRetryTranscriptionOnServer(deviceProducedText: false, serverAllowed: true))
+        XCTAssertFalse(shouldRetryTranscriptionOnServer(deviceProducedText: false, serverAllowed: false))
+        XCTAssertFalse(shouldRetryTranscriptionOnServer(deviceProducedText: true, serverAllowed: true))
+    }
+
+    func testAMissingModelIsInstalledAndAnUnsupportedLocaleIsNot() {
+        XCTAssertEqual(speechModelAction(for: .installed), .none)
+        XCTAssertEqual(speechModelAction(for: .supported), .install)
+        XCTAssertEqual(speechModelAction(for: .downloading), .install)
+        XCTAssertEqual(speechModelAction(for: .unsupported), .unavailable)
     }
 }

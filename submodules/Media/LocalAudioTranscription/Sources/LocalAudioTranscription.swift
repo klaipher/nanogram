@@ -113,6 +113,23 @@ private func legacyTranscribeAudio(path: String, locale: String) -> Signal<Trans
     |> runOn(.mainQueue())
 }
 
+private let preparedLocales = Atomic<Set<String>>(value: [])
+
+/// Call when a voice message is shown and on-device transcription is on: downloads the speech model of the current
+/// locale once per launch so the first transcription is immediate.
+public func prepareOnDeviceTranscription() {
+    let locale = Locale.current.identifier
+    var isFirst = false
+    let _ = preparedLocales.modify { locales in
+        var locales = locales
+        isFirst = locales.insert(locale).inserted
+        return locales
+    }
+    if isFirst {
+        prepareSpeechAnalyzerModel(localeIdentifier: locale)
+    }
+}
+
 public struct LocallyTranscribedAudio {
     public var text: String
     public var isFinal: Bool

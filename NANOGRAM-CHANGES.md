@@ -292,11 +292,13 @@ marked (check) were not re-verified against the code; correct them on the next c
 - Upstream: no.
 - Sync: expect conflicts in `AnimatedStickerNode.swift` (queue, status, background gate) and `BatchVideoRenderingContext.swift`.
 
-### Voice transcription: SpeechAnalyzer (experiment)
-- What: on-device voice-message transcription reads the file in place (no tmp copy); an iOS 26 `SpeechTranscriber`/`SpeechAnalyzer` path exists behind the default `NanogramSpeechAnalyzer` (off), with SFSpeechRecognizer as fallback.
-- Why: tmp leak per transcription; Apple's newer model is more accurate and runs out of process.
-- Where: `submodules/Media/LocalAudioTranscription`.
-- Upstream: no (upstream keeps the copy and SFSpeechRecognizer).
+### Voice transcription: on-device by default (SpeechAnalyzer)
+- What: tapping the transcribe button on a voice message transcribes it on the device with `SpeechTranscriber`/`SpeechAnalyzer` (iOS 26), for every account: no Premium, no trial or cooldown, no server. The file is read in place (no tmp copy). The locale's model is downloaded ahead (`prepareOnDeviceTranscription`, once per launch, when a voice message with the button is laid out; Apple's `AssetInventory`) and, if still missing at the tap, the tap waits for it once. SFSpeechRecognizer (on-device only) is the fallback for a locale the analyzer does not support. Telegram's server transcription is used only when the device produced no text and the account is Premium or the group is boosted (`shouldRetryTranscriptionOnServer`). Secret chats, view-once and previews have no button, as before.
+- Switches: Debug Settings "Voice messages: on-device transcription" (default on; stored under the new key `localTranscriptionOnDevice`, so the old default-off value saved by testers is dropped on purpose); `-NanogramSpeechAnalyzer NO` forces the SFSpeechRecognizer engine.
+- Privacy: audio and text never leave the device on this path; no new entitlement (the speech-recognition usage description exists). Apple docs: Speech framework (`AssetInventory`, `AssetInstallationRequest.downloadAndInstall`, iOS 26).
+- Why: more accurate model, runs out of process, removes the Premium dependency.
+- Where: `submodules/Media/LocalAudioTranscription`, `ChatMessageInteractiveFileNode.transcribe`, `ExperimentalUISettings.localTranscription`.
+- Upstream: no (upstream keeps the copy, SFSpeechRecognizer and server-only transcription for Premium).
 - Sync: take upstream's file, re-apply the in-place path and the confidence guard.
 
 ### Live location: stationary-aware updates (experiment)

@@ -3,9 +3,43 @@ import SwiftSignalKit
 
 let speechAnalyzerDefaultsKey = "NanogramSpeechAnalyzer"
 
-/// SpeechAnalyzer (iOS 26) is an experiment: off unless the key is set (launch argument `-NanogramSpeechAnalyzer YES`).
+/// SpeechAnalyzer (iOS 26) is the default engine; `-NanogramSpeechAnalyzer NO` (or the default set to false) turns it off.
 func isSpeechAnalyzerEnabled(defaults: UserDefaults = .standard) -> Bool {
+    if defaults.object(forKey: speechAnalyzerDefaultsKey) == nil {
+        return true
+    }
     return defaults.bool(forKey: speechAnalyzerDefaultsKey)
+}
+
+/// A voice message is transcribed on the device whenever the switch is on; the server (a Premium feature with a free
+/// trial) only takes over when the device produced no text and the account may use it.
+public func shouldRetryTranscriptionOnServer(deviceProducedText: Bool, serverAllowed: Bool) -> Bool {
+    return !deviceProducedText && serverAllowed
+}
+
+/// What the locale's model needs before the analyzer can run.
+enum SpeechModelAction: Equatable {
+    case none
+    case install
+    case unavailable
+}
+
+enum SpeechModelStatus: Equatable {
+    case installed
+    case downloading
+    case supported
+    case unsupported
+}
+
+func speechModelAction(for status: SpeechModelStatus) -> SpeechModelAction {
+    switch status {
+    case .installed:
+        return .none
+    case .downloading, .supported:
+        return .install
+    case .unsupported:
+        return .unavailable
+    }
 }
 
 /// An empty transcription has no segments; dividing by their count gave NaN, which breaks the confidence sort.

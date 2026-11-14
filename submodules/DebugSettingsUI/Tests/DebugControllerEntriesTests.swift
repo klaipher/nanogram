@@ -163,7 +163,7 @@ final class ExperimentalUISettingsCompatibilityTests: XCTestCase {
             try container.encode(1 as Int32, forKey: "chatListPhotos")
             try container.encode(1 as Int32, forKey: "knockoutWallpaper")
             try container.encode(1 as Int32, forKey: "enableVoipTcp")
-            try container.encode(1 as Int32, forKey: "localTranscription")
+            try container.encode(0 as Int32, forKey: "localTranscription")
             try container.encode(true, forKey: "enableReactionOverrides")
             try container.encode(true, forKey: "browserExperiment")
             try container.encode([Int32](), forKey: "accountReactionEffectOverrides")
@@ -182,6 +182,14 @@ final class ExperimentalUISettingsCompatibilityTests: XCTestCase {
             try container.encode("legacy", forKey: "videoMessageCameraMode")
             try container.encode("gpuLarge", forKey: "stickerRendererMode")
         }
+    }
+
+    func testOnDeviceTranscriptionIsOnByDefaultAndTheChoiceIsKept() throws {
+        XCTAssertTrue(ExperimentalUISettings.defaultSettings.localTranscription)
+        var settings = ExperimentalUISettings.defaultSettings
+        settings.localTranscription = false
+        let decoded = try EngineDecoder.decode(ExperimentalUISettings.self, from: try EngineEncoder.encode(settings))
+        XCTAssertFalse(decoded.localTranscription)
     }
 
     func testOldBlobDecodesAndKeepsLiveValues() throws {

@@ -21,23 +21,62 @@ private final class SpeechAssetInstalls: @unchecked Sendable {
     }
 }
 
-/// On-device transcription of an audio file with SpeechAnalyzer. Returns nil when the locale or its model is not
-/// available (a missing model is downloaded in the background for the next message), so the caller falls back to
-/// SFSpeechRecognizer. Audio never leaves the device.
+private func speechModelStatus(_ status: AssetInventory.Status) -> SpeechModelStatus {
+    switch status {
+    case .installed:
+        return .installed
+    case .downloading:
+        return .downloading
+    case .supported:
+        return .supported
+    default:
+        return .unsupported
+    }
+}
+
+/// Makes sure the locale's model is on the device. Only one download per locale runs at a time; a caller that finds one
+/// running gets false and falls back for this message.
+private func ensureSpeechModel(_ transcriber: SpeechTranscriber, identifier: String) async -> Bool {
+    switch speechModelAction(for: speechModelStatus(await AssetInventory.status(forModules: [transcriber]))) {
+    case .none:
+        return true
+    case .unavailable:
+        return false
+    case .install:
+        guard SpeechAssetInstalls.shared.begin(identifier) else {
+            return false
+        }
+        defer { SpeechAssetInstalls.shared.end(identifier) }
+        do {
+            try await AssetInventory.assetInstallationRequest(supporting: [transcriber])?.downloadAndInstall()
+        } catch {
+            return false
+        }
+        return await AssetInventory.status(forModules: [transcriber]) == .installed
+    }
+}
+
+/// Downloads the model of the current locale ahead of the first transcription (voice messages are on screen), so the
+/// first tap does not wait for it. Nothing happens when the locale is unsupported or the model is installed.
+func prepareSpeechAnalyzerModel(localeIdentifier: String) {
+    Task.detached(priority: .utility) {
+        guard SpeechTranscriber.isAvailable, let locale = await SpeechTranscriber.supportedLocale(equivalentTo: Locale(identifier: localeIdentifier)) else {
+            return
+        }
+        let transcriber = SpeechTranscriber(locale: locale, transcriptionOptions: [], reportingOptions: [], attributeOptions: [])
+        _ = await ensureSpeechModel(transcriber, identifier: locale.identifier)
+    }
+}
+
+/// On-device transcription of an audio file with SpeechAnalyzer. A missing model is downloaded first (the tap waits for
+/// it once). Returns nil when the locale or the model is not available, so the caller falls back to SFSpeechRecognizer.
+/// Audio never leaves the device.
 func transcribeWithSpeechAnalyzer(path: String, localeIdentifier: String) async -> String? {
     guard SpeechTranscriber.isAvailable, let locale = await SpeechTranscriber.supportedLocale(equivalentTo: Locale(identifier: localeIdentifier)) else {
         return nil
     }
     let transcriber = SpeechTranscriber(locale: locale, transcriptionOptions: [], reportingOptions: [], attributeOptions: [])
-    let status = await AssetInventory.status(forModules: [transcriber])
-    guard status == .installed else {
-        if status == .supported, SpeechAssetInstalls.shared.begin(locale.identifier) {
-            let identifier = locale.identifier
-            Task.detached(priority: .utility) {
-                try? await AssetInventory.assetInstallationRequest(supporting: [transcriber])?.downloadAndInstall()
-                SpeechAssetInstalls.shared.end(identifier)
-            }
-        }
+    guard await ensureSpeechModel(transcriber, identifier: locale.identifier) else {
         return nil
     }
     guard let file = try? AVAudioFile(forReading: URL(fileURLWithPath: path)) else {

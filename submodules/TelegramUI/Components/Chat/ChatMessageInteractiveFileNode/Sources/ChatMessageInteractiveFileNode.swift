@@ -374,8 +374,9 @@ public final class ChatMessageInteractiveFileNode: ASDisplayNode {
         let presentationData = context.sharedContext.currentPresentationData.with { $0 }
         let premiumConfiguration = PremiumConfiguration.with(appConfiguration: arguments.context.currentAppConfiguration.with { $0 })
         
+        let onDeviceTranscription = context.sharedContext.immediateExperimentalUISettings.localTranscription
         let transcriptionText = self.forcedAudioTranscriptionText ?? transcribedText(message: EngineMessage(message))
-        if transcriptionText == nil && !arguments.associatedData.alwaysDisplayTranscribeButton.providedByGroupBoost {
+        if transcriptionText == nil && !onDeviceTranscription && !arguments.associatedData.alwaysDisplayTranscribeButton.providedByGroupBoost {
             if premiumConfiguration.audioTransciptionTrialCount > 0 {
                 if !arguments.associatedData.isPremium {
                     if self.presentAudioTranscriptionTooltip(finished: false) {
@@ -434,7 +435,27 @@ public final class ChatMessageInteractiveFileNode: ASDisplayNode {
                 self.audioTranscriptionState = .inProgress
                 self.requestUpdateLayout(true)
                 
-                if context.sharedContext.immediateExperimentalUISettings.localTranscription {
+                let transcribeOnServer = { [weak self] in
+                    guard let self, let context = self.context, let message = self.message else {
+                        return
+                    }
+                    self.transcribeDisposable = (context.engine.messages.transcribeAudio(messageId: message.id)
+                    |> deliverOnMainQueue).startStrict(next: { [weak self] result in
+                        guard let strongSelf = self else {
+                            return
+                        }
+                        strongSelf.transcribeDisposable?.dispose()
+                        strongSelf.transcribeDisposable = nil
+                        
+                        if let arguments = strongSelf.arguments, !arguments.associatedData.isPremium && !arguments.associatedData.alwaysDisplayTranscribeButton.providedByGroupBoost {
+                            Queue.mainQueue().after(0.1, {
+                                let _ = strongSelf.presentAudioTranscriptionTooltip(finished: true)
+                            })
+                        }
+                    })
+                }
+                
+                if onDeviceTranscription {
                     let appLocale = presentationData.strings.baseLanguageCode
                     
                     let signal: Signal<LocallyTranscribedAudio?, NoError> = context.engine.data.get(TelegramEngine.EngineData.Item.Messages.Message(id: message.id))
@@ -469,6 +490,7 @@ public final class ChatMessageInteractiveFileNode: ASDisplayNode {
                         return transcribeAudio(path: result, appLocale: appLocale)
                     }
                     
+                    var retriedOnServer = false
                     self.transcribeDisposable = (signal
                     |> deliverOnMainQueue).startStrict(next: { [weak self] result in
                         guard let strongSelf = self, let arguments = strongSelf.arguments else {
@@ -478,31 +500,24 @@ public final class ChatMessageInteractiveFileNode: ASDisplayNode {
                         if let result = result {
                             let _ = arguments.context.engine.messages.storeLocallyTranscribedAudio(messageId: arguments.message.id, text: result.text, isFinal: result.isFinal, error: nil).startStandalone()
                         } else {
-                            strongSelf.audioTranscriptionState = .collapsed
-                            strongSelf.requestUpdateLayout(true)
+                            let serverAllowed = arguments.associatedData.isPremium || arguments.associatedData.alwaysDisplayTranscribeButton.providedByGroupBoost
+                            if shouldRetryTranscriptionOnServer(deviceProducedText: false, serverAllowed: serverAllowed) {
+                                retriedOnServer = true
+                                transcribeOnServer()
+                            } else {
+                                strongSelf.audioTranscriptionState = .collapsed
+                                strongSelf.requestUpdateLayout(true)
+                            }
                         }
                     }, completed: { [weak self] in
-                        guard let strongSelf = self else {
+                        guard let strongSelf = self, !retriedOnServer else {
                             return
                         }
                         strongSelf.transcribeDisposable?.dispose()
                         strongSelf.transcribeDisposable = nil
                     })
                 } else {
-                    self.transcribeDisposable = (context.engine.messages.transcribeAudio(messageId: message.id)
-                    |> deliverOnMainQueue).startStrict(next: { [weak self] result in
-                        guard let strongSelf = self else {
-                            return
-                        }
-                        strongSelf.transcribeDisposable?.dispose()
-                        strongSelf.transcribeDisposable = nil
-                        
-                        if let arguments = strongSelf.arguments, !arguments.associatedData.isPremium && !arguments.associatedData.alwaysDisplayTranscribeButton.providedByGroupBoost {
-                            Queue.mainQueue().after(0.1, {
-                                let _ = strongSelf.presentAudioTranscriptionTooltip(finished: true)
-                            })
-                        }
-                    })
+                    transcribeOnServer()
                 }
             }
         }
@@ -789,7 +804,10 @@ public final class ChatMessageInteractiveFileNode: ASDisplayNode {
                     displayTranscribe = false
                 } else if arguments.message.id.peerId.namespace != Namespaces.Peer.SecretChat && !isViewOnceMessage && !arguments.presentationData.isPreview {
                     let premiumConfiguration = PremiumConfiguration.with(appConfiguration: arguments.context.currentAppConfiguration.with { $0 })
-                    if arguments.associatedData.isPremium || arguments.associatedData.alwaysDisplayTranscribeButton.providedByGroupBoost {
+                    if arguments.context.sharedContext.immediateExperimentalUISettings.localTranscription {
+                        displayTranscribe = true
+                        prepareOnDeviceTranscription()
+                    } else if arguments.associatedData.isPremium || arguments.associatedData.alwaysDisplayTranscribeButton.providedByGroupBoost {
                         displayTranscribe = true
                     } else if premiumConfiguration.audioTransciptionTrialCount > 0 {
                         if arguments.incoming {
