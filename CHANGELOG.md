@@ -4,6 +4,8 @@ Newest first. Internal notes for each TestFlight build; testers see the What to 
 
 ## Unreleased
 
+- **Review fix: libprisma BUILD loads again.** `objc_library` has no `include_prefix` or `strip_include_prefix` (rules_cc 0.2.27), so the whole `//third-party/libprisma` package failed to load. Replaced by `includes = ["libprisma/apple"]`; the only consumer is Swift `import libprisma`, which needs no prefix.
+
 - **tgcalls pin moved to 73cc1f8d** (fork `nanogram-shared`, fast-forward of 9bfb76f8): adds the Package.swift exclude of `ios/` (82cd77e) so the Mac SwiftPM target no longer compiles the iOS bridge, plus host-test and doc path fixes. No iOS source change; the Mac pins move to the same commit.
 - **Manifest final; parity cleanup** (W6). `shared/` = klaipher/nanogram-deps 0e3f132f: every library is an official pin or one fork branch with a commit (quickjs f6fc68b9, twidget a4f5391c, widget-sandbox 1b21a48e, tgcalls 2a5daa0f, webrtc fa0b3c5f); no pending or transitional pin; Mac and Android consumer paths follow their stages (`check_shared.py --side android`: no error; `--side mac`: the Mac's own pins and `submodules/webrtc`; `--side ios --strict`: only BoringSSL, still vendored). `docs/mac-core-paths.txt`: the VP9Hardware `mirror` lines are gone (the Mac builds the iOS sources), `lib` paths follow the manifest, `share` lines cover every iOS path the Mac now compiles. `native-libs.json`: `known_differences.libyuv.version` removed, libyuv version `shared` 1977 read through the core. `tools/dev/tests/test_parity.py` asserts there is no mirror line. The W7 decisions are in `shared/ledger/ios-w6-w7.md`.
 

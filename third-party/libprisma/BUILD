@@ -47,7 +47,7 @@ objc_library(
     enable_modules = True,
     module_name = "libprisma",
     # Everything comes from the klaipher/libprisma submodule (nanogram): the C++ core in libprisma/libprisma and the
-    # one Objective-C++ glue for iOS and macOS in libprisma/apple. `libprisma/Syntaxer.h` keeps its import path.
+    # one Objective-C++ glue for iOS and macOS in libprisma/apple. The only consumer is the Swift `import libprisma` (module map), which needs no header prefix.
     srcs = glob([
         "libprisma/libprisma/*.cpp",
         "libprisma/libprisma/*.h",
@@ -57,8 +57,7 @@ objc_library(
     hdrs = [
         "libprisma/apple/Syntaxer.h",
     ],
-    include_prefix = "libprisma",
-    strip_include_prefix = "libprisma/apple",
+    includes = ["libprisma/apple"],
     data = [
         ":LibprismaBundle",
     ],
