@@ -335,6 +335,7 @@ public final class SharedAccountContextImpl: SharedAccountContext {
     
     private var spotlightDataContext: SpotlightDataContext?
     private var widgetDataContext: WidgetDataContext?
+    private var glanceCoordinator: GlanceCoordinator?
     
     private weak var appDelegate: AppDelegate?
     
@@ -1192,6 +1193,13 @@ public final class SharedAccountContextImpl: SharedAccountContext {
             |> map { _, accounts, _ in
                 return accounts.map { $0.1.account }
             }, presentationData: self.presentationData, appLockContext: self.appLockContext as! AppLockContextImpl)
+            
+            self.glanceCoordinator = GlanceCoordinator(rootPath: self.basePath, accountManager: self.accountManager, accounts: self.activeAccountContexts
+            |> map { primary, accounts, _ -> GlanceAccounts in
+                return (primary: primary, accounts: accounts.map { (id: $0.0, context: $0.1) })
+            }, isLocked: (self.appLockContext as! AppLockContextImpl).isCurrentlyLocked, presentationData: self.presentationData, callManager: self.callManager, navigateToChat: { [weak self] accountId, peerId in
+                self?.navigateToChat(accountId: accountId, peerId: peerId, messageId: nil)
+            })
             
             // Contacts stay out of system search while an app passcode is set, as share suggestions do: anyone
             // with the unlocked phone could find them there. With no accounts the index is emptied.

@@ -120,7 +120,7 @@ upstream gap (official Telegram has the same gap on that platform).
 ## 5. Later, with effort estimates
 
 - iOS on-device transcription: port the Mac SpeechAnalyzer chain and the "on-device" label (M, 1-2 days).
-- iOS App Intents phase 1: reuse the Mac ChatAppIntents logic for Open Chat, Send Message, Focus filter and App Shortcuts
+- iOS App Intents phase 1: written behind Debug > Glanceables (branch mod/ios-glance: Open Chat, Open and Send to Saved Messages, App Shortcuts, iOS 18 control); not built or tested on a device. Still open: Focus filter, Send Message to any chat. Original plan: reuse the Mac ChatAppIntents logic for Open Chat, Send Message, Focus filter and App Shortcuts
   (L, 3-5 days; needs the App Intents metadata step in Bazel).
 - Move VP9Hardware into the shared core and build the Mac from the submodule (S-M, needs a build).
 - Mac log export: add storage stats and share-extension logs (S).

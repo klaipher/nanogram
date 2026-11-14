@@ -986,6 +986,9 @@ struct AllWidgets: WidgetBundle {
         if #available(iOS 18.0, *) {
             SavedMessagesControl()
         }
+        if #available(iOS 16.2, *) {
+            GlanceActivityWidget()
+        }
    }
 }
 
