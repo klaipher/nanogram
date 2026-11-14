@@ -4,6 +4,8 @@ Newest first. Internal notes for each TestFlight build; testers see the What to 
 
 ## Unreleased
 
+- **FFmpeg is the klaipher/FFmpeg submodule** (shared-libraries plan W1.1). `submodules/ffmpeg/Sources/FFMpeg/ffmpeg-9.0.2` is now a shallow submodule of `klaipher/FFmpeg` branch `nanogram` pinned at d84c50bc (same path, so the BUILD glob, `FFMPEG_VERSION` and the Mac `build.sh` autodetect are unchanged); the 10399 vendored files are gone. Android already builds the same commit. Proof: the old tree and d84c50bc differ in exactly two sources, `libavcodec/hevc/hevcdec.c` and `libavutil/encryption_info.c` (the Android fixes iOS now gains), plus dotfiles (`.gitignore`, `.gitattributes`) the BUILD glob excludes. `tg doctor` warns when the sources directory is empty.
+
 ## 13.2 (202611132038) — 2026-11-13 — 3c4e6399
 
 TestFlight build (processed VALID, What to Test set). Previous TestFlight build: 202611121002 (25edb39c); changes since are `git log 800c5c6a..3c4e6399` (32 commits). Source: the owner's MetricKit export (memory-limit kill opening a 1-page PDF, the language prompt on the next launch) and a tester's report that a call to a locked iPhone showed nothing; plan with 83 finding ids, statuses below.

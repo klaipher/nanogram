@@ -217,6 +217,11 @@ marked (check) were not re-verified against the code; correct them on the next c
 - Upstream: no. Details: CHANGELOG.md, Unreleased.
 - Sync: expect conflicts in `MediaPickerScreen.swift` (camera creation, groups, `hasGallery`) and `TGMediaEditingContext.m`; keep upstream's logic and re-apply the lazy creation.
 
+### Shared native libraries come from one source (W1.1, iOS)
+- What: libraries that Android also builds are submodules of the same upstream or klaipher fork at the same commit instead of vendored copies (plan: docs/shared-libraries-plan.md). Mac gets them through the core pin.
+- Upstream: no (layout only; sources are byte-identical to the old copies except where listed).
+- FFmpeg: `submodules/ffmpeg/Sources/FFMpeg/ffmpeg-9.0.2` = klaipher/FFmpeg `nanogram` d84c50bc (also Android's). Only source differences from the old copy: Android's `libavcodec/hevc/hevcdec.c` and `libavutil/encryption_info.c` fixes.
+
 ### Differences added or changed by the 13.2 merge (2026-11-06)
 - rlottie: upstream removed it and `LottieSettings`; iOS now renders only with tlottie. Since 2026-11-11 `submodules/rlottie` is gone here too: the Mac 13.2 merge dropped it as Telegram for macOS 13.2 did, so neither app builds it, as upstream. The Watch app keeps its own vendored copy (`RLottieKit`). Upstream: yes.
 - Glass: matches upstream 13.2 by default (owner decision, revised). The luma clamp is installed on iOS 26 and 27 with upstream's ranges (`GlassBackgroundView.adaptiveLumaRange`: dark 0-0.874; light 0.22-1.0 on iOS 26, 0.125-1.0 on iOS 27). The Debug Settings switch for Apple's fully native glass was removed on 2026-11-07 (owner: it saves no battery; the clamp is one number per luma callback), so the clamp is always installed. Where: `GlassFixedLook`, `UIViewController+Navigation.m`. Upstream: same look; the only difference is that `registerEffectViewOverrides` does one class lookup for the running OS instead of upstream's loop over both names (keeps the launch-time gain). Sync: keep the single lookup when merging upstream's loop.

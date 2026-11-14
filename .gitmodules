@@ -35,3 +35,8 @@
 	path = third-party/mtproto-engine
 	url = https://github.com/TelegramMessenger/mtproto-engine.git
 	shallow = true
+[submodule "submodules/ffmpeg/Sources/FFMpeg/ffmpeg-9.0.2"]
+	path = submodules/ffmpeg/Sources/FFMpeg/ffmpeg-9.0.2
+	url = https://github.com/klaipher/FFmpeg.git
+	branch = nanogram
+	shallow = true
