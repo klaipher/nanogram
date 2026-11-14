@@ -87,3 +87,72 @@ final class GlanceStoreTests: XCTestCase {
         XCTAssertEqual(GlanceLocation.groupIdentifierCandidates(bundleIdentifier: "org.x.Nanogram.Widget"), ["group.org.x.Nanogram.Widget", "group.org.x.Nanogram"])
     }
 }
+
+final class GlanceGateTests: XCTestCase {
+    private let peers = [
+        GlancePeerRef(accountId: 1, peerId: 10, title: "Anna"),
+        GlancePeerRef(accountId: 1, peerId: 11, title: "Bob")
+    ]
+
+    func testBackgroundWithoutPasscodeListsChatsAndAllowsSending() {
+        let gate = GlanceGate(enabled: true, displayNames: true, locked: false)
+        let snapshot = GlanceSnapshotBuilder.make(gate: gate, peers: self.peers, savedMessages: nil)
+        XCTAssertEqual(snapshot.peers, self.peers)
+        XCTAssertTrue(gate.allowsSending)
+    }
+
+    func testPasscodeLockedListsNoChatsAndRefusesSending() {
+        let gate = GlanceGate(enabled: true, displayNames: true, locked: true)
+        let snapshot = GlanceSnapshotBuilder.make(gate: gate, peers: self.peers, savedMessages: self.peers[0])
+        XCTAssertTrue(snapshot.enabled)
+        XCTAssertTrue(snapshot.peers.isEmpty)
+        XCTAssertEqual(snapshot.savedMessages, self.peers[0])
+        XCTAssertFalse(gate.allowsSending)
+        XCTAssertEqual(gate.lockPhase, .locked)
+    }
+
+    func testDisabledGateWritesTheDisabledSnapshot() {
+        let gate = GlanceGate(enabled: false, displayNames: true, locked: false)
+        XCTAssertEqual(GlanceSnapshotBuilder.make(gate: gate, peers: self.peers, savedMessages: self.peers[0]), GlanceSnapshot.disabled)
+        XCTAssertFalse(gate.allowsSending)
+    }
+
+    func testReorderingDoesNotChangeTheContent() {
+        let a = GlanceSnapshot(enabled: true, displayNameOnLockscreen: true, peers: self.peers, savedMessages: nil)
+        let b = GlanceSnapshot(enabled: true, displayNameOnLockscreen: true, peers: self.peers.reversed(), savedMessages: nil)
+        XCTAssertNotEqual(a, b)
+        XCTAssertTrue(a.hasSameContent(as: b))
+        var renamed = b
+        renamed.peers[0].title = "Carl"
+        XCTAssertFalse(a.hasSameContent(as: renamed))
+    }
+}
+
+final class GlanceEntityResolverTests: XCTestCase {
+    private let snapshot = GlanceSnapshot(enabled: true, displayNameOnLockscreen: true, peers: [GlancePeerRef(accountId: 1, peerId: 10, title: "Anna")], savedMessages: nil)
+
+    func testListedChatKeepsItsTitle() {
+        let result = GlanceEntityResolver.resolve(identifiers: ["1:10"], snapshot: self.snapshot, genericTitle: "Chat")
+        XCTAssertEqual(result.map { $0.title }, ["Anna"])
+    }
+
+    func testChatOutsideTheTopChatsResolvesWithTheGenericTitle() {
+        let result = GlanceEntityResolver.resolve(identifiers: ["1:99"], snapshot: self.snapshot, genericTitle: "Chat")
+        XCTAssertEqual(result, [GlancePeerRef(accountId: 1, peerId: 99, title: "Chat")])
+    }
+
+    func testLockedDisabledOrMissingSnapshotStillResolves() {
+        var locked = self.snapshot
+        locked.peers = []
+        for snapshot in [locked, GlanceSnapshot.disabled, nil] {
+            let result = GlanceEntityResolver.resolve(identifiers: ["1:10", "bad", "2:"], snapshot: snapshot, genericTitle: "Chat")
+            XCTAssertEqual(result, [GlancePeerRef(accountId: 1, peerId: 10, title: "Chat")])
+        }
+    }
+
+    func testCandidatesAreGated() {
+        XCTAssertEqual(GlanceEntityResolver.candidates(snapshot: self.snapshot).count, 1)
+        XCTAssertTrue(GlanceEntityResolver.candidates(snapshot: GlanceSnapshot.disabled).isEmpty)
+        XCTAssertTrue(GlanceEntityResolver.candidates(snapshot: nil).isEmpty)
+    }
+}

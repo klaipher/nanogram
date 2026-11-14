@@ -1197,7 +1197,7 @@ public final class SharedAccountContextImpl: SharedAccountContext {
             self.glanceCoordinator = GlanceCoordinator(rootPath: self.basePath, accountManager: self.accountManager, accounts: self.activeAccountContexts
             |> map { primary, accounts, _ -> GlanceAccounts in
                 return (primary: primary, accounts: accounts.map { (id: $0.0, context: $0.1) })
-            }, isLocked: (self.appLockContext as! AppLockContextImpl).isCurrentlyLocked, presentationData: self.presentationData, callManager: self.callManager, navigateToChat: { [weak self] accountId, peerId in
+            }, isLocked: (self.appLockContext as? AppLockContextImpl)?.isPasscodeLocked ?? .single(true), presentationData: self.presentationData, callManager: self.callManager, navigateToChat: { [weak self] accountId, peerId in
                 self?.navigateToChat(accountId: accountId, peerId: peerId, messageId: nil)
             })
             

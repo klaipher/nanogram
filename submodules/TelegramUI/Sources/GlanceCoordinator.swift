@@ -83,20 +83,14 @@ private final class GlanceActivityController {
 /// snapshot the widget and intents read, the Live Activities of live location and of calls without CallKit, and the
 /// handler the App Intents call into. With the switch off it writes a disabled snapshot and ends every activity.
 final class GlanceCoordinator {
-    private struct Gate: Equatable {
-        var enabled: Bool
-        var displayNames: Bool
-        var locked: Bool
-    }
-    
     private let rootPath: String
     private let navigateToChat: (AccountRecordId, EnginePeer.Id) -> Void
     private let accountsValue = Atomic<GlanceAccounts>(value: (nil, []))
-    private let lockedValue = Atomic<Bool>(value: false)
+    private let gateValue = Atomic<GlanceGate>(value: GlanceGate(enabled: false, displayNames: false, locked: true))
     private let currentCall = Atomic<PresentationCall?>(value: nil)
     private let disposables = DisposableSet()
     private var lastSnapshot: GlanceSnapshot?
-    private var lastGate: Gate?
+    private var lastGate: GlanceGate?
     private var locationController: AnyObject?
     private var callController: AnyObject?
     private var callStartedAt: Date?
@@ -118,9 +112,9 @@ final class GlanceCoordinator {
             let inApp = sharedData.entries[ApplicationSpecificSharedDataKeys.inAppNotificationSettings]?.get(InAppNotificationSettings.self) ?? InAppNotificationSettings.defaultSettings
             return (experimental.nanogramGlanceables, inApp.displayNameOnLockscreen)
         }
-        let gate: Signal<Gate, NoError> = combineLatest(queue: Queue.mainQueue(), settings, isLocked)
-        |> map { settings, locked -> Gate in
-            return Gate(enabled: settings.enabled, displayNames: settings.displayNames, locked: locked)
+        let gate: Signal<GlanceGate, NoError> = combineLatest(queue: Queue.mainQueue(), settings, isLocked)
+        |> map { settings, locked -> GlanceGate in
+            return GlanceGate(enabled: settings.enabled, displayNames: settings.displayNames, locked: locked)
         }
         |> distinctUntilChanged
         let strings = presentationData
@@ -130,14 +124,14 @@ final class GlanceCoordinator {
         self.disposables.add((accounts |> deliverOnMainQueue).start(next: { [weak self] value in
             let _ = self?.accountsValue.swap(value)
         }))
-        self.disposables.add((isLocked |> deliverOnMainQueue).start(next: { [weak self] value in
-            let _ = self?.lockedValue.swap(value)
+        self.disposables.add((gate |> deliverOnMainQueue).start(next: { [weak self] value in
+            let _ = self?.gateValue.swap(value)
         }))
         
         // The snapshot: chats only while the feature is on and the app is unlocked.
         let peers: Signal<[GlancePeerRef], NoError> = combineLatest(queue: Queue.mainQueue(), gate, accounts, strings)
         |> mapToSignal { gate, accounts, strings -> Signal<[GlancePeerRef], NoError> in
-            if !gate.enabled || gate.locked || accounts.accounts.isEmpty {
+            if !gate.listsChats || accounts.accounts.isEmpty {
                 return .single([])
             }
             var signals: [Signal<[GlancePeerRef], NoError>] = []
@@ -262,16 +256,13 @@ final class GlanceCoordinator {
         }
     }
     
-    private func writeSnapshot(gate: Gate, accounts: GlanceAccounts, strings: PresentationStrings, peers: [GlancePeerRef]) {
-        var snapshot = GlanceSnapshot.disabled
-        if gate.enabled {
-            var saved: GlancePeerRef?
-            if let primary = accounts.primary {
-                saved = GlancePeerRef(accountId: primary.account.id.int64, peerId: primary.account.peerId.toInt64(), title: strings.DialogList_SavedMessages, isSavedMessages: true)
-            }
-            snapshot = GlanceSnapshot(enabled: true, displayNameOnLockscreen: gate.displayNames, peers: gate.locked ? [] : peers, savedMessages: saved)
+    private func writeSnapshot(gate: GlanceGate, accounts: GlanceAccounts, strings: PresentationStrings, peers: [GlancePeerRef]) {
+        var saved: GlancePeerRef?
+        if gate.enabled, let primary = accounts.primary {
+            saved = GlancePeerRef(accountId: primary.account.id.int64, peerId: primary.account.peerId.toInt64(), title: strings.DialogList_SavedMessages, isSavedMessages: true)
         }
-        if snapshot != self.lastSnapshot {
+        let snapshot = GlanceSnapshotBuilder.make(gate: gate, peers: peers, savedMessages: saved)
+        if self.lastSnapshot.map({ !snapshot.hasSameContent(as: $0) }) ?? true {
             self.lastSnapshot = snapshot
             GlanceStore.write(snapshot, rootPath: self.rootPath)
         }
@@ -296,7 +287,11 @@ final class GlanceCoordinator {
     }
     
     private func sendToSavedMessages(accountId: Int64?, text: String) -> GlanceSendResult {
-        if self.lockedValue.with({ $0 }) {
+        let gate = self.gateValue.with { $0 }
+        if !gate.enabled {
+            return .unavailable
+        }
+        if !gate.allowsSending {
             return .locked
         }
         let accounts = self.accountsValue.with { $0 }
@@ -324,7 +319,7 @@ final class GlanceCoordinator {
         return .queued
     }
     
-    private static func liveLocationRequest(gate: Gate, accounts: GlanceAccounts, strings: PresentationStrings) -> Signal<GlanceActivityRequest?, NoError> {
+    private static func liveLocationRequest(gate: GlanceGate, accounts: GlanceAccounts, strings: PresentationStrings) -> Signal<GlanceActivityRequest?, NoError> {
         if !gate.enabled {
             return .single(nil)
         }
@@ -354,7 +349,7 @@ final class GlanceCoordinator {
                     endsAt = Date(timeIntervalSince1970: Double(first.message.timestamp) + Double(timeout))
                 }
             }
-            let showsNames = GlanceVisibility.showsNames(surface: .lockScreen, lock: gate.locked ? .locked : .unlocked, displayNameOnLockscreen: gate.displayNames)
+            let showsNames = GlanceVisibility.showsNames(surface: .lockScreen, lock: gate.lockPhase, displayNameOnLockscreen: gate.displayNames)
             let name = all.count == 1 ? first.message.peers[first.message.id.peerId]?.debugDisplayTitle : nil
             return GlanceActivityRequest(
                 kind: .liveLocation,
@@ -370,7 +365,7 @@ final class GlanceCoordinator {
         }
     }
     
-    private static func callRequest(gate: Gate, strings: PresentationStrings, call: PresentationCall, state: PresentationCallState, isIntegratedWithCallKit: Bool) -> GlanceActivityRequest? {
+    private static func callRequest(gate: GlanceGate, strings: PresentationStrings, call: PresentationCall, state: PresentationCallState, isIntegratedWithCallKit: Bool) -> GlanceActivityRequest? {
         if isIntegratedWithCallKit {
             return nil
         }
@@ -386,7 +381,7 @@ final class GlanceCoordinator {
         case .terminating, .terminated:
             return nil
         }
-        let showsNames = GlanceVisibility.showsNames(surface: .lockScreen, lock: gate.locked ? .locked : .unlocked, displayNameOnLockscreen: gate.displayNames)
+        let showsNames = GlanceVisibility.showsNames(surface: .lockScreen, lock: gate.lockPhase, displayNameOnLockscreen: gate.displayNames)
         return GlanceActivityRequest(
             kind: .call,
             accountId: call.context.account.id.int64,
