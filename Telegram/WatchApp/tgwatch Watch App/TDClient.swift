@@ -284,6 +284,7 @@ final class TDClient {
                     chatList?.setProjectionPaused(!isSceneActive)
                     configureWidgetSnapshot()
                 }
+                registerForPushIfEnabled()
             }
             switch mapped {
             case .ready:
@@ -473,6 +474,42 @@ final class TDClient {
     func publishWidgetSnapshotNow() {
         guard let chatList else { return }
         widgetPublisher?.publishNow(inputs: chatList.unreadInputs())
+    }
+
+    // MARK: - Push registration (WATCH-INT-1)
+
+    private var pushObserver: PushTokenObservation?
+    private var registeredPushToken: Data?
+
+    /// Registers the watch's APNs token with TDLib once the account is ready. Flag `pushRegistration`; needs the
+    /// push entitlement (owner steps in NANOGRAM-CHANGES.md). Server-visible: the account gets a new device.
+    private func registerForPushIfEnabled() {
+        guard WatchFeatureFlags.isEnabled(.pushRegistration), pushObserver == nil else { return }
+        pushObserver = PushTokenStore.shared.observe { [weak self] token in
+            self?.sendRegisterDevice(token)
+        }
+    }
+
+    private func sendRegisterDevice(_ token: Data) {
+        guard let client, registeredPushToken != token else { return }
+        registeredPushToken = token
+        let query = RegisterDeviceQuery(tokenHex: PushRegistration.hexString(token), isSandbox: PushRegistration.isSandbox)
+        do {
+            try client.send(query: query, completion: Self.registerDeviceCompletion(logger: logger))
+        } catch {
+            registeredPushToken = nil
+            logger.warning("registerDevice not sent: \(error.localizedDescription, privacy: .public)")
+        }
+    }
+
+    /// Built outside the main actor: TDLib calls it on its own queue, and a closure written inside this
+    /// `@MainActor` class would be main-actor isolated, which Swift 6 checks on entry.
+    nonisolated private static func registerDeviceCompletion(logger: Logger) -> (Data) -> Void {
+        return { data in
+            if let text = String(data: data, encoding: .utf8), text.contains("\"@type\":\"error\"") {
+                logger.warning("registerDevice failed")
+            }
+        }
     }
 
     private func sendReadyOptions() {

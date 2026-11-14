@@ -34,6 +34,13 @@ enum WatchFeature: String, CaseIterable, Sendable {
     /// IOS-WATCH-WIDGET-1: the app writes an unread summary (counts and chat titles) to the App Group for the widget
     /// extension. Does nothing until the App Group exists in the portal and in the app's entitlements.
     case widgetSnapshot
+    /// WATCH-INT-1: the app wakes for system background refreshes (about every 30 minutes, within the system budget),
+    /// lets TDLib catch up for a few seconds and refreshes the widget summary. Needs no portal capability.
+    case backgroundRefresh
+    /// WATCH-INT-1: the watch registers its own APNs token with TDLib (registerDevice), so messages can arrive with
+    /// the phone away. SERVER-VISIBLE (a new device on the account) and needs the push entitlement and a
+    /// notification service extension to be useful; see the owner steps.
+    case pushRegistration
 
     var defaultsKey: String { "nanogram.watch." + rawValue }
 

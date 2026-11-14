@@ -1,8 +1,11 @@
 import SwiftUI
+import WatchKit
 @preconcurrency import TDShim
 
 @main
 struct TgwatchApp: App {
+    /// Background refresh tasks and APNs token callbacks (WATCH-INT-1); both are flag-gated and inert by default.
+    @WKApplicationDelegateAdaptor(WatchAppDelegate.self) private var appDelegate
     @State private var manager: AccountManager
     @Environment(\.scenePhase) private var scenePhase
     /// True when running inside an XCTest process. Computed once and stored so
@@ -31,6 +34,12 @@ struct TgwatchApp: App {
         )
         if !isUnderXCTest {
             mgr.bootstrap()
+            // A system refresh launches the app, which bootstraps TDLib above; give it a moment to connect and
+            // receive updates, then write the widget summary from the cache.
+            BackgroundRefreshCoordinator.shared.syncAction = { [weak mgr] window in
+                try? await Task.sleep(for: window)
+                mgr?.activeClient?.publishWidgetSnapshotNow()
+            }
         }
         _manager = State(initialValue: mgr)
     }
@@ -53,6 +62,7 @@ struct TgwatchApp: App {
         // Wrist down (inactive) or background: the open chat stops marking messages read.
         .onChange(of: scenePhase, initial: true) { _, phase in
             manager.setSceneActive(phase == .active)
+            if phase != .active { BackgroundRefreshCoordinator.shared.scheduleNext() }
         }
     }
 
