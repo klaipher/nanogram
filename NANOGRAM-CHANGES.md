@@ -58,7 +58,7 @@ marked (check) were not re-verified against the code; correct them on the next c
   Phone Recents switch.
 - Where: `submodules/TgVoipWebrtc/`, `third-party/webrtc/`, `.gitmodules`. Records of the forks live in the forks.
 - Third-party under WebRTC (W5.3): abseil is the official LTS 20260817.0 (Bazel module `abseil-cpp`, MODULE.bazel + .bazelignore, the checkout is the fork's `third_party/abseil-cpp`); libsrtp (v2.5.0), crc32c, pffft, rnnoise-vad and fft4g come from the fork's `third_party/` and `common_audio/third_party/`; only `third-party/webrtc/config/crc32c/crc32c_config.h` is iOS glue. Sync: bump the fork pin, nothing else to port; if Apple Clang rejects abseil's lifetimebound use the fork's `nanogram/apply_abseil_workaround.sh`.
-- Upstream: partly. Sync: `submodules/TgVoipWebrtc/CLAUDE.md` (one `nanogram-shared` branch, three pins; the iOS bridge is the fork's `ios/` directory). Both forks contain Telegram 13.2's engine changes (webrtc 590a8b23 merged; tgcalls c1de0882 ported, see the forks' NANOGRAM-CHANGES.md); the superproject BUILD carries Telegram's `content_negotiation_test` and `signaling_sctp_options_test`.
+- Upstream: partly. Sync: `submodules/TgVoipWebrtc/CLAUDE.md` (one `nanogram-shared` branch, three pins; the iOS bridge is the fork's `ios/` directory). Both forks contain Telegram 13.2's engine changes (webrtc 590a8b23 merged; tgcalls c1de0882 ported, see the forks' NANOGRAM-CHANGES.md); the superproject BUILD carries Telegram's `content_negotiation_test` and `signaling_sctp_options_test`. tgcalls pin: 73cc1f8d (2a5daa0f plus the Mac `ios/` exclude and doc fixes).
 
 ### Rust MTProto engine, network
 - First-response timeout (MtProtoKit, 2026-11-08): a fresh direct TCP connection waits max(3 s, 10 × its setup time) for its first
