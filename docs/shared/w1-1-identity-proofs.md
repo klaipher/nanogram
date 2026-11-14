@@ -13,7 +13,7 @@ copy (`origin/main` 466d8350) with the new source. Nothing was built.
 | libwebp | webmproject/libwebp v1.6.0 4fa21912 | 333 of 334 identical; `gradlew.bat` differs in line endings only |
 | td SharedHeaders | tdlib/td 0e88653d (existing pin) | 787 of 793 identical; 6 generated headers unused by `TdBinding.mm` |
 | boringssl `aes_ige.c` | none | no reference anywhere (`git grep aes_ige`) |
-| rlottie | none | already removed on origin/main (see CHANGELOG 13.2 202611121002 and NANOGRAM-CHANGES); the Watch's `RLottieKit` stays for the watch lane |
+| old Lottie renderer | none | already removed on origin/main (see CHANGELOG 13.2 202611121002 and NANOGRAM-CHANGES); the Watch app moved to tlottie later |
 
 Open items: `submodules/OpusBinding/Sources/opusfile` is a second in-tree copy of opusfile (own sources, includes `opusfile/opusfile.h`),
 not covered by this wave. The plan's "145 WAMR files" is 144 `core/` files plus LICENSE (BUILD excluded).

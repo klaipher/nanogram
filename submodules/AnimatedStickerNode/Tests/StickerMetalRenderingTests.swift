@@ -40,7 +40,7 @@ private func tableEntryLength(path: String, index: Int) -> Int {
     return Int(length)
 }
 
-// Premultiplied BGRA, tightly packed, in the device colour space: the format rlottie renders into.
+// Premultiplied BGRA, tightly packed, in the device colour space: the format tlottie renders into.
 private func pixels(of image: CGImage) -> [UInt8] {
     let width = image.width
     let height = image.height
@@ -134,7 +134,7 @@ final class StickerMetalRenderingTests: XCTestCase {
         return (contents as! CGImage)
     }
 
-    // A real sticker through the dormant GPU path: rlottie frame -> Metal DCT cache (-mtl file)
+    // A real sticker through the dormant GPU path: tlottie frame -> Metal DCT cache (-mtl file)
     // -> CompressedAnimationRenderer, compared with the frame the CPU path starts from.
     func testMetalCacheAndRendererMatchCPUFrame() throws {
         try self.requireMetalDevice()

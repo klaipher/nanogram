@@ -252,7 +252,7 @@ cc_library(
         "openh264/codec/api/wels/codec_def.h",
         "openh264/codec/api/wels/codec_ver.h",
     ],
-    # The sources come from the klaipher/openh264 submodule in openh264/. Consumers (tg_owt, subcodec) keep including
+    # The sources come from the klaipher/openh264 submodule in openh264/. Consumers (WebRTC, subcodec) keep including
     # "third_party/openh264/src/codec/api/wels/codec_api.h" and friends.
     include_prefix = "third_party/openh264/src",
     strip_include_prefix = "openh264",

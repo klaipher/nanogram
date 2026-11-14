@@ -436,7 +436,7 @@ enum DebugControllerEntry: ItemListNodeEntry {
         case .forceListViewImplChatBackend:
             return 22
         case .coreListScrollTrace:
-            // Takes the id of the removed rlottie switch, right after `forceListViewImplChatBackend`.
+            // Takes the id of the removed C++ Lottie renderer switch, right after `forceListViewImplChatBackend`.
             return 23
         case .respectSystemMicrophone:
             return 24

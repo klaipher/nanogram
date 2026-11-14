@@ -14,8 +14,7 @@ Nothing here was built or run; every comparison is a `cmp`, `diff` or blob compa
 
 ## W5.3: webrtc pin and the vendored third-party copies
 
-- Fork: klaipher/webrtc `nanogram` fa0b3c5f69209ab4eb1b1976bc31b5818bbae687 (17 commits on 779c4aa7; `nanogram-security-fixes`
-  is the same sha locally). Everything below was compared at the parent commit against the fork tree at that sha, or against
+- Fork: klaipher/webrtc `nanogram` fa0b3c5f69209ab4eb1b1976bc31b5818bbae687 (17 commits on 779c4aa7). Everything below was compared at the parent commit against the fork tree at that sha, or against
   the pristine upstream commit the fork pins (shallow fetch of the pinned commit into the session scratchpad).
 - Pure-Python check: the iOS BUILD's source list (`nanogram/gen_build_lists.py ios third-party/webrtc/BUILD`, 1,284 files,
   equal to the fork's `nanogram/build-files/ios-bazel.txt`): every file exists in the fork tree (0 missing). Files the fork

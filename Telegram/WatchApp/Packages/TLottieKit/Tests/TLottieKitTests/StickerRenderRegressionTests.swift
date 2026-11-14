@@ -7,7 +7,7 @@ import Foundation
 /// rendering fails here. The reference is an 8x8 grid of mean alpha values per frame (64x64 render), compared
 /// with a tolerance because antialiasing may legitimately differ by a few levels between renderers and versions.
 ///
-/// The values below were recorded with rlottie v0.2 (the renderer the watch used before tlottie), so they are
+/// The values below were recorded with Samsung's C++ renderer v0.2 (the renderer the watch used before tlottie), so they are
 /// tlottie's agreement with the old output. Not yet re-recorded with tlottie (no builds in the migration round):
 /// on the first run, if a cell differs by more than the tolerance, re-record with `TLOTTIE_RECORD=1` and paste
 /// the printed grids, after looking at the frames (docs/visual-verification.md).
@@ -15,7 +15,7 @@ final class StickerRenderRegressionTests: XCTestCase {
     private static let size = 64
     private static let grid = 8
 
-    // Recorded with rlottie v0.2 (Samsung bf3d272) at frames 0, 78, 155.
+    // Recorded with Samsung's C++ renderer v0.2 (bf3d272) at frames 0, 78, 155.
     private static let reference: [Int: [Int]] = [
         0: [
             0, 0, 0, 0, 0, 0, 0, 0, 60, 126, 21, 41, 76, 156, 0, 0,

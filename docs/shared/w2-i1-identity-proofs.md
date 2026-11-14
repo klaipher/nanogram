@@ -89,7 +89,7 @@ Mac, after the core bump:
 - OpusBinding: its Package.swift reads ogg and opusfile through `SwiftPMLinks/` symlinks; `tools/tests/audio-trim-store`
   must use `third-party/ogg/ogg/include` plus `third-party/ogg/overlay` and `third-party/opusfile/opusfile`.
 - wallet-engine: regenerate `ffi-availability.txt` and the bindings (`scripts/check-wallet-engine-bindings.sh`).
-- libyuv: the Mac keeps tg_owt's nested copy until W5.
+- libyuv: the Mac keeps its WebRTC fork's nested copy until W5.
 
 Android:
 - The `shared/` pin is the manifest commit 7d5bd332; `check_shared.py --side android` fails on the old pins of openh264,

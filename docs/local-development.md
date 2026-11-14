@@ -168,9 +168,9 @@ the versions needed are not in the Bazel Central Registry yet; switch them to pl
   all read `TEST_SIMULATOR_DEVICE` / `TEST_SIMULATOR_OS` from `build-system/bazel-utils/test_simulator.bzl`
   (iPhone 17 / iOS 27.2, the runtime matching Xcode 27.2) now; after an Xcode update, install its simulator (`xcodebuild -downloadPlatform iOS`) and change the pair there.
 
-- **Absolute submodule URLs.** Upstream used `../rlottie.git` and `../tgcalls.git`, which resolve relative to the
+- **Absolute submodule URLs.** Upstream used relative URLs such as `../tgcalls.git`, which resolve relative to the
   remote. From this fork they would have pointed at repositories that did not exist then; they point at our
-  forks or `TelegramMessenger/…` directly (rlottie is gone since 2026-11-11).
+  forks or `TelegramMessenger/…` directly.
 - **`.bazelversion`** matches `versions.json`, so plain `bazel` (via Bazelisk) works for the host-only test targets
   described in `CLAUDE.md`. The `Sanity` workflow checks that the two stay in sync.
 - **`user.bazelrc`** (gitignored, loaded with `try-import`) for personal settings such as `--jobs` or a different
