@@ -413,7 +413,9 @@ JSValue Runtime::classProtoInit(JSContext* ctx, JSClassID classId) {
 
 namespace {
 
-/// twidget::CpuBudget::kQueryBudgetMs: a task's layout queries may block the renderer for this long.
+/// A task's layout queries may block the renderer for this long. widget-sandbox v0.6.x's policy (CpuBudget::queryLimitHit)
+/// is 128 answered queries and 1000 ms in all; this runtime keeps the stricter 100 ms of the v0.5.0 line and does not
+/// count queries yet (a follow-up: the count and the "Layout query limit exceeded: more than 128 layout queries" reason).
 constexpr double kQueryBudgetMs = 100;
 /// The wall-clock backstop: max(10 x slice, 5 s) (upstream's kWallBackstopFactor, kWallBackstopMinMs).
 constexpr double kWallBackstopFactor = 10;

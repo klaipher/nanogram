@@ -1,6 +1,7 @@
 import Foundation
 
-/// widget-sandbox's corpus, vendored at third-party/widget-sandbox/corpus (1144002) and bundled by folder.
+/// widget-sandbox's corpus (the submodule third-party/widget-sandbox/widget-sandbox, `corpus/`) as a test bundle has it, at
+/// widget-sandbox/corpus/, by folder.
 enum WidgetCorpus {
     struct File {
         let folder: String
@@ -15,7 +16,7 @@ enum WidgetCorpus {
 
     static func files(in folder: String) -> [File] {
         let bundle = Bundle(for: Anchor.self)
-        guard let corpus = bundle.resourceURL?.appendingPathComponent("corpus"),
+        guard let corpus = bundle.resourceURL?.appendingPathComponent("widget-sandbox/corpus"),
               let walk = FileManager.default.enumerator(at: corpus.appendingPathComponent(folder), includingPropertiesForKeys: nil) else {
             return []
         }

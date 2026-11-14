@@ -104,10 +104,10 @@ final class ConformanceRunnerTests: XCTestCase {
 
     func testTheManifestLoadsTheAutomaticSet() throws {
         let tests = try ConformanceManifest.loadAutomaticSet()
-        XCTAssertEqual(tests.count, 60)
-        XCTAssertEqual(tests.reduce(0) { $0 + $1.themes.count }, 62)
+        XCTAssertEqual(tests.count, 68)
+        XCTAssertEqual(tests.reduce(0) { $0 + $1.themes.count }, 70)
         // widget-sandbox v0.3.0's stop tests, with the reasons they are judged by.
-        XCTAssertEqual(tests.filter { $0.stops != nil }.map(\.id), ["auto/31-stop-text", "auto/32-stop-attribute", "auto/33-stop-batch", "auto/34-stop-css-rules", "auto/35-stop-canvas-pixels"])
+        XCTAssertEqual(tests.filter { $0.stops != nil }.map(\.id), ["auto/31-stop-text", "auto/32-stop-attribute", "auto/33-stop-batch", "auto/34-stop-css-rules", "auto/35-stop-canvas-pixels", "auto/38-stop-paint-load", "auto/39-stop-paint-class", "auto/40-stop-paint-animation", "auto/41-stop-paint-web-animation", "auto/42-stop-paint-before", "auto/43-stop-paint-backdrop", "auto/44-stop-nodes"])
         XCTAssertEqual(tests.first { $0.id == "auto/35-stop-canvas-pixels" }?.stops, "Canvas limit exceeded: canvases of")
         XCTAssertEqual(tests.first { $0.id == "auto/31-stop-text" }?.covers, ["limit.text-node"])
         XCTAssertTrue(tests.allSatisfy { FileManager.default.fileExists(atPath: $0.fileURL.path) })

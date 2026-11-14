@@ -195,11 +195,10 @@ WR_TEST(testScriptInsideTheStyleStepStopsAtTheSlice) {
     for (int i = 0; i < 4 && env.env().runtime().stopReason() == wr::StopReason::None; i++) {
         env.env().frame(16);
     }
-    // The timer task flushes: its slice, the 300 ms the quota leaves a timer.
+    // The timer task flushes: its slice, the whole 500 ms (v0.6.x gives every task cpuLimitMs).
     CHECK(env.env().runtime().stopReason() == wr::StopReason::Cpu);
     const std::string detail = env.env().runtime().stopDetail();
-    const std::string want = "CPU limit exceeded: more than 300 ms of continuous execution (timer; CPU quota: 300 ms of 300 ms "
-                             "per 1000 ms left, so this timer task got 300 ms)";
+    const std::string want = "CPU limit exceeded: more than 500 ms of continuous execution (timer)";
     if (detail != want) {
         std::printf("  %s\n", detail.c_str());
     }

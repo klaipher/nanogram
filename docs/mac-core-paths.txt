@@ -57,6 +57,7 @@ lib libprisma ios=third-party/libprisma/libprisma mac=submodules/CodeSyntax andr
 lib sqlcipher-amalgamation ios=submodules/sqlcipher/amalgamation mac=submodules/sqlcipher android=TMessagesProj/jni/sqlite
 lib libyuv ios=third-party/libyuv/third_party/libyuv mac=submodules/tg_owt/src/third_party/libyuv android=TMessagesProj/jni/third_party/libyuv
 lib quickjs ios=third-party/quickjs-ng/quickjs mac=third-party/widget-sandbox/packages/ios/Sources/CQuickJS/quickjs android=TMessagesProj/jni/twidget/widget-sandbox/packages/ios/Sources/CQuickJS/quickjs
+lib widget-sandbox ios=third-party/widget-sandbox/widget-sandbox mac=third-party/widget-sandbox android=TMessagesProj/jni/twidget/widget-sandbox
 
 share submodules/SSignalKit
 share submodules/Postbox

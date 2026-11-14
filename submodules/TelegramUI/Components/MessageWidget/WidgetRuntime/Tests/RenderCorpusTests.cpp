@@ -526,8 +526,9 @@ WR_TEST(testPlainDocumentStyleCharge) {
 WR_TEST(testAttackCorpusLoadsNothing) {
     pthread_set_qos_class_self_np(QOS_CLASS_USER_INTERACTIVE, 0);
     const std::vector<std::string> files = corpusFiles(true);
-    // 113 since 13.2 added wallet-forged-wire, wallet-grant-reuse and wallet-no-activation (each loads nothing).
-    CHECK_EQ(files.size(), size_t(113));
+    // 113 since 13.2 added wallet-forged-wire, wallet-grant-reuse and wallet-no-activation (each loads nothing); 127 with
+    // the widget-sandbox v0.6.x line (paint-*, parser-scope-oob, regexp-delete-recompile, render-*; none loads anything).
+    CHECK_EQ(files.size(), size_t(127));
     std::set<std::string> seen;
     for (const std::string& file : files) {
         const std::string name = shortName(file);

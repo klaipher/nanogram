@@ -1,5 +1,5 @@
 // Profile 1's tables (V5c plan, Task 1): the generated Sources/Host/ProfileTables.inc against the vendored
-// third-party/widget-sandbox/profile/profile.json it was made from, and the lookups CSS.supports and V4's validator use.
+// third-party/widget-sandbox/widget-sandbox/packages/core/profile.json it was made from, and the lookups CSS.supports and V4's validator use.
 #include <cstdlib>
 #include <fstream>
 #include <sstream>

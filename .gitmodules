@@ -96,3 +96,8 @@
 	url = https://github.com/klaipher/quickjs.git
 	branch = nanogram
 	shallow = true
+[submodule "third-party/widget-sandbox/widget-sandbox"]
+	path = third-party/widget-sandbox/widget-sandbox
+	url = https://github.com/klaipher/widget-sandbox.git
+	branch = nanogram
+	shallow = true
