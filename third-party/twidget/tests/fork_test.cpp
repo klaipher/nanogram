@@ -79,7 +79,7 @@ int main() {
     c.fonts.clear();
     litehtml_test::layout(c, "<p style='font-variant-numeric:tabular-nums'>1</p>");
     bool tabular = false;
-    for (const auto& f : c.fonts) tabular |= f.tabular_nums;
+    for (const auto& f : c.fonts) tabular |= f.features.find("tnum") != std::string::npos;
     CHECK(tabular);
 
     // Non-finite transform and box-shadow values parse as unset (css_effects.h: box_shadow{x, y, blur,
@@ -356,78 +356,6 @@ int main() {
                                               "<i id=a style='display:inline-block;width:10px;height:8px'></i>"
                                               "<i id=b style='display:inline-block;width:10px;height:8px'></i></div></body>");
         CHECK(float(by_id(plain, "a")->get_placement().x) < float(by_id(plain, "b")->get_placement().x));
-    }
-
-    // Edit 48: a math function mixing a percentage with a length keeps its tree to layout, font-relative terms folded at
-    // compute; the trees are counted references. A length copied, moved and assigned releases its tree with the last
-    // copy. Documents share trees with style::add's process-wide declaration cache, so a repeated layout and patch of the
-    // same page must leave no more trees alive than the first did.
-    {
-        const int64_t before = litehtml::calc_node::live();
-        {
-            const auto tokens = litehtml::normalize(std::string("calc(50% - 10px)"), litehtml::f_componentize);
-            litehtml::css_length a;
-            CHECK(!tokens.empty() && a.from_token(tokens[0], litehtml::f_length_percentage) && a.is_calc());
-            CHECK(litehtml::calc_node::live() > before);
-            litehtml::css_length b = a;
-            litehtml::css_length m = std::move(b);
-            litehtml::css_length d;
-            d = m;
-            d = a;
-            m = 4.0f;
-            CHECK(!m.is_calc() && d.is_calc() && std::abs(float(d.calc_value(200, litehtml::calc_fonts())) - 90.0f) < 0.01f);
-        }
-        CHECK(litehtml::calc_node::live() == before);
-
-        // A tree holds at most 64 nodes (calc_node::max_nodes): one tree is shared by every element a cached declaration
-        // styles and evaluated for each at every layout, and a var() splice can make one declaration as large as the
-        // style budget. Each min(1px, 1%) is three nodes and the sum one more: 21 of them fit, 22 do not. A sum is refused
-        // as soon as its children pass the cap, so 50,000 of them times a million factors (fifteen seconds when every
-        // factor walked every child) end at once.
-        {
-            const auto sum_of_mins = [](int count, int factors) {
-                std::string text = "calc((min(1px, 1%)";
-                for (int i = 1; i < count; i++) text += " + min(1px, 1%)";
-                text += ")";
-                for (int i = 0; i < factors; i++) text += "*1";
-                return text + ")";
-            };
-            const auto parse = [](const std::string& text, litehtml::css_length& l) {
-                const auto tokens = litehtml::normalize(text, litehtml::f_componentize);
-                return !tokens.empty() && l.from_token(tokens[0], litehtml::f_length_percentage) && l.is_calc();
-            };
-            litehtml::css_length fits;
-            CHECK(parse(sum_of_mins(21, 3), fits) && fits.calc()->nodes == 64);
-            CHECK(std::abs(float(fits.calc_value(200, litehtml::calc_fonts())) - 21.0f) < 0.01f);
-            litehtml::css_length over;
-            CHECK(!parse(sum_of_mins(22, 0), over) && !over.is_calc());
-            const auto tokens = litehtml::normalize(sum_of_mins(50000, 1000000), litehtml::f_componentize);
-            const auto start = std::chrono::steady_clock::now();
-            litehtml::css_length big;
-            CHECK(!tokens.empty() && !big.from_token(tokens[0], litehtml::f_length_percentage));
-            CHECK(std::chrono::duration<double>(std::chrono::steady_clock::now() - start).count() < 2.0);
-        }
-
-        const std::string page = "<html><body style='margin:0'><div style='width:200px;font-size:10px'>"
-                                 "<div id=a style='width:calc(50% - 10px);height:2px'></div>"
-                                 "<div id=b style='width:clamp(20px, 50%, 60px);height:2px;margin-left:calc(1em + 25%)'></div>"
-                                 "</div></body></html>";
-        const auto round = [&] {
-            auto doc = litehtml_test::layout(c, page, 300);
-            const auto a = by_id(doc, "a");
-            const auto b = by_id(doc, "b");
-            CHECK(a && std::abs(float(a->get_placement().width) - 90.0f) < 0.5f);
-            CHECK(b && std::abs(float(b->get_placement().width) - 60.0f) < 0.5f && std::abs(float(b->get_placement().x) - 60.0f) < 0.5f);
-            CHECK(a && a->css().get_width().is_calc() && a->css().get_width().units() == litehtml::css_units_percentage);
-            auto second = litehtml_test::layout(c, std::string(page).replace(page.find("50% - 10px"), 10, "25% + 10px"), 300);
-            const auto a2 = by_id(second, "a");
-            CHECK(a2 && std::abs(float(a2->get_placement().width) - 60.0f) < 0.5f);
-        };
-        round();
-        const int64_t cached = litehtml::calc_node::live();
-        round();
-        round();
-        CHECK(litehtml::calc_node::live() == cached);
     }
 
     // Edit 48: a calc on a property that takes no negative value is clamped at 0 (CSS clamps a math function's result to

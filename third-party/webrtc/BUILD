@@ -3105,6 +3105,8 @@ cc_library(
     copts = [
         "-w",
         "-DHAVE_CONFIG_H",
+        "-DHAVE_NETINET_IN_H",
+        "-DHAVE_ARPA_INET_H",
     ] + arch_specific_cflags + optimization_flags,
     includes = [
         "webrtc/third_party/libsrtp/include",
@@ -3195,6 +3197,7 @@ cc_library(
         "-std=c++17",
     ],
     includes = [
+        "webrtc",
         "webrtc/third_party/rnnoise/src",
     ],
     visibility = ["//visibility:public"],

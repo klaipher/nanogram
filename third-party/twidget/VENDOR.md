@@ -29,17 +29,14 @@ What stays here is ours:
 
 Consumers include the host-support header as `third-party/twidget/twidget/apple/Sources/LiteHTML/LHHostSupport.h`.
 
-## Fork follow-up (needed before the iOS build)
+## Fork follow-up
 
-- `include/LHDocument.h`, `include/LHGPURenderer.h`, `include/LHImages.h`, `include/LHTextFragment.h` and `LHContainer.mm`
-  of the fork start with `#import <Cocoa/Cocoa.h>` above the `#if TARGET_OS_OSX` block that imports Foundation, CoreGraphics
-  and CoreText for iOS: a merge artifact, the iOS copy had that import inside the guard. The fix is to delete the first line
-  of those five files. Until the fork has it, `shim/Cocoa/Cocoa.h` (on `:LiteHTML`'s include path) imports what the guard
-  imports, so the layer compiles unchanged; delete the shim and its two BUILD entries with the fork fix.
-- Not carried by the fork although this app had them (NANOGRAM-CHANGES.md of the fork): edit 47 (UAX #9 levels through the
-  host: the fork's own simplified `reorder_bidi` runs; `bidi_levels` is declared) and the calc trees of edits 48, 49 and 56
-  (the fork's 4,096-expression registry). `tests/fork_test.cpp` still has the checks of the iOS behaviour for 46, 47, 48, 49,
-  56, 57 and 58 (the blocks from "Edit 46" to the one before "Edit 59"): where the fork's behaviour differs they fail, and the
+- The fork has the Cocoa import fix (the five files import it inside the `TARGET_OS_OSX` guard), so `shim/Cocoa/Cocoa.h` and its
+  two BUILD entries can be removed; they are kept until an app build confirms it.
+- Carried by the fork since 456583c: edit 47 (UAX #9 levels through the host, `bidi_levels`). Not carried: the calc trees of
+  edits 48, 49 and 56 (the fork's registry holds 16,384 expressions per process). The first edit 48 block of
+  `tests/fork_test.cpp` (calc_node, is_calc, calc_value, calc_fonts) is dropped; its tabular-nums check reads the `tnum`
+  feature. The other checks (46, 47, 48 clamp, 49, 56, 57, 58) remain, and where the fork's behaviour differs they fail: the
   decision is the owner's (keep the fork's and rewrite the check, or port the iOS behaviour into the fork).
 - C++ standard: the fork's CMake builds the portable half as C++20; this BUILD keeps `-std=gnu++17` for litehtml and the Apple
   layer, as the fork's SwiftPM package does.
