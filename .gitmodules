@@ -86,3 +86,8 @@
 	url = https://github.com/klaipher/sqlcipher-amalgamation.git
 	branch = nanogram
 	shallow = true
+[submodule "third-party/libyuv/third_party/libyuv"]
+	path = third-party/libyuv/third_party/libyuv
+	url = https://github.com/klaipher/libyuv.git
+	branch = nanogram
+	shallow = true

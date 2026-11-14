@@ -55,6 +55,7 @@ lib openh264 ios=third-party/openh264/openh264 mac=core-xprojects/OpenH264/OpenH
 lib rnnoise ios=third-party/rnnoise/rnnoise mac=third-party/rnnoise android=TMessagesProj/jni/voip/rnnoise
 lib libprisma ios=third-party/libprisma/libprisma mac=submodules/CodeSyntax android=TMessagesProj/jni/third_party/libprisma
 lib sqlcipher-amalgamation ios=submodules/sqlcipher/amalgamation mac=submodules/sqlcipher android=TMessagesProj/jni/sqlite
+lib libyuv ios=third-party/libyuv/third_party/libyuv mac=submodules/tg_owt/src/third_party/libyuv android=TMessagesProj/jni/third_party/libyuv
 
 share submodules/SSignalKit
 share submodules/Postbox

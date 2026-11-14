@@ -2,6 +2,8 @@ load("@rules_cc//cc:cc_library.bzl", "cc_library")
 
 # libyuv from https://chromium.googlesource.com/libyuv/libyuv/
 # Version 1977, main at 0b8dd2318002db2cc089930d6e2a3ad131eabdb8 (2026-10-29).
+# The sources are the klaipher/libyuv submodule in third_party/libyuv (nanogram = that commit minus the upstream
+# BUILD.bazel, WORKSPACE.bazel and libyuv.bzl, which would make the submodule its own Bazel package and repository).
 # Source lists and per-target flags follow upstream BUILD.gn / libyuv.gni.
 
 config_setting(

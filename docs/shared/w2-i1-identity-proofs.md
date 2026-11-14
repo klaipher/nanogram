@@ -58,3 +58,19 @@ comparisons made before the old copy was deleted.
 - iOS callers: the new `trustRecipientPublicKey` fields are UniFFI records with `default = false`, so the generated Swift
   initialisers keep working for `CreateEncryptedCommentRequest` and `EncryptedCommentRecipientRequest`
   (`WalletEngineRuntime.swift` passes neither). The iOS behaviour (key verified) is unchanged.
+
+## libyuv
+
+- Old copy: `third-party/libyuv/third_party/libyuv` (197 files, version 1977).
+- New source: submodule at the same path = klaipher/libyuv `nanogram` 947f5326 = upstream 0b8dd231 (version 1977,
+  2026-10-29) + one commit that deletes `BUILD.bazel`, `WORKSPACE.bazel` and `libyuv.bzl` + the fork records.
+- Proof: `git ls-tree -r` blob ids of the old copy against `0b8dd231` fetched from chromium.googlesource.com: 0 differing
+  blobs, 0 files only in the old copy; upstream has 6 more files (`.clang-format`, `.gitignore`, `.gn` and the three Bazel
+  files). The BUILD is unchanged: the path is the same.
+- S1 spike (Bazel 9, decided by reading the docs, nothing run): a directory with a `BUILD.bazel` is its own package and its
+  files cannot be labelled from the parent package; recursive globs stop there. A root `MODULE.bazel` or `WORKSPACE.bazel`
+  is also a repository boundary marker. Upstream libyuv ships BUILD.bazel + WORKSPACE.bazel, BoringSSL ships BUILD.bazel +
+  MODULE.bazel (+ `.bazelignore`, which Bazel reads only at the main repository root). `new_local_repository(build_file=)`
+  would need the dependency to become an external repository, and the docs do not say what happens to the upstream root
+  BUILD.bazel that the rule symlinks in, so that route is unproven. The plan's fallback (a one-commit klaipher fork that
+  deletes the Bazel files) is used for libyuv; BoringSSL is deferred (see the lane report).

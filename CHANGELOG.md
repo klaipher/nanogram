@@ -4,6 +4,8 @@ Newest first. Internal notes for each TestFlight build; testers see the What to 
 
 ## Unreleased
 
+- **libyuv is the klaipher/libyuv submodule** (W2.I1; the plan's S1 fallback: a fork without the upstream Bazel files, because a root BUILD.bazel/WORKSPACE.bazel would make the submodule its own package and repository). Same path, same BUILD, byte-identical sources (version 1977). Not built.
+
 - **wallet-engine moves to klaipher/wallet-engine nanogram** (W2.I1). Pin 44ae85c7 (e59e0d89 + 5 commits, no crate changes), `.gitmodules` url and branch updated. iOS keeps verifying the recipient key; Android's rotated-key path is an explicit opt-in. Bindings are generated at build time. Not built.
 
 - **SQLCipher is the klaipher/sqlcipher-amalgamation submodule** (W2.I1). `submodules/sqlcipher/amalgamation` (`nanogram`, 9948d5af, shallow) replaces the vendored `Sources/sqlite3.c` and `PublicHeaders` (byte-identical; proof in `docs/shared/w2-i1-identity-proofs.md`). Include path and defines unchanged. Not built.
