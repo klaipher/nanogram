@@ -16,6 +16,22 @@ LHP = TW + "/litehtml"
 APPLE = TW + "/apple/Sources/LiteHTML"
 ASSETS = TW + "/apple/Sources/TwidgetAssets"
 PKG = "third-party/twidget/"
+# Test suites that are byte-identical to the fork's own copies (twidget/apple/Tests): compiled from the submodule.
+FORK_LITEHTML_TESTS = [
+    "BackgroundImageExclusionTests",
+    "SVGLayerExportTests",
+    "PixelSnapTests",
+    "ColorMatchTests",
+    "FormRenderingTests",
+    "SourceFilterCacheTests",
+    "PointerEventsHitTests",
+    "FontCacheTests",
+    "CSSMathTests",
+]
+FORK_RENDERER_TESTS = [
+    "DamageBandTests",
+    "CachePurgeTests",
+]
 LH = PKG + LHP
 AP = PKG + APPLE
 
@@ -232,7 +248,12 @@ apple_resource_group(
 objc_library(
     name = "LiteHTMLTestsLib",
     testonly = True,
-    srcs = glob(["tests/LiteHTMLTests/*.mm"]) + ["tests/LiteHTMLTests/LHTestShim.h"],
+    # Nine suites are byte-identical to the fork's apple/Tests/LiteHTMLTests and compile from the submodule; the others
+    # differ from the fork (iOS expectations) and stay in tests/LiteHTMLTests.
+    srcs = glob(
+        ["tests/LiteHTMLTests/*.mm"],
+        exclude = ["tests/LiteHTMLTests/%s.mm" % n for n in FORK_LITEHTML_TESTS],
+    ) + [TW + "/apple/Tests/LiteHTMLTests/%s.mm" % n for n in FORK_LITEHTML_TESTS] + ["tests/LiteHTMLTests/LHTestShim.h"],
     copts = [
         "-std=gnu++17",
         "-w",
@@ -261,7 +282,11 @@ objc_library(
 swift_library(
     name = "DocumentTestsLib",
     testonly = True,
-    srcs = glob(["tests/DocumentTests/*.swift"]),
+    # DamageBandTests and CachePurgeTests are byte-identical to the fork's apple/Tests/TwidgetRendererTests.
+    srcs = glob(
+        ["tests/DocumentTests/*.swift"],
+        exclude = ["tests/DocumentTests/%s.swift" % n for n in FORK_RENDERER_TESTS],
+    ) + [TW + "/apple/Tests/TwidgetRendererTests/%s.swift" % n for n in FORK_RENDERER_TESTS],
     deps = [":LiteHTML"],
 )
 

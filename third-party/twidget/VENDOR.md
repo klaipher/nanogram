@@ -12,8 +12,8 @@ What stays here is ours:
 |---|---|
 | `BUILD` | the targets below, reading the fork's layout (`TW`, `LHP`, `APPLE`, `ASSETS` at its top) |
 | `tests/*.cpp`, `tests/test_container.h` | the host tests of the litehtml fork and the deterministic test container |
-| `tests/LiteHTMLTests/` | the 30 iOS-simulator tests of the Apple layer, with `LHTestShim.h` (AppKit spellings and the corpus path) |
-| `tests/DocumentTests/` | four Swift renderer tests |
+| `tests/LiteHTMLTests/` | 21 iOS-simulator tests of the Apple layer that differ from the fork's, with `LHTestShim.h` (AppKit spellings and the corpus path). The other 9 (BackgroundImageExclusion, SVGLayerExport, PixelSnap, ColorMatch, FormRendering, SourceFilterCache, PointerEventsHit, FontCache, CSSMath) are byte-identical to `twidget/apple/Tests/LiteHTMLTests` and compiled from the submodule by `FORK_LITEHTML_TESTS` in the BUILD |
+| `tests/DocumentTests/` | two Swift renderer tests (DashboardLayout, CompositorClip) that differ from the fork's; DamageBand and CachePurge are byte-identical to `twidget/apple/Tests/TwidgetRendererTests` and compiled from the submodule (`FORK_RENDERER_TESTS`). The 19 that differ stay here until their iOS changes are upstreamed into the fork |
 | `shim/Cocoa/Cocoa.h` | a temporary answer to the fork's stray `#import <Cocoa/Cocoa.h>` (below) |
 
 ## Where each former path now comes from
