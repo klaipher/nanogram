@@ -71,16 +71,10 @@ build --copt=-ftrivial-auto-var-init=zero
 build --copt=-D_LIBCPP_HARDENING_MODE=_LIBCPP_HARDENING_MODE_FAST
 build --copt=-fstack-protector-strong
 
-# Outline atomics (SHARED-APPLE-CPU-1), OFF by default: `--config=outline_atomics` (`TG_BAZEL_ARGS=--config=outline_atomics tg build ...`).
-# The app's deployment target is iOS 15, so clang targets apple-a7 and compiles every std::atomic read-modify-write to an
-# ldaxr/stlxr loop. -moutline-atomics calls compiler-rt helpers that pick the ARMv8.1 LSE instruction at run time (one cheap
-# branch), so it stays safe down to the A9 and needs no change of the device floor. Only the contended C++ atomics of tgcalls,
-# WebRTC and TDLib gain; Swift and ObjC retain/release live in the OS runtime and are unaffected, and Swift code gets nothing
-# (-Xcc only reaches the Clang importer). The action_env tells the genrule-built native libraries (td, opus, webp,
-# libjpeg-turbo, libjxl, ffmpeg) to add the flag to their own CFLAGS on iOS arm64 and simulator arm64. Not for the watch app
-# (prebuilt arm64_32) and not needed on the Mac (macOS 14 targets apple-m1, which has LSE). Measure first: docs/performance/outline-atomics.md.
-build:outline_atomics --copt=-moutline-atomics
-build:outline_atomics --action_env=NANOGRAM_OUTLINE_ATOMICS=1
+# Outline atomics (SHARED-APPLE-CPU-1): BLOCKED, config withdrawn. `-moutline-atomics` for arm64-apple-ios makes clang call
+# ___aarch64_ldadd4_acq_rel and friends (three underscores), but Xcode's libclang_rt.ios.a defines them with two
+# (__aarch64_ldadd4_acq_rel), so the device link fails with "Undefined symbols". Re-enable only with a forwarding shim that
+# a full `tg build --device` proves, or replace by -mcpu=apple-a11/a12 once the iOS floor is raised. See docs/performance/outline-atomics.md.
 
 # apple_support's layering check is a beta lint that is on by default. It does not
 # change any output, and generating its module maps took ~30 s at the very start

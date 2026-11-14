@@ -145,11 +145,6 @@ then
 		fi
 		fi
 
-		# Opt-in (.bazelrc config outline_atomics): LSE atomics chosen at run time on iOS arm64 and simulator arm64.
-		if [ "${NANOGRAM_OUTLINE_ATOMICS:-0}" = "1" ] && { [ "$RAW_ARCH" = "arm64" ] || [ "$RAW_ARCH" = "sim_arm64" ]; }; then
-			CFLAGS="$CFLAGS -moutline-atomics"
-		fi
-
 		if [ "$PLATFORM" != "linux" ]; then
 			XCRUN_SDK=`echo $PLATFORM | tr '[:upper:]' '[:lower:]'`
 			CC="xcrun -sdk $XCRUN_SDK clang"

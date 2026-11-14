@@ -1,5 +1,7 @@
-"""SHARED-APPLE-CPU-1: the opt-in outline-atomics config and the native-library scripts that honour it. Pure Python, no build."""
-import re
+"""SHARED-APPLE-CPU-1: outline atomics are blocked on iOS device (helper symbol names do not link). Pure Python plus an optional xcrun link probe."""
+import shutil
+import subprocess
+import tempfile
 import unittest
 from pathlib import Path
 
@@ -12,39 +14,34 @@ SCRIPTS = [
     "third-party/opus/build-opus-bazel.sh",
     "submodules/ffmpeg/Sources/FFMpeg/build-ffmpeg-bazel.sh",
 ]
-ENV = "NANOGRAM_OUTLINE_ATOMICS"
 
 
-class OutlineAtomicsTests(unittest.TestCase):
-    def test_config_is_opt_in_and_sets_copt_and_action_env(self):
+class OutlineAtomicsBlockedTests(unittest.TestCase):
+    def test_config_is_withdrawn_from_bazelrc(self):
         rc = (ROOT / ".bazelrc").read_text()
-        self.assertIn("build:outline_atomics --copt=-moutline-atomics", rc)
-        self.assertIn("build:outline_atomics --action_env=%s=1" % ENV, rc)
-        self.assertNotRegex(rc, r"(?m)^build --copt=-moutline-atomics")
-        self.assertNotRegex(rc, r"(?m)^build --action_env=%s" % ENV)
+        self.assertNotIn("build:outline_atomics", rc)
+        self.assertNotRegex(rc, r"(?m)^build .*-moutline-atomics")
+        self.assertIn("BLOCKED", rc)
 
-    def test_every_native_script_gates_the_flag_on_the_env_var(self):
+    def test_native_scripts_do_not_add_the_flag(self):
         for rel in SCRIPTS:
             text = (ROOT / rel).read_text()
-            self.assertIn('"${%s:-0}" = "1"' % ENV, text, rel)
-            self.assertIn("-moutline-atomics", text, rel)
+            self.assertNotIn("-moutline-atomics", text, rel)
+            self.assertNotIn("NANOGRAM_OUTLINE_ATOMICS", text, rel)
 
-    def test_flag_is_never_added_on_the_x86_64_or_macos_branches(self):
-        for rel in SCRIPTS[:4]:
-            lines = (ROOT / rel).read_text().splitlines()
-            for i, line in enumerate(lines):
-                if "-moutline-atomics" in line:
-                    prev = next(l for l in reversed(lines[:i]) if "export CFLAGS=" in l)
-                    self.assertIn("-arch arm64", prev, rel)
-                    self.assertNotIn("macosx", prev, rel)
-
-    def test_opus_and_ffmpeg_restrict_to_ios_arm64(self):
-        for rel in SCRIPTS[4:]:
-            text = (ROOT / rel).read_text()
-            block = re.search(r'if \[ "\$\{%s:-0\}" = "1" \] && \{(.*?)\}; then' % ENV, text, re.S)
-            self.assertIsNotNone(block, rel)
-            self.assertIn('"sim_arm64"', block.group(1))
-            self.assertNotIn("macos", block.group(1))
+    @unittest.skipUnless(shutil.which("xcrun"), "xcrun not available")
+    def test_ios_device_link_with_outline_atomics_still_fails(self):
+        """Link smoke test: documents why the config is blocked. When this fails the link works: re-evaluate SHARED-APPLE-CPU-1."""
+        with tempfile.TemporaryDirectory() as tmp:
+            src = Path(tmp) / "a.cpp"
+            src.write_text("#include <atomic>\nstd::atomic<int> g;\nint f() { return g.fetch_add(1); }\n")
+            cmd = ["xcrun", "-sdk", "iphoneos", "clang++", "-target", "arm64-apple-ios15.0", "-O2",
+                   "-moutline-atomics", "-dynamiclib", str(src), "-o", str(Path(tmp) / "a.dylib")]
+            res = subprocess.run(cmd, capture_output=True, text=True)
+            if "SDK" in res.stderr and "cannot be located" in res.stderr:
+                self.skipTest("iphoneos SDK not installed")
+            self.assertNotEqual(res.returncode, 0, "outline atomics now link on device; the config can be restored with a proof build")
+            self.assertIn("___aarch64_", res.stderr)
 
 
 if __name__ == "__main__":

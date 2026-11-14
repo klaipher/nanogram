@@ -64,11 +64,6 @@ else
   EXTRA_CONFIG="--host=arm-apple-darwin"
 fi
 
-# Opt-in (.bazelrc config outline_atomics): LSE atomics chosen at run time on iOS arm64 and simulator arm64.
-if [ "${NANOGRAM_OUTLINE_ATOMICS:-0}" = "1" ] && { [ "${ARCH}" = "arm64" ] || [ "${ARCH}" = "sim_arm64" ]; }; then
-  OPT_CFLAGS="${OPT_CFLAGS} -moutline-atomics"
-fi
-
 SDK_PATH="$(xcrun --sdk $PLATFORM --show-sdk-path 2>/dev/null)"
 
 mkdir -p "${INTERDIR}"
