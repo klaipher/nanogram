@@ -1,5 +1,6 @@
 import Foundation
 import AccountContext
+import TelegramCore
 import TelegramPresentationData
 import PresentationDataUtils
 import InAppPurchaseManager
