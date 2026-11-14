@@ -37,3 +37,12 @@ filegroup(
     ],
     visibility = ["//Telegram:__pkg__"],
 )
+
+# Compiled into the phone's EnergyNumbers and WatchReport modules as well as into the watch app, so there is one copy.
+exports_files(
+    [
+        "Shared/EnergyNumbers.swift",
+        "Shared/WatchReportPayload.swift",
+    ],
+    visibility = ["//visibility:public"],
+)

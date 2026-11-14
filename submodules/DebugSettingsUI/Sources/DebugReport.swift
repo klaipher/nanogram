@@ -8,6 +8,8 @@ import ZipArchive
 /// The parts of a report, in the order they are kept when the size cap is reached.
 enum DebugReportSection: CaseIterable, Equatable {
     case info
+    case energy
+    case watch
     case crashes
     case callLogs
     case groupCallLogs
@@ -22,6 +24,8 @@ enum DebugReportSection: CaseIterable, Equatable {
     var folder: String {
         switch self {
         case .info: return "info"
+        case .energy: return "energy"
+        case .watch: return "watch"
         case .crashes: return "crashes"
         case .metricKit: return "metrickit"
         case .criticalLogs: return "critical-logs"
@@ -38,6 +42,8 @@ enum DebugReportSection: CaseIterable, Equatable {
     var title: String {
         switch self {
         case .info: return "Device, app and experiment details"
+        case .energy: return "CPU, energy, battery and thermal numbers (this launch and per experiment since its switch changed)"
+        case .watch: return "Apple Watch part (its own manifest, energy numbers and log), when a watch is paired"
         case .crashes: return "Crash reports"
         case .metricKit: return "MetricKit reports (hangs, CPU, energy, disk writes, memory)"
         case .criticalLogs: return "Critical logs (short logs of the app and the notification extension)"
@@ -116,7 +122,7 @@ struct DebugReportPlan: Equatable {
 }
 
 /// Picks what goes into the report: sections in their order, the newest file of each first, until a cap is reached.
-/// The info section is always kept (it is a few kilobytes).
+/// The info and energy sections are always kept (a few kilobytes each).
 func debugReportPlan(sources: [DebugReportSource], limits: DebugReportLimits = DebugReportLimits()) -> DebugReportPlan {
     var entries: [DebugReportEntry] = []
     var omitted: [DebugReportSource] = []
@@ -141,7 +147,7 @@ func debugReportPlan(sources: [DebugReportSource], limits: DebugReportLimits = D
                 bytes = limits.fileBytes
                 isCut = true
             }
-            if section != .info && (total + bytes > limits.totalBytes || sectionTotal + bytes > limits.sectionBytes) {
+            if section != .info && section != .energy && (total + bytes > limits.totalBytes || sectionTotal + bytes > limits.sectionBytes) {
                 omitted.append(source)
                 continue
             }
@@ -170,14 +176,17 @@ private func debugReportEntryName(_ source: DebugReportSource, used: inout Set<S
 }
 
 /// The line shown before sending: what the report holds and what it never does.
-let debugReportPrivacyNote = "Includes device and app details, experiment numbers, app and extension logs, call logs, and crash and MetricKit reports. No contacts or contact lists. Message text is left out of the logs while Remove Sensitive Data is on; phone numbers and emails are masked in the text logs."
+let debugReportPrivacyNote = "Includes device and app details, experiment numbers, CPU and energy numbers, the paired Apple Watch's report, app and extension logs, call logs, and crash and MetricKit reports. No contacts or contact lists. Message text is left out of the logs while Remove Sensitive Data is on; phone numbers and emails are masked in the text logs."
 
 /// The README at the top of the zip.
-func debugReportManifest(infoLines: [String], plan: DebugReportPlan, created: Date, limits: DebugReportLimits = DebugReportLimits()) -> String {
+func debugReportManifest(infoLines: [String], watchLine: String? = nil, plan: DebugReportPlan, created: Date, limits: DebugReportLimits = DebugReportLimits()) -> String {
     var lines = ["Nanogram report", ""]
     let formatter = ISO8601DateFormatter()
     lines.append("Created: \(formatter.string(from: created))")
     lines.append(contentsOf: infoLines)
+    if let watchLine {
+        lines.append(watchLine)
+    }
     lines.append("")
     lines.append(debugReportPrivacyNote)
     lines.append("Phone numbers (+...) and email addresses in the text logs (not the critical logs, JSON reports and crash reports) are replaced by [phone] and [email]. Each log file is cut to its newest \(debugReportSizeText(limits.fileBytes)), the report to \(debugReportSizeText(limits.totalBytes)).")

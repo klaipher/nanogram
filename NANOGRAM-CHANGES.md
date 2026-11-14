@@ -360,6 +360,7 @@ marked (check) were not re-verified against the code; correct them on the next c
 ## Send Report: one diagnostics button for testers
 - What: Settings > Send Report (and the top of Debug Settings) sends one zip with a README, device and experiment details, app, extension and notification logs, critical logs, call logs, and crash and MetricKit reports, capped at 40 MB with phone numbers and emails masked; the old fine-grained Send Logs menu stays for developers.
 - Why: testers had five or more log buttons and sent partial reports; upstream has no tester diagnostics flow.
+- Energy and watch (2026-11-14): the report also holds `energy/energy.txt` (kernel counters of the app process, battery, Low Power Mode, thermal, per experiment since its switch changed) and `watch/` (the paired Apple Watch's report: its own manifest, info, energy numbers and log lines, requested over WatchConnectivity, else the last background copy). The watch has no button. Where: `submodules/EnergyNumbers`, `submodules/WatchReport`, `Telegram/WatchApp/Shared/{EnergyNumbers,WatchReportPayload}.swift` (one source for phone and watch), `Telegram/WatchApp/tgwatch Watch App/Diagnostics`, `submodules/DebugSettingsUI/Sources/{DebugEnergy,DebugReportSources}.swift`. Upstream: no. Sync: additive; the only upstream-file hook is one call in `SharedAccountContext.init`.
 
 
 ### Bisecting note

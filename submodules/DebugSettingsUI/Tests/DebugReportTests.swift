@@ -1,5 +1,6 @@
 import XCTest
 import ZipArchive
+import WatchReport
 @testable import DebugSettingsUI
 
 /// The tester's one "Send Report": what the zip holds, the README that lists it, the size caps and the masking.
@@ -167,5 +168,42 @@ final class DebugReportTests: XCTestCase {
         for part in ["13.2 (202611140100)", "iOS 26.1", "iPhone15,2", "Log to File: on", "Performance experiments (device iPhone15,2)", "threadPoolQualityOfService=off"] {
             XCTAssertTrue(text.contains(part), part)
         }
+    }
+
+    func testEnergyNumbersAreKeptEvenWhenTheCapsAreFull() {
+        let limits = DebugReportLimits(totalBytes: 10, sectionBytes: 10, fileBytes: 10)
+        let plan = debugReportPlan(sources: [
+            source(.appLogs, "log", size: 10, age: 1),
+            source(.energy, "energy.txt", size: 8, age: 1000)
+        ], limits: limits)
+        XCTAssertEqual(plan.entries.map { $0.entryName }, ["energy/energy.txt", "logs/app/log"])
+        XCTAssertTrue(plan.omitted.isEmpty)
+    }
+
+    func testEnergyAndWatchComeRightAfterTheInfo() {
+        let sections = DebugReportSection.allCases
+        XCTAssertEqual(Array(sections.prefix(3)), [.info, .energy, .watch])
+        XCTAssertEqual(DebugReportSection.energy.folder, "energy")
+        XCTAssertEqual(DebugReportSection.watch.folder, "watch")
+    }
+
+    func testManifestCarriesTheWatchLine() {
+        let plan = debugReportPlan(sources: [])
+        let manifest = debugReportManifest(infoLines: ["App: x"], watchLine: "Apple Watch: no paired Apple Watch, so the report has no watch part.", plan: plan, created: Date(timeIntervalSince1970: 0))
+        XCTAssertTrue(manifest.contains("Apple Watch: no paired Apple Watch"))
+        XCTAssertTrue(manifest.contains("Apple Watch part"))
+        XCTAssertTrue(manifest.contains("watch/]: none on this device"))
+    }
+
+    func testWatchFilesLandUnderWatchWithTheirOwnManifest() {
+        let created = Date(timeIntervalSince1970: 5)
+        let sources = debugReportWatchSources(files: [WatchReportFile(name: "manifest.txt", text: "m"), WatchReportFile(name: "log.txt", text: "l")], created: created)
+        let plan = debugReportPlan(sources: sources)
+        XCTAssertEqual(Set(plan.entries.map { $0.entryName }), ["watch/manifest.txt", "watch/log.txt"])
+    }
+
+    func testNoteMentionsTheWatchAndTheEnergyNumbers() {
+        XCTAssertTrue(debugReportPrivacyNote.contains("CPU and energy numbers"))
+        XCTAssertTrue(debugReportPrivacyNote.contains("Apple Watch"))
     }
 }

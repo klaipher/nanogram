@@ -1643,7 +1643,7 @@ public func debugController(sharedContext: SharedAccountContext, context: Accoun
             messageWidgetWalletEnabled: MessageWidgetLocalSettings.walletEnabled(),
             deviceModelIdentifier: debugDeviceModelIdentifier(),
             enabledPerformanceExperiments: Set(PerformanceExperiment.allCases.filter { ExperimentalPerformanceFlags.shared.isEnabled($0) }),
-            performanceExperimentSummary: PerformanceExperimentStats.shared.summaryLines()
+            performanceExperimentSummary: PerformanceExperimentStats.shared.summaryLines() + DebugEnergy.summaryLines()
         )
         
         let controllerState = ItemListControllerState(presentationData: ItemListPresentationData(presentationData), title: .text("Debug Settings"), leftNavigationButton: leftNavigationButton, rightNavigationButton: nil, backNavigationButton: ItemListBackButton(title: presentationData.strings.Common_Back))

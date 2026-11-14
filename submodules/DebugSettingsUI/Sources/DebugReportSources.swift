@@ -8,6 +8,8 @@ import CrashReporting
 import MediaCapabilities
 import DiskWriteAccounting
 import TelegramVoip
+import EnergyNumbers
+import WatchReport
 
 /// What the report's info file says about the device and the app.
 struct DebugReportInfo: Equatable {
@@ -105,6 +107,7 @@ private func debugReportLocalSources(sharedContext: SharedAccountContext, contex
     let now = Date()
     let info = debugReportCurrentInfo(sharedContext: sharedContext, context: context)
     sources.append(DebugReportSource(section: .info, name: "device-and-experiments.txt", text: debugReportInfoText(info), modified: now))
+    sources.append(DebugReportSource(section: .energy, name: "energy.txt", text: DebugEnergy.monitor.report(context: DebugEnergy.currentContext()), modified: now))
 
     if let reports = try? CrashReportStore.shared.reports() {
         for report in reports {
@@ -166,14 +169,31 @@ func debugReportSourcesSignal(sharedContext: SharedAccountContext, context: Acco
     }
 }
 
+/// The paired watch's part: its files (or nothing) and the README line that says where they came from.
+private func debugReportWatchSignal() -> Signal<(files: [WatchReportFile], created: Date?, line: String), NoError> {
+    return Signal { subscriber in
+        WatchReportClient.shared.fetch { result in
+            subscriber.putNext((result.files, result.created, result.statusLine))
+            subscriber.putCompletion()
+        }
+        return EmptyDisposable
+    }
+}
+
+func debugReportWatchSources(files: [WatchReportFile], created: Date?) -> [DebugReportSource] {
+    return files.map { DebugReportSource(section: .watch, name: $0.name, text: $0.text, modified: created ?? Date()) }
+}
+
 /// The prepare step of the "Send Report" export: one zip with a README.
 func debugReportPrepare(sharedContext: SharedAccountContext, context: AccountContext?) -> (URL, DebugLogExportSpec) -> Signal<[DebugLogExportFile], NoError> {
     return { directory, spec in
-        return debugReportSourcesSignal(sharedContext: sharedContext, context: context)
-        |> map { sources -> [DebugLogExportFile] in
-            let plan = debugReportPlan(sources: sources)
+        return combineLatest(debugReportSourcesSignal(sharedContext: sharedContext, context: context), debugReportWatchSignal())
+        |> take(1)
+        |> deliverOn(debugLogExportPreparationQueue())
+        |> map { sources, watch -> [DebugLogExportFile] in
+            let plan = debugReportPlan(sources: sources + debugReportWatchSources(files: watch.files, created: watch.created))
             let info = debugReportCurrentInfo(sharedContext: sharedContext, context: context)
-            let manifest = debugReportManifest(infoLines: debugReportInfoLines(info), plan: plan, created: Date())
+            let manifest = debugReportManifest(infoLines: debugReportInfoLines(info), watchLine: watch.line, plan: plan, created: Date())
             return debugReportArchive(plan: plan, manifest: manifest, baseName: spec.fileBaseName, in: directory).flatMap { [$0] } ?? []
         }
     }

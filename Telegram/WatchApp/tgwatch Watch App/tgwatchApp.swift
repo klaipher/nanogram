@@ -34,6 +34,8 @@ struct TgwatchApp: App {
         )
         if !isUnderXCTest {
             mgr.bootstrap()
+            // The iPhone's "Send Report" asks for this report; the watch has no button of its own.
+            WatchReportSession.shared.start()
             // A system refresh launches the app, which bootstraps TDLib above; give it a moment to connect and
             // receive updates, then write the widget summary from the cache.
             BackgroundRefreshCoordinator.shared.syncAction = { [weak mgr] window in
@@ -62,7 +64,10 @@ struct TgwatchApp: App {
         // Wrist down (inactive) or background: the open chat stops marking messages read.
         .onChange(of: scenePhase, initial: true) { _, phase in
             manager.setSceneActive(phase == .active)
-            if phase != .active { BackgroundRefreshCoordinator.shared.scheduleNext() }
+            if phase != .active {
+                BackgroundRefreshCoordinator.shared.scheduleNext()
+                WatchReportSession.shared.scheduleTransfer()
+            }
         }
     }
 

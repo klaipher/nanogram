@@ -82,7 +82,11 @@ Watch for: stutter or blank cells while scrolling, delay before stickers start m
 ## Battery and heat (every run, any test)
 
 Do one 10-minute session per experiment and state (A, B): during it, repeat the test script of that experiment.
-- Write down the **battery % before and after** (Settings > Battery, whole percent).
+- The app now measures CPU time and energy itself (see "CPU and energy numbers" below), so the battery % is only a
+  fallback: write down the **battery % before and after** (Settings > Battery, whole percent) too, in case the energy
+  line shows "not reported on this device".
+- Keep the phone **off the charger** for the whole run. A run that was charging for more than 10% of its time is marked
+  "Not comparable" in the numbers.
 - After the 10 minutes: is the phone **cool / warm / hot** to the touch at the top back?
 - A hot phone with a warning from iOS: stop the run and say so.
 
@@ -94,15 +98,37 @@ For each experiment and each of A and B send (a message is enough):
 - **Smoothness 1 to 5** (5 = perfectly smooth).
 - **Stutter:** yes or no (and where).
 - **Warm / hot** after the 10 minutes: cool, warm or hot.
-- **Battery drop** over the 10 minutes (e.g. 4%).
+- **Battery drop** over the 10 minutes (e.g. 4%), as a fallback only.
 - **One report:** Settings > **Send Report** (in the help section, next to Ask a Question and Nanogram FAQ), then pick
   Via Nanogram, Via Email or Other Apps. Do it after each run (A and B separately, right after finishing the test,
   **before** flipping the switch and relaunching). The one zip holds everything: phone and app details, the state of each
   switch with the numbers measured since launch (count, average and longest time per frame, preview or waiting task),
-  the app and extension logs, call logs, and crash and MetricKit reports. A README inside lists every part. It holds no
+  the CPU and energy numbers (folder `energy/`), the paired Apple Watch's own report if you have a watch (folder
+  `watch/`; nothing to do on the watch, it hands its numbers over by itself), the app and extension logs, call logs, and
+  crash and MetricKit reports. A README inside lists every part. It holds no
   message text and no contacts; phone numbers and emails are masked. Send it to the project owner.
 
 The same numbers show in the grey text under the switches in the Debug Settings (reopen the screen to refresh).
+
+## CPU and energy numbers
+
+Settings > **Send Report** also writes `energy/energy.txt`, and the grey text under the switches in the Debug Settings
+shows the short version. The numbers come from the system's own counters for the Nanogram app process (extensions are
+not counted), so two runs of the same test compare directly:
+
+| Number | Meaning | Better |
+|---|---|---|
+| CPU time, % of one core | processor time the app used during the run | lower |
+| Task energy, mJ per minute | energy the system charged the app (Apple silicon) | lower |
+| Billed energy | the same, as billed to the app by the scheduler | lower |
+| Instructions / cycles | work done and the clock cycles it took (more instructions per cycle means less waiting) | n/a |
+| Wake-ups per minute | how often the app woke the processor | lower |
+| Battery, Low Power Mode, thermal | the state of the phone at launch and at the report | context |
+
+Each switch has its own window: the numbers since **the switch last changed** (changing a switch starts a new window
+from zero after the relaunch; the other state's last numbers stay next to it, so A and B sit side by side). The window
+carries on over relaunches while the switch stays as it is. A window shorter than 30 seconds shows no rates; a window
+spent mostly charging says "Not comparable". If the energy line says "not reported on this device", use the battery %.
 
 ## What the numbers mean
 
@@ -120,7 +146,8 @@ at least 3 testers each, A15 and A16 decided on their own):
 1. median smoothness in B is not lower than in A, and no more testers report stutter in B than in A;
 2. the average of its measured time (table above) is at least 15% lower in B in the median export, and its
    longest time is not more than 25% higher;
-3. the median battery drop in B is at most 1 percentage point higher than in A, and no tester reports hot in B
+3. the median energy rate (mJ per minute; the battery drop when the phone does not report it) in B is at most 5% higher
+   than in A (1 percentage point of battery), and no tester reports hot in B
    while cool or warm in A.
 
 If it passes on one chip only, it ships for that chip only where the code can tell chips apart; otherwise it stays

@@ -408,6 +408,10 @@ public final class SharedAccountContextImpl: SharedAccountContext {
         
         // Power Saving also follows the system's energy signals (audit B-3, every device type); not in extensions.
         SystemEnergyConditionsMonitor.shared.observesSystemConditions = applicationBindings.isMainApp && mainWindow != nil
+        if applicationBindings.isMainApp && mainWindow != nil {
+            // CPU and energy numbers of this launch, and the link that receives the Apple Watch's reports.
+            startDebugDiagnostics()
+        }
         if automaticEnergyUsageShouldBeOnNow(settings: self.currentAutomaticMediaDownloadSettings) {
             self.energyUsageSettings = EnergyUsageSettings.powerSavingDefault
         } else {

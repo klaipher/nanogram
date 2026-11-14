@@ -41,6 +41,8 @@ swift_library(
         "//submodules/TelegramUI/Components/AlertComponent/AlertCheckComponent",
         "//submodules/WalletContext",
         "//submodules/CpuProfiler:CpuProfiler",
+        "//submodules/EnergyNumbers:EnergyNumbers",
+        "//submodules/WatchReport:WatchReport",
         "//submodules/MediaCapabilities:MediaCapabilities",
         "//submodules/TelegramUI/Components/MediaEditor/ImageObjectSeparation",
         "//submodules/TelegramUI/Components/MediaEditor/ImageInpainting",
@@ -69,6 +71,7 @@ swift_library(
         "//submodules/TelegramPresentationData:TelegramPresentationData",
         "//submodules/TelegramUIPreferences:TelegramUIPreferences",
         "//submodules/TelegramUI/Components/Chat/ChatRowPrep:ChatRowPrep",
+        "//submodules/WatchReport:WatchReport",
     ],
 )
 

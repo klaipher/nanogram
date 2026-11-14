@@ -102,6 +102,7 @@ final class WatchAppDelegate: NSObject, WKApplicationDelegate {
             if let refresh = task as? WKApplicationRefreshBackgroundTask {
                 Task {
                     await BackgroundRefreshCoordinator.shared.runRefresh()
+                    WatchReportSession.shared.scheduleTransfer()
                     refresh.setTaskCompletedWithSnapshot(false)
                 }
             } else if let snapshot = task as? WKSnapshotRefreshBackgroundTask {
