@@ -878,7 +878,7 @@ cmd_watch() {
   esac
 }
 
-# tg profile [--deep [build options]] [--keep N]: summarise the profile of the last Bazel build (docs/bazel-build-profiling.md).
+# tg profile [--keep N] [--deep [build options]]: summarise the profile of the last Bazel build (docs/bazel-build-profiling.md).
 # Bazel writes command.profile.gz on every build (generate_json_trace_profile=auto); this copies it to
 # build-output/profile/<timestamp>.gz (newest N kept, default 10), runs `bazel analyze-profile` (critical path, time
 # per phase, per action type) and says how to open the trace. --deep first runs `tg build <build options>` with
@@ -901,7 +901,14 @@ cmd_profile() {
   local bazel output_base profile dest stamp
   bazel="$(bazel_bin)"
   [ -x "$bazel" ] || die "no Bazel at $bazel; run a build first (tools/dev/tg build)"
-  output_base="$("$bazel" info output_base 2>/dev/null)" || die "bazel info failed; is this checkout built?"
+  # Output base from the bazel-out symlink (<output_base>/execroot/<ws>/bazel-out), not from `bazel info`: any extra Bazel
+  # command might overwrite command.profile.gz with its own profile. `bazel info` is only the fallback.
+  output_base=""
+  if [ -L "$ROOT/bazel-out" ]; then
+    output_base="$(readlink "$ROOT/bazel-out")"
+    case "$output_base" in */execroot/*) output_base="${output_base%%/execroot/*}" ;; *) output_base="" ;; esac
+  fi
+  [ -n "$output_base" ] || output_base="$("$bazel" info output_base 2>/dev/null)" || die "bazel info failed; is this checkout built?"
   profile="$output_base/command.profile.gz"
   [ -f "$profile" ] || die "no profile at $profile; run a build first (tools/dev/tg build)"
   stamp="$(date +%Y%m%d-%H%M%S)"
@@ -945,7 +952,7 @@ Usage: tools/dev/tg <command> [options]
   build-drift [--module M] [--strict]  Report differences between BUILD and Package.swift of the shared core modules (never fails without --strict)
   perf run|check|record|model  Performance tests with repository baselines per machine model (tools/dev/perfgate.py; docs/profiling.md)
   parity                Fast parity checks against the macOS app: history root, submodule pins pushed (docs/mac-core-paths.txt)
-  profile [--deep [build options]] [--keep N]
+  profile [--keep N] [--deep [build options]]
                         Summarise the last Bazel build's profile (critical path, time per phase and action type); keeps
                         the newest N copies in build-output/profile/ (docs/bazel-build-profiling.md)
   disk                  Show what is using disk space
