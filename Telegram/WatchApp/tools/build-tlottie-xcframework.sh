@@ -85,13 +85,18 @@ if [ "$FORCE" = 0 ] && [ -d "$ENTRY/TLottieCore.xcframework" ]; then
 fi
 
 # --- toolchain -----------------------------------------------------------------------------------------
-if [ -n "${CARGO:-}" ] && [ -x "${CARGO}" ]; then :; elif command -v cargo >/dev/null 2>&1; then :; elif [ -x "$USER_HOME/.cargo/bin/cargo" ]; then
-  export PATH="$USER_HOME/.cargo/bin:$PATH"
-else
-  echo "error: rustup/cargo not found. Install: curl --proto '=https' --tlsv1.2 -sSf https://sh.rustup.rs | sh -s -- -y --no-modify-path --profile minimal" >&2
-  exit 1
+# Only rustup is needed (the script runs `rustup run $TOOLCHAIN cargo`, never a bare cargo). Bazel actions may not get
+# the user's PATH, so look in the usual places: PATH, Homebrew (Apple Silicon and Intel), ~/.cargo/bin.
+if ! command -v rustup >/dev/null 2>&1; then
+  for d in /opt/homebrew/bin /usr/local/bin "$USER_HOME/.cargo/bin"; do
+    if [ -x "$d/rustup" ]; then export PATH="$d:$PATH"; break; fi
+  done
 fi
-command -v rustup >/dev/null 2>&1 || { echo "error: rustup is required for the pinned nightly ($TOOLCHAIN)" >&2; exit 1; }
+command -v rustup >/dev/null 2>&1 || {
+  echo "error: rustup not found (needed for the pinned nightly $TOOLCHAIN). Install: brew install rustup  or" >&2
+  echo "       curl --proto '=https' --tlsv1.2 -sSf https://sh.rustup.rs | sh -s -- -y --no-modify-path --profile minimal" >&2
+  exit 1
+}
 if ! rustup run "$TOOLCHAIN" rustc --version >/dev/null 2>&1 \
    || ! { COMPONENTS="$(rustup component list --toolchain "$TOOLCHAIN" --installed 2>/dev/null || true)"; printf '%s\n' "$COMPONENTS" | grep '^rust-src' >/dev/null; }; then
   echo "Installing $TOOLCHAIN with rust-src (needed for -Zbuild-std)"

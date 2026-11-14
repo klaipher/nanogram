@@ -53,7 +53,8 @@ a global allocator over system `malloc` and an aborting panic handler) for `arm6
 - **Toolchain:** watchOS targets are Rust tier 3 (no prebuilt `std`), so it needs a pinned nightly and `-Zbuild-std=core,alloc`.
   The pin is `tools/tlottie-toolchain.txt`; the script installs it on demand, or by hand:
   `rustup toolchain install nightly-2026-11-01 --profile minimal --component rust-src`. Needs network once (the crate's
-  `hashbrown` and the std dependencies); rustup is required.
+  `hashbrown` and the std dependencies); only `rustup` is required (no bare `cargo`): the script finds it on PATH, in
+  `/opt/homebrew/bin`, `/usr/local/bin` or `~/.cargo/bin` (Bazel actions do not get the user's PATH).
 - **Cache:** `~/.cache/telegram-ios/watch-tlottie/<key>` (`TG_WATCH_TLOTTIE_CACHE`), key = hash of tlottie's `Cargo.toml`,
   `Cargo.lock`, `src/`, `include/`, the script, the pin and the deployment target. Unchanged input = a copy.
 - **Where it runs:** `prebuilt_watchos_compile.sh` runs it before xcodebuild (the tlottie sources are inputs of the compile
