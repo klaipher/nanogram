@@ -504,7 +504,7 @@ final class TDClient {
 
     /// Built outside the main actor: TDLib calls it on its own queue, and a closure written inside this
     /// `@MainActor` class would be main-actor isolated, which Swift 6 checks on entry.
-    nonisolated private static func registerDeviceCompletion(logger: Logger) -> (Data) -> Void {
+    nonisolated private static func registerDeviceCompletion(logger: os.Logger) -> (Data) -> Void {
         return { data in
             if let text = String(data: data, encoding: .utf8), text.contains("\"@type\":\"error\"") {
                 logger.warning("registerDevice failed")
