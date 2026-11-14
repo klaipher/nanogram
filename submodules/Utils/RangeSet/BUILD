@@ -15,7 +15,7 @@ swift6_library(
     ],
 )
 
-# Host (macOS) test: `./build-input/bazel-9.3.1-darwin-arm64 test //submodules/Utils/RangeSet:RangeSetTests`.
+# Host (macOS) test: `./build-input/bazel-9.3.2-darwin-arm64 test //submodules/Utils/RangeSet:RangeSetTests`.
 swift_test(
     name = "RangeSetTests",
     srcs = [

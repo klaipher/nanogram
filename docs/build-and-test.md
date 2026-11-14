@@ -33,7 +33,7 @@ source ~/.zshrc 2>/dev/null; python3 build-system/Make/Make.py --overrideXcodeVe
 The first app-side `ios_unit_test` is `//submodules/TextFormat:TextFormatTests` (the mention/date link codecs). An `ios_unit_test` here needs an `ios_test_runner` pinned to a real device/OS — the default runner picks an invalid device and the test process exits 15. Every runner takes `device_type = TEST_SIMULATOR_DEVICE, os_version = TEST_SIMULATOR_OS` from `//build-system/bazel-utils:test_simulator.bzl` (iPhone 17 / iOS 27.2, the only simulator runtime installed); update the pair there, not per BUILD file, after an Xcode update. **Run new targets via `--target`, not the default suite:** `Tests/AllTests` currently references a dangling `//submodules/TgVoipWebrtc:TgCallsTests`, so the default would fail to build until that suite is repaired.
 
 Pure C++ units have host `cc_test`s that bypass Make.py entirely (macOS build, no codesigning):
-`./build-input/bazel-9.3.1-darwin-arm64 test //submodules/TgVoipWebrtc:streaming_audio_renderer_test --test_output=all`
+`./build-input/bazel-9.3.2-darwin-arm64 test //submodules/TgVoipWebrtc:streaming_audio_renderer_test --test_output=all`
 (likewise `:mtproto_ice_transport_test`). `//third-party/libprisma:SyntaxHighlighterTests` (added
 2026-09-25) is the same kind of target outside tgcalls: it compiles only libprisma's pure-C++ core
 (not `Syntaxer.mm`, which needs UIKit) plus header-only `boost_regex`, loads the real shipped
@@ -51,11 +51,11 @@ plus 1024, thread-safe `const tokenize`, lazy pattern compile, 12 more languages
 explicitly in `submodules/TgVoipWebrtc/BUILD` (group sources are not globbed), and must be added to the
 `exclude:` list in `tgcalls/Package.swift` so SwiftPM does not compile their `main()`. The first run compiles
 WebRTC for the host (~2.5 min); later runs take seconds. Note the binary is version-stamped and
-arch-suffixed (`bazel-9.3.1-darwin-arm64` since 2026-09-14, was `bazel-8.4.2-darwin-arm64`), not the
+arch-suffixed (`bazel-9.3.2-darwin-arm64` since 2026-09-14, was `bazel-8.4.2-darwin-arm64`), not the
 bare `bazel-8.4.2` the tgcalls CLAUDE.md names; `versions.json` is the single pin.
 
 `//submodules/MetalEngine:MetalPipelineCacheTests` (added 2026-10-01) is the first host `swift_test`, run
-the same way (`… bazel-9.3.1-darwin-arm64 test //submodules/MetalEngine:MetalPipelineCacheTests`; one test
+the same way (`… bazel-9.3.2-darwin-arm64 test //submodules/MetalEngine:MetalPipelineCacheTests`; one test
 via `--test_filter=MetalPipelineCacheTests/<name>`, comma lists are not supported). It compiles only
 `MetalPipelineCache.swift` + `MetalBinaryArchiveSerialization.swift` and runs on the Mac's GPU, because
 the simulator has no binary archives (serializing fails an assertion there). It pins an **Apple bug**: a

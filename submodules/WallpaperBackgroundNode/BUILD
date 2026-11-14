@@ -78,7 +78,7 @@ swift_library(
 )
 
 # Host (macOS) test of the pattern cache slots. It compiles only the Foundation-only slots file.
-# Run with `./build-input/bazel-9.3.1-darwin-arm64 test //submodules/WallpaperBackgroundNode:WallpaperPatternImageSlotsTests`.
+# Run with `./build-input/bazel-9.3.2-darwin-arm64 test //submodules/WallpaperBackgroundNode:WallpaperPatternImageSlotsTests`.
 swift_test(
     name = "WallpaperPatternImageSlotsTests",
     srcs = [
@@ -91,7 +91,7 @@ swift_test(
 )
 
 # Host (macOS) test of the pattern prewarm plan. It compiles only the Foundation-only plan file.
-# Run with `./build-input/bazel-9.3.1-darwin-arm64 test //submodules/WallpaperBackgroundNode:WallpaperPatternPrewarmPlanTests`.
+# Run with `./build-input/bazel-9.3.2-darwin-arm64 test //submodules/WallpaperBackgroundNode:WallpaperPatternPrewarmPlanTests`.
 swift_test(
     name = "WallpaperPatternPrewarmPlanTests",
     srcs = [

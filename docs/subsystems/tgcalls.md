@@ -20,4 +20,4 @@ This repo includes a tgcalls testbench (CLI tool, Go/Pion SFU, Docker build) lay
 
 Build the test binary from this directory with:
 
-`./build-input/bazel-9.3.1-darwin-arm64 build //submodules/TgVoipWebrtc/tgcalls/tools/cli:tgcalls_cli`
+`./build-input/bazel-9.3.2-darwin-arm64 build //submodules/TgVoipWebrtc/tgcalls/tools/cli:tgcalls_cli`

@@ -27,10 +27,10 @@ http_archive(
     build_file_content = _WASI_SDK_BUILD,
 )
 
-bazel_dep(name = "bazel_features", version = "1.54.1")
+bazel_dep(name = "bazel_features", version = "1.55.0")
 bazel_dep(name = "bazel_skylib", version = "1.9.2")
 bazel_dep(name = "platforms", version = "1.1.0")
-bazel_dep(name = "rules_cc", version = "0.2.27")
+bazel_dep(name = "rules_cc", version = "0.2.28")
 bazel_dep(name = "rules_rust", version = "0.75.0")
 bazel_dep(name = "rules_shell", version = "0.8.0")
 
@@ -108,7 +108,7 @@ use_repo(
 # Third-party crates of the Rust MTProto engine (third-party/mtproto-engine). Every version is pinned
 # with `=` to third-party/mtproto-engine/Cargo.lock. Kept apart from wallet_engine_crates so the two
 # lockfiles move independently. Repin only this repository:
-#   CARGO_BAZEL_REPIN=1 CARGO_BAZEL_REPIN_ONLY=mtproto_engine_crates ./build-input/bazel-9.3.1-darwin-arm64 build //third-party/mtproto-engine:mtproto_engine_ffi_archive
+#   CARGO_BAZEL_REPIN=1 CARGO_BAZEL_REPIN_ONLY=mtproto_engine_crates ./build-input/bazel-9.3.2-darwin-arm64 build //third-party/mtproto-engine:mtproto_engine_ffi_archive
 mtproto_engine_crates = use_extension("@rules_rust//crate_universe:extensions.bzl", "crate")
 mtproto_engine_crates.spec(package = "aes", features = ["zeroize"], repositories = ["mtproto_engine_crates"], version = "=0.8.4")
 mtproto_engine_crates.spec(package = "base64", repositories = ["mtproto_engine_crates"], version = "=0.22.1")
@@ -212,7 +212,7 @@ single_version_override(
 )
 
 bazel_dep(name = "rules_swift", version = "4.2.2", repo_name = "build_bazel_rules_swift")
-bazel_dep(name = "apple_support", version = "2.11.0", repo_name = "build_bazel_apple_support")
+bazel_dep(name = "apple_support", version = "2.12.0", repo_name = "build_bazel_apple_support")
 
 # Must be registered here: only the root module outranks rules_cc's generic
 # @local_config_cc toolchain, which rules_swift rejects ("Invalid target triple: local").

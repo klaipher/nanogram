@@ -32,7 +32,7 @@ and drafts / send-edit round-trips.
 All commands run from the worktree root (`.claude/worktrees/inputdec-backend`).
 
 ```bash
-BZL=./build-input/bazel-9.3.1-darwin-arm64
+BZL=./build-input/bazel-9.3.2-darwin-arm64
 CACHE=--disk_cache=$HOME/telegram-bazel-cache
 
 # Build the app

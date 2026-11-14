@@ -119,13 +119,13 @@ a few rough edges for a fork.
 
 | Dependency | Upstream 13.1.1 | This fork |
 | --- | --- | --- |
-| Bazel | 9.2.0 | 9.3.1 (LTS patch release) |
+| Bazel | 9.2.0 | 9.3.2 (LTS patch release) |
 | rules_apple | `ali-fareed/rules_apple` fork (submodule) | 5.4.0 + `build-system/patches/rules_apple-accept-any-certificate.patch`, the fork's only change |
 | rules_swift | Sep 2026 commit (submodule) | 4.2.2 |
-| apple_support | Aug 2026 commit (submodule) | 2.11.0 |
+| apple_support | Aug 2026 commit (submodule) | 2.12.0 |
 | rules_xcodeproj | Aug 2026 commit (submodule) | `main` @ b493ced (newer than the 4.1.0 release) |
 | rules_rust / Rust | 0.74.0 / 1.98.1 + 19 hand-kept checksums | 0.75.0 / 1.99.1 (checksums known to rules_rust) |
-| rules_cc, rules_shell, bazel_features, bazel_skylib | 0.2.20, 0.6.1, 1.51.0, 1.9.0 | 0.2.27, 0.8.0, 1.54.1, 1.9.2 |
+| rules_cc, rules_shell, bazel_features, bazel_skylib | 0.2.20, 0.6.1, 1.51.0, 1.9.0 | 0.2.28, 0.8.0, 1.55.0, 1.9.2 |
 | rules_go / gazelle / Go | 0.60.0 / 0.43.0 / 1.24.2 | 0.65.0 / 0.54.0 / 1.27.3 (gazelle 0.54 needs Go ≥ 1.24.12) |
 
 Verified with the full app build (installed and launched in an iOS 27 simulator), the host tests

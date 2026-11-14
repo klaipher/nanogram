@@ -15,7 +15,7 @@ swift6_library(
     ],
 )
 
-# Host (macOS) test: `./build-input/bazel-9.3.1-darwin-arm64 test //submodules/HardenedMedia:HardenedMediaTests`.
+# Host (macOS) test: `./build-input/bazel-9.3.2-darwin-arm64 test //submodules/HardenedMedia:HardenedMediaTests`.
 swift_test(
     name = "HardenedMediaTests",
     srcs = [
