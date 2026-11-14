@@ -93,7 +93,7 @@ else
 fi
 command -v rustup >/dev/null 2>&1 || { echo "error: rustup is required for the pinned nightly ($TOOLCHAIN)" >&2; exit 1; }
 if ! rustup run "$TOOLCHAIN" rustc --version >/dev/null 2>&1 \
-   || ! rustup component list --toolchain "$TOOLCHAIN" --installed 2>/dev/null | grep -q '^rust-src'; then
+   || ! { COMPONENTS="$(rustup component list --toolchain "$TOOLCHAIN" --installed 2>/dev/null || true)"; printf '%s\n' "$COMPONENTS" | grep '^rust-src' >/dev/null; }; then
   echo "Installing $TOOLCHAIN with rust-src (needed for -Zbuild-std)"
   rustup toolchain install "$TOOLCHAIN" --profile minimal --component rust-src
 fi
@@ -139,7 +139,9 @@ for target in $TARGETS; do
   lib="$CARGO_TARGET_DIR/$target/release-nostd/libtlottie.a"
   [ -f "$lib" ] || { echo "error: cargo did not emit $lib" >&2; exit 1; }
   # The C entry points must be there (names from include/tlottie.h).
-  /usr/bin/nm -gU "$lib" 2>/dev/null | grep -q ' _tlottie_new_with_options$' \
+  # Read all of nm's output (grep -q would exit early and nm would die of SIGPIPE under pipefail).
+  NM_OUT="$(/usr/bin/nm -gU "$lib" 2>/dev/null || true)"
+  printf '%s\n' "$NM_OUT" | grep ' _tlottie_new_with_options$' >/dev/null \
     || { echo "error: $lib does not export tlottie_new_with_options" >&2; exit 1; }
 done
 
