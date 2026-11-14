@@ -47,6 +47,7 @@ marked (check) were not re-verified against the code; correct them on the next c
 - Upstream: no.
 - Sync: a change to a shared path needs the Mac `tg core-bump`; the pre-push hook reminds.
 - - SwiftMath (W7): iOS `third-party/SwiftMath` is the single tree; the Mac's hardening (parse depth, table limits, authoring API, render size caps) was ported here first. Sync: the Mac Package.swift points at these sources and reads fonts from `submodules/TelegramUI/Resources/Fonts` (byte-identical to its old copy).
+- - VP9Hardware (W7): the Mac references `submodules/AnimatedStickerNode/VP9Hardware` for the decoder, demuxer, both tests and the two WebM fixtures; its sticker reader (`VP9HardwareStickerReader`) stays Mac-only on `YuvConversion`.
 
 ### Calls (tgcalls, WebRTC forks)
 - What: tgcalls runs from `klaipher/tgcalls` `nanogram-shared` (iOS and Mac in one implementation), WebRTC from
