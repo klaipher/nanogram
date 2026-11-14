@@ -18,6 +18,7 @@ final class DebugControllerEntriesTests: XCTestCase {
         settings.fakeGlass = on
         settings.compressedEmojiCache = on
         settings.frameHitchLog = on
+        settings.nanogramGlanceables = on
         settings.backSwipePreparePreviousScreen = on
         settings.localTranscription = on
         settings.disableQuickReaction = on
@@ -124,12 +125,12 @@ final class DebugControllerEntriesTests: XCTestCase {
         }))
     }
 
-    /// The PERFORMANCE section keeps the two ids it had (ids of retired switches are not reused) and sits in the main app only.
+    /// The PERFORMANCE section keeps the ids it had, plus the glanceables switch (145), (ids of retired switches are not reused) and sits in the main app only.
     func testPerformanceSectionHoldsTheHitchLogAndTheBackSwipeSwitch() {
         let header = DebugControllerEntry.performanceHeader(defaultPresentationTheme)
         let all = self.entries(isMainApp: true, isDevAccount: false, engineKind: nil, settings: .defaultSettings)
-        XCTAssertEqual(all.filter { $0.section == header.section }.map(\.stableId), [137, 143, 148])
-        XCTAssertEqual(all.filter { $0.section == header.section }.map(\.stableId), [header.stableId, DebugControllerEntry.frameHitchLog(false).stableId, DebugControllerEntry.backSwipePreparePreviousScreen(true).stableId])
+        XCTAssertEqual(all.filter { $0.section == header.section }.map(\.stableId), [137, 143, 145, 148])
+        XCTAssertEqual(all.filter { $0.section == header.section }.map(\.stableId), [header.stableId, DebugControllerEntry.frameHitchLog(false).stableId, DebugControllerEntry.nanogramGlanceables(false).stableId, DebugControllerEntry.backSwipePreparePreviousScreen(true).stableId])
         XCTAssertTrue(all.contains(DebugControllerEntry.backSwipePreparePreviousScreen(true)), "on by default")
         XCTAssertFalse(self.entries(isMainApp: false, isDevAccount: false, engineKind: nil, settings: .defaultSettings).contains(where: { $0.section == header.section }))
     }
