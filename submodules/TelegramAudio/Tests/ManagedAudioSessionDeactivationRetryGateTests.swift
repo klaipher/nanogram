@@ -35,4 +35,11 @@ final class ManagedAudioSessionDeactivationRetryGateTests: XCTestCase {
         XCTAssertFalse(gate.allowsRetry(token: first, sessionIsIdle: true))
         XCTAssertTrue(gate.allowsRetry(token: second, sessionIsIdle: true))
     }
+
+    func testRetryIsDroppedWhenCallKitActivatedTheSessionInTheMeantime() {
+        var gate = ManagedAudioSessionDeactivationRetryGate()
+        let token = gate.advance()
+        gate.advance()
+        XCTAssertFalse(gate.allowsRetry(token: token, sessionIsIdle: true))
+    }
 }

@@ -1064,7 +1064,7 @@ public final class ManagedAudioSessionImpl: NSObject, ManagedAudioSession {
                 guard let self else {
                     return
                 }
-                guard self.deactivationRetryGate.allowsRetry(token: retryToken, sessionIsIdle: self.currentTypeAndOutputMode == nil) else {
+                guard self.deactivationRetryGate.allowsRetry(token: retryToken, sessionIsIdle: self.currentTypeAndOutputMode == nil && !self.callKitAudioSessionIsActive) else {
                     managedAudioSessionLog("ManagedAudioSession applyNone retry dropped, the session was used in the meantime")
                     return
                 }
@@ -1487,6 +1487,7 @@ public final class ManagedAudioSessionImpl: NSObject, ManagedAudioSession {
         self.queue.async {
             managedAudioSessionLog("ManagedAudioSession callKitActivatedAudioSession")
             self.callKitAudioSessionIsActive = true
+            self.deactivationRetryGate.advance()
             self.updateHolders()
             
             for subscriber in self.isActiveSubscribers.copyItems() {
