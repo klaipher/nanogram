@@ -25,7 +25,7 @@ func incomingCallProbeResult(errorCode: Int32, errorDescription: String?) -> Inc
 
 /// Asks the server whether the incoming call `id` still rings, with the same request as the
 /// acknowledgement. A timeout gives `.unknown`.
-public func _internal_probeIncomingCall(network: Network, id: Int64, accessHash: Int64, timeout: Double, queue: Queue) -> Signal<IncomingCallProbeResult, NoError> {
+public func _internal_probeIncomingCall(network: Network, id: Int64, accessHash: Int64, timeout timeoutSeconds: Double, queue: Queue) -> Signal<IncomingCallProbeResult, NoError> {
     let request: Signal<IncomingCallProbeResult, NoError> = network.request(_internal_incomingCallAcknowledgementRequest(id: id, accessHash: accessHash))
     |> map { result -> IncomingCallProbeResult in
         if case .boolTrue = result {
@@ -37,6 +37,6 @@ public func _internal_probeIncomingCall(network: Network, id: Int64, accessHash:
         return .single(incomingCallProbeResult(errorCode: error.errorCode, errorDescription: error.errorDescription))
     }
     return request
-    |> timeout(timeout, queue: queue, alternate: .single(.unknown))
+    |> timeout(timeoutSeconds, queue: queue, alternate: .single(.unknown))
     |> take(1)
 }
