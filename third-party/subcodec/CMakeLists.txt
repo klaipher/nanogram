@@ -5,13 +5,13 @@ set(CMAKE_CXX_STANDARD 23)
 set(CMAKE_CXX_STANDARD_REQUIRED ON)
 set(CMAKE_EXPORT_COMPILE_COMMANDS ON)
 
-# OpenH264 root — sibling directory in telegram-ios/third-party/
-set(OH264_ROOT "${CMAKE_CURRENT_SOURCE_DIR}/../openh264/third_party/openh264/src/codec"
+# OpenH264 root: the klaipher/openh264 submodule at telegram-ios/third-party/openh264/openh264
+set(OH264_ROOT "${CMAKE_CURRENT_SOURCE_DIR}/../openh264/openh264/codec"
     CACHE PATH "Path to OpenH264 codec source directory")
 
 if(NOT EXISTS "${OH264_ROOT}/api/wels/codec_api.h")
     message(FATAL_ERROR "OpenH264 not found at ${OH264_ROOT}. "
-        "Expected sibling directory: ../openh264/third_party/openh264/src/codec/")
+        "Expected sibling directory: ../openh264/openh264/codec/")
 endif()
 
 # Find FFmpeg via pkg-config (required)

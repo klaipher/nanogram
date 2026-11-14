@@ -23,7 +23,7 @@ swift test    # runs Swift XCTest suite (12 tests including 160-frame e2e)
 
 - Swift 5.9+, targets macOS 10.15+/iOS 13+/tvOS 13+
 - SwiftPM targets: `h264bitstream`, `subcodec`, `oh264_common`, `oh264_processing`, `oh264_encoder`, `oh264_decoder`, `sprite_encode`, `SubcodecObjC`, `SubcodecTests`
-- OpenH264 is referenced via the `third_party/openh264_codec` symlink pointing to Telegram's sibling `../openh264/` directory
+- OpenH264 is referenced via the `third_party/openh264_codec` symlink pointing into the klaipher/openh264 submodule at `../openh264/openh264/codec`
 - CMake remains the primary build system; SwiftPM builds alongside it
 
 ## Project Structure
@@ -44,7 +44,7 @@ swift test    # runs Swift XCTest suite (12 tests including 160-frame e2e)
 - `tools/sprite_extract.cpp` — CLI: video file → `.mbs` via FFmpeg decode + SpriteEncoder
 - `tools/sprite_mux.cpp` — CLI: `.mbs` files → composite H.264 stream via MuxSurface
 - `third_party/h264bitstream/` — Vendored NAL unit / bitstream primitives (C)
-- `third_party/openh264_codec` — Symlink to Telegram's OpenH264 at the sibling `../openh264/` directory (not vendored here; patches documented below)
+- `third_party/openh264_codec` — Symlink into the klaipher/openh264 submodule (`../openh264/openh264/codec`; not vendored here; patches documented below)
 - `test/` — 25 standalone C++ test programs (no framework)
 - `Sources/SubcodecObjC/` — ObjC++ wrapper: SCSprite, SCMuxSurface, SCSpriteRegion, SCResizeResult, SCCompactionInfo, SCOpenH264Decoder, SCVideoToolboxDecoder, SCDecodedFrame, SCDecoding protocol
 - `Sources/SpriteEncode/` — SwiftPM wrapper compilation units for sprite_encode.cpp/sprite_extractor.cpp
@@ -157,7 +157,7 @@ Using the same library for encoding (in sprite_extract) and decoding (in test ve
 
 ## Vendored OpenH264 Patches
 
-> **Note:** These patches exist in Telegram's OpenH264 at `third-party/openh264/`. Subcodec does not carry its own OpenH264 copy — it uses the sibling directory via the `third_party/openh264_codec` symlink.
+> **Note:** These patches are commits of the klaipher/openh264 fork (branch `nanogram`, submodule `third-party/openh264/openh264`). Subcodec does not carry its own OpenH264 copy; it uses the submodule via the `third_party/openh264_codec` symlink.
 
 The OpenH264 used by subcodec has patches gated on `SEncParamExt::bSubcodecMode` (default false). When false, all encoder behavior is stock OpenH264. When true, sprite-compositing constraints activate. Set via `eparam.bSubcodecMode = true` before `InitializeExt()`. The flag is copied in `SWelsSvcCodingParam::ParamTranscode` (`encoder/core/inc/param_svc.h`).
 

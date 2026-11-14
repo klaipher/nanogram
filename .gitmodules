@@ -65,3 +65,8 @@
 	url = https://github.com/klaipher/nanogram-deps.git
 	branch = main
 	shallow = true
+[submodule "third-party/openh264/openh264"]
+	path = third-party/openh264/openh264
+	url = https://github.com/klaipher/openh264.git
+	branch = nanogram
+	shallow = true

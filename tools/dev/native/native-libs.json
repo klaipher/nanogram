@@ -479,7 +479,7 @@
       "id": "codec_ver.h",
       "what": "version",
       "kind": "regex",
-      "file": "third-party/openh264/third_party/openh264/src/codec/api/wels/codec_ver.h",
+      "file": "third-party/openh264/openh264/codec/api/wels/codec_ver.h",
       "regex": "OPENH264_MAJOR \\((\\d+)\\)[\\s\\S]*?OPENH264_MINOR \\((\\d+)\\)[\\s\\S]*?OPENH264_REVISION \\((\\d+)\\)"
      }
     ],
