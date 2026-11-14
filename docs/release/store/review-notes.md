@@ -12,20 +12,20 @@ Sign-in needs a phone number and a one-time code that Telegram sends to the user
 If the code does not arrive, the Telegram servers may be rate limiting; please wait a few minutes and request it again, or contact {{SUPPORT_EMAIL}}.
 
 PURCHASES (3.1.1)
-Telegram sells Premium, Stars and gifts through Telegram's own App Store products. This app has no in-app purchases and does not link to or offer any other payment method for digital goods: those purchase screens are removed or disabled in this build. Stars and gifts the user already owns can still be viewed and used. There are no subscriptions.
+Telegram sells Premium and Stars through Telegram's own App Store products. This app has no in-app purchases and does not link to or offer any other payment method for digital goods: those purchase screens are removed or disabled in this build. Stars the user already owns can still be spent, for example on gifts, and gifts the user already has can still be viewed and used. There are no subscriptions.
 
 USER-GENERATED CONTENT (1.2)
-Chats are private between users; public groups and channels exist. Controls: Report on any message, chat, channel, user and bot (long press or profile menu); Block user (profile menu); delete own messages; mute or leave groups; Telegram's moderators act on reports and ban abusive accounts server-side. Contact for abuse: {{SUPPORT_EMAIL}}. The age rating is 18+ because of user content and unrestricted web access.
+Chats are private between users; public groups and channels exist. Adult media is hidden by default ("Show 18+ Content" is off). Controls: Report on any message, chat, channel, user and bot (long press or profile menu); Block user (profile menu); delete own messages; mute or leave groups; Telegram's moderators act on reports and ban abusive accounts server-side. Contact for abuse: {{SUPPORT_EMAIL}}. The age rating is 18+ because of user content and unrestricted web access.
 
 ACCOUNT DELETION (5.1.1(v))
-In the app: Settings > Privacy and Security > Delete My Account (self-destruct period or immediate deletion through Telegram's flow).
+In the app: Settings > Privacy and Security > Delete My Account section > If Away For > Delete Account Now (Telegram's own deletion flow).
 
 PRIVACY
-No analytics, advertising or tracking SDKs. Messages go to Telegram's servers. Push tokens go to Telegram (APNs). Diagnostics are sent only when the user presses Send Report. Voice transcription and translation can run on the device. Privacy policy: https://klaipher.github.io/nanogram-releases/privacy/
+No analytics, advertising or tracking SDKs of our own; Telegram's sponsored messages in public channels appear as the Telegram API terms require (3.3). Messages go to Telegram's servers. Push tokens go to Telegram (APNs). Diagnostic reports are created only when the user presses Send Report; the Telegram service receives standard technical events. Voice transcription and translation can run on the device. Privacy policy: https://klaipher.github.io/nanogram-releases/privacy/
 
 PERMISSIONS
 Camera, microphone, photos, contacts, location, Face ID, speech recognition and notifications are requested when the user uses the matching feature. Live Location uses background location only while the user shares it.
 
 OTHER
-Calls use CallKit and VoIP-style push through the normal notification path. Encryption: standard and proprietary-protocol messaging encryption, exempt (ITSAppUsesNonExemptEncryption=false).
+Calls use CallKit and VoIP-style push through the normal notification path. Encryption: standard algorithms only (AES, RSA, Diffie-Hellman, SHA-2, TLS) for messaging and data protection; exempt (ITSAppUsesNonExemptEncryption=false).
 ```

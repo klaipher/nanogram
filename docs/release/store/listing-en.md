@@ -10,7 +10,9 @@ Same text serves the iOS app and the Mac App Store edition unless noted.
 - 2.2 Users must know the app uses the Telegram API and is part of the Telegram ecosystem; this must be prominently disclosed in app store descriptions and in any in-app intro. The description below says so in its first paragraph.
 - 2.3 "the title of your app must not include the word 'Telegram'" (exception only for "Unofficial Telegram"). The name is "Nanogram"; the word never appears in name, subtitle or keywords. It is used in the description only to state the API relation, which 2.2 requires.
 - 2.4 "You must not use the official Telegram logo for your app." The icon is Nanogram's own.
-- 1.3 / 1.4: all basic Telegram features must work and not be interfered with (no hidden actions on the user's behalf).
+- 1.3 "It is forbidden to force users of other Telegram clients to download your app." (Nanogram does not.)
+- 3.2 monetization must be disclosed to users; Nanogram adds none of its own.
+- 3.3 "you must include support for official sponsored messages in Telegram channels." (Nanogram shows them.)
 
 ## Fields
 
@@ -40,7 +42,7 @@ No competitor or brand names (no "Telegram", "WhatsApp", "Signal"). Re-count wit
 ```
 Nanogram is an unofficial chat app for the open Telegram network. It uses the open Telegram API and builds on Telegram's open-source apps. It is not made, endorsed or sponsored by Telegram, and it is not the official Telegram app. You sign in with your existing Telegram account and talk with the same people, groups and channels as before.
 
-Nanogram runs no message servers of its own: your messages travel between your device and Telegram's servers, and Nanogram adds no analytics, no advertising and no tracking.
+Nanogram runs no message servers of its own: your messages travel between your device and Telegram's servers, and Nanogram adds no analytics, ads or tracking of its own; Telegram's sponsored messages in large public channels still appear.
 
 FAST AND LIGHT
 - Smoother scrolling, quicker chat opening and less battery use in the background
@@ -49,7 +51,7 @@ FAST AND LIGHT
 
 PRIVATE BY DESIGN
 - Voice messages can be turned into text on your device, and messages can be translated on your device, so the content stays on the phone
-- Remove tracking parts from links before you open or share them
+- Remove tracking parts from links when you open or copy them (optional)
 - Confirm before opening Telegram links, passcode and Face ID lock, secret chats
 - Diagnostics leave the phone only when you tap Send Report, and only to the chat or app you pick
 
@@ -69,7 +71,7 @@ EVERYTHING YOU EXPECT
 - Files up to 2 GB, voice and video messages, photo and video editing
 - Multiple accounts and secret chats with end-to-end encryption
 
-Nanogram does not sell anything. Telegram Premium, Stars and gifts are bought through Telegram's own apps; this app does not offer those purchases. Content you already have keeps working.
+Nanogram does not sell anything. Telegram Premium and Stars can't be bought in this app; Stars you already have can still be spent, for example on gifts. Content you already have keeps working.
 
 Telegram is a trademark of its owner. Nanogram is an independent project that uses the Telegram API under the Telegram API Terms of Service.
 
@@ -79,7 +81,7 @@ Privacy policy: https://klaipher.github.io/nanogram-releases/privacy/
 
 Keep the opening paragraph (API terms 2.2).
 
-Feature claims and where they are true: performance and cache work (NANOGRAM-CHANGES "Storage, media, performance"); on-device transcription/translation switches (Settings > Nanogram Features > ON-DEVICE, default off); Send Report; Apple Watch app and unread widget (CHANGELOG IOS-WATCH-WIDGET-1); calls switches. Drop any line the build does not ship (watch and widget lines if the submitted build lacks them; Mac edition: remove the Apple Watch and iPad lines).
+Feature claims and where they are true: performance and cache work (NANOGRAM-CHANGES "Storage, media, performance"); on-device transcription/translation switches (Settings > Nanogram Features > ON-DEVICE, default off); Send Report; Apple Watch app and unread widget (CHANGELOG IOS-WATCH-WIDGET-1); calls switches. Drop any line the build does not ship (watch and widget lines if the submitted build lacks them; the Apple Watch app is embedded only with `--//Telegram:embedWatchApp`, so without that flag also remove "watch" from the keywords and "and the Apple Watch app" from the TestFlight beta description, and the Mac edition drops both; Mac edition: remove the Apple Watch and iPad lines).
 
 ## What's New (first release)
 

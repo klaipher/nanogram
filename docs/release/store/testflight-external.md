@@ -26,7 +26,7 @@ Sign in with your Telegram account, send and receive messages, make a call, and 
 ## Beta review notes (betaAppReviewDetails.notes)
 
 ```
-Nanogram is an unofficial Telegram client using our own Telegram api_id, under the Telegram API Terms. Sign in needs a phone number and a login code sent by Telegram. Use the demo account below. Telegram Premium, Stars and gift purchases are not offered in this app. No account needs to be created. Account deletion: Settings > Privacy and Security > Delete My Account. Report and block exist in every chat and profile menu.
+Nanogram is an unofficial Telegram client using our own Telegram api_id, under the Telegram API Terms. Sign in needs a phone number and a login code sent by Telegram. Use the demo account below. Telegram Premium and Stars purchases are not offered in this app. No account needs to be created. Account deletion: Settings > Privacy and Security > Delete My Account section > If Away For > Delete Account Now. Report and block exist in every chat and profile menu.
 ```
 
 ## Demo account (owner provides)

@@ -17,10 +17,10 @@ Please include: the app version and build (Settings, bottom of the list), your d
 
 **Where is my data?** On Telegram's servers (see https://telegram.org/privacy) and on your device. Nanogram has no servers of its own. See our privacy policy: https://klaipher.github.io/nanogram-releases/privacy/
 
-**How do I delete my account?** Settings > Privacy and Security > Delete My Account.
+**How do I delete my account?** Settings > Privacy and Security > Delete My Account section > If Away For > Delete Account Now.
 
 **How do I report or block someone?** Open the chat or profile, use the menu, and choose Report or Block.
 
-**Why can I not buy Telegram Premium, Stars or gifts?** Those are sold through Telegram's own apps, so the purchase screens are not part of Nanogram. Items you already have keep working.
+**Why can I not buy Telegram Premium, Stars or gifts?** Telegram Premium and Stars can't be bought in this app. Stars you already have can still be spent, for example on gifts, and items you already have keep working.
 
 **Which Telegram problems can you help with?** Problems with Telegram's service (login codes, banned accounts) are handled by Telegram: https://telegram.org/support

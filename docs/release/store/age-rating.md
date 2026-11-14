@@ -24,7 +24,7 @@ API https://developer.apple.com/documentation/appstoreconnectapi/ageratingdeclar
 | Real gambling | No |
 | Contests | None |
 | Loot boxes | No |
-| Advertising in the app | No |
+| Advertising in the app | Yes (Telegram's sponsored messages in large public channels; Telegram API terms 3.3 require every client to show them) |
 | Messaging and chat | Yes |
 | User-generated content | Yes |
 | Unrestricted web access (in-app browser opens any URL) | Yes |
@@ -32,7 +32,7 @@ API https://developer.apple.com/documentation/appstoreconnectapi/ageratingdeclar
 
 ## Expected result
 
-Telegram's official app is listed 17+ (now 18+ in the new scale) because of open user content. With messaging, UGC and unrestricted web access answered Yes, Apple computes the rating itself; expect 16+ or 18+. The owner decision here: use 18+ to match the official client. If Apple computes 16+, set the override below. Korea override: NONE.
+Telegram's official app is listed 13+ on the App Store (its page also lists Advertising, Messaging and Chat, User-Generated Content). With messaging, UGC, advertising and unrestricted web access answered Yes, Apple computes the rating itself; expect 16+ or 18+. The owner's own choice (the request said 17+, which the new scale maps to 18+): use 18+ because of open user content. This is not "matching the official client". If Apple computes 16+ and the owner wants 18+, set the override below. Korea override: NONE.
 
 ## API body
 
@@ -64,11 +64,12 @@ PATCH /v1/ageRatingDeclarations/{id}
       "gambling": false,
       "contests": "NONE",
       "lootBox": false,
-      "advertising": false,
+      "advertising": true,
       "messagingAndChat": true,
       "userGeneratedContent": true,
       "unrestrictedWebAccess": true,
       "ageAssurance": false,
+      "parentalControls": false,
       "ageRatingOverrideV2": "EIGHTEEN_PLUS",
       "koreaAgeRatingOverride": "NONE"
     }
@@ -76,4 +77,4 @@ PATCH /v1/ageRatingDeclarations/{id}
 }
 ```
 
-Notes: `gamblingAndContests` and the older `ageRatingOverride` exist in older schemas; send them only if the GET returns them. Set `ageRatingOverrideV2` to `NONE` instead of `EIGHTEEN_PLUS` if the owner prefers Apple's computed value. Review notes (review-notes.md) explain the UGC controls Apple's guideline 1.2 asks for.
+Notes: `parentalControls` follows the same GET-first rule as every other attribute: send it only if the GET returns it. `gamblingAndContests` and the older `ageRatingOverride` exist in older schemas; send them only if the GET returns them. Set `ageRatingOverrideV2` to `NONE` instead of `EIGHTEEN_PLUS` if the owner prefers Apple's computed value. Review notes (review-notes.md) explain the UGC controls Apple's guideline 1.2 asks for.
