@@ -129,19 +129,30 @@ def parse_xcode_build_version(xcodebuild_output):
     return None
 
 
+def _run_tool_without_developer_dir(program, arguments):
+    # Bazel runs genrules without DEVELOPER_DIR, so they use the Xcode that `xcode-select` selects. Ask the same one.
+    executable_path = resolve_executable(program)
+    if executable_path is None:
+        raise Exception('Could not resolve {}'.format(program))
+    env = get_clean_env()
+    env.pop('DEVELOPER_DIR', None)
+    result = subprocess.run([executable_path] + arguments, stdout=subprocess.PIPE, stderr=subprocess.DEVNULL, env=env, check=True)
+    return result.stdout.decode('utf-8')
+
+
 def get_xcode_sdk_identity():
     """One string naming the selected Xcode build and its iphoneos / iphonesimulator SDK builds.
 
     Bazel genrules (the native libraries under third-party/ and submodules/ffmpeg) see only --action_env, so
     nothing else in their action key changes when Xcode does. Make.py passes this as --action_env=NANOGRAM_XCODE_ID
     so an Xcode or SDK update re-runs them instead of serving stale objects from the disk cache. Uses the Xcode that
-    `xcode-select` points at, so --overrideXcodeVersion and the tart VMs keep working. Returns '' when it cannot be
+    `xcode-select` points at (DEVELOPER_DIR ignored, as the genrules do), so --overrideXcodeVersion and the tart VMs keep working. Returns '' when it cannot be
     determined (the build then behaves as before)."""
     try:
-        xcode = parse_xcode_build_version(run_executable_with_output('xcodebuild', ['-version']))
+        xcode = parse_xcode_build_version(_run_tool_without_developer_dir('xcodebuild', ['-version']))
         parts = ['xcode-' + (xcode or 'unknown')]
         for sdk in ['iphoneos', 'iphonesimulator']:
-            sdk_build = run_executable_with_output('xcrun', ['--sdk', sdk, '--show-sdk-build-version']).strip()
+            sdk_build = _run_tool_without_developer_dir('xcrun', ['--sdk', sdk, '--show-sdk-build-version']).strip()
             if not sdk_build or '\n' in sdk_build:
                 return ''
             parts.append('{}-{}'.format(sdk, sdk_build))

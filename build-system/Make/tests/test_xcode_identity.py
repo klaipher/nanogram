@@ -31,7 +31,7 @@ class XcodeIdentityTest(unittest.TestCase):
                 return 'Xcode 27.1\nBuild version 18B100\n'
             return {'iphoneos': '24A100\n', 'iphonesimulator': '24A101\n'}[arguments[1]]
 
-        with mock.patch.object(BuildEnvironment, 'run_executable_with_output', fake):
+        with mock.patch.object(BuildEnvironment, '_run_tool_without_developer_dir', fake):
             self.assertEqual(
                 BuildEnvironment.get_xcode_sdk_identity(),
                 'xcode-18B100.iphoneos-24A100.iphonesimulator-24A101',
@@ -41,7 +41,7 @@ class XcodeIdentityTest(unittest.TestCase):
         def fake(program, arguments, **kwargs):
             raise Exception('no xcode')
 
-        with mock.patch.object(BuildEnvironment, 'run_executable_with_output', fake):
+        with mock.patch.object(BuildEnvironment, '_run_tool_without_developer_dir', fake):
             self.assertEqual(BuildEnvironment.get_xcode_sdk_identity(), '')
 
     def test_build_and_test_commands_carry_the_identity(self):
