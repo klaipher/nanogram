@@ -275,3 +275,18 @@ iPhone 17                                 2803824B-7F63-4010-97A0-CA0241828E1A (
     def test_an_unavailable_device_is_the_last_resort(self):
         ipad_only = "\n".join(l for l in self.LISTING.splitlines() if 'iPad' in l)
         self.assertEqual(device_signing.first_physical_device(ipad_only), '00008132-000E21622E39001C')
+
+
+class ExportOptionsTests(unittest.TestCase):
+    def test_automatic_without_appstore_profiles(self):
+        options = device_signing.export_options('TEAM', 'export')
+        self.assertEqual(options['signingStyle'], 'automatic')
+        self.assertNotIn('provisioningProfiles', options)
+
+    def test_manual_with_appstore_profiles_covers_the_watch_bundles(self):
+        names = {b: device_signing.appstore_profile_name(b) for _, b, _ in device_signing.profile_targets('org.example.App')}
+        options = device_signing.export_options('TEAM', 'export', names)
+        self.assertEqual(options['signingStyle'], 'manual')
+        self.assertEqual(options['signingCertificate'], 'Apple Distribution')
+        self.assertEqual(options['provisioningProfiles']['org.example.App.watchkitapp'], 'Nanogram App Store org.example.App.watchkitapp')
+        self.assertEqual(len(options['provisioningProfiles']), 9)

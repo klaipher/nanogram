@@ -33,6 +33,12 @@ CODESIGNING = os.path.join(HOME_DIR, 'codesigning')
 APNS_DIR = os.path.join(HOME_DIR, 'apns')
 ASC_DIR = os.path.join(HOME_DIR, 'asc')
 XCODE_PROFILES = os.path.expanduser('~/Library/Developer/Xcode/UserData/Provisioning Profiles')
+# App Store signing made through the App Store Connect API (`appstore-signing`): an Apple Distribution certificate whose
+# private key stays here, and one App Store profile per bundle. Xcode's automatic signing with an API key cannot sign
+# the watch app and its widget (their App Group needs a signed-in Apple ID), so the export signs manually with these.
+APPSTORE_DIR = os.path.join(CODESIGNING, 'appstore')
+APPSTORE_STATE = os.path.join(APPSTORE_DIR, 'appstore-signing.json')
+APPSTORE_PROFILE_PREFIX = 'Nanogram App Store '
 
 # Suffixes match build-system/Make/BuildConfiguration.py (profile_name_mapping).
 EXTENSIONS = ['.Share', '.NotificationService', '.NotificationContent', '.Widget', '.SiriIntents', '.BroadcastUpload']
@@ -424,6 +430,110 @@ def app_store_connect_key():
     return {'path': key_path, 'id': config['key_id'], 'issuer': config['issuer_id']}
 
 
+def appstore_profile_name(bundle_id):
+    return APPSTORE_PROFILE_PREFIX + bundle_id
+
+
+def export_options(team_id, destination, manual_profiles=None):
+    """ExportOptions for the App Store: Xcode-managed signing, or manual signing with the profiles that
+    `appstore-signing` made ({bundle id: profile name})."""
+    options = {
+        'method': 'app-store-connect',
+        'destination': destination,
+        'teamID': team_id,
+        'signingStyle': 'automatic',
+        'uploadSymbols': True,
+        'manageAppVersionAndBuildNumber': False,
+    }
+    if manual_profiles:
+        options['signingStyle'] = 'manual'
+        options['signingCertificate'] = 'Apple Distribution'
+        options['provisioningProfiles'] = dict(manual_profiles)
+    return options
+
+
+def appstore_manual_profiles():
+    """{bundle id: profile name} from `appstore-signing`, or None when it has not run."""
+    if not os.path.exists(APPSTORE_STATE):
+        return None
+    with open(APPSTORE_STATE) as f:
+        return json.load(f).get('profiles') or None
+
+
+def cmd_appstore_signing(args):
+    import base64
+    import secrets
+    sys.path.insert(0, os.path.dirname(os.path.abspath(__file__)))
+    import tf_notes
+    config = load_config()
+    team_id, bundle_id = config['team_id'], config['bundle_id']
+    old_umask = os.umask(0o077)
+    try:
+        os.makedirs(APPSTORE_DIR, exist_ok=True)
+        state = {}
+        if os.path.exists(APPSTORE_STATE):
+            with open(APPSTORE_STATE) as f:
+                state = json.load(f)
+        key_path = os.path.join(APPSTORE_DIR, 'distribution.key')
+        cert_path = os.path.join(APPSTORE_DIR, 'distribution.cer')
+        if not state.get('certificate') or args.new_certificate:
+            if not os.path.exists(key_path) or args.new_certificate:
+                subprocess.run(['openssl', 'genrsa', '-out', key_path, '2048'], check=True, capture_output=True)
+            csr = subprocess.run(['openssl', 'req', '-new', '-key', key_path, '-subj', '/CN=Nanogram Distribution'],
+                                 check=True, capture_output=True, text=True).stdout
+            created = tf_notes.call('POST', '/v1/certificates', {'data': {'type': 'certificates', 'attributes': {
+                'csrContent': csr, 'certificateType': 'DISTRIBUTION'}}})['data']
+            with open(cert_path, 'wb') as f:
+                f.write(base64.b64decode(created['attributes']['certificateContent']))
+            # The key goes into the login keychain with its certificate, through a throwaway PKCS#12.
+            pem = os.path.join(APPSTORE_DIR, 'distribution.pem')
+            p12 = os.path.join(APPSTORE_DIR, 'distribution.p12')
+            password = secrets.token_urlsafe(24)
+            subprocess.run(['openssl', 'x509', '-inform', 'DER', '-in', cert_path, '-out', pem], check=True)
+            subprocess.run(['/usr/bin/openssl', 'pkcs12', '-export', '-inkey', key_path, '-in', pem, '-out', p12,
+                            '-passout', 'env:NANOGRAM_P12_PASSWORD'], check=True, capture_output=True,
+                           env=dict(os.environ, NANOGRAM_P12_PASSWORD=password))
+            subprocess.run(['security', 'import', p12, '-k', os.path.expanduser('~/Library/Keychains/login.keychain-db'),
+                            '-P', password, '-T', '/usr/bin/codesign', '-T', '/usr/bin/security'], check=True)
+            os.remove(p12)
+            os.remove(pem)
+            state = {'certificate': created['id'], 'profiles': {}}
+            print('Created the Apple Distribution certificate ' + created['id'], flush=True)
+        bundles = tf_notes.call('GET', '/v1/bundleIds?limit=200&fields[bundleIds]=identifier')['data']
+        bundle_ids = {b['attributes']['identifier']: b['id'] for b in bundles}
+        existing = tf_notes.call('GET', '/v1/profiles?limit=200&fields[profiles]=name')['data']
+        profiles = {}
+        os.makedirs(XCODE_PROFILES, exist_ok=True)
+        # Profiles replaced on the portal stay on disk under the same name; manual export picks by name, so drop them.
+        for path in glob.glob(os.path.join(XCODE_PROFILES, '*.mobileprovision')):
+            if read_profile(path).get('Name', '').startswith(APPSTORE_PROFILE_PREFIX):
+                os.remove(path)
+        for _, target_bundle_id, _ in profile_targets(bundle_id):
+            if target_bundle_id not in bundle_ids:
+                sys.exit('App ID {} is not registered; run `profiles` first'.format(target_bundle_id))
+            name = appstore_profile_name(target_bundle_id)
+            for profile in existing:
+                if profile['attributes']['name'] == name:
+                    tf_notes.call('DELETE', '/v1/profiles/' + profile['id'])
+            created = tf_notes.call('POST', '/v1/profiles', {'data': {
+                'type': 'profiles',
+                'attributes': {'name': name, 'profileType': 'IOS_APP_STORE'},
+                'relationships': {
+                    'bundleId': {'data': {'type': 'bundleIds', 'id': bundle_ids[target_bundle_id]}},
+                    'certificates': {'data': [{'type': 'certificates', 'id': state['certificate']}]},
+                }}})['data']['attributes']
+            with open(os.path.join(XCODE_PROFILES, created['uuid'] + '.mobileprovision'), 'wb') as f:
+                f.write(base64.b64decode(created['profileContent']))
+            profiles[target_bundle_id] = name
+            print('App Store profile: ' + name, flush=True)
+        state['profiles'] = profiles
+        with open(APPSTORE_STATE, 'w') as f:
+            json.dump(state, f, indent=2)
+    finally:
+        os.umask(old_umask)
+    print('TestFlight exports now sign manually with these profiles ({} bundles, team {}).'.format(len(profiles), team_id))
+
+
 def cmd_testflight(args):
     import tempfile
     import zipfile
@@ -474,14 +584,10 @@ def cmd_testflight(args):
                  'or pass --enhanced-security off.')
     options = os.path.join(work, 'ExportOptions.plist')
     with open(options, 'wb') as f:
-        plistlib.dump({
-            'method': 'app-store-connect',
-            'destination': 'upload' if xcodebuild_uploads else 'export',
-            'teamID': team_id,
-            'signingStyle': 'automatic',
-            'uploadSymbols': True,
-            'manageAppVersionAndBuildNumber': False,
-        }, f)
+        manual_profiles = appstore_manual_profiles()
+        if manual_profiles:
+            print('Signing manually with the App Store profiles from `appstore-signing`', flush=True)
+        plistlib.dump(export_options(team_id, 'upload' if xcodebuild_uploads else 'export', manual_profiles), f)
     print('{} {} {} ({})'.format('Exporting' if args.export_only else 'Uploading', info['CFBundleIdentifier'], info['CFBundleShortVersionString'], info['CFBundleVersion']), flush=True)
     command = ['xcodebuild', '-exportArchive', '-archivePath', archive, '-exportOptionsPlist', options,
                '-exportPath', os.path.join(work, 'out'), '-allowProvisioningUpdates']
@@ -534,6 +640,9 @@ def main():
     p = sub.add_parser('apns-pem')
     p.add_argument('cer', help='the aps.cer downloaded from developer.apple.com')
     p.set_defaults(func=cmd_apns_pem)
+    p = sub.add_parser('appstore-signing')
+    p.add_argument('--new-certificate', action='store_true', help='create a new Apple Distribution certificate')
+    p.set_defaults(func=cmd_appstore_signing)
     p = sub.add_parser('testflight')
     p.add_argument('ipa', nargs='?', default='bazel-bin/Telegram/Telegram.ipa')
     p.add_argument('--export-only', action='store_true', help='sign for the App Store but do not upload')

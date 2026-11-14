@@ -4,6 +4,8 @@ Newest first. Internal notes for each TestFlight build; testers see the What to 
 
 ## Unreleased
 
+- **App Store signing through the API** (`device_signing.py appstore-signing`): Xcode's automatic signing with an App Store Connect key cannot sign the Watch app and its widget (their App Group needs a signed-in Apple ID: "Authentication failed ... bearer token"). The new step creates an Apple Distribution certificate (key kept in `~/.config/telegram-ios/codesigning/appstore`, imported into the login keychain) and one `IOS_APP_STORE` profile per bundle (app, 6 extensions, Watch app and Watch widget). It records them, and `testflight` then exports with manual signing (`export_options`, tests `ExportOptionsTests`). Replaced profiles are removed from disk, so the export cannot pick an old one by name.
+
 - **Shared pins**: twidget 4913fd0e (adds the `litehtml/no-public-headers` folder Xcode 27's SwiftPM requires; the Mac failed to resolve packages without it; Bazel builds are unaffected) and nanogram-deps 484b22e9.
 
 - **Tooling**: `device_signing.py profiles` treats an iPhone that is "available (paired)" over Wi-Fi as reachable, so an unavailable iPad listed first is no longer picked (test `test_an_iphone_available_over_wifi_wins_over_an_unavailable_ipad`).
