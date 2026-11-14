@@ -535,6 +535,26 @@ public var sharedManagedAudioSession: ManagedAudioSession? {
     return sharedManagedAudioSessionValue
 }
 
+/// Guards the delayed retry of a failed `setActive(false)`: the retry may only run while the session is still idle
+/// and no later request has activated, reconfigured or deactivated it since the retry was scheduled.
+public struct ManagedAudioSessionDeactivationRetryGate {
+    public private(set) var generation: Int = 0
+    
+    public init() {
+    }
+    
+    /// Any session state change; returns the token a retry scheduled now must carry.
+    @discardableResult
+    public mutating func advance() -> Int {
+        self.generation += 1
+        return self.generation
+    }
+    
+    public func allowsRetry(token: Int, sessionIsIdle: Bool) -> Bool {
+        return sessionIsIdle && token == self.generation
+    }
+}
+
 public final class ManagedAudioSessionImpl: NSObject, ManagedAudioSession {
     /// When enabled, recording sessions (voice messages, video messages, the story camera) never pin
     /// a preferred input port and instead follow the system-wide microphone selection
@@ -554,6 +574,7 @@ public final class ManagedAudioSessionImpl: NSObject, ManagedAudioSession {
         }
     }
     private var deactivateTimer: SwiftSignalKit.Timer?
+    private var deactivationRetryGate = ManagedAudioSessionDeactivationRetryGate()
     
     private let isHeadsetPluggedInSync = Atomic<Bool>(value: false)
     private var isHeadsetPluggedInValue = false {
@@ -1026,6 +1047,8 @@ public final class ManagedAudioSessionImpl: NSObject, ManagedAudioSession {
         self.deactivateTimer?.invalidate()
         self.deactivateTimer = nil
         
+        let retryToken = self.deactivationRetryGate.advance()
+        
         let wasPlaybackActive = self.currentTypeAndOutputMode?.0.isPlay ?? false
         self.currentTypeAndOutputMode = nil
         
@@ -1035,17 +1058,24 @@ public final class ManagedAudioSessionImpl: NSObject, ManagedAudioSession {
             try AVAudioSession.sharedInstance().overrideOutputAudioPort(.none)
             try AVAudioSession.sharedInstance().setPreferredInput(nil)
         } catch let error {
-            managedAudioSessionLog("ManagedAudioSession applyNone error \(error), waiting")
-
-            Thread.sleep(forTimeInterval: 2.0)
-
-            do {
-                try AVAudioSession.sharedInstance().setActive(false, options: [.notifyOthersOnDeactivation])
-                try AVAudioSession.sharedInstance().overrideOutputAudioPort(.none)
-                try AVAudioSession.sharedInstance().setPreferredInput(nil)
-            } catch let error {
-                managedAudioSessionLog("ManagedAudioSession applyNone repeated error \(error), giving up")
-            }
+            managedAudioSessionLog("ManagedAudioSession applyNone error \(error), retrying in 2.0 s")
+            
+            self.queue.after(2.0, { [weak self] in
+                guard let self else {
+                    return
+                }
+                guard self.deactivationRetryGate.allowsRetry(token: retryToken, sessionIsIdle: self.currentTypeAndOutputMode == nil) else {
+                    managedAudioSessionLog("ManagedAudioSession applyNone retry dropped, the session was used in the meantime")
+                    return
+                }
+                do {
+                    try AVAudioSession.sharedInstance().setActive(false, options: [.notifyOthersOnDeactivation])
+                    try AVAudioSession.sharedInstance().overrideOutputAudioPort(.none)
+                    try AVAudioSession.sharedInstance().setPreferredInput(nil)
+                } catch let error {
+                    managedAudioSessionLog("ManagedAudioSession applyNone repeated error \(error), giving up")
+                }
+            })
         }
         
         self.isActiveValue = false
@@ -1062,6 +1092,7 @@ public final class ManagedAudioSessionImpl: NSObject, ManagedAudioSession {
     private func setup(type: ManagedAudioSessionType, outputMode: AudioSessionOutputMode, activateNow: Bool) {
         self.deactivateTimer?.invalidate()
         self.deactivateTimer = nil
+        self.deactivationRetryGate.advance()
         
         let wasPlaybackActive = self.currentTypeAndOutputMode?.0.isPlay ?? false
         
@@ -1398,6 +1429,7 @@ public final class ManagedAudioSessionImpl: NSObject, ManagedAudioSession {
     }
     
     private func activate() {
+        self.deactivationRetryGate.advance()
         if let (type, outputMode) = self.currentTypeAndOutputMode {
             do {
                 let startTime = CFAbsoluteTimeGetCurrent()
