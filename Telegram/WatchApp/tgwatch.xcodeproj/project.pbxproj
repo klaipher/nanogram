@@ -119,6 +119,7 @@
 		F5596A4EF4D2055B10B4A183 /* DocumentBubbleView.swift in Sources */ = {isa = PBXBuildFile; fileRef = BDBE08BBB88597B10CDF0142 /* DocumentBubbleView.swift */; };
 		F7096697A6319D8AE9047C1E /* Assets.xcassets in Resources */ = {isa = PBXBuildFile; fileRef = D50662DC1777F2BEE53A0129 /* Assets.xcassets */; };
 		F7D46529A75FEBA7AEE058A8 /* AudioVisual.swift in Sources */ = {isa = PBXBuildFile; fileRef = CBAFC996C8EF743C7C598389 /* AudioVisual.swift */; };
+		F8D37E651D4AA8D2A9832E0D /* RecordingMath.swift in Sources */ = {isa = PBXBuildFile; fileRef = E43D94B6C349AF9240929F5D /* RecordingMath.swift */; };
 		F8F834C103DB1A687BFD54B8 /* FolderPill.swift in Sources */ = {isa = PBXBuildFile; fileRef = 2C34577A65DD579BCCD1888C /* FolderPill.swift */; };
 		F917BC9D348452D168998A84 /* TDShim in Frameworks */ = {isa = PBXBuildFile; productRef = 36B07FC482F9E6A9D62DB94F /* TDShim */; };
 		F95C046A6C043344F0955815 /* QrLinkPublisher.swift in Sources */ = {isa = PBXBuildFile; fileRef = CEA96A6FDE6FBC1F2054E82A /* QrLinkPublisher.swift */; };
@@ -234,6 +235,7 @@
 		DF393D904BF677AC5721EC7E /* ServiceMessageView.swift */ = {isa = PBXFileReference; lastKnownFileType = sourcecode.swift; path = ServiceMessageView.swift; sourceTree = "<group>"; };
 		E09479749C40E78AD852AF8B /* MessageFormatters.swift */ = {isa = PBXFileReference; lastKnownFileType = sourcecode.swift; path = MessageFormatters.swift; sourceTree = "<group>"; };
 		E3496CF0F6E1D25422AF9DB0 /* StickerCellView.swift */ = {isa = PBXFileReference; lastKnownFileType = sourcecode.swift; path = StickerCellView.swift; sourceTree = "<group>"; };
+		E43D94B6C349AF9240929F5D /* RecordingMath.swift */ = {isa = PBXFileReference; lastKnownFileType = sourcecode.swift; path = RecordingMath.swift; sourceTree = "<group>"; };
 		E58B862E5D64B739DD085735 /* AttachmentSheet.swift */ = {isa = PBXFileReference; lastKnownFileType = sourcecode.swift; path = AttachmentSheet.swift; sourceTree = "<group>"; };
 		E6379F5339BA5B1AC98032D6 /* CachedFormatters.swift */ = {isa = PBXFileReference; lastKnownFileType = sourcecode.swift; path = CachedFormatters.swift; sourceTree = "<group>"; };
 		E855E4C62401AD1CF41D1835 /* DaySeparatorView.swift */ = {isa = PBXFileReference; lastKnownFileType = sourcecode.swift; path = DaySeparatorView.swift; sourceTree = "<group>"; };
@@ -395,6 +397,7 @@
 				6B11F6105ABCE7E74B89A881 /* PollBubbleView.swift */,
 				FE4D691106D7EA2FEE35F37F /* PollVisual.swift */,
 				DF0F4F15CB43635717B31B92 /* PollVoteView.swift */,
+				E43D94B6C349AF9240929F5D /* RecordingMath.swift */,
 				7584BF25A84BAD24AB992A79 /* ReplyBar.swift */,
 				DDCE599C8D50EE8832B4A797 /* ReplyFormatters.swift */,
 				F595E3DA02BF871A797A649A /* ReplyHeader.swift */,
@@ -611,6 +614,7 @@
 				25F6B3EFED8EDDD9983CB0F7 /* PollVoteView.swift in Sources */,
 				F95C046A6C043344F0955815 /* QrLinkPublisher.swift in Sources */,
 				B9F6D473AA0F1DAF77799E77 /* QrLoginView.swift in Sources */,
+				F8D37E651D4AA8D2A9832E0D /* RecordingMath.swift in Sources */,
 				A0899809BBC92D1563AC4160 /* ReplyBar.swift in Sources */,
 				FC110506EAA6FA010E83F407 /* ReplyFormatters.swift in Sources */,
 				641846C985430AD34793F0D3 /* ReplyHeader.swift in Sources */,

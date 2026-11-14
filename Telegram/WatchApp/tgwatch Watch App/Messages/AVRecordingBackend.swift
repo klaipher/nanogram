@@ -7,10 +7,11 @@ import OpusKit
 /// then frames into 20 ms Opus frames, encodes, and muxes (on `queue`). Also
 /// accumulates per-frame RMS for the outgoing waveform.
 ///
-/// Thread model: `AVAudioConverter` is used ONLY on the audio render thread
-/// (inside `append`, serialized by AVAudioEngine). The encoder, writer, `carry`,
-/// `rms`, and `totalSamples` are touched ONLY on `queue`. The cross-thread handoff
-/// is the `[Float]` mono array dispatched from the audio thread to `queue`.
+/// Thread model: `AVAudioConverter` and its reused output buffer are used ONLY on the
+/// audio render thread (inside `append`, serialized by AVAudioEngine). The encoder,
+/// writer, `frame`, `rms`, and `totalSamples` are touched ONLY on `queue`. The
+/// cross-thread handoff is `carry`, a lock-guarded FIFO the audio thread appends to
+/// (a memcpy, no per-callback allocation) and `queue` drains one 20 ms frame at a time.
 /// `@unchecked Sendable`: the thread model above is what makes it safe; keep it.
 final class OpusOggRecordingSink: @unchecked Sendable {
     private let queue = DispatchQueue(label: "org.klaipher.Nanogram.watchkitapp.opusEncode")
@@ -18,7 +19,11 @@ final class OpusOggRecordingSink: @unchecked Sendable {
     private let writer: OggOpusWriter
     private let converter: AVAudioConverter
     private let outFormat: AVAudioFormat
-    private var carry: [Float] = []
+    private let carry = LockedSampleCarry()
+    /// Audio thread only: the converter's output, grown when a larger tap buffer arrives.
+    private var resampled: AVAudioPCMBuffer?
+    /// Queue only: one frame's worth of samples, reused for every encode.
+    private var frame = [Float](repeating: 0, count: OpusEncoder.frameSize)
     private var rms: [Float] = []
     private var totalSamples = 0
 
@@ -37,9 +42,11 @@ final class OpusOggRecordingSink: @unchecked Sendable {
     /// Audio-thread entry point. Returns the visual RMS level [0, 1] for this buffer.
     @discardableResult
     func append(_ buffer: AVAudioPCMBuffer) -> Float {
-        guard let mono = resample(buffer) else { return 0 }
-        let level = visualLevel(mono)
-        queue.async { [weak self] in self?.encodeFrames(mono) }
+        guard let mono = resample(buffer), let channel = mono.floatChannelData else { return 0 }
+        let samples = UnsafeBufferPointer(start: channel[0], count: Int(mono.frameLength))
+        let level = AudioMeter.visualLevel(rms: AudioMeter.rms(samples))
+        carry.append(samples)
+        queue.async { [weak self] in self?.encodeFrames() }
         return level
     }
 
@@ -48,15 +55,12 @@ final class OpusOggRecordingSink: @unchecked Sendable {
     /// state confined, rather than relying on the post-sync happens-after relationship.
     func finalize() -> (duration: Int, waveform: Data) {
         return queue.sync {
-            if !carry.isEmpty {
-                var frame = carry
-                frame.append(contentsOf: Array(repeating: 0, count: OpusEncoder.frameSize - frame.count))
-                if let packet = try? encoder.encode(frame) {
-                    writer.writePacket(packet, samples: OpusEncoder.frameSize)
-                    appendRMS(frame)
-                    totalSamples += OpusEncoder.frameSize
-                }
-                carry.removeAll()
+            encodeFrames()
+            if let remainder = carry.takePaddedRemainder(frameSize: OpusEncoder.frameSize),
+               let packet = try? encoder.encode(remainder) {
+                writer.writePacket(packet, samples: OpusEncoder.frameSize)
+                appendRMS(remainder)
+                totalSamples += OpusEncoder.frameSize
             }
             writer.finish()
             let duration = Int((Double(totalSamples) / 48_000.0).rounded())
@@ -68,11 +72,18 @@ final class OpusOggRecordingSink: @unchecked Sendable {
 
     // MARK: - audio thread
 
-    private func resample(_ inBuf: AVAudioPCMBuffer) -> [Float]? {
+    /// Converts into the reused output buffer (valid until the next call) and returns it.
+    private func resample(_ inBuf: AVAudioPCMBuffer) -> AVAudioPCMBuffer? {
         let ratio = outFormat.sampleRate / inBuf.format.sampleRate
         let cap = AVAudioFrameCount(Double(inBuf.frameLength) * ratio) + 256
-        guard cap > 0, let outBuf = AVAudioPCMBuffer(pcmFormat: outFormat, frameCapacity: cap) else {
-            return nil
+        guard cap > 0 else { return nil }
+        let outBuf: AVAudioPCMBuffer
+        if let existing = resampled, existing.frameCapacity >= cap {
+            outBuf = existing
+        } else {
+            guard let created = AVAudioPCMBuffer(pcmFormat: outFormat, frameCapacity: cap) else { return nil }
+            resampled = created
+            outBuf = created
         }
         var consumed = false
         var convErr: NSError?
@@ -83,25 +94,15 @@ final class OpusOggRecordingSink: @unchecked Sendable {
             return inBuf
         }
         if convErr != nil { return nil }
-        guard let ch = outBuf.floatChannelData, outBuf.frameLength > 0 else { return nil }
-        return Array(UnsafeBufferPointer(start: ch[0], count: Int(outBuf.frameLength)))
-    }
-
-    private func visualLevel(_ samples: [Float]) -> Float {
-        guard !samples.isEmpty else { return 0 }
-        var sum: Float = 0
-        for s in samples { sum += s * s }
-        let r = (sum / Float(samples.count)).squareRoot()
-        return min(1, r * 4)   // visual gain so normal speech fills the meter
+        guard outBuf.floatChannelData != nil, outBuf.frameLength > 0 else { return nil }
+        return outBuf
     }
 
     // MARK: - queue
 
-    private func encodeFrames(_ mono: [Float]) {
-        carry.append(contentsOf: mono)
-        while carry.count >= OpusEncoder.frameSize {
-            let frame = Array(carry[0..<OpusEncoder.frameSize])
-            carry.removeFirst(OpusEncoder.frameSize)
+    /// Encodes every complete 20 ms frame waiting in `carry`.
+    private func encodeFrames() {
+        while carry.popFrame(into: &frame) {
             guard let packet = try? encoder.encode(frame) else { continue }
             writer.writePacket(packet, samples: OpusEncoder.frameSize)
             appendRMS(frame)
@@ -110,9 +111,7 @@ final class OpusOggRecordingSink: @unchecked Sendable {
     }
 
     private func appendRMS(_ frame: [Float]) {
-        var sum: Float = 0
-        for s in frame { sum += s * s }
-        rms.append((sum / Float(frame.count)).squareRoot())
+        rms.append(AudioMeter.rms(frame))
     }
 }
 
@@ -166,9 +165,11 @@ final class AVRecordingBackend: RecordingBackend {
         sink: OpusOggRecordingSink,
         onLevel: @escaping @MainActor (Float) -> Void
     ) -> AVAudioNodeTapBlock {
+        let throttle = LevelThrottle()
         return { buffer, _ in
             let level = sink.append(buffer)
-            Task { @MainActor in onLevel(level) }
+            guard let publish = throttle.submit(level: level, now: ProcessInfo.processInfo.systemUptime) else { return }
+            Task { @MainActor in onLevel(publish) }
         }
     }
 
