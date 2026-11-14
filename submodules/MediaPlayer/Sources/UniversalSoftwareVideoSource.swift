@@ -458,6 +458,28 @@ public enum UniversalSoftwareVideoSourceTakeFrameResult {
     case image(UIImage?)
 }
 
+public enum UniversalSoftwareVideoSourceFirstFrame {
+    case pending
+    case jpeg(Data)
+    case failed
+}
+
+public extension UniversalSoftwareVideoSourceTakeFrameResult {
+    /// What a first-frame consumer should do with this result: keep waiting, store the JPEG, or give up.
+    /// A nil image or a failed JPEG encode is `failed`, so the request completes instead of holding the source.
+    func firstFrame(compressionQuality: CGFloat) -> UniversalSoftwareVideoSourceFirstFrame {
+        switch self {
+        case .waitingForData:
+            return .pending
+        case let .image(image):
+            guard let image, let data = image.jpegData(compressionQuality: compressionQuality) else {
+                return .failed
+            }
+            return .jpeg(data)
+        }
+    }
+}
+
 public final class UniversalSoftwareVideoSource {
     public enum Source {
         case file(
