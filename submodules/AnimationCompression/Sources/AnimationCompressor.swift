@@ -221,6 +221,7 @@ public final class AnimationCompressor {
         let defaultLibrary: MTLLibrary
         private let computeDctPipelineState: MTLComputePipelineState
         private let commandQueue: MTLCommandQueue
+        let renderCommandQueue: MTLCommandQueue
         
         public init?() {
             guard let device = MTLCreateSystemDefaultDevice() else {
@@ -259,6 +260,12 @@ public final class AnimationCompressor {
                 return nil
             }
             self.commandQueue = commandQueue
+            
+            guard let renderCommandQueue = self.device.makeCommandQueue() else {
+                return nil
+            }
+            renderCommandQueue.label = "AnimationCompression.render"
+            self.renderCommandQueue = renderCommandQueue
         }
         
         func compress(compressor: AnimationCompressor, image: ImageData, completion: @escaping (CompressedImageData?) -> Void) {
