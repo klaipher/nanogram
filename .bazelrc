@@ -76,5 +76,12 @@ build --copt=-fstack-protector-strong
 # of every cold build (on the critical path).
 common --repo_env=APPLE_SUPPORT_LAYERING_CHECK_BETA=0
 
+# rules_rust pipelined compilation: dependent crates start from the .rmeta of a dependency instead of waiting for
+# its full codegen (one extra short rustc invocation per rlib). The Rust phase (wallet and mtproto crate universes,
+# uniffi-bindgen at the start of the cold critical path) gets shorter. Outputs do not change. Measure with a cold
+# build and `tg profile` (docs/bazel-build-profiling.md); drop the line if the cold wall time does not improve.
+# https://github.com/bazelbuild/rules_rust/blob/0.75.0/rust/settings/settings.bzl (pipelined_compilation)
+build --@rules_rust//rust/settings:pipelined_compilation=true
+
 # Per-developer overrides (disk cache path, jobs, ...). Not checked in.
 try-import %workspace%/user.bazelrc
