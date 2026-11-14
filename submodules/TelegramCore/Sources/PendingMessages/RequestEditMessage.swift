@@ -449,10 +449,12 @@ func _internal_requestEditLiveLocation(postbox: Postbox, network: Network, state
             
             let period: Int32
             if let extendPeriod {
-                if extendPeriod == liveLocationIndefinitePeriod {
-                    period = extendPeriod
+                if extendPeriod == liveLocationIndefinitePeriod || liveBroadcastingTimeout == liveLocationIndefinitePeriod {
+                    period = liveLocationIndefinitePeriod
                 } else {
-                    period = liveBroadcastingTimeout + extendPeriod
+                    // The indefinite sentinel is Int32.max, so a plain sum can overflow and trap.
+                    let (sum, overflow) = liveBroadcastingTimeout.addingReportingOverflow(extendPeriod)
+                    period = overflow ? liveLocationIndefinitePeriod : sum
                 }
             } else {
                 period = liveBroadcastingTimeout

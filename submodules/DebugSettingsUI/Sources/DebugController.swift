@@ -1530,14 +1530,10 @@ func debugControllerEntries(environment: DebugControllerEntriesEnvironment, them
     }
 
     if isMainApp {
-        // Every switch of calls and live streams, in one section: a description and the default on each row.
+        // The user-facing call switches (noise suppression, ducking, thermal limits) and the glanceables switch moved to Settings > Nanogram Features.
         entries.append(.callsHeader(theme))
         entries.append(.callsLivestreamHardwareDecoding(experimentalSettings.callsLivestreamHardwareDecoding))
         entries.append(.callsNativeCapturePath(experimentalSettings.callsNativeCapturePath))
-        entries.append(.callsSystemNoiseSuppression(experimentalSettings.callsSystemNoiseSuppression))
-        entries.append(.callsAdvancedDucking(experimentalSettings.callsAdvancedDucking))
-        entries.append(.callsGroupNoiseMode(experimentalSettings.callsGroupNoiseMode))
-        entries.append(.callsThermalVideoLadder(experimentalSettings.callsThermalVideoLadder))
         
         // Measurement only: each switch replaces one chat glass group with a solid fill (iOS native glass).
         entries.append(.glassGroupsHeader(theme))
@@ -1548,7 +1544,6 @@ func debugControllerEntries(environment: DebugControllerEntriesEnvironment, them
         // Performance: the frame-hitch log and the back-swipe preparation (the other performance switches are always on now).
         entries.append(.performanceHeader(theme))
         entries.append(.frameHitchLog(experimentalSettings.frameHitchLog))
-        entries.append(.nanogramGlanceables(experimentalSettings.nanogramGlanceables))
         entries.append(.backSwipePreparePreviousScreen(experimentalSettings.backSwipePreparePreviousScreen))
 
         // Dark performance experiments for A/B tests on iPhone 14 and 14 Pro: stored in UserDefaults, read at launch.

@@ -16,6 +16,7 @@ import PresentationDataUtils
 import UrlWhitelist
 import UndoUI
 import BrowserUI
+import NanogramFeatures
 
 func handleTextLinkActionImpl(context: AccountContext, peerId: EnginePeer.Id?, navigateDisposable: MetaDisposable, controller: ViewController, action: TextLinkItemActionType, itemLink: TextLinkItem) {
     let presentationData = context.sharedContext.currentPresentationData.with({ $0 })
@@ -204,7 +205,7 @@ func handleTextLinkActionImpl(context: AccountContext, peerId: EnginePeer.Id?, n
                         }),
                         ActionSheetButtonItem(title: presentationData.strings.ShareMenu_CopyShareLink, color: .accent, action: { [weak actionSheet] in
                             actionSheet?.dismissAnimated()
-                            UIPasteboard.general.string = url
+                            UIPasteboard.general.string = NanogramFeaturesSettings.current.with({ $0.stripTrackingParameters }) ? LinkHygiene.strippingTracking(url) : url
                             
                             let content: UndoOverlayContent
                             if url.hasPrefix("tel:") {

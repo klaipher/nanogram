@@ -45,7 +45,8 @@ extension ChatControllerImpl {
             
             switch search.domain {
             case .everything:
-                derivedSearchState = ChatSearchState(query: search.query, location: .peer(peerId: peerId, fromId: nil, tags: nil, reactions: reactions, threadId: threadId, minDate: nil, maxDate: nil), loadMoreState: loadMoreStateFromResultsState(search.resultsState))
+                let operators = self.searchOperatorsResult(query: search.query, peerId: peerId)
+                derivedSearchState = ChatSearchState(query: operators?.query ?? search.query, location: .peer(peerId: peerId, fromId: operators?.fromId, tags: operators?.tags, reactions: reactions, threadId: threadId, minDate: operators?.minDate, maxDate: operators?.maxDate), loadMoreState: loadMoreStateFromResultsState(search.resultsState))
             case let .tag(reaction):
                 derivedSearchState = ChatSearchState(query: search.query, location: .peer(peerId: peerId, fromId: nil, tags: nil, reactions: reactions ?? [reaction], threadId: threadId, minDate: nil, maxDate: nil), loadMoreState: loadMoreStateFromResultsState(search.resultsState))
             case .members:
@@ -62,8 +63,8 @@ extension ChatControllerImpl {
                 if previousSearchState?.query != searchState.query || previousSearchState?.location != searchState.location {
                     var queryIsEmpty = false
                     if searchState.query.isEmpty {
-                        if case let .peer(_, fromId, _, reactions, _, _, _) = searchState.location {
-                            if fromId == nil {
+                        if case let .peer(_, fromId, tags, reactions, _, minDate, maxDate) = searchState.location {
+                            if fromId == nil && tags == nil && minDate == nil && maxDate == nil {
                                 queryIsEmpty = true
                             }
                             if let reactions, !reactions.isEmpty {

@@ -2307,7 +2307,7 @@ extension ChatControllerImpl {
                     |> take(1)
                     |> deliverOnMainQueue).startStandalone(next: { [weak self] searchResult in
                         if let strongSelf = self, let (searchResult, searchState, searchLocation) = searchResult {
-                            let controller = ChatSearchResultsController(context: strongSelf.context, updatedPresentationData: strongSelf.updatedPresentationData, location: searchLocation, searchQuery: searchData.query, searchResult: searchResult, searchState: searchState, navigateToMessageIndex: { index in
+                            let controller = ChatSearchResultsController(context: strongSelf.context, updatedPresentationData: strongSelf.updatedPresentationData, location: searchLocation, searchQuery: strongSelf.searchState?.query ?? searchData.query, searchResult: searchResult, searchState: searchState, navigateToMessageIndex: { index in
                                 guard let strongSelf = self else {
                                     return
                                 }

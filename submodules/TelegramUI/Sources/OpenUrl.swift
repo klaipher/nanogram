@@ -16,6 +16,7 @@ import PresentationDataUtils
 import UrlWhitelist
 import OpenUserGeneratedUrl
 import DebugCompanionScreen
+import NanogramFeatures
 
 public struct ParsedSecureIdUrl {
     public let peerId: EnginePeer.Id
@@ -357,6 +358,32 @@ private func makeTelegramUrl(_ path: String, queryItems: [URLQueryItem] = []) ->
 }
 
 func openExternalUrlImpl(context: AccountContext, urlContext: OpenURLContext, url: String, forceExternal: Bool, presentationData: PresentationData, navigationController: NavigationController?, dismissInput: @escaping () -> Void) {
+    // Settings > Nanogram features > Links. Only the link that is opened changes, never message text.
+    let features = NanogramFeaturesSettings.current.with { $0 }
+    let finalUrl = features.stripTrackingParameters ? LinkHygiene.strippingTracking(url) : url
+    if features.confirmTelegramLinks, LinkHygiene.isTelegramLink(finalUrl) {
+        var isInAppTap = true
+        if case .external = urlContext {
+            isInAppTap = false
+        }
+        if isInAppTap {
+            let controller = openLinkConfirmationController(
+                context: context,
+                presentationData: presentationData,
+                updatedPresentationData: .single(presentationData),
+                displayUrl: finalUrl,
+                open: {
+                    openExternalUrlAfterFeatures(context: context, urlContext: urlContext, url: finalUrl, forceExternal: forceExternal, presentationData: presentationData, navigationController: navigationController, dismissInput: dismissInput)
+                }
+            )
+            context.sharedContext.presentGlobalController(controller, nil)
+            return
+        }
+    }
+    openExternalUrlAfterFeatures(context: context, urlContext: urlContext, url: finalUrl, forceExternal: forceExternal, presentationData: presentationData, navigationController: navigationController, dismissInput: dismissInput)
+}
+
+private func openExternalUrlAfterFeatures(context: AccountContext, urlContext: OpenURLContext, url: String, forceExternal: Bool, presentationData: PresentationData, navigationController: NavigationController?, dismissInput: @escaping () -> Void) {
     // A login part hides the host a link opens (see `externalUrlWithLoginPart`). Every external link leaves through
     // here, whoever opens it, so here it is confirmed, unless a prompt that showed the real host was just accepted.
     if let loginPartUrl = externalUrlWithLoginPart(url), !consumeLoginPartConfirmation(loginPartUrl) {

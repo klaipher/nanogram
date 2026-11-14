@@ -274,6 +274,9 @@ func settingsItems(data: PeerInfoScreenData?, context: AccountContext, presentat
     items[.advanced]!.append(PeerInfoScreenDisclosureItem(id: 6, label: .text(data.isPowerSavingEnabled == true ? presentationData.strings.Settings_PowerSavingOn : presentationData.strings.Settings_PowerSavingOff), text: presentationData.strings.Settings_PowerSaving, icon: PresentationResourcesSettings.powerSaving, action: {
         interaction.openSettings(.powerSaving)
     }))
+    items[.advanced]!.append(PeerInfoScreenDisclosureItem(id: 7, text: "Nanogram Features", icon: PresentationResourcesSettings.aiTools, action: {
+        interaction.openSettings(.nanogramFeatures)
+    }))
     
     let languageName = presentationData.strings.primaryComponent.localizedName
     items[.advanced]!.append(PeerInfoScreenDisclosureItem(id: 4, label: .text(languageName.isEmpty ? presentationData.strings.Localization_LanguageName : languageName), text: presentationData.strings.Settings_AppLanguage, icon: PresentationResourcesSettings.language, action: {

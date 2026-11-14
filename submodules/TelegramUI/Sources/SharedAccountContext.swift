@@ -310,6 +310,7 @@ public final class SharedAccountContextImpl: SharedAccountContext {
     
     public let currentMediaInputSettings: Atomic<MediaInputSettings>
     private var mediaInputSettingsDisposable: Disposable?
+    private var nanogramFeaturesSettingsDisposable: Disposable?
     
     public let currentMediaDisplaySettings: Atomic<MediaDisplaySettings>
     private var mediaDisplaySettingsDisposable: Disposable?
@@ -543,6 +544,12 @@ public final class SharedAccountContextImpl: SharedAccountContext {
                     let _ = strongSelf.currentInAppNotificationSettings.swap(settings)
                 }
             }
+        })
+        
+        self.nanogramFeaturesSettingsDisposable = (self.accountManager.sharedData(keys: [ApplicationSpecificSharedDataKeys.nanogramFeaturesSettings])
+        |> deliverOnMainQueue).start(next: { sharedData in
+            let settings = sharedData.entries[ApplicationSpecificSharedDataKeys.nanogramFeaturesSettings]?.get(NanogramFeaturesSettings.self) ?? NanogramFeaturesSettings.defaultSettings
+            let _ = NanogramFeaturesSettings.current.swap(settings)
         })
         
         self.mediaInputSettingsDisposable = (self.accountManager.sharedData(keys: [ApplicationSpecificSharedDataKeys.mediaInputSettings])
@@ -1261,6 +1268,7 @@ public final class SharedAccountContextImpl: SharedAccountContext {
         self.currentAutodownloadSettingsDisposable.dispose()
         self.inAppNotificationSettingsDisposable?.dispose()
         self.mediaInputSettingsDisposable?.dispose()
+        self.nanogramFeaturesSettingsDisposable?.dispose()
         self.mediaDisplaySettingsDisposable?.dispose()
         self.chatSettingsDisposable?.dispose()
         self.stickerSettingsDisposable?.dispose()

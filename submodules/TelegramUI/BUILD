@@ -450,6 +450,7 @@ swift_library(
         "//submodules/TelegramUI/Components/Chat/ChatNavigationButton",
         "//submodules/TelegramUI/Components/Chat/ChatLoadingNode",
         "//submodules/TelegramUI/Components/DebugCompanionScreen",
+        "//submodules/NanogramFeatures",
         "//submodules/TelegramUI/Components/Settings/PeerNameColorScreen",
         "//submodules/TelegramUI/Components/ContextMenuScreen",
         "//submodules/TelegramUI/Components/PeerAllowedReactionsScreen",

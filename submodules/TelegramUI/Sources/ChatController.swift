@@ -399,6 +399,7 @@ public final class ChatControllerImpl: TelegramBaseController, ChatController, G
     var editingUrlPreviewQueryState: (UrlPreviewState?, Disposable)?
     var replyMessageState: (EngineMessage.Id, Disposable)?
     var searchState: ChatSearchState?
+    let searchOperatorSenders = ChatSearchOperatorSenders()
     
     var shakeFeedback: HapticFeedback?
     
@@ -8814,7 +8815,7 @@ public final class ChatControllerImpl: TelegramBaseController, ChatController, G
         var searchString: String?
         var resultsMessageIndices: [MessageIndex]?
         if let search = self.presentationInterfaceState.search, let resultsState = search.resultsState, !resultsState.messageIndices.isEmpty {
-            searchString = search.query
+            searchString = self.searchState?.query ?? search.query
             resultsMessageIndices = resultsState.messageIndices
         }
         if searchString != self.controllerInteraction?.searchTextHighightState?.0 || resultsMessageIndices?.count != self.controllerInteraction?.searchTextHighightState?.1.count {

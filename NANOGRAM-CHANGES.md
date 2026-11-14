@@ -357,6 +357,18 @@ marked (check) were not re-verified against the code; correct them on the next c
 - Where: `ExperimentalPerformanceFlags.swift` (`launchState`, SwiftSignalKit and SwiftSignalKit2).
 - Upstream: no.
 
+## Settings > Nanogram Features (iOS, 2026-11-14)
+- What: a user-facing ItemList screen (Settings, after Power Saving) for Nanogram's own tweaks: in-chat search operators (`from:`, `before:`, `after:`, `date:`, `type:`; default on), link hygiene (strip tracking parameters when opening and copying a link, confirm t.me and tg:// links; both default off) and the user-facing switches moved out of Debug Settings (system noise suppression, advanced ducking, group noise suppression, thermal video limits, glanceables). Message text is never rewritten.
+- Why: owner decision 2026-11-14 (Mercurygram feature parity, one screen per platform; developer experiments stay in Debug Settings).
+- Where: `submodules/NanogramFeatures` (parser, link rules, tests), `submodules/TelegramUIPreferences/Sources/NanogramFeaturesSettings.swift`, `submodules/SettingsUI/Sources/NanogramFeaturesController.swift`, `submodules/TelegramUI/Sources/ChatSearchOperators.swift` and `ChatControllerUpdateSearch.swift`, `OpenUrl.swift` (`openExternalUrlImpl`), `TextLinkHandling.swift` (copy), PeerInfo settings list. Shared grammar and data: `docs/specs/search-operators.md`, `docs/specs/link-tracking-params.txt`.
+- Upstream: no. Ideas from Mercurygram (GPL-2.0), reimplemented from the behaviour, not copied.
+- Sync: `updateSearch` and `openExternalUrlImpl` are small hooks; re-apply if upstream reshapes them. Copy hygiene covers the chat link menu only; the in-app browser and Instant View copy menus are not hooked.
+
+## Mercurygram bug fixes and optimizations (iOS review, 2026-11-14)
+- What: every bug-fix, security-fix and performance item of the Mercurygram analysis checked against Telegram-iOS code; table in `docs/nanogram/mercurygram-port.md`. Result: most Android items do not exist on iOS; Google DoH removal, proxy IPv6 resolving, the sound-reset and the livestream decoder guard are already in; one change, `RequestEditMessage` no longer overflows when an indefinite live location is extended.
+- Open: secret-chat delete-for-everyone (flush-history before discard) needs a reordering of the terminate flow and a secret-chat test pair; collapsed-community members versus type folders needs a device with communities.
+- Attribution: Mercurygram Android a2d04746f (live location "until stopped"), analysis only; the fix is our own code.
+
 ## Send Report: one diagnostics button for testers
 - What: Settings > Send Report (and the top of Debug Settings) sends one zip with a README, device and experiment details, app, extension and notification logs, critical logs, call logs, and crash and MetricKit reports, capped at 40 MB with phone numbers and emails masked; the old fine-grained Send Logs menu stays for developers.
 - Why: testers had five or more log buttons and sent partial reports; upstream has no tester diagnostics flow.
