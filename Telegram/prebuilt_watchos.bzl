@@ -23,7 +23,11 @@ The providers exposed:
   * AppleBundleInfo      — bundle metadata (the host reads only `.product_type`).
   * AppleEmbeddableInfo  — `watch_bundles` (the zipped .app placed under Watch/).
 
-The watch sources are `Telegram/WatchApp/` (tracked inputs), edited in this repo. The compile
+The watch sources are `Telegram/WatchApp/` (tracked inputs), edited in this repo. The watch app renders
+stickers with tlottie, the same crate the phone links (`submodules/tlottie/tlottie`): the compile action first
+builds it as a no_std static library for watchOS (pinned nightly, -Zbuild-std; Telegram/WatchApp/tools/
+build-tlottie-xcframework.sh) into Packages/TLottieKit/Frameworks of the writable copy, then runs xcodebuild.
+Its sources are inputs of that action, and the script keeps its own result cache keyed by the same inputs. The compile
 action keeps SwiftPM checkouts in ~/.cache/telegram-ios/watch-spm across runs (outside the
 action; they do not affect its output), so only the first build on a machine downloads them.
 
@@ -123,8 +127,10 @@ def _apple_prebuilt_watchos_application_impl(ctx):
             # $(PRODUCT_BUNDLE_IDENTIFIER:base). Keeps the build dynamic across hosts with
             # no post-build bundle-id mutation (xcodebuild bakes, the patch worker signs).
             ctx.attr.bundle_id,
+            # tlottie crate (execroot-relative) the worker builds for watchOS before xcodebuild.
+            ctx.attr.tlottie_source_dir,
         ],
-        inputs = [ctx.file._compile_worker] + ctx.files.srcs,
+        inputs = [ctx.file._compile_worker] + ctx.files.srcs + ctx.files.tlottie_srcs,
         outputs = [compiled_archive],
         mnemonic = "PrebuiltWatchosCompile",
         progress_message = "Compiling watch app via xcodebuild",
@@ -200,6 +206,15 @@ apple_prebuilt_watchos_application = rule(
         "in_repo_source_dir": attr.string(
             default = "Telegram/WatchApp",
             doc = "Execroot-relative path to the committed snapshot (must match the package of 'srcs').",
+        ),
+        "tlottie_srcs": attr.label(
+            default = "//submodules/tlottie:tlottie_sources",
+            allow_files = True,
+            doc = "tlottie crate sources (Cargo.toml, Cargo.lock, src/, include/): inputs of the compile action.",
+        ),
+        "tlottie_source_dir": attr.string(
+            default = "submodules/tlottie/tlottie",
+            doc = "Execroot-relative path to the tlottie crate (must match the package of 'tlottie_srcs').",
         ),
         "versions_json": attr.label(
             allow_single_file = True,
