@@ -125,7 +125,7 @@ marked (check) were not re-verified against the code; correct them on the next c
 - Why: owner decision, 2026-11-06 (measured wins, local only, nothing on the wire).
 - Where: `submodules/TelegramUIPreferences/Sources/ExperimentalUISettings.swift`, `docs/subsystems/tgcalls/call-switches-and-review-fixes.md`.
 - Upstream: no (the switches are ours).
-- Sync: none.
+- Behaviour: no model cache (rlottie's was keyed by file name), so each load re-parses; simulator slice is aarch64 only; compile action needs rustup and network on a cache miss. Sync: none.
 
 ### Call controls (iOS)
 - What: route requests are skipped only when the session reports that route; CallKit mute uses `callUUID`, is reported back
