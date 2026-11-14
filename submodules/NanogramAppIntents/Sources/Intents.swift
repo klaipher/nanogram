@@ -32,6 +32,7 @@ public struct OpenChatIntent: AppIntent {
     public static let title: LocalizedStringResource = "Open Chat"
     public static let description = IntentDescription("Opens a chat in Nanogram.")
     public static let openAppWhenRun = true
+    public static let authenticationPolicy: IntentAuthenticationPolicy = .requiresAuthentication
 
     @Parameter(title: "Chat")
     public var chat: PeerEntity
@@ -97,6 +98,7 @@ public struct SendToSavedMessagesIntent: AppIntent {
     public static let title: LocalizedStringResource = "Send to Saved Messages"
     public static let description = IntentDescription("Saves a note in your Saved Messages.")
     public static let openAppWhenRun = false
+    public static let authenticationPolicy: IntentAuthenticationPolicy = .requiresAuthentication
 
     @Parameter(title: "Text")
     public var text: String

@@ -141,4 +141,9 @@ final class IntentPerformTests: XCTestCase {
         let sent = await recorder.sent
         XCTAssertEqual(sent, ["hello"])
     }
+
+    func testIntentsThatTouchTheAccountRequireAuthentication() {
+        XCTAssertEqual(OpenChatIntent.authenticationPolicy, .requiresAuthentication)
+        XCTAssertEqual(SendToSavedMessagesIntent.authenticationPolicy, .requiresAuthentication)
+    }
 }
