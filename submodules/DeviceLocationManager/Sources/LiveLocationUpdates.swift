@@ -1,5 +1,6 @@
 import Foundation
 import CoreLocation
+import SwiftSignalKit
 
 enum DeviceLocationBackend: Equatable {
     case locationManager
@@ -35,31 +36,57 @@ func deviceLocationIsLiveUpdatesAvailable() -> Bool {
     return false
 }
 
-final class LiveLocationUpdates: @unchecked Sendable {
-    private var task: Task<Void, Never>?
-    private var backgroundSession: AnyObject?
-    private var serviceSession: AnyObject?
-    
-    init(onUpdate: @escaping @Sendable (CLLocation) -> Void) {
-        if #available(iOS 17.0, *) {
-            self.backgroundSession = CLBackgroundActivitySession()
-            if #available(iOS 18.0, *) {
-                self.serviceSession = CLServiceSession(authorization: .always)
-            }
-            self.task = Task.detached(priority: .utility) {
+typealias LiveLocationSource = @Sendable () -> AsyncStream<CLLocation>
+
+func systemLiveLocationSource() -> AsyncStream<CLLocation> {
+    return AsyncStream { continuation in
+        let task = Task.detached(priority: .utility) {
+            if #available(iOS 17.0, *) {
                 do {
                     for try await update in CLLocationUpdate.liveUpdates(.otherNavigation) {
                         if Task.isCancelled {
                             break
                         }
                         if let location = update.location {
-                            onUpdate(location)
+                            continuation.yield(location)
                         }
                     }
                 } catch {
                 }
             }
+            continuation.finish()
         }
+        continuation.onTermination = { _ in
+            task.cancel()
+        }
+    }
+}
+
+final class LiveLocationUpdates: @unchecked Sendable {
+    private var task: Task<Void, Never>?
+    private var backgroundSession: AnyObject?
+    private var serviceSession: AnyObject?
+    
+    init(source: LiveLocationSource = systemLiveLocationSource, startsSessions: Bool = true, onUpdate: @escaping @Sendable (CLLocation) -> Void) {
+        if startsSessions, #available(iOS 17.0, *) {
+            self.backgroundSession = CLBackgroundActivitySession()
+            if #available(iOS 18.0, *) {
+                self.serviceSession = CLServiceSession(authorization: .always)
+            }
+        }
+        let stream = source()
+        self.task = Task.detached(priority: .utility) {
+            for await location in stream {
+                if Task.isCancelled {
+                    break
+                }
+                onUpdate(location)
+            }
+        }
+    }
+    
+    deinit {
+        self.stop()
     }
     
     func stop() {
@@ -78,18 +105,19 @@ final class LiveLocationUpdates: @unchecked Sendable {
 
 private final class WeakLocationManager: @unchecked Sendable {
     weak var value: DeviceLocationManager?
+    let queue: Queue
     
     init(_ value: DeviceLocationManager) {
         self.value = value
+        self.queue = value.queue
     }
 }
 
 extension DeviceLocationManager {
     func makeLiveLocationUpdates() -> LiveLocationUpdates {
-        let queue = self.queue
         let weakSelf = WeakLocationManager(self)
         return LiveLocationUpdates(onUpdate: { location in
-            queue.async {
+            weakSelf.queue.async {
                 weakSelf.value?.receivedLiveUpdate(location)
             }
         })
