@@ -21,7 +21,7 @@ let package = Package(
             path: ".",
             publicHeadersPath: "Public",
             cxxSettings: [
-                .headerSearchPath("SharedHeaders/td/tde2e"),
+                .headerSearchPath("../td/tde2e"),
             ]),
     ],
     cxxLanguageStandard: .cxx20
