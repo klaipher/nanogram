@@ -227,6 +227,7 @@ marked (check) were not re-verified against the code; correct them on the next c
 - opusfile: `third-party/opusfile/opusfile` = xiph/opusfile v0.12 (a55c164e). The old copy's only local edits were three include paths, replaced by BUILD `include_prefix` and `//third-party/opus:opus_flat_headers`. `submodules/OpusBinding/Sources/opusfile` is a separate in-tree copy (open item).
 - libwebp: `third-party/webp/libwebp` = webmproject/libwebp v1.6.0 (4fa21912); old vendored copy byte-identical except CRLF in `gradlew.bat`.
 - td: `TdBinding/SharedHeaders` (a copy of td headers) is gone; `TdBinding/Package.swift` reads `../td/tde2e` from the `third-party/td/td` submodule.
+- boringssl: dead `aes_ige.c` deleted (unreferenced).
 
 ### Differences added or changed by the 13.2 merge (2026-11-06)
 - rlottie: upstream removed it and `LottieSettings`; iOS now renders only with tlottie. Since 2026-11-11 `submodules/rlottie` is gone here too: the Mac 13.2 merge dropped it as Telegram for macOS 13.2 did, so neither app builds it, as upstream. The Watch app keeps its own vendored copy (`RLottieKit`). Upstream: yes.

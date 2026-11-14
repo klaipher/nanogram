@@ -4,6 +4,8 @@ Newest first. Internal notes for each TestFlight build; testers see the What to 
 
 ## Unreleased
 
+- **Dead `third-party/boringssl/aes_ige.c` removed** (W1.1). No BUILD file lists it (`third-party/boringssl/BUILD` has no glob), and `git grep aes_ige` finds no other reference in the tree (iOS), nor in the Mac's own files (only its Rust crate's unrelated `aes_ige.rs`). MTProto IGE runs in the Rust engine.
+
 - **TdBinding no longer carries a copy of td's headers** (W1.1). Deleted `third-party/td/TdBinding/SharedHeaders` (793 files) and pointed `Package.swift`'s `headerSearchPath` at `../td/tde2e` (the `third-party/td/td` submodule). Proof: 787 of 793 files are blob-identical to tdlib/td@0e88653d (the submodule pin); the other 6 are generated headers (`generate/auto/td/...`) that `TdBinding.mm` (`td/e2e/e2e_api.h` only) never reads. Bazel never used the copy (`//third-party/td:td`); the Mac's Xcode package build does. Risk for the combined build: SwiftPM must accept a header search path above the package root.
 
 - **libwebp is the webmproject/libwebp submodule** (W1.1). `third-party/webp/libwebp` at v1.6.0 (4fa21912, shallow) replaces the vendored 334-file copy at the same path, so `third-party/webp/BUILD` is unchanged. Proof: 333 of 334 old blobs are identical to the tag; the only difference is `gradlew.bat` (old copy stored with CRLF line endings, not used by the build). Upstream's extra files (dotfiles, `webp_js/`) are not read by the build script.
