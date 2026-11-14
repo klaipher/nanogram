@@ -258,9 +258,4 @@ class MTLineFitter {
 
         return nil
     }
-
-    /// Check if a line width exceeds the maximum
-    private func exceedsMaxWidth(_ width: CGFloat) -> Bool {
-        return width > maxWidth - margin
-    }
 }

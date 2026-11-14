@@ -60,6 +60,10 @@ enum MTParseErrors:Int {
     case internalError
     /// Limit control applied incorrectly
     case invalidLimits
+    /// The formula exceeds the parser's maximum supported nesting depth.
+    case nestingTooDeep
+    case invalidTableState
+    case tableTooLarge
 }
 
 let MTParseError = "ParseError"
@@ -93,6 +97,12 @@ public struct MTMathListBuilder {
     var currentFontStyle:MTFontStyle
     var spacesAllowed:Bool
     var mathMode: MathMode = .display
+    static let maximumParseDepth = 64
+    static let maximumTableRows = 100_000
+    static let maximumTableColumns = 100_000
+    static let maximumTableCells = 100_000
+    var currentParseDepth = 0
+    var encounteredUnsupportedLineBreak = false
 
     /** Contains any error that occurred during parsing. */
     var error:NSError?
@@ -344,6 +354,16 @@ public struct MTMathListBuilder {
         return output
     }
 
+    static func buildForAuthoring(fromString string: String) -> MTMathList? {
+        var builder = MTMathListBuilder(string: string)
+        guard let output = builder.build(),
+              builder.error == nil,
+              !builder.encounteredUnsupportedLineBreak else {
+            return nil
+        }
+        return output
+    }
+
     /** Construct a math list from a given string and return the detected style.
      This method detects LaTeX delimiters like \[...\], $$...$$, $...$, \(...\)
      and returns the appropriate rendering style (.display or .text).
@@ -388,6 +408,23 @@ public struct MTMathListBuilder {
     }
     
     public mutating func buildInternal(_ oneCharOnly: Bool, stopChar stop: Character?) -> MTMathList? {
+        guard self.currentParseDepth < Self.maximumParseDepth else {
+            self.setError(
+                .nestingTooDeep,
+                message: "Formula nesting exceeds maximum depth of \(Self.maximumParseDepth)."
+            )
+            return nil
+        }
+        self.currentParseDepth += 1
+        defer {
+            self.currentParseDepth -= 1
+        }
+
+        return self.buildInternalBody(oneCharOnly, stopChar: stop)
+    }
+
+    @inline(never)
+    private mutating func buildInternalBody(_ oneCharOnly: Bool, stopChar stop: Character?) -> MTMathList? {
         let list = MTMathList()
         assert(!(oneCharOnly && stop != nil), "Cannot set both oneCharOnly and stopChar.")
         var prevAtom: MTMathAtom? = nil
@@ -564,8 +601,7 @@ public struct MTMathListBuilder {
         }
         return list
     }
-    
-    
+
     // MARK: - MTMathList to LaTeX conversion
     
     /// This converts the MTMathList to LaTeX.
@@ -760,6 +796,10 @@ public struct MTMathListBuilder {
     }
     
     mutating func atomForCommand(_ command:String) -> MTMathAtom? {
+        if command == "\\" {
+            encounteredUnsupportedLineBreak = true
+            return MTMathAtom(type: .relation, value: "")
+        }
         if let atom = MTMathAtomFactory.atom(forLatexSymbol: command) {
             return atom
         }
@@ -940,34 +980,11 @@ public struct MTMathListBuilder {
             under.innerList = self.buildInternal(true)
             return under
         } else if command == "substack" {
-            // \substack reads ONE braced argument containing rows separated by \\
-            // Similar to how \frac reads {numerator}{denominator}
-
-            // Read the braced content using standard pattern
-            let content = self.buildInternal(true)
-
-            if content == nil {
+            guard self.expectCharacter("{") else {
+                self.setError(.characterNotFound, message: "Missing {")
                 return nil
             }
-
-            // The content may already be a table if \\ was encountered
-            // Check if we got a table from the \\ parsing
-            if content!.atoms.count == 1, let tableAtom = content!.atoms.first as? MTMathTable {
-                return tableAtom
-            }
-
-            // Otherwise, single row - wrap in table
-            var rows = [[MTMathList]]()
-            rows.append([content!])
-
-            var error: NSError? = self.error
-            let table = MTMathAtomFactory.table(withEnvironment: nil, rows: rows, error: &error)
-            if table == nil && self.error == nil {
-                self.error = error
-                return nil
-            }
-
-            return table
+            return self.buildTable(env: nil, firstList: nil, isRow: false)
         } else if command == "begin" {
             let env = self.readEnvironment()
             if env == nil {
@@ -1174,16 +1191,17 @@ public struct MTMathListBuilder {
             let fracList = MTMathList()
             fracList.add(frac)
             return fracList
-        } else if command == "\\" || command == "cr" {
+        } else if command == "\\" {
             if currentEnv != nil {
-                // Stop the current list and increment the row count
-                currentEnv!.numRows+=1
+                currentEnv!.numRows += 1
                 return list
-            } else {
-                // Create a new table with the current list and a default env
-                if let table = self.buildTable(env: nil, firstList:list, isRow:true) {
-                    return MTMathList(atom: table)
-                }
+            }
+        } else if command == "cr" {
+            if currentEnv != nil {
+                currentEnv!.numRows += 1
+                return list
+            } else if let table = self.buildTable(env: nil, firstList:list, isRow:true) {
+                return MTMathList(atom: table)
             }
         } else if command == "end" {
             if currentEnv == nil {
@@ -1497,55 +1515,138 @@ public struct MTMathListBuilder {
     func MTAssertNotSpace(_ ch: Character) {
         assert(ch >= "\u{21}" && ch <= "\u{7E}", "Expected non-space character \(ch)")
     }
+
+    static func tableDimensionsAreWithinLimits(rowCount: Int, columnCount: Int) -> Bool {
+        guard rowCount >= 0, columnCount >= 0,
+              rowCount <= maximumTableRows,
+              columnCount <= maximumTableColumns else {
+            return false
+        }
+        guard rowCount == 0 || columnCount <= maximumTableCells / rowCount else {
+            return false
+        }
+        return true
+    }
     
     mutating func buildTable(env: String?, alignment: MTColumnAlignment? = nil, firstList: MTMathList?, isRow: Bool) -> MTMathAtom? {
         // Save the current env till an new one gets built.
         let oldEnv = self.currentEnv
+        defer {
+            self.currentEnv = oldEnv
+        }
 
         currentEnv = MTEnvProperties(name: env, alignment: alignment)
         
         var currentRow = 0
-        var currentCol = 0
-        
-        var rows = [[MTMathList]]()
-        rows.append([MTMathList]())
-        if firstList != nil {
-            rows[currentRow].append(firstList!)
+        var maximumColumnCount = 0
+        var rows = [[MTMathList]()]
+
+        if let firstList {
+            guard rows.indices.contains(currentRow) else {
+                self.setError(.invalidTableState, message: "Invalid initial table row")
+                return nil
+            }
+            let nextColumnCount = rows[currentRow].count + 1
+            guard Self.tableDimensionsAreWithinLimits(
+                rowCount: rows.count,
+                columnCount: nextColumnCount
+            ) else {
+                self.setError(.tableTooLarge, message: "Table exceeds supported dimensions")
+                return nil
+            }
+            rows[currentRow].append(firstList)
+            maximumColumnCount = nextColumnCount
+
             if isRow {
-                currentEnv!.numRows+=1
-                currentRow+=1
+                guard var tableEnv = currentEnv else {
+                    self.setError(.invalidTableState, message: "Missing table environment")
+                    return nil
+                }
+                tableEnv.numRows += 1
+                guard tableEnv.numRows == currentRow + 1,
+                      rows.count == tableEnv.numRows else {
+                    self.setError(.invalidTableState, message: "Invalid initial table row transition")
+                    return nil
+                }
+                guard Self.tableDimensionsAreWithinLimits(
+                        rowCount: rows.count + 1,
+                        columnCount: maximumColumnCount
+                ) else {
+                    self.setError(.tableTooLarge, message: "Table exceeds supported dimensions")
+                    return nil
+                }
+                currentEnv = tableEnv
                 rows.append([MTMathList]())
-            } else {
-                currentCol+=1
+                currentRow = tableEnv.numRows
             }
         }
-        while !currentEnv!.ended && self.hasCharacters {
-            let list = self.buildInternal(false)
-            if list == nil {
+
+        while let tableEnv = currentEnv, !tableEnv.ended && self.hasCharacters {
+            guard let list = self.buildInternal(false) else {
                 // If there is an error building the list, bail out early.
                 return nil
             }
-            rows[currentRow].append(list!)
-            currentCol+=1
-            if currentEnv!.numRows > currentRow {
-                currentRow = currentEnv!.numRows
+
+            guard let updatedEnv = currentEnv else {
+                self.setError(.invalidTableState, message: "Missing table environment")
+                return nil
+            }
+            guard updatedEnv.numRows >= currentRow,
+                  updatedEnv.numRows <= currentRow + 1,
+                  rows.indices.contains(currentRow) else {
+                self.setError(.invalidTableState, message: "Invalid table row transition")
+                return nil
+            }
+
+            let nextColumnCount = rows[currentRow].count + 1
+            let nextMaximumColumnCount = max(maximumColumnCount, nextColumnCount)
+            guard Self.tableDimensionsAreWithinLimits(
+                rowCount: rows.count,
+                columnCount: nextMaximumColumnCount
+            ) else {
+                self.setError(.tableTooLarge, message: "Table exceeds supported dimensions")
+                return nil
+            }
+            rows[currentRow].append(list)
+            maximumColumnCount = nextMaximumColumnCount
+
+            if updatedEnv.numRows == currentRow + 1 {
+                guard rows.count == updatedEnv.numRows else {
+                    self.setError(.invalidTableState, message: "Missing table row storage")
+                    return nil
+                }
+                guard Self.tableDimensionsAreWithinLimits(
+                    rowCount: rows.count + 1,
+                    columnCount: maximumColumnCount
+                ) else {
+                    self.setError(.tableTooLarge, message: "Table exceeds supported dimensions")
+                    return nil
+                }
                 rows.append([MTMathList]())
-                currentCol = 0
+                currentRow = updatedEnv.numRows
             }
         }
         
-        if !currentEnv!.ended && currentEnv!.envName != nil {
+        guard let finalEnv = currentEnv else {
+            self.setError(.invalidTableState, message: "Missing table environment")
+            return nil
+        }
+        if !finalEnv.ended && finalEnv.envName != nil {
             self.setError(.missingEnd, message: "Missing \\end")
             return nil
         }
         
         var error:NSError? = self.error
-        let table = MTMathAtomFactory.table(withEnvironment: currentEnv?.envName, alignment: currentEnv?.alignment, rows: rows, error: &error)
+        let table = MTMathAtomFactory.table(
+            withEnvironment: finalEnv.envName,
+            alignment: finalEnv.alignment,
+            rows: rows,
+            error: &error
+        )
         if table == nil && self.error == nil {
             self.error = error
             return nil
         }
-        self.currentEnv = oldEnv
         return table
     }
     

@@ -5,6 +5,9 @@
 //  Created by Peter Tang on 12/9/2023.
 //
 
+#if os(macOS)
+import Cocoa
+#endif
 import Foundation
 
 #if os(iOS) || os(visionOS)
