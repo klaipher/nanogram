@@ -6,17 +6,26 @@ private final class SpeechAssetInstalls: @unchecked Sendable {
     static let shared = SpeechAssetInstalls()
     
     private let lock = NSLock()
-    private var installing = Set<String>()
+    private var running: [String: Task<Bool, Never>] = [:]
     
-    func begin(_ identifier: String) -> Bool {
+    func run(_ identifier: String, _ work: @escaping @Sendable () async -> Bool) -> Task<Bool, Never> {
         self.lock.lock()
         defer { self.lock.unlock() }
-        return self.installing.insert(identifier).inserted
+        if let task = self.running[identifier] {
+            return task
+        }
+        let task = Task { () -> Bool in
+            let result = await work()
+            self.end(identifier)
+            return result
+        }
+        self.running[identifier] = task
+        return task
     }
     
-    func end(_ identifier: String) {
+    private func end(_ identifier: String) {
         self.lock.lock()
-        self.installing.remove(identifier)
+        self.running[identifier] = nil
         self.lock.unlock()
     }
 }
@@ -34,25 +43,24 @@ private func speechModelStatus(_ status: AssetInventory.Status) -> SpeechModelSt
     }
 }
 
-/// Makes sure the locale's model is on the device. Only one download per locale runs at a time; a caller that finds one
-/// running gets false and falls back for this message.
-private func ensureSpeechModel(_ transcriber: SpeechTranscriber, identifier: String) async -> Bool {
+/// Makes sure the locale's model is on the device. One download per locale runs at a time; a caller that finds one running
+/// awaits that same download instead of starting another or giving up.
+private func ensureSpeechModel(_ transcriber: SpeechTranscriber, locale: Locale) async -> Bool {
     switch speechModelAction(for: speechModelStatus(await AssetInventory.status(forModules: [transcriber]))) {
     case .none:
         return true
     case .unavailable:
         return false
     case .install:
-        guard SpeechAssetInstalls.shared.begin(identifier) else {
-            return false
-        }
-        defer { SpeechAssetInstalls.shared.end(identifier) }
-        do {
-            try await AssetInventory.assetInstallationRequest(supporting: [transcriber])?.downloadAndInstall()
-        } catch {
-            return false
-        }
-        return await AssetInventory.status(forModules: [transcriber]) == .installed
+        return await SpeechAssetInstalls.shared.run(locale.identifier) {
+            let installing = SpeechTranscriber(locale: locale, transcriptionOptions: [], reportingOptions: [], attributeOptions: [])
+            do {
+                try await AssetInventory.assetInstallationRequest(supporting: [installing])?.downloadAndInstall()
+            } catch {
+                return false
+            }
+            return await AssetInventory.status(forModules: [installing]) == .installed
+        }.value
     }
 }
 
@@ -64,19 +72,19 @@ func prepareSpeechAnalyzerModel(localeIdentifier: String) {
             return
         }
         let transcriber = SpeechTranscriber(locale: locale, transcriptionOptions: [], reportingOptions: [], attributeOptions: [])
-        _ = await ensureSpeechModel(transcriber, identifier: locale.identifier)
+        _ = await ensureSpeechModel(transcriber, locale: locale)
     }
 }
 
-/// On-device transcription of an audio file with SpeechAnalyzer. A missing model is downloaded first (the tap waits for
-/// it once). Returns nil when the locale or the model is not available, so the caller falls back to SFSpeechRecognizer.
+/// On-device transcription of an audio file with SpeechAnalyzer. A missing model is downloaded first (a tap during a running
+/// download awaits it). Returns nil when the locale or the model is not available, so the caller falls back to SFSpeechRecognizer.
 /// Audio never leaves the device.
 func transcribeWithSpeechAnalyzer(path: String, localeIdentifier: String) async -> String? {
     guard SpeechTranscriber.isAvailable, let locale = await SpeechTranscriber.supportedLocale(equivalentTo: Locale(identifier: localeIdentifier)) else {
         return nil
     }
     let transcriber = SpeechTranscriber(locale: locale, transcriptionOptions: [], reportingOptions: [], attributeOptions: [])
-    guard await ensureSpeechModel(transcriber, identifier: locale.identifier) else {
+    guard await ensureSpeechModel(transcriber, locale: locale) else {
         return nil
     }
     guard let file = try? AVAudioFile(forReading: URL(fileURLWithPath: path)) else {

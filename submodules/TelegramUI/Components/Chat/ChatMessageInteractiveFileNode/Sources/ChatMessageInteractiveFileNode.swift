@@ -439,6 +439,7 @@ public final class ChatMessageInteractiveFileNode: ASDisplayNode {
                     guard let self, let context = self.context, let message = self.message else {
                         return
                     }
+                    self.transcribeDisposable?.dispose()
                     self.transcribeDisposable = (context.engine.messages.transcribeAudio(messageId: message.id)
                     |> deliverOnMainQueue).startStrict(next: { [weak self] result in
                         guard let strongSelf = self else {
@@ -466,13 +467,24 @@ public final class ChatMessageInteractiveFileNode: ASDisplayNode {
                         guard let file = message.media.first(where: { $0 is TelegramMediaFile }) as? TelegramMediaFile else {
                             return .single(nil)
                         }
-                        return context.engine.resources.data(id: EngineMediaResource.Id(file.resource.id))
+                        let resource = EngineMediaResource(file.resource)
+                        return context.engine.resources.data(id: resource.id)
                         |> take(1)
                         |> mapToSignal { data -> Signal<String?, NoError> in
-                            if !data.isComplete {
-                                return .single(nil)
+                            if data.isComplete {
+                                return .single(data.path)
                             }
-                            return .single(data.path)
+                            let fetch: Signal<String?, NoError> = context.engine.resources.fetchedResource(resource: resource)
+                            |> filter { _ in false }
+                            |> map { _ -> String? in nil }
+                            |> `catch` { _ -> Signal<String?, NoError> in
+                                return .complete()
+                            }
+                            let complete: Signal<String?, NoError> = context.engine.resources.data(resource: resource)
+                            |> filter { $0.isComplete }
+                            |> take(1)
+                            |> map { data -> String? in data.path }
+                            return fetch |> then(complete)
                         }
                     }
                     |> mapToSignal { result -> Signal<String?, NoError> in
@@ -836,7 +848,7 @@ public final class ChatMessageInteractiveFileNode: ASDisplayNode {
                 }
                 
                 let currentTime = Int32(Date().timeIntervalSince1970)
-                if transcribedText == nil, let cooldownUntilTime = arguments.associatedData.audioTranscriptionTrial.cooldownUntilTime, cooldownUntilTime > currentTime {
+                if transcribedText == nil, !arguments.context.sharedContext.immediateExperimentalUISettings.localTranscription, let cooldownUntilTime = arguments.associatedData.audioTranscriptionTrial.cooldownUntilTime, cooldownUntilTime > currentTime {
                     updatedAudioTranscriptionState = .locked
                 }
                 
