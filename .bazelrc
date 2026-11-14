@@ -78,6 +78,10 @@ build --copt=-fstack-protector-strong
 build --copt=-Wno-error=deprecated-declarations
 build --@build_bazel_rules_swift//swift:copt=-Wwarning
 build --@build_bazel_rules_swift//swift:copt=DeprecatedDeclaration
+# Upstream #available(iOS < 26) checks stay as they are (minimal diff for upstream syncs); with the iOS 26 floor Swift reports
+# them as always true, which -warnings-as-errors would turn into errors.
+build --@build_bazel_rules_swift//swift:copt=-Wwarning
+build --@build_bazel_rules_swift//swift:copt=UselessAvailabilityCheck
 
 # CPU baseline (SHARED-APPLE-CPU-1): the iOS floor is 26.0, so clang and swiftc already default to apple-a12 (LSE atomics, CRC32,
 # RCPC, FP16, JSCVT) with no -mcpu/-target-cpu flag; std::atomic and refcounts compile to inline LSE. Do not use apple-a13: A12 iPads
