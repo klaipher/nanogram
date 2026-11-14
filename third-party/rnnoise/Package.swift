@@ -34,12 +34,14 @@ let package = Package(
         .target(
             name: "rnoise",
             dependencies: [],
-            path: ".",
-            exclude: ["BUILD",
-                     "COPYING"],
-            publicHeadersPath: "PublicHeaders",
+            path: "rnnoise",
+            exclude: ["src/dump_features.c",
+                      "src/dump_rnnoise_tables.c",
+                      "src/write_weights.c"],
+            sources: ["src"],
+            publicHeadersPath: "include",
             cSettings: [
-                .headerSearchPath("PublicHeaders"),
+                .headerSearchPath("include"),
                 .unsafeFlags(replaceSymbols())
             ]),
     ]

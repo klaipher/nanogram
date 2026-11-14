@@ -52,6 +52,7 @@ lib dav1d ios=third-party/dav1d/dav1d mac=third-party/dav1d/dav1d android=TMessa
 lib td ios=third-party/td/td mac=third-party/td/td android=TMessagesProj/jni/td
 lib mtproto-engine ios=third-party/mtproto-engine mac=third-party/mtproto-engine
 lib openh264 ios=third-party/openh264/openh264 mac=core-xprojects/OpenH264/OpenH264/build.sh android=TMessagesProj/jni/third_party/openh264
+lib rnnoise ios=third-party/rnnoise/rnnoise mac=third-party/rnnoise android=TMessagesProj/jni/voip/rnnoise
 
 share submodules/SSignalKit
 share submodules/Postbox

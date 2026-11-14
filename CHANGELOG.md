@@ -4,6 +4,8 @@ Newest first. Internal notes for each TestFlight build; testers see the What to 
 
 ## Unreleased
 
+- **rnnoise is the klaipher/rnnoise submodule** (W2.I1). `third-party/rnnoise/rnnoise` (`nanogram`, d2d79970, shallow) replaces the vendored Sources (byte-identical, `cmp` proof in `docs/shared/w2-i1-identity-proofs.md`). BUILD and Package.swift read `rnnoise/src` and `rnnoise/include`; the Mac Xcode group paths move in its core bump. Android takes the same fork. Not built.
+
 - **OpenH264 is the klaipher/openh264 submodule** (W2.I1). `third-party/openh264/openh264` (`nanogram`, 3583f617, shallow) replaces the vendored `third_party/openh264/src` (432 files, byte-identical to the fork tree; proof in `docs/shared/w2-i1-identity-proofs.md`). Public headers keep their include path through `include_prefix`; subcodec's BUILD, CMake, symlink and CLAUDE.md follow. Mac and Android pin the same fork. Not built.
 
 - **libprisma compiles with BOOST_REGEX_MAX_BLOCKS=1536** (W2.I1 deferred item): the same cap Android uses on boost regex's block allocation. Not built.

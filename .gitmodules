@@ -70,3 +70,8 @@
 	url = https://github.com/klaipher/openh264.git
 	branch = nanogram
 	shallow = true
+[submodule "third-party/rnnoise/rnnoise"]
+	path = third-party/rnnoise/rnnoise
+	url = https://github.com/klaipher/rnnoise.git
+	branch = nanogram
+	shallow = true

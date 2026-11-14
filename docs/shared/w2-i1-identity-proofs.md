@@ -13,3 +13,13 @@ comparisons made before the old copy was deleted.
   all 432 vendored files are byte-identical to the fork tree (the fork has more, upstream tests and docs).
 - BUILD: every `third_party/openh264/src/` path became `openh264/`; the four public API headers keep their include
   path `third_party/openh264/src/codec/api/wels/*.h` through `include_prefix` / `strip_include_prefix`.
+
+## rnnoise
+
+- Old copy: `third-party/rnnoise/{Sources,PublicHeaders,COPYING}` (xiph v0.2 + 3 patches).
+- New source: submodule `third-party/rnnoise/rnnoise` = klaipher/rnnoise `nanogram` d2d79970 (v0.2 904a876d + portability
+  headers, denoise.c hardening, trimmed `rnnoise_data.c/h`).
+- `cmp` of every old file (29 files under Sources/ and Sources/x86/, `PublicHeaders/rnnoise.h`, `COPYING`) against the fork's
+  `src/`, `include/rnnoise.h` and `COPYING`: no difference. The fork has 5 extra tool files (dump_features.c,
+  dump_rnnoise_tables.c, write_weights.c, compile.sh, rnn_train.py), which the BUILD excludes.
+- The three symbol renames (`compute_rnn`, `eband20ms`, `init_rnnoise` to `rnnoise_*`) stay in the BUILD copts.
