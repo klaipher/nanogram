@@ -56,3 +56,7 @@
 	path = third-party/opusfile/opusfile
 	url = https://github.com/xiph/opusfile.git
 	shallow = true
+[submodule "third-party/webp/libwebp"]
+	path = third-party/webp/libwebp
+	url = https://github.com/webmproject/libwebp.git
+	shallow = true
