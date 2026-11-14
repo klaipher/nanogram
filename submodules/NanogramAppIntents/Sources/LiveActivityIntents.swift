@@ -22,7 +22,7 @@ public struct StopLiveLocationIntent: LiveActivityIntent {
     }
 
     public func perform() async throws -> some IntentResult {
-        guard let handler = await GlanceIntentBridge.shared.current() else {
+        guard let handler = await GlanceIntentBridge.shared.waitForHandler(timeout: 8.0) else {
             throw NanogramIntentError.notReady
         }
         await handler.stopLiveLocation(Int64(self.accountId), Int64(self.peerId))
@@ -38,7 +38,7 @@ public struct EndCallIntent: LiveActivityIntent {
     }
 
     public func perform() async throws -> some IntentResult {
-        guard let handler = await GlanceIntentBridge.shared.current() else {
+        guard let handler = await GlanceIntentBridge.shared.waitForHandler(timeout: 8.0) else {
             throw NanogramIntentError.notReady
         }
         await handler.endCall()

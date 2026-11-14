@@ -15,32 +15,39 @@ import ActivityKit
 typealias GlanceAccounts = (primary: AccountContext?, accounts: [(id: AccountRecordId, context: AccountContext)])
 
 #if canImport(ActivityKit)
-/// One Live Activity of one kind. Activities left over from a killed process are ended when the controller starts,
-/// since what to show is derived again from the live state.
+/// One Live Activity of one kind. An activity left over from a killed process is adopted when the first request still
+/// matches it (Activity.request is not allowed from the background) and ended otherwise.
 @available(iOS 16.2, *)
 private final class GlanceActivityController {
+    private let kind: GlanceActivityKind
     private var activity: Activity<NanogramGlanceActivityAttributes>?
     private var current: GlanceActivityRequest?
+    private var leftovers: [Activity<NanogramGlanceActivityAttributes>]
     
     init(kind: GlanceActivityKind) {
-        for leftover in Activity<NanogramGlanceActivityAttributes>.activities where leftover.attributes.kind == kind {
-            Task {
-                await leftover.end(nil, dismissalPolicy: .immediate)
-            }
-        }
+        self.kind = kind
+        self.leftovers = Activity<NanogramGlanceActivityAttributes>.activities.filter { $0.attributes.kind == kind }
     }
     
-    func apply(_ request: GlanceActivityRequest?) {
-        if request == self.current {
+    /// `canEndLeftovers` is false while the accounts that could still show the activity are not loaded yet.
+    func apply(_ request: GlanceActivityRequest?, canEndLeftovers: Bool) {
+        if request == self.current && !(request == nil && canEndLeftovers && !self.leftovers.isEmpty) {
             return
         }
         self.current = request
         guard let request else {
             self.end()
+            if canEndLeftovers {
+                self.endLeftovers(keeping: nil)
+            }
             return
         }
         let state = NanogramGlanceActivityAttributes.ContentState(headline: request.headline, status: request.status, startedAt: request.startedAt, endsAt: request.endsAt)
         let content = ActivityContent(state: state, staleDate: request.staleDate)
+        if self.activity == nil, let adopted = self.leftovers.first(where: { $0.attributes.accountId == request.accountId && $0.attributes.peerId == request.peerId }) {
+            self.activity = adopted
+            self.endLeftovers(keeping: adopted)
+        }
         if let activity = self.activity, activity.attributes.accountId == request.accountId, activity.attributes.peerId == request.peerId {
             Task {
                 await activity.update(content)
@@ -48,11 +55,22 @@ private final class GlanceActivityController {
             return
         }
         self.end()
+        self.endLeftovers(keeping: nil)
         guard ActivityAuthorizationInfo().areActivitiesEnabled else {
             return
         }
         let attributes = NanogramGlanceActivityAttributes(kind: request.kind, accountId: request.accountId, peerId: request.peerId, stopLabel: request.stopLabel)
         self.activity = try? Activity.request(attributes: attributes, content: content, pushType: nil)
+    }
+    
+    private func endLeftovers(keeping kept: Activity<NanogramGlanceActivityAttributes>?) {
+        let all = self.leftovers
+        self.leftovers = []
+        for leftover in all where leftover.id != kept?.id {
+            Task {
+                await leftover.end(nil, dismissalPolicy: .immediate)
+            }
+        }
     }
     
     private func end() {
@@ -83,6 +101,7 @@ final class GlanceCoordinator {
     private var locationController: AnyObject?
     private var callController: AnyObject?
     private var callStartedAt: Date?
+    private var liveLocationKeys: [String] = []
     
     init(rootPath: String, accountManager: AccountManager<TelegramAccountManagerTypes>, accounts: Signal<GlanceAccounts, NoError>, isLocked: Signal<Bool, NoError>, presentationData: Signal<PresentationData, NoError>, callManager: PresentationCallManager?, navigateToChat: @escaping (AccountRecordId, EnginePeer.Id) -> Void) {
         self.rootPath = rootPath
@@ -182,9 +201,15 @@ final class GlanceCoordinator {
                 }
                 self.applyActivity(kind: .call, request: request.map { request in
                     var request = request
-                    let startedAt = self.callStartedAt ?? request.startedAt
-                    self.callStartedAt = startedAt
-                    request.startedAt = startedAt
+                    if !request.isTimerLive {
+                        // Still connecting: keep the first time, so the timer does not restart on every state change.
+                        let startedAt = self.callStartedAt ?? request.startedAt
+                        self.callStartedAt = startedAt
+                        request.startedAt = startedAt
+                    } else {
+                        // The call became active: the timer counts from the active timestamp.
+                        self.callStartedAt = request.startedAt
+                    }
                     return request
                 })
             }))
@@ -218,8 +243,14 @@ final class GlanceCoordinator {
                 await withCheckedContinuation { (continuation: CheckedContinuation<Void, Never>) in
                     Queue.mainQueue().async {
                         let accounts = self?.accountsValue.with { $0 }
-                        let context = accounts?.accounts.first(where: { $0.id.int64 == accountId })?.context
-                        context?.liveLocationManager?.cancelLiveLocation(peerId: EnginePeer.Id(peerId))
+                        var targets = (self?.liveLocationKeys ?? []).compactMap { GlanceIdentifier.parse($0) }
+                        if !targets.contains(where: { $0.accountId == accountId && $0.peerId == peerId }) {
+                            targets.append((accountId: accountId, peerId: peerId))
+                        }
+                        for target in targets {
+                            let context = accounts?.accounts.first(where: { $0.id.int64 == target.accountId })?.context
+                            context?.liveLocationManager?.cancelLiveLocation(peerId: EnginePeer.Id(target.peerId))
+                        }
                         continuation.resume()
                     }
                 }
@@ -275,10 +306,14 @@ final class GlanceCoordinator {
     }
     
     private func applyActivity(kind: GlanceActivityKind, request: GlanceActivityRequest?) {
+        if kind == .liveLocation {
+            self.liveLocationKeys = request?.chatKeys ?? []
+        }
         if #available(iOS 16.2, *) {
             #if canImport(ActivityKit)
             let controller = (kind == .liveLocation ? self.locationController : self.callController) as? GlanceActivityController
-            controller?.apply(request)
+            let accountsReady = kind != .liveLocation || !self.accountsValue.with({ $0 }).accounts.isEmpty
+            controller?.apply(request, canEndLeftovers: accountsReady)
             #endif
         }
     }
@@ -304,13 +339,23 @@ final class GlanceCoordinator {
         // Keeps the process alive a little longer, so the queued message can leave.
         let application = UIApplication.shared
         var task: UIBackgroundTaskIdentifier = .invalid
-        task = application.beginBackgroundTask(withName: "glance-send", expirationHandler: {
+        var taskEnded = false
+        let endTask = {
+            if taskEnded {
+                return
+            }
+            taskEnded = true
             application.endBackgroundTask(task)
+        }
+        task = application.beginBackgroundTask(withName: "glance-send", expirationHandler: {
+            Queue.mainQueue().async {
+                endTask()
+            }
         })
         let _ = (context.engine.messages.enqueueOutgoingMessage(to: context.account.peerId, replyTo: nil, content: .text(text, []))
         |> deliverOnMainQueue).start(completed: {
             Queue.mainQueue().after(15.0, {
-                application.endBackgroundTask(task)
+                endTask()
             })
         })
         return .queued
@@ -357,7 +402,8 @@ final class GlanceCoordinator {
                 status: strings.LiveLocation_MenuChatsCount(Int32(all.count)),
                 startedAt: Date(timeIntervalSince1970: Double(first.message.timestamp)),
                 endsAt: endsAt,
-                staleDate: GlanceActivityPolicy.staleDate(expiresAt: endsAt, now: now, fallback: 8.0 * 3600.0)
+                staleDate: GlanceActivityPolicy.staleDate(expiresAt: endsAt, now: now, fallback: 8.0 * 3600.0),
+                chatKeys: all.map { GlanceIdentifier.make(accountId: $0.accountId, peerId: $0.message.id.peerId.toInt64()) }
             )
         }
     }
@@ -369,12 +415,14 @@ final class GlanceCoordinator {
         let now = Date()
         let status: String
         var startedAt = now
+        var isTimerLive = false
         switch state.state {
         case .waiting, .ringing, .requesting, .connecting:
             status = strings.Call_StatusConnecting
         case let .active(timestamp, _, _), let .reconnecting(timestamp, _, _):
             status = strings.Call_CallInProgressTitle
             startedAt = Date(timeIntervalSinceReferenceDate: timestamp)
+            isTimerLive = true
         case .terminating, .terminated:
             return nil
         }
@@ -388,7 +436,9 @@ final class GlanceCoordinator {
             status: status,
             startedAt: startedAt,
             endsAt: nil,
-            staleDate: now.addingTimeInterval(4.0 * 3600.0)
+            staleDate: now.addingTimeInterval(4.0 * 3600.0),
+            isTimerLive: isTimerLive,
+            chatKeys: [GlanceIdentifier.make(accountId: call.context.account.id.int64, peerId: call.peerId.toInt64())]
         )
     }
 }
