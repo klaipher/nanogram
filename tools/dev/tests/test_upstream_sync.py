@@ -80,7 +80,7 @@ class MovedLibraries(unittest.TestCase):
     def test_shipped_config_names_a_target_for_every_moved_library(self):
         config = sync.load_config()
         names = {lib["name"] for lib in config["moved_libraries"]}
-        for wanted in ("FFmpeg", "openh264", "rnnoise", "libprisma", "sqlcipher-amalgamation", "libyuv", "quickjs",
+        for wanted in ("FFmpeg", "openh264", "rnnoise", "libprisma", "sqlcipher-amalgamation", "libyuv", "boringssl", "quickjs",
                        "widget-sandbox", "twidget", "ogg", "opusfile", "libwebp", "boost_regex", "wamr"):
             self.assertIn(wanted, names)
 

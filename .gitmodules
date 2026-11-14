@@ -106,3 +106,8 @@
 	url = https://github.com/klaipher/twidget.git
 	branch = nanogram
 	shallow = true
+[submodule "third-party/boringssl/src"]
+	path = third-party/boringssl/src
+	url = https://github.com/klaipher/boringssl.git
+	branch = nanogram
+	shallow = true

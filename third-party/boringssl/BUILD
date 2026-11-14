@@ -37,11 +37,12 @@ exports_files(
     ["LICENSE"] + crypto_headers + ssl_headers,
 )
 
-# The flags and the asm select below follow upstream's src/util/util.bzl
-# (not vendored). Upstream's own src/BUILD.bazel is not vendored either: it
-# splits each library into public and *_internal targets, while consumers here
-# (e.g. //Telegram:TelegramUIFramework linkopts, //third-party/td) need
-# :crypto itself to produce the single static archive.
+# The flags and the asm select below follow upstream's src/util/util.bzl.
+# Upstream's own BUILD.bazel is deleted in the klaipher/boringssl fork (it would
+# make src/ a Bazel package of its own): it splits each library into public and
+# *_internal targets, while consumers here (e.g. //Telegram:TelegramUIFramework
+# linkopts, //third-party/td) need :crypto itself to produce the single static
+# archive.
 #
 # By default, the C files will expect assembly files, if any, to be linked in
 # with the build. This default can be flipped with -DOPENSSL_NO_ASM. If building

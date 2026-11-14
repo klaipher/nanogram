@@ -160,6 +160,14 @@
    "fork_branch": "nanogram"
   },
   {
+   "name": "boringssl",
+   "paths": [
+    "third-party/boringssl/src/"
+   ],
+   "fork_url": "https://github.com/klaipher/boringssl.git",
+   "fork_branch": "nanogram"
+  },
+  {
    "name": "quickjs",
    "paths": [
     "third-party/quickjs-ng/quickjs/"
