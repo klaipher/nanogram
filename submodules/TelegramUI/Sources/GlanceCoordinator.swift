@@ -18,7 +18,6 @@ typealias GlanceAccounts = (primary: AccountContext?, accounts: [(id: AccountRec
 #if canImport(ActivityKit)
 /// One Live Activity of one kind. An activity left over from a killed process is adopted when the first request still
 /// matches it (Activity.request is not allowed from the background) and ended otherwise.
-@available(iOS 16.2, *)
 private final class GlanceActivityController {
     private let kind: GlanceActivityKind
     private var activity: Activity<NanogramGlanceActivityAttributes>?
@@ -108,12 +107,10 @@ final class GlanceCoordinator {
         self.rootPath = rootPath
         self.navigateToChat = navigateToChat
         
-        if #available(iOS 16.2, *) {
-            #if canImport(ActivityKit)
-            self.locationController = GlanceActivityController(kind: .liveLocation)
-            self.callController = GlanceActivityController(kind: .call)
-            #endif
-        }
+        #if canImport(ActivityKit)
+        self.locationController = GlanceActivityController(kind: .liveLocation)
+        self.callController = GlanceActivityController(kind: .call)
+        #endif
         
         let settings: Signal<(enabled: Bool, displayNames: Bool), NoError> = accountManager.sharedData(keys: [ApplicationSpecificSharedDataKeys.experimentalUISettings, ApplicationSpecificSharedDataKeys.inAppNotificationSettings])
         |> map { sharedData -> (enabled: Bool, displayNames: Bool) in
@@ -297,7 +294,7 @@ final class GlanceCoordinator {
         self.writeQueue.async {
             if shouldWrite {
                 GlanceStore.write(snapshot, rootPath: rootPath)
-                if snapshot.enabled, #available(iOS 16.0, *) {
+                if snapshot.enabled {
                     // The App Shortcut phrase 'Open <chat> in Nanogram' takes its values from the chats just written.
                     NanogramShortcuts.updateAppShortcutParameters()
                 }
@@ -314,13 +311,11 @@ final class GlanceCoordinator {
         if kind == .liveLocation {
             self.liveLocationKeys = request?.chatKeys ?? []
         }
-        if #available(iOS 16.2, *) {
-            #if canImport(ActivityKit)
-            let controller = (kind == .liveLocation ? self.locationController : self.callController) as? GlanceActivityController
-            let accountsReady = kind != .liveLocation || !self.accountsValue.with({ $0 }).accounts.isEmpty
-            controller?.apply(request, canEndLeftovers: accountsReady)
-            #endif
-        }
+        #if canImport(ActivityKit)
+        let controller = (kind == .liveLocation ? self.locationController : self.callController) as? GlanceActivityController
+        let accountsReady = kind != .liveLocation || !self.accountsValue.with({ $0 }).accounts.isEmpty
+        controller?.apply(request, canEndLeftovers: accountsReady)
+        #endif
     }
     
     private func sendToSavedMessages(accountId: Int64?, text: String) -> GlanceSendResult {

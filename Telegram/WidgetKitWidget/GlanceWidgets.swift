@@ -25,7 +25,6 @@ private final class ResumeOnce<T> {
     }
 }
 
-@available(iOS 17.0, *)
 private func peersAsync(identifiers: [String], environment: WidgetExtensionEnvironment) async -> ParsedPeers {
     if identifiers.isEmpty {
         return ParsedPeers(peers: [], updateTimestamp: Int32(clamping: Int(Date().timeIntervalSince1970)))
@@ -47,7 +46,6 @@ private func glanceLockPhase(_ schedule: AppLockSchedule) -> GlanceLockPhase {
     }
 }
 
-@available(iOS 17.0, *)
 struct GlanceChatsEntry: TimelineEntry {
     let date: Date
     let isEnabled: Bool
@@ -56,7 +54,6 @@ struct GlanceChatsEntry: TimelineEntry {
     let peers: [ParsedPeer]
 }
 
-@available(iOS 17.0, *)
 struct GlanceChatsProvider: AppIntentTimelineProvider {
     typealias Intent = SelectChatsIntent
     typealias Entry = GlanceChatsEntry
@@ -91,7 +88,6 @@ struct GlanceChatsProvider: AppIntentTimelineProvider {
     }
 }
 
-@available(iOS 17.0, *)
 struct GlanceChatsView: View {
     @Environment(\.widgetFamily) private var family
     @Environment(\.showsWidgetContainerBackground) private var showsContainerBackground
@@ -217,7 +213,6 @@ struct GlanceChatsView: View {
     }
 }
 
-@available(iOS 17.0, *)
 struct GlanceChatsWidget: Widget {
     private let kind: String = "Nanogram_GlanceChats"
     

@@ -2,7 +2,6 @@ import AppIntents
 import Foundation
 import NanogramGlance
 
-@available(iOS 16.0, *)
 public enum NanogramIntentError: Error, CustomLocalizedStringResourceConvertible {
     case notEnabled
     case notReady
@@ -27,7 +26,6 @@ private func currentSnapshot() -> GlanceSnapshot? {
     return NanogramIntentEnvironment.snapshotReader()
 }
 
-@available(iOS 16.0, *)
 public struct OpenChatIntent: AppIntent {
     public static let title: LocalizedStringResource = "Open Chat"
     public static let description = IntentDescription("Opens a chat in Nanogram.")
@@ -65,7 +63,6 @@ public struct OpenChatIntent: AppIntent {
     }
 }
 
-@available(iOS 16.0, *)
 public struct OpenSavedMessagesIntent: AppIntent {
     public static let title: LocalizedStringResource = "Open Saved Messages"
     public static let description = IntentDescription("Opens Saved Messages in Nanogram.")
@@ -93,7 +90,6 @@ public struct OpenSavedMessagesIntent: AppIntent {
 
 /// Runs in the app without opening it. Refused while the app is passcode-locked: the text is written into the
 /// account, which a locked app must not accept from outside.
-@available(iOS 16.0, *)
 public struct SendToSavedMessagesIntent: AppIntent {
     public static let title: LocalizedStringResource = "Send to Saved Messages"
     public static let description = IntentDescription("Saves a note in your Saved Messages.")
@@ -136,7 +132,6 @@ public struct SendToSavedMessagesIntent: AppIntent {
     }
 }
 
-@available(iOS 16.0, *)
 public struct NanogramShortcuts: AppShortcutsProvider {
     public static var appShortcuts: [AppShortcut] {
         AppShortcut(

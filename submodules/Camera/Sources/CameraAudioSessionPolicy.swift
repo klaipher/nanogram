@@ -21,15 +21,11 @@ public extension Camera {
     /// its own opt-in to the capture server, and its audio device keeps an auxiliary session that
     /// excludes high-quality Bluetooth routes unless the session opts in (both independent of
     /// `automaticallyConfiguresApplicationAudioSession`, which stays `false` here, so the app's
-    /// audio session is still left alone). No change below iOS 26 or without a capable route.
+    /// audio session is still left alone). No change without a capable route.
     static func applyBluetoothHighQualityRecordingPolicy(to session: AVCaptureSession, configuration: Camera.Configuration) {
-        #if canImport(AlarmKit) //Xcode 26
-        if #available(iOS 26.0, *) {
-            let value = configuration.capturesBluetoothHighQualityAudio
-            if session.configuresApplicationAudioSessionForBluetoothHighQualityRecording != value {
-                session.configuresApplicationAudioSessionForBluetoothHighQualityRecording = value
-            }
+        let value = configuration.capturesBluetoothHighQualityAudio
+        if session.configuresApplicationAudioSessionForBluetoothHighQualityRecording != value {
+            session.configuresApplicationAudioSessionForBluetoothHighQualityRecording = value
         }
-        #endif
     }
 }

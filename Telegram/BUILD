@@ -199,7 +199,7 @@ genrule(
     visibility = ["//Tests:__subpackages__"],
 )
 
-minimum_os_version = "15.0"
+minimum_os_version = "26.0"
 
 # App Intents metadata (Metadata.appintents: Shortcuts, Control Center, Live Activity buttons) is extracted by rules_apple's
 # `app_intents` attribute. Not verified against rules_apple 5.4.0 without a build: set to False if analysis rejects it,
@@ -1355,7 +1355,7 @@ ios_extension(
     ],
     minimum_os_version = minimum_os_version, # maintain the same minimum OS version across extensions
     # Deliberately NOT patched down: this used to stamp MinimumOSVersion=14.0 so a WidgetKit
-    # extension could ship while the app min was 13.0. Now that the app min is >= 14, stamping
+    # extension could ship while the app min was 13.0. Now that the app min is 26.0, stamping
     # a plist minimum *below* the binary's minos makes App Store validation reject the bundle
     # (error 90208). Same reason the other extensions' patches are commented out.
     #ipa_post_processor = ":SetMinOsVersionWidgetExtension",

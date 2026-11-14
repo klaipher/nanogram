@@ -2,7 +2,6 @@ import AppIntents
 import Foundation
 import NanogramGlance
 
-@available(iOS 16.0, *)
 public struct PeerEntity: AppEntity {
     public static let typeDisplayRepresentation = TypeDisplayRepresentation(name: "Chat")
     public static let defaultQuery = PeerEntityQuery()
@@ -29,7 +28,6 @@ public struct PeerEntity: AppEntity {
 /// passcode-locked or the feature is off, so the picker is empty then. A stored identifier always resolves (the
 /// snapshot title when listed, a generic one otherwise), so a configured widget or a saved shortcut survives the
 /// chat leaving the top chats and the passcode lock.
-@available(iOS 16.0, *)
 public struct PeerEntityQuery: EntityStringQuery {
     public static let genericTitle = "Chat"
 

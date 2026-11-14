@@ -2,7 +2,6 @@ import Foundation
 import AVFoundation
 import Speech
 
-@available(iOS 26.0, *)
 private final class SpeechAssetInstalls: @unchecked Sendable {
     static let shared = SpeechAssetInstalls()
     
@@ -25,7 +24,6 @@ private final class SpeechAssetInstalls: @unchecked Sendable {
 /// On-device transcription of an audio file with SpeechAnalyzer. Returns nil when the locale or its model is not
 /// available (a missing model is downloaded in the background for the next message), so the caller falls back to
 /// SFSpeechRecognizer. Audio never leaves the device.
-@available(iOS 26.0, *)
 func transcribeWithSpeechAnalyzer(path: String, localeIdentifier: String) async -> String? {
     guard SpeechTranscriber.isAvailable, let locale = await SpeechTranscriber.supportedLocale(equivalentTo: Locale(identifier: localeIdentifier)) else {
         return nil

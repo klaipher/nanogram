@@ -328,6 +328,12 @@ marked (check) were not re-verified against the code; correct them on the next c
 - Where: `submodules/MtProtoKit/Sources/MTAes.{m,h}`, `submodules/SSignalKit/SwiftSignalKit/Source/{ExperimentalPerformanceFlags,ThreadPool}.swift`, `submodules/MediaPlayer/Sources/{FFMpegSoftwareDecodeThreads,UniversalSoftwareVideoSource,MediaPlayerFramePreview,FFMpegMediaVideoFrameDecoder}.swift`, `submodules/TelegramUI/Sources/FetchCachedRepresentations.swift`, `submodules/GraphCore/{Sources,GraphCore2/Sources}/Helpers/DisplayLinkService.swift`, `submodules/TelegramAudio/Sources/ManagedAudioSession.swift`.
 - Upstream: no. Sync: expect conflicts in `MTAes.m` (keep upstream's body as the reference function), `FetchCachedRepresentations.swift` (two first-frame blocks) and `ManagedAudioSession.swift` (`applyNone`).
 
+### iOS 26.0 minimum (deliberate difference from upstream)
+
+- What: `minimum_os_version` is "26.0" in `Telegram/BUILD` (upstream: 15.0). Nanogram-owned code (Glance widgets and activities, App Intents, local audio transcription, camera policies, `SharedWakeupManager` background tasks) has no iOS < 26 availability gates.
+- Why: owner decision 2026-11-14, to use the whole baseline (A13/A12 and newer, current OS features, hardware codecs) without fallback paths.
+- Upstream: no. Upstream files keep their `#available` checks; do not mass-edit them. On sync, keep this value in `Telegram/BUILD` and new upstream gates stay as they come. The Mac app is separate (macOS 15, Apple Silicon): shared code keeps its macOS paths.
+
 ### Glanceables: chats widget, App Intents, Live Activities (iOS, Debug switch, default off)
 - What: a second widget kind (`Nanogram_GlanceChats`, small and Lock Screen families, iOS 17+), App Intents with App Shortcuts and a Control Center button, and Live Activities for live location and for calls without CallKit. Names appear only while the app is unlocked and, on Lock Screen surfaces, only if "name on lock screen" allows it; counts always show.
 - Where: `submodules/NanogramGlance` (pure model, policy, app-group store, intent bridge; host tests), `submodules/NanogramAppIntents`, `Telegram/WidgetKitWidget/{GlanceWidgets,GlanceControls,GlanceActivityWidget}.swift`, `submodules/TelegramUI/Sources/GlanceCoordinator.swift`, `Telegram/BUILD`.

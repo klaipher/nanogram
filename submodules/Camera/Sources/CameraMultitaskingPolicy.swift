@@ -15,10 +15,8 @@ public enum CameraMultitaskingAccess {
     /// Applies `isEnabled` to a capture session; setting the property where it is not supported would raise.
     /// `isTablet` defaults to the device's idiom.
     public static func apply(to session: AVCaptureSession, isTablet: Bool = UIDevice.current.userInterfaceIdiom == .pad) {
-        if #available(iOS 16.0, *) {
-            if CameraMultitaskingAccess.isEnabled(isTablet: isTablet, isSupported: session.isMultitaskingCameraAccessSupported), !session.isMultitaskingCameraAccessEnabled {
-                session.isMultitaskingCameraAccessEnabled = true
-            }
+        if CameraMultitaskingAccess.isEnabled(isTablet: isTablet, isSupported: session.isMultitaskingCameraAccessSupported), !session.isMultitaskingCameraAccessEnabled {
+            session.isMultitaskingCameraAccessEnabled = true
         }
     }
 }

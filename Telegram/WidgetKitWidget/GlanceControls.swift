@@ -6,7 +6,6 @@ import AppIntents
 import NanogramGlance
 import NanogramAppIntents
 
-@available(iOS 18.0, *)
 struct SavedMessagesControl: ControlWidget {
     var body: some ControlWidgetConfiguration {
         return StaticControlConfiguration(kind: "Nanogram_SavedMessagesControl") {

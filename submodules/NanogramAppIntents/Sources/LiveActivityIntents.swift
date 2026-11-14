@@ -3,7 +3,6 @@ import Foundation
 import NanogramGlance
 
 /// Buttons on the Live Activity. A LiveActivityIntent runs in the app's process.
-@available(iOS 17.0, *)
 public struct StopLiveLocationIntent: LiveActivityIntent {
     public static let title: LocalizedStringResource = "Stop Sharing Location"
 
@@ -30,7 +29,6 @@ public struct StopLiveLocationIntent: LiveActivityIntent {
     }
 }
 
-@available(iOS 17.0, *)
 public struct EndCallIntent: LiveActivityIntent {
     public static let title: LocalizedStringResource = "End Call"
 

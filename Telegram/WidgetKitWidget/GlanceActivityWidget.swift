@@ -7,7 +7,6 @@ import ActivityKit
 import NanogramGlance
 import NanogramAppIntents
 
-@available(iOS 16.2, *)
 private func iconName(_ kind: GlanceActivityKind) -> String {
     switch kind {
     case .liveLocation:
@@ -17,28 +16,24 @@ private func iconName(_ kind: GlanceActivityKind) -> String {
     }
 }
 
-@available(iOS 16.2, *)
 private struct GlanceStopButton: View {
     let attributes: NanogramGlanceActivityAttributes
     
     @ViewBuilder
     var body: some View {
-        if #available(iOS 17.0, *) {
-            switch self.attributes.kind {
-            case .liveLocation:
-                Button(intent: StopLiveLocationIntent(accountId: self.attributes.accountId, peerId: self.attributes.peerId)) {
-                    Text(self.attributes.stopLabel)
-                }
-            case .call:
-                Button(intent: EndCallIntent()) {
-                    Text(self.attributes.stopLabel)
-                }
+        switch self.attributes.kind {
+        case .liveLocation:
+            Button(intent: StopLiveLocationIntent(accountId: self.attributes.accountId, peerId: self.attributes.peerId)) {
+                Text(self.attributes.stopLabel)
+            }
+        case .call:
+            Button(intent: EndCallIntent()) {
+                Text(self.attributes.stopLabel)
             }
         }
     }
 }
 
-@available(iOS 16.2, *)
 private struct GlanceActivityBanner: View {
     let attributes: NanogramGlanceActivityAttributes
     let state: NanogramGlanceActivityAttributes.ContentState
@@ -63,7 +58,6 @@ private struct GlanceActivityBanner: View {
     }
 }
 
-@available(iOS 16.2, *)
 struct GlanceActivityWidget: Widget {
     var body: some WidgetConfiguration {
         return ActivityConfiguration(for: NanogramGlanceActivityAttributes.self) { context in

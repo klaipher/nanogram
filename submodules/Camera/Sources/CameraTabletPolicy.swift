@@ -21,11 +21,7 @@ public enum CameraTabletPolicy {
         guard let scene else {
             return .portrait
         }
-        var effective: UIInterfaceOrientation?
-        if #available(iOS 26.0, *) {
-            effective = scene.effectiveGeometry.interfaceOrientation
-        }
-        return CameraTabletPolicy.interfaceOrientation(isTablet: isTablet, legacy: scene.interfaceOrientation, effectiveGeometry: effective)
+        return CameraTabletPolicy.interfaceOrientation(isTablet: isTablet, legacy: scene.interfaceOrientation, effectiveGeometry: scene.effectiveGeometry.interfaceOrientation)
     }
 
     /// A-4: the log line for a change of a capture device's system pressure, or nil when it is not logged (phones;
@@ -71,7 +67,7 @@ public enum CameraTabletPolicy {
         if factors.contains(.depthModuleTemperature) {
             names.append("depthModuleTemperature")
         }
-        if #available(iOS 17.0, *), factors.contains(.cameraTemperature) {
+        if factors.contains(.cameraTemperature) {
             names.append("cameraTemperature")
         }
         return names

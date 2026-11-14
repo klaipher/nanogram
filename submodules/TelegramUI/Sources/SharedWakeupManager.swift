@@ -546,9 +546,6 @@ public final class SharedWakeupManager {
     }
     
     private func startBackgroundProcessingTaskIfNeeded() {
-        guard #available(iOS 26.0, *) else {
-            return
-        }
         guard !self.inForeground else {
             return
         }
@@ -725,9 +722,6 @@ public final class SharedWakeupManager {
     }
     
     private func startBackgroundStoryProcessingTaskIfNeeded() {
-        guard #available(iOS 26.0, *) else {
-            return
-        }
         guard !self.inForeground else {
             return
         }
