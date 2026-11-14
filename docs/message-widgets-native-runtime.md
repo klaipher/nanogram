@@ -95,13 +95,13 @@ branch, `feature/message-widgets`; what still binds the code is recorded here.
 | `…/WidgetRuntime/Sources/Canvas/`, `…/WidgetRuntimeIOS/Sources/CanvasBitmap.{h,mm}` | V5d: Canvas 2D (the interpreter, the context and its objects, the canvas and img elements) and the iOS bitmap |
 | `…/WidgetRuntime/Sources/Animation/`, `IDL/web-animations.webidl`, `Sources/Support/Promises.*`, `third-party/wpt/web-animations` | V5e: Web Animations (the objects, easing, interpolation and timing, the per-runtime `AnimationState` with the update step and the sampler) and its WPT; `Sources/Animation/PROVENANCE.md` lists what is ported from where |
 | `…/WidgetRuntime/Sources/Animation/CSS*.{h,cpp}`, `IDL/css-animations.webidl`, `third-party/wpt/css/css-{animations,transitions}` | V5f: CSS animations and transitions (the `@keyframes` and declaration parsers, `CSSAnimation`/`CSSTransition`, the style-change step and the events) and the event interfaces' WPT |
-| `…/WidgetRuntime/Sources/Host/{CSSNamespace,CSSSupports,Profile}.*`, `ProfileTables.inc`, `IDL/generate-profile-tables.py`, `Sources/DOM/CSSComponents.*`, `third-party/widget-sandbox/profile/profile.json` | V5c: the `CSS` namespace, profile 1's tables and their generator, and the component-value pipeline shared with the selector parser |
+| `…/WidgetRuntime/Sources/Host/{CSSNamespace,CSSSupports,Profile}.*`, `ProfileTables.inc`, `IDL/generate-profile-tables.py`, `Sources/DOM/CSSComponents.*`, `third-party/widget-sandbox/widget-sandbox/packages/core/profile.json` | V5c: the `CSS` namespace, profile 1's tables and their generator, and the component-value pipeline shared with the selector parser |
 | `…/WidgetRuntime/Sources/Host/{CSSPolicy,MarkupPolicy}.*`, `third-party/twidget` edit 29 | V4: profile 1 on the renderer's copy: the CSS verdicts the fork's hooks ask for, and the element and attribute rules |
 | `…/WidgetRuntime/Tests/{URLDataTests.cpp,url-data-expected-failures.txt}`, `third-party/wpt/url/resources/` | V5b: WPT's URL data through `URL` (`:WidgetRuntimeURLDataTests`), and the cases it still fails |
 | `…/WidgetRuntime/Sources/Runtime/PairIterators.cpp` | V5a: WebIDL pair iterators (`iterable<K, V>`), with the generator's adapters |
 | `…/WidgetRuntime/Sources/DOM/StyleDeclaration.*`, `IDL/cssom.webidl`, `IDL/css-properties.txt` | M1d: `element.style`. `IDL/cssom-properties.webidl` and `Sources/DOM/CSSProperties.inc` are generated from the property list by `IDL/generate-css-properties.py` and checked in |
 | `submodules/TelegramUI/Components/MessageWidget/WidgetRuntimeIOS` | M1d: the iOS half. `Sources/CoreTextRenderHost.*` (the `RenderHost`), `Sources/LayerTreePainter.*` (the painter), `Sources/WRSession.mm` and `PublicHeaders/WidgetRuntimeIOS/WRSession.h` (the facade), `Tests/` (`:WidgetRuntimeIOSTests`) |
-| `third-party/twidget/LiteHTML/LHHostSupport.h` | M1d: `LHHostContainer`, one `LHContainer` behind a textual C++ header for the host and the painter; its implementation is appended to `LHContainer.mm` |
+| `third-party/twidget/twidget/apple/Sources/LiteHTML/LHHostSupport.h` | M1d: `LHHostContainer`, one `LHContainer` behind a textual C++ header for the host and the painter; its implementation is appended to `LHContainer.mm` |
 | `…/MessageWidget/MessageWidget/Sources` | The app's widget: `MessageWidgetCore` (on `WRSession` since M1d), `MessageWidgetInstance`, the pool, handshake, registry and view; `WidgetFrame.swift` holds the tile drawer (`WidgetTileDrawer`) |
 | `…/MessageWidget/MessageWidgetRendering/Sources/WidgetTreeRenderer.swift` | M1d: a session's published tree, its height and changed rects, and the frozen badge |
 
@@ -200,7 +200,7 @@ branch, `feature/message-widgets`; what still binds the code is recorded here.
     deprecated `onTheme`, whose 16 callbacks are a list of their own, called at once and after `themeChanged`'s with
     the scheme. `activated`/`deactivated` fire after `visibilitychange`. `sendMessage` and `on` are gone.
   - *Resize anchor* (widget-sandbox v0.1.3, sdk-v1 §2.12, §5.6): `setResizeAnchor(edge)` takes exactly `'top'` or
-    `'bottom'` (the vendored SDK policy's `checkResizeAnchor`, `third-party/widget-sandbox/gesture/sdk_policy.cpp`, its
+    `'bottom'` (the vendored SDK policy's `checkResizeAnchor`, `third-party/widget-sandbox/widget-sandbox/packages/desktop/sandbox/src/sdk_policy.cpp`, its
     fixture run by the host `SdkPolicyTests`; only a 16-byte prefix of the string is converted), anything else is a
     `TypeError`; it needs no tap, posts nothing to the bridge, and sets `HostState::resizeAnchor` (top until set), which
     the host reads with the height (`WRSession.resizeAnchor`). The client's side is the message widgets guide's "Which
@@ -592,7 +592,7 @@ branch, `feature/message-widgets`; what still binds the code is recorded here.
   pseudo-classes and pseudo-elements, general-enclosed false), then the text in parentheses, as CSSOM says, so a bare
   declaration is true. Values are litehtml's component values, through the guarded pipeline the selector parser uses
   (`Sources/DOM/CSSComponents.h`, `css::componentValues`). The tables are profile 1's `profile.json`, vendored as data
-  (`third-party/widget-sandbox/profile/`) and generated into `Sources/Host/ProfileTables.inc` by
+  (`third-party/widget-sandbox/widget-sandbox/packages/core/profile.json`) and generated into `Sources/Host/ProfileTables.inc` by
   `IDL/generate-profile-tables.py` (sorted `constexpr` arrays, `Sources/Host/Profile.h`); V4's validator adds its HTML,
   SVG, event and canvas tables beside them.
 - **Canvas 2D** (V5d, `Sources/Canvas/`, `IDL/canvas.webidl`), profile 1's `canvas.*`:
@@ -894,7 +894,7 @@ branch, `feature/message-widgets`; what still binds the code is recorded here.
 ## The widget's state and requests (widget-sandbox v0.2)
 
 The v0.2 design: `docs/superpowers/specs/2026-10-26-message-widgets-v0.2-design.md`. Every rule comes from the vendored
-SDK policy (`third-party/widget-sandbox/gesture/twidget/sdk_policy.h`, `twidget::sdk`), as `checkResizeAnchor` already
+SDK policy (`third-party/widget-sandbox/widget-sandbox/packages/desktop/sandbox/include/twidget/sdk_policy.h`, `twidget::sdk`), as `checkResizeAnchor` already
 did. The order of the checks is upstream's glue's (`packages/ios` `SandboxEngine.bridgeCall`).
 
 **The context and the state** (`HostState`):
@@ -1812,7 +1812,7 @@ a fresh mirror, and the union of the batch's changed rects (`takeChangedRects`) 
 which share every node no operation names (`LayerDiff` matches them by identity first), for a batch that did not
 build.
 
-The corpus is `third-party/widget-sandbox/corpus` (`//third-party/widget-sandbox:CorpusFiles`).
+The corpus is `third-party/widget-sandbox/widget-sandbox/corpus` (`//third-party/widget-sandbox:CorpusFiles`).
 
 ## Open
 

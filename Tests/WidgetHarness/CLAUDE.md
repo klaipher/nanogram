@@ -241,7 +241,7 @@ edits a post's caption and where it shows as a message edit does (`testACaptionE
 
 ## The stress kit (`-widget-stress measure|production`)
 
-widget-sandbox v0.3.0's `packages/stress` (vendored as `third-party/widget-sandbox/stress`, bundled as
+widget-sandbox v0.3.0's `packages/stress` (vendored as `third-party/widget-sandbox/widget-sandbox/packages/stress`, bundled as
 `WidgetStress.bundle`) run by `MessageWidgetStress` instead of the chat: each of the manifest's 127 widgets boots in a
 stand-in bubble at the kit's width, warms up, is measured (`CADisplayLink` frames, the widget's `data-stress`, ops,
 the largest batch, layout queries, heap, nodes, the renderer's flush and tile-draw time, the widget's JS on its
