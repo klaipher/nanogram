@@ -4,6 +4,8 @@ Newest first. Internal notes for each TestFlight build; testers see the What to 
 
 ## Unreleased
 
+- **Review fix: QuickJSHostTests compile against the fork's `JSInterruptHandler(JSContext*, void*)`.** `stopping_interrupt`, `always_interrupt` and `disposer_interrupt` still took `JSRuntime*`; the first now stops the runtime through `JS_GetRuntime(ctx)`. Checked with `clang -fsyntax-only` (no build run).
+
 - **Review fix: rnnoise SwiftPM package excludes `src/x86`, `src/compile.sh` and `src/rnn_train.py`.** `sources: ["src"]` is recursive and compiled the x86 AVX2/SSE4.1 files on arm64 (the Mac links rnnoise only through this package). Bazel was not affected (its BUILD globs only `src/x86/*.h`).
 
 - **Review fix: libprisma BUILD loads again.** `objc_library` has no `include_prefix` or `strip_include_prefix` (rules_cc 0.2.27), so the whole `//third-party/libprisma` package failed to load. Replaced by `includes = ["libprisma/apple"]`; the only consumer is Swift `import libprisma`, which needs no prefix.

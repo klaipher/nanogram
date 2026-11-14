@@ -662,16 +662,16 @@ static void interrupt_inside_try(JSRuntime *rt, JSContext *ctx)
 }
 
 /* latching_interrupt, and the host's stop with it. */
-static int stopping_interrupt(JSRuntime *rt, void *opaque)
+static int stopping_interrupt(JSContext *ctx, void *opaque)
 {
     if (!stop_latch.latched && ++stop_latch.calls >= stop_latch.limit) {
         stop_latch.latched = 1;
-        JS_SetStopped(rt);
+        JS_SetStopped(JS_GetRuntime(ctx));
     }
     return stop_latch.latched;
 }
 
-static int always_interrupt(JSRuntime *rt, void *opaque)
+static int always_interrupt(JSContext *ctx, void *opaque)
 {
     return 1;
 }
@@ -896,7 +896,7 @@ static JSValue counting_disposer(JSContext *ctx, JSValueConst this_val, int argc
 }
 
 /* The host's handler: says stop once the disposer has stopped the runtime. */
-static int disposer_interrupt(JSRuntime *rt, void *opaque)
+static int disposer_interrupt(JSContext *ctx, void *opaque)
 {
     if (disposer.stopped)
         disposer.polls_after_stop++;
