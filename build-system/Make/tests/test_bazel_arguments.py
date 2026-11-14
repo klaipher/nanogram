@@ -85,6 +85,21 @@ class BazelArgumentsTest(unittest.TestCase):
         self.command_line.invoke_build()
         self.assertFalse([a for a in self.calls[-1] if 'cache_path_lto' in a])
 
+    def test_sandbox_release_build_may_write_the_lto_cache(self):
+        self.command_line.set_enable_sandbox(True)
+        self.command_line.set_configuration('release_arm64')
+        self.command_line.invoke_build()
+        self.assertIn('--sandbox_writable_path={}'.format(Make.LTO_CACHE_DIR), self.calls[-1])
+
+        self.command_line.set_configuration('debug_sim_arm64')
+        self.command_line.invoke_build()
+        self.assertFalse([a for a in self.calls[-1] if 'sandbox_writable_path' in a])
+
+    def test_project_generation_carries_the_xcode_identity(self):
+        with mock.patch.object(Make, 'get_xcode_sdk_identity', lambda: 'xc-1'):
+            args = self.command_line.get_project_generation_arguments()
+        self.assertIn('--action_env=NANOGRAM_XCODE_ID=xc-1', args)
+
 
 if __name__ == '__main__':
     unittest.main()

@@ -29,10 +29,10 @@ libjxl, td, yasm, flatc) use `-G Ninja` and `cmake --build . --parallel N`. Ever
 `$(TARGET_CPU)` and deletes its scratch tree (source copy, build tree, objects) once the declared outputs are copied out.
 Each genrule's action key also carries `--action_env=NANOGRAM_XCODE_ID=xcode-<build>.iphoneos-<sdk build>.iphonesimulator-<sdk build>`,
 which `Make.py` computes from the Xcode that `xcode-select` selects, so an Xcode or SDK update re-runs the native libraries
-instead of serving stale ones from the disk cache. A bumped tool version changes the genrule inputs and rebuilds the libraries once.
+instead of serving stale ones from the disk cache. Project-generation builds (`Make.py generate`) carry it too. A bumped tool version changes the genrule inputs and rebuilds the libraries once.
 `-DCMAKE_POLICY_VERSION_MINIMUM=3.5` is the fix if a vendored `CMakeLists.txt` stops configuring under a newer CMake.
 
-**Release links** pass `-Wl,-cache_path_lto,~/.cache/telegram-ios/lto-cache` (with `-prune_after_lto` 14 days and
+**Release links** (with `--sandbox` they also get `--sandbox_writable_path` for the cache dir) pass `-Wl,-cache_path_lto,~/.cache/telegram-ios/lto-cache` (with `-prune_after_lto` 14 days and
 `-max_relative_cache_size_lto` 5 percent), so a relink reuses the ThinLTO backend results of unchanged modules. The
 linker prunes the directory itself (see `docs/cache-cleanup.md`). `.bazelrc` also turns on rules_rust pipelined compilation.
 Measure all of this with `tools/dev/tg profile` (`docs/bazel-build-profiling.md`).
@@ -67,7 +67,7 @@ plus 1024, thread-safe `const tokenize`, lazy pattern compile, 12 more languages
 explicitly in `submodules/TgVoipWebrtc/BUILD` (group sources are not globbed), and must be added to the
 `exclude:` list in `tgcalls/Package.swift` so SwiftPM does not compile their `main()`. The first run compiles
 WebRTC for the host (~2.5 min); later runs take seconds. Note the binary is version-stamped and
-arch-suffixed (`bazel-9.3.2-darwin-arm64` since 2026-09-14, was `bazel-8.4.2-darwin-arm64`), not the
+arch-suffixed (`bazel-9.3.1-darwin-arm64` since 2026-09-14, moved to 9.3.2 in the build-system modernization, was `bazel-8.4.2-darwin-arm64`), not the
 bare `bazel-8.4.2` the tgcalls CLAUDE.md names; `versions.json` is the single pin.
 
 `//submodules/MetalEngine:MetalPipelineCacheTests` (added 2026-10-01) is the first host `swift_test`, run

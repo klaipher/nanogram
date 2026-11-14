@@ -128,7 +128,7 @@ a few rough edges for a fork.
 | rules_cc, rules_shell, bazel_features, bazel_skylib | 0.2.20, 0.6.1, 1.51.0, 1.9.0 | 0.2.28, 0.8.0, 1.55.0, 1.9.2 |
 | rules_go / gazelle / Go | 0.60.0 / 0.43.0 / 1.24.2 | 0.65.0 / 0.54.0 / 1.27.3 (gazelle 0.54 needs Go ≥ 1.24.12) |
 
-Verified with the full app build (installed and launched in an iOS 27 simulator), the host tests
+Verified with the full app build (on the previous pins; Bazel 9.3.2, apple_support 2.12.0, rules_cc 0.2.28 and bazel_features 1.55.0 are NOT yet verified, run the validation build first) (installed and launched in an iOS 27 simulator), the host tests
 `//submodules/UrlWhitelist:UrlWhitelistTests`, `//submodules/MetalEngine:MetalPipelineCacheTests`,
 `//third-party/libprisma:SyntaxHighlighterTests`, and the Go tool `//submodules/TgVoipWebrtc/tgcalls/tools/go_sfu`.
 

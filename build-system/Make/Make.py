@@ -273,6 +273,10 @@ class BazelCommandLine:
         combined_arguments += self.common_args
         combined_arguments += self.common_debug_args
         combined_arguments += self.get_define_arguments()
+        # Same Xcode/SDK identity as the builds, so project-generation builds of the native libs are keyed alike.
+        xcode_identity = get_xcode_sdk_identity()
+        if xcode_identity:
+            combined_arguments += ['--action_env=NANOGRAM_XCODE_ID={}'.format(xcode_identity)]
 
         if self.remote_cache is not None:
             combined_arguments += [
@@ -297,7 +301,7 @@ class BazelCommandLine:
         combined_arguments = []
 
         # Genrules (native libraries) get only --action_env as their environment, so without this an Xcode/SDK
-        # update could serve stale codec/td objects from the disk cache. See docs/module-build-settings.md.
+        # update could serve stale codec/td objects from the disk cache. See docs/build-and-test.md.
         xcode_identity = get_xcode_sdk_identity()
         if xcode_identity:
             combined_arguments += ['--action_env=NANOGRAM_XCODE_ID={}'.format(xcode_identity)]
@@ -335,6 +339,10 @@ class BazelCommandLine:
 
         if self.enable_sandbox:
             combined_arguments += ['--spawn_strategy=sandboxed']
+            # The darwin sandbox only lets actions write inside the execroot, so ld could not reach the ThinLTO
+            # cache. https://bazel.build/reference/command-line-reference#flag--sandbox_writable_path
+            if any('cache_path_lto' in a for a in self.configuration_args):
+                combined_arguments += ['--sandbox_writable_path={}'.format(LTO_CACHE_DIR)]
 
         if self.disable_provisioning_profiles:
             combined_arguments += ['--//Telegram:disableProvisioningProfiles']
