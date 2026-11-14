@@ -44,6 +44,16 @@ final class ChatHistoryStore {
 
     private static let halfLimit: Int = 15
 
+    /// WATCH-LIST-1 (flag `messageWindowTrim`): the window keeps about this many messages (4 pages of 30).
+    nonisolated static let maxWindowMessages = 120
+    private let windowLimit: Int?
+    /// WATCH-LIST-1 (flag `fileProgressThrottle`): progress-only `updateFile` events do not reproject.
+    private let throttleFileProgress: Bool
+    private var fileGate = FileUpdateGate()
+    /// Messages of the window in id order, valid for one `window.revision`; a download's progress updates
+    /// reproject without touching the window, so they reuse it.
+    private var sortedCache: (revision: Int, messages: [CachedMessage])?
+
     /// See `ChatListStore.coalesceUpdates` for rationale. Production
     /// (MessageListView) opts in; tests default to false.
     private let coalesceUpdates: Bool
@@ -66,8 +76,12 @@ final class ChatHistoryStore {
         draftText: String = "",
         coalesceUpdates: Bool = false,
         voicePlayback: VoicePlaybackController? = nil,
-        audioPlayback: AudioPlaybackController? = nil
+        audioPlayback: AudioPlaybackController? = nil,
+        windowLimit: Int? = WatchFeatureFlags.isEnabled(.messageWindowTrim) ? ChatHistoryStore.maxWindowMessages : nil,
+        throttleFileProgress: Bool = WatchFeatureFlags.isEnabled(.fileProgressThrottle)
     ) {
+        self.windowLimit = windowLimit
+        self.throttleFileProgress = throttleFileProgress
         self.chatId = chatId
         self.chatType = chatType
         self.chatTailIdAtOpen = lastMessageId
@@ -263,6 +277,7 @@ final class ChatHistoryStore {
             )
             for m in messages { primeFiles(from: m.content) }
             window.extendOlder(messages.map(CachedMessage.init))
+            if let windowLimit { window.trim(toLimit: windowLimit, droppingFrom: .newest) }
             olderFailureStreak = 0
             logger.info("loadOlder chatId=\(self.chatId, privacy: .public) returned=\(messages.count, privacy: .public)")
             reproject()
@@ -286,6 +301,7 @@ final class ChatHistoryStore {
             )
             for m in messages { primeFiles(from: m.content) }
             window.extendNewer(messages.map(CachedMessage.init), chatTailId: chatTailIdAtOpen)
+            if let windowLimit { window.trim(toLimit: windowLimit, droppingFrom: .oldest) }
             newerFailureStreak = 0
             reproject()
         } catch {
@@ -369,6 +385,7 @@ final class ChatHistoryStore {
 
         // Rebuild window with anchor=.tail and no divider.
         window = MessageWindow(anchor: .tail, halfLimit: Self.halfLimit, unreadDividerAfterId: nil)
+        sortedCache = nil
         unseenNewerCount = 0
 
         do {
@@ -625,7 +642,8 @@ final class ChatHistoryStore {
             scheduleReproject()
         case .updateFile(let upd):
             files[upd.file.id] = upd.file
-            if trackedFileIds.contains(upd.file.id) { scheduleReproject() }
+            guard trackedFileIds.contains(upd.file.id) else { break }
+            if !throttleFileProgress || fileGate.shouldReproject(for: upd.file) { scheduleReproject() }
         case .updateChatReadOutbox(let upd) where upd.chatId == chatId:
             lastReadOutboxMessageId = upd.lastReadOutboxMessageId
             scheduleReproject()
@@ -707,6 +725,13 @@ final class ChatHistoryStore {
     }
     #endif
 
+    private func sortedWindowMessages() -> [CachedMessage] {
+        if let cached = sortedCache, cached.revision == window.revision { return cached.messages }
+        let sorted = window.cache.values.sorted { $0.id < $1.id }
+        sortedCache = (window.revision, sorted)
+        return sorted
+    }
+
     private func reproject() {
         reprojectPending = false
         reprojectDeferred = false
@@ -714,7 +739,7 @@ final class ChatHistoryStore {
         debugReprojectCount += 1
         #endif
         rows = messageRows(
-            messages: Array(window.cache.values),
+            messages: sortedWindowMessages(),
             userNames: userNames.names,
             fileLocals: files,
             chatType: chatType,

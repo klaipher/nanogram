@@ -16,7 +16,12 @@ import Foundation
 struct MessageWindow: Equatable {
     enum Anchor: Equatable { case tail, messageId(Int64) }
 
-    private(set) var cache: [Int64: CachedMessage] = [:]
+    /// Bumped on every change to `cache` (not on file updates, which never touch the window), so a consumer
+    /// can reuse work derived from the messages (the sorted array) until it changes.
+    private(set) var revision = 0
+    private(set) var cache: [Int64: CachedMessage] = [:] {
+        didSet { revision &+= 1 }
+    }
     private(set) var loadedLowestId: Int64? = nil
     private(set) var loadedHighestId: Int64? = nil
     /// True until an older-fetch comes back empty. Defensively flipped true when
@@ -138,6 +143,42 @@ struct MessageWindow: Equatable {
     mutating func markReachesChatTail() { reachesChatTail = true }
 
     mutating func markHasOlderFalse() { hasOlder = false }
+
+    // MARK: - Trimming (WATCH-LIST-1)
+
+    enum TrimEnd: Equatable {
+        /// Drop the highest ids: the user is reading older history, far from the tail.
+        case newest
+        /// Drop the lowest ids: the user scrolled forward, away from the old end.
+        case oldest
+    }
+
+    /// Keeps the window to about `limit` messages by dropping the end the user is not reading, so memory and
+    /// per-update work stop growing with scroll depth. Messages still being sent or that failed to send are
+    /// never dropped (their local ids sit at the newest end and the send-result update needs them).
+    /// Dropping the newest end means the window no longer reaches the chat tail (`loadNewer` brings it back);
+    /// dropping the oldest end means there is older history again. Returns how many messages were dropped.
+    @discardableResult
+    mutating func trim(toLimit limit: Int, droppingFrom end: TrimEnd) -> Int {
+        let excess = cache.count - max(1, limit)
+        guard excess > 0 else { return 0 }
+        let ids = cache.keys.sorted()
+        let candidates: [Int64] = (end == .newest) ? Array(ids.reversed()) : ids
+        var dropped = 0
+        for id in candidates {
+            if dropped == excess { break }
+            guard let message = cache[id], message.sendingState == .sent else { continue }
+            cache.removeValue(forKey: id)
+            dropped += 1
+        }
+        guard dropped > 0 else { return 0 }
+        recomputeBounds()
+        switch end {
+        case .newest: reachesChatTail = false
+        case .oldest: hasOlder = true
+        }
+        return dropped
+    }
 
     // MARK: - Internals
 

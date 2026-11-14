@@ -19,6 +19,7 @@
 		11F6B5A10EFBBAFB10C8DBFE /* LottieAnimationView.swift in Sources */ = {isa = PBXBuildFile; fileRef = CC83B10E8C4450B4414381A4 /* LottieAnimationView.swift */; };
 		12810A4953467A087E07DD3F /* OpusKit in Frameworks */ = {isa = PBXBuildFile; productRef = 4A4F9C233953209CE4C3DB1A /* OpusKit */; };
 		1773B32101D7CB51E65BE91B /* PhotoVisual.swift in Sources */ = {isa = PBXBuildFile; fileRef = 0240D336BD11E2613A457C43 /* PhotoVisual.swift */; };
+		1CF149A0437FC0821B861F01 /* FileUpdateGate.swift in Sources */ = {isa = PBXBuildFile; fileRef = 21CA9D1BA5774F79F84E9AC6 /* FileUpdateGate.swift */; };
 		1D1502C120B3AF8B91C1A91D /* AVRecordingBackend.swift in Sources */ = {isa = PBXBuildFile; fileRef = 0F9127473C7DAD18736234B3 /* AVRecordingBackend.swift */; };
 		1D4E75A6F594617ACD668616 /* SampleStickers in Resources */ = {isa = PBXBuildFile; fileRef = 72755AB1D5DB932DDC3CE2D3 /* SampleStickers */; };
 		1F7CEC07D0DBC5FD130AF942 /* AccountBootstrapView.swift in Sources */ = {isa = PBXBuildFile; fileRef = 377FDFE2ED14BCD51D22429F /* AccountBootstrapView.swift */; };
@@ -141,6 +142,7 @@
 		1932CC94F39BD57A56E59C08 /* ChatRow.swift */ = {isa = PBXFileReference; lastKnownFileType = sourcecode.swift; path = ChatRow.swift; sourceTree = "<group>"; };
 		1FFA0FBD5453516C970B9217 /* ChatListIndex.swift */ = {isa = PBXFileReference; lastKnownFileType = sourcecode.swift; path = ChatListIndex.swift; sourceTree = "<group>"; };
 		20DF1E1C15EBF3931AC3843C /* VideoVisual.swift */ = {isa = PBXFileReference; lastKnownFileType = sourcecode.swift; path = VideoVisual.swift; sourceTree = "<group>"; };
+		21CA9D1BA5774F79F84E9AC6 /* FileUpdateGate.swift */ = {isa = PBXFileReference; lastKnownFileType = sourcecode.swift; path = FileUpdateGate.swift; sourceTree = "<group>"; };
 		22AAEA9EF0EC8A548BB916EC /* StickerRow.swift */ = {isa = PBXFileReference; lastKnownFileType = sourcecode.swift; path = StickerRow.swift; sourceTree = "<group>"; };
 		23B6E36BD1D21CA9073903BF /* AccountManager.swift */ = {isa = PBXFileReference; lastKnownFileType = sourcecode.swift; path = AccountManager.swift; sourceTree = "<group>"; };
 		29C2B6C3E8643BAF27074570 /* ChatRowView.swift */ = {isa = PBXFileReference; lastKnownFileType = sourcecode.swift; path = ChatRowView.swift; sourceTree = "<group>"; };
@@ -373,6 +375,7 @@
 				BDBE08BBB88597B10CDF0142 /* DocumentBubbleView.swift */,
 				FF2515F0EDA29D5270610A69 /* DocumentVisual.swift */,
 				4DB3C8238D41374CBAC66303 /* EmojiText.swift */,
+				21CA9D1BA5774F79F84E9AC6 /* FileUpdateGate.swift */,
 				596AF8BF88C38D2018397A33 /* LocationBubbleView.swift */,
 				3B4D75BC5502D8D705E859FB /* LocationProvider.swift */,
 				6D8A828AD3ABE7B2740A7F10 /* LocationSendController.swift */,
@@ -580,6 +583,7 @@
 				62E23F09E892DE847642EDB1 /* EmojiText.swift in Sources */,
 				6DD41F6FCB2E2F6E2A231059 /* ErrorMapping.swift in Sources */,
 				576608622AFF98B6FF84C161 /* ErrorView.swift in Sources */,
+				1CF149A0437FC0821B861F01 /* FileUpdateGate.swift in Sources */,
 				F8F834C103DB1A687BFD54B8 /* FolderPill.swift in Sources */,
 				EE2D34F61EAF165651914325 /* FolderPillBar.swift in Sources */,
 				D1082945B5785B08F820FB78 /* LoadingView.swift in Sources */,

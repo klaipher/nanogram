@@ -18,6 +18,11 @@ enum WatchFeature: String, CaseIterable, Sendable {
     /// WATCH-GPU-1: animated stickers rasterise off the main actor (late frames are dropped, not queued), and
     /// the timeline ticks at 24 Hz instead of 30 in Low Power Mode.
     case offMainStickerRender
+    /// WATCH-LIST-1: the open chat keeps about 120 messages and drops the end the user is not reading.
+    /// Needs a device check of scroll-position preservation (the list is a plain VStack).
+    case messageWindowTrim
+    /// WATCH-LIST-1: progress-only file updates (a video downloading) no longer rebuild every row.
+    case fileProgressThrottle
 
     var defaultsKey: String { "nanogram.watch." + rawValue }
 
