@@ -4,6 +4,8 @@ Newest first. Internal notes for each TestFlight build; testers see the What to 
 
 ## Unreleased
 
+- **Shared pins**: twidget 4913fd0e (adds the `litehtml/no-public-headers` folder Xcode 27's SwiftPM requires; the Mac failed to resolve packages without it; Bazel builds are unaffected) and nanogram-deps 484b22e9.
+
 - **Tooling**: `device_signing.py profiles` treats an iPhone that is "available (paired)" over Wi-Fi as reachable, so an unavailable iPad listed first is no longer picked (test `test_an_iphone_available_over_wifi_wins_over_an_unavailable_ipad`).
 
 - **Build fix pin**: twidget 58053871 restores litehtml's style::add_length_property (lost in the Apple-layer merge; the Android link failed); nanogram-deps e7783ff2.
