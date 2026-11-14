@@ -361,10 +361,6 @@ marked (check) were not re-verified against the code; correct them on the next c
 - What: Settings > Send Report (and the top of Debug Settings) sends one zip with a README, device and experiment details, app, extension and notification logs, critical logs, call logs, and crash and MetricKit reports, capped at 40 MB with phone numbers and emails masked; the old fine-grained Send Logs menu stays for developers.
 - Why: testers had five or more log buttons and sent partial reports; upstream has no tester diagnostics flow.
 
-### Background task identifiers
-- What: `Telegram/Telegram-iOS/Info.plist` lists `$(PRODUCT_BUNDLE_IDENTIFIER).upload.*` in `BGTaskSchedulerPermittedIdentifiers` so the continued processing tasks of `SharedWakeupManager` (`upload.message<N>`, `upload.story<N>`) can be submitted (Apple: BGContinuedProcessingTaskRequest identifiers end in `.*` in the plist).
-- Upstream: Telegram's plist does not list them; keep the line when merging the plist.
-
 
 ### Bisecting note
 - Commits b1663a0b and d6d49452 reference `//submodules/MediaCapabilities` in `submodules/MediaPlayer/BUILD` and `submodules/DebugSettingsUI/BUILD` before the package exists (it arrives in e1c4b4e7), so those two commits do not build MediaPlayer or DebugSettingsUI. Skip them when bisecting.

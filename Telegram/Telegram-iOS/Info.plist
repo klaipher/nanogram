@@ -5,7 +5,6 @@
 	<key>BGTaskSchedulerPermittedIdentifiers</key>
 	<array>
 		<string>$(PRODUCT_BUNDLE_IDENTIFIER).refresh</string>
-		<string>$(PRODUCT_BUNDLE_IDENTIFIER).upload.*</string>
 	</array>
 	<key>CFBundleAllowMixedLocalizations</key>
 	<true/>

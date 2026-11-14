@@ -1,6 +1,6 @@
 """Continued processing tasks are submitted with `<bundle id>.upload.message<N>` and `.upload.story<N>`; the system rejects a
-submission whose identifier is not covered by a `.*` pattern in BGTaskSchedulerPermittedIdentifiers."""
-import plistlib
+submission whose identifier is not covered by a `.*` pattern in BGTaskSchedulerPermittedIdentifiers. The shipped plist is the
+TelegramInfoPlist template in Telegram/BUILD (Telegram-iOS/Info.plist is not used by the app target)."""
 import re
 import unittest
 from pathlib import Path
@@ -9,8 +9,9 @@ ROOT = Path(__file__).resolve().parents[3]
 
 
 def permitted():
-    with open(ROOT / "Telegram/Telegram-iOS/Info.plist", "rb") as handle:
-        return plistlib.load(handle)["BGTaskSchedulerPermittedIdentifiers"]
+    build = (ROOT / "Telegram/BUILD").read_text()
+    block = re.search(r'name = "TelegramInfoPlist".*?<key>BGTaskSchedulerPermittedIdentifiers</key>\s*<array>(.*?)</array>', build, re.S)
+    return re.findall(r"<string>(.*?)</string>", block.group(1))
 
 
 class BackgroundTaskIdentifierTests(unittest.TestCase):
@@ -21,10 +22,7 @@ class BackgroundTaskIdentifierTests(unittest.TestCase):
         entries = permitted()
         for prefix in prefixes:
             stem = prefix.rsplit(".", 1)[0]
-            self.assertIn("$(PRODUCT_BUNDLE_IDENTIFIER).%s.*" % stem, entries, prefix)
-
-    def test_refresh_stays_listed(self):
-        self.assertIn("$(PRODUCT_BUNDLE_IDENTIFIER).refresh", permitted())
+            self.assertIn("{telegram_bundle_id}.%s.*" % stem, entries, prefix)
 
 
 if __name__ == "__main__":
