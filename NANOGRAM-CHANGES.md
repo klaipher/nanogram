@@ -49,6 +49,7 @@ marked (check) were not re-verified against the code; correct them on the next c
 - - SwiftMath (W7): iOS `third-party/SwiftMath` is the single tree; the Mac's hardening (parse depth, table limits, authoring API, render size caps) was ported here first. Sync: the Mac Package.swift points at these sources and reads fonts from `submodules/TelegramUI/Resources/Fonts` (byte-identical to its old copy).
 - - VP9Hardware (W7): the Mac references `submodules/AnimatedStickerNode/VP9Hardware` for the decoder, demuxer, both tests and the two WebM fixtures; its sticker reader (`VP9HardwareStickerReader`) stays Mac-only on `YuvConversion`.
 - - QR Studio (W7): shared logic in `submodules/TelegramUI/Components/QrStudioLogic` (source set; iOS and Mac compile the same files); views, look colours and sticker decoders stay per app. Sync: a change in QrStudioLogic needs the Mac core bump and a Mac build.
+- - SceneEffects (W7): the Mac uses the iOS DiamondGeometry, DiamondAnimation, both Metal sources and LiquidGlassSurfaceReleasePolicy; views and Metal bundle glue stay per app.
 
 ### Calls (tgcalls, WebRTC forks)
 - What: tgcalls runs from `klaipher/tgcalls` `nanogram-shared` (iOS and Mac in one implementation), WebRTC from
