@@ -4,6 +4,8 @@ Newest first. Internal notes for each TestFlight build; testers see the What to 
 
 ## Unreleased
 
+- **AES-IGE decrypt in one fused ARMv8 loop** (IOS-CRYPTO-1). `MyAesIgeDecrypt` on arm64 expands the key once and runs AESD/AESIMC (NEON intrinsics, no new dependency) over the whole buffer instead of one `CCCryptorUpdate` per 16-byte block; IV in/out chaining, failure zeroing and the block-multiple check are unchanged. The old code stays as `MyAesIgeDecryptReference` (non-arm64 path and test oracle). `MTAesIgeDecryptEquivalenceTests` compares both on random vectors (AES-128/192/256, unaligned buffers, split-buffer IV chaining, round trip, failure zeroing). Shared with the Mac app (arm64 only there). Measure: micro-benchmark on 128 KB/512 KB/1 MB, then MTProto-queue CPU in a 200 MB download.
+
 ## 13.2 (202611132038) — 2026-11-13 — 3c4e6399
 
 TestFlight build (processed VALID, What to Test set). Previous TestFlight build: 202611121002 (25edb39c); changes since are `git log 800c5c6a..3c4e6399` (32 commits). Source: the owner's MetricKit export (memory-limit kill opening a 1-page PDF, the language prompt on the next launch) and a tester's report that a call to a locked iPhone showed nothing; plan with 83 finding ids, statuses below.

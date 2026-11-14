@@ -9,3 +9,5 @@
 bool MyAesIgeEncrypt(const void *inBytes, int length, void *outBytes, const void *key, int keyLength, void *iv);
 bool MyAesIgeDecrypt(const void *inBytes, int length, void *outBytes, const void *key, int keyLength, void *iv);
 bool MyAesCbcDecrypt(const void *inBytes, int length, void *outBytes, const void *key, int keyLength, void *iv);
+// The per-block CommonCrypto implementation, kept as the oracle for tests and as the non-arm64 path.
+bool MyAesIgeDecryptReference(const void *inBytes, int length, void *outBytes, const void *key, int keyLength, void *iv);

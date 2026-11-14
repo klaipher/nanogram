@@ -2,6 +2,13 @@
 
 #import <CommonCrypto/CommonCrypto.h>
 
+#if defined(__aarch64__) && defined(__ARM_NEON)
+#define MT_AES_HAS_ARMV8_AES 1
+#include <arm_neon.h>
+#else
+#define MT_AES_HAS_ARMV8_AES 0
+#endif
+
 #import <MtProtoKit/MTLogging.h>
 
 # define AES_MAXNR 14
@@ -143,7 +150,91 @@ bool MyAesIgeEncrypt(const void *inBytes, int length, void *outBytes, const void
     return true;
 }
 
-bool MyAesIgeDecrypt(const void *inBytes, int length, void *outBytes, const void *key, int keyLength, void *iv) {
+#if MT_AES_HAS_ARMV8_AES
+
+#define MT_AES_MAX_ROUND_KEYS 15
+
+__attribute__((target("aes")))
+static uint32_t MTAesSubWord(uint32_t word) {
+    uint8x16_t state = vreinterpretq_u8_u32(vdupq_n_u32(word));
+    uint8x16_t substituted = vaeseq_u8(state, vdupq_n_u8(0));
+    return vgetq_lane_u32(vreinterpretq_u32_u8(substituted), 0);
+}
+
+// FIPS 197 key expansion. Returns the round count, or 0 for an unsupported key length.
+__attribute__((target("aes")))
+static int MTAesExpandKey(const void *key, int keyLength, uint8x16_t *roundKeys) {
+    if (keyLength != 16 && keyLength != 24 && keyLength != 32) {
+        return 0;
+    }
+    const int wordsInKey = keyLength / 4;
+    const int rounds = wordsInKey + 6;
+    const int totalWords = 4 * (rounds + 1);
+    uint32_t words[60];
+    memcpy(words, key, (size_t)keyLength);
+    uint32_t rcon = 1;
+    for (int i = wordsInKey; i < totalWords; i++) {
+        uint32_t temp = words[i - 1];
+        if (i % wordsInKey == 0) {
+            temp = MTAesSubWord((temp >> 8) | (temp << 24)) ^ rcon;
+            rcon = (rcon << 1) ^ ((rcon & 0x80) ? 0x11b : 0);
+        } else if (wordsInKey > 6 && i % wordsInKey == 4) {
+            temp = MTAesSubWord(temp);
+        }
+        words[i] = words[i - wordsInKey] ^ temp;
+    }
+    for (int i = 0; i <= rounds; i++) {
+        roundKeys[i] = vld1q_u8((const uint8_t *)&words[4 * i]);
+    }
+    return rounds;
+}
+
+// IGE decrypt as one fused loop on the ARMv8 AESD/AESIMC instructions:
+// plain[i] = D(cipher[i] ^ plain[i-1]) ^ cipher[i-1]. Block reads happen before
+// block writes, so it is also safe for in-place use.
+__attribute__((target("aes")))
+static bool MyAesIgeDecryptArmv8(const void *inBytes, int length, void *outBytes, const void *key, int keyLength, void *iv) {
+    uint8x16_t roundKeys[MT_AES_MAX_ROUND_KEYS];
+    int rounds = MTAesExpandKey(key, keyLength, roundKeys);
+    if (rounds == 0) {
+        MTAesLogFailure("MyAesIgeDecrypt (key)", -1);
+        MTAesZeroOutput(outBytes, length);
+        return false;
+    }
+    uint8x16_t inverseKeys[MT_AES_MAX_ROUND_KEYS];
+    for (int r = 1; r < rounds; r++) {
+        inverseKeys[r] = vaesimcq_u8(roundKeys[r]);
+    }
+    
+    const uint8_t *in = (const uint8_t *)inBytes;
+    uint8_t *out = (uint8_t *)outBytes;
+    uint8x16_t previousCipher = vld1q_u8((const uint8_t *)iv);
+    uint8x16_t previousPlain = vld1q_u8((const uint8_t *)iv + AES_BLOCK_SIZE);
+    const uint8x16_t lastKey = roundKeys[rounds];
+    const uint8x16_t firstKey = roundKeys[0];
+    
+    for (int blocks = length / AES_BLOCK_SIZE; blocks > 0; blocks--) {
+        uint8x16_t cipher = vld1q_u8(in);
+        uint8x16_t state = vaesdq_u8(veorq_u8(cipher, previousPlain), lastKey);
+        for (int r = rounds - 1; r >= 1; r--) {
+            state = vaesdq_u8(vaesimcq_u8(state), inverseKeys[r]);
+        }
+        uint8x16_t plain = veorq_u8(veorq_u8(state, firstKey), previousCipher);
+        vst1q_u8(out, plain);
+        previousCipher = cipher;
+        previousPlain = plain;
+        in += AES_BLOCK_SIZE;
+        out += AES_BLOCK_SIZE;
+    }
+    
+    vst1q_u8((uint8_t *)iv, previousCipher);
+    vst1q_u8((uint8_t *)iv + AES_BLOCK_SIZE, previousPlain);
+    return true;
+}
+
+#endif
+
+bool MyAesIgeDecryptReference(const void *inBytes, int length, void *outBytes, const void *key, int keyLength, void *iv) {
     if (length < 0 || length % AES_BLOCK_SIZE != 0) {
         MTAesZeroOutput(outBytes, length);
         return false;
@@ -211,6 +302,21 @@ bool MyAesIgeDecrypt(const void *inBytes, int length, void *outBytes, const void
     
     CCCryptorRelease(decryptor);
     return true;
+}
+
+bool MyAesIgeDecrypt(const void *inBytes, int length, void *outBytes, const void *key, int keyLength, void *iv) {
+#if MT_AES_HAS_ARMV8_AES
+    if (length < 0 || length % AES_BLOCK_SIZE != 0) {
+        MTAesZeroOutput(outBytes, length);
+        return false;
+    }
+    if (length == 0) {
+        return true;
+    }
+    return MyAesIgeDecryptArmv8(inBytes, length, outBytes, key, keyLength, iv);
+#else
+    return MyAesIgeDecryptReference(inBytes, length, outBytes, key, keyLength, iv);
+#endif
 }
 
 bool MyAesCbcDecrypt(const void *inBytes, int length, void *outBytes, const void *key, int keyLength, void *iv) {
