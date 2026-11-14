@@ -75,33 +75,35 @@ public final class TLottieAnimation {
     }
 
     /// Renders frame `index` into a fresh CGImage sized `size × scale`. Returns nil if the size is degenerate,
-    /// allocation fails or tlottie reports an error. The pixels are owned by a `Data` retained by the CGDataProvider.
+    /// allocation fails or tlottie reports an error. The pixels are owned by a `CFData` retained by the CGDataProvider.
     public func renderFrame(index: Int, size: CGSize, scale: CGFloat) -> CGImage? {
         let pixelWidth = max(1, Int(size.width * scale))
         let pixelHeight = max(1, Int(size.height * scale))
-        // Same bound as the parse caps: nothing on the watch needs more, and it keeps the arithmetic below small.
+        // A render-size bound of its own (the parse caps above are 1536 on the animation's own size): nothing on
+        // the watch draws a sticker larger than this, and it keeps the arithmetic below small.
         guard pixelWidth <= 4096, pixelHeight <= 4096 else { return nil }
         let bytesPerRow = pixelWidth * 4
         let pixelCount = pixelWidth * pixelHeight
 
-        var pixels = [UInt32](repeating: 0, count: pixelCount)
-        let status = pixels.withUnsafeMutableBufferPointer { buffer -> Int32 in
-            // tlottie clears the buffer first and has no stride parameter: it writes tightly packed rows,
-            // which is exactly the layout of the CGImage below.
-            tlottie_render(
-                handle,
-                Float(index),
-                UInt32(pixelWidth),
-                UInt32(pixelHeight),
-                buffer.baseAddress,
-                pixelCount,
-                1
-            )
-        }
+        // Render straight into the CFData that backs the CGImage: no intermediate array, no copy per frame.
+        let byteCount = pixelCount * 4
+        guard let data = CFDataCreateMutable(nil, byteCount) else { return nil }
+        CFDataSetLength(data, byteCount)
+        guard let bytes = CFDataGetMutableBytePtr(data) else { return nil }
+        // tlottie clears the buffer first and has no stride parameter: it writes tightly packed rows,
+        // which is exactly the layout of the CGImage below. CFData storage is at least 16-byte aligned.
+        let status = tlottie_render(
+            handle,
+            Float(index),
+            UInt32(pixelWidth),
+            UInt32(pixelHeight),
+            UnsafeMutableRawPointer(bytes).assumingMemoryBound(to: UInt32.self),
+            pixelCount,
+            1
+        )
         guard status == 0 else { return nil }  // TLOTTIE_OK
 
-        let data = pixels.withUnsafeBytes { Data($0) }
-        guard let provider = CGDataProvider(data: data as CFData) else { return nil }
+        guard let provider = CGDataProvider(data: data) else { return nil }
 
         let bitmapInfo = CGBitmapInfo(rawValue:
             CGImageAlphaInfo.premultipliedFirst.rawValue |
