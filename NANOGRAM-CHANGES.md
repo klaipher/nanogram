@@ -11,7 +11,8 @@ marked (check) were not re-verified against the code; correct them on the next c
 ### Build speed and disk use
 - What: Bazel 9.3 with APFS copy-on-write disk cache, `--watchfs`, extensions skipped by default, host tools at
   `-O0`, parallel `make` in native library scripts, shallow submodules, history-free repository, shared bounded
-  caches, cache cleanup after build commands.
+  caches, cache cleanup after build commands. Opt-in `--config=outline_atomics` (SHARED-APPLE-CPU-1, off by default):
+  `-moutline-atomics` for Bazel copts and the native-library scripts.
 - Why: local builds on one 32 GB laptop with a full disk.
 - Where: `.bazelrc`, `versions.json`, `MODULE.bazel`, `tools/dev/tg`, `tools/dev/cachegc/`, `build-system/Make/`.
 - Upstream: no (their CI uses other trade-offs).
