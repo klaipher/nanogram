@@ -100,7 +100,7 @@ public final class DeviceAccess {
     }
     
     public static func isMicrophoneAccessAuthorized() -> Bool? {
-        return AVAudioSession.sharedInstance().recordPermission == .granted
+        return MicrophonePermission.isGranted
     }
     
     public static func isCameraAccessAuthorized() -> Bool {
@@ -380,10 +380,10 @@ public final class DeviceAccess {
                         completion(true)
                     }
                 case let .microphone(microphoneSubject):
-                    if AVAudioSession.sharedInstance().recordPermission == .granted {
+                    if MicrophonePermission.isGranted {
                         completion(true)
                     } else {
-                        AVAudioSession.sharedInstance().requestRecordPermission({ granted in
+                        MicrophonePermission.request({ granted in
                             Queue.mainQueue().async {
                                 if granted {
                                     completion(true)

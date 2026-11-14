@@ -50,7 +50,7 @@ func deviceLocationConfiguration(modes: [DeviceLocationMode]) -> DeviceLocationC
 }
 
 public final class DeviceLocationManager: NSObject {
-    private let queue: Queue
+    let queue: Queue
     private let log: ((String) -> Void)?
     
     private let manager: CLLocationManager
@@ -63,10 +63,15 @@ public final class DeviceLocationManager: NSObject {
     private var currentLocation: CLLocation?
     private var currentHeading: CLHeading?
     
-    public init(queue: Queue, log: ((String) -> Void)? = nil) {
+    private let stationaryUpdatesEnabled: Bool
+    private var currentBackend: DeviceLocationBackend?
+    private var liveUpdates: LiveLocationUpdates?
+    
+    public init(queue: Queue, log: ((String) -> Void)? = nil, stationaryUpdates: Bool? = nil) {
         assert(queue.isCurrent())
         
         self.queue = queue
+        self.stationaryUpdatesEnabled = stationaryUpdates ?? UserDefaults.standard.bool(forKey: deviceLocationStationaryUpdatesDefaultsKey)
         self.log = log
         self.manager = CLLocationManager()
         
@@ -142,8 +147,17 @@ public final class DeviceLocationManager: NSObject {
                 }
             }
             
-            if previousConfiguration == nil {
-                self.manager.startUpdatingLocation()
+            let backend = deviceLocationBackend(configuration: configuration, stationaryUpdatesEnabled: self.stationaryUpdatesEnabled, isLiveUpdatesAvailable: deviceLocationIsLiveUpdatesAvailable())
+            if backend != self.currentBackend {
+                self.stopBackend()
+                self.currentBackend = backend
+                switch backend {
+                case .locationManager:
+                    self.manager.startUpdatingLocation()
+                case .liveUpdates:
+                    self.log?("using live updates")
+                    self.liveUpdates = self.makeLiveLocationUpdates()
+                }
             }
             if configuration.updatesHeading != (previousConfiguration?.updatesHeading ?? false) {
                 if configuration.updatesHeading {
@@ -156,9 +170,37 @@ public final class DeviceLocationManager: NSObject {
         } else {
             self.currentLocation = nil
             self.currentHeading = nil
-            self.manager.stopUpdatingLocation()
+            self.stopBackend()
             self.manager.stopUpdatingHeading()
             self.log?("stopped")
+        }
+    }
+    
+    private func stopBackend() {
+        switch self.currentBackend {
+        case .locationManager:
+            self.manager.stopUpdatingLocation()
+        case .liveUpdates:
+            self.liveUpdates?.stop()
+            self.liveUpdates = nil
+        case nil:
+            break
+        }
+        self.currentBackend = nil
+    }
+    
+    func receivedLiveUpdate(_ location: CLLocation) {
+        assert(self.queue.isCurrent())
+        
+        guard let configuration = self.currentConfiguration, self.currentBackend == .liveUpdates else {
+            return
+        }
+        if !shouldDeliverLiveUpdate(previous: self.currentLocation, next: location, distanceFilter: configuration.distanceFilter) {
+            return
+        }
+        self.currentLocation = location
+        for subscriber in self.subscribers {
+            subscriber.update(location, self.currentHeading?.effectiveHeading)
         }
     }
 }

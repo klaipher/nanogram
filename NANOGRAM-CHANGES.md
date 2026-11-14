@@ -241,3 +241,17 @@ marked (check) were not re-verified against the code; correct them on the next c
 - Where: `submodules/AnimatedStickerNode`, `submodules/TelegramUI/Components/BatchVideoRendering`, `submodules/AnimationCompression`, `submodules/PhotoResources`, `ExperimentalUISettings`, `DebugController`.
 - Upstream: no.
 - Sync: expect conflicts in `AnimatedStickerNode.swift` (queue, status, background gate) and `BatchVideoRenderingContext.swift`.
+
+### Voice transcription: SpeechAnalyzer (experiment)
+- What: on-device voice-message transcription reads the file in place (no tmp copy); an iOS 26 `SpeechTranscriber`/`SpeechAnalyzer` path exists behind the default `NanogramSpeechAnalyzer` (off), with SFSpeechRecognizer as fallback.
+- Why: tmp leak per transcription; Apple's newer model is more accurate and runs out of process.
+- Where: `submodules/Media/LocalAudioTranscription`.
+- Upstream: no (upstream keeps the copy and SFSpeechRecognizer).
+- Sync: take upstream's file, re-apply the in-place path and the confidence guard.
+
+### Live location: stationary-aware updates (experiment)
+- What: iOS 17+ `CLLocationUpdate.liveUpdates` backend for live location alone, behind the default `NanogramStationaryLocation` (off).
+- Why: GNSS stayed powered for up to 8 h while the user was stationary.
+- Where: `submodules/DeviceLocationManager` (`LiveLocationUpdates.swift`).
+- Upstream: no.
+- Sync: additive; re-apply the backend switch in `updateTopMode`.

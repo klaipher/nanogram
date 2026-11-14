@@ -11,6 +11,33 @@ private struct TranscriptionResult {
 }
 
 private func transcribeAudio(path: String, locale: String) -> Signal<TranscriptionResult?, NoError> {
+    if #available(iOS 26.0, *), transcriptionEngine(flagEnabled: isSpeechAnalyzerEnabled(), osSupportsAnalyzer: true) == .analyzer {
+        return transcriptionWithFallback(primary: speechAnalyzerSignal(path: path, locale: locale), fallback: {
+            return legacyTranscribeAudio(path: path, locale: locale)
+        })
+    }
+    return legacyTranscribeAudio(path: path, locale: locale)
+}
+
+@available(iOS 26.0, *)
+private func speechAnalyzerSignal(path: String, locale: String) -> Signal<TranscriptionResult?, NoError> {
+    return Signal { subscriber in
+        let task = Task.detached(priority: .userInitiated) {
+            let text = await transcribeWithSpeechAnalyzer(path: path, localeIdentifier: locale)
+            if !Task.isCancelled {
+                Queue.mainQueue().async {
+                    subscriber.putNext(text.flatMap { TranscriptionResult(text: $0, confidence: 1.0, isFinal: true) })
+                    subscriber.putCompletion()
+                }
+            }
+        }
+        return ActionDisposable {
+            task.cancel()
+        }
+    }
+}
+
+private func legacyTranscribeAudio(path: String, locale: String) -> Signal<TranscriptionResult?, NoError> {
     return Signal { subscriber in
         let disposable = MetaDisposable()
         
@@ -52,10 +79,7 @@ private func transcribeAudio(path: String, locale: String) -> Signal<Transcripti
                             return
                         }
                         
-                        let tempFilePath = NSTemporaryDirectory() + "/\(UInt64.random(in: 0 ... UInt64.max)).m4a"
-                        let _ = try? FileManager.default.copyItem(atPath: path, toPath: tempFilePath)
-                        
-                        let request = SFSpeechURLRecognitionRequest(url: URL(fileURLWithPath: tempFilePath))
+                        let request = SFSpeechURLRecognitionRequest(url: URL(fileURLWithPath: path))
                         if #available(iOS 16.0, *) {
                             request.addsPunctuation = true
                         }
@@ -64,11 +88,7 @@ private func transcribeAudio(path: String, locale: String) -> Signal<Transcripti
                         
                         let task = speechRecognizer.recognitionTask(with: request, resultHandler: { result, error in
                             if let result = result {
-                                var confidence: Float = 0.0
-                                for segment in result.bestTranscription.segments {
-                                    confidence += segment.confidence
-                                }
-                                confidence /= Float(result.bestTranscription.segments.count)
+                                let confidence = averageTranscriptionConfidence(result.bestTranscription.segments.map(\.confidence))
                                 subscriber.putNext(TranscriptionResult(text: result.bestTranscription.formattedString, confidence: confidence, isFinal: result.isFinal))
                                 
                                 if result.isFinal {
