@@ -73,6 +73,18 @@ class BazelArgumentsTest(unittest.TestCase):
         self.command_line.add_additional_args('--jobs=4')
         self.assertEqual(self.command_line.get_project_generation_arguments()[-1], '--jobs=4')
 
+    def test_release_links_use_the_thinlto_cache_and_debug_does_not(self):
+        self.command_line.set_configuration('release_arm64')
+        self.command_line.invoke_build()
+        release = self.calls[-1]
+        self.assertIn('--linkopt=-Wl,-cache_path_lto,{}'.format(Make.LTO_CACHE_DIR), release)
+        self.assertIn('--linkopt=-Wl,-prune_after_lto,1209600', release)
+        self.assertIn('--linkopt=-Wl,-max_relative_cache_size_lto,5', release)
+
+        self.command_line.set_configuration('debug_sim_arm64')
+        self.command_line.invoke_build()
+        self.assertFalse([a for a in self.calls[-1] if 'cache_path_lto' in a])
+
 
 if __name__ == '__main__':
     unittest.main()

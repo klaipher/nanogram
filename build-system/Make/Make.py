@@ -27,6 +27,10 @@ class ResolvedCodesigningData:
         self.use_xcode_managed_codesigning = use_xcode_managed_codesigning
 
 
+# ThinLTO linker cache shared by every checkout (see common_release_args and docs/cache-cleanup.md).
+LTO_CACHE_DIR = os.path.join(os.path.expanduser('~'), '.cache', 'telegram-ios', 'lto-cache')
+
+
 class BazelCommandLine:
     def __init__(self, bazel, override_bazel_version, override_xcode_version, bazel_user_root):
         self.build_environment = BuildEnvironment(
@@ -104,6 +108,16 @@ class BazelCommandLine:
             # Thin LTO for C, C++ and Objective-C built by Bazel (target configuration only; the
             # linker runs LTO when it sees bitcode). Script-built libraries keep their own flags.
             '--copt=-flto=thin',
+
+            # Incremental ThinLTO for the release links (app, extensions, watch app): ld reuses the per-module
+            # backend results of the previous link, so a one-file change re-optimises that module only. The
+            # cache is outside the Bazel output base and prunes itself: entries unused for 14 days (the same
+            # age as the Bazel disk cache), and never more than 5 percent of the free disk space. Outputs are
+            # byte-identical with a warm or empty cache. `man ld`: -cache_path_lto, -prune_after_lto,
+            # -max_relative_cache_size_lto. --linkopt applies to the target configuration only.
+            '--linkopt=-Wl,-cache_path_lto,{}'.format(LTO_CACHE_DIR),
+            '--linkopt=-Wl,-prune_after_lto,1209600',
+            '--linkopt=-Wl,-max_relative_cache_size_lto,5',
 
             # --num-threads 0 forces swiftc to generate one object file per module; it:
             # 1. resolves issues with the linker caused by the swift-objc mixing.
