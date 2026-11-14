@@ -234,3 +234,10 @@ marked (check) were not re-verified against the code; correct them on the next c
 - What: after launch and after each chat wallpaper change, `TelegramRootController` asks `WallpaperPatternPrewarmer` (WallpaperBackgroundNode) to render the pattern of the chat wallpaper on a utility queue into `WallpaperBackgroundNodeImpl.cachedPatternImages` (shared slot) under the key the chat looks up. The first chat open then hits the cache instead of drawing the pattern (~36 ms) on the main thread. Always on (the Debug Settings switch was removed 2026-11-08).
 - Upstream: new file `WallpaperPatternPrewarmPlan.swift`; additions at the end of `WallpaperBackgroundNode.swift` (an extension of `WallpaperBackgroundNodeImpl` and `WallpaperPatternPrewarmer`); a few lines in `TelegramRootController.swift`. The pattern colour rule is duplicated from `loadPatternForSizeIfNeeded`; keep them in step on sync (a difference only makes the chat miss).
 - Not done: per-chat wallpapers, iPad, landscape, plain and gradient wallpapers (nothing to render or size unknown).
+
+### Voice transcription: SpeechAnalyzer (experiment)
+- What: on-device voice-message transcription reads the file in place (no tmp copy); an iOS 26 `SpeechTranscriber`/`SpeechAnalyzer` path exists behind the default `NanogramSpeechAnalyzer` (off), with SFSpeechRecognizer as fallback.
+- Why: tmp leak per transcription; Apple's newer model is more accurate and runs out of process.
+- Where: `submodules/Media/LocalAudioTranscription`.
+- Upstream: no (upstream keeps the copy and SFSpeechRecognizer).
+- Sync: take upstream's file, re-apply the in-place path and the confidence guard.

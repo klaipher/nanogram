@@ -4,6 +4,8 @@ Newest first. Internal notes for each TestFlight build; testers see the What to 
 
 ## Unreleased
 
+- **Voice transcription** (IOS-SPEECH-1). `LocalAudioTranscription` reads the converted m4a in place instead of copying it into `NSTemporaryDirectory` (the copy was never deleted), and an empty transcription gets confidence 0 instead of NaN (`averageTranscriptionConfidence`). New iOS 26 path through `SpeechTranscriber`/`SpeechAnalyzer.analyzeSequence(from:)` with `AssetInventory` model download in the background (missing model or locale falls back to SFSpeechRecognizer on-device); off unless the launch argument/default `NanogramSpeechAnalyzer` is set. Still behind the experimental `localTranscription` switch. Tests: `//submodules/Media/LocalAudioTranscription:LocalAudioTranscriptionTests`.
+
 ## 13.2 (202611132038) — 2026-11-13 — 3c4e6399
 
 TestFlight build (processed VALID, What to Test set). Previous TestFlight build: 202611121002 (25edb39c); changes since are `git log 800c5c6a..3c4e6399` (32 commits). Source: the owner's MetricKit export (memory-limit kill opening a 1-page PDF, the language prompt on the next launch) and a tester's report that a call to a locked iPhone showed nothing; plan with 83 finding ids, statuses below.
