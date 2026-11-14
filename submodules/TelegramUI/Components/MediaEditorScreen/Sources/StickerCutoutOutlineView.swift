@@ -3,6 +3,7 @@ import UIKit
 import Display
 import CoreImage
 import MediaEditor
+import ImageObjectSeparation
 
 private var previousBeginTime: Int = 3
 
@@ -300,7 +301,7 @@ func findEdgePoints(in pixelBuffer: CVPixelBuffer) -> [CGPoint] {
 }
 
 private func getEdgesBitmap(_ ciImage: CIImage) -> CVPixelBuffer? {
-    let context = CIContext(options: nil)
+    let context = SharedStickerCIContext.context
     guard let contourCgImage = context.createCGImage(ciImage, from: ciImage.extent) else {
         return nil
     }
