@@ -63,7 +63,9 @@ fi
 # could change the build without changing the action key).
 WORKSRC="$DD/src"
 mkdir -p "$WORKSRC"
-/usr/bin/rsync -a \
+# --copy-links: libogg, libwebp and opus files are relative symlinks into the shared submodules, which would dangle in
+# the copy ("'webp/decode.h' file not found").
+/usr/bin/rsync -a --copy-links \
   --exclude '.build/' --exclude '.swiftpm/' --exclude 'xcuserdata/' --exclude 'DerivedData/' \
   --exclude '/BUILD' --exclude '.gitignore' --exclude '/Tests/' \
   --exclude '/project-dev.yml' --exclude '/tgwatch-dev.xcodeproj/' \

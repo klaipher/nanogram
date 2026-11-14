@@ -4,6 +4,10 @@ Newest first. Internal notes for each TestFlight build; testers see the What to 
 
 ## Unreleased
 
+- **Build fixes (keep-going build)**:
+  - FlatBuffers and WalletEngineFFI: `-suppress-warnings` removed. It conflicts with the global `-Wwarning DeprecatedDeclaration` Swift copt.
+  - The Watch compile copies its sources with `rsync --copy-links`. The libwebp, libogg and opus files are relative symlinks into the shared submodules and dangled in the temporary copy.
+
 - **Build fixes from the first App Store build of this round**:
   - `.bazelrc`: rules_rust pipelined compilation is off. Under `--spawn_strategy=standalone`, the .rmeta and .rlib actions both write the .rmeta, and the second fails with "not writeable".
   - `third-party/td/build-td-bazel.sh`: `-DCCACHE_FOUND=OFF`. TDLib's CMake finds Homebrew's ccache, but the genrule's PATH lacks it (exit 127).

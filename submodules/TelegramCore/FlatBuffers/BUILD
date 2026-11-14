@@ -6,9 +6,7 @@ swift_library(
     srcs = glob([
         "Sources/**/*.swift",
     ]),
-    copts = [
-        "-suppress-warnings",
-    ],
+    # No -suppress-warnings: it conflicts with the global "-Wwarning DeprecatedDeclaration" copt (.bazelrc).
     deps = [
     ],
     visibility = [

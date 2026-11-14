@@ -256,7 +256,7 @@ swift_library(
     copts = [
         "-swift-version",
         "6",
-        "-suppress-warnings",
+        # No -suppress-warnings: it conflicts with the global "-Wwarning DeprecatedDeclaration" copt (.bazelrc).
     ],
     deps = [":wallet_engine_ffi"],
     visibility = ["//visibility:public"],
