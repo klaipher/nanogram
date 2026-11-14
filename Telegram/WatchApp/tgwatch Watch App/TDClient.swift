@@ -282,6 +282,7 @@ final class TDClient {
                         coalesceUpdates: true
                     )
                     chatList?.setProjectionPaused(!isSceneActive)
+                    configureWidgetSnapshot()
                 }
             }
             switch mapped {
@@ -448,6 +449,30 @@ final class TDClient {
                 }
             }
         }
+    }
+
+    // MARK: - Widget summary (IOS-WATCH-WIDGET-1)
+
+    private var widgetPublisher: WidgetSnapshotPublisher?
+
+    /// Feeds the App Group summary from the chat list. Flag `widgetSnapshot`; a no-op without the App Group.
+    private func configureWidgetSnapshot() {
+        guard WatchFeatureFlags.isEnabled(.widgetSnapshot) else { return }
+        let publisher = WidgetSnapshotPublisher(store: .appGroup())
+        guard publisher.isAvailable else {
+            logger.notice("widget snapshot enabled but the App Group is missing from the entitlements")
+            return
+        }
+        widgetPublisher = publisher
+        chatList?.onProjected = { [weak self, weak publisher] in
+            publisher?.requestPublish { [weak self] in self?.chatList?.unreadInputs() ?? [] }
+        }
+    }
+
+    /// Background refresh: writes the summary now, from the cache, even though the projection is paused.
+    func publishWidgetSnapshotNow() {
+        guard let chatList else { return }
+        widgetPublisher?.publishNow(inputs: chatList.unreadInputs())
     }
 
     private func sendReadyOptions() {

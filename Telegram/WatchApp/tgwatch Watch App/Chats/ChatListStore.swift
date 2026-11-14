@@ -358,6 +358,21 @@ final class ChatListStore {
             mainChatListPosition: mainChatListPosition,
             currentFolder: currentFolder
         ) { [index] list in index.unreadCount(ChatListKey(list)) }
+        onProjected?()
+    }
+
+    /// Called after every projection (IOS-WATCH-WIDGET-1: the widget summary is rebuilt from it).
+    var onProjected: (() -> Void)?
+
+    /// The main list in display order, reduced to what the widget summary needs. Reads the cache, not the
+    /// projection, so it is right while the projection is paused (wrist down, background refresh). O(chats): call it
+    /// at most every few seconds.
+    func unreadInputs() -> [UnreadChatInput] {
+        index.top(.main, limit: Int.max).compactMap { entry in
+            chatCache[entry.chatId].map {
+                UnreadChatInput(title: $0.title, unread: $0.unreadCount, isMuted: $0.muteFor > 0)
+            }
+        }
     }
 
     /// Count of cached chats with a position in `folder`. Used to decide whether the

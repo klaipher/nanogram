@@ -62,6 +62,7 @@ mkdir -p "$WORKSRC"
   --exclude '.build/' --exclude '.swiftpm/' --exclude 'xcuserdata/' --exclude 'DerivedData/' \
   --exclude '/BUILD' --exclude '.gitignore' --exclude '/Tests/' \
   --exclude '/project-dev.yml' --exclude '/tgwatch-dev.xcodeproj/' \
+  --exclude '/project-widget.yml' --exclude '/tgwatch-widget.xcodeproj/' --exclude '/WatchWidget/' \
   --exclude '/Packages/TLottieKit/Frameworks/' \
   "$SRC/" "$WORKSRC/"
 

@@ -18,6 +18,10 @@ filegroup(
             "Tests/**",
             "project-dev.yml",
             "tgwatch-dev.xcodeproj/**",
+            # The widget variant (generated project, extension sources, owner steps) is not part of the embedded build.
+            "project-widget.yml",
+            "tgwatch-widget.xcodeproj/**",
+            "WatchWidget/**",
         ],
     ),
     visibility = ["//Telegram:__pkg__"],

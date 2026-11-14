@@ -49,6 +49,8 @@ targets:
       - path: Assets/SampleStickers
         buildPhase: resources
         type: folder
+      # Also compiled into the widget extension of the widget variant (project-widget.yml).
+      - path: Shared
     info:
       path: tgwatch Watch App/Info.plist
       properties:
