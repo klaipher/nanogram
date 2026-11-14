@@ -107,7 +107,7 @@ group noise mode 0) under the old keys without having chosen it. Each changed se
 keys are no longer read or written, so only a choice made after this change counts. Tests: `CallsSwitchesTests`.
 The tgcalls engine itself still starts with every atomic OFF; `PresentationCallManager` sets them from the settings
 (whose defaults are ON) before the first call. The Mac pins the same core: its own Debug Settings and defaults are
-separate and unchanged until the Mac lane decides (docs/feature-parity.md has the row).
+separate and unchanged until the Mac lane decides (shared/feature-parity.md has the row).
 
 ## Audio route requests (speaker toggle), 2026-11-06
 

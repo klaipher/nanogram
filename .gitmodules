@@ -60,3 +60,8 @@
 	path = third-party/webp/libwebp
 	url = https://github.com/webmproject/libwebp.git
 	shallow = true
+[submodule "shared"]
+	path = shared
+	url = https://github.com/klaipher/nanogram-deps.git
+	branch = main
+	shallow = true

@@ -13,7 +13,8 @@
 #   lts-ref <ref>           the history-free LTS branch used while iOS main is ahead of the Mac UI
 #   lag commits=N days=N block-from=DATE   limit for shared-path commits on the reference that the pin lacks;
 #                           warning until block-from, then an error
-#   pin <name> ios=<path in the iOS repo> mac=<path in the Mac repo> [external] [warn-until=DATE]
+#   pin <name> ios=<path in the iOS repo> mac=<path in the Mac repo> [android=<path in the Android repo>] [external] [warn-until=DATE]
+#   lib <name> [ios=<path>] [mac=<path>] [android=<path>]   a library whose single pin lives in shared/shared-libraries.json
 #   share <path>            a shared path inside the core
 #   webrtc-root mac=<dir> ios=<dir>   where the WebRTC sources start in the tg_owt and webrtc trees
 #   allow core|webrtc <path-prefix> [until=DATE] | reason   an intended difference, with its reason
@@ -33,10 +34,23 @@ reference origin/main
 lts-ref origin/mac/core-lts
 lag commits=20 days=7 block-from=2026-11-18
 
-pin tgcalls ios=submodules/TgVoipWebrtc/tgcalls mac=submodules/tgcalls
-pin tlottie ios=submodules/tlottie/tlottie mac=submodules/tlottie external
+pin tgcalls ios=submodules/TgVoipWebrtc/tgcalls mac=submodules/tgcalls android=TMessagesProj/jni/tgcalls warn-until=2026-12-31
+pin tlottie ios=submodules/tlottie/tlottie mac=submodules/tlottie external android=TMessagesProj/jni/tlottie
 pin webrtc ios=third-party/webrtc/webrtc mac=submodules/tg_owt
 webrtc-root mac=src ios=
+
+# Libraries pinned by shared/shared-libraries.json (klaipher/nanogram-deps), one commit for iOS, Mac and Android.
+# `tools/dev/native/check_shared.py` (pre-push) verifies the pins; parity only checks that the names exist there.
+lib ffmpeg ios=submodules/ffmpeg/Sources/FFMpeg/ffmpeg-9.0.2 mac=submodules/ffmpeg/Sources/FFMpeg/ffmpeg-9.0.2 android=TMessagesProj/jni/third_party/ffmpeg
+lib boost-regex ios=third-party/boost_regex/regex mac=third-party/boost_regex/regex android=TMessagesProj/jni/third_party/boost-regex
+lib wamr ios=third-party/wamr/wamr android=TMessagesProj/jni/third_party/wamr
+lib ogg ios=third-party/ogg/ogg mac=third-party/ogg/ogg android=TMessagesProj/jni/third_party/xiph/ogg
+lib opusfile ios=third-party/opusfile/opusfile mac=third-party/opusfile/opusfile android=TMessagesProj/jni/third_party/xiph/opusfile
+lib libwebp ios=third-party/webp/libwebp mac=third-party/webp/libwebp
+lib libvpx ios=third-party/libvpx/libvpx mac=third-party/libvpx/libvpx android=TMessagesProj/jni/third_party/libvpx
+lib dav1d ios=third-party/dav1d/dav1d mac=third-party/dav1d/dav1d android=TMessagesProj/jni/third_party/dav1d
+lib td ios=third-party/td/td mac=third-party/td/td android=TMessagesProj/jni/td
+lib mtproto-engine ios=third-party/mtproto-engine mac=third-party/mtproto-engine
 
 share submodules/SSignalKit
 share submodules/Postbox
@@ -90,7 +104,6 @@ share submodules/HardenedMedia
 # A change to one side must land on the other the same day.
 mirror ios=submodules/AnimatedStickerNode/VP9Hardware/Sources/VP9HardwareDecoder.swift mac=packages/VP9Hardware/Sources/VP9Hardware/VP9HardwareDecoder.swift
 mirror ios=submodules/AnimatedStickerNode/VP9Hardware/Sources/WebMStickerDemuxer.swift mac=packages/VP9Hardware/Sources/VP9Hardware/WebMStickerDemuxer.swift
-mirror ios=docs/feature-parity.md mac=docs/feature-parity.md
 
 # Intended WebRTC differences
 allow webrtc api/peer_connection_interface.cc | iOS TGCALLS seam (disable_payload_type_demuxing, external transport security, dtls factory)

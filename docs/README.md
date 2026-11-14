@@ -8,7 +8,7 @@ it still explains a decision.
 
 | Topic | Document |
 |---|---|
-| Development pipeline, shared-code rule, disk and worktree hygiene | [development-pipeline.md](development-pipeline.md) |
+| Development pipeline, shared-code rule, disk and worktree hygiene | [shared/development-pipeline.md](../shared/development-pipeline.md) |
 | Change records (`CHANGELOG.md`, `NANOGRAM-CHANGES.md`) in every repository and fork | [fork-records.md](fork-records.md) |
 | Crash guardrails, lint, pre-push hook | [guardrails.md](guardrails.md) |
 | Local development, what the fork changes, upstream sync, parity with the Mac | [local-development.md](local-development.md) |

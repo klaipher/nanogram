@@ -496,6 +496,10 @@ def cmd_pre_push(args):
     if os.path.exists(parity_script) and subprocess.run([sys.executable, parity_script, 'push', '--root', ROOT, args.remote],
                                                         input=pushed, text=True).returncode != 0:
         return 1
+    shared_script = os.path.join(ROOT, 'tools', 'dev', 'native', 'check_shared.py')
+    if os.path.exists(shared_script) and subprocess.run([sys.executable, shared_script, '--side', 'ios', '--quiet'], cwd=ROOT).returncode != 0:
+        print('tglint: shared library pins differ from shared/shared-libraries.json; push stopped (see the lines above)', file=sys.stderr)
+        return 1
     all_paths = []
     blocking = 0
     range_paths = []
