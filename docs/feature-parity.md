@@ -57,7 +57,7 @@ upstream gap (official Telegram has the same gap on that platform).
 | Communication notifications (avatars) | yes | partial: MAS edition only | Entitlement is in mac:nanogram/entitlements/Nanogram-MAS*.entitlements, not in Direct |
 | Widgets | yes (ios:Telegram/WidgetKitWidget) | gap | mac:packages/WidgetUI is in-app cards, not WidgetKit |
 | Share extension | yes | yes | ios:Telegram/Share; mac:TelegramShare |
-| Siri / App Intents | partial: legacy SiriKit intents only; App Intents not started (I-31) | yes, ours: Open Chat, Send Message, Focus filter (mac:packages/ChatAppIntents) | Parity gap; iOS is behind |
+| Siri / App Intents | partial: legacy SiriKit intents only; App Intents phase 1 written behind Debug > Glanceables, not built or device-tested (I-31) | yes, ours: Open Chat, Send Message, Focus filter (mac:packages/ChatAppIntents) | Parity gap; iOS is behind |
 | Spotlight | yes (I-32) | yes, ours (mac:NanogramRuntime/SpotlightPeerIndex.swift) | |
 | Picture-in-picture | yes, system | yes, Telegram's own; system PiP behind a switch (mac:NanogramRuntime/SystemPictureInPicture.swift) | |
 | Accessibility | yes, upstream | partial: upstream's VoiceOver plan (mac:docs/accessibility/PLAN.md, ios-parity.md) | Upstream work in progress; not ours to fill |
@@ -120,7 +120,7 @@ upstream gap (official Telegram has the same gap on that platform).
 ## 5. Later, with effort estimates
 
 - iOS on-device transcription: port the Mac SpeechAnalyzer chain and the "on-device" label (M, 1-2 days).
-- iOS App Intents phase 1: reuse the Mac ChatAppIntents logic for Open Chat, Send Message, Focus filter and App Shortcuts
+- iOS App Intents phase 1 (written behind Debug > Glanceables, branch mod/ios-glance: Open Chat, Open and Send to Saved Messages, App Shortcuts, iOS 18 control; not built or tested on a device; still open: Focus filter, Send Message to any chat): originally planned as reuse the Mac ChatAppIntents logic for Open Chat, Send Message, Focus filter and App Shortcuts
   (L, 3-5 days; needs the App Intents metadata step in Bazel).
 - Move VP9Hardware into the shared core and build the Mac from the submodule (S-M, needs a build).
 - Mac log export: add storage stats and share-extension logs (S).
