@@ -11,7 +11,7 @@ strict_swift_library(
 )
 
 # Runs on the Mac: the module needs only the standard library.
-# `./build-input/bazel-9.3.1-darwin-arm64 test //submodules/NanogramBranding:NanogramBrandingTests`
+# `./build-input/bazel-9.3.2-darwin-arm64 test //submodules/NanogramBranding:NanogramBrandingTests`
 strict_swift_test(
     name = "NanogramBrandingTests",
     srcs = glob(["Tests/**/*.swift"]),

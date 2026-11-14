@@ -59,3 +59,7 @@ One module, `tools/dev/worktree/worktree.py`, the same in both repos. Nothing is
 ## Compilation cache (Xcode 27)
 
 Debug builds use compilation caching with one CAS for every checkout. `tg build` creates the CAS directory before a Debug build, so it exists even before the first cached compile. `COMPILATION_CACHE_LIMIT_SIZE` is set in bytes; `xcodebuild -showBuildSettings` reports `0` for the target whenever caching is on (observed 2026-11-04 with Xcode 27.2; whether the compiler then applies the value is not verified), so the 10 GB cap is also enforced by the `compilation-cache` category above.
+
+## ThinLTO linker cache (iOS release links)
+
+`~/.cache/telegram-ios/lto-cache` is written by `ld` (`-cache_path_lto`, passed by `Make.py` for release configurations only; see `docs/build-and-test.md`). The linker prunes it itself: entries unused for 14 days (`-prune_after_lto 1209600`, the Bazel disk cache's age) and never more than 5 percent of the free disk space (`-max_relative_cache_size_lto 5`). `cache-policy.json` has no category for it, on purpose: the file is identical in both repos and the Mac gets this cache from Xcode. Deleting the directory is always safe (the next release link is just cold); the linked binary is byte-identical either way.

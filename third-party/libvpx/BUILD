@@ -62,6 +62,7 @@ genrule(
         PLATFORM_HEADER_DIR="arm64-linux-gcc"
     else
         echo "Unsupported architecture $(TARGET_CPU)"
+        exit 1
     fi
 
     BUILD_DIR="$(RULEDIR)/build_$${BUILD_ARCH}"
@@ -96,7 +97,8 @@ genrule(
     "\n".join([
         "cp -f \"$$BUILD_DIR/VPX.framework/{}\" \"$(location Public/vpx/lib{}.a)\"".format(lib, lib) for lib in libs
     ]) +
-    "\n" + "cp -f \"$$BUILD_DIR/VPX.framework/Headers/vpx/$$PLATFORM_HEADER_DIR/vpx_config.h\" \"$(location Public/vpx/vpx_config.h)\"",
+    "\n" + "cp -f \"$$BUILD_DIR/VPX.framework/Headers/vpx/$$PLATFORM_HEADER_DIR/vpx_config.h\" \"$(location Public/vpx/vpx_config.h)\"" +
+    "\n" + "rm -rf \"$$BUILD_DIR\"",
     outs = ["Public/vpx/" + x for x in headers] +
     ["Public/vpx/vpx_config.h"] +
     ["Public/vpx/lib{}.a".format(x) for x in libs],

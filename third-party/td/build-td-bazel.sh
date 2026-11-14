@@ -22,8 +22,8 @@ cd "$BUILD_DIR"
 # Generate source files
 mkdir native-build
 cd native-build
-cmake -DTD_GENERATE_SOURCE_FILES=ON ../td
-cmake --build . -- -j$(sysctl -n hw.ncpu)
+cmake -G Ninja -DTD_GENERATE_SOURCE_FILES=ON ../td
+cmake --build . --parallel "$(sysctl -n hw.ncpu)"
 cd ..
 
 if [ "$ARCH" = "arm64" ]; then
@@ -58,5 +58,5 @@ echo "set(CMAKE_SYSTEM_NAME Darwin)" >> toolchain.cmake
 echo "set(CMAKE_SYSTEM_PROCESSOR aarch64)" >> toolchain.cmake
 echo "set(CMAKE_C_COMPILER $(xcode-select -p)/Toolchains/XcodeDefault.xctoolchain/usr/bin/clang)" >> toolchain.cmake
 
-cmake -G"Unix Makefiles" -DCMAKE_TOOLCHAIN_FILE=toolchain.cmake -DCMAKE_OSX_SYSROOT=${IOS_SYSROOT[0]} ../td $options
-make tde2e -j$(sysctl -n hw.ncpu)
+cmake -G Ninja -DCMAKE_TOOLCHAIN_FILE=toolchain.cmake -DCMAKE_OSX_SYSROOT=${IOS_SYSROOT[0]} ../td $options
+cmake --build . --parallel "$(sysctl -n hw.ncpu)" --target tde2e

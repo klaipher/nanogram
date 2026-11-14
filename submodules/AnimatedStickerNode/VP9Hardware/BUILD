@@ -12,7 +12,7 @@ strict_swift_library(
 
 # Host (macOS) test: Apple silicon Macs have the VP9 decoder and the simulator has none, so this
 # is where hardware frames are compared with libvpx. Run with
-# `./build-input/bazel-9.3.1-darwin-arm64 test //submodules/AnimatedStickerNode/VP9Hardware:VP9HardwareTests`.
+# `./build-input/bazel-9.3.2-darwin-arm64 test //submodules/AnimatedStickerNode/VP9Hardware:VP9HardwareTests`.
 strict_swift_test(
     name = "VP9HardwareTests",
     srcs = glob(["Tests/**/*.swift"]),

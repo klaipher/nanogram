@@ -18,7 +18,7 @@ swift_library(
 )
 
 # Host (macOS) test: the module needs nothing but Foundation and UrlEscaping.
-# Run with `./build-input/bazel-9.3.1-darwin-arm64 test //submodules/UrlWhitelist:UrlWhitelistTests`.
+# Run with `./build-input/bazel-9.3.2-darwin-arm64 test //submodules/UrlWhitelist:UrlWhitelistTests`.
 swift_test(
     name = "UrlWhitelistTests",
     srcs = [

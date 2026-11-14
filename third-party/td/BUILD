@@ -28,7 +28,6 @@ genrule(
     srcs = [
         "build-td-bazel.sh",
         ":td_sources",
-        "@cmake_tar_gz//file",
         "//third-party/boringssl:crypto",
     ] + [
         "//third-party/boringssl:{}".format(header) for header in crypto_headers
@@ -45,16 +44,15 @@ genrule(
         BUILD_ARCH="macos_arm64"
     else
         echo "Unsupported architecture $(TARGET_CPU)"
+        exit 1
     fi
 
     BUILD_DIR="$(RULEDIR)/build_$${BUILD_ARCH}"
     rm -rf "$$BUILD_DIR"
     mkdir -p "$$BUILD_DIR"
 
-    CMAKE_DIR="$$(pwd)/$$BUILD_DIR/cmake"
-    rm -rf "$$CMAKE_DIR"
-    mkdir -p "$$CMAKE_DIR"
-    tar -xzf "$(location @cmake_tar_gz//file)" -C "$$CMAKE_DIR"
+    CMAKE_BIN_DIR="$$(pwd)/$$(dirname $(execpath @cmake//:cmake))"
+    NINJA_BIN_DIR="$$(pwd)/$$(dirname $(execpath @ninja//:ninja))"
 
     OPENSSL_BASE_DIR="$$(pwd)/$$BUILD_DIR"
     OPENSSL_DIR="$$OPENSSL_BASE_DIR/openssl"
@@ -82,7 +80,7 @@ genrule(
 
     mkdir -p "$$BUILD_DIR/Public/td"
 
-    PATH="$$CMAKE_DIR/cmake-4.1.2-macos-universal/CMake.app/Contents/bin:$$PATH" sh $$BUILD_DIR/build-td-bazel.sh $$BUILD_ARCH "$$BUILD_DIR/td" "$$BUILD_DIR" "$$OPENSSL_DIR"
+    PATH="$$CMAKE_BIN_DIR:$$NINJA_BIN_DIR:$$PATH" sh $$BUILD_DIR/build-td-bazel.sh $$BUILD_ARCH "$$BUILD_DIR/td" "$$BUILD_DIR" "$$OPENSSL_DIR"
     """ +
     "\n".join([
         "cp -f \"$$BUILD_DIR/td/tde2e/{}\" \"$(location Public/td/{})\"".format(header, header) for header in headers
@@ -91,12 +89,18 @@ genrule(
     "\n".join([
         "cp -f \"$$BUILD_DIR/build/tde2e/libtde2e.a\" \"$(location Public/td/lib/libtde2e.a)\"",
         "cp -f \"$$BUILD_DIR/build/tdutils/libtdutils.a\" \"$(location Public/td/lib/libtdutils.a)\"",
-    ]),
+    ]) +
+    "\n" + "rm -rf \"$$BUILD_DIR\"",
     outs = [
         "Public/td/" + x for x in headers
     ] +
     [
         "Public/td/lib/lib{}.a".format(x) for x in libs
+    ],
+    tools = [
+        "@cmake//:all",
+        "@cmake//:cmake",
+        "@ninja//:ninja",
     ],
     visibility = [
         "//visibility:public",

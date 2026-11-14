@@ -21,6 +21,22 @@ The build needs `TELEGRAM_CODESIGNING_GIT_PASSWORD` in the environment. It is se
 
 **Platform hardening (2026-11-04).** (1) Every `ios_extension` in `Telegram/BUILD` has explicit entitlements built by `extension_entitlements` in `Telegram/entitlements.bzl`: the app group and the extension's own `application-identifier`, nothing else, so no extension inherits the provisioning profile's `TEAM.*` keychain group any more (the passcode shared group is the app group, which stays reachable; the wallet's private group is the main app's and now cannot be read by an extension at all). Notification Service adds only the filtering entitlement (when `notification_filtering_enabled`), which its profile carries; communication notifications stay on the main app alone, because the extension profiles (official Telegram's included) do not grant that key and asking for it breaks the extension's install and upload, while sender avatars work from the main app's entitlement. `tools/dev/tests/test_platform_hardening.py` pins this. (2) Apple Enhanced Security: `--//Telegram:enhancedSecurity` adds `hardened-process`, version `1`, `checked-allocations` and its `soft-mode` to the app, Notification Service and Share; `--//Telegram:enhancedSecurityRestrictions` adds `dyld-ro` and `platform-restrictions-string` 2 (no soft mode). Both default off in Bazel: the App IDs need the Enhanced Security capability in the developer portal first (App Store Connect's `capabilityType` list has no Enhanced Security value, so it cannot be enabled by API) and the profiles regenerated, otherwise signing fails. Pass them with `--bazelArguments`. `tg device` adds `--//Telegram:enhancedSecurity` when the development profiles of the app, NotificationService and Share grant `hardened-process`; `tg testflight` requires it (it stops before building if a profile lacks it) and `device_signing.py testflight` checks the exported App Store build and its distribution profiles before the upload (`TG_TF_ENHANCED_SECURITY=0` ships without; RH1). Raise the version string to `2` for guard objects after a clean soft-mode cycle. (3) `.bazelrc` compiles all C, C++ and Objective-C with `-ftrivial-auto-var-init=zero`, `_LIBCPP_HARDENING_MODE_FAST` and `-fstack-protector-strong`; libraries built by their own scripts keep their own flags. (4) Voice Calls privacy has "Show Calls in Phone Recents" (`VoiceCallSettings.showCallsInRecents`, default on, mirrored to `UserDefaults` by `CallKitPrivacy` so a cold-start VoIP push sees it): off sets `CXProviderConfiguration.includesCallsInRecents = false` and stops the Siri donations of calls (the app's outgoing one, and the Notification Service's ringing-call one via `IncomingCallCommunication.donatesCall`); that donation also waits for the same no-passcode check the message donations use.
 
+**Native-library builds (genrules in `third-party/*` and `submodules/ffmpeg`).** The build tools are pinned external repos in
+`MODULE.bazel`, extracted once and listed in each genrule's `tools`: CMake 4.5.0 (`@cmake//:cmake`, only the CLI and its
+Modules/Templates), Ninja 1.13.2 (`@ninja//:ninja`), Meson 1.6.0 (`@meson//:meson.py`). A genrule puts their absolute
+directories at the front of `PATH`; nothing resolves a host `cmake`. The CMake-built libraries (libwebp, libjpeg-turbo,
+libjxl, td, yasm, flatc) use `-G Ninja` and `cmake --build . --parallel N`. Every genrule fails on an unknown
+`$(TARGET_CPU)` and deletes its scratch tree (source copy, build tree, objects) once the declared outputs are copied out.
+Each genrule's action key also carries `--action_env=NANOGRAM_XCODE_ID=xcode-<build>.iphoneos-<sdk build>.iphonesimulator-<sdk build>`,
+which `Make.py` computes from the Xcode that `xcode-select` selects, so an Xcode or SDK update re-runs the native libraries
+instead of serving stale ones from the disk cache. Project-generation builds (`Make.py generate`) carry it too. A bumped tool version changes the genrule inputs and rebuilds the libraries once.
+`-DCMAKE_POLICY_VERSION_MINIMUM=3.5` is the fix if a vendored `CMakeLists.txt` stops configuring under a newer CMake.
+
+**Release links** (with `--sandbox` they also get `--sandbox_writable_path` for the cache dir) pass `-Wl,-cache_path_lto,~/.cache/telegram-ios/lto-cache` (with `-prune_after_lto` 14 days and
+`-max_relative_cache_size_lto` 5 percent), so a relink reuses the ThinLTO backend results of unchanged modules. The
+linker prunes the directory itself (see `docs/cache-cleanup.md`). `.bazelrc` also turns on rules_rust pipelined compilation.
+Measure all of this with `tools/dev/tg profile` (`docs/bazel-build-profiling.md`).
+
 **Running tests.** `Make.py test` runs Bazel test targets (same config + codesigning as `build`, forced `debug_sim_arm64`). It accepts `--target <label>` (added 2026-06-19; default `Tests/AllTests`) so a single `ios_unit_test` can run in isolation, e.g.:
 
 ```sh
@@ -33,7 +49,7 @@ source ~/.zshrc 2>/dev/null; python3 build-system/Make/Make.py --overrideXcodeVe
 The first app-side `ios_unit_test` is `//submodules/TextFormat:TextFormatTests` (the mention/date link codecs). An `ios_unit_test` here needs an `ios_test_runner` pinned to a real device/OS — the default runner picks an invalid device and the test process exits 15. Every runner takes `device_type = TEST_SIMULATOR_DEVICE, os_version = TEST_SIMULATOR_OS` from `//build-system/bazel-utils:test_simulator.bzl` (iPhone 17 / iOS 27.2, the only simulator runtime installed); update the pair there, not per BUILD file, after an Xcode update. **Run new targets via `--target`, not the default suite:** `Tests/AllTests` currently references a dangling `//submodules/TgVoipWebrtc:TgCallsTests`, so the default would fail to build until that suite is repaired.
 
 Pure C++ units have host `cc_test`s that bypass Make.py entirely (macOS build, no codesigning):
-`./build-input/bazel-9.3.1-darwin-arm64 test //submodules/TgVoipWebrtc:streaming_audio_renderer_test --test_output=all`
+`./build-input/bazel-9.3.2-darwin-arm64 test //submodules/TgVoipWebrtc:streaming_audio_renderer_test --test_output=all`
 (likewise `:mtproto_ice_transport_test`). `//third-party/libprisma:SyntaxHighlighterTests` (added
 2026-09-25) is the same kind of target outside tgcalls: it compiles only libprisma's pure-C++ core
 (not `Syntaxer.mm`, which needs UIKit) plus header-only `boost_regex`, loads the real shipped
@@ -51,11 +67,11 @@ plus 1024, thread-safe `const tokenize`, lazy pattern compile, 12 more languages
 explicitly in `submodules/TgVoipWebrtc/BUILD` (group sources are not globbed), and must be added to the
 `exclude:` list in `tgcalls/Package.swift` so SwiftPM does not compile their `main()`. The first run compiles
 WebRTC for the host (~2.5 min); later runs take seconds. Note the binary is version-stamped and
-arch-suffixed (`bazel-9.3.1-darwin-arm64` since 2026-09-14, was `bazel-8.4.2-darwin-arm64`), not the
+arch-suffixed (`bazel-9.3.1-darwin-arm64` since 2026-09-14, moved to 9.3.2 in the build-system modernization, was `bazel-8.4.2-darwin-arm64`), not the
 bare `bazel-8.4.2` the tgcalls CLAUDE.md names; `versions.json` is the single pin.
 
 `//submodules/MetalEngine:MetalPipelineCacheTests` (added 2026-10-01) is the first host `swift_test`, run
-the same way (`… bazel-9.3.1-darwin-arm64 test //submodules/MetalEngine:MetalPipelineCacheTests`; one test
+the same way (`… bazel-9.3.2-darwin-arm64 test //submodules/MetalEngine:MetalPipelineCacheTests`; one test
 via `--test_filter=MetalPipelineCacheTests/<name>`, comma lists are not supported). It compiles only
 `MetalPipelineCache.swift` + `MetalBinaryArchiveSerialization.swift` and runs on the Mac's GPU, because
 the simulator has no binary archives (serializing fails an assertion there). It pins an **Apple bug**: a

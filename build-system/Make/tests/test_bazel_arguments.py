@@ -25,6 +25,10 @@ class BazelArgumentsTest(unittest.TestCase):
         patcher.start()
         self.addCleanup(patcher.stop)
 
+        identity_patcher = mock.patch.object(Make, 'get_xcode_sdk_identity', lambda: '')
+        identity_patcher.start()
+        self.addCleanup(identity_patcher.stop)
+
         self.calls = []
         call_patcher = mock.patch.object(Make, 'call_executable', lambda args, **kw: self.calls.append(args))
         call_patcher.start()
@@ -68,6 +72,33 @@ class BazelArgumentsTest(unittest.TestCase):
     def test_project_generation_includes_arguments(self):
         self.command_line.add_additional_args('--jobs=4')
         self.assertEqual(self.command_line.get_project_generation_arguments()[-1], '--jobs=4')
+
+    def test_release_links_use_the_thinlto_cache_and_debug_does_not(self):
+        self.command_line.set_configuration('release_arm64')
+        self.command_line.invoke_build()
+        release = self.calls[-1]
+        self.assertIn('--linkopt=-Wl,-cache_path_lto,{}'.format(Make.LTO_CACHE_DIR), release)
+        self.assertIn('--linkopt=-Wl,-prune_after_lto,1209600', release)
+        self.assertIn('--linkopt=-Wl,-max_relative_cache_size_lto,5', release)
+
+        self.command_line.set_configuration('debug_sim_arm64')
+        self.command_line.invoke_build()
+        self.assertFalse([a for a in self.calls[-1] if 'cache_path_lto' in a])
+
+    def test_sandbox_release_build_may_write_the_lto_cache(self):
+        self.command_line.set_enable_sandbox(True)
+        self.command_line.set_configuration('release_arm64')
+        self.command_line.invoke_build()
+        self.assertIn('--sandbox_writable_path={}'.format(Make.LTO_CACHE_DIR), self.calls[-1])
+
+        self.command_line.set_configuration('debug_sim_arm64')
+        self.command_line.invoke_build()
+        self.assertFalse([a for a in self.calls[-1] if 'sandbox_writable_path' in a])
+
+    def test_project_generation_carries_the_xcode_identity(self):
+        with mock.patch.object(Make, 'get_xcode_sdk_identity', lambda: 'xc-1'):
+            args = self.command_line.get_project_generation_arguments()
+        self.assertIn('--action_env=NANOGRAM_XCODE_ID=xc-1', args)
 
 
 if __name__ == '__main__':

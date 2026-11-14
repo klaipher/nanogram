@@ -51,7 +51,6 @@ genrule(
     srcs = [
         "build-libjxl-bazel.sh",
         ":libjxl_sources",
-        "@cmake_tar_gz//file",
     ],
     cmd_bash = 
     """
@@ -69,16 +68,15 @@ genrule(
         BUILD_ARCH="macos_arm64"
     else
         echo "Unsupported architecture $(TARGET_CPU)"
+        exit 1
     fi
 
     BUILD_DIR="$(RULEDIR)/build_$${BUILD_ARCH}"
     rm -rf "$$BUILD_DIR"
     mkdir -p "$$BUILD_DIR"
 
-    CMAKE_DIR="$$(pwd)/$$BUILD_DIR/cmake"
-    rm -rf "$$CMAKE_DIR"
-    mkdir -p "$$CMAKE_DIR"
-    tar -xzf "$(location @cmake_tar_gz//file)" -C "$$CMAKE_DIR"
+    CMAKE_BIN_DIR="$$(pwd)/$$(dirname $(execpath @cmake//:cmake))"
+    NINJA_BIN_DIR="$$(pwd)/$$(dirname $(execpath @ninja//:ninja))"
 
     cp $(location :build-libjxl-bazel.sh) "$$BUILD_DIR/"
 
@@ -88,7 +86,7 @@ genrule(
 
     mkdir -p "$$BUILD_DIR/Public/jxl"
 
-    PATH="$$CMAKE_DIR/cmake-4.1.2-macos-universal/CMake.app/Contents/bin:$$PATH" sh $$BUILD_DIR/build-libjxl-bazel.sh $$BUILD_ARCH "$$BUILD_DIR/libjxl" "$$BUILD_DIR"
+    PATH="$$CMAKE_BIN_DIR:$$NINJA_BIN_DIR:$$PATH" sh $$BUILD_DIR/build-libjxl-bazel.sh $$BUILD_ARCH "$$BUILD_DIR/libjxl" "$$BUILD_DIR"
     """ +
     "\n".join([
         "cp -f \"$$BUILD_DIR/build/lib/include/{}\" \"$(location Public/{})\"".format(header, header) for header in headers
@@ -104,11 +102,17 @@ genrule(
     "\n" +
     "\n".join([
         "cp -f \"$$BUILD_DIR/build/third_party/highway/{}.a\" \"$(location Public/jxl/lib/{}.a)\"".format(lib, lib) for lib in highway_libs
-    ]),
+    ]) +
+    "\n" + "rm -rf \"$$BUILD_DIR\"",
     outs = ["Public/" + x for x in headers] +
     ["Public/jxl/lib/lib{}.a".format(x) for x in libs] +
     ["Public/jxl/lib/{}.a".format(x) for x in brotli_libs] +
     ["Public/jxl/lib/{}.a".format(x) for x in highway_libs],
+    tools = [
+        "@cmake//:all",
+        "@cmake//:cmake",
+        "@ninja//:ninja",
+    ],
     visibility = [
         "//visibility:public",
     ]

@@ -9,7 +9,7 @@ swift_library(
 )
 
 # Host (macOS) test of the report stores: Foundation and CryptoKit only.
-# Run with `./build-input/bazel-9.3.1-darwin-arm64 test //submodules/CrashReporting:CrashReportingTests`.
+# Run with `./build-input/bazel-9.3.2-darwin-arm64 test //submodules/CrashReporting:CrashReportingTests`.
 swift_test(
     name = "CrashReportingTests",
     srcs = glob(["Tests/*.swift"]),

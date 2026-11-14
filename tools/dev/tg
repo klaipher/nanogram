@@ -177,6 +177,11 @@ cmd_build() {
   # those libraries needs `tg build -- --bazelArguments=...` without it. Smaller
   # objects, less disk, faster compiles. Telegram's own code keeps full debug info.
   if [ $release -eq 0 ]; then bazel_args+=("--per_file_copt=^third-party/.*@-gline-tables-only"); fi
+  # Extra Bazel flags for this one build, split on spaces (`tg profile --deep` uses it).
+  if [ -n "${TG_BAZEL_ARGS:-}" ]; then
+    local extra_bazel_args; read -r -a extra_bazel_args <<< "$TG_BAZEL_ARGS"
+    bazel_args+=(${extra_bazel_args[@]+"${extra_bazel_args[@]}"})
+  fi
 
   local make_args=()
   if [ ${#bazel_args[@]} -gt 0 ]; then
@@ -873,6 +878,51 @@ cmd_watch() {
   esac
 }
 
+# tg profile [--keep N] [--deep [build options]]: summarise the profile of the last Bazel build (docs/bazel-build-profiling.md).
+# Bazel writes command.profile.gz on every build (generate_json_trace_profile=auto); this copies it to
+# build-output/profile/<timestamp>.gz (newest N kept, default 10), runs `bazel analyze-profile` (critical path, time
+# per phase, per action type) and says how to open the trace. --deep first runs `tg build <build options>` with
+# --experimental_profile_additional_tasks=worker_borrow,remote_cache_check,local_process_time (a few more events and a
+# larger file), so the summary describes that build.
+cmd_profile() {
+  local deep=0 keep=10
+  while [ $# -gt 0 ]; do
+    case "$1" in
+      --deep) deep=1; shift; break ;;
+      --keep) keep="${2:?--keep needs a number}"; shift 2 ;;
+      *) die "unknown profile option: $1 (usage: tg profile [--keep N] | tg profile --deep [build options])" ;;
+    esac
+  done
+  case "$keep" in ''|*[!0-9]*) die "--keep needs a number" ;; esac
+  if [ $deep -eq 1 ]; then
+    say "Building with extra profile events"
+    TG_BAZEL_ARGS="--experimental_profile_additional_tasks=worker_borrow,remote_cache_check,local_process_time" cmd_build "$@"
+  fi
+  local bazel output_base profile dest stamp
+  bazel="$(bazel_bin)"
+  [ -x "$bazel" ] || die "no Bazel at $bazel; run a build first (tools/dev/tg build)"
+  # Output base from the bazel-out symlink (<output_base>/execroot/<ws>/bazel-out), not from `bazel info`: any extra Bazel
+  # command might overwrite command.profile.gz with its own profile. `bazel info` is only the fallback.
+  output_base=""
+  if [ -L "$ROOT/bazel-out" ]; then
+    output_base="$(readlink "$ROOT/bazel-out")"
+    case "$output_base" in */execroot/*) output_base="${output_base%%/execroot/*}" ;; *) output_base="" ;; esac
+  fi
+  [ -n "$output_base" ] || output_base="$("$bazel" info output_base 2>/dev/null)" || die "bazel info failed; is this checkout built?"
+  profile="$output_base/command.profile.gz"
+  [ -f "$profile" ] || die "no profile at $profile; run a build first (tools/dev/tg build)"
+  stamp="$(date +%Y%m%d-%H%M%S)"
+  mkdir -p "$ROOT/build-output/profile"
+  dest="$ROOT/build-output/profile/$stamp.gz"
+  cp "$profile" "$dest"
+  # Keep the newest $keep copies (cachegc's build_output_logs age covers anything older that is left behind).
+  local old
+  while IFS= read -r old; do rm -f -- "$old" "${old%.gz}.txt"; done < <(ls -1t "$ROOT"/build-output/profile/*.gz | tail -n +$((keep + 1)))
+  say "Profile: $dest ($(size_of "$dest"))"
+  "$bazel" analyze-profile "$dest" | tee "${dest%.gz}.txt"
+  say "Summary saved to ${dest%.gz}.txt. Open $dest in https://ui.perfetto.dev (Open trace file) for the timeline."
+}
+
 cmd_help() {
   cat <<'EOF'
 Usage: tools/dev/tg <command> [options]
@@ -902,6 +952,9 @@ Usage: tools/dev/tg <command> [options]
   build-drift [--module M] [--strict]  Report differences between BUILD and Package.swift of the shared core modules (never fails without --strict)
   perf run|check|record|model  Performance tests with repository baselines per machine model (tools/dev/perfgate.py; docs/profiling.md)
   parity                Fast parity checks against the macOS app: history root, submodule pins pushed (docs/mac-core-paths.txt)
+  profile [--keep N] [--deep [build options]]
+                        Summarise the last Bazel build's profile (critical path, time per phase and action type); keeps
+                        the newest N copies in build-output/profile/ (docs/bazel-build-profiling.md)
   disk                  Show what is using disk space
   clean                 Remove build outputs, keep downloads and caches
   prune [--yes]         Remove all Bazel outputs, the disk cache and DerivedData
@@ -989,6 +1042,7 @@ case "$command" in
   parity) python3 "$ROOT/tools/dev/parity/parity.py" fast --root "$ROOT" "$@" ;;
   build-drift) python3 "$ROOT/tools/dev/lint/buildpkgdrift.py" --root "$ROOT" "$@" ;;
   perf) cmd_perf "$@" ;;
+  profile) cmd_profile "$@" ;;
   disk) cmd_disk "$@" ;;
   clean) cmd_clean "$@" ;;
   prune) cmd_prune "$@" ;;

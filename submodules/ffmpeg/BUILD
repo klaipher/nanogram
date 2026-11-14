@@ -281,6 +281,7 @@ genrule(
             BUILD_ARCH="linux_arm64"
         else
             echo "Unsupported architecture $(TARGET_CPU)"
+            exit 1
         fi
 
         "$$SOURCE_PATH/build-ffmpeg-bazel.sh" "$$VARIANT" "$$BUILD_ARCH" "$$BUILD_DIR" "$$SOURCE_PATH" "$$FFMPEG_VERSION"
@@ -290,7 +291,8 @@ genrule(
         "cp \"$$BUILD_DIR/FFmpeg-iOS/include/{header_path}\" \"$(location Public/{header_path})\"".format(header_path = header_path) for header_path in ffmpeg_header_paths
     ]) + "\n" + "\n".join([
         "cp \"$$BUILD_DIR/FFmpeg-iOS/lib/{lib}\" \"$(location {lib})\"".format(lib = lib) for lib in ffmpeg_libs
-    ]),
+    ]) +
+    "\n" + "rm -rf \"$$BUILD_DIR\"" + "\n" + "rm -rf \"$$SOURCE_PATH\"",
     outs = [
         "Public/third_party/ffmpeg/{}".format(header_path) for header_path in ffmpeg_header_paths
     ] + [

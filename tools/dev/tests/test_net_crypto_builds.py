@@ -42,9 +42,9 @@ class TdE2eHardeningTests(unittest.TestCase):
         self.assertRegex(self.script, r'(?m)^export CXXFLAGS="\$CFLAGS"$')
 
     def test_flags_are_set_after_the_host_generators_and_before_the_target_build(self):
-        generators = self.script.index('cmake -DTD_GENERATE_SOURCE_FILES=ON')
+        generators = self.script.index('cmake -G Ninja -DTD_GENERATE_SOURCE_FILES=ON')
         flags = self.script.index('export CFLAGS="$CFLAGS $HARDENING_FLAGS"')
-        target = self.script.index('make tde2e')
+        target = self.script.index('--target tde2e')
         self.assertLess(generators, flags)
         self.assertLess(flags, target)
 

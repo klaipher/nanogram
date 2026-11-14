@@ -9,7 +9,7 @@ import subprocess
 import shutil
 import glob
 
-from BuildEnvironment import resolve_executable, call_executable, run_executable_with_output, BuildEnvironmentVersions, BuildEnvironment
+from BuildEnvironment import resolve_executable, call_executable, run_executable_with_output, get_xcode_sdk_identity, BuildEnvironmentVersions, BuildEnvironment
 from ProjectGeneration import generate
 from BazelLocation import locate_bazel
 from FileSync import write_if_changed, sync_directory
@@ -25,6 +25,10 @@ class ResolvedCodesigningData:
     def __init__(self, aps_environment, use_xcode_managed_codesigning):
         self.aps_environment = aps_environment
         self.use_xcode_managed_codesigning = use_xcode_managed_codesigning
+
+
+# ThinLTO linker cache shared by every checkout (see common_release_args and docs/cache-cleanup.md).
+LTO_CACHE_DIR = os.path.join(os.path.expanduser('~'), '.cache', 'telegram-ios', 'lto-cache')
 
 
 class BazelCommandLine:
@@ -104,6 +108,16 @@ class BazelCommandLine:
             # Thin LTO for C, C++ and Objective-C built by Bazel (target configuration only; the
             # linker runs LTO when it sees bitcode). Script-built libraries keep their own flags.
             '--copt=-flto=thin',
+
+            # Incremental ThinLTO for the release links (app, extensions, watch app): ld reuses the per-module
+            # backend results of the previous link, so a one-file change re-optimises that module only. The
+            # cache is outside the Bazel output base and prunes itself: entries unused for 14 days (the same
+            # age as the Bazel disk cache), and never more than 5 percent of the free disk space. Outputs are
+            # byte-identical with a warm or empty cache. `man ld`: -cache_path_lto, -prune_after_lto,
+            # -max_relative_cache_size_lto. --linkopt applies to the target configuration only.
+            '--linkopt=-Wl,-cache_path_lto,{}'.format(LTO_CACHE_DIR),
+            '--linkopt=-Wl,-prune_after_lto,1209600',
+            '--linkopt=-Wl,-max_relative_cache_size_lto,5',
 
             # --num-threads 0 forces swiftc to generate one object file per module; it:
             # 1. resolves issues with the linker caused by the swift-objc mixing.
@@ -259,6 +273,10 @@ class BazelCommandLine:
         combined_arguments += self.common_args
         combined_arguments += self.common_debug_args
         combined_arguments += self.get_define_arguments()
+        # Same Xcode/SDK identity as the builds, so project-generation builds of the native libs are keyed alike.
+        xcode_identity = get_xcode_sdk_identity()
+        if xcode_identity:
+            combined_arguments += ['--action_env=NANOGRAM_XCODE_ID={}'.format(xcode_identity)]
 
         if self.remote_cache is not None:
             combined_arguments += [
@@ -281,6 +299,13 @@ class BazelCommandLine:
 
     def get_additional_build_arguments(self):
         combined_arguments = []
+
+        # Genrules (native libraries) get only --action_env as their environment, so without this an Xcode/SDK
+        # update could serve stale codec/td objects from the disk cache. See docs/build-and-test.md.
+        xcode_identity = get_xcode_sdk_identity()
+        if xcode_identity:
+            combined_arguments += ['--action_env=NANOGRAM_XCODE_ID={}'.format(xcode_identity)]
+
         if self.split_submodules:
             combined_arguments += [
                 # https://github.com/bazelbuild/rules_swift
@@ -314,6 +339,10 @@ class BazelCommandLine:
 
         if self.enable_sandbox:
             combined_arguments += ['--spawn_strategy=sandboxed']
+            # The darwin sandbox only lets actions write inside the execroot, so ld could not reach the ThinLTO
+            # cache. https://bazel.build/reference/command-line-reference#flag--sandbox_writable_path
+            if any('cache_path_lto' in a for a in self.configuration_args):
+                combined_arguments += ['--sandbox_writable_path={}'.format(LTO_CACHE_DIR)]
 
         if self.disable_provisioning_profiles:
             combined_arguments += ['--//Telegram:disableProvisioningProfiles']

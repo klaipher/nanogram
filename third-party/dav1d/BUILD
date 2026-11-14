@@ -40,8 +40,6 @@ genrule(
         "build-dav1d-bazel.sh",
         "arm64-iPhoneSimulator.meson",
         ":dav1d_sources",
-        "@meson_tar_gz//file",
-        "@ninja-mac_zip//file",
     ],
     cmd_bash = 
     """
@@ -59,25 +57,21 @@ genrule(
         BUILD_ARCH="linux_arm64"
     else
         echo "Unsupported architecture $(TARGET_CPU)"
+        exit 1
     fi
 
     BUILD_DIR="$(RULEDIR)/build_$${BUILD_ARCH}"
     rm -rf "$$BUILD_DIR"
     mkdir -p "$$BUILD_DIR"
 
+    # Pinned meson and ninja are extracted once as external repos (MODULE.bazel). Absolute paths: the build script cd's.
+    # The pinned ninja is a macOS binary, so Linux targets keep the host tools.
     if [ "$${BUILD_ARCH}" = "linux_x86_64" ] || [ "$${BUILD_ARCH}" = "linux_arm64" ]; then
         EXTRA_PATH=""
     else
-        MESON_DIR="$$(pwd)/$$BUILD_DIR/meson"
-        rm -rf "$$MESON_DIR"
-        mkdir -p "$$MESON_DIR"
-        tar -xzf "$(location @meson_tar_gz//file)" -C "$$MESON_DIR"
-
-        NINJA_DIR="$$(pwd)/$$BUILD_DIR/ninja"
-        rm -rf "$$NINJA_DIR"
-        mkdir -p "$$NINJA_DIR"
-        unzip "$(location @ninja-mac_zip//file)" -d "$$NINJA_DIR"
-        EXTRA_PATH="$$MESON_DIR/meson-1.6.0:$$NINJA_DIR"
+        MESON_DIR="$$(pwd)/$$(dirname $(execpath @meson//:meson.py))"
+        NINJA_DIR="$$(pwd)/$$(dirname $(execpath @ninja//:ninja))"
+        EXTRA_PATH="$$MESON_DIR:$$NINJA_DIR"
     fi
 
     cp $(location :build-dav1d-bazel.sh) "$$BUILD_DIR/"
@@ -92,7 +86,7 @@ genrule(
     mkdir -p "$$BUILD_DIR/Public/common"
 
     if [ -n "$$EXTRA_PATH" ]; then
-        PATH="$$PATH:$$EXTRA_PATH" bash $$BUILD_DIR/build-dav1d-bazel.sh $$BUILD_ARCH "$$BUILD_DIR"
+        PATH="$$EXTRA_PATH:$$PATH" bash $$BUILD_DIR/build-dav1d-bazel.sh $$BUILD_ARCH "$$BUILD_DIR"
     else
         bash $$BUILD_DIR/build-dav1d-bazel.sh $$BUILD_ARCH "$$BUILD_DIR"
     fi
@@ -107,10 +101,16 @@ genrule(
     "\n" +
     "\n".join([
         "cp -f \"$$BUILD_DIR/dav1d/build/src/lib{}.a\" \"$(location Public/dav1d/lib/lib{}.a)\"".format(lib, lib) for lib in libs
-    ]),
+    ]) +
+    "\n" + "rm -rf \"$$BUILD_DIR\"",
     outs = ["Public/" + x for x in generated_headers] +
     ["Public/" + x for x in headers] +
     ["Public/dav1d/lib/lib{}.a".format(x) for x in libs],
+    tools = [
+        "@meson//:all",
+        "@meson//:meson.py",
+        "@ninja//:ninja",
+    ],
     visibility = [
         "//visibility:public",
     ]

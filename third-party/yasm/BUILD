@@ -11,7 +11,6 @@ genrule(
     name = "yasm",
     srcs = [
         ":yasm_sources",
-        "@cmake_tar_gz//file",
     ],
     cmd_bash =
 """
@@ -21,20 +20,9 @@ set -x
     rm -rf "$$BUILD_DIR"
     mkdir -p "$$BUILD_DIR"
 
-    CMAKE_DIR="$$(pwd)/$$BUILD_DIR/cmake"
-    rm -rf "$$CMAKE_DIR"
-    mkdir -p "$$CMAKE_DIR"
-    tar -xf "$(location @cmake_tar_gz//file)" -C "$$CMAKE_DIR"
-
-    # Find cmake: try system cmake first, then downloaded macOS cmake
-    if command -v cmake >/dev/null 2>&1; then
-        CMAKE_BIN="cmake"
-    elif [ -d "$$CMAKE_DIR/cmake-4.1.2-macos-universal/CMake.app/Contents/bin" ]; then
-        CMAKE_BIN="$$CMAKE_DIR/cmake-4.1.2-macos-universal/CMake.app/Contents/bin/cmake"
-    else
-        echo "cmake not found"
-        exit 1
-    fi
+    CMAKE_BIN="$$(pwd)/$(execpath @cmake//:cmake)"
+    NINJA_BIN_DIR="$$(pwd)/$$(dirname $(execpath @ninja//:ninja))"
+    export PATH="$$(dirname "$$CMAKE_BIN"):$$NINJA_BIN_DIR:$$PATH"
 
     SOURCE_PATH="third-party/yasm/yasm-1.3.0"
     cp -R "$$SOURCE_PATH" "$$BUILD_DIR/"
@@ -42,14 +30,20 @@ set -x
     pushd "$$BUILD_DIR/yasm-1.3.0"
     mkdir build
     cd build
-    "$$CMAKE_BIN" .. -DYASM_BUILD_TESTS=OFF -DCMAKE_BUILD_TYPE=Release -DBUILD_SHARED_LIBS=OFF -DPYTHON_EXECUTABLE="$$(which python3)"
-    make -j $$core_count
+    "$$CMAKE_BIN" -G Ninja .. -DYASM_BUILD_TESTS=OFF -DCMAKE_BUILD_TYPE=Release -DBUILD_SHARED_LIBS=OFF -DPYTHON_EXECUTABLE="$$(which python3)"
+    "$$CMAKE_BIN" --build . --parallel $$core_count
     popd
 
     tar -cf "$(location yasm.tar)" -C "$$BUILD_DIR/yasm-1.3.0/build" .
+    rm -rf "$$BUILD_DIR"
 """,
     outs = [
         "yasm.tar",
+    ],
+    tools = [
+        "@cmake//:all",
+        "@cmake//:cmake",
+        "@ninja//:ninja",
     ],
     visibility = [
         "//visibility:public",

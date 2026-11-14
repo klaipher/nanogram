@@ -15,7 +15,7 @@ swift_library(
 )
 
 # Host (macOS) test: ImageIO and CoreGraphics only.
-# Run with `./build-input/bazel-9.3.1-darwin-arm64 test //submodules/ImageDecodeSizing:ImageDecodeSizingTests`.
+# Run with `./build-input/bazel-9.3.2-darwin-arm64 test //submodules/ImageDecodeSizing:ImageDecodeSizingTests`.
 swift_test(
     name = "ImageDecodeSizingTests",
     srcs = [
