@@ -40,3 +40,7 @@
 	url = https://github.com/klaipher/FFmpeg.git
 	branch = nanogram
 	shallow = true
+[submodule "third-party/boost_regex/regex"]
+	path = third-party/boost_regex/regex
+	url = https://github.com/boostorg/regex.git
+	shallow = true

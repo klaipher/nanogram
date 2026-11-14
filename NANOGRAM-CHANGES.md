@@ -221,6 +221,7 @@ marked (check) were not re-verified against the code; correct them on the next c
 - What: libraries that Android also builds are submodules of the same upstream or klaipher fork at the same commit instead of vendored copies (plan: docs/shared-libraries-plan.md). Mac gets them through the core pin.
 - Upstream: no (layout only; sources are byte-identical to the old copies except where listed).
 - FFmpeg: `submodules/ffmpeg/Sources/FFMpeg/ffmpeg-9.0.2` = klaipher/FFmpeg `nanogram` d84c50bc (also Android's). Only source differences from the old copy: Android's `libavcodec/hevc/hevcdec.c` and `libavutil/encryption_info.c` fixes.
+- boost_regex: `third-party/boost_regex/regex` = boostorg/regex boost-1.92.0 (7760ef2a); headers byte-identical to the old vendored copy.
 
 ### Differences added or changed by the 13.2 merge (2026-11-06)
 - rlottie: upstream removed it and `LottieSettings`; iOS now renders only with tlottie. Since 2026-11-11 `submodules/rlottie` is gone here too: the Mac 13.2 merge dropped it as Telegram for macOS 13.2 did, so neither app builds it, as upstream. The Watch app keeps its own vendored copy (`RLottieKit`). Upstream: yes.

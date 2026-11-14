@@ -4,6 +4,8 @@ Newest first. Internal notes for each TestFlight build; testers see the What to 
 
 ## Unreleased
 
+- **boost_regex is the boostorg/regex submodule** (W1.1). `third-party/boost_regex/regex` at boost-1.92.0 (7760ef2a, shallow; Android pins the same commit) replaces the vendored `include/` copy; `BUILD` uses `regex/include`. Proof: tree hash 831656cc of the old `third-party/boost_regex/include` equals `HEAD:include` of the submodule (byte-identical headers).
+
 - **FFmpeg is the klaipher/FFmpeg submodule** (shared-libraries plan W1.1). `submodules/ffmpeg/Sources/FFMpeg/ffmpeg-9.0.2` is now a shallow submodule of `klaipher/FFmpeg` branch `nanogram` pinned at d84c50bc (same path, so the BUILD glob, `FFMPEG_VERSION` and the Mac `build.sh` autodetect are unchanged); the 10399 vendored files are gone. Android already builds the same commit. Proof: the old tree and d84c50bc differ in exactly two sources, `libavcodec/hevc/hevcdec.c` and `libavutil/encryption_info.c` (the Android fixes iOS now gains), plus dotfiles (`.gitignore`, `.gitattributes`) the BUILD glob excludes. `tg doctor` warns when the sources directory is empty.
 
 ## 13.2 (202611132038) — 2026-11-13 — 3c4e6399
