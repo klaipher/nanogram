@@ -324,7 +324,12 @@ def cmd_profiles(args):
         result = subprocess.run(command, capture_output=True, text=True)
         if result.returncode != 0:
             errors = [l for l in result.stdout.splitlines() + result.stderr.splitlines() if 'error:' in l]
-            sys.exit('Xcode could not sign {}:\n{}'.format(name, '\n'.join(errors[:10]) or result.stdout[-2000:]))
+            message = 'Xcode could not sign {}:\n{}'.format(name, '\n'.join(errors[:10]) or result.stdout[-2000:])
+            if is_watch_bundle(target_bundle_id, bundle_id):
+                # An API key cannot sign the watch pair (App Group); TestFlight signs it with `appstore-signing`.
+                print('warning: ' + message + '\n(continuing: the watch app gets an ad-hoc signature for device runs)', flush=True)
+                continue
+            sys.exit(message)
 
     profiles_dir = os.path.join(CODESIGNING, 'profiles')
     shutil.rmtree(profiles_dir, ignore_errors=True)

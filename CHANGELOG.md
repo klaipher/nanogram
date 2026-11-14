@@ -4,6 +4,8 @@ Newest first. Internal notes for each TestFlight build; testers see the What to 
 
 ## Unreleased
 
+- **Tooling**: `device_signing.py profiles` warns and continues when the Watch app or widget cannot be signed with the API key, instead of stopping before it collects the profiles. Those are the targets whose App Group needs a signed-in Apple ID; TestFlight signs them with `appstore-signing`. A stale app profile without Time Sensitive had stopped the App Store build at entitlement processing.
+
 - **Build fix** (`submodules/NanogramAppIntents/BUILD`): `linkopts = ["-framework", "AppIntents"]`. rules_apple's `app_intents_aspect` fails analysis unless the library links the AppIntents SDK framework ("does not depend on the AppIntents SDK framework").
 
 - **Build fix** (`Telegram/BUILD`): the widget extension and the app set `app_intents` as a plain attribute (an empty list when `nanogram_app_intents_metadata` is off). Bazel 9 rejects `**{...}` in BUILD files ("**kwargs arguments are not allowed in BUILD files"), so the package did not load.
