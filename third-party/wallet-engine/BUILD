@@ -11,7 +11,7 @@ load(
 
 _RUST_RELEASE_FLAGS = [
     "-Ccodegen-units=1",
-    "-Copt-level=z",
+    "-Copt-level=3",
     "-Cpanic=abort",
 ]
 
