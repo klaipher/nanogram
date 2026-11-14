@@ -6,6 +6,9 @@
 //  MIT license. See the LICENSE file for details.
 //
 
+#if os(macOS)
+import Cocoa
+#endif
 import Foundation
 import SwiftUI
 

@@ -64,6 +64,13 @@ def load_config(path: Path = DEFAULT_CONFIG) -> dict:
     for key in ("upstream_url", "base_commit", "branch", "areas", "pins"):
         if key not in data:
             raise ValueError(f"{path}: missing '{key}'")
+    data.setdefault("moved_libraries", [])
+    for lib in data["moved_libraries"]:
+        for key in ("name", "paths"):
+            if key not in lib:
+                raise ValueError(f"{path}: a moved library is missing '{key}'")
+        if not ("fork_branch" in lib or "official_tag" in lib):
+            raise ValueError(f"{path}: moved library {lib['name']} names neither a fork branch nor an official tag")
     for pin in data["pins"]:
         for key in ("name", "path"):
             if key not in pin:
@@ -113,6 +120,23 @@ def group_by_area(paths: list[str], areas: list[dict]) -> dict[str, list[str]]:
     return dict(sorted(grouped.items(), key=lambda item: (-len(item[1]), item[0])))
 
 
+def moved_library_changes(paths: list[str], libraries: list[dict]) -> dict[str, list[str]]:
+    """The files of `paths` that sit under a library we moved out of the tree, by library name (first match wins)."""
+    found: dict[str, list[str]] = {}
+    for path in paths:
+        for lib in libraries:
+            if any(path.startswith(prefix) for prefix in lib["paths"]):
+                found.setdefault(lib["name"], []).append(path)
+                break
+    return found
+
+
+def moved_library_target(lib: dict) -> str:
+    if "fork_branch" in lib:
+        return f"patch fork {lib['fork_url']} branch {lib['fork_branch']}"
+    return f"official pin {lib['official_url']} at {lib['official_tag']}: bump the submodule"
+
+
 def parse_gitlinks(ls_tree: str) -> dict[str, str]:
     """`git ls-tree` lines for submodules: '160000 commit <sha>\\t<path>'."""
     links = {}
@@ -159,6 +183,19 @@ def format_report(tag: str, config: dict, ours_ref: str, result: MergeResult, up
         if kinds:
             out.append("  Not plain content conflicts (renames, deletions, modes):")
             out.extend(f"    {m}" for m in kinds)
+    out.append("")
+    moved = moved_library_changes(upstream_changed, config.get("moved_libraries", []))
+    if moved:
+        out.append("Upstream changed libraries that we moved out of this tree (these arrive as modify/delete conflicts or are "
+                   "silently dropped; port each change to the named place):")
+        by_name = {lib["name"]: lib for lib in config.get("moved_libraries", [])}
+        for name, files in moved.items():
+            out.append(f"  {name}: {len(files)} file(s) -> {moved_library_target(by_name[name])}")
+            out.extend(f"    {f}" for f in files[:20])
+            if len(files) > 20:
+                out.append(f"    ... and {len(files) - 20} more")
+    else:
+        out.append("Moved libraries: upstream did not change any file under a path we moved to a fork or an official pin.")
     out.append("")
     if not pins:
         out.append("Pins: upstream did not bump any watched dependency.")
@@ -241,6 +278,7 @@ def run(repo: Path, tag: str, ours: str | None, config: dict, offline: bool) -> 
     data = {"tag": tag, "ours": ours_ref, "conflicts": result.conflicts, "clean": not result.conflicts,
             "conflicts_by_area": group_by_area(result.conflicts, config["areas"]),
             "upstream_changed": len(upstream_changed),
+            "moved_library_changes": moved_library_changes(upstream_changed, config.get("moved_libraries", [])),
             "pins": [vars(change) for change in pins]}
     return text, data
 
@@ -258,7 +296,8 @@ def main(argv: list[str] | None = None) -> int:
     args = parser.parse_args(argv)
     config = load_config(args.config)
     if args.self_test_config:
-        print(f"config ok: {len(config['areas'])} areas, {len(config['pins'])} pins")
+        print(f"config ok: {len(config['areas'])} areas, {len(config['pins'])} pins, "
+              f"{len(config['moved_libraries'])} moved libraries")
         return 0
     if not args.tag:
         parser.error("--tag is required")

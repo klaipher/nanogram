@@ -1,4 +1,5 @@
  
+# Headers come from the boostorg/regex submodule (regex/, tag boost-1.92.0, 7760ef2a), the same source Android uses.
 load("@rules_cc//cc:objc_library.bzl", "objc_library")
 
 objc_library(
@@ -12,14 +13,14 @@ objc_library(
         "Sources/**/*.hpp",
     ], allow_empty=True),
     hdrs = glob([
-        "include/**/*.h",
-        "include/**/*.hpp",
+        "regex/include/**/*.h",
+        "regex/include/**/*.hpp",
     ], allow_empty=True),
     includes = [
-        "include",
+        "regex/include",
     ],
     copts = [
-        "-Ithird-party/boost_regex/include",
+        "-Ithird-party/boost_regex/regex/include",
     ],
     deps = [
     ],

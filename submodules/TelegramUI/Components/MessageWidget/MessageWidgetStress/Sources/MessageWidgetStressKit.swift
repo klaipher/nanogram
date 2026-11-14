@@ -1,6 +1,6 @@
 import Foundation
 
-/// widget-sandbox's stress kit as a tag ships it (`packages/stress`, vendored at `third-party/widget-sandbox/stress`):
+/// widget-sandbox's stress kit as a tag ships it (`packages/stress`, vendored at `third-party/widget-sandbox/widget-sandbox/packages/stress`):
 /// `manifest.json`'s run order and timings, and each widget's file under `widgets/`.
 public struct MessageWidgetStressKit {
     public struct Entry: Equatable {

@@ -11,8 +11,9 @@ let package = Package(
         .library(name: "OpusKit", targets: ["OpusKit"]),
     ],
     targets: [
-        // Vendored: libogg 1.3.6 (xiph/ogg tag v1.3.6, be05b13e98b048f0b5a0f5fa8ce514d56db5f822):
-        // src/ and include/ogg/ogg.h; os_types.h and src/config.h are hand-written for Apple.
+        // libogg 1.3.6 (xiph/ogg tag v1.3.6, be05b13e98b048f0b5a0f5fa8ce514d56db5f822): framing.c, bitwise.c,
+        // crctable.h and ogg.h are symlinks into the shared third-party/ogg/ogg submodule (one copy for the app);
+        // os_types.h and src/config.h are hand-written for Apple.
         .target(
             name: "COgg",
             path: "Sources/COgg",
@@ -24,7 +25,9 @@ let package = Package(
                 .unsafeFlags(["-Wno-shorten-64-to-32"]),
             ]
         ),
-        // Vendored: libopus 1.6.1 (xiph/opus tag v1.6.1, 22244de5a79bd1d6d623c32e72bf1954b56235be):
+        // libopus 1.6.1 (xiph/opus tag v1.6.1, 22244de5a79bd1d6d623c32e72bf1954b56235be): celt/, silk/, src/ and include/ are
+        // symlinks into the shared third-party/opus/opus submodule (one copy for the app); only config.h is hand-written.
+        // Sources used:
         // celt/, silk/, src/, include/ minus build files, dump_modes, fixed_c5x/c6x.h, tansig_table.h.
         // Exclude list is version-specific — verify on upgrade.
         // arm_celt_map.c and armcpu.c are intentionally kept; both are fully

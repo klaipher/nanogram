@@ -31,7 +31,7 @@ wire (no SDP, signalling, negotiation or codec-list change), and each falls back
 Host tests for the pure policies are header-only `cc_test`s declared with `policy_cc_test` (`policy_test.bzl`, builds in
 seconds, no tgcalls_core): `livestream_decode_policy_test`, `capture_frame_policy_test`, `encoder_mode_policy_test`,
 `video_plane_layout_test`. Their `.cpp` files have a `main()`, so they are in `tgcalls/Package.swift`'s exclude list.
-**Shared tgcalls code: every commit here must also reach the Mac branch (`nanogram-mac-integration`); use `tools/dev/tgcalls-port` (see the repo CLAUDE.md, "Shared tgcalls code").**
+**Shared tgcalls code: one branch (`nanogram-shared`) serves iOS, Mac and Android; a fix is one fork commit and the three pins move to it (see `docs/subsystems/tgcalls.md`, "Shared tgcalls code").**
 
 ## Local call-audio switches (Batch B, 2026-11)
 
@@ -72,7 +72,7 @@ Note `highpass_filter = false` saves nothing while echo cancellation is on (the 
 already lose it through `WebRTC-Audio-MinimizeResamplingOnMobile`.
 
 Group-call RNNoise gating (Mac a598e27) is cherry-picked unchanged: with noise suppression off the speaking indicator
-comes from a peak detector and RNNoise does not run; `tests/group_audio/run.sh` needs `libtg_owt.a` from the Mac checkout.
+comes from a peak detector and RNNoise does not run; `tests/group_audio/run.sh` needs the WebRTC static library from the Mac build.
 
 ## Review fixes of the call work (2026-11-04)
 
@@ -107,7 +107,7 @@ group noise mode 0) under the old keys without having chosen it. Each changed se
 keys are no longer read or written, so only a choice made after this change counts. Tests: `CallsSwitchesTests`.
 The tgcalls engine itself still starts with every atomic OFF; `PresentationCallManager` sets them from the settings
 (whose defaults are ON) before the first call. The Mac pins the same core: its own Debug Settings and defaults are
-separate and unchanged until the Mac lane decides (docs/feature-parity.md has the row).
+separate and unchanged until the Mac lane decides (shared/feature-parity.md has the row).
 
 ## Audio route requests (speaker toggle), 2026-11-06
 

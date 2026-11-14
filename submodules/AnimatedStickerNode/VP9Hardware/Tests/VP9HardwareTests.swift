@@ -105,6 +105,13 @@ private let libvpxHashesSticker24fps: [(UInt64, UInt64)] = [
 ]
 
 private func fixture(_ name: String) throws -> Data {
+#if SWIFT_PACKAGE
+    // SwiftPM (the Mac app) packages Tests/Resources as a copied resource directory.
+    let parts = name.split(separator: ".")
+    if parts.count == 2, let url = Bundle.module.url(forResource: String(parts[0]), withExtension: String(parts[1]), subdirectory: "Resources") {
+        return try Data(contentsOf: url)
+    }
+#endif
     let relative = "submodules/AnimatedStickerNode/VP9Hardware/Tests/Resources/" + name
     var candidates = [relative]
     if let srcdir = ProcessInfo.processInfo.environment["TEST_SRCDIR"] {

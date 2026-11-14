@@ -30,7 +30,7 @@ public final class TLottieAnimation {
         self.init(jsonData: json)
     }
 
-    /// Parses inflated Lottie JSON. Defensive caps mirror Telegram-iOS and the earlier rlottie wrapper: width or
+    /// Parses inflated Lottie JSON. Defensive caps mirror Telegram-iOS and the earlier C++ renderer wrapper: width or
     /// height above 1536 px, a frame rate above 360 and a duration above 9 s are refused (malformed or abusive input).
     public init?(jsonData: Data) {
         guard !jsonData.isEmpty else { return nil }

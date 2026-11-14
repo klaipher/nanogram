@@ -602,32 +602,35 @@ class MTAtomTokenizer {
 
     private func tokenizeOperator(_ atom: MTMathAtom, prevAtom: MTMathAtom?, atomIndex: Int) -> MTBreakableElement? {
         let op = atom.nucleus
-        guard !op.isEmpty else { return nil }
+        let isInvisibleSeparator = op.isEmpty && atom.type == .relation
+        guard !op.isEmpty || isInvisibleSeparator else { return nil }
 
         // Calculate width with operator spacing
         let width = widthCalculator.measureOperator(op, type: atom.type)
-
-        let ascent = font.fontSize * 0.5
-        let descent = font.fontSize * 0.2
+        let ascent = isInvisibleSeparator ? 0 : font.fontSize * 0.5
+        let descent = isInvisibleSeparator ? 0 : font.fontSize * 0.2
         let height = ascent + descent
+        let content: MTElementContent = isInvisibleSeparator
+            ? .space(width)
+            : .operator(op, type: atom.type)
 
         return MTBreakableElement(
-            content: .operator(op, type: atom.type),
+            content: content,
             width: width,
             height: height,
             ascent: ascent,
             descent: descent,
-            isBreakBefore: true,
-            isBreakAfter: true,
-            penaltyBefore: MTBreakPenalty.best,  // Operators are best break points
-            penaltyAfter: MTBreakPenalty.best,
+            isBreakBefore: !isInvisibleSeparator,
+            isBreakAfter: !isInvisibleSeparator,
+            penaltyBefore: isInvisibleSeparator ? MTBreakPenalty.never : MTBreakPenalty.best,
+            penaltyAfter: isInvisibleSeparator ? MTBreakPenalty.never : MTBreakPenalty.best,
             groupId: nil,
             parentId: nil,
             originalAtom: atom,
             indexRange: atom.indexRange,
             color: nil,
             backgroundColor: nil,
-            indivisible: false
+            indivisible: isInvisibleSeparator
         )
     }
 

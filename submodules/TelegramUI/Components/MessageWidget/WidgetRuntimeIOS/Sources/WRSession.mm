@@ -15,7 +15,7 @@
 
 #include "CoreTextRenderHost.h"
 #include "LayerTreePainter.h"
-#include "third-party/twidget/LiteHTML/LHHostSupport.h"
+#include "third-party/twidget/twidget/apple/Sources/LiteHTML/LHHostSupport.h"
 #include "Generated/Bindings.h"
 #include "Sources/DOM/DOM.h"
 #include "Sources/Host/Boot.h"

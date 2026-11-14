@@ -34,6 +34,15 @@ bazel_dep(name = "rules_cc", version = "0.2.28")
 bazel_dep(name = "rules_rust", version = "0.75.0")
 bazel_dep(name = "rules_shell", version = "0.8.0")
 
+# Abseil LTS 20260817.0, the single abseil for iOS, Mac and Android: the nested submodule of the klaipher/webrtc fork
+# (third_party/abseil-cpp, pinned by the fork's gitlink), used as a module with its official BUILD files. .bazelignore
+# keeps the main repository from also loading those BUILD files as its own packages.
+bazel_dep(name = "abseil-cpp", version = "20260817.0")
+local_path_override(
+    module_name = "abseil-cpp",
+    path = "third-party/webrtc/webrtc/third_party/abseil-cpp",
+)
+
 rust = use_extension("@rules_rust//rust:extensions.bzl", "rust")
 rust.toolchain(
     edition = "2024",

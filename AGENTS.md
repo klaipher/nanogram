@@ -9,20 +9,21 @@ Everything else is in `docs/`, indexed in [docs/README.md](docs/README.md). `CLA
 - `Telegram/` app target, extensions, watch app. `submodules/` our libraries (TelegramCore, Postbox, TelegramUI, ...).
   `third-party/` vendored code. `build-system/` Bazel and `Make.py`. `tools/dev/` our tooling (`tg`, lint, parity, cachegc).
 - Submodule forks: tgcalls, webrtc (both `klaipher/*`). Upstream imports land on the `upstream` branch only.
-- Shared with the Mac: `docs/mac-core-paths.txt`, checked by `tools/dev/parity/parity.py`.
-- Which features exist on iOS, on the Mac and in official Telegram, and what is still open: [`docs/feature-parity.md`](docs/feature-parity.md) (identical in both repos; update the matching row when a feature lands).
+- Shared with the Mac: `docs/mac-core-paths.txt`, checked by `tools/dev/parity/parity.py` (a wrapper; the tool, the manifest `shared-libraries.json`, `check_shared.py`, the cache policy and the shared docs live in the `shared/` submodule, klaipher/nanogram-deps).
+- Which features exist on iOS, on the Mac and in official Telegram, and what is still open: [`shared/feature-parity.md`](shared/feature-parity.md) (one copy for iOS, Mac and Android in the `shared/` submodule; update the matching row when a feature lands).
 
 ## Hard rules
 
 - Marketing version follows upstream; only the build number changes. Never fetch upstream tags/branches by hand (`tg sync-upstream`).
 - A fix in shared code (core, tgcalls, webrtc, libprisma) lands on both apps in the same round.
+- A fix in shared native code lands in the single source (an official pin or ONE klaipher fork branch listed in `shared/shared-libraries.json`), then all three pins (iOS, Mac, Android) move the same day. No vendored copies, no per-platform branches; `tools/dev/native/check_shared.py` runs in the pre-push hook.
 - Never `--no-verify`. Never read `~/.config/telegram-ios`, keychains or signing material. No scheduled jobs.
 - Agents do not build or launch the app (no `tg build/test/run`, `bazel build/test`, `xcodebuild`); one combined build at the end of a round, by the owner's pipeline. Pure-Python tests are fine.
 - Work in your own worktree and branch under `~/Projects/wt/`, never in the main checkout.
 - Swift traps on overflow and bad casts: no force unwraps/`try!`/`as!` and no 32-bit timestamp arithmetic in new code (`docs/guardrails.md`).
 - Visual changes are judged from recorded frames, not from a green build (`docs/visual-verification.md`).
 
-## Development pipeline (full text: [docs/development-pipeline.md](docs/development-pipeline.md))
+## Development pipeline (full text: [shared/development-pipeline.md](shared/development-pipeline.md))
 
 1. Research and review in parallel lenses, with evidence. 2. Adversarial verification of every finding.
 3. Fix confirmed findings on branches, tests first. 4. No builds by agents. 5. One combined build per platform at the end.

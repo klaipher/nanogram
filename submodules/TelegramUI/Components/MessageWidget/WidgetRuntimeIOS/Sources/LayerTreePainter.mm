@@ -6,7 +6,7 @@
 
 #include "CoreTextRenderHost.h"
 #include "Sources/Render/LayerTree.h"
-#include "third-party/twidget/LiteHTML/LHHostSupport.h"
+#include "third-party/twidget/twidget/apple/Sources/LiteHTML/LHHostSupport.h"
 
 namespace wr::ios {
 

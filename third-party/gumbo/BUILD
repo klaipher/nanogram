@@ -1,23 +1,12 @@
 load("@rules_cc//cc:cc_library.bzl", "cc_library")
 load("@rules_cc//cc:cc_test.bzl", "cc_test")
 
-# Telegram's gumbo fork (VENDOR.md): the HTML parser behind litehtml and the native widget runtime. Optimized in
-# every configuration, as the renderer and quickjs-ng are: it parses markup inside a widget's boot.
-gumbo_copts = [
-    "-O2",
-    "-w",
-    "-Ithird-party/gumbo/src",
-]
-
-cc_library(
+# Telegram's gumbo fork (VENDOR.md): the HTML parser behind litehtml and the native widget runtime. Its sources are
+# `litehtml/src/gumbo` of the twidget submodule, compiled by `//third-party/twidget:gumbo` (-O2 in every configuration); this
+# package keeps the html5lib harness and the fork's own tests.
+alias(
     name = "gumbo",
-    srcs = glob([
-        "src/*.c",
-        "src/*.h",
-    ]),
-    hdrs = glob(["include/**/*.h"]),
-    includes = ["include"],
-    copts = gumbo_copts,
+    actual = "//third-party/twidget:gumbo",
     visibility = [
         "//submodules/TelegramUI/Components/MessageWidget/WidgetRuntime:__pkg__",
         "//third-party/twidget:__pkg__",
@@ -95,10 +84,6 @@ cc_test(
 filegroup(
     name = "ScanSources",
     testonly = True,
-    srcs = glob([
-        "src/*.c",
-        "src/*.h",
-        "include/**/*.h",
-    ]),
+    srcs = ["//third-party/twidget:GumboScanSources"],
     visibility = ["//submodules/TelegramUI/Components/MessageWidget/WidgetRuntime:__pkg__"],
 )

@@ -120,6 +120,19 @@ cmd_doctor() {
   if git submodule status --recursive | grep '^-' >/dev/null; then
     warn "Some submodules are not checked out (run: tools/dev/tg setup)"; ok=1
   fi
+  # BUILD files glob these sources: an empty (not initialised) directory builds silently with nothing in it.
+  local sentinel
+  # entries are <submodule path>:<sentinel file inside it>
+  for sentinel in \
+    submodules/ffmpeg/Sources/FFMpeg/ffmpeg-9.0.2:RELEASE \
+    third-party/boost_regex/regex:include/boost/regex.hpp \
+    third-party/wamr/wamr:LICENSE \
+    third-party/ogg/ogg:src/framing.c \
+    third-party/opusfile/opusfile:src/opusfile.c \
+    third-party/webp/libwebp:src/webp/decode.h \
+    ; do
+    [ -f "$ROOT/${sentinel%%:*}/${sentinel#*:}" ] || { warn "Source submodule is empty: ${sentinel%%:*} (run: tools/dev/tg setup)"; ok=1; }
+  done
   local free; free="$(df -g "$ROOT" | awk 'NR==2{print $4}')"
   if [ "${free:-0}" -lt 60 ]; then
     warn "Only ${free} GB free. A first full debug build needs roughly 40-60 GB (output base + disk cache)."

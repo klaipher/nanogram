@@ -1,7 +1,8 @@
 // widget-sandbox's CPU quota and main-thread window (twidget::CpuBudget; docs/decisions.md "CPU time, not wall-clock
 // time"; sandbox_engine.cpp `dispatch`) in the event loop (the CPU-clock limits plan, Task 3): every step has a kind,
 // and a deferrable one past either window waits apart from the FIFO until the retry time, in order, frames collapsed,
-// while an event still runs with the 50 ms floor; one throttle diagnostic a second; cpuKillAfterMs; a width change lays
+// while an event still runs with the whole slice (v0.6.x: no floor, the time spent past the quota is a debt); one throttle
+// diagnostic a second; cpuKillAfterMs; a width change lays
 // out at the call. The fake clock only moves when a test's natives move it (burn, render), so each step's time is exact.
 #include <string>
 
@@ -59,13 +60,12 @@ WR_TEST(testTheQuotaDefersTimersNotEvents) {
     CHECK(!loop.hasRunnableTask(0));
     CHECK(loop.nextTimerDeadline() == std::optional<double>(1000));
     CHECK_EQ(loop.throttledSteps(), uint64_t(1));
-    // A press runs at once, ahead of the deferred timer, with the 50 ms floor.
+    // A press runs at once, ahead of the deferred timer, with the whole 500 ms slice (the policy has no floor any more).
     wr::HostState::of(env.ctx()).pointer(env.ctx(), PointerPhase::Down, 50, 25, 1, true);
     clock->stepMs = 1.0;
     CHECK(env.env().step() == StepResult::Stopped);
     CHECK(env.env().runtime().stopReason() == wr::StopReason::Cpu);
-    CHECK_EQ(env.env().runtime().stopDetail(), std::string("CPU limit exceeded: more than 50 ms of continuous execution (event; CPU "
-                                                           "quota: 0 ms of 300 ms per 1000 ms left, so this event task got 50 ms)"));
+    CHECK_EQ(env.env().runtime().stopDetail(), std::string("CPU limit exceeded: more than 500 ms of continuous execution (event)"));
 }
 
 WR_TEST(testDeferredTasksKeepOrderAndRunAtRetry) {
@@ -220,9 +220,11 @@ WR_TEST(testTheQuotaRecordsATaskAtItsEnd) {
 }
 
 /// Upstream decides at dispatch on its clock (`dispatch`: `budget_.decide(kind, nowMs())`), not at the drain's start:
-/// a step of a drain begun at 950 that the host reaches at 1150 finds the bucket at 0 gone, and its slice is the 290 ms
-/// the window leaves, not the 50 ms floor it would get at 950. The step before it ends past 1100, so its record lands in
-/// the next bucket and leaves the one at 0 in place for a decision at 950 to see.
+/// a step of a drain begun at 950 that the host reaches at 1150 is decided at 1150, when the bucket at 0 has left the
+/// window. Every task runs with the whole 500 ms slice (v0.6.x; the 290 ms the window left, and the 50 ms floor, are gone),
+/// so the third step is stopped at 500 ms. The step before it ends past 1100, so its record lands in the next bucket and
+/// leaves the one at 0 in place for a decision at 950 to see. (Written for the v0.6.x policy without a run: the first run
+/// of this suite confirms the step results.)
 WR_TEST(testALaterStepOfADrainIsAdmittedAtTheHostsTime) {
     ScopedCpuLimits limits(wr::CpuLimits{});
     ScopedFakeClock clock(0.0);
@@ -235,12 +237,11 @@ WR_TEST(testALaterStepOfADrainIsAdmittedAtTheHostsTime) {
     CHECK_EQ(env.env().host().now, 1150.0);
     clock->stepMs = 1.0;
     CHECK(loop.runNextTask(950) == StepResult::Stopped);
-    CHECK_EQ(env.env().runtime().stopDetail(), std::string("CPU limit exceeded: more than 290 ms of continuous execution (timer; CPU "
-                                                           "quota: 290 ms of 300 ms per 1000 ms left, so this timer task got 290 ms)"));
+    CHECK_EQ(env.env().runtime().stopDetail(), std::string("CPU limit exceeded: more than 500 ms of continuous execution (timer)"));
 }
 
-/// Upstream's message recomputes the quota left at the kill (`handleError`: `cpuQuotaMs - budget_.used(nowMs())`): a
-/// timer given 50 ms at 990 that the host reaches past 1000 says the window has its 300 ms again.
+/// Upstream's v0.6.x policy gives every task the whole slice, so the kill's message has no quota note: a timer that the
+/// host reaches at 990, with 250 ms in the window, is stopped at 500 ms like any other.
 WR_TEST(testTheCpuStopSaysTheQuotaLeftAtTheKill) {
     ScopedCpuLimits limits(wr::CpuLimits{});
     ScopedFakeClock clock(0.0);
@@ -249,8 +250,7 @@ WR_TEST(testTheCpuStopSaysTheQuotaLeftAtTheKill) {
     clock->stepMs = 1.0;
     env.env().advance(990);
     CHECK(env.env().runtime().stopReason() == wr::StopReason::Cpu);
-    CHECK_EQ(env.env().runtime().stopDetail(), std::string("CPU limit exceeded: more than 50 ms of continuous execution (timer; CPU "
-                                                           "quota: 300 ms of 300 ms per 1000 ms left, so this timer task got 50 ms)"));
+    CHECK_EQ(env.env().runtime().stopDetail(), std::string("CPU limit exceeded: more than 500 ms of continuous execution (timer)"));
 }
 
 // MARK: A width or theme change's flush is a step of its own kind (the fix waves' M-2)

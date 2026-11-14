@@ -1,8 +1,8 @@
 # tgcalls library (TgVoipWebrtc)
 
-The tgcalls VoIP library source, a submodule fork (`klaipher/tgcalls`, branch `nanogram-shared`, shared with the Mac app).
+The tgcalls VoIP library source, a submodule fork (`klaipher/tgcalls`, branch `nanogram-shared`, shared with the Mac and Android apps).
 The repository rules are in the root `AGENTS.md`; the fork's own build, CLI and mass-test manual is `tgcalls/CLAUDE.md`
-inside the submodule. Shared tgcalls fixes land in the iOS and the Mac branches in the same round (`tools/dev/tgcalls-port`).
+inside the submodule. The iOS Objective-C++ bridge (`Sources`, `PublicHeaders`, `tests`) lives in the fork's `ios/` directory; this package's BUILD reads it from there. One fork branch (`nanogram-shared`) serves iOS, Mac and Android: a shared fix is one fork commit and the three pins move to it (no port step).
 Every change here also gets an entry in the fork's own `CHANGELOG.md` / `NANOGRAM-CHANGES.md` (docs/fork-records.md).
 
 Read the matching document before touching an area:

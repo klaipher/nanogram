@@ -1,8 +1,9 @@
 # Source lists for //third-party/boringssl, taken from upstream's pregenerated
 # src/gen/sources.bzl (written by upstream's `go run ./util/pregenerate`).
-# Upstream paths are relative to its repository root, which is src/ here, so
-# each list is re-exported with a "src/" prefix. Do not hand-edit file lists:
-# update src/ (including src/gen/) from upstream instead.
+# src/ is the klaipher/boringssl submodule (branch nanogram). Upstream paths are
+# relative to its repository root, which is src/ here, so each list is
+# re-exported with a "src/" prefix. Do not hand-edit file lists: move the
+# submodule to the next upstream tag instead; no regeneration step is needed.
 
 load(
     ":src/gen/sources.bzl",

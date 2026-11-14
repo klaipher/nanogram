@@ -82,7 +82,7 @@
    "path": "third-party/webrtc/webrtc",
    "upstream_url": "https://github.com/ali-fareed/webrtc.git",
    "fork_url": "https://github.com/klaipher/webrtc.git",
-   "fork_branch": "nanogram-security-fixes"
+   "fork_branch": "nanogram"
   },
   {
    "name": "mtproto-engine",
@@ -109,5 +109,151 @@
    "path": "third-party/td/td",
    "upstream_url": "https://github.com/tdlib/td"
   }
- ]
+ ],
+ "moved_libraries": [
+  {
+   "name": "FFmpeg",
+   "paths": [
+    "submodules/ffmpeg/Sources/FFMpeg/ffmpeg-"
+   ],
+   "fork_url": "https://github.com/klaipher/FFmpeg.git",
+   "fork_branch": "nanogram"
+  },
+  {
+   "name": "openh264",
+   "paths": [
+    "third-party/openh264/"
+   ],
+   "fork_url": "https://github.com/klaipher/openh264.git",
+   "fork_branch": "nanogram"
+  },
+  {
+   "name": "rnnoise",
+   "paths": [
+    "third-party/rnnoise/"
+   ],
+   "fork_url": "https://github.com/klaipher/rnnoise.git",
+   "fork_branch": "nanogram"
+  },
+  {
+   "name": "libprisma",
+   "paths": [
+    "third-party/libprisma/"
+   ],
+   "fork_url": "https://github.com/klaipher/libprisma.git",
+   "fork_branch": "nanogram"
+  },
+  {
+   "name": "sqlcipher-amalgamation",
+   "paths": [
+    "submodules/sqlcipher/"
+   ],
+   "fork_url": "https://github.com/klaipher/sqlcipher-amalgamation.git",
+   "fork_branch": "nanogram"
+  },
+  {
+   "name": "libyuv",
+   "paths": [
+    "third-party/libyuv/"
+   ],
+   "fork_url": "https://github.com/klaipher/libyuv.git",
+   "fork_branch": "nanogram"
+  },
+  {
+   "name": "boringssl",
+   "paths": [
+    "third-party/boringssl/src/"
+   ],
+   "fork_url": "https://github.com/klaipher/boringssl.git",
+   "fork_branch": "nanogram"
+  },
+  {
+   "name": "quickjs",
+   "paths": [
+    "third-party/quickjs-ng/quickjs/"
+   ],
+   "fork_url": "https://github.com/klaipher/quickjs.git",
+   "fork_branch": "nanogram"
+  },
+  {
+   "name": "widget-sandbox",
+   "paths": [
+    "third-party/widget-sandbox/"
+   ],
+   "fork_url": "https://github.com/klaipher/widget-sandbox.git",
+   "fork_branch": "nanogram"
+  },
+  {
+   "name": "twidget",
+   "paths": [
+    "third-party/twidget/"
+   ],
+   "fork_url": "https://github.com/klaipher/twidget.git",
+   "fork_branch": "nanogram"
+  },
+  {
+   "name": "webrtc third_party (abseil, libsrtp, crc32c, libyuv glue)",
+   "paths": [
+    "third-party/webrtc/"
+   ],
+   "fork_url": "https://github.com/klaipher/webrtc.git",
+   "fork_branch": "nanogram",
+   "note": "files under third_party/ belong to the nested official libraries; patch the fork, not the pin"
+  },
+  {
+   "name": "ogg",
+   "paths": [
+    "third-party/ogg/"
+   ],
+   "note": "official pin: an upstream edit arrives as a new tag of the library; bump the submodule, no fork to patch",
+   "official_url": "https://github.com/xiph/ogg.git",
+   "official_tag": "v1.3.6"
+  },
+  {
+   "name": "opus",
+   "paths": [
+    "third-party/opus/"
+   ],
+   "note": "official pin: an upstream edit arrives as a new tag of the library; bump the submodule, no fork to patch",
+   "official_url": "https://github.com/xiph/opus.git",
+   "official_tag": "v1.6.1"
+  },
+  {
+   "name": "opusfile",
+   "paths": [
+    "third-party/opusfile/"
+   ],
+   "note": "official pin: an upstream edit arrives as a new tag of the library; bump the submodule, no fork to patch",
+   "official_url": "https://github.com/xiph/opusfile.git",
+   "official_tag": "v0.12"
+  },
+  {
+   "name": "libwebp",
+   "paths": [
+    "third-party/webp/"
+   ],
+   "note": "official pin: an upstream edit arrives as a new tag of the library; bump the submodule, no fork to patch",
+   "official_url": "https://github.com/webmproject/libwebp.git",
+   "official_tag": "v1.6.0"
+  },
+  {
+   "name": "boost_regex",
+   "paths": [
+    "third-party/boost_regex/"
+   ],
+   "note": "official pin: an upstream edit arrives as a new tag of the library; bump the submodule, no fork to patch",
+   "official_url": "https://github.com/boostorg/regex.git",
+   "official_tag": "boost-1.92.0"
+  },
+  {
+   "name": "wamr",
+   "paths": [
+    "third-party/wamr/"
+   ],
+   "note": "official pin: an upstream edit arrives as a new tag of the library; bump the submodule, no fork to patch",
+   "official_url": "https://github.com/bytecodealliance/wasm-micro-runtime.git",
+   "official_tag": "WAMR-2.4.5"
+  }
+ ],
+ "description_moved_libraries": "Paths that Telegram-iOS ships as vendored source (or, for the official pins, as a copy) and that we replaced by a submodule of a fork or an official pin. When a release changes a file under these prefixes, sync.py names the library and the fork branch to patch, so the upstream fix is not lost by the merge."
 }

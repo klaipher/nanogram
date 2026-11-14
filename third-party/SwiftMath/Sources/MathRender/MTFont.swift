@@ -1,7 +1,26 @@
 
 import Foundation
 import CoreText
+#if SWIFT_PACKAGE
+// SwiftPM (the Mac app) packages the fonts as a resource of this module.
+private func getAppBundle() -> Bundle {
+    return Bundle.module
+}
+#else
 import AppBundle
+#endif
+
+/// The bundle that holds the math fonts and tables: the SwiftPM resource bundle, or the app's mathFonts.bundle.
+func swiftMathFontsBundle() -> Bundle? {
+#if SWIFT_PACKAGE
+    return Bundle.module
+#else
+    guard let url = Bundle.main.url(forResource: "mathFonts", withExtension: "bundle") else {
+        return nil
+    }
+    return Bundle(url: url)
+#endif
+}
 
 //
 //  Created by Mike Griebling on 2022-12-31.
@@ -48,7 +67,7 @@ public class MTFont {
     
     static var fontBundle:Bundle {
         // Uses bundle for class so that this can be access by the unit tests.
-        Bundle(url: Bundle.main.url(forResource: "mathFonts", withExtension: "bundle")!)!
+        swiftMathFontsBundle()!
     }
     
     /** Returns a copy of this font but with a different size. */

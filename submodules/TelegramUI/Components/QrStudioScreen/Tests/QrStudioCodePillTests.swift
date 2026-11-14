@@ -141,4 +141,11 @@ final class QrStudioCodePillTests: XCTestCase {
         XCTAssertTrue(QrStudioBurn.shatterParticles(shatter, at: 9.0).isEmpty)
         XCTAssertTrue(QrStudioBurn.shatterParticles(shatter, at: 11.0).isEmpty)
     }
+
+    func testTemporaryConstraintTurnsPermanentIntoExpire() {
+        XCTAssertEqual(QrStudioCodeAction.permanent.constrained(toTemporary: true), .expire)
+        XCTAssertEqual(QrStudioCodeAction.permanent.constrained(toTemporary: false), .permanent)
+        XCTAssertEqual(QrStudioCodeAction.restore.constrained(toTemporary: true), .restore)
+        XCTAssertEqual(QrStudioCodeAction.renew.constrained(toTemporary: true), .renew)
+    }
 }

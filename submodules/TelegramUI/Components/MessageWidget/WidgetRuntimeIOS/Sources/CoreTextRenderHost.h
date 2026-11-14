@@ -1,5 +1,5 @@
 // The iOS RenderHost (M1d plan, Task 5): WidgetRuntime's layout questions answered by LHContainer's CoreText and ImageIO
-// code (third-party/twidget/LiteHTML/LHHostSupport.h), so a widget lays out as LHDocument laid it out. Its fonts and
+// code (third-party/twidget/twidget/apple/Sources/LiteHTML/LHHostSupport.h), so a widget lays out as LHDocument laid it out. Its fonts and
 // images outlive it: a published layer tree holds them.
 #pragma once
 

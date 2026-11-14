@@ -53,7 +53,7 @@ Pure C++ units have host `cc_test`s that bypass Make.py entirely (macOS build, n
 (likewise `:mtproto_ice_transport_test`). `//third-party/libprisma:SyntaxHighlighterTests` (added
 2026-09-25) is the same kind of target outside tgcalls: it compiles only libprisma's pure-C++ core
 (not `Syntaxer.mm`, which needs UIKit) plus header-only `boost_regex`, loads the real shipped
-`grammars.dat` (passed via the target's `args = ["$(location Resources/grammars.dat)"]`), and pins the
+`grammars.dat` (passed via the target's `args = ["$(location libprisma/libprisma/grammars.dat)"]`), and pins the
 **code-block highlighter recursion bound** — highlighting a `brightscript` block whose grammar has a
 token cycle used to recurse `tokenize()`/`matchGrammar()` without limit and kill the process with a
 stack overflow (a remote DoS: the block is highlighted on receipt). `SyntaxHighlighter::kMaxTokenizeDepth`
@@ -62,8 +62,8 @@ Since 2026-11-04 `third-party/libprisma` is the single copy both apps build (the
 framework compiles these Sources and bundles this `grammars.dat`, no longer `submodules/libprisma`): it is
 `desktop-app/libprisma` master 94640c6 (depth cap 32, a per-call regex-search budget of 64 searches per byte
 plus 1024, thread-safe `const tokenize`, lazy pattern compile, 12 more languages than the old iOS copy) with
-`TokenizeStats`/`TokenizeLimits` added so the host test can assert the bounds. Refresh it by copying
-`libprisma/*.{cpp,h}` and `grammars.dat` from upstream and re-adding those two hooks. They follow a plain `CHECK_TRUE` + `main()` pattern, are listed
+`TokenizeStats`/`TokenizeLimits` added so the host test can assert the bounds. Since the shared-libraries work it is the
+klaipher/libprisma submodule (`third-party/libprisma/libprisma`, branch `nanogram`, also Android's source); refresh it there, not here. They follow a plain `CHECK_TRUE` + `main()` pattern, are listed
 explicitly in `submodules/TgVoipWebrtc/BUILD` (group sources are not globbed), and must be added to the
 `exclude:` list in `tgcalls/Package.swift` so SwiftPM does not compile their `main()`. The first run compiles
 WebRTC for the host (~2.5 min); later runs take seconds. Note the binary is version-stamped and

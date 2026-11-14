@@ -44,7 +44,7 @@ cc_library(
     copts = [
         "-std=c++2b",
         "-Wno-all",
-        "-Ithird-party/openh264/third_party/openh264/src/codec/api/wels",
+        "-Ithird-party/openh264/openh264/codec/api/wels",
     ],
     deps = [
         ":subcodec",
@@ -70,7 +70,7 @@ objc_library(
     copts = [
         "-std=c++2b",
         "-Wno-all",
-        "-Ithird-party/openh264/third_party/openh264/src/codec/api/wels",
+        "-Ithird-party/openh264/openh264/codec/api/wels",
     ],
     deps = [
         ":subcodec",

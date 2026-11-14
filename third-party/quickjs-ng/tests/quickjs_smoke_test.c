@@ -16,8 +16,8 @@ static JSValue eval(JSContext *ctx, const char *code) {
 }
 
 static int interrupt_polls = 0;
-static int count_polls(JSRuntime *rt, void *opaque) {
-    (void)rt;
+static int count_polls(JSContext *ctx, void *opaque) {
+    (void)ctx;
     (void)opaque;
     interrupt_polls++;
     return 0;

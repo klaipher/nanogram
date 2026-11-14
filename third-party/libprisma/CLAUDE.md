@@ -11,5 +11,5 @@ bound and its regenerated `grammars.dat` still ships the cycle.
 `//third-party/libprisma:SyntaxHighlighterTests` pins the bound. It is a host `cc_test` (root `CLAUDE.md`, "Running
 tests") that compiles only libprisma's pure-C++ core (not `Syntaxer.mm`, which needs UIKit) plus header-only
 `boost_regex`, and loads the real shipped `grammars.dat` (passed via the target's
-`args = ["$(location Resources/grammars.dat)"]`). Run it with
+`args = ["$(location libprisma/libprisma/grammars.dat)"]`). Run it with
 `./build-input/bazel-9.2.0-darwin-arm64 test //third-party/libprisma:SyntaxHighlighterTests --test_output=all`.

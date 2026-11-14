@@ -35,8 +35,13 @@ struct Allowed {
     const char* reason;
 };
 
-// Each entry is a hit that is not I/O the runtime performs. Start empty; add only with a reason that names the line.
+// Each entry is a hit that is not I/O the runtime performs. Add only with a reason that names the line.
 const std::vector<Allowed> kAllowed = {
+    // klaipher/quickjs `nanogram` (TelegramMessenger/quickjs b526a817's arenas): a slab of the runtime's own heap, mapped
+    // anonymously (MAP_ANON, no file descriptor, no path); the slabs go back to the system with madvise.
+    {"quickjs-ng/quickjs/quickjs.c",
+     "void *base = mmap(NULL, JS_ARENA_SLAB_BYTES, PROT_READ | PROT_WRITE, MAP_PRIVATE | MAP_ANON, JS_ARENA_SLAB_TAG, 0);",
+     "an anonymous memory map for the engine's allocator: not a file, a socket or a URL"},
 };
 
 using wr_test::identChar;
@@ -297,9 +302,9 @@ WR_TEST(testNoIOInTheRuntime) {
                 gumbo, litehtml);
     // The scan must have reached all four trees: an empty or partial list would pass for nothing.
     CHECK(own >= 108);
-    CHECK(quickjs >= 16);
+    CHECK(quickjs >= 20);
     CHECK(gumbo >= 26);
-    CHECK(litehtml >= 128);
+    CHECK(litehtml >= 140);
 
     std::set<size_t> used;
     size_t allowedHits = 0;

@@ -14,7 +14,7 @@
 	path = third-party/webrtc/webrtc
 	url = https://github.com/klaipher/webrtc.git
 	shallow = true
-	branch = nanogram-security-fixes
+	branch = nanogram
 [submodule "third-party/dav1d/dav1d"]
 	path = third-party/dav1d/dav1d
 	url = https://code.videolan.org/videolan/dav1d.git
@@ -25,8 +25,9 @@
 	shallow = true
 [submodule "third-party/wallet-engine"]
 	path = third-party/wallet-engine/wallet-engine
-	url = https://github.com/i582/wallet-engine.git
+	url = https://github.com/klaipher/wallet-engine.git
 	shallow = true
+	branch = nanogram
 [submodule "submodules/tlottie/tlottie"]
 	path = submodules/tlottie/tlottie
 	url = https://github.com/dkaraush/tlottie.git
@@ -34,4 +35,83 @@
 [submodule "third-party/mtproto-engine"]
 	path = third-party/mtproto-engine
 	url = https://github.com/TelegramMessenger/mtproto-engine.git
+	shallow = true
+[submodule "submodules/ffmpeg/Sources/FFMpeg/ffmpeg-9.0.2"]
+	path = submodules/ffmpeg/Sources/FFMpeg/ffmpeg-9.0.2
+	url = https://github.com/klaipher/FFmpeg.git
+	branch = nanogram
+	shallow = true
+[submodule "third-party/boost_regex/regex"]
+	path = third-party/boost_regex/regex
+	url = https://github.com/boostorg/regex.git
+	shallow = true
+[submodule "third-party/wamr/wamr"]
+	path = third-party/wamr/wamr
+	url = https://github.com/bytecodealliance/wasm-micro-runtime.git
+	shallow = true
+[submodule "third-party/ogg/ogg"]
+	path = third-party/ogg/ogg
+	url = https://github.com/xiph/ogg.git
+	shallow = true
+[submodule "third-party/opusfile/opusfile"]
+	path = third-party/opusfile/opusfile
+	url = https://github.com/xiph/opusfile.git
+	shallow = true
+[submodule "third-party/webp/libwebp"]
+	path = third-party/webp/libwebp
+	url = https://github.com/webmproject/libwebp.git
+	shallow = true
+[submodule "shared"]
+	path = shared
+	url = https://github.com/klaipher/nanogram-deps.git
+	branch = main
+	shallow = true
+[submodule "third-party/openh264/openh264"]
+	path = third-party/openh264/openh264
+	url = https://github.com/klaipher/openh264.git
+	branch = nanogram
+	shallow = true
+[submodule "third-party/rnnoise/rnnoise"]
+	path = third-party/rnnoise/rnnoise
+	url = https://github.com/klaipher/rnnoise.git
+	branch = nanogram
+	shallow = true
+[submodule "third-party/libprisma/libprisma"]
+	path = third-party/libprisma/libprisma
+	url = https://github.com/klaipher/libprisma.git
+	branch = nanogram
+	shallow = true
+[submodule "submodules/sqlcipher/amalgamation"]
+	path = submodules/sqlcipher/amalgamation
+	url = https://github.com/klaipher/sqlcipher-amalgamation.git
+	branch = nanogram
+	shallow = true
+[submodule "third-party/libyuv/third_party/libyuv"]
+	path = third-party/libyuv/third_party/libyuv
+	url = https://github.com/klaipher/libyuv.git
+	branch = nanogram
+	shallow = true
+[submodule "third-party/quickjs-ng/quickjs"]
+	path = third-party/quickjs-ng/quickjs
+	url = https://github.com/klaipher/quickjs.git
+	branch = nanogram
+	shallow = true
+[submodule "third-party/widget-sandbox/widget-sandbox"]
+	path = third-party/widget-sandbox/widget-sandbox
+	url = https://github.com/klaipher/widget-sandbox.git
+	branch = nanogram
+	shallow = true
+[submodule "third-party/twidget/twidget"]
+	path = third-party/twidget/twidget
+	url = https://github.com/klaipher/twidget.git
+	branch = nanogram
+	shallow = true
+[submodule "third-party/boringssl/src"]
+	path = third-party/boringssl/src
+	url = https://github.com/klaipher/boringssl.git
+	branch = nanogram
+	shallow = true
+[submodule "third-party/opus/opus"]
+	path = third-party/opus/opus
+	url = https://github.com/xiph/opus.git
 	shallow = true

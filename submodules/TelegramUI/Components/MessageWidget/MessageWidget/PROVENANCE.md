@@ -47,7 +47,7 @@ test simulator takes ~5 s, so timing tests warm one up first.
 rounded up as the renderer rounds) within 4 pt at 360 and 240 pt.
 
 `InstanceTests.testAttackCorpusRequestsNothing` is the network boundary: over the 93 pages of
-`third-party/widget-sandbox/corpus/attacks`, each laid out, given three animation frames and drawn, no URL is requested
+`third-party/widget-sandbox/widget-sandbox/corpus/attacks`, each laid out, given three animation frames and drawn, no URL is requested
 (`RecordingURLProtocol`), and the pages that name URLs have them refused by the runtime's container (`refusedLoads`).
 `cpu-raf-burn` is stopped at its first frame by its work limit.
 

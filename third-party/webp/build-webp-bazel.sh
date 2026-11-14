@@ -26,7 +26,7 @@ if [ "$ARCH" = "arm64" ]; then
   echo "set(CMAKE_C_COMPILER $(xcode-select -p)/Toolchains/XcodeDefault.xctoolchain/usr/bin/clang)" >> toolchain.cmake
 
   cmake -G Ninja -DCMAKE_TOOLCHAIN_FILE=toolchain.cmake -DCMAKE_OSX_SYSROOT=${IOS_SYSROOT[0]} $COMMON_ARGS ../libwebp
-  cmake --build . --parallel "$(getconf _NPROCESSORS_ONLN)"
+  ninja
 elif [ "$ARCH" = "sim_arm64" ]; then
   IOS_PLATFORMDIR="$(xcode-select -p)/Platforms/iPhoneSimulator.platform"
   IOS_SYSROOT=($IOS_PLATFORMDIR/Developer/SDKs/iPhoneSimulator*.sdk)
@@ -42,7 +42,7 @@ elif [ "$ARCH" = "sim_arm64" ]; then
   echo "set(CMAKE_C_COMPILER $(xcode-select -p)/Toolchains/XcodeDefault.xctoolchain/usr/bin/clang)" >> toolchain.cmake
 
   cmake -G Ninja -DCMAKE_TOOLCHAIN_FILE=toolchain.cmake -DCMAKE_OSX_SYSROOT=${IOS_SYSROOT[0]} $COMMON_ARGS ../libwebp
-  cmake --build . --parallel "$(getconf _NPROCESSORS_ONLN)"
+  ninja
 elif [ "$ARCH" = "macos_arm64" ]; then
   IOS_PLATFORMDIR="$(xcode-select -p)/Platforms/MacOSX.platform"
   IOS_SYSROOT=($IOS_PLATFORMDIR/Developer/SDKs/MacOSX*.sdk)
@@ -58,7 +58,7 @@ elif [ "$ARCH" = "macos_arm64" ]; then
   echo "set(CMAKE_C_COMPILER $(xcode-select -p)/Toolchains/XcodeDefault.xctoolchain/usr/bin/clang)" >> toolchain.cmake
 
   cmake -G Ninja -DCMAKE_TOOLCHAIN_FILE=toolchain.cmake -DCMAKE_OSX_SYSROOT=${IOS_SYSROOT[0]} $COMMON_ARGS ../libwebp
-  cmake --build . --parallel "$(getconf _NPROCESSORS_ONLN)"
+  ninja
 elif [ "$ARCH" = "x86_64" ]; then
   IOS_PLATFORMDIR="$(xcode-select -p)/Platforms/iPhoneSimulator.platform"
   IOS_SYSROOT=($IOS_PLATFORMDIR/Developer/SDKs/iPhoneSimulator*.sdk)
@@ -74,7 +74,7 @@ elif [ "$ARCH" = "x86_64" ]; then
   echo "set(CMAKE_C_COMPILER $(xcode-select -p)/Toolchains/XcodeDefault.xctoolchain/usr/bin/clang)" >> toolchain.cmake
 
   cmake -G Ninja -DCMAKE_TOOLCHAIN_FILE=toolchain.cmake -DCMAKE_OSX_SYSROOT=${IOS_SYSROOT[0]} $COMMON_ARGS ../libwebp
-  cmake --build . --parallel "$(getconf _NPROCESSORS_ONLN)"
+  ninja
 else
   echo "Unsupported architecture $ARCH"
   exit 1

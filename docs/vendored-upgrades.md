@@ -1,6 +1,8 @@
 # Upgrading vendored libraries (FFmpeg, SQLCipher)
 
-### Upgrading the vendored FFmpeg
+### Upgrading FFmpeg (a submodule since the shared-libraries plan W1.1)
+
+`submodules/ffmpeg/Sources/FFMpeg/ffmpeg-9.0.2` is the `nanogram` branch of klaipher/FFmpeg (one branch, one pin, shared with Android); the Nanogram patches below are commits on that branch, not edits in this tree. To upgrade: rebase the fork branch onto the new release tag there, move all three pins the same day, then do the two edits below. The directory name stays `ffmpeg-<ver>` for the BUILD glob and the Mac `build.sh` autodetect.
 
 FFmpeg is built from source by the `libffmpeg_build` genrule in `submodules/ffmpeg/BUILD`. Dropping in
 a new `Sources/FFMpeg/ffmpeg-<ver>/` tree needs exactly two edits, both in that file (7.1.1 → 8.1.2,
@@ -47,8 +49,8 @@ believing it is live.
 
 ### Upgrading the vendored SQLCipher
 
-`submodules/sqlcipher` is the SQLCipher **amalgamation** (one `Sources/sqlite3.c` plus the three
-public headers), not the source tree. Now SQLCipher 4.20.0/SQLite 3.54.1 (from 4.4.2/SQLite
+`submodules/sqlcipher/amalgamation` is the klaipher/sqlcipher-amalgamation submodule (branch `nanogram`; one `sqlite3.c`
+plus the three public headers; upgrade it in that repository, then move the three pins), not the source tree. Now SQLCipher 4.20.0/SQLite 3.54.1 (from 4.4.2/SQLite
 3.33.0, first upgraded on 2026-09-22), which picked up the upstream WAL-reset corruption fix (SQLite 3.51.3) that matters
 because the app and the notification extension write and checkpoint the same WAL database.
 

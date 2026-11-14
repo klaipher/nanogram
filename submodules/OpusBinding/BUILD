@@ -5,6 +5,8 @@ load("@build_bazel_rules_apple//apple/testing/default_runner:ios_test_runner.bzl
 load("//build-system/bazel-utils:test_simulator.bzl", "TEST_SIMULATOR_DEVICE", "TEST_SIMULATOR_OS")
 
 
+# ogg and opusfile come from the single third-party sources (//third-party/ogg v1.3.6, //third-party/opusfile v0.12);
+# this module no longer carries its own old copies. SwiftPMLinks/ is for Package.swift only and is not globbed here.
 objc_library(
     name = "OpusBinding",
     enable_modules = True,
@@ -22,11 +24,12 @@ objc_library(
     ],
     copts = [
         "-I{}/Sources".format(package_name()),
-        "-I{}/Sources/opusfile".format(package_name()),
         "-I{}/PublicHeaders/OpusBinding".format(package_name()),
     ],
     deps = [
+        "//third-party/ogg:ogg",
         "//third-party/opus:opus",
+        "//third-party/opusfile:opusfile",
     ],
     sdk_frameworks = [
         "Foundation",

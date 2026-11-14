@@ -182,6 +182,11 @@ public enum LiquidGlassShapeSet {
     case crest(LiquidGlassCrestParameters)
     /// `center` is in the layer's coordinates, in points.
     case radial(LiquidGlassRadialParameters, center: SIMD2<Float>)
+
+    /// A radial set; the Mac's recording blob builds its shapes this way.
+    public init(parameters: LiquidGlassRadialParameters, center: SIMD2<Float>) {
+        self = .radial(parameters, center: center)
+    }
 }
 
 /// Must match `LiquidGlassShapesUniforms` in LiquidGlassShapes.metal field for field.

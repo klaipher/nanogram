@@ -43,7 +43,7 @@ kept by a `!tgwatch.xcodeproj` negation in `Telegram/WatchApp/.gitignore` (the r
 `.build`/`.swiftpm`/`xcuserdata` are excluded. Regenerate and commit it whenever `project.yml` changes.
 
 **Stickers: tlottie, built from the phone's source.** The watch renders TGS stickers with tlottie, the crate in
-`submodules/tlottie/tlottie` (the same pin as the phone and the Mac; there is no rlottie copy any more). `Packages/TLottieKit`
+`submodules/tlottie/tlottie` (the same pin as the phone and the Mac; there is no second renderer copy any more). `Packages/TLottieKit`
 wraps it: `TLottieAnimation` (Swift, over the C API, the same calls as `submodules/tlottie/TLottieAnimation.mm`) on top of
 `TLottieCore`, a `binaryTarget` for `Packages/TLottieKit/Frameworks/TLottieCore.xcframework`. That xcframework is **generated,
 not committed**: `Telegram/WatchApp/tools/build-tlottie-xcframework.sh` builds tlottie as a `no_std` static library

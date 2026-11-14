@@ -120,17 +120,17 @@ genrule(
     name = "reference_core_embedded_src",
     srcs = [
         ":reference_core_wasm",
-        "tools/wasm_to_source.py",
+        "tgcalls/tools/wasm_to_source.py",
     ],
     outs = ["ReferenceCoreEmbedded.cpp"],
-    cmd = "python3 $(location tools/wasm_to_source.py) $(location :reference_core_wasm) $@",
+    cmd = "python3 $(location tgcalls/tools/wasm_to_source.py) $(location :reference_core_wasm) $@",
     visibility = ["//visibility:public"],
 )
 
 sources = glob([
-    "Sources/**/*.m",
-    "Sources/**/*.mm",
-    "Sources/**/*.h",
+    "tgcalls/ios/Sources/**/*.m",
+    "tgcalls/ios/Sources/**/*.mm",
+    "tgcalls/ios/Sources/**/*.h",
     "tgcalls/tgcalls/**/*.h",
     "tgcalls/tgcalls/**/*.hpp",
     "tgcalls/tgcalls/**/*.cpp",
@@ -166,9 +166,9 @@ sources = glob([
 ])
 
 sources = glob([
-    "Sources/**/*.m",
-    "Sources/**/*.mm",
-    "Sources/**/*.h",
+    "tgcalls/ios/Sources/**/*.m",
+    "tgcalls/ios/Sources/**/*.mm",
+    "tgcalls/ios/Sources/**/*.h",
     "tgcalls/tgcalls/**/*.h",
     "tgcalls/tgcalls/**/*.hpp",
     "tgcalls/tgcalls/platform/darwin/**/*.cpp",
@@ -276,12 +276,11 @@ objc_library(
     module_name = "TgVoipWebrtc",
     srcs = sources,
     hdrs = glob([
-        "PublicHeaders/**/*.h",
+        "tgcalls/ios/PublicHeaders/**/*.h",
     ]),
     copts = [
         "-I{}/tgcalls/tgcalls".format(package_name()),
         "-Ithird-party/webrtc/webrtc",
-        "-Ithird-party/webrtc/dependencies",
         "-Ithird-party/webrtc/webrtc/sdk/objc",
         "-Ithird-party/webrtc/webrtc/sdk/objc/base",
         "-Ithird-party/webrtc/webrtc/sdk/objc/components/renderer/metal",
@@ -289,7 +288,7 @@ objc_library(
         "-Ithird-party/webrtc/webrtc/sdk/objc/components/video_codec",
         "-Ithird-party/libyuv",
         "-Ithird-party/webrtc/webrtc/sdk/objc/api/video_codec",
-        "-Ithird-party/webrtc/absl",
+        "-Iexternal/abseil-cpp+",  # official abseil module (MODULE.bazel); tgcalls uses #include <absl/...>
         "-DWEBRTC_IOS",
         "-DWEBRTC_MAC",
         "-DWEBRTC_POSIX",
@@ -300,7 +299,7 @@ objc_library(
         #"-Werror",
     ] + optimization_flags,
     includes = [
-        "PublicHeaders",
+        "tgcalls/ios/PublicHeaders",
     ],
     deps = [
         "//third-party/webrtc",
@@ -340,8 +339,7 @@ cc_test(
     copts = [
         "-I{}/tgcalls/tgcalls".format("submodules/TgVoipWebrtc"),
         "-Ithird-party/webrtc/webrtc",
-        "-Ithird-party/webrtc/dependencies",
-        "-Ithird-party/webrtc/absl",
+        "-Iexternal/abseil-cpp+",  # official abseil module (MODULE.bazel); tgcalls uses #include <absl/...>
         "-Ithird-party/libyuv",
         "-DRTC_ENABLE_VP9",
         "-std=c++17",
@@ -363,8 +361,7 @@ cc_test(
     copts = [
         "-I{}/tgcalls/tgcalls".format("submodules/TgVoipWebrtc"),
         "-Ithird-party/webrtc/webrtc",
-        "-Ithird-party/webrtc/dependencies",
-        "-Ithird-party/webrtc/absl",
+        "-Iexternal/abseil-cpp+",  # official abseil module (MODULE.bazel); tgcalls uses #include <absl/...>
         "-Ithird-party/libyuv",
         "-DRTC_ENABLE_VP9",
         "-std=c++17",
@@ -386,8 +383,7 @@ cc_test(
     copts = [
         "-I{}/tgcalls/tgcalls".format("submodules/TgVoipWebrtc"),
         "-Ithird-party/webrtc/webrtc",
-        "-Ithird-party/webrtc/dependencies",
-        "-Ithird-party/webrtc/absl",
+        "-Iexternal/abseil-cpp+",  # official abseil module (MODULE.bazel); tgcalls uses #include <absl/...>
         "-Ithird-party/libyuv",
         "-DRTC_ENABLE_VP9",
         "-DNDEBUG",
@@ -410,8 +406,7 @@ cc_test(
     copts = [
         "-I{}/tgcalls/tgcalls".format("submodules/TgVoipWebrtc"),
         "-Ithird-party/webrtc/webrtc",
-        "-Ithird-party/webrtc/dependencies",
-        "-Ithird-party/webrtc/absl",
+        "-Iexternal/abseil-cpp+",  # official abseil module (MODULE.bazel); tgcalls uses #include <absl/...>
         "-Ithird-party/libyuv",
         "-DRTC_ENABLE_VP9",
         "-std=c++17",
@@ -433,8 +428,7 @@ cc_test(
     copts = [
         "-I{}/tgcalls/tgcalls".format("submodules/TgVoipWebrtc"),
         "-Ithird-party/webrtc/webrtc",
-        "-Ithird-party/webrtc/dependencies",
-        "-Ithird-party/webrtc/absl",
+        "-Iexternal/abseil-cpp+",  # official abseil module (MODULE.bazel); tgcalls uses #include <absl/...>
         "-Ithird-party/libyuv",
         "-DRTC_ENABLE_VP9",
         "-std=c++17",
@@ -612,8 +606,7 @@ cc_library(
     copts = [
         "-I{}/tgcalls/tgcalls".format(package_name()),
         "-Ithird-party/webrtc/webrtc",
-        "-Ithird-party/webrtc/dependencies",
-        "-Ithird-party/webrtc/absl",
+        "-Iexternal/abseil-cpp+",  # official abseil module (MODULE.bazel); tgcalls uses #include <absl/...>
         "-Ithird-party/libyuv",
         "-DRTC_ENABLE_VP9",
         "-DTGVOIP_NAMESPACE=tgvoip_webrtc",

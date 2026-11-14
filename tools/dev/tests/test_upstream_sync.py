@@ -67,6 +67,30 @@ class Parsing(unittest.TestCase):
             self.assertEqual(bool(pin.get("fork_url")), bool(pin.get("fork_branch")), pin["name"])
 
 
+class MovedLibraries(unittest.TestCase):
+    LIBS = [{"name": "lib", "paths": ["third-party/lib/"], "fork_url": "https://example/lib.git", "fork_branch": "nanogram"},
+            {"name": "pin", "paths": ["third-party/pin/"], "official_url": "https://example/pin.git", "official_tag": "v1"}]
+
+    def test_changes_are_routed_to_the_library_that_owns_the_path(self):
+        found = sync.moved_library_changes(["third-party/lib/a.c", "third-party/pin/b.c", "Telegram/x.swift"], self.LIBS)
+        self.assertEqual(found, {"lib": ["third-party/lib/a.c"], "pin": ["third-party/pin/b.c"]})
+        self.assertIn("nanogram", sync.moved_library_target(self.LIBS[0]))
+        self.assertIn("bump the submodule", sync.moved_library_target(self.LIBS[1]))
+
+    def test_shipped_config_names_a_target_for_every_moved_library(self):
+        config = sync.load_config()
+        names = {lib["name"] for lib in config["moved_libraries"]}
+        for wanted in ("FFmpeg", "openh264", "rnnoise", "libprisma", "sqlcipher-amalgamation", "libyuv", "boringssl", "quickjs",
+                       "widget-sandbox", "twidget", "ogg", "opus", "opusfile", "libwebp", "boost_regex", "wamr"):
+            self.assertIn(wanted, names)
+
+    def test_report_lists_the_fork_to_patch(self):
+        config = {"areas": AREAS, "moved_libraries": self.LIBS, "base_commit": "x"}
+        result = sync.MergeResult(tree="t")
+        text = sync.format_report("v2", config, "main", result, ["third-party/lib/a.c"], [])
+        self.assertIn("lib: 1 file(s) -> patch fork https://example/lib.git branch nanogram", text)
+
+
 class DryRun(unittest.TestCase):
     def setUp(self):
         self.tmp = tempfile.TemporaryDirectory()

@@ -1,4 +1,13 @@
-# gumbo (Telegram's fork)
+# gumbo (Telegram's fork, now inside klaipher/twidget)
+
+**The sources moved.** Since W3.4 gumbo is `litehtml/src/gumbo` and `litehtml/gumbo-include` of the twidget submodule
+(`third-party/twidget/twidget`, branch `nanogram`), byte-identical to the copy that lived here (`diff -r` of `src` and
+`include` against the fork: no difference; the 13 changes below are in it). `//third-party/twidget:gumbo` compiles it and
+`//third-party/gumbo:gumbo` is an alias. This package keeps the html5lib harness and the fork's own tests, which run
+against it. Paths below that say `src/` or `include/` mean those folders in the fork; "Edit it here" is retired: edit the
+fork (its `NANOGRAM-CHANGES.md`, "gumbo limits") and move the pin.
+
+## As it was before the move
 
 gumbo-parser as litehtml bundles it (`litehtml/src/gumbo`, `litehtml/gumbo-include`), taken with twidget 80dad8c
 (`third-party/twidget`, pristine commit `a70b21c5a4`, identical at twidget b5878f9) and moved here on 2026-10-16.

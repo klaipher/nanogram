@@ -1,7 +1,7 @@
 // widget-sandbox's CPU quota policy (its C++ copy, cpu_budget.cpp) against the fixture its four copies share
-// (fixtures/cpu-budget.json): upstream's `cpu-budget: shared fixture` and `cpu-budget: edge cases`
-// (packages/core/tests/unit/cpu-budget.test.ts at the vendored tag, v0.3.0). WidgetRuntime's event loop runs it for
-// every step (the JS quota and the main-thread window).
+// (packages/core/tests/fixtures/cpu-budget.json): upstream's `cpu-budget: shared fixture` and `cpu-budget: edge cases`
+// (packages/core/tests/unit/cpu-budget.test.ts, v0.6.3 line: every task gets the whole slice and the time spent past the
+// quota is a debt, no floor). WidgetRuntime's event loop runs it for every step (the JS quota and the main-thread window).
 #include "twidget/cpu_budget.h"
 #include "twidget/json.h"
 
@@ -58,8 +58,11 @@ void sharedFixture(const Json& fixture) {
                 b.record(kind->asString(), s["cpuMs"].asNumber(), at);
             } else if (const Json* kill = s.find("kill")) {
                 CHECK_MSG(b.shouldKill(at) == kill->asBool(), where);
-            } else if (const Json* slice = s.find("queryBudget")) {
-                CHECK_MSG(CpuBudget::queryBudgetMs(slice->asNumber()) == s["expect"].asNumber(), where);
+            } else if (const Json* used = s.find("used")) {
+                CHECK_MSG(std::fabs(b.used(at) - used->asNumber()) < 1e-9, where + ": used " + std::to_string(b.used(at)));
+            } else if (const Json* q = s.find("queries")) {
+                const std::string want = s["expect"].isNull() ? "" : s["expect"].asString();
+                CHECK_MSG(std::string(CpuBudget::queryLimitHit(int((*q)[0].asNumber()), (*q)[1].asNumber())) == want, where);
             } else if (const Json* cost = s.find("opsCost")) {
                 CHECK_MSG(std::fabs(CpuBudget::opsCostMs((*cost)[0].asNumber(), (*cost)[1].asNumber()) - s["expect"].asNumber()) < 1e-9, where);
             } else {
@@ -74,20 +77,20 @@ void edgeCases() {
     {
         CpuBudget b = fresh();
         CHECK_MSG(b.used(123456) == 0, "an empty window: nothing used");
-        CHECK_MSG(sameDecision(b.decide("frame", 123456), *Json::parse(R"({"run": true, "sliceMs": 300})")), "an empty window: the full quota");
+        CHECK_MSG(sameDecision(b.decide("frame", 123456), *Json::parse(R"({"run": true, "sliceMs": 500})")), "an empty window: the whole slice");
         CHECK_MSG(b.throttledFor(123456) == 0, "an empty window: not throttled");
     }
     {
         CpuBudget b = fresh();
         b.record("timer", 1000, 10);
-        CHECK_MSG(b.used(10) == 1000, "time recorded counts");
+        CHECK_MSG(b.used(10) == 600, "time recorded counts: the window holds the quota, the debt at most one more");
         CHECK_MSG(b.used(10000) == 0, "time spent long ago is forgotten");
-        CHECK_MSG(sameDecision(b.decide("timer", 10000), *Json::parse(R"({"run": true, "sliceMs": 300})")), "a later window starts afresh");
+        CHECK_MSG(sameDecision(b.decide("timer", 10000), *Json::parse(R"({"run": true, "sliceMs": 500})")), "a later window starts afresh");
     }
     {
         CpuBudget b = fresh();
         b.record("timer", 50000, 0);
-        CHECK_MSG(sameDecision(b.decide("event", 1), *Json::parse(R"({"run": true, "sliceMs": 50})")), "events get the floor");
+        CHECK_MSG(sameDecision(b.decide("event", 1), *Json::parse(R"({"run": true, "sliceMs": 500})")), "events get the whole slice");
         CHECK_MSG(sameDecision(b.decide("timer", 1), *Json::parse(R"({"run": false, "retryAt": 1000})")), "a timer waits for the window");
     }
     {

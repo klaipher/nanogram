@@ -40,7 +40,7 @@ private final class QrStudioPhaseMember {
 }
 
 final class QrStudioPhasedAnimation {
-    static let groupCount = 6
+    static let groupCount = qrStudioPhaseGroupCount
     private static let animationKey = "qrPhasedFrames"
 
     private let context: AccountContext

@@ -1,4 +1,4 @@
-// widget-sandbox v0.1.1's Intl parity fixture (third-party/widget-sandbox/fixtures/intl-cases.json: requests as the
+// widget-sandbox v0.1.1's Intl parity fixture (third-party/widget-sandbox/widget-sandbox/packages/core/tests/fixtures/intl-cases.json: requests as the
 // framework's shim sends them, with V8's answers), each request run as the call a widget would make. Shared by the host
 // test (Tests/IntlCasesTests.cpp, over a host answering from the fixture) and the iOS one
 // (WidgetRuntimeIOS/Tests/WRIntlCasesTests.swift, through widget-sandbox's iOS glue), which set the global

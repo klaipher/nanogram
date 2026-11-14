@@ -25,16 +25,28 @@ public struct MTMathRenderedFormula {
 }
 
 public enum MTMathRenderer {
-    public static func render(latex: String, fontSize: CGFloat, textColor: MTColor, mode: MTMathUILabelMode = .display) -> MTMathRenderedFormula? {
-        guard let font = MTFontManager.fontManager.defaultFont?.copy(withSize: fontSize) else {
-            return nil
-        }
+    static let maximumRenderedDimension = CGFloat(8192)
+    static let maximumRenderedArea = CGFloat(4096 * 1024)
 
+    public static func render(latex: String, fontSize: CGFloat, textColor: MTColor, mode: MTMathUILabelMode = .display) -> MTMathRenderedFormula? {
         var error: NSError?
         guard let mathList = MTMathListBuilder.build(fromString: latex, error: &error), error == nil else {
             return nil
         }
+        return render(mathList: mathList, fontSize: fontSize, textColor: textColor, mode: mode)
+    }
 
+    public static func renderForAuthoring(latex: String, fontSize: CGFloat, textColor: MTColor, mode: MTMathUILabelMode = .display) -> MTMathRenderedFormula? {
+        guard let mathList = MTMathListBuilder.buildForAuthoring(fromString: latex) else {
+            return nil
+        }
+        return render(mathList: mathList, fontSize: fontSize, textColor: textColor, mode: mode)
+    }
+
+    private static func render(mathList: MTMathList, fontSize: CGFloat, textColor: MTColor, mode: MTMathUILabelMode) -> MTMathRenderedFormula? {
+        guard let font = MTFontManager.fontManager.defaultFont?.copy(withSize: fontSize) else {
+            return nil
+        }
         let style: MTLineStyle
         switch mode {
         case .display:
@@ -51,6 +63,9 @@ public enum MTMathRenderer {
 
         let width = max(1.0, ceil(displayList.width))
         let height = max(1.0, ceil(displayList.ascent + displayList.descent))
+        guard width.isFinite, height.isFinite, width <= maximumRenderedDimension, height <= maximumRenderedDimension, width * height <= maximumRenderedArea else {
+            return nil
+        }
         let size = CGSize(width: width, height: height)
         displayList.position = CGPoint(x: 0.0, y: displayList.descent)
 

@@ -11,9 +11,9 @@ let package = Package(
         .library(name: "WebPKit", targets: ["WebPKit"]),
     ],
     targets: [
-        // Vendored: libwebp 1.6.0 (webmproject/libwebp tag v1.6.0,
-        // 4fa21912338357f89e4fd51cf2368325b59e9bd9): src/dec, dsp, utils, webp plus four
-        // src/enc headers the decoder DSP includes; src/webp/config.h is hand-written.
+        // libwebp 1.6.0 (webmproject/libwebp tag v1.6.0, 4fa21912338357f89e4fd51cf2368325b59e9bd9): src/dec, dsp,
+        // utils, webp plus four src/enc headers the decoder DSP includes. Every file is a symlink into the shared
+        // third-party/webp/libwebp submodule (one copy for the app); src/webp/config.h is hand-written.
         .target(
             name: "WebPCore",
             path: "Sources/WebPCore",

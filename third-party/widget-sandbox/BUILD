@@ -4,12 +4,22 @@ load("@build_bazel_rules_apple//apple:resources.bzl", "apple_resource_bundle", "
 load("@build_bazel_rules_swift//swift:swift.bzl", "swift_library", "swift_test")
 load("//build-system/bazel-utils:plist_fragment.bzl", "plist_fragment")
 
+# The framework is the submodule `widget-sandbox/` (klaipher/widget-sandbox `nanogram`, VENDOR.md); this package keeps the
+# iOS glue around it, the host tests and the bundles. The paths below are its layout.
+WS = "widget-sandbox"
+CORPUS = WS + "/corpus"
+CONFORMANCE = WS + "/packages/conformance"
+STRESS = WS + "/packages/stress"
+FIXTURES = WS + "/packages/core/tests/fixtures"
+SANDBOX = WS + "/packages/desktop/sandbox"
+PKG = "third-party/widget-sandbox"
+
 # The corpus by folder (names repeat across folders: generated/with-profile and without-profile share 21), at
-# corpus/<folder>/… in a test bundle. Test data: never in the app.
+# widget-sandbox/corpus/<folder>/… in a test bundle. Test data: never in the app.
 apple_resource_group(
     name = "WidgetCorpus",
     testonly = True,
-    structured_resources = glob(["corpus/**"]),
+    structured_resources = glob([CORPUS + "/**"]),
     visibility = ["//submodules/TelegramUI/Components/MessageWidget:__subpackages__"],
 )
 
@@ -17,7 +27,7 @@ apple_resource_group(
 filegroup(
     name = "ProfileJSON",
     testonly = True,
-    srcs = ["profile/profile.json"],
+    srcs = [WS + "/packages/core/profile.json"],
     visibility = ["//submodules/TelegramUI/Components/MessageWidget:__subpackages__"],
 )
 
@@ -25,8 +35,17 @@ filegroup(
 filegroup(
     name = "IntlCases",
     testonly = True,
-    srcs = ["fixtures/intl-cases.json"],
+    srcs = [FIXTURES + "/intl-cases.json"],
     visibility = ["//submodules/TelegramUI/Components/MessageWidget:__subpackages__"],
+)
+
+# Upstream's IntlBridge is the last section of SandboxEngine.swift ("Intl delegation", after an `import Foundation`): cut
+# out at build time, so the submodule stays the only copy of it.
+genrule(
+    name = "IntlBridgeSource",
+    srcs = [WS + "/packages/ios/Sources/WidgetSandbox/SandboxEngine.swift"],
+    outs = ["IntlBridge.swift"],
+    cmd = "{ printf 'import Foundation\\n\\n'; awk '/^\\/\\/ MARK: - Intl delegation/,0' $(SRCS); } > $@",
 )
 
 # widget-sandbox's iOS glue for the `intl` capability (VENDOR.md): upstream's IntlBridge and CLDR plural rules,
@@ -35,8 +54,8 @@ swift_library(
     name = "WidgetSandboxIntl",
     module_name = "WidgetSandboxIntl",
     srcs = [
-        "ios/IntlBridge.swift",
-        "ios/PluralRules.swift",
+        ":IntlBridgeSource",
+        WS + "/packages/ios/Sources/WidgetSandbox/PluralRules.swift",
         "ios/WidgetSandboxIntl.swift",
     ],
     visibility = ["//submodules/TelegramUI/Components/MessageWidget:__subpackages__"],
@@ -56,9 +75,9 @@ swift_test(
 # runs its arbiter on the primary pointer.
 cc_library(
     name = "GesturePolicy",
-    srcs = ["gesture/gesture_policy.cpp"],
-    hdrs = ["gesture/twidget/gesture_policy.h"],
-    strip_include_prefix = "gesture",
+    srcs = [SANDBOX + "/src/gesture_policy.cpp"],
+    hdrs = [SANDBOX + "/include/twidget/gesture_policy.h"],
+    strip_include_prefix = SANDBOX + "/include",
     copts = ["-std=c++20"],
     visibility = ["//submodules/TelegramUI/Components/MessageWidget:__subpackages__"],
 )
@@ -69,11 +88,11 @@ cc_test(
     name = "GesturePolicyTests",
     srcs = [
         "gesture/GesturePolicyTests.cpp",
-        "gesture/twidget/json.h",
+        SANDBOX + "/include/twidget/json.h",
     ],
-    copts = ["-std=c++20", "-Ithird-party/widget-sandbox/gesture"],
-    data = ["fixtures/gesture-policy.json"],
-    env = {"WS_GESTURE_POLICY": "$(rootpath fixtures/gesture-policy.json)"},
+    copts = ["-std=c++20", "-I" + PKG + "/" + SANDBOX + "/include"],
+    data = [FIXTURES + "/gesture-policy.json"],
+    env = {"WS_GESTURE_POLICY": "$(rootpath " + FIXTURES + "/gesture-policy.json)"},
     deps = [":GesturePolicy"],
 )
 
@@ -81,12 +100,13 @@ cc_test(
 # `setResizeAnchor` checks its edge with it.
 cc_library(
     name = "SdkPolicy",
-    srcs = ["gesture/sdk_policy.cpp"],
+    srcs = [SANDBOX + "/src/sdk_policy.cpp"],
     hdrs = [
-        "gesture/twidget/json.h",
-        "gesture/twidget/sdk_policy.h",
+        SANDBOX + "/include/twidget/json.h",
+        SANDBOX + "/include/twidget/sdk_policy.h",
+        SANDBOX + "/include/twidget/version.h",
     ],
-    strip_include_prefix = "gesture",
+    strip_include_prefix = SANDBOX + "/include",
     copts = ["-std=c++20"],
     visibility = ["//submodules/TelegramUI/Components/MessageWidget:__subpackages__"],
 )
@@ -97,18 +117,18 @@ cc_test(
     name = "SdkPolicyTests",
     srcs = ["gesture/SdkPolicyTests.cpp"],
     copts = ["-std=c++20"],
-    data = ["fixtures/sdk-policy.json"],
-    env = {"WS_SDK_POLICY": "$(rootpath fixtures/sdk-policy.json)"},
+    data = [FIXTURES + "/sdk-policy.json"],
+    env = {"WS_SDK_POLICY": "$(rootpath " + FIXTURES + "/sdk-policy.json)"},
     deps = [":SdkPolicy"],
 )
 
-# widget-sandbox's CPU quota policy, its C++ copy (packages/desktop/sandbox at the vendored tag): WidgetRuntime's event
-# loop decides each step with it (the JS quota and the main-thread window).
+# widget-sandbox's CPU quota policy, its C++ copy (packages/desktop/sandbox): WidgetRuntime's event loop decides each step
+# with it (the JS quota and the main-thread window).
 cc_library(
     name = "CpuBudget",
-    srcs = ["gesture/cpu_budget.cpp"],
-    hdrs = ["gesture/twidget/cpu_budget.h"],
-    strip_include_prefix = "gesture",
+    srcs = [SANDBOX + "/src/cpu_budget.cpp"],
+    hdrs = [SANDBOX + "/include/twidget/cpu_budget.h"],
+    strip_include_prefix = SANDBOX + "/include",
     copts = ["-std=c++20"],
     visibility = ["//submodules/TelegramUI/Components/MessageWidget:__subpackages__"],
 )
@@ -119,14 +139,14 @@ cc_test(
     name = "CpuBudgetTests",
     srcs = [
         "gesture/CpuBudgetTests.cpp",
-        "gesture/twidget/json.h",
+        SANDBOX + "/include/twidget/json.h",
     ],
     copts = [
         "-std=c++20",
-        "-Ithird-party/widget-sandbox/gesture",
+        "-I" + PKG + "/" + SANDBOX + "/include",
     ],
-    data = ["fixtures/cpu-budget.json"],
-    env = {"WS_CPU_BUDGET": "$(rootpath fixtures/cpu-budget.json)"},
+    data = [FIXTURES + "/cpu-budget.json"],
+    env = {"WS_CPU_BUDGET": "$(rootpath " + FIXTURES + "/cpu-budget.json)"},
     deps = [":CpuBudget"],
 )
 
@@ -134,7 +154,7 @@ cc_test(
 filegroup(
     name = "CorpusFiles",
     testonly = True,
-    srcs = glob(["corpus/**/*.html"]),
+    srcs = glob([CORPUS + "/**/*.html"]),
     visibility = ["//submodules/TelegramUI/Components/MessageWidget:__subpackages__"],
 )
 
@@ -157,17 +177,29 @@ apple_resource_bundle(
     name = "WidgetCorpusBundle",
     bundle_name = "WidgetCorpus",
     infoplists = [":WidgetCorpusInfoPlist"],
-    structured_resources = glob(["corpus/**"], exclude = ["corpus/attacks/**"]),
-    strip_structured_resources_prefixes = ["corpus"],
+    structured_resources = glob([CORPUS + "/**"], exclude = [CORPUS + "/attacks/**"]),
+    strip_structured_resources_prefixes = [CORPUS],
     visibility = ["//visibility:public"],
 )
 
-# The conformance set (CLIENTS.md) at conformance/… in a test bundle: the widgets, refs, channel.json, manifest.json,
-# catalogue.json and the report tool. Test data: never in the app.
+# The conformance set (CLIENTS.md) at widget-sandbox/packages/conformance/… in a test bundle: the widgets, refs,
+# channel.json, manifest.json, catalogue.json and the report tool (not the web harness or its results). Test data: never
+# in the app.
 apple_resource_group(
     name = "WidgetConformance",
     testonly = True,
-    structured_resources = glob(["conformance/**"]),
+    structured_resources = glob([
+        CONFORMANCE + "/auto/**",
+        CONFORMANCE + "/visual/**",
+        CONFORMANCE + "/refs/**",
+        CONFORMANCE + "/channel.json",
+        CONFORMANCE + "/manifest.json",
+        CONFORMANCE + "/catalogue.json",
+        CONFORMANCE + "/run.schema.json",
+        CONFORMANCE + "/CLIENTS.md",
+        CONFORMANCE + "/README.md",
+        CONFORMANCE + "/tools/*.mjs",
+    ]),
     visibility = ["//submodules/TelegramUI/Components/MessageWidget:__subpackages__"],
 )
 
@@ -192,14 +224,14 @@ apple_resource_bundle(
     bundle_name = "WidgetConformance",
     infoplists = [":WidgetConformanceInfoPlist"],
     structured_resources = glob([
-        "conformance/auto/**",
-        "conformance/visual/**",
-        "conformance/refs/visual/**",
-        "conformance/channel.json",
+        CONFORMANCE + "/auto/**",
+        CONFORMANCE + "/visual/**",
+        CONFORMANCE + "/refs/visual/**",
+        CONFORMANCE + "/channel.json",
         # The conformance runner's test list (Tests/WidgetHarness).
-        "conformance/manifest.json",
+        CONFORMANCE + "/manifest.json",
     ]),
-    strip_structured_resources_prefixes = ["conformance"],
+    strip_structured_resources_prefixes = [CONFORMANCE],
     visibility = ["//visibility:public"],
 )
 
@@ -224,10 +256,10 @@ apple_resource_bundle(
     bundle_name = "WidgetStress",
     infoplists = [":WidgetStressInfoPlist"],
     structured_resources = glob([
-        "stress/widgets/**",
-        "stress/manifest.json",
+        STRESS + "/widgets/**",
+        STRESS + "/manifest.json",
     ]),
-    strip_structured_resources_prefixes = ["stress"],
+    strip_structured_resources_prefixes = [STRESS],
     visibility = ["//visibility:public"],
 )
 
