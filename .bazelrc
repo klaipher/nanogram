@@ -93,7 +93,10 @@ common --repo_env=APPLE_SUPPORT_LAYERING_CHECK_BETA=0
 # uniffi-bindgen at the start of the cold critical path) gets shorter. Outputs do not change. Measure with a cold
 # build and `tg profile` (docs/bazel-build-profiling.md); drop the line if the cold wall time does not improve.
 # https://github.com/bazelbuild/rules_rust/blob/0.75.0/rust/settings/settings.bzl (pipelined_compilation)
-build --@rules_rust//rust/settings:pipelined_compilation=true
+# Off: with --spawn_strategy=standalone the .rmeta action and the .rlib action write the same .rmeta file, and the
+# second rustc fails with "output file ... .rmeta is not writeable" (first App Store build, 2026-11-14). It needs a
+# sandboxed or remote strategy.
+build --@rules_rust//rust/settings:pipelined_compilation=false
 
 # rustc defaults aarch64-apple-ios to apple-a7 (no LSE). The iOS floor is A12; the setting skips exec-configuration tools
 # (build scripts, proc macros), so host builds are unchanged. The Mac build does not use this Bazel config.
