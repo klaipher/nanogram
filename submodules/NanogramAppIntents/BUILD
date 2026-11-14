@@ -1,7 +1,8 @@
 load("@build_bazel_rules_swift//swift:swift.bzl", "swift_library")
 
 # App Intents, entities and the App Shortcuts provider. Linked into the app (Shortcuts, Siri, Spotlight) and into the
-# widget extension (configuration intent, Control Center button, Live Activity buttons). Not strict: the AppIntents
+# widget extension (configuration intent, Control Center button, Live Activity buttons). alwayslink: nothing in the app's
+# sources references these types, and the linker would drop them (the intents must exist in the app process). Not strict: the AppIntents
 # macros and static metadata do not compile cleanly under the Swift 6 strict settings.
 swift_library(
     name = "NanogramAppIntents",
@@ -10,5 +11,6 @@ swift_library(
     deps = [
         "//submodules/NanogramGlance:NanogramGlance",
     ],
+    alwayslink = True,
     visibility = ["//visibility:public"],
 )
