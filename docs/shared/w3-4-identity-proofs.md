@@ -41,3 +41,24 @@ line, so most data differs by design; what was compared:
 - Channel: 122 posts, 69 `auto/`, 16 with a `message`, 4 not captioned below (same four); stress manifest: 127 widgets;
   corpus `.html` files per folder: attacks 127 (+14), bot-demos 7 (+1, `07-wallet`), the others as before (generated 40 =
   20 + 20, htmlbubbles-ported 116, showcase 27, ...); twelve existing pages changed.
+
+## twidget and gumbo (klaipher/twidget `nanogram` a4f5391c)
+
+- gumbo: `diff -r third-party/gumbo/src litehtml/src/gumbo` and `diff -r third-party/gumbo/include litehtml/gumbo-include`
+  (fork tree, a4f5391c): no difference. So the 13 changes, `GumboForkTests` and the html5lib verdicts (1,792 cases in 57
+  files, 1,747 pass, 31 listed failures, 14 skipped) are unchanged; `gumbo/tests` stays here and runs against the fork's files.
+- `TwidgetAssets`: `twa_icons.cpp`, `twa_icon_data.inc`, `include/twidget_assets.h`, `icons/LICENSE` identical to the fork's
+  `apple/Sources/TwidgetAssets/`; the fork adds the icon sources (`icons/{light,regular,bold,fill}`, `icons.json`), not built.
+- `LICENSE` identical; `THIRD_PARTY_NOTICES.md` differs (the fork's is current).
+- Apple layer, iOS copy against the fork (changed lines of `diff`): identical `LHGPURenderer.mm`, `LHRenderList.mm`,
+  `LHSanitizer.mm`, `LHFilters.h`, `LHGPUInternal.h`, `LHHostSupport.h`, `core/lhx_sanitizer.*`, `include/LHDocumentPainting.h`,
+  `include/LHRenderList.h`, `include/LHSanitizer.h`; different: `LHContainer.mm` 803, `LHDocument.mm` 1960 (the Mac renderer's
+  patch, cache and selection APIs, the image policy merge, `TWClipPath`), `LHImages.mm` 6, `LHFilters.mm` 2, `LHSimpleText.*`
+  4 and 6, `LHContainer.h` 12, `LHDocument.h` 71 (added methods only, plus the stray Cocoa import below), `core/lhx_painter.h` 6.
+  `LHDocument.h` keeps every method the iOS copy declared (the diff has only additions on the fork side).
+- Defect found: the fork's `include/{LHDocument,LHGPURenderer,LHImages,LHTextFragment}.h` and `LHContainer.mm` begin with an
+  unguarded `#import <Cocoa/Cocoa.h>`. `third-party/twidget/shim/Cocoa/Cocoa.h` covers it (VENDOR.md, "Fork follow-up").
+- litehtml: the fork has `litehtml/src/*.cpp|h` 66 files and `include/**/*.h` 76; the old copy had `calc_node.{h,cpp}` that the
+  fork does not (its calc registry replaces them). `-std=gnu++17` as before; the fork's SwiftPM package uses the same.
+- `WidgetRuntimeNoIOScanTests`, the pure-Python port over the 171 litehtml and gumbo files: no hit. Thresholds: litehtml files
+  >= 140 (was 128; 66 + 76 + 27 + 2 + ... = 171 counted), gumbo >= 26 (29 files), quickjs >= 20 (was 16; 22 files).

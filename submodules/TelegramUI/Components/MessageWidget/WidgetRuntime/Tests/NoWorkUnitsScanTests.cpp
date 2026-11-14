@@ -106,7 +106,7 @@ WR_TEST(testNoWorkUnits) {
     // The scan must have reached all three trees: an empty or partial list would pass for nothing.
     CHECK(own >= 108);
     CHECK(ios >= 5);
-    CHECK(quickjs >= 16);
+    CHECK(quickjs >= 20);
     size_t hits = 0;
     for (const std::string& file : files) {
         std::ifstream in(file, std::ios::binary);

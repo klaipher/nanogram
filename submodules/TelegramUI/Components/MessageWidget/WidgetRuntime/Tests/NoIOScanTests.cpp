@@ -302,9 +302,9 @@ WR_TEST(testNoIOInTheRuntime) {
                 gumbo, litehtml);
     // The scan must have reached all four trees: an empty or partial list would pass for nothing.
     CHECK(own >= 108);
-    CHECK(quickjs >= 16);
+    CHECK(quickjs >= 20);
     CHECK(gumbo >= 26);
-    CHECK(litehtml >= 128);
+    CHECK(litehtml >= 140);
 
     std::set<size_t> used;
     size_t allowedHits = 0;

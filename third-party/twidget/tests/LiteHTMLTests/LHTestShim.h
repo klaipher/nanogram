@@ -45,9 +45,9 @@ static inline NSString* NSStringFromSize(NSSize size)
 @end
 
 // The corpus upstream's tests read from `__FILE__/../../Examples/chats`: a test bundle has no source
-// tree, so the BUILD bundles twidget's Examples/chats as a structured resource of the test bundle.
+// tree, so the BUILD bundles the submodule's apple/Examples/chats as a structured resource of the test bundle.
 static inline NSString* LHTestExamplesChatsDirectory(Class testClass)
 {
-    return [[NSBundle bundleForClass:testClass].resourcePath stringByAppendingPathComponent:@"Examples/chats"];
+    return [[NSBundle bundleForClass:testClass].resourcePath stringByAppendingPathComponent:@"twidget/apple/Examples/chats"];
 }
 #endif

@@ -101,3 +101,8 @@
 	url = https://github.com/klaipher/widget-sandbox.git
 	branch = nanogram
 	shallow = true
+[submodule "third-party/twidget/twidget"]
+	path = third-party/twidget/twidget
+	url = https://github.com/klaipher/twidget.git
+	branch = nanogram
+	shallow = true
