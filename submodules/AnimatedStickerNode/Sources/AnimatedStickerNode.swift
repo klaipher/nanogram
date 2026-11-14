@@ -8,8 +8,6 @@ import MediaResources
 import AnimationCompression
 import UIKit
 
-private let sharedQueue = Queue()
-
 // Audio can keep the app running in the background, where sticker frames are decoded for nobody.
 // There a firing playback timer stops itself instead, and is started again on return, so playback
 // continues from the same frame with the same mode and loop count.
@@ -22,8 +20,7 @@ private final class AnimatedStickerBackgroundGate {
     }
 
     private let isInBackground = Atomic<Bool>(value: false)
-    // Accessed on sharedQueue only.
-    private var parkedTimers: [ParkedTimer] = []
+    private let parkedTimers = Atomic<[ParkedTimer]>(value: [])
 
     private init() {
         let _ = NotificationCenter.default.addObserver(forName: UIApplication.didEnterBackgroundNotification, object: nil, queue: nil, using: { [weak self] _ in
@@ -34,25 +31,24 @@ private final class AnimatedStickerBackgroundGate {
                 return
             }
             let _ = self.isInBackground.swap(false)
-            sharedQueue.async {
+            DispatchQueue.global(qos: .userInitiated).async {
                 self.resumeParkedTimers()
             }
         })
     }
 
-    // Called on sharedQueue by a firing timer.
+    // Called on a node's queue by a firing timer.
     func parkIfInBackground(timer: SwiftSignalKit.Timer, holder: Atomic<SwiftSignalKit.Timer?>) -> Bool {
         if !self.isInBackground.with({ $0 }) {
             return false
         }
         timer.invalidate()
-        self.parkedTimers.append(ParkedTimer(timer: timer, holder: holder))
+        let _ = self.parkedTimers.modify { $0 + [ParkedTimer(timer: timer, holder: holder)] }
         return true
     }
 
     private func resumeParkedTimers() {
-        let parkedTimers = self.parkedTimers
-        self.parkedTimers.removeAll()
+        let parkedTimers = self.parkedTimers.swap([])
         for parkedTimer in parkedTimers {
             // Not when the node paused, stopped or restarted playback meanwhile.
             if let timer = parkedTimer.timer, parkedTimer.holder.with({ $0 === timer }) {
@@ -335,7 +331,7 @@ public final class DefaultAnimatedStickerNodeImpl: ASDisplayNode, AnimatedSticke
     /// - Parameter rendererMode: nil follows the process-wide mode (Debug Settings ▸ "Stickers: renderer").
     ///   Reactions pass `.cpu`: they are drawn as upstream draws them, see `AnimatedStickerRendererMode.reactions`.
     public init(useMetalCache: Bool = false, rendererMode: AnimatedStickerRendererMode? = nil) {
-        self.queue = sharedQueue
+        self.queue = AnimatedStickerQueuePool.queueForNewNode()
         self.eventsNode = AnimatedStickerNodeDisplayEvents()
         
         self.explicitlyUsesMetalCache = useMetalCache

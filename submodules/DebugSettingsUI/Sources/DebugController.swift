@@ -338,6 +338,7 @@ enum DebugControllerEntry: ItemListNodeEntry {
     case chatSideListLegacy(Bool)
     case messageWidgets(Bool)
     case messageWidgetWallet(Bool)
+    case stickerParallelQueues(Bool)
     case respectSystemMicrophone(Bool)
     case videoMessageCameraMode(ExperimentalUISettings.VideoMessageCameraMode)
     case videoMessageCloseFocus(Bool)
@@ -392,7 +393,7 @@ enum DebugControllerEntry: ItemListNodeEntry {
             return DebugControllerSection.glassGroups.rawValue
         case .performanceHeader, .frameHitchLog, .backSwipePreparePreviousScreen:
             return DebugControllerSection.performance.rawValue
-        case .springSendAnimation, .fakeWalletTransfers, .stickerRendererMode, .disableImageContentAnalysis, .disableLanguageRecognition, .localTranscription, .enableVoipTcp, .chatMediaEditorLegacy, .mediaGridLegacy, .sharedMediaGridLegacy, .storyLegacyVideoWriter, .chatLegacyVideoWriter, .chatSideListLegacy, .messageWidgets, .messageWidgetWallet:
+        case .springSendAnimation, .fakeWalletTransfers, .stickerRendererMode, .disableImageContentAnalysis, .disableLanguageRecognition, .localTranscription, .enableVoipTcp, .chatMediaEditorLegacy, .mediaGridLegacy, .sharedMediaGridLegacy, .storyLegacyVideoWriter, .chatLegacyVideoWriter, .chatSideListLegacy, .messageWidgets, .messageWidgetWallet, .stickerParallelQueues:
             return DebugControllerSection.experiments.rawValue
         case .enableNetworkFramework, .enableNetworkExperiments, .rustMTProtoEngine, .networkEngineInfo:
             return DebugControllerSection.videoExperiments2.rawValue
@@ -506,6 +507,9 @@ enum DebugControllerEntry: ItemListNodeEntry {
             return 88
         case .messageWidgetWallet:
             return 89
+        case .stickerParallelQueues:
+            // Appended after `messageWidgetWallet`; see the ordering note at `springSendAnimation`.
+            return 150
         case .checkSerializedData:
             return 58
         case .enableQuickReactionSwitch:
@@ -1099,6 +1103,14 @@ enum DebugControllerEntry: ItemListNodeEntry {
                     return settings
                 }).start()
             })
+        case let .stickerParallelQueues(value):
+            return ItemListSwitchItem(presentationData: presentationData, systemStyle: .glass, title: "Stickers: parallel queues", value: value, sectionId: self.section, style: .blocks, updated: { value in
+                let _ = updateExperimentalUISettingsInteractively(accountManager: arguments.sharedContext.accountManager, { settings in
+                    var settings = settings
+                    settings.stickerParallelQueues = value
+                    return settings
+                }).start()
+            })
         case let .chatSideListLegacy(value):
             return ItemListSwitchItem(presentationData: presentationData, systemStyle: .glass, title: "Chat side list: legacy strip", value: value, sectionId: self.section, style: .blocks, updated: { value in
                 let _ = updateExperimentalUISettingsInteractively(accountManager: arguments.sharedContext.accountManager, { settings in
@@ -1397,6 +1409,7 @@ func debugControllerEntries(environment: DebugControllerEntriesEnvironment, them
         entries.append(.chatSideListLegacy(experimentalSettings.chatSideListLegacy))
         entries.append(.messageWidgets(environment.messageWidgetsEnabled))
         entries.append(.messageWidgetWallet(environment.messageWidgetWalletEnabled))
+        entries.append(.stickerParallelQueues(experimentalSettings.stickerParallelQueues))
     }
 
     if isMainApp {
