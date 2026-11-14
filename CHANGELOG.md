@@ -4,6 +4,12 @@ Newest first. Internal notes for each TestFlight build; testers see the What to 
 
 ## Unreleased
 
+Release optimization audit (branch `build/release-opt`; not built or run by its author). Verification is in `docs/bazel-build-profiling.md`.
+
+- **IOS-OPT-1** `third-party/wallet-engine/BUILD`: `_RUST_RELEASE_FLAGS` `-Copt-level=z` to `-Copt-level=3` (kept `-Ccodegen-units=1`, `-Cpanic=abort`; fat LTO comes from `Make.py`). Upstream's `z` ran PBKDF2-HMAC-SHA512, ed25519 and sha2 size-first. Keep only if mnemonic-to-key time improves and the size growth is tens of KB.
+- **IOS-OPT-2** `Telegram/prebuilt_watchos_compile.sh`: `GCC_OPTIMIZATION_LEVEL=3` on the xcodebuild line. The watch app's C packages (COpus, COgg, WebPCore, RLottieCore) were built `-Os` by Xcode's SwiftPM defaults in Release; command-line settings reach package targets. `-ffast-math` stays off, upstream Package.swift files untouched.
+- **IOS-DOC-1** `tools/dev/native/module_settings.py`, `native-libs.json`, regenerated `docs/module-build-settings.md` and `module-settings.json`: removed the stale "iOS has no order file" claim (iOS uses order files for MtProtoKit, SwiftSignalKit, Postbox, TelegramCore, TelegramUI); the Rust LTO note now defers to MAC-OPT-1..3. The regeneration also refreshed the module counts (903 iOS Swift modules, 44 in Swift 6 mode).
+
 Build-system modernization (branch `build/modernize`; not built or run by its author; the checks to run are in `docs/bazel-build-profiling.md`). No change to what the app does.
 
 - **Native-library genrules** (`third-party/{dav1d,libvpx,opus,webp,libjxl,td,libjpeg-turbo}/BUILD`, `submodules/ffmpeg/BUILD`). Every architecture table now ends in `exit 1` for an unknown `$(TARGET_CPU)` (dav1d, libvpx, opus, webp, libjxl, td and ffmpeg only echoed it and went on with an empty arch). Each genrule deletes its scratch tree after the outputs are copied (`rm -rf "$BUILD_DIR"`, ffmpeg also its `FFMpegSource` copy): under `--strategy=Genrule=standalone` nothing else removed the source copies, CMake/meson trees and object files from `bazel-bin`. Codec sources are therefore no longer visible to lldb from there. The `SOURCE_PATH` lines are untouched (the shared-codebase migration owns them).

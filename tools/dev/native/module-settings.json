@@ -311,8 +311,8 @@
   "RangeSet": "Mac still builds it in the lower Swift language mode (the Mac core's manifests are tools-version 5.5 from upstream); raised module by module with its tests (shared-codebase plan 3.2), never in bulk"
  },
  "counts": {
-  "ios_swift_modules": 822,
-  "ios_swift6": 41,
+  "ios_swift_modules": 903,
+  "ios_swift6": 44,
   "mac_swift_targets": 258,
   "mac_swift6": 8,
   "built_by_both": 43,

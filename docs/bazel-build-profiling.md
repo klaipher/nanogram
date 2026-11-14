@@ -39,3 +39,10 @@ Compare before and after on the same machine, one change at a time, with an empt
 | `NANOGRAM_XCODE_ID` action env | `bazel aquery 'mnemonic(Genrule, //third-party/libvpx:libvpx_build)' \| grep NANOGRAM_XCODE_ID`; a second build runs 0 genrule actions; `--overrideXcodeVersion` with another Xcode re-runs them. |
 | ThinLTO linker cache (release links) | `bazel aquery -c opt 'mnemonic(ObjcLink, //Telegram:Telegram)'` shows `-cache_path_lto`; two `release_arm64` builds with one `.cpp` touched between them: the second link action is much shorter in `tg profile`. `du -sh ~/.cache/telegram-ios/lto-cache`. |
 | rules_rust pipelined compilation | Cold build before and after: Rust phase wall time, `Rustc` overlap and the critical path in `tg profile`/Perfetto. `nm -gU` and `size` of the wallet-engine and mtproto-engine static libraries must not change. Revert the `.bazelrc` line if the cold wall time does not improve. |
+
+## Release optimization settings (build/release-opt)
+
+| Setting | How to verify in the final build |
+|---|---|
+| wallet-engine Rust `-Copt-level=3` (was `z`) | `bazel aquery` with the `release_arm64` flags on `mnemonic(Rustc, //third-party/wallet-engine:*)` shows `-Copt-level=3` and `-Clto=fat` (also proves rules_rust `lto=fat` reaches `rust_static_library`). Time mnemonic-to-key on device before and after; compare `size -m` of TelegramUI or the app (expect tens of KB). Revert if there is no gain. |
+| Watch app C packages `GCC_OPTIMIZATION_LEVEL=3` (was `-Os`) | In the watch compile DerivedData, the `*-common-args.resp` of COpus-t, COgg-t and WebPCore-t contain `-O3` and no `-Os`. Run OpusKitTests (PCM within 5.4e-7) and WebPDecodeParityTests. The thinned watch executable must stay well under 75 MB (about 34.5 MB per slice now): `lipo -thin` then `ls -l`. |

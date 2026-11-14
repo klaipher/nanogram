@@ -37,8 +37,8 @@ TARGET_RE = re.compile(r'\.target\(\s*name:\s*"([^"]+)"')
 
 SETTINGS_REASONS = {
     "swift_opt": "Mac builds 12 cold feature modules -Osize in Release to keep the binary small (NANOGRAM_SWIFT_OPT_* in nanogram/Nanogram.xcconfig); iOS builds every module -O. Both are -Onone in Debug.",
-    "rust_lto": "iOS links Rust with fat LTO (cross-crate); the Mac builds the Rust engines with the Cargo release profile (thin LTO). Same compiler (native-libs.json, rust). Kept platform-specific: fat LTO costs link time the Mac loop cannot afford.",
-    "order_file": "The Mac Release link uses an order file (tools/dev/orderfile.py); iOS does not.",
+    "rust_lto": "iOS links Rust with fat LTO (cross-crate); the Mac builds the Rust engines with its Cargo release profile (LTO and opt-level as set by MAC-OPT-1..3 in the Mac repo CHANGELOG). Same compiler (native-libs.json, rust). Kept platform-specific: fat LTO costs link time the Mac loop cannot afford.",
+    "order_file": "Both apps link Release with order files: iOS for MtProtoKit, SwiftSignalKit, Postbox, TelegramCore and TelegramUI (Telegram/BUILD, OrderFiles/*.order); the Mac through tools/dev/orderfile.py. The files are separate.",
 }
 
 

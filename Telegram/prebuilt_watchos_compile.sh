@@ -88,6 +88,9 @@ if ! xcodebuild_resolve; then
   xcodebuild_resolve
 fi
 
+# GCC_OPTIMIZATION_LEVEL=3 on the command line overrides the -Os that Xcode's SwiftPM
+# package defaults give the C packages (COpus, COgg, WebPCore, RLottieCore) in Release.
+#
 # MARKETING_VERSION / CURRENT_PROJECT_VERSION are placeholders; the patch action
 # overwrites CFBundleShortVersionString / CFBundleVersion afterwards. They only ever
 # land in Info.plist (via $(...) substitution), never in the compiled binary, so the
@@ -106,6 +109,7 @@ xcodebuild \
   CODE_SIGNING_ALLOWED=NO CODE_SIGNING_REQUIRED=NO CODE_SIGN_IDENTITY="" \
   TG_API_ID="$API_ID" TG_API_HASH="$API_HASH" \
   MARKETING_VERSION=0.0 CURRENT_PROJECT_VERSION=0 \
+  GCC_OPTIMIZATION_LEVEL=3 \
   ${WATCH_BUNDLE_ID:+PRODUCT_BUNDLE_IDENTIFIER="$WATCH_BUNDLE_ID"} \
   build 1>&2
 
