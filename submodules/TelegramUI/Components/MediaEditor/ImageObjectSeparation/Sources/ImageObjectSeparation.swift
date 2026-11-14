@@ -127,7 +127,7 @@ public func cutoutStickerImage(from image: UIImage, context: AccountContext? = n
     }
     if #available(iOS 17.0, *), !forceCoreMLVariant {
         return Signal { subscriber in
-            let ciContext = CIContext(options: nil)
+            let ciContext = SharedStickerCIContext.context
             let inputImage = CIImage(cgImage: cgImage)
             let handler = VNImageRequestHandler(cgImage: cgImage, options: [:])
             let request = VNGenerateForegroundInstanceMaskRequest { [weak handler] request, error in
@@ -243,7 +243,7 @@ public func cutoutImage(
         return
     }
     
-    let ciContext = CIContext(options: nil)
+    let ciContext = SharedStickerCIContext.context
     let inputImage = CIImage(cgImage: cgImage)
     var results: [CutoutResult] = []
     

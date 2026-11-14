@@ -165,11 +165,7 @@ public final class CompressedImageRenderer {
     public init?(sharedContext: AnimationCompressor.SharedContext) {
         self.sharedContext = sharedContext
         self.shared = Shared.shared
-        
-        guard let commandQueue = self.sharedContext.device.makeCommandQueue() else {
-            return nil
-        }
-        self.commandQueue = commandQueue
+        self.commandQueue = sharedContext.renderCommandQueue
     }
     
     // Main queue only: MetalImageLayer's renderer is not thread-safe.

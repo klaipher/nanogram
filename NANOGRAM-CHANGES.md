@@ -235,3 +235,9 @@ marked (check) were not re-verified against the code; correct them on the next c
 - What: after launch and after each chat wallpaper change, `TelegramRootController` asks `WallpaperPatternPrewarmer` (WallpaperBackgroundNode) to render the pattern of the chat wallpaper on a utility queue into `WallpaperBackgroundNodeImpl.cachedPatternImages` (shared slot) under the key the chat looks up. The first chat open then hits the cache instead of drawing the pattern (~36 ms) on the main thread. Always on (the Debug Settings switch was removed 2026-11-08).
 - Upstream: new file `WallpaperPatternPrewarmPlan.swift`; additions at the end of `WallpaperBackgroundNode.swift` (an extension of `WallpaperBackgroundNodeImpl` and `WallpaperPatternPrewarmer`); a few lines in `TelegramRootController.swift`. The pattern colour rule is duplicated from `loadPatternForSizeIfNeeded`; keep them in step on sync (a difference only makes the chat miss).
 - Not done: per-chat wallpapers, iPad, landscape, plain and gradient wallpapers (nothing to render or size unknown).
+
+### Media UI performance experiments
+- What: debug switches "Stickers: parallel queues" (animated sticker nodes over 3 serial queues) and "GIF grid: parallel decode" (per-tile decode passes), both off by default; shared `CIContext` for sticker cutouts, one Metal render command queue per device, memory-mapped reads of complete photo files, status publishing only with a subscriber.
+- Where: `submodules/AnimatedStickerNode`, `submodules/TelegramUI/Components/BatchVideoRendering`, `submodules/AnimationCompression`, `submodules/PhotoResources`, `ExperimentalUISettings`, `DebugController`.
+- Upstream: no.
+- Sync: expect conflicts in `AnimatedStickerNode.swift` (queue, status, background gate) and `BatchVideoRenderingContext.swift`.

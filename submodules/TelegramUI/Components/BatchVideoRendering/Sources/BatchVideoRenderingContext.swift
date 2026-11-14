@@ -218,9 +218,11 @@ public final class BatchVideoRenderingContext {
         let userLocation: MediaResourceUserLocation
         
         var readingContext: QueueLocalObject<ReadingContext>?
+        var readingQueue: Queue?
         var fetchDisposable: Disposable?
         var dataDisposable: Disposable?
         var dataPath: String?
+        var isDecodeFailed: Bool = false
         
         init(
             target: Target,
@@ -245,7 +247,20 @@ public final class BatchVideoRenderingContext {
     // Clips whose longer side is shorter decode in software, which costs less for them.
     fileprivate static let hardwareMinimumLongSide = 320
     
+    private static let parallelDecodeValue = Atomic<Bool>(value: false)
+    /// Debug Settings > "GIF grid: parallel decode" (off by default). A context reads it when it is created.
+    public static var isParallelDecodeEnabled: Bool {
+        get {
+            return self.parallelDecodeValue.with { $0 }
+        }
+        set {
+            let _ = self.parallelDecodeValue.swap(newValue)
+        }
+    }
+    
     private let context: AccountContext
+    private let parallelDecode: Bool
+    private var decodeInFlight = BatchVideoDecodeInFlight()
     
     private var targetContexts: [Int: TargetContext] = [:]
     private var nextId: Int = 0
@@ -255,6 +270,7 @@ public final class BatchVideoRenderingContext {
     
     public init(context: AccountContext) {
         self.context = context
+        self.parallelDecode = BatchVideoRenderingContext.isParallelDecodeEnabled
     }
     
     public func add(target: Target, file: FileMediaReference, userLocation: MediaResourceUserLocation) -> TargetHandle {
@@ -304,7 +320,9 @@ public final class BatchVideoRenderingContext {
                     })
                 }
                 if targetContext.readingContext == nil, let dataPath = targetContext.dataPath {
-                    targetContext.readingContext = QueueLocalObject(queue: BatchVideoRenderingContext.sharedQueue, generate: {
+                    let readingQueue = self.parallelDecode ? BatchVideoDecodeQueues.nextQueue() : BatchVideoRenderingContext.sharedQueue
+                    targetContext.readingQueue = readingQueue
+                    targetContext.readingContext = QueueLocalObject(queue: readingQueue, generate: {
                         return ReadingContext(dataPath: dataPath)
                     })
                 }
@@ -335,7 +353,7 @@ public final class BatchVideoRenderingContext {
     }
 
     private func updateRendering() {
-        if self.isRendering {
+        if self.isRendering && !self.parallelDecode {
             return
         }
         
@@ -354,7 +372,7 @@ public final class BatchVideoRenderingContext {
                 target.batchVideoRenderingTargetState = targetState
             }
             
-            if targetState.sampleBuffers.count < 2 {
+            if targetState.sampleBuffers.count < 2 && !(self.parallelDecode && targetContext.isDecodeFailed) {
                 renderIds[id] = 2 - targetState.sampleBuffers.count
             }
         }
@@ -363,7 +381,10 @@ public final class BatchVideoRenderingContext {
             self.targetContexts.removeValue(forKey: id)
         }
         
-        if !renderIds.isEmpty {
+        if self.parallelDecode {
+            self.decodeInParallel(renderIds: renderIds)
+            self.updateFrames()
+        } else if !renderIds.isEmpty {
             self.isRendering = true
             
             var readingContexts: [Int: (Int, QueueLocalObject<ReadingContext>)] = [:]
@@ -411,6 +432,41 @@ public final class BatchVideoRenderingContext {
         }
         
         self.updateDisplayLink()
+    }
+    
+    /// One decode pass per tile on the tile's own serial queue, so a slow or cold file delays only the
+    /// tiles sharing its queue, not the whole grid.
+    private func decodeInParallel(renderIds: [Int: Int]) {
+        for (id, count) in self.decodeInFlight.claim(renderIds) {
+            guard let targetContext = self.targetContexts[id], let readingContext = targetContext.readingContext, let readingQueue = targetContext.readingQueue else {
+                self.decodeInFlight.finish(id)
+                continue
+            }
+            readingQueue.async { [weak self] in
+                var sampleBuffers: [CMSampleBuffer] = []
+                var isFailed = false
+                if let readingContext = readingContext.unsafeGet() {
+                    for _ in 0 ..< count {
+                        if let sampleBuffer = readingContext.advance() {
+                            sampleBuffers.append(sampleBuffer)
+                        }
+                    }
+                    isFailed = readingContext.isFailed
+                }
+                Queue.mainQueue().async {
+                    guard let self else {
+                        return
+                    }
+                    self.decodeInFlight.finish(id)
+                    if isFailed && sampleBuffers.isEmpty {
+                        self.targetContexts[id]?.isDecodeFailed = true
+                    }
+                    if let targetContext = self.targetContexts[id], let target = targetContext.target, let targetState = target.batchVideoRenderingTargetState {
+                        targetState.addSampleBuffers(sampleBuffers: sampleBuffers)
+                    }
+                }
+            }
+        }
     }
     
     private func updateFrames() {

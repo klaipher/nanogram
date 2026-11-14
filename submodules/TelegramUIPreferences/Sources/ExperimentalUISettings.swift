@@ -105,6 +105,12 @@ public struct ExperimentalUISettings: Codable, Equatable {
     /// GPU passes to one group per recording. 0 (default) leaves all glass as it is. The bits are `glassDebugNavigationBar`,
     /// `glassDebugInputPanel`, `glassDebugFloatingButtons`; they equal `GlassDebugGroup`'s raw values.
     public var glassDebugDisabledGroups: Int32
+    /// Debug Settings > "Stickers: parallel queues". Off by default. Animated sticker nodes created afterwards spread over a few
+    /// serial user-initiated queues instead of one shared serial queue (iOS-STICKERS-1).
+    public var stickerParallelQueues: Bool
+    /// Debug Settings > "GIF grid: parallel decode". Off by default. GIF and inline video tiles decode on a few serial queues, one
+    /// pass per tile, instead of one shared queue behind a global barrier (iOS-GIFGRID-1).
+    public var gifGridParallelDecode: Bool
     public static let glassDebugNavigationBar: Int32 = 1
     public static let glassDebugInputPanel: Int32 = 2
     public static let glassDebugFloatingButtons: Int32 = 4
@@ -188,7 +194,9 @@ public struct ExperimentalUISettings: Codable, Equatable {
         callsAdvancedDucking: Bool = false,
         callsGroupNoiseMode: Int32 = 2,
         callsThermalVideoLadder: Bool = true,
-        glassDebugDisabledGroups: Int32 = 0
+        glassDebugDisabledGroups: Int32 = 0,
+        stickerParallelQueues: Bool = false,
+        gifGridParallelDecode: Bool = false
     ) {
         self.keepChatNavigationStack = keepChatNavigationStack
         self.skipReadHistory = skipReadHistory
@@ -233,6 +241,8 @@ public struct ExperimentalUISettings: Codable, Equatable {
         self.callsGroupNoiseMode = callsGroupNoiseMode
         self.callsThermalVideoLadder = callsThermalVideoLadder
         self.glassDebugDisabledGroups = glassDebugDisabledGroups
+        self.stickerParallelQueues = stickerParallelQueues
+        self.gifGridParallelDecode = gifGridParallelDecode
     }
     
     /// Revision of Nanogram's defaults that a saved blob was written with. Revision 1 turned on large
@@ -301,6 +311,8 @@ public struct ExperimentalUISettings: Codable, Equatable {
         self.callsGroupNoiseMode = try container.decodeIfPresent(Int32.self, forKey: "callsGroupNoiseModeRNNoiseDefault") ?? 2
         self.callsThermalVideoLadder = try container.decodeIfPresent(Bool.self, forKey: "callsThermalVideoLadderDefaultOn") ?? true
         self.glassDebugDisabledGroups = try container.decodeIfPresent(Int32.self, forKey: "glassDebugDisabledGroups") ?? 0
+        self.stickerParallelQueues = try container.decodeIfPresent(Bool.self, forKey: "stickerParallelQueues") ?? false
+        self.gifGridParallelDecode = try container.decodeIfPresent(Bool.self, forKey: "gifGridParallelDecode") ?? false
 
         if savedDefaultsRevision < 1 {
             // Saved before the GPU renderers became the default: both were the old CPU defaults.
@@ -357,6 +369,8 @@ public struct ExperimentalUISettings: Codable, Equatable {
         try container.encode(self.callsGroupNoiseMode, forKey: "callsGroupNoiseModeRNNoiseDefault")
         try container.encode(self.callsThermalVideoLadder, forKey: "callsThermalVideoLadderDefaultOn")
         try container.encode(self.glassDebugDisabledGroups, forKey: "glassDebugDisabledGroups")
+        try container.encode(self.stickerParallelQueues, forKey: "stickerParallelQueues")
+        try container.encode(self.gifGridParallelDecode, forKey: "gifGridParallelDecode")
         try container.encode(ExperimentalUISettings.nanogramDefaultsRevision, forKey: "nanogramDefaultsRevision")
     }
 }

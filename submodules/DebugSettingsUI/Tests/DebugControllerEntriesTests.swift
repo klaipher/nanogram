@@ -44,6 +44,8 @@ final class DebugControllerEntriesTests: XCTestCase {
         settings.videoMessageCloseFocus = on
         settings.videoMessageCameraMatrix = on ? .cameraTag : .bt709
         settings.stickerRendererMode = on ? .gpuAll : .cpu
+        settings.stickerParallelQueues = on
+        settings.gifGridParallelDecode = on
         return settings
     }
 
@@ -134,6 +136,14 @@ final class DebugControllerEntriesTests: XCTestCase {
         XCTAssertFalse(self.entries(isMainApp: false, isDevAccount: false, engineKind: nil, settings: .defaultSettings).contains(where: { $0.section == header.section }))
     }
 
+    func testPerformanceExperimentsAreOffByDefault() {
+        XCTAssertFalse(ExperimentalUISettings.defaultSettings.stickerParallelQueues)
+        XCTAssertFalse(ExperimentalUISettings.defaultSettings.gifGridParallelDecode)
+        let entries = self.entries(isMainApp: true, isDevAccount: false, engineKind: nil, settings: .defaultSettings)
+        XCTAssertTrue(entries.contains(DebugControllerEntry.stickerParallelQueues(false)))
+        XCTAssertTrue(entries.contains(DebugControllerEntry.gifGridParallelDecode(false)))
+    }
+
     func testCpuSavingSwitchesAreShown() {
         let ids = Set(self.entries(isMainApp: true, isDevAccount: false, engineKind: "mtproto", settings: .defaultSettings).map(\.stableId))
         for entry: DebugControllerEntry in [.disableImageContentAnalysis(false), .disableLanguageRecognition(false), .localTranscription(false), .enableVoipTcp(false), .forceListViewImplChatBackend(false)] {
@@ -192,6 +202,18 @@ final class ExperimentalUISettingsCompatibilityTests: XCTestCase {
         XCTAssertTrue(ExperimentalUISettings.defaultSettings.videoMessageCloseFocus)
         let settings = try EngineDecoder.decode(ExperimentalUISettings.self, from: try EngineEncoder.encode(OldSettings()))
         XCTAssertTrue(settings.videoMessageCloseFocus)
+    }
+
+    func testStickerParallelQueuesIsOffInOldBlobsAndSurvivesARoundTrip() throws {
+        let old = try EngineDecoder.decode(ExperimentalUISettings.self, from: try EngineEncoder.encode(OldSettings()))
+        XCTAssertFalse(old.stickerParallelQueues)
+        XCTAssertFalse(old.gifGridParallelDecode)
+        var settings = ExperimentalUISettings.defaultSettings
+        settings.stickerParallelQueues = true
+        settings.gifGridParallelDecode = true
+        let decoded = try EngineDecoder.decode(ExperimentalUISettings.self, from: try EngineEncoder.encode(settings))
+        XCTAssertTrue(decoded.stickerParallelQueues)
+        XCTAssertTrue(decoded.gifGridParallelDecode)
     }
 
     private struct CloseFocusOffUnderOldKey: Encodable {

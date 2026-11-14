@@ -90,15 +90,11 @@ public class BlurView: UIView {
         queue.async(execute: actions)
     }
     
-    private func sync(on queue: DispatchQueue, actions: () -> Void) {
-        queue.sync(execute: actions)
-    }
-    
     private func draw(_ image: UIImage, blurRadius: CGFloat) {
         self.queue.async { [weak self] in
-            if let strongSelf = self, let blurredImage = blurredImage(image, radius: blurRadius) {
-                Queue.mainQueue().sync {
-                    strongSelf.blurLayer.draw(blurredImage)
+            if self != nil, let blurredImage = blurredImage(image, radius: blurRadius) {
+                Queue.mainQueue().async {
+                    self?.blurLayer.draw(blurredImage)
                 }
             }
         }

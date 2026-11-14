@@ -6,6 +6,7 @@ import ImagePlayground
 import SwiftSignalKit
 import ImageTransparency
 import MediaEditor
+import ImageObjectSeparation
 
 @available(iOS 17.0, *)
 private func cutoutSubject(from cgImage: CGImage) -> UIImage? {
@@ -18,7 +19,7 @@ private func cutoutSubject(from cgImage: CGImage) -> UIImage? {
         return nil
     }
     let ciImage = CIImage(cvPixelBuffer: pixelBuffer)
-    guard let result = CIContext(options: nil).createCGImage(ciImage, from: ciImage.extent) else {
+    guard let result = SharedStickerCIContext.context.createCGImage(ciImage, from: ciImage.extent) else {
         return nil
     }
     return UIImage(cgImage: result)
