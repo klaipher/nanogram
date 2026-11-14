@@ -4,6 +4,8 @@ Newest first. Internal notes for each TestFlight build; testers see the What to 
 
 ## Unreleased
 
+- **Review fix: rnnoise SwiftPM package excludes `src/x86`, `src/compile.sh` and `src/rnn_train.py`.** `sources: ["src"]` is recursive and compiled the x86 AVX2/SSE4.1 files on arm64 (the Mac links rnnoise only through this package). Bazel was not affected (its BUILD globs only `src/x86/*.h`).
+
 - **Review fix: libprisma BUILD loads again.** `objc_library` has no `include_prefix` or `strip_include_prefix` (rules_cc 0.2.27), so the whole `//third-party/libprisma` package failed to load. Replaced by `includes = ["libprisma/apple"]`; the only consumer is Swift `import libprisma`, which needs no prefix.
 
 - **tgcalls pin moved to 73cc1f8d** (fork `nanogram-shared`, fast-forward of 9bfb76f8): adds the Package.swift exclude of `ios/` (82cd77e) so the Mac SwiftPM target no longer compiles the iOS bridge, plus host-test and doc path fixes. No iOS source change; the Mac pins move to the same commit.

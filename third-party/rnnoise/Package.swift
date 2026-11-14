@@ -37,7 +37,10 @@ let package = Package(
             path: "rnnoise",
             exclude: ["src/dump_features.c",
                       "src/dump_rnnoise_tables.c",
-                      "src/write_weights.c"],
+                      "src/write_weights.c",
+                      "src/x86",
+                      "src/compile.sh",
+                      "src/rnn_train.py"],
             sources: ["src"],
             publicHeadersPath: "include",
             cSettings: [
