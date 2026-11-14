@@ -1,0 +1,7 @@
+# Pinned Rust nightly for the Apple Watch tlottie build (tools/build-tlottie-xcframework.sh).
+# watchOS targets are tier 3: no prebuilt standard library, so the build compiles core and alloc
+# itself with -Zbuild-std, which needs a nightly and its rust-src component. Pinning a dated
+# nightly keeps the archive reproducible. Install it with:
+#   rustup toolchain install nightly-2026-11-01 --profile minimal --component rust-src
+# Bump deliberately (one line here), then rebuild: the build cache key includes this file.
+nightly-2026-11-01
