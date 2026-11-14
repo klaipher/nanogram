@@ -186,6 +186,7 @@ static int MTAesExpandKey(const void *key, int keyLength, uint8x16_t *roundKeys)
     for (int i = 0; i <= rounds; i++) {
         roundKeys[i] = vld1q_u8((const uint8_t *)&words[4 * i]);
     }
+    memset_s(words, sizeof(words), 0, sizeof(words));
     return rounds;
 }
 
@@ -229,6 +230,8 @@ static bool MyAesIgeDecryptArmv8(const void *inBytes, int length, void *outBytes
     
     vst1q_u8((uint8_t *)iv, previousCipher);
     vst1q_u8((uint8_t *)iv + AES_BLOCK_SIZE, previousPlain);
+    memset_s(roundKeys, sizeof(roundKeys), 0, sizeof(roundKeys));
+    memset_s(inverseKeys, sizeof(inverseKeys), 0, sizeof(inverseKeys));
     return true;
 }
 
