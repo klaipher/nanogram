@@ -66,12 +66,13 @@ a global allocator over system `malloc` and an aborting panic handler) for `arm6
 **How it's wired:** `//Telegram:TelegramWatchApp` (rule in `Telegram/prebuilt_watchos.bzl`) runs **two actions**:
 - `PrebuiltWatchosCompile` (`Telegram/prebuilt_watchos_compile.sh`) first builds the tlottie xcframework into the
   writable temp copy (see above), then runs xcodebuild on that copy of the
-  snapshot, baking the api credentials and the watch bundle id (as `PRODUCT_BUNDLE_IDENTIFIER`, from which the
-  Info.plist derives `WKCompanionAppBundleIdentifier` via `$(PRODUCT_BUNDLE_IDENTIFIER:base)`) but leaving placeholder
+  snapshot, baking the api credentials and the watch bundle id (as `TG_WATCH_BUNDLE_ID`, the app's `PRODUCT_BUNDLE_IDENTIFIER`; the widget extension's is
+  `<it>.widget`; from which the app's Info.plist derives `WKCompanionAppBundleIdentifier` via `$(PRODUCT_BUNDLE_IDENTIFIER:base)`) but leaving placeholder
   versions, and emits an unsigned `.app`.
 - `PrebuiltWatchosPatchSign` (`Telegram/prebuilt_watchos_patch.sh`) rewrites the two per-build Info.plist version keys
-  (`CFBundleShortVersionString`, `CFBundleVersion`) and codesigns the `.app` and the nested `TDLibFramework.framework`
-  (identity and the watchkitapp profile from `--define`s).
+  (`CFBundleShortVersionString`, `CFBundleVersion`) of the app and of `PlugIns/WatchWidgetExtension.appex`, and
+  codesigns `TDLibFramework.framework`, the widget extension and the `.app` (identity and the watchkitapp and
+  `watchWidgetProvisioningProfile` profiles from `--define`s; with no profiles, ad hoc with the App Group entitlements).
 
 The result feeds the `Telegram` `ios_application`'s `watch_application` slot (gated by the `//Telegram:embedWatchApp`
 flag). The rule's `bundle_id` is `"{telegram_bundle_id}.watchkitapp"` in `Telegram/BUILD`.

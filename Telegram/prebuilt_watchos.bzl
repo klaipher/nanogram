@@ -5,9 +5,12 @@ it through the providers that `ios_application(watch_application = ...)` consume
 
   1. PrebuiltWatchosCompile (prebuilt_watchos_compile.sh) — runs `xcodebuild` against
      Telegram/WatchApp, baking the api credentials and the bundle id but
-     leaving PLACEHOLDER versions, and emits an unsigned .app archive.
+     leaving PLACEHOLDER versions, and emits an unsigned .app archive. The app contains
+     PlugIns/WatchWidgetExtension.appex (the unread widget, bundle id "<watch app id>.widget").
   2. PrebuiltWatchosPatchSign (prebuilt_watchos_patch.sh) — rewrites the two per-build
-     Info.plist version keys on the compiled app, then optionally codesigns it.
+     Info.plist version keys on the compiled app and its widget extension, then codesigns the extension (its own
+     profile, --define=watchWidgetProvisioningProfile) and the app (--define=watchProvisioningProfile). Without
+     profiles both get an ad-hoc signature that carries the App Group entitlements, so an App Store export keeps them.
 
 Splitting them lets Bazel cache the expensive compile across build numbers and
 version bumps — which is every CI build, since `--define=buildNumber` changes each time.
@@ -57,6 +60,11 @@ def _apple_prebuilt_watchos_application_impl(ctx):
     # a target. The local action reads it directly. Empty => unsigned build; when set but
     # the identity is empty, the worker derives the signing identity from the profile.
     profile = ctx.var.get("watchProvisioningProfile", "")
+
+    # The widget extension nested in the watch app is signed with its own profile (same convention).
+    widget_profile = ctx.var.get("watchWidgetProvisioningProfile", "")
+    app_entitlements = [f for f in ctx.files.entitlements_srcs if f.basename == "WatchApp.entitlements"][0]
+    widget_entitlements = [f for f in ctx.files.entitlements_srcs if f.basename == "WatchWidget.entitlements"][0]
 
     # The embedded watch app's CFBundleShortVersionString / CFBundleVersion must match
     # the host app, or rules_apple's child-version verification fails. Source the
@@ -122,8 +130,8 @@ def _apple_prebuilt_watchos_application_impl(ctx):
             api_id,
             api_hash,
             # Watch app bundle id ("<host>.watchkitapp"). xcodebuild bakes it as
-            # PRODUCT_BUNDLE_IDENTIFIER so the signed CFBundleIdentifier matches the host
-            # config; the Info.plist derives WKCompanionAppBundleIdentifier from it via
+            # TG_WATCH_BUNDLE_ID (the app's PRODUCT_BUNDLE_IDENTIFIER; the widget's is "<it>.widget") so the signed
+            # CFBundleIdentifier matches the host config; the Info.plist derives WKCompanionAppBundleIdentifier from it via
             # $(PRODUCT_BUNDLE_IDENTIFIER:base). Keeps the build dynamic across hosts with
             # no post-build bundle-id mutation (xcodebuild bakes, the patch worker signs).
             ctx.attr.bundle_id,
@@ -152,8 +160,11 @@ def _apple_prebuilt_watchos_application_impl(ctx):
             infoplist.path,
             ctx.file.versions_json.path,
             build_number,
+            widget_profile,
+            app_entitlements.path,
+            widget_entitlements.path,
         ],
-        inputs = [ctx.file._patch_worker, compiled_archive, ctx.file.versions_json],
+        inputs = [ctx.file._patch_worker, compiled_archive, ctx.file.versions_json] + ctx.files.entitlements_srcs,
         outputs = [archive, infoplist],
         mnemonic = "PrebuiltWatchosPatchSign",
         progress_message = "Patching%s watch app Info.plist" % (" + signing" if profile else ""),
@@ -187,7 +198,7 @@ def _apple_prebuilt_watchos_application_impl(ctx):
         AppleEmbeddableInfo(
             # The signed (or unsigned) .app archive, expanded into the host's Watch/ section.
             watch_bundles = depset([archive]),
-            # Empty: the worker signs everything inside the watch app itself.
+            # Empty: the worker signs everything inside the watch app itself (frameworks, widget extension, app).
             signed_frameworks = depset(),
         ),
     ]
@@ -215,6 +226,11 @@ apple_prebuilt_watchos_application = rule(
         "tlottie_source_dir": attr.string(
             default = "submodules/tlottie/tlottie",
             doc = "Execroot-relative path to the tlottie crate (must match the package of 'tlottie_srcs').",
+        ),
+        "entitlements_srcs": attr.label(
+            default = "//Telegram/WatchApp:entitlements",
+            allow_files = True,
+            doc = "App Group entitlements of the watch app and its widget extension (used when no profile signs them).",
         ),
         "versions_json": attr.label(
             allow_single_file = True,

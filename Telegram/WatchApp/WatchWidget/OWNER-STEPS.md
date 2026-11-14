@@ -1,8 +1,7 @@
-# Watch widget: owner steps (IOS-WATCH-WIDGET-1)
+# Watch widget: what is automated and what to check (IOS-WATCH-WIDGET-1)
 
-The widget extension code is in this directory and in `../Shared/`. It is **not** in the default build or in the IPA:
-`project.yml` and the committed `tgwatch.xcodeproj` have no widget target. The extension needs things only the account
-owner can create, so it stays out until they exist. Switch: generate `project-widget.yml` instead of `project.yml`.
+The widget extension (`WatchWidgetExtension`, `org.klaipher.Nanogram.watchkitapp.widget`) is part of the default watch
+build and ships inside the watch app of the normal iOS build. `widgetSnapshot` and `backgroundRefresh` default to on.
 
 ## What the widget shows
 
@@ -11,23 +10,38 @@ chats and the top two chats with unread messages. Chat names are hidden when the
 watch). Never message text. Smart Stack relevance rises with the unread count (`TimelineEntryRelevance`; the watchOS 26
 `RelevanceConfiguration` API can replace it later).
 
-## Steps, in order
+## Already done (App Store Connect API)
 
-1. Developer portal, Identifiers: register the explicit App ID `org.klaipher.Nanogram.watchkitapp.widget`.
-2. Developer portal, Identifiers: register the App Group `group.org.klaipher.Nanogram.watch`; enable the App Groups
-   capability on `org.klaipher.Nanogram.watchkitapp` (the watch app) and on the new widget App ID, and tick the group.
-3. Profiles: regenerate the watch app's profile (it now has the group) and create one for the widget App ID. Nothing about
-   these is readable by the agents; use the existing signing flow (`tools/dev/device_signing.py`) for the new App ID.
-4. Device test with Xcode: `cd Telegram/WatchApp && xcodegen generate --spec project-widget.yml`, open
-   `tgwatch-widget.xcodeproj`, run the `tgwatch Watch App` scheme on the watch (automatic signing, team YGTMYL879P), turn
-   the flag on: launch argument `-nanogram.watch.widgetSnapshot YES` in the scheme. Add the widget to a watch face.
-5. Bazel embed build (not done): `Telegram/prebuilt_watchos.bzl` signs one `.app`; embedding a second `.appex` needs the
-   widget built and signed there with its own profile and entitlements (the group), and the app's own entitlements need
-   the same group (the rule passes `entitlements = None` today). Do this after step 4 works.
-6. Turn on `widgetSnapshot` for real builds by shipping its default as on (`WatchFeature.defaultValue`) once step 5 works.
-   Optionally also `backgroundRefresh` so the summary stays fresh while the app is closed (no portal step needed for that).
+- App ID `org.klaipher.Nanogram.watchkitapp.widget` exists.
+- The App Groups capability is on for `org.klaipher.Nanogram.watchkitapp` and the widget App ID.
 
-## What happens without these steps
+## Run before the build (once, and again when a profile expires)
 
-`widgetSnapshot` is off by default. With it on but no App Group entitlement, the app logs
-"widget snapshot enabled but the App Group is missing from the entitlements" and writes nothing.
+`python3 tools/dev/device_signing.py profiles` with an iPhone connected. Xcode registers the App Group
+`group.org.klaipher.Nanogram.watch` from the entitlements of the generated `WatchApp` and `WatchWidget` targets, assigns
+it to both App IDs and creates their profiles in `~/.config/telegram-ios/codesigning/profiles`. `tools/dev/tg device
+--watch` and `tg testflight --watch` pick `WatchApp.mobileprovision` and `WatchWidget.mobileprovision` up by themselves
+and stop with this command in the message when only one exists. With neither, the watch app and the widget are signed
+ad hoc with the group (good for a TestFlight export, not installable on a device).
+
+## Checks on a watch (needs a device; nothing here was run)
+
+1. Install the TestFlight or device build, open Nanogram on the watch once and sign in; wait for the chat list.
+2. Add the Nanogram complication to a watch face (circular, rectangular, inline or corner) and to the Smart Stack.
+   Expect the unread total; with the watch locked and private content hidden, expect no chat names.
+3. Receive a message in a chat with the watch app closed. Expect the widget to update within the background refresh
+   interval (about 30 minutes, within the system budget), or at once after opening the app.
+4. If the widget stays empty: the app logs "widget snapshot enabled but the App Group is missing from the entitlements"
+   when the group did not reach the app's signature (check the profile with `security cms -D -i`).
+5. Turn either flag off without a rebuild: launch argument `-nanogram.watch.widgetSnapshot NO` or
+   `-nanogram.watch.backgroundRefresh NO`.
+
+## Xcode device runs
+
+`cd Telegram/WatchApp && xcodegen generate --spec project-widget.yml` writes `tgwatch-widget.xcodeproj` (not committed)
+with automatic signing for the app and the widget (team YGTMYL879P). Not needed for the iOS build.
+
+## Not covered
+
+Remote (Tart / darwin-containers) builds do not forward the widget profile flag; they resolve `WatchWidget.mobileprovision`
+from the codesigning material and stop with the fix when it is missing.

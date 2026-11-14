@@ -4,10 +4,14 @@
 # (apple_prebuilt_watchos_application, Telegram/prebuilt_watchos.bzl) compiles with
 # `xcodebuild -configuration Release` and then signs:
 #   - watchOS app target only (no container, test or snapshot targets)
-#   - bundle id <host>.watchkitapp: the Bazel rule passes PRODUCT_BUNDLE_IDENTIFIER and the
-#     Info.plist derives the companion id from it ($(PRODUCT_BUNDLE_IDENTIFIER:base))
+#   - bundle id <host>.watchkitapp: the Bazel rule passes TG_WATCH_BUNDLE_ID (not PRODUCT_BUNDLE_IDENTIFIER, which
+#     would also rename the widget) and the Info.plist derives the companion id from it
+#     ($(PRODUCT_BUNDLE_IDENTIFIER:base)); the widget is <that id>.widget
 #   - signing disabled here; the Bazel rule codesigns the output
-# project-dev.yml includes this file and adds the unit tests (tgwatch-dev.xcodeproj).
+#   - the WatchWidgetExtension (unread widget, IOS-WATCH-WIDGET-1) is embedded in the app; both share the App Group
+#     group.org.klaipher.Nanogram.watch (entitlements in WatchWidget/)
+# project-dev.yml includes this file and adds the unit tests (tgwatch-dev.xcodeproj); project-widget.yml switches both
+# targets to Xcode automatic signing for device runs from Xcode.
 # After editing either file, regenerate both projects.
 name: tgwatch
 options:
@@ -27,6 +31,7 @@ settings:
     SWIFT_STRICT_CONCURRENCY: complete
     MARKETING_VERSION: "0.1"
     CURRENT_PROJECT_VERSION: "1"
+    TG_WATCH_BUNDLE_ID: org.klaipher.Nanogram.watchkitapp
 packages:
   TDShim:
     path: Packages/TDShim
@@ -75,7 +80,7 @@ targets:
         NSLocationWhenInUseUsageDescription: Share your current location in chats.
     settings:
       base:
-        PRODUCT_BUNDLE_IDENTIFIER: org.klaipher.Nanogram.watchkitapp
+        PRODUCT_BUNDLE_IDENTIFIER: $(TG_WATCH_BUNDLE_ID)
         DEVELOPMENT_TEAM: YGTMYL879P
         SWIFT_TREAT_WARNINGS_AS_ERRORS: "YES"
         TARGETED_DEVICE_FAMILY: "4"
@@ -101,7 +106,14 @@ targets:
           STRIP_INSTALLED_PRODUCT: "YES"
           STRIP_STYLE: "all"
           DEAD_CODE_STRIPPING: "YES"
+    entitlements:
+      path: WatchWidget/WatchApp.entitlements
+      properties:
+        com.apple.security.application-groups:
+          - group.org.klaipher.Nanogram.watch
     dependencies:
+      - target: WatchWidgetExtension
+        embed: true
       - package: TDShim
         product: TDShim
       - package: QRCodeGenerator
@@ -112,6 +124,46 @@ targets:
         product: WebPKit
       - package: OpusKit
         product: OpusKit
+  WatchWidgetExtension:
+    type: app-extension
+    platform: watchOS
+    deploymentTarget: "26.0"
+    sources:
+      - path: WatchWidget
+        excludes:
+          - "*.md"
+          - "*.entitlements"
+      # The same snapshot model the app writes.
+      - path: Shared
+    info:
+      path: WatchWidget/Info.plist
+      properties:
+        CFBundleDisplayName: Nanogram
+        CFBundleShortVersionString: $(MARKETING_VERSION)
+        CFBundleVersion: $(CURRENT_PROJECT_VERSION)
+        NSExtension:
+          NSExtensionPointIdentifier: com.apple.widgetkit-extension
+    entitlements:
+      path: WatchWidget/WatchWidget.entitlements
+      properties:
+        com.apple.security.application-groups:
+          - group.org.klaipher.Nanogram.watch
+    settings:
+      base:
+        PRODUCT_BUNDLE_IDENTIFIER: $(TG_WATCH_BUNDLE_ID).widget
+        DEVELOPMENT_TEAM: YGTMYL879P
+        SWIFT_VERSION: "6.0"
+        SWIFT_STRICT_CONCURRENCY: complete
+        SWIFT_TREAT_WARNINGS_AS_ERRORS: "YES"
+        TARGETED_DEVICE_FAMILY: "4"
+        GENERATE_INFOPLIST_FILE: "NO"
+        SKIP_INSTALL: "YES"
+        CODE_SIGNING_ALLOWED: "NO"
+        CODE_SIGNING_REQUIRED: "NO"
+        CODE_SIGN_IDENTITY: ""
+      configs:
+        Release:
+          DEAD_CODE_STRIPPING: "YES"
 schemes:
   tgwatch Watch App:
     build:

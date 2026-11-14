@@ -93,6 +93,57 @@ class GeneratedEntitlementsTests(unittest.TestCase):
         self.assertNotIn('com.apple.developer.usernotifications.communication', plist)
 
 
+class WatchProfilesTests(unittest.TestCase):
+    # IOS-WATCH-WIDGET-1: `profiles` must register the watch app, its widget extension and the watch App Group, which
+    # Xcode only does for a bundle that asks for the group in its entitlements.
+    APP = 'org.klaipher.Nanogram'
+
+    def test_the_watch_app_and_the_widget_get_profiles(self):
+        found = {name: bundle for name, bundle, _ in device_signing.profile_targets(self.APP)}
+        self.assertEqual(found['WatchApp'], self.APP + '.watchkitapp')
+        self.assertEqual(found['WatchWidget'], self.APP + '.watchkitapp.widget')
+        self.assertEqual(found['Telegram'], self.APP)
+        self.assertEqual(len(found), len(set(found.values())))
+
+    def test_the_main_app_comes_first_because_its_id_names_the_groups(self):
+        self.assertEqual(device_signing.profile_targets(self.APP)[0], ('Telegram', self.APP, True))
+
+    def test_the_watch_pair_asks_for_the_watch_group_only(self):
+        for suffix in ['.watchkitapp', '.watchkitapp.widget']:
+            self.assertEqual(device_signing.target_groups(self.APP + suffix, self.APP), ['group.org.klaipher.Nanogram.watch'])
+
+    def test_everything_else_keeps_the_phone_group(self):
+        for suffix in ['', '.Share', '.Widget', '.NotificationService']:
+            self.assertEqual(device_signing.target_groups(self.APP + suffix, self.APP), ['group.org.klaipher.Nanogram'])
+
+    def test_the_watch_pair_asks_for_no_push_or_phone_capabilities(self):
+        for name, bundle, push in device_signing.profile_targets(self.APP):
+            if name.startswith('Watch'):
+                self.assertFalse(push)
+                self.assertFalse(device_signing.wants_enhanced_security(bundle, self.APP))
+                self.assertFalse(device_signing.wants_time_sensitive(bundle, self.APP))
+
+    def test_the_generated_project_writes_the_group_into_the_watch_entitlements(self):
+        directory = tempfile.mkdtemp()
+        self.addCleanup(shutil.rmtree, directory, True)
+        device_signing.write_project(directory, 'TEAM', device_signing.profile_targets(self.APP))
+        for name in ['WatchApp', 'WatchWidget']:
+            with open(os.path.join(directory, name + '.entitlements')) as f:
+                text = f.read()
+            self.assertIn('<string>group.org.klaipher.Nanogram.watch</string>', text)
+            self.assertNotIn('<string>group.org.klaipher.Nanogram</string>', text)
+            self.assertNotIn('aps-environment', text)
+        with open(os.path.join(directory, 'App.xcodeproj', 'project.pbxproj')) as f:
+            project = f.read()
+        self.assertIn('PRODUCT_BUNDLE_IDENTIFIER = "org.klaipher.Nanogram.watchkitapp.widget"', project)
+
+    def test_the_source_entitlements_use_the_same_group(self):
+        root = os.path.join(os.path.dirname(__file__), '..', '..', '..', 'Telegram', 'WatchApp', 'WatchWidget')
+        for name in ['WatchApp.entitlements', 'WatchWidget.entitlements']:
+            with open(os.path.join(root, name)) as f:
+                self.assertIn(device_signing.watch_app_group(self.APP), f.read())
+
+
 class TimeSensitiveEntitlementsTests(unittest.TestCase):
     KEY = 'com.apple.developer.usernotifications.time-sensitive'
 

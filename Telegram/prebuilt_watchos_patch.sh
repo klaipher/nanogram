@@ -5,8 +5,9 @@
 # prebuilt_watchos_compile.sh, rewrites the two per-build Info.plist version keys
 # (CFBundleShortVersionString, CFBundleVersion) — neither of which affects the compiled
 # binary — then, if a provisioning profile is supplied, codesigns the app and its nested
-# frameworks with the watchkitapp provisioning profile and a matching identity, and
-# finally zips the .app into the rule's output archive.
+# frameworks and its widget extension (WatchWidgetExtension.appex) with their provisioning profiles and a
+# matching identity, and finally zips the .app into the rule's output archive. Without a profile the code is signed
+# ad hoc with the App Group entitlements from the source tree, which an App Store export keeps when it re-signs.
 #
 # Only the version is patched here. The api credentials and the bundle id are baked by
 # xcodebuild in the compile action (the Info.plist derives WKCompanionAppBundleIdentifier
@@ -30,9 +31,17 @@
 #   $5 infoplist_out Path (declared by Bazel) to copy the patched Info.plist to
 #   $6 versions_json versions.json (key 'app' => CFBundleShortVersionString)
 #   $7 build_number  CFBundleVersion
+#   $8 widget_profile  Path to the widget extension .mobileprovision (<watch app id>.widget);
+#                      required whenever $4 is set
+#   $9 app_entitlements     WatchApp.entitlements (ad-hoc signing, when $4 is empty)
+#   $10 widget_entitlements WatchWidget.entitlements (same)
 set -euo pipefail
 
 IN_ZIP="$1"; OUT_ZIP="$2"; IDENTITY="${3:-}"; PROFILE="${4:-}"; INFOPLIST_OUT="${5:-}"; VERSIONS_JSON="${6:-}"; BUILD_NUMBER="${7:-1}"
+WIDGET_PROFILE="${8:-}"; APP_ENTITLEMENTS="${9:-}"; WIDGET_ENTITLEMENTS="${10:-}"
+APPEX_REL="PlugIns/WatchWidgetExtension.appex"
+GROUP_KEY="com.apple.security.application-groups"
+SIGNING_FIX="run: python3 tools/dev/device_signing.py profiles (registers the App Group group.org.klaipher.Nanogram.watch and creates the WatchApp and WatchWidget profiles in ~/.config/telegram-ios/codesigning/profiles)"
 
 # Match the host app's version (rules_apple requires the embedded watch app's
 # CFBundleShortVersionString/CFBundleVersion to equal the parent's).
@@ -62,6 +71,17 @@ PLIST="$APP/Info.plist"
 # (both encodings are legal, but there is no reason for the split to change this).
 /usr/bin/plutil -convert binary1 "$PLIST"
 
+# The widget extension's versions must match the watch app's too.
+APPEX="$APP/$APPEX_REL"
+if [ ! -d "$APPEX" ]; then
+  echo "error: the compiled watch app has no $APPEX_REL" >&2
+  exit 1
+fi
+APPEX_PLIST="$APPEX/Info.plist"
+/usr/libexec/PlistBuddy -c "Set :CFBundleShortVersionString $MARKETING_VERSION" "$APPEX_PLIST"
+/usr/libexec/PlistBuddy -c "Set :CFBundleVersion $BUILD_NUMBER" "$APPEX_PLIST"
+/usr/bin/plutil -convert binary1 "$APPEX_PLIST"
+
 # Expose the patched watch Info.plist (the host reads it to verify the companion
 # bundle-id linkage and the child version). Codesigning does not alter Info.plist
 # content, so capture it now.
@@ -80,7 +100,32 @@ fi
 # app (resolved from the shared codesigning material) — required for App Store, where
 # every nested bundle must carry the Apple submission certificate. Without a profile
 # the app is left unsigned (the host does not re-sign it).
+if [ -n "$PROFILE" ] && [ -z "$WIDGET_PROFILE" ]; then
+  echo "error: the watch app is signed with a profile but the widget extension has none (--watchWidgetProvisioningProfile; tools/dev/tg passes ~/.config/telegram-ios/codesigning/profiles/WatchWidget.mobileprovision when it exists). To create it, $SIGNING_FIX" >&2
+  exit 1
+fi
+if [ -n "$WIDGET_PROFILE" ] && [ -z "$PROFILE" ]; then
+  echo "error: --watchWidgetProvisioningProfile is set without --watchProvisioningProfile" >&2
+  exit 1
+fi
+
+# Fails when a profile does not grant the App Group (a profile made before the group existed): the widget would
+# build and install but never see the app's summary.
+require_group() {
+  local profile="$1" what="$2" plist
+  plist="$(mktemp)"
+  security cms -D -i "$profile" > "$plist"
+  if ! /usr/libexec/PlistBuddy -c "Print :Entitlements:$GROUP_KEY" "$plist" 2>/dev/null | grep -q "group.org.klaipher.Nanogram.watch"; then
+    rm -f "$plist"
+    echo "error: the $what provisioning profile ($profile) does not grant the App Group group.org.klaipher.Nanogram.watch. To fix it, $SIGNING_FIX" >&2
+    exit 1
+  fi
+  rm -f "$plist"
+}
+
 if [ -n "$PROFILE" ]; then
+  require_group "$PROFILE" "watch app"
+  require_group "$WIDGET_PROFILE" "watch widget"
   cp "$PROFILE" "$APP/embedded.mobileprovision"
   ENT="$(mktemp)"
   trap 'rm -rf "$DD" "$ENT" "$ENT.plist"' EXIT
@@ -110,17 +155,37 @@ if [ -n "$PROFILE" ]; then
     TS_FLAG="--timestamp=none"
   fi
 
-  # Sign inside-out: nested frameworks first, then the app bundle.
+  # Sign inside-out: nested frameworks, the widget extension (its own profile and entitlements), then the app bundle.
   if [ -d "$APP/Frameworks" ]; then
     for fw in "$APP/Frameworks/"*; do
       [ -e "$fw" ] || continue
       codesign --force "$TS_FLAG" --sign "$IDENTITY" "$fw" 1>&2
     done
   fi
+  WENT="$(mktemp)"
+  trap 'rm -rf "$DD" "$ENT" "$ENT.plist" "$WENT" "$WENT.plist"' EXIT
+  cp "$WIDGET_PROFILE" "$APPEX/embedded.mobileprovision"
+  security cms -D -i "$APPEX/embedded.mobileprovision" > "$WENT.plist"
+  /usr/libexec/PlistBuddy -x -c 'Print :Entitlements' "$WENT.plist" > "$WENT"
+  codesign --force "$TS_FLAG" --sign "$IDENTITY" --entitlements "$WENT" "$APPEX" 1>&2
   codesign --force "$TS_FLAG" --sign "$IDENTITY" --entitlements "$ENT" "$APP" 1>&2
   codesign --verify --deep --strict "$APP" 1>&2
 else
-  echo "warning: no watch provisioning profile supplied; the watch app will be UNSIGNED and will be rejected by the App Store. Pass --watchProvisioningProfile, or build with codesigning material that includes the watchkitapp profile." >&2
+  # No profiles: sign ad hoc with the App Group entitlements so that an App Store export (Xcode re-signs the watch app
+  # and the widget with distribution profiles) keeps the group. Not installable as it is.
+  if [ -z "$APP_ENTITLEMENTS" ] || [ -z "$WIDGET_ENTITLEMENTS" ]; then
+    echo "error: no entitlements files were passed for the ad-hoc signature" >&2
+    exit 1
+  fi
+  if [ -d "$APP/Frameworks" ]; then
+    for fw in "$APP/Frameworks/"*; do
+      [ -e "$fw" ] || continue
+      codesign --force --timestamp=none --sign - "$fw" 1>&2
+    done
+  fi
+  codesign --force --timestamp=none --sign - --entitlements "$WIDGET_ENTITLEMENTS" "$APPEX" 1>&2
+  codesign --force --timestamp=none --sign - --entitlements "$APP_ENTITLEMENTS" "$APP" 1>&2
+  echo "warning: no watch provisioning profile supplied; the watch app and its widget are signed ad hoc and are only good for an App Store export (tg testflight re-signs them). To sign them for a device, $SIGNING_FIX" >&2
 fi
 
 # $OUT_ZIP is execroot-relative; the action's cwd is the execroot, so do NOT cd

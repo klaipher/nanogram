@@ -59,6 +59,7 @@ class BazelCommandLine:
         self.watch_api_hash = None
         self.watch_signing_identity = None
         self.watch_provisioning_profile = None
+        self.watch_widget_provisioning_profile = None
 
         self.common_args = [
             # https://docs.bazel.build/versions/master/command-line-reference.html
@@ -226,12 +227,13 @@ class BazelCommandLine:
         else:
             raise Exception('Unknown configuration {}'.format(configuration))
 
-    def set_watch_app(self, api_id, api_hash, signing_identity, provisioning_profile):
+    def set_watch_app(self, api_id, api_hash, signing_identity, provisioning_profile, widget_provisioning_profile=None):
         self.embed_watch_app = True
         self.watch_api_id = api_id
         self.watch_api_hash = api_hash
         self.watch_signing_identity = signing_identity
         self.watch_provisioning_profile = provisioning_profile
+        self.watch_widget_provisioning_profile = widget_provisioning_profile
 
     def get_startup_bazel_arguments(self):
         combined_arguments = []
@@ -265,6 +267,7 @@ class BazelCommandLine:
                 '--define=watchApiHash={}'.format(self.watch_api_hash),
                 '--define=watchSigningIdentity={}'.format(self.watch_signing_identity or ''),
                 '--define=watchProvisioningProfile={}'.format(self.watch_provisioning_profile or ''),
+                '--define=watchWidgetProvisioningProfile={}'.format(self.watch_widget_provisioning_profile or ''),
             ]
         return args
 
@@ -660,6 +663,31 @@ def resolve_watch_provisioning_profile(arguments, base_path):
     return None
 
 
+def resolve_watch_widget_provisioning_profile(arguments, base_path, watch_profile):
+    """The provisioning profile of the widget extension nested in the embedded watch app.
+
+    An explicit --watchWidgetProvisioningProfile wins; otherwise the WatchWidget profile that resolve_configuration()
+    extracted from the codesigning material is used. A signed watch app needs it: its widget extension is embedded in
+    the app, and a signed app with an unsigned or wrongly signed extension is rejected at install time, so a missing
+    profile stops the build here with the fix instead.
+    """
+    if watch_profile is None:
+        return None
+    explicit_profile = arguments.watchWidgetProvisioningProfile
+    if explicit_profile is not None:
+        if not os.path.exists(explicit_profile):
+            raise Exception('--watchWidgetProvisioningProfile was set to a path that does not exist: {}'.format(explicit_profile))
+        return explicit_profile
+    resolved = os.path.join(base_path, 'build-input/configuration-repository/provisioning/WatchWidget.mobileprovision')
+    if os.path.exists(resolved):
+        return resolved
+    raise Exception(
+        '--embedWatchApp signs the watch app, but there is no provisioning profile for its widget extension '
+        '(looked for {p}).\nFix: run `python3 tools/dev/device_signing.py profiles` (it registers the App Group '
+        'group.org.klaipher.Nanogram.watch and creates the WatchApp and WatchWidget profiles), or pass an explicit '
+        '--watchWidgetProvisioningProfile.'.format(p=resolved))
+
+
 def build(bazel, arguments):
     if PostboxImportCheck.run(os.getcwd()) != 0:
         sys.exit(1)
@@ -693,11 +721,14 @@ def build(bazel, arguments):
             if arguments.watchApiId is None or arguments.watchApiHash is None:
                 raise Exception('--embedWatchApp requires --watchApiId and --watchApiHash (the embedded watch app build needs API credentials).')
             watch_provisioning_profile = resolve_watch_provisioning_profile(arguments=arguments, base_path=os.getcwd())
+            watch_widget_provisioning_profile = resolve_watch_widget_provisioning_profile(
+                arguments=arguments, base_path=os.getcwd(), watch_profile=watch_provisioning_profile)
             bazel_command_line.set_watch_app(
                 arguments.watchApiId,
                 arguments.watchApiHash,
                 arguments.watchSigningIdentity,
-                watch_provisioning_profile
+                watch_provisioning_profile,
+                watch_widget_provisioning_profile
             )
         else:
             print('TelegramBuild: warning: --embedWatchApp requires a device configuration (debug_arm64 or release_arm64); ignored for simulator builds.')
@@ -1188,6 +1219,13 @@ if __name__ == '__main__':
         required=False,
         type=str,
         help='Absolute path to the watchkitapp .mobileprovision file.',
+        metavar='path'
+    )
+    buildParser.add_argument(
+        '--watchWidgetProvisioningProfile',
+        required=False,
+        type=str,
+        help='Absolute path to the .mobileprovision file of the watch widget extension (<watch app id>.widget). Local builds only.',
         metavar='path'
     )
 

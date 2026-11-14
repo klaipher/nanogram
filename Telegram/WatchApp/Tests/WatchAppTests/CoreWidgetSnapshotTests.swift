@@ -170,13 +170,13 @@ final class CoreWidgetSnapshotTests: XCTestCase {
 
     // MARK: project wiring
 
-    func testFlagShipsOffAndTheWidgetIsNotInTheDefaultProject() throws {
-        XCTAssertFalse(WatchFeature.widgetSnapshot.defaultValue)
+    func testFlagShipsOnAndTheWidgetIsInTheDefaultProject() throws {
+        XCTAssertTrue(WatchFeature.widgetSnapshot.defaultValue)
         let root = URL(fileURLWithPath: #filePath)
             .deletingLastPathComponent().deletingLastPathComponent().deletingLastPathComponent()
         let project = try String(contentsOf: root.appendingPathComponent("project.yml"), encoding: .utf8)
-        XCTAssertFalse(project.contains("WatchWidgetExtension"), "the widget is only in project-widget.yml")
-        let overlay = try String(contentsOf: root.appendingPathComponent("project-widget.yml"), encoding: .utf8)
-        XCTAssertTrue(overlay.contains("com.apple.widgetkit-extension"))
+        XCTAssertTrue(project.contains("WatchWidgetExtension"), "the widget is part of the default project")
+        XCTAssertTrue(project.contains("com.apple.widgetkit-extension"))
+        XCTAssertTrue(project.contains("$(TG_WATCH_BUNDLE_ID).widget"), "the widget id follows the watch app id")
     }
 }

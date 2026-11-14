@@ -28,12 +28,14 @@
 		25F6B3EFED8EDDD9983CB0F7 /* PollVoteView.swift in Sources */ = {isa = PBXBuildFile; fileRef = DF0F4F15CB43635717B31B92 /* PollVoteView.swift */; };
 		2A0FDF9EF2B8BE9F4C46FD4C /* TLottieKit in Frameworks */ = {isa = PBXBuildFile; productRef = A76CDED25DEF09BD254BE84B /* TLottieKit */; };
 		2E2B46A1FFFDC24F47FF33D4 /* ChatOpener.swift in Sources */ = {isa = PBXBuildFile; fileRef = ED3696C9BA38845E621A1B67 /* ChatOpener.swift */; };
+		34F451218E545FB1769AED85 /* WatchWidgetBundle.swift in Sources */ = {isa = PBXBuildFile; fileRef = 1595881D40556B7FDAFBEC2F /* WatchWidgetBundle.swift */; };
 		3601ADB6F5D6F35446513BA6 /* TdlibSystemInfo.swift in Sources */ = {isa = PBXBuildFile; fileRef = 97A1022F7D42972EF8873A1B /* TdlibSystemInfo.swift */; };
 		3679D6EA591522207E69F8A5 /* ChatListTimestamp.swift in Sources */ = {isa = PBXBuildFile; fileRef = 0CCDFBD19F9CAA87E938BADC /* ChatListTimestamp.swift */; };
 		39A386FFBD00EEE14B2B33D5 /* MessageFormatters.swift in Sources */ = {isa = PBXBuildFile; fileRef = E09479749C40E78AD852AF8B /* MessageFormatters.swift */; };
 		3BA42E87FCC662196BB80B64 /* MessageRow.swift in Sources */ = {isa = PBXBuildFile; fileRef = 8F01C7C9A4B9948C0BB710E2 /* MessageRow.swift */; };
 		3CD1D8F334924372DD07A9E5 /* TDUpdateDelivery.swift in Sources */ = {isa = PBXBuildFile; fileRef = 097D3ACE0CFC2E78FAC12DA1 /* TDUpdateDelivery.swift */; };
 		4236CA9B5AA90ACEB17814DC /* BubbleMetrics.swift in Sources */ = {isa = PBXBuildFile; fileRef = 674916153E803CA73D43BE6C /* BubbleMetrics.swift */; };
+		42BC54172987C52A54766E2D /* WatchWidgetExtension.appex in Embed Foundation Extensions */ = {isa = PBXBuildFile; fileRef = CF4B2A845A23993FC5562532 /* WatchWidgetExtension.appex */; settings = {ATTRIBUTES = (RemoveHeadersOnCopy, ); }; };
 		44630BDE4B93AF13B9903093 /* StickerPicker.swift in Sources */ = {isa = PBXBuildFile; fileRef = C2C5B5ED9309BE4DA670469D /* StickerPicker.swift */; };
 		4505C5628AF9258938D623D7 /* CachedChat.swift in Sources */ = {isa = PBXBuildFile; fileRef = 9C5E645A6F575F72C3B7839D /* CachedChat.swift */; };
 		4546DBC7A3577AA688A7069C /* VideoVisual.swift in Sources */ = {isa = PBXBuildFile; fileRef = 20DF1E1C15EBF3931AC3843C /* VideoVisual.swift */; };
@@ -46,6 +48,7 @@
 		5DF5B3342BFBC50C1E211068 /* StickerBubbleView.swift in Sources */ = {isa = PBXBuildFile; fileRef = C99A867714B28B54D5B3DF98 /* StickerBubbleView.swift */; };
 		5E9A6B94F1B917CB849B3EBC /* AvatarView.swift in Sources */ = {isa = PBXBuildFile; fileRef = 35B32555B3686A7A4884B215 /* AvatarView.swift */; };
 		5FA05991BA56C10C50AAD322 /* ProgressiveVideo.swift in Sources */ = {isa = PBXBuildFile; fileRef = 215DF03E331DD76E29BE0EB9 /* ProgressiveVideo.swift */; };
+		608EF4E6AF84CAB9A01124CC /* WatchUnreadSnapshot.swift in Sources */ = {isa = PBXBuildFile; fileRef = 132A85C2D054D13A7DE6D90E /* WatchUnreadSnapshot.swift */; };
 		62E23F09E892DE847642EDB1 /* EmojiText.swift in Sources */ = {isa = PBXBuildFile; fileRef = 4DB3C8238D41374CBAC66303 /* EmojiText.swift */; };
 		641846C985430AD34793F0D3 /* ReplyHeader.swift in Sources */ = {isa = PBXBuildFile; fileRef = F595E3DA02BF871A797A649A /* ReplyHeader.swift */; };
 		6475073E5937A447F70599A8 /* StickerCellView.swift in Sources */ = {isa = PBXBuildFile; fileRef = E3496CF0F6E1D25422AF9DB0 /* StickerCellView.swift */; };
@@ -57,6 +60,7 @@
 		6DD41F6FCB2E2F6E2A231059 /* ErrorMapping.swift in Sources */ = {isa = PBXBuildFile; fileRef = F424F5E873CD24E281387693 /* ErrorMapping.swift */; };
 		6E676E1D3C5066A6590C725C /* LocationProvider.swift in Sources */ = {isa = PBXBuildFile; fileRef = 3B4D75BC5502D8D705E859FB /* LocationProvider.swift */; };
 		7059458F1317797724013AC8 /* AccountListProjection.swift in Sources */ = {isa = PBXBuildFile; fileRef = 6DDFFE71E0C32258348A2510 /* AccountListProjection.swift */; };
+		72FE7779C4DBD140E2A939B9 /* UnreadWidget.swift in Sources */ = {isa = PBXBuildFile; fileRef = 9D4190E5782E935FF3D884C5 /* UnreadWidget.swift */; };
 		750C266D413747DF23D80270 /* AuthState.swift in Sources */ = {isa = PBXBuildFile; fileRef = 9E5F4E8DCEFAFB514361761C /* AuthState.swift */; };
 		787D692CF045D92B0DEFC1F2 /* TDClientFactory.swift in Sources */ = {isa = PBXBuildFile; fileRef = 695248F618E8ABD4F9840F92 /* TDClientFactory.swift */; };
 		799DF1BBCAABA6D0488147DB /* NowPlayingPublisher.swift in Sources */ = {isa = PBXBuildFile; fileRef = AD112509F0A51E97F7034940 /* NowPlayingPublisher.swift */; };
@@ -136,6 +140,30 @@
 		FD5515DB22C571F4D3E5F5FA /* DaySeparatorView.swift in Sources */ = {isa = PBXBuildFile; fileRef = E855E4C62401AD1CF41D1835 /* DaySeparatorView.swift */; };
 /* End PBXBuildFile section */
 
+/* Begin PBXContainerItemProxy section */
+		DB0C986BA50209331D170B47 /* PBXContainerItemProxy */ = {
+			isa = PBXContainerItemProxy;
+			containerPortal = B9A9B73A2396AB3923E4BCB8 /* Project object */;
+			proxyType = 1;
+			remoteGlobalIDString = 3EA6581C8280922C481AA514;
+			remoteInfo = WatchWidgetExtension;
+		};
+/* End PBXContainerItemProxy section */
+
+/* Begin PBXCopyFilesBuildPhase section */
+		13E595434C39E4BDBE6B61CB /* Embed Foundation Extensions */ = {
+			isa = PBXCopyFilesBuildPhase;
+			buildActionMask = 2147483647;
+			dstPath = "";
+			dstSubfolderSpec = 13;
+			files = (
+				42BC54172987C52A54766E2D /* WatchWidgetExtension.appex in Embed Foundation Extensions */,
+			);
+			name = "Embed Foundation Extensions";
+			runOnlyForDeploymentPostprocessing = 0;
+		};
+/* End PBXCopyFilesBuildPhase section */
+
 /* Begin PBXFileReference section */
 		00101E229543EB30B46F9787 /* VoiceNoteVisual.swift */ = {isa = PBXFileReference; lastKnownFileType = sourcecode.swift; path = VoiceNoteVisual.swift; sourceTree = "<group>"; };
 		0240D336BD11E2613A457C43 /* PhotoVisual.swift */ = {isa = PBXFileReference; lastKnownFileType = sourcecode.swift; path = PhotoVisual.swift; sourceTree = "<group>"; };
@@ -147,6 +175,7 @@
 		132A85C2D054D13A7DE6D90E /* WatchUnreadSnapshot.swift */ = {isa = PBXFileReference; lastKnownFileType = sourcecode.swift; path = WatchUnreadSnapshot.swift; sourceTree = "<group>"; };
 		14088667131D587C886B3143 /* TDShim */ = {isa = PBXFileReference; lastKnownFileType = folder; name = TDShim; path = Packages/TDShim; sourceTree = SOURCE_ROOT; };
 		148D11BBC0B40441DCC8EA0A /* AccountsListView.swift */ = {isa = PBXFileReference; lastKnownFileType = sourcecode.swift; path = AccountsListView.swift; sourceTree = "<group>"; };
+		1595881D40556B7FDAFBEC2F /* WatchWidgetBundle.swift */ = {isa = PBXFileReference; lastKnownFileType = sourcecode.swift; path = WatchWidgetBundle.swift; sourceTree = "<group>"; };
 		182DA99AD90B93DE2FB37A41 /* ChatHistoryStore.swift */ = {isa = PBXFileReference; lastKnownFileType = sourcecode.swift; path = ChatHistoryStore.swift; sourceTree = "<group>"; };
 		1932CC94F39BD57A56E59C08 /* ChatRow.swift */ = {isa = PBXFileReference; lastKnownFileType = sourcecode.swift; path = ChatRow.swift; sourceTree = "<group>"; };
 		1FFA0FBD5453516C970B9217 /* ChatListIndex.swift */ = {isa = PBXFileReference; lastKnownFileType = sourcecode.swift; path = ChatListIndex.swift; sourceTree = "<group>"; };
@@ -211,9 +240,11 @@
 		9BFBE65008CE5037F6DF19A1 /* VideoPlayerView.swift */ = {isa = PBXFileReference; lastKnownFileType = sourcecode.swift; path = VideoPlayerView.swift; sourceTree = "<group>"; };
 		9C3B71804A398A0100375E86 /* AudioBubbleView.swift */ = {isa = PBXFileReference; lastKnownFileType = sourcecode.swift; path = AudioBubbleView.swift; sourceTree = "<group>"; };
 		9C5E645A6F575F72C3B7839D /* CachedChat.swift */ = {isa = PBXFileReference; lastKnownFileType = sourcecode.swift; path = CachedChat.swift; sourceTree = "<group>"; };
+		9D4190E5782E935FF3D884C5 /* UnreadWidget.swift */ = {isa = PBXFileReference; lastKnownFileType = sourcecode.swift; path = UnreadWidget.swift; sourceTree = "<group>"; };
 		9E5F4E8DCEFAFB514361761C /* AuthState.swift */ = {isa = PBXFileReference; lastKnownFileType = sourcecode.swift; path = AuthState.swift; sourceTree = "<group>"; };
 		A065521FE790E0BF29D1B3B6 /* Secrets.swift */ = {isa = PBXFileReference; lastKnownFileType = sourcecode.swift; path = Secrets.swift; sourceTree = "<group>"; };
 		A1131A5FC4707D20BFB5E95B /* ContentView.swift */ = {isa = PBXFileReference; lastKnownFileType = sourcecode.swift; path = ContentView.swift; sourceTree = "<group>"; };
+		A1593EB189930F0283E61C73 /* Info.plist */ = {isa = PBXFileReference; lastKnownFileType = text.plist; path = Info.plist; sourceTree = "<group>"; };
 		A4BDBD692A424C5C24D61B4F /* tgwatchApp.swift */ = {isa = PBXFileReference; lastKnownFileType = sourcecode.swift; path = tgwatchApp.swift; sourceTree = "<group>"; };
 		A63843FEEB957FF475FF41D6 /* UserNamesStore.swift */ = {isa = PBXFileReference; lastKnownFileType = sourcecode.swift; path = UserNamesStore.swift; sourceTree = "<group>"; };
 		AD112509F0A51E97F7034940 /* NowPlayingPublisher.swift */ = {isa = PBXFileReference; lastKnownFileType = sourcecode.swift; path = NowPlayingPublisher.swift; sourceTree = "<group>"; };
@@ -235,6 +266,7 @@
 		CBAFC996C8EF743C7C598389 /* AudioVisual.swift */ = {isa = PBXFileReference; lastKnownFileType = sourcecode.swift; path = AudioVisual.swift; sourceTree = "<group>"; };
 		CC83B10E8C4450B4414381A4 /* LottieAnimationView.swift */ = {isa = PBXFileReference; lastKnownFileType = sourcecode.swift; path = LottieAnimationView.swift; sourceTree = "<group>"; };
 		CEA96A6FDE6FBC1F2054E82A /* QrLinkPublisher.swift */ = {isa = PBXFileReference; lastKnownFileType = sourcecode.swift; path = QrLinkPublisher.swift; sourceTree = "<group>"; };
+		CF4B2A845A23993FC5562532 /* WatchWidgetExtension.appex */ = {isa = PBXFileReference; explicitFileType = "wrapper.app-extension"; includeInIndex = 0; path = WatchWidgetExtension.appex; sourceTree = BUILT_PRODUCTS_DIR; };
 		CFFF41E60C5477C20897CD00 /* MapSnapshotRenderer.swift */ = {isa = PBXFileReference; lastKnownFileType = sourcecode.swift; path = MapSnapshotRenderer.swift; sourceTree = "<group>"; };
 		D02F1B6E53745C3D7900554D /* StickerPickerStore.swift */ = {isa = PBXFileReference; lastKnownFileType = sourcecode.swift; path = StickerPickerStore.swift; sourceTree = "<group>"; };
 		D479FDCEDD7792FC03E7DE03 /* VoiceNoteBubbleView.swift */ = {isa = PBXFileReference; lastKnownFileType = sourcecode.swift; path = VoiceNoteBubbleView.swift; sourceTree = "<group>"; };
@@ -373,6 +405,7 @@
 				26706DBEFA60B4F5FC661D56 /* Packages */,
 				9A138A9A81D46E22F5A90612 /* Shared */,
 				1E731BF02CCC57AAFD5882E4 /* tgwatch Watch App */,
+				7BD3C19171215C8580A80CDF /* WatchWidget */,
 				6BB635CC5B892659A3E61172 /* Products */,
 			);
 			sourceTree = "<group>";
@@ -381,6 +414,7 @@
 			isa = PBXGroup;
 			children = (
 				F72CE4C1520F9330AFDE2D07 /* tgwatch Watch App.app */,
+				CF4B2A845A23993FC5562532 /* WatchWidgetExtension.appex */,
 			);
 			name = Products;
 			sourceTree = "<group>";
@@ -391,6 +425,16 @@
 				BFD48AB16D27995B2D2638FB /* BackgroundRefresh.swift */,
 			);
 			path = Background;
+			sourceTree = "<group>";
+		};
+		7BD3C19171215C8580A80CDF /* WatchWidget */ = {
+			isa = PBXGroup;
+			children = (
+				A1593EB189930F0283E61C73 /* Info.plist */,
+				9D4190E5782E935FF3D884C5 /* UnreadWidget.swift */,
+				1595881D40556B7FDAFBEC2F /* WatchWidgetBundle.swift */,
+			);
+			path = WatchWidget;
 			sourceTree = "<group>";
 		};
 		9A138A9A81D46E22F5A90612 /* Shared */ = {
@@ -516,6 +560,23 @@
 /* End PBXGroup section */
 
 /* Begin PBXNativeTarget section */
+		3EA6581C8280922C481AA514 /* WatchWidgetExtension */ = {
+			isa = PBXNativeTarget;
+			buildConfigurationList = 8BB36CFA889E1979FA221C53 /* Build configuration list for PBXNativeTarget "WatchWidgetExtension" */;
+			buildPhases = (
+				76388A576E3DB0871A7D322E /* Sources */,
+			);
+			buildRules = (
+			);
+			dependencies = (
+			);
+			name = WatchWidgetExtension;
+			packageProductDependencies = (
+			);
+			productName = WatchWidgetExtension;
+			productReference = CF4B2A845A23993FC5562532 /* WatchWidgetExtension.appex */;
+			productType = "com.apple.product-type.app-extension";
+		};
 		F8E880AF01A492CCA4C21162 /* tgwatch Watch App */ = {
 			isa = PBXNativeTarget;
 			buildConfigurationList = DF46AE8A5A09DDD35D3F12A9 /* Build configuration list for PBXNativeTarget "tgwatch Watch App" */;
@@ -523,10 +584,12 @@
 				B87FE120EF64E5DF7200423F /* Sources */,
 				ADF2777D4E127E36F6AE03F4 /* Resources */,
 				FD92F7152AACBC99210DE5F1 /* Frameworks */,
+				13E595434C39E4BDBE6B61CB /* Embed Foundation Extensions */,
 			);
 			buildRules = (
 			);
 			dependencies = (
+				C31A2998655D47EC7E3895F7 /* PBXTargetDependency */,
 			);
 			name = "tgwatch Watch App";
 			packageProductDependencies = (
@@ -549,6 +612,9 @@
 				BuildIndependentTargetsInParallel = YES;
 				LastUpgradeCheck = 1430;
 				TargetAttributes = {
+					3EA6581C8280922C481AA514 = {
+						DevelopmentTeam = YGTMYL879P;
+					};
 					F8E880AF01A492CCA4C21162 = {
 						DevelopmentTeam = YGTMYL879P;
 					};
@@ -576,6 +642,7 @@
 			projectRoot = "";
 			targets = (
 				F8E880AF01A492CCA4C21162 /* tgwatch Watch App */,
+				3EA6581C8280922C481AA514 /* WatchWidgetExtension */,
 			);
 		};
 /* End PBXProject section */
@@ -593,6 +660,16 @@
 /* End PBXResourcesBuildPhase section */
 
 /* Begin PBXSourcesBuildPhase section */
+		76388A576E3DB0871A7D322E /* Sources */ = {
+			isa = PBXSourcesBuildPhase;
+			buildActionMask = 2147483647;
+			files = (
+				72FE7779C4DBD140E2A939B9 /* UnreadWidget.swift in Sources */,
+				608EF4E6AF84CAB9A01124CC /* WatchUnreadSnapshot.swift in Sources */,
+				34F451218E545FB1769AED85 /* WatchWidgetBundle.swift in Sources */,
+			);
+			runOnlyForDeploymentPostprocessing = 0;
+		};
 		B87FE120EF64E5DF7200423F /* Sources */ = {
 			isa = PBXSourcesBuildPhase;
 			buildActionMask = 2147483647;
@@ -722,6 +799,14 @@
 		};
 /* End PBXSourcesBuildPhase section */
 
+/* Begin PBXTargetDependency section */
+		C31A2998655D47EC7E3895F7 /* PBXTargetDependency */ = {
+			isa = PBXTargetDependency;
+			target = 3EA6581C8280922C481AA514 /* WatchWidgetExtension */;
+			targetProxy = DB0C986BA50209331D170B47 /* PBXContainerItemProxy */;
+		};
+/* End PBXTargetDependency section */
+
 /* Begin XCBuildConfiguration section */
 		39C4482A90B52800816F008E /* Debug */ = {
 			isa = XCBuildConfiguration;
@@ -730,12 +815,13 @@
 				ASSETCATALOG_COMPILER_GLOBAL_ACCENT_COLOR_NAME = AccentColor;
 				CODE_SIGNING_ALLOWED = NO;
 				CODE_SIGNING_REQUIRED = NO;
+				CODE_SIGN_ENTITLEMENTS = WatchWidget/WatchApp.entitlements;
 				CODE_SIGN_IDENTITY = "";
 				DEVELOPMENT_TEAM = YGTMYL879P;
 				GENERATE_INFOPLIST_FILE = NO;
 				INFOPLIST_FILE = "tgwatch Watch App/Info.plist";
 				LD_RUNPATH_SEARCH_PATHS = "$(inherited) @executable_path/Frameworks";
-				PRODUCT_BUNDLE_IDENTIFIER = org.klaipher.Nanogram.watchkitapp;
+				PRODUCT_BUNDLE_IDENTIFIER = "$(TG_WATCH_BUNDLE_ID)";
 				SDKROOT = watchos;
 				SKIP_INSTALL = YES;
 				SWIFT_TREAT_WARNINGS_AS_ERRORS = YES;
@@ -751,6 +837,7 @@
 				ASSETCATALOG_COMPILER_GLOBAL_ACCENT_COLOR_NAME = AccentColor;
 				CODE_SIGNING_ALLOWED = NO;
 				CODE_SIGNING_REQUIRED = NO;
+				CODE_SIGN_ENTITLEMENTS = WatchWidget/WatchApp.entitlements;
 				CODE_SIGN_IDENTITY = "";
 				DEAD_CODE_STRIPPING = YES;
 				DEPLOYMENT_POSTPROCESSING = YES;
@@ -759,7 +846,7 @@
 				GENERATE_INFOPLIST_FILE = NO;
 				INFOPLIST_FILE = "tgwatch Watch App/Info.plist";
 				LD_RUNPATH_SEARCH_PATHS = "$(inherited) @executable_path/Frameworks";
-				PRODUCT_BUNDLE_IDENTIFIER = org.klaipher.Nanogram.watchkitapp;
+				PRODUCT_BUNDLE_IDENTIFIER = "$(TG_WATCH_BUNDLE_ID)";
 				SDKROOT = watchos;
 				SKIP_INSTALL = YES;
 				STRIP_INSTALLED_PRODUCT = YES;
@@ -832,6 +919,7 @@
 				SWIFT_OPTIMIZATION_LEVEL = "-Onone";
 				SWIFT_STRICT_CONCURRENCY = complete;
 				SWIFT_VERSION = 6.0;
+				TG_WATCH_BUNDLE_ID = org.klaipher.Nanogram.watchkitapp;
 				WATCHOS_DEPLOYMENT_TARGET = 26.0;
 			};
 			name = Debug;
@@ -891,6 +979,60 @@
 				SWIFT_OPTIMIZATION_LEVEL = "-O";
 				SWIFT_STRICT_CONCURRENCY = complete;
 				SWIFT_VERSION = 6.0;
+				TG_WATCH_BUNDLE_ID = org.klaipher.Nanogram.watchkitapp;
+				WATCHOS_DEPLOYMENT_TARGET = 26.0;
+			};
+			name = Release;
+		};
+		EB2C30D36FE3E2743DBE72FD /* Debug */ = {
+			isa = XCBuildConfiguration;
+			buildSettings = {
+				CODE_SIGNING_ALLOWED = NO;
+				CODE_SIGNING_REQUIRED = NO;
+				CODE_SIGN_ENTITLEMENTS = WatchWidget/WatchWidget.entitlements;
+				CODE_SIGN_IDENTITY = "";
+				DEVELOPMENT_TEAM = YGTMYL879P;
+				GENERATE_INFOPLIST_FILE = NO;
+				INFOPLIST_FILE = WatchWidget/Info.plist;
+				LD_RUNPATH_SEARCH_PATHS = (
+					"$(inherited)",
+					"@executable_path/Frameworks",
+					"@executable_path/../../Frameworks",
+				);
+				PRODUCT_BUNDLE_IDENTIFIER = "$(TG_WATCH_BUNDLE_ID).widget";
+				SDKROOT = watchos;
+				SKIP_INSTALL = YES;
+				SWIFT_STRICT_CONCURRENCY = complete;
+				SWIFT_TREAT_WARNINGS_AS_ERRORS = YES;
+				SWIFT_VERSION = 6.0;
+				TARGETED_DEVICE_FAMILY = 4;
+				WATCHOS_DEPLOYMENT_TARGET = 26.0;
+			};
+			name = Debug;
+		};
+		F9CECDEE0A052759A1ADC6F5 /* Release */ = {
+			isa = XCBuildConfiguration;
+			buildSettings = {
+				CODE_SIGNING_ALLOWED = NO;
+				CODE_SIGNING_REQUIRED = NO;
+				CODE_SIGN_ENTITLEMENTS = WatchWidget/WatchWidget.entitlements;
+				CODE_SIGN_IDENTITY = "";
+				DEAD_CODE_STRIPPING = YES;
+				DEVELOPMENT_TEAM = YGTMYL879P;
+				GENERATE_INFOPLIST_FILE = NO;
+				INFOPLIST_FILE = WatchWidget/Info.plist;
+				LD_RUNPATH_SEARCH_PATHS = (
+					"$(inherited)",
+					"@executable_path/Frameworks",
+					"@executable_path/../../Frameworks",
+				);
+				PRODUCT_BUNDLE_IDENTIFIER = "$(TG_WATCH_BUNDLE_ID).widget";
+				SDKROOT = watchos;
+				SKIP_INSTALL = YES;
+				SWIFT_STRICT_CONCURRENCY = complete;
+				SWIFT_TREAT_WARNINGS_AS_ERRORS = YES;
+				SWIFT_VERSION = 6.0;
+				TARGETED_DEVICE_FAMILY = 4;
 				WATCHOS_DEPLOYMENT_TARGET = 26.0;
 			};
 			name = Release;
@@ -898,6 +1040,15 @@
 /* End XCBuildConfiguration section */
 
 /* Begin XCConfigurationList section */
+		8BB36CFA889E1979FA221C53 /* Build configuration list for PBXNativeTarget "WatchWidgetExtension" */ = {
+			isa = XCConfigurationList;
+			buildConfigurations = (
+				EB2C30D36FE3E2743DBE72FD /* Debug */,
+				F9CECDEE0A052759A1ADC6F5 /* Release */,
+			);
+			defaultConfigurationIsVisible = 0;
+			defaultConfigurationName = Debug;
+		};
 		DF46AE8A5A09DDD35D3F12A9 /* Build configuration list for PBXNativeTarget "tgwatch Watch App" */ = {
 			isa = XCConfigurationList;
 			buildConfigurations = (

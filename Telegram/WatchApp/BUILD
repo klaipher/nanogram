@@ -18,11 +18,22 @@ filegroup(
             "Tests/**",
             "project-dev.yml",
             "tgwatch-dev.xcodeproj/**",
-            # The widget variant (generated project, extension sources, owner steps) is not part of the embedded build.
+            # The Xcode automatic-signing variant is not part of the embedded build (the widget extension is).
             "project-widget.yml",
             "tgwatch-widget.xcodeproj/**",
-            "WatchWidget/**",
+            "WatchWidget/OWNER-STEPS.md",
         ],
     ),
+    visibility = ["//Telegram:__pkg__"],
+)
+
+# The App Group entitlements of the app and the widget extension. prebuilt_watchos_patch.sh signs with them when no
+# provisioning profile is given (an App Store export keeps them when it re-signs).
+filegroup(
+    name = "entitlements",
+    srcs = [
+        "WatchWidget/WatchApp.entitlements",
+        "WatchWidget/WatchWidget.entitlements",
+    ],
     visibility = ["//Telegram:__pkg__"],
 )

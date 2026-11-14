@@ -56,9 +56,9 @@ final class CorePushAndRefreshTests: XCTestCase {
         XCTAssertEqual(received, 1)
     }
 
-    func testPushFlagShipsOff() {
+    func testPushFlagShipsOffAndBackgroundRefreshOn() {
         XCTAssertFalse(WatchFeature.pushRegistration.defaultValue)
-        XCTAssertFalse(WatchFeature.backgroundRefresh.defaultValue)
+        XCTAssertTrue(WatchFeature.backgroundRefresh.defaultValue)
     }
 
     // MARK: background refresh

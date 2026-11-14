@@ -574,14 +574,21 @@ cmd_device() {
   local watch_args=()
   if [ $watch -eq 1 ]; then
     # The embedded Apple Watch app (Telegram/WatchApp) uses the same api_id as the phone app.
-    # Without a WatchApp.mobileprovision it is built unsigned; tg testflight signs it for the App Store.
+    # Without a WatchApp.mobileprovision it is built with an ad-hoc signature (App Group entitlements only); tg
+    # testflight signs it for the App Store. The widget extension inside it needs its own profile whenever the app has one.
     local creds="$HOME/.config/telegram-ios/api-credentials.json"
     [ -f "$creds" ] || die "no API credentials at $creds"
     watch_args=(--embedWatchApp
       --watchApiId="$(python3 -c 'import json,sys; print(json.load(open(sys.argv[1]))["api_id"])' "$creds")"
       --watchApiHash="$(python3 -c 'import json,sys; print(json.load(open(sys.argv[1]))["api_hash"])' "$creds")")
-    [ -f "$signing/profiles/WatchApp.mobileprovision" ] \
-      && watch_args+=(--watchProvisioningProfile="$signing/profiles/WatchApp.mobileprovision")
+    if [ -f "$signing/profiles/WatchApp.mobileprovision" ]; then
+      [ -f "$signing/profiles/WatchWidget.mobileprovision" ] \
+        || die "the watch app has a profile but its widget extension has none ($signing/profiles/WatchWidget.mobileprovision). Run: python3 tools/dev/device_signing.py profiles (it registers the App Group group.org.klaipher.Nanogram.watch and creates the WatchApp and WatchWidget profiles)"
+      watch_args+=(--watchProvisioningProfile="$signing/profiles/WatchApp.mobileprovision"
+        --watchWidgetProvisioningProfile="$signing/profiles/WatchWidget.mobileprovision")
+    else
+      warn "no WatchApp profile in $signing/profiles: the watch app and its widget get an ad-hoc signature (fine for tg testflight; for a device run: python3 tools/dev/device_signing.py profiles)"
+    fi
   fi
   make_py ${make_args[@]+"${make_args[@]}"} build \
     --configurationPath="$config" \

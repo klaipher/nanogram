@@ -8,7 +8,7 @@
 # -Zbuild-std; cached under ~/.cache/telegram-ios/watch-tlottie by a hash of its inputs).
 #
 # It bakes the values that xcodebuild must own — the api credentials and the bundle id
-# (PRODUCT_BUNDLE_IDENTIFIER, from which the Info.plist derives
+# (TG_WATCH_BUNDLE_ID, which is the watch app's PRODUCT_BUNDLE_IDENTIFIER and, with ".widget", the widget extension's; from which the Info.plist derives
 # WKCompanionAppBundleIdentifier via $(PRODUCT_BUNDLE_IDENTIFIER:base)) — and leaves
 # the version keys as PLACEHOLDERS for prebuilt_watchos_patch.sh to rewrite. All three
 # baked values are stable for a given host configuration, whereas the version changes
@@ -21,7 +21,7 @@
 #   $2 output_zip       Path (declared by Bazel) to write the unsigned .app archive to.
 #   $3 api_id           TG_API_ID build setting
 #   $4 api_hash         TG_API_HASH build setting
-#   $5 watch_bundle_id  PRODUCT_BUNDLE_IDENTIFIER (the watch app id, "<host>.watchkitapp");
+#   $5 watch_bundle_id  TG_WATCH_BUNDLE_ID (the watch app id, "<host>.watchkitapp");
 #                       empty => keep the project default.
 #   $6 tlottie_source   Execroot-relative path to the tlottie crate (submodules/tlottie/tlottie);
 #                       empty => the build script's default (relative to the snapshot).
@@ -67,7 +67,7 @@ mkdir -p "$WORKSRC"
   --exclude '.build/' --exclude '.swiftpm/' --exclude 'xcuserdata/' --exclude 'DerivedData/' \
   --exclude '/BUILD' --exclude '.gitignore' --exclude '/Tests/' \
   --exclude '/project-dev.yml' --exclude '/tgwatch-dev.xcodeproj/' \
-  --exclude '/project-widget.yml' --exclude '/tgwatch-widget.xcodeproj/' --exclude '/WatchWidget/' \
+  --exclude '/project-widget.yml' --exclude '/tgwatch-widget.xcodeproj/' --exclude '/WatchWidget/OWNER-STEPS.md' \
   --exclude '/Packages/TLottieKit/Frameworks/' \
   "$SRC/" "$WORKSRC/"
 
@@ -115,12 +115,16 @@ xcodebuild \
   TG_API_ID="$API_ID" TG_API_HASH="$API_HASH" \
   MARKETING_VERSION=0.0 CURRENT_PROJECT_VERSION=0 \
   GCC_OPTIMIZATION_LEVEL=3 \
-  ${WATCH_BUNDLE_ID:+PRODUCT_BUNDLE_IDENTIFIER="$WATCH_BUNDLE_ID"} \
+  ${WATCH_BUNDLE_ID:+TG_WATCH_BUNDLE_ID="$WATCH_BUNDLE_ID"} \
   build 1>&2
 
 APP="$(find "$DD/Build/Products" -maxdepth 2 -name 'tgwatch Watch App.app' -type d | head -1)"
 if [ -z "$APP" ]; then
   echo "error: built watch .app not found under $DD/Build/Products" >&2
+  exit 1
+fi
+if [ ! -d "$APP/PlugIns/WatchWidgetExtension.appex" ]; then
+  echo "error: the built watch app has no PlugIns/WatchWidgetExtension.appex (the widget target is missing from tgwatch.xcodeproj: regenerate it with xcodegen in Telegram/WatchApp)" >&2
   exit 1
 fi
 

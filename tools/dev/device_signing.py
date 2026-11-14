@@ -2,8 +2,9 @@
 """Signing for installing your own build on your own iPhone with a paid Apple Developer account.
 
 Subcommands:
-  profiles   Let Xcode register the app and extension IDs (push + app group) on your team and
-             create development provisioning profiles for them, then collect the profiles into
+  profiles   Let Xcode register the app and extension IDs (push + app group) on your team, plus the watch app and
+             its widget extension with the App Group group.<bundle id>.watch (the group itself is registered by
+             Xcode from the entitlements), and create development provisioning profiles for them, then collect the profiles into
              ~/.config/telegram-ios/codesigning/profiles for `tg device`.
   apns-csr   Create the private key and certificate signing request for the push certificate.
   apns-pem   Combine the downloaded push certificate (aps.cer) with that key into the .pem file
@@ -34,8 +35,26 @@ ASC_DIR = os.path.join(HOME_DIR, 'asc')
 XCODE_PROFILES = os.path.expanduser('~/Library/Developer/Xcode/UserData/Provisioning Profiles')
 
 # Suffixes match build-system/Make/BuildConfiguration.py (profile_name_mapping).
-# The watch app is not built for device installs, so it is left out.
 EXTENSIONS = ['.Share', '.NotificationService', '.NotificationContent', '.Widget', '.SiriIntents', '.BroadcastUpload']
+
+# The embedded Apple Watch app and its unread-widget extension (Telegram/WatchApp). They share the App Group
+# group.<bundle id>.watch (Shared/WatchUnreadSnapshot.swift), not the phone's group. Names match build-system/Make/BuildConfiguration.py.
+WATCH_TARGETS = [('WatchApp', '.watchkitapp'), ('WatchWidget', '.watchkitapp.widget')]
+
+
+def watch_app_group(app_bundle_id):
+    return 'group.{}.watch'.format(app_bundle_id)
+
+
+def is_watch_bundle(bundle_id, app_bundle_id):
+    return any(bundle_id == app_bundle_id + suffix for _, suffix in WATCH_TARGETS)
+
+
+def target_groups(bundle_id, app_bundle_id):
+    """The App Groups one bundle asks for: the watch pair uses its own group, everything else the phone's."""
+    if is_watch_bundle(bundle_id, app_bundle_id):
+        return [watch_app_group(app_bundle_id)]
+    return ['group.' + app_bundle_id]
 
 
 def payload_app_name(unpacked):
@@ -211,7 +230,7 @@ def write_project(directory, team_id, targets):
     target_ids = []
     for name, bundle_id, push in targets:
         with open(os.path.join(directory, name + '.entitlements'), 'w') as f:
-            f.write(entitlements_plist(['group.' + targets[0][1]], push, communication=(bundle_id == targets[0][1]),
+            f.write(entitlements_plist(target_groups(bundle_id, targets[0][1]), push, communication=(bundle_id == targets[0][1]),
                                        enhanced_security=wants_enhanced_security(bundle_id, targets[0][1]),
                                        time_sensitive=wants_time_sensitive(bundle_id, targets[0][1])))
         build_file, product_ref, sources, target, config, config_list = (new_id() for _ in range(6))
@@ -249,6 +268,12 @@ def first_physical_device():
     return None
 
 
+def profile_targets(bundle_id):
+    """(name, bundle id, push) of every bundle that gets a profile: the app, its extensions, the watch app and its widget."""
+    return ([('Telegram', bundle_id, True)] + [(suffix[1:], bundle_id + suffix, False) for suffix in EXTENSIONS]
+            + [(name, bundle_id + suffix, False) for name, suffix in WATCH_TARGETS])
+
+
 def cmd_profiles(args):
     config = load_config()
     if args.team:
@@ -259,7 +284,7 @@ def cmd_profiles(args):
     if device is None:
         sys.exit('No iPhone found: connect it (cable or same Wi-Fi) and unlock it')
 
-    targets = [('Telegram', bundle_id, True)] + [(suffix[1:], bundle_id + suffix, False) for suffix in EXTENSIONS]
+    targets = profile_targets(bundle_id)
     work = os.path.join(HOME_DIR, 'profilegen')
     shutil.rmtree(work, ignore_errors=True)
     write_project(work, team_id, targets)

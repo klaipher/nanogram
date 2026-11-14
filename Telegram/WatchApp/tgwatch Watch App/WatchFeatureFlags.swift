@@ -3,7 +3,8 @@ import Foundation
 /// Behaviour switches for the modernization specs that change what users see or hear, or that depend on
 /// hardware we cannot check without a device (docs: `Telegram/WatchApp` section of NANOGRAM-CHANGES.md).
 ///
-/// Every flag is OFF unless the owner turns it on. A flag is a `UserDefaults` bool under
+/// Every flag is OFF unless the owner turns it on, except the ones in `shippedOn` (the widget summary and its
+/// background refresh, IOS-WATCH-WIDGET-1). A flag is a `UserDefaults` bool under
 /// `nanogram.watch.<name>`, so a test run or a device scheme can flip it with a launch argument
 /// (`-nanogram.watch.longFormAudio YES`) without a rebuild. Nothing here is server-visible by itself; the
 /// flags that change a server-visible parameter say so on their case.
@@ -44,8 +45,11 @@ enum WatchFeature: String, CaseIterable, Sendable {
 
     var defaultsKey: String { "nanogram.watch." + rawValue }
 
-    /// Every flag ships off; the owner enables them after checking on a device.
-    var defaultValue: Bool { false }
+    /// Flags that ship on. A launch argument or defaults value of NO still turns one off.
+    static let shippedOn: Set<WatchFeature> = [.widgetSnapshot, .backgroundRefresh]
+
+    /// Every other flag ships off; the owner enables them after checking on a device.
+    var defaultValue: Bool { Self.shippedOn.contains(self) }
 }
 
 struct WatchFeatureFlags: @unchecked Sendable {

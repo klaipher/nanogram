@@ -10,7 +10,7 @@ final class CoreAudioRoutePolicyTests: XCTestCase {
     // MARK: feature flag
 
     func testFlagsShipOff() {
-        for feature in WatchFeature.allCases {
+        for feature in WatchFeature.allCases where !WatchFeature.shippedOn.contains(feature) {
             XCTAssertFalse(feature.defaultValue, feature.rawValue)
         }
     }
