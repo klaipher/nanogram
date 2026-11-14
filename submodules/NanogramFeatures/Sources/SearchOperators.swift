@@ -1,4 +1,4 @@
-import Foundation
+public import Foundation
 
 // Grammar: docs/specs/search-operators.md (shared with the Mac and Android apps).
 
