@@ -163,12 +163,20 @@ def require_enhanced_security(app, check_profiles, stage, entitlements_of=codesi
                  stage, '\n  '.join(problems)))
 
 
-def entitlements_plist(groups, push, communication=False, enhanced_security=False):
+def wants_time_sensitive(bundle_id, app_bundle_id):
+    return any(bundle_id == app_bundle_id + suffix for suffix in ['', '.NotificationService'])
+
+
+def entitlements_plist(groups, push, communication=False, enhanced_security=False, time_sensitive=False):
     entries = ['<key>com.apple.security.application-groups</key><array><string>{}</string></array>'.format(g) for g in groups]
     if communication:
         # The main app is signed with it (Telegram/BUILD, communication_notifications_bundle_ids); a profile
         # without it makes the phone refuse the install (0xe8008015).
         entries.append('<key>com.apple.developer.usernotifications.communication</key><true/>')
+    if time_sensitive:
+        # The app and the NotificationService extension are signed with it (Telegram/BUILD,
+        # time_sensitive_notifications_bundle_ids); a profile without it makes the phone refuse the install.
+        entries.append('<key>com.apple.developer.usernotifications.time-sensitive</key><true/>')
     if enhanced_security:
         entries += ENHANCED_SECURITY_ENTRIES
     if push:
@@ -204,7 +212,8 @@ def write_project(directory, team_id, targets):
     for name, bundle_id, push in targets:
         with open(os.path.join(directory, name + '.entitlements'), 'w') as f:
             f.write(entitlements_plist(['group.' + targets[0][1]], push, communication=(bundle_id == targets[0][1]),
-                                       enhanced_security=wants_enhanced_security(bundle_id, targets[0][1])))
+                                       enhanced_security=wants_enhanced_security(bundle_id, targets[0][1]),
+                                       time_sensitive=wants_time_sensitive(bundle_id, targets[0][1])))
         build_file, product_ref, sources, target, config, config_list = (new_id() for _ in range(6))
         objects += [
             '{} = {{isa = PBXBuildFile; fileRef = {}; }};'.format(build_file, source_ref),

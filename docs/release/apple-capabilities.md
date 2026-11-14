@@ -15,7 +15,7 @@ Apple's steps: https://developer.apple.com/help/account/identifiers/enable-app-c
 |---|------|--------|--------|-------|
 | 1 | Communication Notifications | ✅ Done | Nothing | Portal > Nanogram > Communication Notifications |
 | 2 | Notification filtering | ⏳ Waiting on Apple | Wait; then 2 repo changes + profiles | Request form: developer.apple.com/contact/request/notification-service |
-| T | Time Sensitive Notifications | Code ready, entitlement after the portal tick | Tick on the app AND `.NotificationService` App IDs, regenerate profiles, then apply `time-sensitive-entitlement.patch` | Portal > Nanogram > Time Sensitive Notifications |
+| T | Time Sensitive Notifications | ✅ Done 2026-11-14 | Nothing: both App IDs have the capability (checked through the App Store Connect API) and `Telegram/BUILD` grants the entitlement to the app and `.NotificationService` | Portal > Nanogram > Time Sensitive Notifications |
 | M | Increased Memory Limit | Owner declined | None; do not add `com.apple.developer.kernel.increased-memory-limit` | Portal > Nanogram > Increased Memory Limit |
 | 3 | Siri | ❌ Off | **Do now** (5 min) | Portal > Nanogram > **Siri** + `enable_siri: true` |
 | 4 | CarPlay (Communication) | ❌ Off | Later (after Siri) | developer.apple.com/contact/carplay/ (redirects to /contact/request/carplay/) |

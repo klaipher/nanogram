@@ -102,12 +102,13 @@ class ExtensionEntitlementTests(unittest.TestCase):
             self.assertEqual(extras, suffix == 'NotificationService', name)
 
     def test_notification_service_asks_only_for_what_its_profile_grants(self):
-        # The extension's profile carries filtering (official Telegram's does) but not communication notifications,
-        # which only the main app's App ID has; asking for it would make the signed extension fail to install or upload.
-        # The sender avatars come from the main app's entitlement.
+        # The extension's profile carries filtering (official Telegram's does) and Time Sensitive Notifications (ticked
+        # on the .NotificationService App ID) but not communication notifications, which only the main app's App ID
+        # has; asking for it would make the signed extension fail to install or upload. The sender avatars come from
+        # the main app's entitlement.
         fragment = re.sub(r'\s+', ' ', blocks(read(BUILD), 'plist_fragment')['NotificationServiceEntitlements'])
         extras = re.search(r'extras = \[([^\]]*)\]', fragment).group(1)
-        self.assertEqual([item.strip() for item in extras.split(',') if item.strip()], ['notification_filtering_fragment'])
+        self.assertEqual([item.strip() for item in extras.split(',') if item.strip()], ['notification_filtering_fragment', 'time_sensitive_notifications_fragment'])
 
 
 class CallDonationWiringTests(unittest.TestCase):

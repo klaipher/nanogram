@@ -613,7 +613,7 @@ official_communication_notifications_fragment = """
 """
 # Sender avatars in notifications (INSendMessageIntent donated by the NotificationService extension)
 # need this entitlement; iOS ignores the intent without it. Nanogram's App ID has the "Communication
-# Notifications" capability. Development bundles (org.klaipher.TelegramDev) don't, so their profiles stay valid.
+# Notifications" capability.
 communication_notifications_bundle_ids = official_bundle_ids + ["org.klaipher.Nanogram"]
 communication_notifications_fragment = official_communication_notifications_fragment if telegram_bundle_id in communication_notifications_bundle_ids else ""
 
@@ -627,6 +627,16 @@ official_notification_filtering_fragment = """
 # quiet. Change who gets the entitlement here only, so the two cannot drift apart.
 notification_filtering_enabled = telegram_bundle_id == "ph.telegra.Telegraph"
 notification_filtering_fragment = official_notification_filtering_fragment if notification_filtering_enabled else ""
+
+official_time_sensitive_notifications_fragment = """
+<key>com.apple.developer.usernotifications.time-sensitive</key>
+<true/>
+"""
+# The ringing call notification (NotificationService) is Time Sensitive so a Focus or the scheduled summary does
+# not hold it back. Both App IDs (app and .NotificationService) need the "Time Sensitive Notifications"
+# capability (both ticked, 2026-11-14); a bundle without it would fail signing, so the list stays explicit.
+time_sensitive_notifications_bundle_ids = ["org.klaipher.Nanogram"]
+time_sensitive_notifications_fragment = official_time_sensitive_notifications_fragment if telegram_bundle_id in time_sensitive_notifications_bundle_ids else ""
 
 store_signin_fragment = """
 <key>com.apple.developer.applesignin</key>
@@ -668,6 +678,7 @@ plist_fragment(
         carplay_fragment,
         communication_notifications_fragment,
         notification_filtering_fragment,
+        time_sensitive_notifications_fragment,
         signin_fragment,
         background_gpu_fragment,
     ]) + enhanced_security_select,
@@ -1687,7 +1698,7 @@ plist_fragment(
         telegram_team_id,
         telegram_bundle_id,
         "NotificationService",
-        extras = [notification_filtering_fragment],
+        extras = [notification_filtering_fragment, time_sensitive_notifications_fragment],
     ) + enhanced_security_select,
 )
 

@@ -93,6 +93,21 @@ class GeneratedEntitlementsTests(unittest.TestCase):
         self.assertNotIn('com.apple.developer.usernotifications.communication', plist)
 
 
+class TimeSensitiveEntitlementsTests(unittest.TestCase):
+    KEY = 'com.apple.developer.usernotifications.time-sensitive'
+
+    def test_the_app_and_the_notification_service_ask_for_time_sensitive(self):
+        for suffix in ['', '.NotificationService']:
+            self.assertTrue(device_signing.wants_time_sensitive('org.klaipher.Nanogram' + suffix, 'org.klaipher.Nanogram'))
+        plist = device_signing.entitlements_plist(['group.org.klaipher.Nanogram'], push=False, time_sensitive=True)
+        self.assertIn(self.KEY, plist)
+
+    def test_other_extensions_do_not(self):
+        for suffix in ['.Share', '.Widget', '.SiriIntents', '.BroadcastUpload', '.NotificationContent']:
+            self.assertFalse(device_signing.wants_time_sensitive('org.klaipher.Nanogram' + suffix, 'org.klaipher.Nanogram'))
+        self.assertNotIn(self.KEY, device_signing.entitlements_plist(['group.org.klaipher.Nanogram'], push=False))
+
+
 class EnhancedSecurityEntitlementsTests(unittest.TestCase):
     # Enhanced Security (soft mode) is on the App IDs of the app, NotificationService and Share since 2026-11-05;
     # Telegram/entitlements.bzl signs those three with it, so their development profiles must grant it.
