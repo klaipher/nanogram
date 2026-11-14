@@ -711,6 +711,10 @@ extension HarnessSharedAccountContext {
     public func makeChannelMembersSearchController(params: ChannelMembersSearchControllerParams) -> ChannelMembersSearchController {
         fatalError("harness: SharedAccountContext.makeChannelMembersSearchController is not provided")
     }
+    public func presentSendReport(context: AccountContext, pushController: @escaping (ViewController) -> Void) {
+        fatalError("harness: SharedAccountContext.presentSendReport is not provided")
+    }
+
     public func makeDebugSettingsController(context: AccountContext?) -> ViewController? {
         fatalError("harness: SharedAccountContext.makeDebugSettingsController is not provided")
     }

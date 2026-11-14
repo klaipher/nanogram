@@ -1775,6 +1775,7 @@ public protocol SharedAccountContext: AnyObject {
     func makeChannelMembersSearchController(params: ChannelMembersSearchControllerParams) -> ChannelMembersSearchController
     
     func makeDebugSettingsController(context: AccountContext?) -> ViewController?
+    func presentSendReport(context: AccountContext, pushController: @escaping (ViewController) -> Void)
     
     func openCreateGroupCallUI(context: AccountContext, peerIds: [EnginePeer.Id], parentController: ViewController)
     

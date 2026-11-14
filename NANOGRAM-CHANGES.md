@@ -356,3 +356,7 @@ marked (check) were not re-verified against the code; correct them on the next c
 - Why: a tester who flips the switch before sending logs would otherwise label run A as "on".
 - Where: `ExperimentalPerformanceFlags.swift` (`launchState`, SwiftSignalKit and SwiftSignalKit2).
 - Upstream: no.
+
+## Send Report: one diagnostics button for testers
+- What: Settings > Send Report (and the top of Debug Settings) sends one zip with a README, device and experiment details, app, extension and notification logs, critical logs, call logs, and crash and MetricKit reports, capped at 40 MB with phone numbers and emails masked; the old fine-grained Send Logs menu stays for developers.
+- Why: testers had five or more log buttons and sent partial reports; upstream has no tester diagnostics flow.

@@ -2270,6 +2270,10 @@ public final class SharedAccountContextImpl: SharedAccountContext {
         return controller
     }
     
+    public func presentSendReport(context: AccountContext, pushController: @escaping (ViewController) -> Void) {
+        triggerDebugSendReportUI(context: context, pushController: pushController)
+    }
+    
     public func openCreateGroupCallUI(context: AccountContext, peerIds: [EnginePeer.Id], parentController: ViewController) {
         let _ = (context.engine.data.get(
             EngineDataList(peerIds.map(TelegramEngine.EngineData.Item.Peer.Peer.init(id:)))

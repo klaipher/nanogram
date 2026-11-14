@@ -183,6 +183,7 @@ enum PeerInfoSettingsSection {
     case passport
     case watch
     case support
+    case sendReport
     case faq
     case tips
     case phoneNumber

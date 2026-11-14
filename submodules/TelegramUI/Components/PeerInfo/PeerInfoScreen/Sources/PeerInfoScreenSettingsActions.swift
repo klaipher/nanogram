@@ -198,6 +198,8 @@ extension PeerInfoScreenNode {
                         }
                     }))
                 })]), in: .window(.root))
+        case .sendReport:
+            self.context.sharedContext.presentSendReport(context: self.context, pushController: push)
         case .faq:
             self.openFaq()
         case .tips:

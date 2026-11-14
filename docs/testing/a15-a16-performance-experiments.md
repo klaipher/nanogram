@@ -23,7 +23,7 @@ Three experiments, each with its own switch:
    (tap about 3 times a second or faster: less than 0.4 s between taps). The "Debug Settings" list opens. It exists in TestFlight builds.
 4. Scroll to the section **PERFORMANCE EXPERIMENTS**. It shows three switches (all off at first), your device
    ("iPhone 14 Pro (A16), iPhone15,2") and measured numbers. Check the device line matches your phone.
-5. Turn on **Log to File** (top of the Debug Settings) so the numbers and logs are saved.
+5. Turn on **Log to File** (top of the Debug Settings) so the logs in the report are saved.
 6. Switch off Low Power Mode (it keeps the AV1 experiment at one thread on purpose) and turn on Wi-Fi. Charge
    above 60%. Do not charge during tests. Let the phone cool to normal before each run (not warm to the touch).
 7. Close other apps, keep the screen brightness the same for A and B.
@@ -95,13 +95,12 @@ For each experiment and each of A and B send (a message is enough):
 - **Stutter:** yes or no (and where).
 - **Warm / hot** after the 10 minutes: cool, warm or hot.
 - **Battery drop** over the 10 minutes (e.g. 4%).
-- The **diagnostics export**: Debug Settings > **Send Logs** > **Logs** > Via Email or Other Apps, after each run (A and B
-  separately, right after finishing the test, **before** flipping the switch and relaunching). Only "Logs" carries the
-  performance block; "All Logs" and the others do not. The export contains a block "Performance experiments" with the state
-  of each switch and numbers measured since launch (count, average and longest time per frame, preview or
-  waiting task). Send it to the project owner. The performance block holds only durations and the phone
-  model, but the attached app log is the normal diagnostic log of the app (it can contain account ids and other
-  technical details), so send it only if you are fine with that.
+- **One report:** Settings > **Send Report** (in the help section, next to Ask a Question and Nanogram FAQ), then pick
+  Via Nanogram, Via Email or Other Apps. Do it after each run (A and B separately, right after finishing the test,
+  **before** flipping the switch and relaunching). The one zip holds everything: phone and app details, the state of each
+  switch with the numbers measured since launch (count, average and longest time per frame, preview or waiting task),
+  the app and extension logs, call logs, and crash and MetricKit reports. A README inside lists every part. It holds no
+  message text and no contacts; phone numbers and emails are masked. Send it to the project owner.
 
 The same numbers show in the grey text under the switches in the Debug Settings (reopen the screen to refresh).
 

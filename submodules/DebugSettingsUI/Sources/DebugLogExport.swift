@@ -30,6 +30,7 @@ enum DebugLogExportKind: CaseIterable, Equatable {
     case metricKitReports
     case crashReport
     case mediaDownloadLogs
+    case report
 }
 
 /// Where an export can go. There is deliberately no case that carries a fixed peer or username.
@@ -127,6 +128,12 @@ func debugLogExportSpec(_ kind: DebugLogExportKind, appVersion: String, buildNum
         what = "Logs"
         lowercased = "media download logs"
         base = "media-download"
+    case .report:
+        what = "Report"
+        lowercased = "report"
+        base = "report"
+        note = debugReportPrivacyNote
+        confirmsChatSend = true
     }
     return DebugLogExportSpec(
         what: what,

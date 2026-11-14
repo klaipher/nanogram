@@ -310,6 +310,7 @@ enum DebugControllerEntry: ItemListNodeEntry {
     case logsInfo(PresentationTheme)
     case resetAppHeader(PresentationTheme)
     case experimentsHeader(PresentationTheme)
+    case sendReport
     case sendLogs(PresentationTheme)
     case logToFile(PresentationTheme, Bool)
     case logToConsole(PresentationTheme, Bool)
@@ -387,7 +388,7 @@ enum DebugControllerEntry: ItemListNodeEntry {
 
     var section: ItemListSectionId {
         switch self {
-        case .logsHeader, .logsInfo, .sendLogs:
+        case .logsHeader, .logsInfo, .sendReport, .sendLogs:
             return DebugControllerSection.logs.rawValue
         case .crashReports:
             return DebugControllerSection.logs.rawValue
@@ -430,6 +431,8 @@ enum DebugControllerEntry: ItemListNodeEntry {
             return 14
         case .experimentsHeader:
             return 17
+        case .sendReport:
+            return -1
         case .sendLogs:
             return 1
         case .logToFile:
@@ -686,8 +689,12 @@ enum DebugControllerEntry: ItemListNodeEntry {
                     return settings
                 }).start()
             })
+        case .sendReport:
+            return ItemListActionItem(presentationData: presentationData, systemStyle: .glass, title: "Send Report", kind: .generic, alignment: .natural, sectionId: self.section, style: .blocks, action: {
+                presentDebugLogExport(host: arguments.exportHost, kind: .report, prepare: debugReportPrepare(sharedContext: arguments.sharedContext, context: arguments.context))
+            })
         case .sendLogs:
-            return ItemListActionItem(presentationData: presentationData, systemStyle: .glass, title: "Send Logs", kind: .generic, alignment: .natural, sectionId: self.section, style: .blocks, action: {
+            return ItemListActionItem(presentationData: presentationData, systemStyle: .glass, title: "Send Logs (developer)", kind: .generic, alignment: .natural, sectionId: self.section, style: .blocks, action: {
                 arguments.openLogs()
             }, tag: DebugControllerItemTag.sendLogs)
         case let .logToFile(_, value):
@@ -1451,6 +1458,7 @@ func debugControllerEntries(environment: DebugControllerEntriesEnvironment, them
     let isMainApp = environment.isMainApp
     
     entries.append(.logsHeader(theme))
+    entries.append(.sendReport)
     entries.append(.sendLogs(theme))
     if isMainApp {
         entries.append(.crashReports)
@@ -1548,7 +1556,7 @@ func debugControllerEntries(environment: DebugControllerEntriesEnvironment, them
         for experiment in PerformanceExperiment.allCases {
             entries.append(.performanceExperiment(experiment, environment.enabledPerformanceExperiments.contains(experiment)))
         }
-        var infoLines = ["Device: \(performanceExperimentsDeviceChip(identifier: environment.deviceModelIdentifier))", "Force-quit and reopen Nanogram after changing a switch. Send Logs includes these numbers (durations only, no content)."]
+        var infoLines = ["Device: \(performanceExperimentsDeviceChip(identifier: environment.deviceModelIdentifier))", "Force-quit and reopen Nanogram after changing a switch. Send Report includes these numbers (durations only, no content)."]
         infoLines.append(contentsOf: environment.performanceExperimentSummary)
         entries.append(.performanceExperimentsInfo(infoLines.joined(separator: "\n")))
     }
