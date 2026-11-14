@@ -19,6 +19,18 @@ _TLOTTIE_FLAGS = [
 
 _TLOTTIE_SRCS = glob(["tlottie/src/**/*.rs"])
 
+# The crate sources the Apple Watch build compiles (Telegram/WatchApp/tools/build-tlottie-xcframework.sh runs
+# cargo on them), so the watch compile action re-runs when the pinned tlottie changes.
+filegroup(
+    name = "tlottie_sources",
+    srcs = [
+        "tlottie/Cargo.toml",
+        "tlottie/Cargo.lock",
+        "tlottie/include/tlottie.h",
+    ] + _TLOTTIE_SRCS,
+    visibility = ["//Telegram:__pkg__"],
+)
+
 _TLOTTIE_FEATURES = [
     "cpu",
     "std",

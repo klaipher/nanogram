@@ -828,15 +828,26 @@ cmd_testflight() {
   say "Build $build uploaded with What to Test notes"
 }
 
-# tg watch <build|test|project|clean> — the Apple Watch app (Telegram/WatchApp) in the
+# tg watch <build|test|project|tlottie|clean> — the Apple Watch app (Telegram/WatchApp) in the
 # watchOS simulator. Uses the dev project (project-dev.yml: the app plus its unit tests),
 # regenerated on every run, and fixed DerivedData and SwiftPM directories under
 # ~/.cache/telegram-ios/watch, so TDLib (~1.5 GB of SwiftPM checkouts) downloads once.
 WATCH_DIR="$ROOT/Telegram/WatchApp"
 WATCH_CACHE="${TG_WATCH_CACHE_DIR:-$HOME/.cache/telegram-ios/watch}"
 
+# tlottie (submodules/tlottie/tlottie) as Packages/TLottieKit/Frameworks/TLottieCore.xcframework: no_std static
+# library for watchOS, pinned nightly + -Zbuild-std (tools/build-tlottie-xcframework.sh). Cached by input hash,
+# so this is a copy unless tlottie, the script or the toolchain pin changed. --macos adds a slice so
+# `swift test` works inside Packages/TLottieKit.
+watch_tlottie() {
+  [ -f "$ROOT/submodules/tlottie/tlottie/Cargo.toml" ] \
+    || die "tlottie sources missing: git submodule update --init --depth 1 submodules/tlottie/tlottie"
+  "$WATCH_DIR/tools/build-tlottie-xcframework.sh" "$@"
+}
+
 watch_generate() {
   command -v xcodegen >/dev/null || die "xcodegen not found (brew install xcodegen)"
+  watch_tlottie
   # Both projects: the committed tgwatch.xcodeproj (Bazel embed build) and the dev one.
   (cd "$WATCH_DIR" && xcodegen generate --quiet && xcodegen generate --quiet --spec project-dev.yml)
 }
@@ -881,8 +892,9 @@ cmd_watch() {
     project) watch_generate
       say "Generated tgwatch.xcodeproj (Bazel embed) and tgwatch-dev.xcodeproj (with tests)"
       [ "${1:-}" = "--no-open" ] || open "$WATCH_DIR/tgwatch-dev.xcodeproj" ;;
+    tlottie) watch_tlottie "$@" ;;
     clean) rm -rf "$WATCH_CACHE/DerivedData"; say "Removed $WATCH_CACHE/DerivedData (SwiftPM checkouts kept)" ;;
-    *) die "usage: tools/dev/tg watch <build|test|project|clean> (see: tools/dev/tg help)" ;;
+    *) die "usage: tools/dev/tg watch <build|test|project|tlottie|clean> (see: tools/dev/tg help)" ;;
   esac
 }
 
@@ -926,6 +938,7 @@ Usage: tools/dev/tg <command> [options]
   watch test [-- <xcodebuild args>]   Run the watch app's unit tests
                         (e.g. tg watch test -- -only-testing:tgwatchTests/SmokeTests)
   watch project [--no-open]  Regenerate the watch app's Xcode projects and open the dev one
+  watch tlottie [--macos] [--force]  Build tlottie for watchOS into Packages/TLottieKit (also run by build/test/project)
   watch clean           Remove the watch app's DerivedData, keep its SwiftPM checkouts
 
 Environment: TG_CACHE_DIR, TG_CONFIG, TG_CODESIGNING, TG_BUILD_NUMBER,

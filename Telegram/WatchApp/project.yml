@@ -33,8 +33,8 @@ packages:
   QRCodeGenerator:
     url: https://github.com/fwcd/swift-qrcode-generator
     exactVersion: 2.0.2
-  RLottieKit:
-    path: Packages/RLottieKit
+  TLottieKit:
+    path: Packages/TLottieKit
   WebPKit:
     path: Packages/WebPKit
   OpusKit:
@@ -102,8 +102,8 @@ targets:
         product: TDShim
       - package: QRCodeGenerator
         product: QRCodeGenerator
-      - package: RLottieKit
-        product: RLottieKit
+      - package: TLottieKit
+        product: TLottieKit
       - package: WebPKit
         product: WebPKit
       - package: OpusKit

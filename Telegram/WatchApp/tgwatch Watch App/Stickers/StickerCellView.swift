@@ -1,12 +1,12 @@
 import SwiftUI
 import UIKit
 import WatchKit
-import RLottieKit
+import TLottieKit
 import WebPKit
 @preconcurrency import TDShim
 
 /// One tappable sticker tile. Downloads its render file when visible and decodes
-/// it (WebPKit for webp, UIImage for jpeg/png, rlottie frame-0 for tgs) once the
+/// it (WebPKit for webp, UIImage for jpeg/png, tlottie frame-0 for tgs) once the
 /// local path lands. WEBM (`.none`) shows a neutral placeholder but stays
 /// tappable — sending works by remote id regardless.
 struct StickerCellView: View {
@@ -61,7 +61,7 @@ struct StickerCellView: View {
         image = await Self.decodeTile(path: path, render: sticker.render, pixels: pixels)
     }
 
-    /// Decodes off the main thread, so scrolling the grid doesn't wait on libwebp or rlottie.
+    /// Decodes off the main thread, so scrolling the grid doesn't wait on libwebp or tlottie.
     @concurrent
     nonisolated private static func decodeTile(path: String, render: PickerRender, pixels: Int) async -> UIImage? {
         switch render {
@@ -76,7 +76,7 @@ struct StickerCellView: View {
             }
         case .lottie:
             return MediaImageCache.image(key: "\(path)|lottie0|\(pixels)") {
-                guard let anim = LottieAnimation(tgsFileURL: URL(fileURLWithPath: path)),
+                guard let anim = TLottieAnimation(tgsFileURL: URL(fileURLWithPath: path)),
                       let cg = anim.renderFrame(index: 0, size: CGSize(width: pixels, height: pixels), scale: 1)
                 else { return nil }
                 return UIImage(cgImage: cg)

@@ -25,7 +25,7 @@ struct PickerSticker: Identifiable, Equatable, Hashable {
 enum PickerRender: Equatable, Hashable {
     /// Decode `fileId` as a raster image (WebPKit for .webp, UIImage for jpeg/png).
     case raster(fileId: Int, format: ThumbnailFormatKind)
-    /// Download the TGS body `fileId` and render frame 0 via RLottieKit.
+    /// Download the TGS body `fileId` and render frame 0 via TLottieKit (tlottie).
     case lottie(fileId: Int)
     /// No previewable image (WEBM/video). Tile shows a placeholder; still sendable.
     case none

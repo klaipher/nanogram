@@ -2,7 +2,10 @@
 # Compile worker for the apple_prebuilt_watchos_application Bazel rule (action 1 of 2).
 #
 # Builds the tgwatch watch app via xcodebuild (device, Release, UNSIGNED) and zips the
-# .app into the rule's intermediate archive.
+# .app into the rule's intermediate archive. Before xcodebuild it builds tlottie (the Lottie renderer the
+# phone uses too, submodules/tlottie/tlottie) as a no_std static library for watchOS and wraps it as
+# TLottieCore.xcframework for Packages/TLottieKit (tools/build-tlottie-xcframework.sh: pinned nightly,
+# -Zbuild-std; cached under ~/.cache/telegram-ios/watch-tlottie by a hash of its inputs).
 #
 # It bakes the values that xcodebuild must own — the api credentials and the bundle id
 # (PRODUCT_BUNDLE_IDENTIFIER, from which the Info.plist derives
@@ -20,9 +23,11 @@
 #   $4 api_hash         TG_API_HASH build setting
 #   $5 watch_bundle_id  PRODUCT_BUNDLE_IDENTIFIER (the watch app id, "<host>.watchkitapp");
 #                       empty => keep the project default.
+#   $6 tlottie_source   Execroot-relative path to the tlottie crate (submodules/tlottie/tlottie);
+#                       empty => the build script's default (relative to the snapshot).
 set -euo pipefail
 
-SRC="$1"; OUT_ZIP="$2"; API_ID="${3:-0}"; API_HASH="${4:-placeholder}"; WATCH_BUNDLE_ID="${5:-}"
+SRC="$1"; OUT_ZIP="$2"; API_ID="${3:-0}"; API_HASH="${4:-placeholder}"; WATCH_BUNDLE_ID="${5:-}"; TLOTTIE_SRC="${6:-}"
 
 if [ ! -e "$SRC/tgwatch.xcodeproj" ]; then
   echo "error: no tgwatch.xcodeproj at $SRC (regenerate it: cd Telegram/WatchApp && xcodegen generate)" >&2
@@ -57,7 +62,15 @@ mkdir -p "$WORKSRC"
   --exclude '.build/' --exclude '.swiftpm/' --exclude 'xcuserdata/' --exclude 'DerivedData/' \
   --exclude '/BUILD' --exclude '.gitignore' --exclude '/Tests/' \
   --exclude '/project-dev.yml' --exclude '/tgwatch-dev.xcodeproj/' \
+  --exclude '/Packages/TLottieKit/Frameworks/' \
   "$SRC/" "$WORKSRC/"
+
+# tlottie for watchOS (arm64_32 + arm64 device, arm64 simulator) as TLottieCore.xcframework, built from the
+# same crate the phone links. It must exist before the package resolve below (TLottieKit's binaryTarget path).
+# A cache hit is a copy; a miss runs cargo with the pinned nightly (installed on demand, network needed once).
+"$SRC/tools/build-tlottie-xcframework.sh" \
+  ${TLOTTIE_SRC:+--tlottie "$TLOTTIE_SRC"} \
+  --output "$WORKSRC/Packages/TLottieKit/Frameworks" 1>&2
 
 xcodebuild_resolve() {
   xcodebuild -resolvePackageDependencies \

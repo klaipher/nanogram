@@ -28,21 +28,44 @@ clients *compile* against module interfaces, so the order is client compile → 
 
 ## Embedded watch app (`Telegram/WatchApp`)
 
-A standalone watchOS Telegram client, developed in the separate `~/build/tgwatch` repo, is vendored at
-`Telegram/WatchApp/` and can be embedded into the **device** IPA under `Nanogram.app/Watch/`. `xcodebuild` builds it
+A standalone watchOS Telegram client at `Telegram/WatchApp/`, which can be embedded into the **device** IPA under
+`Nanogram.app/Watch/`. It began as a synced snapshot of a separate `tgwatch` repo; that repo is not available any more,
+so **`Telegram/WatchApp/` is now the source** and is edited here (2026-11-14). `xcodebuild` builds it
 (not Bazel); the Bazel build codesigns it.
 
 **Build it:** add `--embedWatchApp` to a Make.py **device** build (`--configuration=debug_arm64` or `release_arm64`)
 with `--watchApiId`, `--watchApiHash`, `--watchSigningIdentity`, `--watchProvisioningProfile`. Off by default (it adds a
 ~4-min xcodebuild step); simulator builds never embed.
 
-**`Telegram/WatchApp/` is a synced snapshot — do not hand-edit it.** Edit the `tgwatch` repo, re-sync with
-`tgwatch/tools/export-sources.sh /abs/path/to/telegram-ios/Telegram/WatchApp`, and commit the result. The committed
-`tgwatch.xcodeproj` is generated and kept by a `!tgwatch.xcodeproj` negation in `Telegram/WatchApp/.gitignore` (the root
-`.gitignore` ignores `*.xcodeproj`); `.build`/`.swiftpm`/`xcuserdata` are excluded.
+**Edit `Telegram/WatchApp/` directly** (there is no export step; ignore any older note about `tgwatch/tools/export-sources.sh`).
+The committed `tgwatch.xcodeproj` is generated from `project.yml` (`xcodegen generate`, or `tools/dev/tg watch project`) and
+kept by a `!tgwatch.xcodeproj` negation in `Telegram/WatchApp/.gitignore` (the root `.gitignore` ignores `*.xcodeproj`);
+`.build`/`.swiftpm`/`xcuserdata` are excluded. Regenerate and commit it whenever `project.yml` changes.
+
+**Stickers: tlottie, built from the phone's source.** The watch renders TGS stickers with tlottie, the crate in
+`submodules/tlottie/tlottie` (the same pin as the phone and the Mac; there is no rlottie copy any more). `Packages/TLottieKit`
+wraps it: `TLottieAnimation` (Swift, over the C API, the same calls as `submodules/tlottie/TLottieAnimation.mm`) on top of
+`TLottieCore`, a `binaryTarget` for `Packages/TLottieKit/Frameworks/TLottieCore.xcframework`. That xcframework is **generated,
+not committed**: `Telegram/WatchApp/tools/build-tlottie-xcframework.sh` builds tlottie as a `no_std` static library
+(`--no-default-features --features cpu,no-std,c-api`, profile `release-nostd` = panic=abort; the crate's own runtime gives it
+a global allocator over system `malloc` and an aborting panic handler) for `arm64_32-apple-watchos`,
+`aarch64-apple-watchos` (merged with lipo into the device slice) and `aarch64-apple-watchos-sim`.
+- **Toolchain:** watchOS targets are Rust tier 3 (no prebuilt `std`), so it needs a pinned nightly and `-Zbuild-std=core,alloc`.
+  The pin is `tools/tlottie-toolchain.txt`; the script installs it on demand, or by hand:
+  `rustup toolchain install nightly-2026-11-01 --profile minimal --component rust-src`. Needs network once (the crate's
+  `hashbrown` and the std dependencies); only `rustup` is required (no bare `cargo`): the script finds it on PATH, in
+  `/opt/homebrew/bin`, `/usr/local/bin` or `~/.cargo/bin` (Bazel actions do not get the user's PATH).
+- **Cache:** `~/.cache/telegram-ios/watch-tlottie/<key>` (`TG_WATCH_TLOTTIE_CACHE`), key = hash of tlottie's `Cargo.toml`,
+  `Cargo.lock`, `src/`, `include/`, the script, the pin and the deployment target. Unchanged input = a copy.
+- **Where it runs:** `prebuilt_watchos_compile.sh` runs it before xcodebuild (the tlottie sources are inputs of the compile
+  action, so a tlottie pin bump reruns it); `tools/dev/tg watch build|test|project` run it first; `tg watch tlottie [--macos]
+  [--force]` runs it alone (`--macos` adds a slice so `swift test` works inside `Packages/TLottieKit`).
+- **Bumping tlottie:** move the `submodules/tlottie/tlottie` pin (the phone and the Mac move with it); the watch rebuilds from it.
+  A tlottie change that raises its MSRV may need a newer nightly pin.
 
 **How it's wired:** `//Telegram:TelegramWatchApp` (rule in `Telegram/prebuilt_watchos.bzl`) runs **two actions**:
-- `PrebuiltWatchosCompile` (`Telegram/prebuilt_watchos_compile.sh`) runs xcodebuild on a writable temp copy of the
+- `PrebuiltWatchosCompile` (`Telegram/prebuilt_watchos_compile.sh`) first builds the tlottie xcframework into the
+  writable temp copy (see above), then runs xcodebuild on that copy of the
   snapshot, baking the api credentials and the watch bundle id (as `PRODUCT_BUNDLE_IDENTIFIER`, from which the
   Info.plist derives `WKCompanionAppBundleIdentifier` via `$(PRODUCT_BUNDLE_IDENTIFIER:base)`) but leaving placeholder
   versions, and emits an unsigned `.app`.

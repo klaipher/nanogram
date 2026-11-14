@@ -130,7 +130,7 @@ The fix:
 
 Checked with a scratch macOS harness (not checked in: a SwiftPM package compiling
 `AnimationCompression`'s sources and `DCT.metal` for the Mac's GPU, rendering `Slot_M_Berries.tgs`
-with the watch app's RLottieKit) that drives the compressor as the cache does and decodes as the
+with the watch app's RLottieKit, since replaced by TLottieKit) that drives the compressor as the cache does and decodes as the
 renderer does. After the fix, under Address
 Sanitizer: every frame at 384x384, 384x160, 160x160 and 400x400 at 60 fps round-trips within a mean
 of 1.42/255 and 1.8% outliers; back-to-back bursts and 8 compressors at once do not crash (frames
