@@ -4,6 +4,8 @@ Newest first. Internal notes for each TestFlight build; testers see the What to 
 
 ## Unreleased
 
+- **Build fix** (`Telegram/BUILD`): the widget extension and the app set `app_intents` as a plain attribute (an empty list when `nanogram_app_intents_metadata` is off). Bazel 9 rejects `**{...}` in BUILD files ("**kwargs arguments are not allowed in BUILD files"), so the package did not load.
+
 - **Search operators** (`ChatSearchOperators.swift`) no longer import Postbox: `EnginePeer.Id` and `EngineMessage.Tags` replace `PeerId` and `MessageTags`. PostboxImportCheck stopped `tg test` and the app build on this new file.
 
 - **Build fix** (`ProbeIncomingCall.swift`): the `timeout` parameter hid SwiftSignalKit's `timeout(_:queue:alternate:)` operator inside the function ("cannot call value of non-function type 'Double'"). The internal name is now `timeoutSeconds`; the public label stays `timeout:`. Found by the macOS release build.

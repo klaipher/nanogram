@@ -1375,7 +1375,7 @@ ios_extension(
     visibility = [
         "//visibility:public",
     ],
-    **({"app_intents": ["//submodules/NanogramAppIntents:NanogramAppIntents"]} if nanogram_app_intents_metadata else {})
+    app_intents = ["//submodules/NanogramAppIntents:NanogramAppIntents"] if nanogram_app_intents_metadata else [],
 )
 
 plist_fragment(
@@ -2016,7 +2016,7 @@ ios_application(
         ":Lib",
     ],
     visibility = ["//visibility:public"],
-    **({"app_intents": ["//submodules/NanogramAppIntents:NanogramAppIntents"]} if nanogram_app_intents_metadata else {})
+    app_intents = ["//submodules/NanogramAppIntents:NanogramAppIntents"] if nanogram_app_intents_metadata else [],
 )
 
 xcodeproj(
