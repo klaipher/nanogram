@@ -76,6 +76,7 @@ genrule(
     mkdir -p "$$BUILD_DIR"
 
     CMAKE_BIN_DIR="$$(pwd)/$$(dirname $(execpath @cmake//:cmake))"
+    NINJA_BIN_DIR="$$(pwd)/$$(dirname $(execpath @ninja//:ninja))"
 
     cp $(location :build-libjxl-bazel.sh) "$$BUILD_DIR/"
 
@@ -85,7 +86,7 @@ genrule(
 
     mkdir -p "$$BUILD_DIR/Public/jxl"
 
-    PATH="$$CMAKE_BIN_DIR:$$PATH" sh $$BUILD_DIR/build-libjxl-bazel.sh $$BUILD_ARCH "$$BUILD_DIR/libjxl" "$$BUILD_DIR"
+    PATH="$$CMAKE_BIN_DIR:$$NINJA_BIN_DIR:$$PATH" sh $$BUILD_DIR/build-libjxl-bazel.sh $$BUILD_ARCH "$$BUILD_DIR/libjxl" "$$BUILD_DIR"
     """ +
     "\n".join([
         "cp -f \"$$BUILD_DIR/build/lib/include/{}\" \"$(location Public/{})\"".format(header, header) for header in headers
@@ -110,6 +111,7 @@ genrule(
     tools = [
         "@cmake//:all",
         "@cmake//:cmake",
+        "@ninja//:ninja",
     ],
     visibility = [
         "//visibility:public",

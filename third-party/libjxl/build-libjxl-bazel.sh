@@ -26,8 +26,8 @@ if [ "$ARCH" = "arm64" ]; then
   echo "set(CMAKE_SYSTEM_PROCESSOR aarch64)" >> toolchain.cmake
   echo "set(CMAKE_C_COMPILER $(xcode-select -p)/Toolchains/XcodeDefault.xctoolchain/usr/bin/clang)" >> toolchain.cmake
 
-  cmake -DCMAKE_TOOLCHAIN_FILE=toolchain.cmake -DCMAKE_OSX_SYSROOT=${IOS_SYSROOT[0]} $CMAKE_OPTIONS ../libjxl
-  make -j"$(getconf _NPROCESSORS_ONLN)"
+  cmake -G Ninja -DCMAKE_TOOLCHAIN_FILE=toolchain.cmake -DCMAKE_OSX_SYSROOT=${IOS_SYSROOT[0]} $CMAKE_OPTIONS ../libjxl
+  cmake --build . --parallel "$(getconf _NPROCESSORS_ONLN)"
 elif [ "$ARCH" = "sim_arm64" ]; then
   IOS_PLATFORMDIR="$(xcode-select -p)/Platforms/iPhoneSimulator.platform"
   IOS_SYSROOT=($IOS_PLATFORMDIR/Developer/SDKs/iPhoneSimulator*.sdk)
@@ -43,8 +43,8 @@ elif [ "$ARCH" = "sim_arm64" ]; then
   echo "set(CMAKE_SYSTEM_PROCESSOR aarch64)" >> toolchain.cmake
   echo "set(CMAKE_C_COMPILER $(xcode-select -p)/Toolchains/XcodeDefault.xctoolchain/usr/bin/clang)" >> toolchain.cmake
 
-  cmake -DCMAKE_TOOLCHAIN_FILE=toolchain.cmake -DCMAKE_OSX_SYSROOT=${IOS_SYSROOT[0]} $CMAKE_OPTIONS ../libjxl
-  make -j"$(getconf _NPROCESSORS_ONLN)"
+  cmake -G Ninja -DCMAKE_TOOLCHAIN_FILE=toolchain.cmake -DCMAKE_OSX_SYSROOT=${IOS_SYSROOT[0]} $CMAKE_OPTIONS ../libjxl
+  cmake --build . --parallel "$(getconf _NPROCESSORS_ONLN)"
 elif [ "$ARCH" = "macos_arm64" ]; then
   IOS_PLATFORMDIR="$(xcode-select -p)/Platforms/MacOSX.platform"
   IOS_SYSROOT=($IOS_PLATFORMDIR/Developer/SDKs/MacOSX*.sdk)
@@ -60,8 +60,8 @@ elif [ "$ARCH" = "macos_arm64" ]; then
   echo "set(CMAKE_SYSTEM_PROCESSOR aarch64)" >> toolchain.cmake
   echo "set(CMAKE_C_COMPILER $(xcode-select -p)/Toolchains/XcodeDefault.xctoolchain/usr/bin/clang)" >> toolchain.cmake
 
-  cmake -DCMAKE_TOOLCHAIN_FILE=toolchain.cmake -DCMAKE_OSX_SYSROOT=${IOS_SYSROOT[0]} $CMAKE_OPTIONS ../libjxl
-  make -j"$(getconf _NPROCESSORS_ONLN)"
+  cmake -G Ninja -DCMAKE_TOOLCHAIN_FILE=toolchain.cmake -DCMAKE_OSX_SYSROOT=${IOS_SYSROOT[0]} $CMAKE_OPTIONS ../libjxl
+  cmake --build . --parallel "$(getconf _NPROCESSORS_ONLN)"
 elif [ "$ARCH" = "x86_64" ]; then
   IOS_PLATFORMDIR="$(xcode-select -p)/Platforms/iPhoneSimulator.platform"
   IOS_SYSROOT=($IOS_PLATFORMDIR/Developer/SDKs/iPhoneSimulator*.sdk)
@@ -77,8 +77,8 @@ elif [ "$ARCH" = "x86_64" ]; then
   echo "set(CMAKE_SYSTEM_PROCESSOR AMD64)" >> toolchain.cmake
   echo "set(CMAKE_C_COMPILER $(xcode-select -p)/Toolchains/XcodeDefault.xctoolchain/usr/bin/clang)" >> toolchain.cmake
 
-  cmake -DCMAKE_TOOLCHAIN_FILE=toolchain.cmake -DCMAKE_OSX_SYSROOT=${IOS_SYSROOT[0]} $CMAKE_OPTIONS ../libjxl
-  make -j"$(getconf _NPROCESSORS_ONLN)"
+  cmake -G Ninja -DCMAKE_TOOLCHAIN_FILE=toolchain.cmake -DCMAKE_OSX_SYSROOT=${IOS_SYSROOT[0]} $CMAKE_OPTIONS ../libjxl
+  cmake --build . --parallel "$(getconf _NPROCESSORS_ONLN)"
 else
   echo "Unsupported architecture $ARCH"
   exit 1

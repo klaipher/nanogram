@@ -13,13 +13,15 @@ set -x
     mkdir -p "$$BUILD_DIR"
 
     CMAKE_BIN_DIR="$$(pwd)/$$(dirname $(execpath @cmake//:cmake))"
+    NINJA_BIN_DIR="$$(pwd)/$$(dirname $(execpath @ninja//:ninja))"
+    export PATH="$$CMAKE_BIN_DIR:$$NINJA_BIN_DIR:$$PATH"
 
     tar -xzf "$(location @flatbuffers_zip//file)" --directory "$$BUILD_DIR"
     pushd "$$BUILD_DIR/flatbuffers-25.12.19"
     mkdir build
     cd build
-    PATH="$$CMAKE_BIN_DIR:$$PATH" cmake .. -DCMAKE_BUILD_TYPE=Release -DFLATBUFFERS_BUILD_TESTS=0 -DFLATBUFFERS_INSTALL=0 -DFLATBUFFERS_BUILD_FLATLIB=0 -DFLATBUFFERS_STATIC_FLATC=0
-    make -j $$core_count
+    cmake -G Ninja .. -DCMAKE_BUILD_TYPE=Release -DFLATBUFFERS_BUILD_TESTS=0 -DFLATBUFFERS_INSTALL=0 -DFLATBUFFERS_BUILD_FLATLIB=0 -DFLATBUFFERS_STATIC_FLATC=0
+    cmake --build . --parallel $$core_count
     popd
 
     cp "$$BUILD_DIR/flatbuffers-25.12.19/build/flatc" "$(location flatc_bin)"
@@ -30,6 +32,7 @@ set -x
     tools = [
         "@cmake//:all",
         "@cmake//:cmake",
+        "@ninja//:ninja",
     ],
     visibility = [
         "//visibility:public",

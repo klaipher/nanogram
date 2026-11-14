@@ -52,6 +52,7 @@ genrule(
     mkdir -p "$$BUILD_DIR"
 
     CMAKE_BIN_DIR="$$(pwd)/$$(dirname $(execpath @cmake//:cmake))"
+    NINJA_BIN_DIR="$$(pwd)/$$(dirname $(execpath @ninja//:ninja))"
 
     OPENSSL_BASE_DIR="$$(pwd)/$$BUILD_DIR"
     OPENSSL_DIR="$$OPENSSL_BASE_DIR/openssl"
@@ -79,7 +80,7 @@ genrule(
 
     mkdir -p "$$BUILD_DIR/Public/td"
 
-    PATH="$$CMAKE_BIN_DIR:$$PATH" sh $$BUILD_DIR/build-td-bazel.sh $$BUILD_ARCH "$$BUILD_DIR/td" "$$BUILD_DIR" "$$OPENSSL_DIR"
+    PATH="$$CMAKE_BIN_DIR:$$NINJA_BIN_DIR:$$PATH" sh $$BUILD_DIR/build-td-bazel.sh $$BUILD_ARCH "$$BUILD_DIR/td" "$$BUILD_DIR" "$$OPENSSL_DIR"
     """ +
     "\n".join([
         "cp -f \"$$BUILD_DIR/td/tde2e/{}\" \"$(location Public/td/{})\"".format(header, header) for header in headers
@@ -99,6 +100,7 @@ genrule(
     tools = [
         "@cmake//:all",
         "@cmake//:cmake",
+        "@ninja//:ninja",
     ],
     visibility = [
         "//visibility:public",

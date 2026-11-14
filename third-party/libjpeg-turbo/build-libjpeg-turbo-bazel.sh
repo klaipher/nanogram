@@ -37,5 +37,5 @@ echo "set(CMAKE_SYSTEM_PROCESSOR aarch64)" >> toolchain.cmake
 echo "set(CMAKE_C_COMPILER $(xcode-select -p)/Toolchains/XcodeDefault.xctoolchain/usr/bin/clang)" >> toolchain.cmake
 
 # WITH_JPEG8 keeps the libjpeg v8 API the binding was written against (as the mozjpeg build had it).
-cmake -G"Unix Makefiles" -DCMAKE_TOOLCHAIN_FILE=toolchain.cmake -DCMAKE_OSX_SYSROOT=${SYSROOT[0]} -DCMAKE_BUILD_TYPE=Release -DENABLE_SHARED=FALSE -DWITH_JPEG8=1 -DWITH_TOOLS=FALSE -DWITH_TESTS=FALSE -DBUILD=10000 "$SOURCE_DIR"
-make -j"$(getconf _NPROCESSORS_ONLN)" jpeg-static turbojpeg-static
+cmake -G Ninja -DCMAKE_TOOLCHAIN_FILE=toolchain.cmake -DCMAKE_OSX_SYSROOT=${SYSROOT[0]} -DCMAKE_BUILD_TYPE=Release -DENABLE_SHARED=FALSE -DWITH_JPEG8=1 -DWITH_TOOLS=FALSE -DWITH_TESTS=FALSE -DBUILD=10000 "$SOURCE_DIR"
+cmake --build . --parallel "$(getconf _NPROCESSORS_ONLN)" --target jpeg-static turbojpeg-static

@@ -49,6 +49,7 @@ genrule(
     mkdir -p "$$BUILD_DIR"
 
     CMAKE_BIN_DIR="$$(pwd)/$$(dirname $(execpath @cmake//:cmake))"
+    NINJA_BIN_DIR="$$(pwd)/$$(dirname $(execpath @ninja//:ninja))"
 
     cp $(location :build-webp-bazel.sh) "$$BUILD_DIR/"
 
@@ -58,7 +59,7 @@ genrule(
 
     mkdir -p "$$BUILD_DIR/Public/libwebp"
 
-    PATH="$$CMAKE_BIN_DIR:$$PATH" sh $$BUILD_DIR/build-webp-bazel.sh $$BUILD_ARCH "$$BUILD_DIR/libwebp" "$$BUILD_DIR"
+    PATH="$$CMAKE_BIN_DIR:$$NINJA_BIN_DIR:$$PATH" sh $$BUILD_DIR/build-webp-bazel.sh $$BUILD_ARCH "$$BUILD_DIR/libwebp" "$$BUILD_DIR"
     """ +
     "\n".join([
         "cp -f \"$$BUILD_DIR/libwebp/src/webp/{}\" \"$(location Public/webp/{})\"".format(header, header) for header in headers
@@ -73,6 +74,7 @@ genrule(
     tools = [
         "@cmake//:all",
         "@cmake//:cmake",
+        "@ninja//:ninja",
     ],
     visibility = [
         "//visibility:public",
