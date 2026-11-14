@@ -4,10 +4,10 @@ Newest first. Internal notes for each TestFlight build; testers see the What to 
 
 ## Unreleased
 
+- **native-libs.json takes the Mac copy** (review fix): the Mac copy describes the current layout (libwebp version from the iOS submodule's configure.ac, openh264 from `codec_ver.h`, flatc from `prepare-flat-serialization.py`, no Mac tarball probes); the iOS copy still probed Mac files that no longer exist. `check_native_libs.py --sibling` reports no difference now; the Mac core bump to this commit makes both repos hold the same blob.
+
 - **Review fix: QuickJSHostTests compile against the fork's `JSInterruptHandler(JSContext*, void*)`.** `stopping_interrupt`, `always_interrupt` and `disposer_interrupt` still took `JSRuntime*`; the first now stops the runtime through `JS_GetRuntime(ctx)`. Checked with `clang -fsyntax-only` (no build run).
-
 - **Review fix: rnnoise SwiftPM package excludes `src/x86`, `src/compile.sh` and `src/rnn_train.py`.** `sources: ["src"]` is recursive and compiled the x86 AVX2/SSE4.1 files on arm64 (the Mac links rnnoise only through this package). Bazel was not affected (its BUILD globs only `src/x86/*.h`).
-
 - **Review fix: libprisma BUILD loads again.** `objc_library` has no `include_prefix` or `strip_include_prefix` (rules_cc 0.2.27), so the whole `//third-party/libprisma` package failed to load. Replaced by `includes = ["libprisma/apple"]`; the only consumer is Swift `import libprisma`, which needs no prefix.
 
 - **tgcalls pin moved to 73cc1f8d** (fork `nanogram-shared`, fast-forward of 9bfb76f8): adds the Package.swift exclude of `ios/` (82cd77e) so the Mac SwiftPM target no longer compiles the iOS bridge, plus host-test and doc path fixes. No iOS source change; the Mac pins move to the same commit.

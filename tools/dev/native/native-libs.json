@@ -378,17 +378,11 @@
     ],
     "mac": [
      {
-      "id": "tarball",
+      "id": "configure.ac",
       "what": "version",
-      "kind": "filename",
-      "file": "core-xprojects/libwebp/libwebp-*.tar.gz",
-      "regex": "^libwebp-([\\d.]+)\\.tar\\.gz$"
-     },
-     {
-      "id": "tarball",
-      "what": "sha256",
-      "kind": "sha256",
-      "file": "core-xprojects/libwebp/libwebp-*.tar.gz"
+      "kind": "regex",
+      "file": "submodules/telegram-ios/third-party/webp/libwebp/configure.ac",
+      "regex": "AC_INIT\\(\\[libwebp\\],\\s*\\[([\\d.]+)\\]"
      },
      {
       "id": "cmake options",
@@ -416,9 +410,6 @@
      "-DWEBP_BUILD_WEBPMUX=0",
      "-DWEBP_LINK_STATIC=1"
     ]
-   },
-   "sha256": {
-    "mac": "e4ab7009bf0629fd11982d4c2aa83964cf244cffba7347ecd39019a9e38c4564"
    },
    "version": {
     "shared": "1.6.0"
@@ -456,12 +447,6 @@
       "kind": "regex",
       "file": "core-xprojects/Mozjpeg/Mozjpeg/build.sh",
       "regex": "^SOURCE_SHA256=\"([0-9a-f]{64})\""
-     },
-     {
-      "id": "tarball",
-      "what": "sha256",
-      "kind": "sha256",
-      "file": "core-xprojects/Mozjpeg/libjpeg-turbo-*.tar.gz"
      }
     ]
    },
@@ -485,11 +470,11 @@
     ],
     "mac": [
      {
-      "id": "build.sh",
+      "id": "codec_ver.h",
       "what": "version",
       "kind": "regex",
-      "file": "core-xprojects/OpenH264/OpenH264/build.sh",
-      "regex": "git clone -b v([\\d.]+)"
+      "file": "submodules/telegram-ios/third-party/openh264/openh264/codec/api/wels/codec_ver.h",
+      "regex": "OPENH264_MAJOR \\((\\d+)\\)[\\s\\S]*?OPENH264_MINOR \\((\\d+)\\)[\\s\\S]*?OPENH264_REVISION \\((\\d+)\\)"
      }
     ]
    },
@@ -560,11 +545,11 @@
     ],
     "mac": [
      {
-      "id": "flatc binary",
+      "id": "prepare-flat-serialization.py",
       "what": "version",
       "kind": "regex",
-      "file": "scripts/flatc",
-      "regex": "flatbuffers-([\\d.]+)/grpc"
+      "file": "scripts/prepare-flat-serialization.py",
+      "regex": "flatbuffers/archive/refs/tags/v([\\d.]+)\\.zip"
      }
     ]
    },
