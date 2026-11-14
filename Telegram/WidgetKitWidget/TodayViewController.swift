@@ -983,6 +983,9 @@ struct AllWidgets: WidgetBundle {
         if #available(iOS 17.0, *) {
             GlanceChatsWidget()
         }
+        if #available(iOS 18.0, *) {
+            SavedMessagesControl()
+        }
    }
 }
 
