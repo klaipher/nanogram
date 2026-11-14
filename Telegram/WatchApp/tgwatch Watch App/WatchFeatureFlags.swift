@@ -23,6 +23,10 @@ enum WatchFeature: String, CaseIterable, Sendable {
     case messageWindowTrim
     /// WATCH-LIST-1: progress-only file updates (a video downloading) no longer rebuild every row.
     case fileProgressThrottle
+    /// WATCH-I18N-1: setTdlibParameters sends the device's language, the app's version and the OS version instead
+    /// of "en" / "0.1" / nil. SERVER-VISIBLE (service messages and bot text come back in that language; the
+    /// sessions list shows the version), so it needs the owner's decision.
+    case localizedTdlibParameters
 
     var defaultsKey: String { "nanogram.watch." + rawValue }
 

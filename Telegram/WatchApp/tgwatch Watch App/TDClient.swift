@@ -417,6 +417,8 @@ final class TDClient {
         guard let client else { return }
         let useTest = self.useTestDc
         let accountId = account.id
+        // Server-visible: the real language, build and OS version only with the owner's flag.
+        let systemInfo = TdlibSystemInfo.resolve(enabled: WatchFeatureFlags.isEnabled(.localizedTdlibParameters))
         Task { [weak self, logger, client] in
             let layout = await Task.detached(priority: .userInitiated) {
                 TDLibStorage.prepareLayout(accountId: accountId, roots: .production)
@@ -426,13 +428,13 @@ final class TDClient {
                 _ = try await client.setTdlibParameters(
                     apiHash: Secrets.apiHash,
                     apiId: Secrets.apiId,
-                    applicationVersion: "0.1",
+                    applicationVersion: systemInfo.applicationVersion,
                     databaseDirectory: layout.databaseDirectory.path,
                     databaseEncryptionKey: nil,
                     deviceModel: "Apple Watch",
                     filesDirectory: layout.filesDirectory.path,
-                    systemLanguageCode: "en",
-                    systemVersion: nil,
+                    systemLanguageCode: systemInfo.languageCode,
+                    systemVersion: systemInfo.systemVersion,
                     useChatInfoDatabase: true,
                     useFileDatabase: true,
                     useMessageDatabase: true,
