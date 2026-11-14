@@ -282,9 +282,9 @@ public final class DefaultAnimatedStickerNodeImpl: ASDisplayNode, AnimatedSticke
     
     public var stopAtNearestLoop: Bool = false
     
-    private let playbackStatus = Promise<AnimatedStickerStatus>()
+    private let playbackStatus = AnimatedStickerStatusPublisher()
     public var status: Signal<AnimatedStickerStatus, NoError> {
-        return self.playbackStatus.get()
+        return self.playbackStatus.signal
     }
     
     public var autoplay = false
@@ -651,7 +651,7 @@ public final class DefaultAnimatedStickerNodeImpl: ASDisplayNode, AnimatedSticke
                             }
 
                             let timestamp: Double = frameRate > 0 ? Double(frame.index) / Double(frameRate) : 0
-                            strongSelf.playbackStatus.set(.single(AnimatedStickerStatus(playing: strongSelf.isPlaying, duration: duration, timestamp: timestamp)))
+                            strongSelf.playbackStatus.publish(AnimatedStickerStatus(playing: strongSelf.isPlaying, duration: duration, timestamp: timestamp))
                         }
                     }
                     frameQueue.with { frameQueue in
@@ -773,7 +773,7 @@ public final class DefaultAnimatedStickerNodeImpl: ASDisplayNode, AnimatedSticke
                             }
                                                         
                             let timestamp: Double = frameRate > 0 ? Double(frame.index) / Double(frameRate) : 0
-                            strongSelf.playbackStatus.set(.single(AnimatedStickerStatus(playing: strongSelf.isPlaying, duration: duration, timestamp: timestamp)))
+                            strongSelf.playbackStatus.publish(AnimatedStickerStatus(playing: strongSelf.isPlaying, duration: duration, timestamp: timestamp))
                         }
                     }
                     frameQueue.with { frameQueue in
@@ -922,7 +922,7 @@ public final class DefaultAnimatedStickerNodeImpl: ASDisplayNode, AnimatedSticke
                         strongSelf.frameColorUpdated?(color)
                     })
 
-                    strongSelf.playbackStatus.set(.single(AnimatedStickerStatus(playing: false, duration: duration, timestamp: 0.0)))
+                    strongSelf.playbackStatus.publish(AnimatedStickerStatus(playing: false, duration: duration, timestamp: 0.0))
                 }
             }
             frameQueue.with { frameQueue in
