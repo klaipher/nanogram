@@ -25,7 +25,7 @@
 		20167DF49E7A2E543B274E76 /* Secrets.swift in Sources */ = {isa = PBXBuildFile; fileRef = A065521FE790E0BF29D1B3B6 /* Secrets.swift */; };
 		20863684FA2F51495BB2A9A3 /* AccountsListView.swift in Sources */ = {isa = PBXBuildFile; fileRef = 148D11BBC0B40441DCC8EA0A /* AccountsListView.swift */; };
 		25F6B3EFED8EDDD9983CB0F7 /* PollVoteView.swift in Sources */ = {isa = PBXBuildFile; fileRef = DF0F4F15CB43635717B31B92 /* PollVoteView.swift */; };
-		2A0FDF9EF2B8BE9F4C46FD4C /* RLottieKit in Frameworks */ = {isa = PBXBuildFile; productRef = 5083D73573D84E386C2E3B4C /* RLottieKit */; };
+		2A0FDF9EF2B8BE9F4C46FD4C /* TLottieKit in Frameworks */ = {isa = PBXBuildFile; productRef = A76CDED25DEF09BD254BE84B /* TLottieKit */; };
 		2E2B46A1FFFDC24F47FF33D4 /* ChatOpener.swift in Sources */ = {isa = PBXBuildFile; fileRef = ED3696C9BA38845E621A1B67 /* ChatOpener.swift */; };
 		3679D6EA591522207E69F8A5 /* ChatListTimestamp.swift in Sources */ = {isa = PBXBuildFile; fileRef = 0CCDFBD19F9CAA87E938BADC /* ChatListTimestamp.swift */; };
 		39A386FFBD00EEE14B2B33D5 /* MessageFormatters.swift in Sources */ = {isa = PBXBuildFile; fileRef = E09479749C40E78AD852AF8B /* MessageFormatters.swift */; };
@@ -164,7 +164,6 @@
 		5D3A8FBA5EBDBFDE5AA2FFEC /* QrLoginView.swift */ = {isa = PBXFileReference; lastKnownFileType = sourcecode.swift; path = QrLoginView.swift; sourceTree = "<group>"; };
 		5EA750417DF3AD62C7B788F6 /* MessageListView.swift */ = {isa = PBXFileReference; lastKnownFileType = sourcecode.swift; path = MessageListView.swift; sourceTree = "<group>"; };
 		604A4F1FAB5820C300C709D5 /* VoiceRecordView.swift */ = {isa = PBXFileReference; lastKnownFileType = sourcecode.swift; path = VoiceRecordView.swift; sourceTree = "<group>"; };
-		60F8F618BC10DFE08DCBC8C7 /* RLottieKit */ = {isa = PBXFileReference; lastKnownFileType = folder; name = RLottieKit; path = Packages/RLottieKit; sourceTree = SOURCE_ROOT; };
 		674916153E803CA73D43BE6C /* BubbleMetrics.swift */ = {isa = PBXFileReference; lastKnownFileType = sourcecode.swift; path = BubbleMetrics.swift; sourceTree = "<group>"; };
 		677A0F85CE4C41873A7774C2 /* UnreadDividerView.swift */ = {isa = PBXFileReference; lastKnownFileType = sourcecode.swift; path = UnreadDividerView.swift; sourceTree = "<group>"; };
 		68256665FAE596E6E1E18347 /* LocationVisual.swift */ = {isa = PBXFileReference; lastKnownFileType = sourcecode.swift; path = LocationVisual.swift; sourceTree = "<group>"; };
@@ -219,6 +218,7 @@
 		D479FDCEDD7792FC03E7DE03 /* VoiceNoteBubbleView.swift */ = {isa = PBXFileReference; lastKnownFileType = sourcecode.swift; path = VoiceNoteBubbleView.swift; sourceTree = "<group>"; };
 		D4AF5A180BB3A37832AC5349 /* VideoNoteBubbleView.swift */ = {isa = PBXFileReference; lastKnownFileType = sourcecode.swift; path = VideoNoteBubbleView.swift; sourceTree = "<group>"; };
 		D50662DC1777F2BEE53A0129 /* Assets.xcassets */ = {isa = PBXFileReference; lastKnownFileType = folder.assetcatalog; path = Assets.xcassets; sourceTree = "<group>"; };
+		D5F4914ACCE044CDEF36FCC5 /* TLottieKit */ = {isa = PBXFileReference; lastKnownFileType = folder; name = TLottieKit; path = Packages/TLottieKit; sourceTree = SOURCE_ROOT; };
 		D9CD96277A18D97BD335BBC0 /* StickerSetDetailView.swift */ = {isa = PBXFileReference; lastKnownFileType = sourcecode.swift; path = StickerSetDetailView.swift; sourceTree = "<group>"; };
 		DD18F48DC98A3857B32BBC6F /* BubbleShape.swift */ = {isa = PBXFileReference; lastKnownFileType = sourcecode.swift; path = BubbleShape.swift; sourceTree = "<group>"; };
 		DDCE599C8D50EE8832B4A797 /* ReplyFormatters.swift */ = {isa = PBXFileReference; lastKnownFileType = sourcecode.swift; path = ReplyFormatters.swift; sourceTree = "<group>"; };
@@ -250,7 +250,7 @@
 			files = (
 				F917BC9D348452D168998A84 /* TDShim in Frameworks */,
 				D5515C5A9286E0372DBFB7F9 /* QRCodeGenerator in Frameworks */,
-				2A0FDF9EF2B8BE9F4C46FD4C /* RLottieKit in Frameworks */,
+				2A0FDF9EF2B8BE9F4C46FD4C /* TLottieKit in Frameworks */,
 				87EF3EB5EB8BD10F1F65EDAB /* WebPKit in Frameworks */,
 				12810A4953467A087E07DD3F /* OpusKit in Frameworks */,
 			);
@@ -307,8 +307,8 @@
 			isa = PBXGroup;
 			children = (
 				36FCB0CB6A9A867B1E8BD673 /* OpusKit */,
-				60F8F618BC10DFE08DCBC8C7 /* RLottieKit */,
 				14088667131D587C886B3143 /* TDShim */,
+				D5F4914ACCE044CDEF36FCC5 /* TLottieKit */,
 				69A8C5AE84DB92393FD19C0E /* WebPKit */,
 			);
 			path = Packages;
@@ -464,7 +464,7 @@
 			packageProductDependencies = (
 				36B07FC482F9E6A9D62DB94F /* TDShim */,
 				FD6A04697FEA6C4614973F19 /* QRCodeGenerator */,
-				5083D73573D84E386C2E3B4C /* RLottieKit */,
+				A76CDED25DEF09BD254BE84B /* TLottieKit */,
 				F573B77B0568E47F98C5A063 /* WebPKit */,
 				4A4F9C233953209CE4C3DB1A /* OpusKit */,
 			);
@@ -498,8 +498,8 @@
 			packageReferences = (
 				3238C4183C24EDCED74DC210 /* XCRemoteSwiftPackageReference "swift-qrcode-generator" */,
 				A7CE5619475EAC61ADB3AD3C /* XCLocalSwiftPackageReference "Packages/OpusKit" */,
-				CD4B01D8F7053200FFFBF7EC /* XCLocalSwiftPackageReference "Packages/RLottieKit" */,
 				4CFFE520C87190BF6D6872EC /* XCLocalSwiftPackageReference "Packages/TDShim" */,
+				0B4FC1BCC2C043BE526CB8AA /* XCLocalSwiftPackageReference "Packages/TLottieKit" */,
 				32CBECA1903E29ECBF55A787 /* XCLocalSwiftPackageReference "Packages/WebPKit" */,
 			);
 			preferredProjectObjectVersion = 77;
@@ -839,6 +839,10 @@
 /* End XCConfigurationList section */
 
 /* Begin XCLocalSwiftPackageReference section */
+		0B4FC1BCC2C043BE526CB8AA /* XCLocalSwiftPackageReference "Packages/TLottieKit" */ = {
+			isa = XCLocalSwiftPackageReference;
+			relativePath = Packages/TLottieKit;
+		};
 		32CBECA1903E29ECBF55A787 /* XCLocalSwiftPackageReference "Packages/WebPKit" */ = {
 			isa = XCLocalSwiftPackageReference;
 			relativePath = Packages/WebPKit;
@@ -850,10 +854,6 @@
 		A7CE5619475EAC61ADB3AD3C /* XCLocalSwiftPackageReference "Packages/OpusKit" */ = {
 			isa = XCLocalSwiftPackageReference;
 			relativePath = Packages/OpusKit;
-		};
-		CD4B01D8F7053200FFFBF7EC /* XCLocalSwiftPackageReference "Packages/RLottieKit" */ = {
-			isa = XCLocalSwiftPackageReference;
-			relativePath = Packages/RLottieKit;
 		};
 /* End XCLocalSwiftPackageReference section */
 
@@ -877,9 +877,9 @@
 			isa = XCSwiftPackageProductDependency;
 			productName = OpusKit;
 		};
-		5083D73573D84E386C2E3B4C /* RLottieKit */ = {
+		A76CDED25DEF09BD254BE84B /* TLottieKit */ = {
 			isa = XCSwiftPackageProductDependency;
-			productName = RLottieKit;
+			productName = TLottieKit;
 		};
 		F573B77B0568E47F98C5A063 /* WebPKit */ = {
 			isa = XCSwiftPackageProductDependency;

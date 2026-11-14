@@ -1,7 +1,7 @@
 import SwiftUI
 import UIKit
 import WatchKit
-import RLottieKit
+import TLottieKit
 
 /// Renders one TGS sticker. Plays once each time the bubble scrolls into view, freezes on
 /// the last frame, and replays on tap. `isVisible` comes from the bubble's
@@ -78,7 +78,7 @@ final class LottieStickerPlayer {
     private(set) var phase: Phase = .idle
     private(set) var frame: CGImage?
 
-    @ObservationIgnored private var animation: LottieAnimation?
+    @ObservationIgnored private var animation: TLottieAnimation?
     @ObservationIgnored private var isActive = true
     @ObservationIgnored private var generation = 0
     @ObservationIgnored private var lastFrameIndex: Int?
@@ -180,7 +180,7 @@ final class LottieStickerPlayer {
 
     /// Reads, inflates and parses the TGS off the main thread.
     @concurrent
-    nonisolated private static func load(_ url: URL) async -> sending LottieAnimation? {
-        LottieAnimation(tgsFileURL: url)
+    nonisolated private static func load(_ url: URL) async -> sending TLottieAnimation? {
+        TLottieAnimation(tgsFileURL: url)
     }
 }
