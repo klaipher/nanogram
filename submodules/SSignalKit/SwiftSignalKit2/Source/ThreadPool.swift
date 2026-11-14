@@ -7,6 +7,7 @@ public final class ThreadPoolTaskState {
 public final class ThreadPoolTask {
     private let state = ThreadPoolTaskState()
     private let action: (ThreadPoolTaskState) -> ()
+    private let createdAt = DispatchTime.now().uptimeNanoseconds
     
     public init(_ action: @escaping(ThreadPoolTaskState) -> ()) {
         self.action = action
@@ -14,6 +15,7 @@ public final class ThreadPoolTask {
     
     public func execute() {
         if !state.cancelled.with({ $0 })  {
+            PerformanceExperimentStats.shared.record(.threadPoolQueueWait, seconds: Double(DispatchTime.now().uptimeNanoseconds &- self.createdAt) / 1_000_000_000.0)
             self.action(self.state)
         }
     }

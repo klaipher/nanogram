@@ -492,7 +492,9 @@ final class FFMpegMediaFrameSourceContext: NSObject {
                     if avFormatContext.codecParams(atStreamIndex: streamIndex, to: codecContext) {
                         FFMpegSoftwareDecodeThreads.apply(to: codecContext, codecId: codecId, width: metrics.width, height: metrics.height)
                         if codecContext.open() {
-                            videoStream = StreamContext(index: Int(streamIndex), codecContext: codecContext, fps: fps, timebase: timebase, startTime: startTime, duration: duration, decoder: FFMpegMediaVideoFrameDecoder(codecContext: codecContext), rotationAngle: rotationAngle, aspect: aspect)
+                            let decoder = FFMpegMediaVideoFrameDecoder(codecContext: codecContext)
+                            decoder.measuresAV1Decode = codecId == FFMpegCodecIdAV1
+                            videoStream = StreamContext(index: Int(streamIndex), codecContext: codecContext, fps: fps, timebase: timebase, startTime: startTime, duration: duration, decoder: decoder, rotationAngle: rotationAngle, aspect: aspect)
                             break
                         }
                     }

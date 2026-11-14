@@ -173,7 +173,7 @@ private enum DebugLogAction {
     private func prepare(arguments: DebugControllerArguments) -> (URL, DebugLogExportSpec) -> Signal<[DebugLogExportFile], NoError> {
         switch self {
         case .sendLogs:
-            return debugLogConcatenatedArchiveSignal(Logger.shared.collectLogs())
+            return debugLogConcatenatedArchiveSignal(Logger.shared.collectLogs(), additionalInfo: performanceExperimentsReport(modelIdentifier: debugDeviceModelIdentifier()))
         case .sendShareLogs:
             return debugLogConcatenatedArchiveSignal(Logger.shared.collectLogs(prefix: "/logs/share-logs"))
         case .sendGroupCallLogs:
@@ -286,6 +286,7 @@ private enum DebugControllerSection: Int32 {
     case streamsAndCalls
     case glassGroups
     case performance
+    case performanceExperiments
     case translation
     case web
     case videoExperiments2
@@ -371,6 +372,9 @@ enum DebugControllerEntry: ItemListNodeEntry {
     case frameHitchLog(Bool)
     case nanogramGlanceables(Bool)
     case backSwipePreparePreviousScreen(Bool)
+    case performanceExperimentsHeader(PresentationTheme)
+    case performanceExperiment(PerformanceExperiment, Bool)
+    case performanceExperimentsInfo(String)
     case enableNetworkFramework(Bool)
     case enableNetworkExperiments(Bool)
     case rustMTProtoEngine(Bool)
@@ -402,6 +406,8 @@ enum DebugControllerEntry: ItemListNodeEntry {
             return DebugControllerSection.glassGroups.rawValue
         case .performanceHeader, .frameHitchLog, .nanogramGlanceables, .backSwipePreparePreviousScreen:
             return DebugControllerSection.performance.rawValue
+        case .performanceExperimentsHeader, .performanceExperiment, .performanceExperimentsInfo:
+            return DebugControllerSection.performanceExperiments.rawValue
         case .springSendAnimation, .fakeWalletTransfers, .stickerRendererMode, .disableImageContentAnalysis, .disableLanguageRecognition, .localTranscription, .enableVoipTcp, .chatMediaEditorLegacy, .mediaGridLegacy, .sharedMediaGridLegacy, .storyLegacyVideoWriter, .chatLegacyVideoWriter, .chatSideListLegacy, .messageWidgets, .messageWidgetWallet, .stickerParallelQueues, .gifGridParallelDecode:
             return DebugControllerSection.experiments.rawValue
         case .enableNetworkFramework, .enableNetworkExperiments, .rustMTProtoEngine, .networkEngineInfo:
@@ -564,6 +570,20 @@ enum DebugControllerEntry: ItemListNodeEntry {
         case .backSwipePreparePreviousScreen:
             // Kept its id when the switches before it were retired; see the ordering note at `springSendAnimation`.
             return 148
+        case .performanceExperimentsHeader:
+            // Its own section, appended right after PERFORMANCE.
+            return 160
+        case let .performanceExperiment(experiment, _):
+            switch experiment {
+            case .threadPoolQualityOfService:
+                return 161
+            case .softwareDecodeThreads:
+                return 162
+            case .previewHardwareDecode:
+                return 163
+            }
+        case .performanceExperimentsInfo:
+            return 164
         case .springSendAnimation:
             // ItemList asserts its entries are in strictly increasing order (`<`: section, then
             // `sortIndex`, which is the stableId here; ItemListControllerNode.swift), so an id must
@@ -1285,6 +1305,17 @@ enum DebugControllerEntry: ItemListNodeEntry {
             })
         case let .networkEngineInfo(text):
             return ItemListTextItem(presentationData: presentationData, text: .plain(text), sectionId: self.section)
+        case .performanceExperimentsHeader:
+            return ItemListSectionHeaderItem(presentationData: presentationData, text: "PERFORMANCE EXPERIMENTS", sectionId: self.section)
+        case let .performanceExperiment(experiment, value):
+            return ItemListSwitchItem(presentationData: presentationData, systemStyle: .glass, title: experiment.title, text: performanceExperimentDescription(experiment), value: value, maximumNumberOfLines: 0, sectionId: self.section, style: .blocks, updated: { value in
+                UserDefaults.standard.set(value, forKey: experiment.defaultsKey)
+                Logger.shared.log("PerfExperiments", "\(experiment.rawValue)=\(value ? "on" : "off") (applies after relaunch)")
+                let presentationData = arguments.sharedContext.currentPresentationData.with { $0 }
+                arguments.presentController(OverlayStatusController(theme: presentationData.theme, type: .genericSuccess("Force-quit and reopen Nanogram to apply.", false)), nil)
+            })
+        case let .performanceExperimentsInfo(text):
+            return ItemListTextItem(presentationData: presentationData, text: .plain(text), sectionId: self.section)
         case .versionInfo:
             let bundle = Bundle.main
             let bundleId = bundle.bundleIdentifier ?? ""
@@ -1364,6 +1395,53 @@ struct DebugControllerEntriesEnvironment {
     /// This device's switches for message widgets (`MessageWidgetLocalSettings`): widgets on by default, the wallet off.
     var messageWidgetsEnabled: Bool = false
     var messageWidgetWalletEnabled: Bool = false
+    /// The hardware identifier (`iPhone15,2`) and the stored state of the dark performance experiments.
+    var deviceModelIdentifier: String = ""
+    var enabledPerformanceExperiments: Set<PerformanceExperiment> = []
+    var performanceExperimentSummary: [String] = []
+}
+
+func performanceExperimentDescription(_ experiment: PerformanceExperiment) -> String {
+    switch experiment {
+    case .threadPoolQualityOfService:
+        return "Background work (stickers, photo picker) runs on the system's quality-of-service classes instead of fixed priorities. Default: off. Applies after a relaunch."
+    case .softwareDecodeThreads:
+        return "AV1 videos of 720p or more decode on up to 4 threads (one in Low Power Mode or when the phone is hot). Default: off. Applies after a relaunch."
+    case .previewHardwareDecode:
+        return "Scrubbing a large H.264 or HEVC video in the gallery decodes previews in hardware. Default: off. Applies after a relaunch."
+    }
+}
+
+/// The marketing name and chip for the iPhones the A15/A16 experiments are tested on; any other device shows its identifier.
+func performanceExperimentsDeviceChip(identifier: String) -> String {
+    let known: [String: String] = [
+        "iPhone14,4": "iPhone 13 mini (A15)",
+        "iPhone14,5": "iPhone 13 (A15)",
+        "iPhone14,2": "iPhone 13 Pro (A15)",
+        "iPhone14,3": "iPhone 13 Pro Max (A15)",
+        "iPhone14,7": "iPhone 14 (A15)",
+        "iPhone14,8": "iPhone 14 Plus (A15)",
+        "iPhone15,2": "iPhone 14 Pro (A16)",
+        "iPhone15,3": "iPhone 14 Pro Max (A16)",
+        "iPhone15,4": "iPhone 15 (A16)",
+        "iPhone15,5": "iPhone 15 Plus (A16)"
+    ]
+    if let name = known[identifier] {
+        return "\(name), \(identifier)"
+    }
+    return identifier.isEmpty ? "unknown device" : identifier
+}
+
+func debugDeviceModelIdentifier() -> String {
+    var size = 0
+    guard sysctlbyname("hw.machine", nil, &size, nil, 0) == 0, size > 0 else {
+        return ""
+    }
+    var buffer = [CChar](repeating: 0, count: size)
+    guard sysctlbyname("hw.machine", &buffer, &size, nil, 0) == 0 else {
+        return ""
+    }
+    return String(cString: buffer)
 }
 
 func debugControllerEntries(environment: DebugControllerEntriesEnvironment, theme: PresentationTheme, loggingSettings: LoggingSettings, experimentalSettings: ExperimentalUISettings, networkSettings: NetworkSettings?, networkEngineSettings: NetworkEngineSettings) -> [DebugControllerEntry] {
@@ -1463,6 +1541,15 @@ func debugControllerEntries(environment: DebugControllerEntriesEnvironment, them
         entries.append(.frameHitchLog(experimentalSettings.frameHitchLog))
         entries.append(.nanogramGlanceables(experimentalSettings.nanogramGlanceables))
         entries.append(.backSwipePreparePreviousScreen(experimentalSettings.backSwipePreparePreviousScreen))
+
+        // Dark performance experiments for A/B tests on iPhone 14 and 14 Pro: stored in UserDefaults, read at launch.
+        entries.append(.performanceExperimentsHeader(theme))
+        for experiment in PerformanceExperiment.allCases {
+            entries.append(.performanceExperiment(experiment, environment.enabledPerformanceExperiments.contains(experiment)))
+        }
+        var infoLines = ["Device: \(performanceExperimentsDeviceChip(identifier: environment.deviceModelIdentifier))", "Force-quit and reopen Nanogram after changing a switch. Send Logs includes these numbers (durations only, no content)."]
+        infoLines.append(contentsOf: environment.performanceExperimentSummary)
+        entries.append(.performanceExperimentsInfo(infoLines.joined(separator: "\n")))
     }
 
     if isMainApp {
@@ -1544,7 +1631,10 @@ public func debugController(sharedContext: SharedAccountContext, context: Accoun
             networkEngineKind: context?.account.network.engineKind.rawValue,
             useBetaFeatures: useBetaFeatures,
             messageWidgetsEnabled: MessageWidgetLocalSettings.widgetsEnabled(),
-            messageWidgetWalletEnabled: MessageWidgetLocalSettings.walletEnabled()
+            messageWidgetWalletEnabled: MessageWidgetLocalSettings.walletEnabled(),
+            deviceModelIdentifier: debugDeviceModelIdentifier(),
+            enabledPerformanceExperiments: Set(PerformanceExperiment.allCases.filter { ExperimentalPerformanceFlags.shared.isEnabled($0) }),
+            performanceExperimentSummary: PerformanceExperimentStats.shared.summaryLines()
         )
         
         let controllerState = ItemListControllerState(presentationData: ItemListPresentationData(presentationData), title: .text("Debug Settings"), leftNavigationButton: leftNavigationButton, rightNavigationButton: nil, backNavigationButton: ItemListBackButton(title: presentationData.strings.Common_Back))

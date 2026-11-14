@@ -9,6 +9,7 @@ import Accelerate
 import VideoToolbox
 import FFMpegBinding
 import YuvConversion
+import SwiftSignalKit
 
 private let bufferCount = 32
 nonisolated(unsafe) private let poolAllocationAuxAttributes: CFDictionary = [kCVPixelBufferPoolAllocationThresholdKey as String: bufferCount as NSNumber] as CFDictionary
@@ -35,6 +36,8 @@ public final class FFMpegMediaVideoFrameDecoder: MediaTrackFrameDecoder {
     private var pixelBufferPool: CVPixelBufferPool?
     
     public var reusesPixelBuffers: Bool = false
+    /// Set by the call sites that open an AV1 software decoder: feeds the per-frame time of the softwareDecodeThreads experiment.
+    public var measuresAV1Decode = false
     private var reusablePixelBufferPool: (pool: CVPixelBufferPool, width: Int32, height: Int32, pixelFormat: OSType, alignment: Int32)?
     // Every frame of a stream normally has the same format, and creating a description per frame was
     // ~0.9 s of a 87 s device trace. Reused only while it still matches the frame's buffer.
@@ -86,6 +89,18 @@ public final class FFMpegMediaVideoFrameDecoder: MediaTrackFrameDecoder {
         return self.codecContext.sendEnd()
     }
     
+    private func timedReceive(into frame: FFMpegAVFrame) -> FFMpegAVCodecContextReceiveResult {
+        guard self.measuresAV1Decode else {
+            return self.codecContext.receive(into: frame)
+        }
+        let start = DispatchTime.now().uptimeNanoseconds
+        let result = self.codecContext.receive(into: frame)
+        if result == .success {
+            PerformanceExperimentStats.shared.record(.av1FrameDecode, seconds: Double(DispatchTime.now().uptimeNanoseconds &- start) / 1_000_000_000.0)
+        }
+        return result
+    }
+    
     public func receiveFromDecoder(ptsOffset: CMTime?, displayImmediately: Bool = true) -> ReceiveResult {
         guard let videoFrame = self.videoFrame else {
             return .error
@@ -97,7 +112,7 @@ public final class FFMpegMediaVideoFrameDecoder: MediaTrackFrameDecoder {
             return .error
         }
         
-        let receiveResult = self.codecContext.receive(into: videoFrame)
+        let receiveResult = self.timedReceive(into: videoFrame)
         switch receiveResult {
         case .success:
             if videoFrame.width * videoFrame.height > 4 * 1024 * 4 * 1024 {
@@ -145,7 +160,7 @@ public final class FFMpegMediaVideoFrameDecoder: MediaTrackFrameDecoder {
             return nil
         }
         
-        if self.codecContext.receive(into: videoFrame) == .success {
+        if self.timedReceive(into: videoFrame) == .success {
             if videoFrame.width * videoFrame.height > 4 * 1024 * 4 * 1024 {
                 self.isError = true
                 return nil
@@ -201,9 +216,13 @@ public final class FFMpegMediaVideoFrameDecoder: MediaTrackFrameDecoder {
         guard let videoFrame = self.videoFrame else {
             return nil
         }
+        let renderStart = DispatchTime.now().uptimeNanoseconds
         let status = frame.packet.send(toDecoder: self.codecContext)
         if status == 0 {
             if case .success = self.codecContext.receive(into: videoFrame) {
+                if self.measuresAV1Decode {
+                    PerformanceExperimentStats.shared.record(.av1FrameDecode, seconds: Double(DispatchTime.now().uptimeNanoseconds &- renderStart) / 1_000_000_000.0)
+                }
                 if videoFrame.width * videoFrame.height > 4 * 1024 * 4 * 1024 {
                     self.isError = true
                     return nil

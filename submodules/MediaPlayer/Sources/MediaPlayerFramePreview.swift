@@ -78,6 +78,7 @@ private final class MediaPlayerFramePreviewImpl {
                     return
                 }
                 context.with { context in
+                    let requestedAt = DispatchTime.now().uptimeNanoseconds
                     let disposable = context.source.takeFrame(at: timestamp).start(next: { result in
                         queue.async {
                             guard let strongSelf = self else {
@@ -88,6 +89,7 @@ private final class MediaPlayerFramePreviewImpl {
                                 strongSelf.framePipe.putNext(.waitingForData)
                             case let .image(image):
                                 if let image = image {
+                                    PerformanceExperimentStats.shared.record(.scrubPreviewFrame, seconds: Double(DispatchTime.now().uptimeNanoseconds &- requestedAt) / 1_000_000_000.0)
                                     strongSelf.framePipe.putNext(.image(image))
                                 }
                                 strongSelf.currentFrameTimestamp = nil

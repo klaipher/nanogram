@@ -43,3 +43,112 @@ public final class ExperimentalPerformanceFlags: @unchecked Sendable {
         self.lock.unlock()
     }
 }
+
+public extension PerformanceExperiment {
+    /// What a tester sees on the Debug Settings row.
+    var title: String {
+        switch self {
+        case .threadPoolQualityOfService:
+            return "Thread pools on quality of service"
+        case .softwareDecodeThreads:
+            return "AV1 video: several decode threads"
+        case .previewHardwareDecode:
+            return "Gallery scrubbing: hardware decode"
+        }
+    }
+
+    var metric: PerformanceMetric {
+        switch self {
+        case .threadPoolQualityOfService:
+            return .threadPoolQueueWait
+        case .softwareDecodeThreads:
+            return .av1FrameDecode
+        case .previewHardwareDecode:
+            return .scrubPreviewFrame
+        }
+    }
+}
+
+public enum PerformanceMetric: String, CaseIterable, Sendable {
+    /// Time a thread-pool task waited between being created and starting to run.
+    case threadPoolQueueWait
+    /// Time spent decoding one software AV1 frame (the wait for the decoder's result).
+    case av1FrameDecode
+    /// Time from asking for a gallery scrub preview frame to having its image.
+    case scrubPreviewFrame
+}
+
+/// Counts and times for the three experiments, summarised in the Debug Settings diagnostics. Only durations
+/// are kept: no message content, file names or ids.
+public final class PerformanceExperimentStats: @unchecked Sendable {
+    public static let shared = PerformanceExperimentStats()
+
+    public struct Summary: Equatable, Sendable {
+        public var count: Int = 0
+        public var totalSeconds: Double = 0.0
+        public var maxSeconds: Double = 0.0
+
+        public var averageSeconds: Double {
+            return self.count == 0 ? 0.0 : self.totalSeconds / Double(self.count)
+        }
+    }
+
+    private let lock = NSLock()
+    private var summaries: [PerformanceMetric: Summary] = [:]
+
+    public init() {
+    }
+
+    public func record(_ metric: PerformanceMetric, seconds: Double) {
+        guard seconds >= 0.0, seconds.isFinite else {
+            return
+        }
+        self.lock.lock()
+        var summary = self.summaries[metric] ?? Summary()
+        summary.count += 1
+        summary.totalSeconds += seconds
+        summary.maxSeconds = max(summary.maxSeconds, seconds)
+        self.summaries[metric] = summary
+        self.lock.unlock()
+    }
+
+    public func summary(_ metric: PerformanceMetric) -> Summary {
+        self.lock.lock()
+        defer {
+            self.lock.unlock()
+        }
+        return self.summaries[metric] ?? Summary()
+    }
+
+    public func reset() {
+        self.lock.lock()
+        self.summaries = [:]
+        self.lock.unlock()
+    }
+
+    /// One line per experiment: its state and the numbers measured since launch (or the last reset).
+    public func summaryLines(flags: ExperimentalPerformanceFlags = .shared) -> [String] {
+        return PerformanceExperiment.allCases.map { experiment in
+            let state = flags.isEnabled(experiment) ? "on" : "off"
+            let summary = self.summary(experiment.metric)
+            let numbers: String
+            if summary.count == 0 {
+                numbers = "no samples"
+            } else {
+                numbers = "n=\(summary.count) avg=\(PerformanceExperimentStats.milliseconds(summary.averageSeconds)) ms max=\(PerformanceExperimentStats.milliseconds(summary.maxSeconds)) ms"
+            }
+            return "\(experiment.rawValue)=\(state) \(experiment.metric.rawValue): \(numbers)"
+        }
+    }
+
+    static func milliseconds(_ seconds: Double) -> String {
+        let value = (seconds * 10000.0).rounded() / 10.0
+        return String(value)
+    }
+}
+
+public func performanceExperimentsReport(modelIdentifier: String, flags: ExperimentalPerformanceFlags = .shared, stats: PerformanceExperimentStats = .shared) -> String {
+    var lines = ["Performance experiments (device \(modelIdentifier))"]
+    lines.append(contentsOf: stats.summaryLines(flags: flags))
+    return lines.joined(separator: "\n")
+}

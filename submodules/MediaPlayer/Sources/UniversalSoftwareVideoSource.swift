@@ -240,7 +240,9 @@ private final class UniversalSoftwareVideoSourceImpl {
                 if avFormatContext.codecParams(atStreamIndex: streamIndex, to: codecContext) {
                     FFMpegSoftwareDecodeThreads.apply(to: codecContext, codecId: codecId, width: metrics.width, height: metrics.height)
                     if codecContext.open() {
-                        videoStream = SoftwareVideoStream(index: Int(streamIndex), fps: fps, timebase: timebase, duration: duration, decoder: FFMpegMediaVideoFrameDecoder(codecContext: codecContext), rotationAngle: rotationAngle, aspect: aspect)
+                        let decoder = FFMpegMediaVideoFrameDecoder(codecContext: codecContext)
+                        decoder.measuresAV1Decode = codecId == FFMpegCodecIdAV1
+                        videoStream = SoftwareVideoStream(index: Int(streamIndex), fps: fps, timebase: timebase, duration: duration, decoder: decoder, rotationAngle: rotationAngle, aspect: aspect)
                         break
                     }
                 }

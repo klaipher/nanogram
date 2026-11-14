@@ -423,6 +423,7 @@ public final class FFMpegFileReader {
                                     self.isHardwareAccelerated = useHardware
                                     let decoder = FFMpegMediaVideoFrameDecoder(codecContext: codecContext)
                                     decoder.reusesPixelBuffers = reusesPixelBuffers
+                                    decoder.measuresAV1Decode = codecId == FFMpegCodecIdAV1 && !useHardware
                                     if let skipNonReferenceFramesBefore {
                                         codecContext.setSkipNonReferenceFrames(true)
                                         self.skipNonReferenceFrames = (codecContext, CMTimeMakeWithSeconds(skipNonReferenceFramesBefore, preferredTimescale: info.timeScale).value)
