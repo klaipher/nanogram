@@ -74,3 +74,27 @@ comparisons made before the old copy was deleted.
   would need the dependency to become an external repository, and the docs do not say what happens to the upstream root
   BUILD.bazel that the rule symlinks in, so that route is unproven. The plan's fallback (a one-commit klaipher fork that
   deletes the Bazel files) is used for libyuv; BoringSSL is deferred (see the lane report).
+
+## Handoff for the Mac (W2.I2 core bump) and Android (W2.I3)
+
+Mac, after the core bump:
+- `docs/mac-core-paths.txt` and `tools/dev/native/native-libs.json` are copied byte for byte from the iOS commit.
+- openh264: `core-xprojects/OpenH264/OpenH264/build.sh` builds from `submodules/telegram-ios/third-party/openh264/openh264`
+  (rsync into build/, no clone); native-libs probe `third-party/openh264/openh264/codec/api/wels/codec_ver.h`.
+- rnnoise: the pbxproj group paths become `third-party/rnnoise/rnnoise/{include,src}` and exclude `src/dump_features.c`,
+  `src/dump_rnnoise_tables.c`, `src/write_weights.c`; update the `configure_frameworks.sh` symlink.
+- libprisma: `CodeSyntax` compiles the shared `libprisma/apple/Syntaxer.mm` and the fork's `libprisma/libprisma/*.cpp`, uses
+  `libprisma/libprisma/grammars.dat`, defines `BOOST_REGEX_MAX_BLOCKS=1536`, and deletes its own Syntaxer copy.
+- sqlcipher: the Package.swift of `submodules/sqlcipher` already reads `amalgamation/`; no Mac file moves.
+- OpusBinding: its Package.swift reads ogg and opusfile through `SwiftPMLinks/` symlinks; `tools/tests/audio-trim-store`
+  must use `third-party/ogg/ogg/include` plus `third-party/ogg/overlay` and `third-party/opusfile/opusfile`.
+- wallet-engine: regenerate `ffi-availability.txt` and the bindings (`scripts/check-wallet-engine-bindings.sh`).
+- libyuv: the Mac keeps tg_owt's nested copy until W5.
+
+Android:
+- The `shared/` pin is the manifest commit 7d5bd332; `check_shared.py --side android` fails on the old pins of openh264,
+  rnnoise, libprisma, sqlite (no sqlcipher-amalgamation yet), wallet-engine and libyuv until they move to the manifest
+  commits. Android's libprisma must run `generate_prisma_grammars.sh` with `PRISMA_JOIN_ALIASES=1`.
+
+Deferred in the iOS integrator stage: BoringSSL (see the S1 note above: a klaipher/boringssl fork without BUILD.bazel,
+MODULE.bazel and `.bazelignore` is needed first, and the BUILD move from 2ea3200c to 0.20261105.0 must be built).

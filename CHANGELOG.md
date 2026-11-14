@@ -4,6 +4,8 @@ Newest first. Internal notes for each TestFlight build; testers see the What to 
 
 ## Unreleased
 
+- **Handoff notes for Mac and Android** (W2.I1) in `docs/shared/w2-i1-identity-proofs.md`; BoringSSL stays vendored until its fork and a build exist.
+
 - **libyuv is the klaipher/libyuv submodule** (W2.I1; the plan's S1 fallback: a fork without the upstream Bazel files, because a root BUILD.bazel/WORKSPACE.bazel would make the submodule its own package and repository). Same path, same BUILD, byte-identical sources (version 1977). Not built.
 
 - **wallet-engine moves to klaipher/wallet-engine nanogram** (W2.I1). Pin 44ae85c7 (e59e0d89 + 5 commits, no crate changes), `.gitmodules` url and branch updated. iOS keeps verifying the recipient key; Android's rotated-key path is an explicit opt-in. Bindings are generated at build time. Not built.
