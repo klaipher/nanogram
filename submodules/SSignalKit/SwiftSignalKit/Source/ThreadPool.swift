@@ -137,13 +137,34 @@ public func ==(lhs: ThreadPoolQueue, rhs: ThreadPoolQueue) -> Bool {
         }
     }
     
+    enum ThreadConfiguration: Equatable {
+        case priority(Double)
+        case qualityOfService(QualityOfService)
+    }
+
+    static func threadConfiguration(forThreadPriority threadPriority: Double, usesQualityOfService: Bool) -> ThreadConfiguration {
+        if usesQualityOfService {
+            return .qualityOfService(qualityOfService(forThreadPriority: threadPriority))
+        }
+        return .priority(threadPriority)
+    }
+
     public convenience init(threadCount: Int, threadPriority: Double) {
         #if os(macOS)
-        self.init(threadCount: threadCount, configureThread: { $0.qualityOfService = ThreadPool.qualityOfService(forThreadPriority: threadPriority) })
+        let usesQualityOfService = true
         #else
-        // QoS workers are Mac-only until iOS has measured them (shared-core plan 2.3): iOS keeps the thread priority.
-        self.init(threadCount: threadCount, configureThread: { $0.threadPriority = threadPriority })
+        // iOS keeps the legacy thread priority unless the threadPoolQualityOfService experiment is on.
+        let usesQualityOfService = ExperimentalPerformanceFlags.shared.isEnabled(.threadPoolQualityOfService)
         #endif
+        let configuration = ThreadPool.threadConfiguration(forThreadPriority: threadPriority, usesQualityOfService: usesQualityOfService)
+        self.init(threadCount: threadCount, configureThread: { thread in
+            switch configuration {
+            case let .qualityOfService(qos):
+                thread.qualityOfService = qos
+            case let .priority(priority):
+                thread.threadPriority = priority
+            }
+        })
     }
     
     public convenience init(threadCount: Int, qos: QualityOfService) {
