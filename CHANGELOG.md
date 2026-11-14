@@ -4,6 +4,8 @@ Newest first. Internal notes for each TestFlight build; testers see the What to 
 
 ## Unreleased
 
+- **Docs for the W1.1 swaps** (`docs/shared/w1-1-identity-proofs.md`, `docs/mac-core-paths.txt`, `docs/vendored-upgrades.md`). `share third-party/opusfile` and `share third-party/webp` added, the stale `share submodules/openssl` (no such path) removed; FFmpeg upgrade notes now describe the fork branch.
+
 - **Dead `third-party/boringssl/aes_ige.c` removed** (W1.1). No BUILD file lists it (`third-party/boringssl/BUILD` has no glob), and `git grep aes_ige` finds no other reference in the tree (iOS), nor in the Mac's own files (only its Rust crate's unrelated `aes_ige.rs`). MTProto IGE runs in the Rust engine.
 
 - **TdBinding no longer carries a copy of td's headers** (W1.1). Deleted `third-party/td/TdBinding/SharedHeaders` (793 files) and pointed `Package.swift`'s `headerSearchPath` at `../td/tde2e` (the `third-party/td/td` submodule). Proof: 787 of 793 files are blob-identical to tdlib/td@0e88653d (the submodule pin); the other 6 are generated headers (`generate/auto/td/...`) that `TdBinding.mm` (`td/e2e/e2e_api.h` only) never reads. Bazel never used the copy (`//third-party/td:td`); the Mac's Xcode package build does. Risk for the combined build: SwiftPM must accept a header search path above the package root.

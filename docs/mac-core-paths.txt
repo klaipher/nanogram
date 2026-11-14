@@ -71,7 +71,6 @@ share submodules/FFMpegBinding
 share submodules/ffmpeg
 share submodules/libphonenumber
 share submodules/sqlcipher
-share submodules/openssl
 share submodules/tlottie
 share submodules/LottieBinding
 share third-party/rnnoise
@@ -81,6 +80,8 @@ share third-party/td
 share third-party/dav1d
 share third-party/mozjpeg
 share third-party/ogg
+share third-party/opusfile
+share third-party/webp
 share third-party/libprisma
 share third-party/boost_regex
 share submodules/HardenedMedia
