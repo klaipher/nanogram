@@ -16,6 +16,14 @@ public enum GlanceSurface: Equatable, Sendable {
     case lockScreen
 }
 
+public extension GlanceSurface {
+    /// A small Home Screen widget is a lock-screen surface when it is shown without its container background
+    /// (StandBy, iPad Lock Screen) or tinted/vibrant: it can then be read on a locked device.
+    static func smallWidget(showsContainerBackground: Bool, isFullColor: Bool) -> GlanceSurface {
+        return showsContainerBackground && isFullColor ? .homeScreen : .lockScreen
+    }
+}
+
 public enum GlanceVisibility {
     /// Chat names show only while the app is not passcode-locked, and on the lock-screen surfaces only when the
     /// "name on lock screen" notification setting allows it. Counts are not affected.

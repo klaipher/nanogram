@@ -94,6 +94,8 @@ struct GlanceChatsProvider: AppIntentTimelineProvider {
 @available(iOS 17.0, *)
 struct GlanceChatsView: View {
     @Environment(\.widgetFamily) private var family
+    @Environment(\.showsWidgetContainerBackground) private var showsContainerBackground
+    @Environment(\.widgetRenderingMode) private var renderingMode
     let entry: GlanceChatsEntry
     let presentationData: WidgetPresentationData
     
@@ -102,7 +104,7 @@ struct GlanceChatsView: View {
         case .accessoryCircular, .accessoryRectangular, .accessoryInline:
             return .lockScreen
         default:
-            return .homeScreen
+            return GlanceSurface.smallWidget(showsContainerBackground: self.showsContainerBackground, isFullColor: self.renderingMode == .fullColor)
         }
     }
     

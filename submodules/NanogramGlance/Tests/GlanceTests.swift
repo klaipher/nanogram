@@ -156,3 +156,11 @@ final class GlanceEntityResolverTests: XCTestCase {
         XCTAssertTrue(GlanceEntityResolver.candidates(snapshot: nil).isEmpty)
     }
 }
+
+final class GlanceSurfaceTests: XCTestCase {
+    func testSmallWidgetOutsideTheHomeScreenIsALockScreenSurface() {
+        XCTAssertEqual(GlanceSurface.smallWidget(showsContainerBackground: true, isFullColor: true), .homeScreen)
+        XCTAssertEqual(GlanceSurface.smallWidget(showsContainerBackground: false, isFullColor: true), .lockScreen)
+        XCTAssertEqual(GlanceSurface.smallWidget(showsContainerBackground: true, isFullColor: false), .lockScreen)
+    }
+}
