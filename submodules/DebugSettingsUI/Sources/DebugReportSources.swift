@@ -10,6 +10,7 @@ import DiskWriteAccounting
 import TelegramVoip
 import EnergyNumbers
 import WatchReport
+import InAppPurchaseManager
 
 /// What the report's info file says about the device and the app.
 struct DebugReportInfo: Equatable {
@@ -27,6 +28,7 @@ struct DebugReportInfo: Equatable {
     var thermalState: String
     var localeIdentifier: String
     var experimentsReport: String
+    var isStoreBuild: Bool = StorePurchasePolicy.current.isStoreBuild
 }
 
 func debugReportInfoLines(_ info: DebugReportInfo) -> [String] {
@@ -43,6 +45,7 @@ func debugReportInfoText(_ info: DebugReportInfo) -> String {
     lines.append("Log to File: \(info.logToFile ? "on" : "off"), Remove Sensitive Data: \(info.redactSensitiveData ? "on" : "off")")
     lines.append("Low Power Mode: \(info.lowPowerMode ? "on" : "off"), thermal state: \(info.thermalState)")
     lines.append("Locale: \(info.localeIdentifier)")
+    lines.append("Store build: \(info.isStoreBuild ? "yes (Premium and Stars purchases hidden)" : "no")")
     lines.append("")
     lines.append(info.experimentsReport)
     lines.append("")

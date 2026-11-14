@@ -1,4 +1,5 @@
 import Foundation
+import InAppPurchaseManager
 import UIKit
 import Display
 import AsyncDisplayKit
@@ -377,7 +378,7 @@ private final class ReplaceBoostSheetComponent: CombinedComponent {
                             controller.present(c, in: .window(.root))
                         },
                         giftPremium: {
-                            guard let controller = controller() else {
+                            guard StorePurchasePolicy.current.allows(.premiumGiftPurchase), let controller = controller() else {
                                 return
                             }
                             let navigationController = controller.navigationController

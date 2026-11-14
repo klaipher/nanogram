@@ -165,7 +165,7 @@ final class DebugReportTests: XCTestCase {
     func testInfoTextHasVersionDeviceExperimentsAndNoAccountDetails() {
         let info = DebugReportInfo(appVersion: "13.2", buildNumber: "202611140100", bundleId: "org.klaipher.Nanogram", osVersion: "iOS 26.1", deviceModelIdentifier: "iPhone15,2", deviceChip: "iPhone 14 Pro (A16), iPhone15,2", isMainApp: true, hasAccount: true, logToFile: true, redactSensitiveData: true, lowPowerMode: false, thermalState: "nominal", localeIdentifier: "en_US", experimentsReport: "Performance experiments (device iPhone15,2)\nthreadPoolQualityOfService=off")
         let text = debugReportInfoText(info)
-        for part in ["13.2 (202611140100)", "iOS 26.1", "iPhone15,2", "Log to File: on", "Performance experiments (device iPhone15,2)", "threadPoolQualityOfService=off"] {
+        for part in ["13.2 (202611140100)", "iOS 26.1", "iPhone15,2", "Log to File: on", "Store build: yes", "Performance experiments (device iPhone15,2)", "threadPoolQualityOfService=off"] {
             XCTAssertTrue(text.contains(part), part)
         }
     }

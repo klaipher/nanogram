@@ -341,7 +341,7 @@ public final class AccountContextImpl: AccountContext {
             self.wallpaperUploadManager = WallpaperUploadManagerImpl(sharedContext: sharedContext, account: account, presentationData: sharedContext.presentationData)
             self.themeUpdateManager = ThemeUpdateManagerImpl(sharedContext: sharedContext, account: account)
             
-            self.inAppPurchaseManager = InAppPurchaseManager(engine: .authorized(self.engine))
+            self.inAppPurchaseManager = StorePurchasePolicy.current.allows(.storeKitProductRequests) ? InAppPurchaseManager(engine: .authorized(self.engine)) : nil
             self.starsContext = self.engine.payments.peerStarsContext()
             self.tonContext = self.engine.payments.peerTonContext()
             let accountIsCurrent = sharedContext.activeAccountContexts

@@ -1000,6 +1000,7 @@ public final class StarsPurchaseScreen: ViewControllerComponentContainer {
     private let overNavigationContainer: UIView
     
     private var didSetReady = false
+    private var didShowPurchaseUnavailable = false
     private let _ready = Promise<Bool>()
     public override var ready: Promise<Bool> {
         return self._ready
@@ -1088,6 +1089,20 @@ public final class StarsPurchaseScreen: ViewControllerComponentContainer {
     
     required public init(coder aDecoder: NSCoder) {
         fatalError("init(coder:) has not been implemented")
+    }
+    
+    public override func viewDidAppear(_ animated: Bool) {
+        super.viewDidAppear(animated)
+        
+        // Store builds cannot sell Stars; every opener goes through this screen, so it answers once here.
+        if !StorePurchasePolicy.current.allows(.starsTopUp) && !self.didShowPurchaseUnavailable {
+            self.didShowPurchaseUnavailable = true
+            let presentationData = self.context.sharedContext.currentPresentationData.with { $0 }
+            let alertController = textAlertController(context: self.context, title: nil, text: "Stars can't be bought in this app. You can still spend the Stars you already have.", actions: [TextAlertAction(type: .defaultAction, title: presentationData.strings.Common_OK, action: { [weak self] in
+                self?.dismiss()
+            })])
+            self.present(alertController, in: .window(.root))
+        }
     }
     
     public override func viewWillDisappear(_ animated: Bool) {

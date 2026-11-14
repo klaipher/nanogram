@@ -4011,7 +4011,7 @@ public class ChatListItemNode: ItemListRevealOptionsItemNode {
             // Parsed only for premium peers, the only rows that read it.
             // Reads the one key instead of parsing the whole PremiumConfiguration (same default: false).
             let isPremiumDisabled: () -> Bool = {
-                return item.context.currentAppConfiguration.with { $0 }.data?["premium_purchase_blocked"] as? Bool ?? PremiumConfiguration.defaultValue.isPremiumDisabled
+                return PremiumConfiguration.defaultValue.isPremiumDisabled || (item.context.currentAppConfiguration.with { $0 }.data?["premium_purchase_blocked"] as? Bool ?? false)
             }
             var isAccountPeer = false
             if case let .chatList(index) = item.index, index.messageIndex.id.peerId == item.context.account.peerId {

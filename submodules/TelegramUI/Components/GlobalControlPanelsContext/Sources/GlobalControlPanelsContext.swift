@@ -1,4 +1,5 @@
 import Foundation
+import InAppPurchaseManager
 import UIKit
 import SwiftSignalKit
 import TelegramCore
@@ -410,9 +411,9 @@ public final class GlobalControlPanelsContext {
                         }
                     } else if suggestions.contains(.setupPhoto), let accountPeer, accountPeer.smallProfileImage == nil {
                         return .single(.setupPhoto(accountPeer))
-                    } else if suggestions.contains(.gracePremium) {
+                    } else if suggestions.contains(.gracePremium) && StorePurchasePolicy.current.sellsPremium {
                         return .single(.premiumGrace)
-                    } else if suggestions.contains(.xmasPremiumGift) {
+                    } else if suggestions.contains(.xmasPremiumGift) && StorePurchasePolicy.current.allows(.premiumGiftPurchase) {
                         return .single(.xmasPremiumGift)
                     } else if suggestions.contains(.annualPremium) || suggestions.contains(.upgradePremium) || suggestions.contains(.restorePremium), let inAppPurchaseManager = context.inAppPurchaseManager {
                         return inAppPurchaseManager.availableProducts

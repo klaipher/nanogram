@@ -411,3 +411,9 @@ Patches to upstream bugs and one fix of our own code, found by the server-switch
 - Translation: `translateMessages(..., localOnly:)` is set from the user's switch only (not from the server's system-translator hint). With it, messages, polls and voice transcriptions fail instead of reaching the server; rich messages are left untranslated.
 - Transcription: no server retry while the on-device switch is on.
 - Check in the build: translate a chat with polls and voice transcriptions while the download sheet is open (several Translation tasks start together; look for "Translation error" in the logs and for translateText requests, which must not appear with the switch on). If the batches cancel each other, queue the tasks per language pair.
+
+## Store builds sell no Telegram purchases (iOS and Mac, shared core, 2026-11-14)
+
+- `StorePurchasePolicy` (InAppPurchaseManager module) is the single switch: Premium, Stars top-ups, Premium gifts and giveaways, paid boosts and every StoreKit request are off in store builds (App Review 3.1.1). Everything the account already owns keeps working: Premium features, owned Stars, receiving and converting gifts, gift codes, physical-goods bot payments.
+- Defining `NANOGRAM_PURCHASES_ENABLED` turns purchases back on for a non-store build.
+- Check in the build: Settings > Premium shows the feature list with no subscribe button; opening a Stars top-up link shows the "can't be bought" alert; the gift sheet has no Premium options; Send Report info says `Store build: yes`; the log shows no `SKProductsRequest` at launch.

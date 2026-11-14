@@ -1,5 +1,6 @@
 import Foundation
 import TelegramCore
+import InAppPurchaseManager
 
 public enum PremiumIntroSource {
     case settings
@@ -157,7 +158,7 @@ public enum StarsPurchasePurpose: Equatable {
 public struct PremiumConfiguration {
     public static var defaultValue: PremiumConfiguration {
         return PremiumConfiguration(
-            isPremiumDisabled: false,
+            isPremiumDisabled: !StorePurchasePolicy.current.sellsPremium,
             areStarsDisabled: true,
             subscriptionManagementUrl: "",
             showPremiumGiftInAttachMenu: false,
@@ -279,14 +280,15 @@ public struct PremiumConfiguration {
             func get(_ value: Any?) -> Int32? {
                 return (value as? Double).flatMap(Int32.init)
             }
+            let policy = StorePurchasePolicy.current
             return PremiumConfiguration(
-                isPremiumDisabled: data["premium_purchase_blocked"] as? Bool ?? defaultValue.isPremiumDisabled,
-                areStarsDisabled: data["stars_purchase_blocked"] as? Bool ?? defaultValue.areStarsDisabled,
+                isPremiumDisabled: !policy.sellsPremium || (data["premium_purchase_blocked"] as? Bool ?? defaultValue.isPremiumDisabled),
+                areStarsDisabled: !policy.sellsStars || (data["stars_purchase_blocked"] as? Bool ?? defaultValue.areStarsDisabled),
                 subscriptionManagementUrl: data["premium_manage_subscription_url"] as? String ?? "",
-                showPremiumGiftInAttachMenu: data["premium_gift_attach_menu_icon"] as? Bool ?? defaultValue.showPremiumGiftInAttachMenu,
-                showPremiumGiftInTextField: data["premium_gift_text_field_icon"] as? Bool ?? defaultValue.showPremiumGiftInTextField,
-                giveawayGiftsPurchaseAvailable: data["giveaway_gifts_purchase_available"] as? Bool ?? defaultValue.giveawayGiftsPurchaseAvailable,
-                starsGiftsPurchaseAvailable: data["stars_gifts_enabled"] as? Bool ?? defaultValue.starsGiftsPurchaseAvailable,
+                showPremiumGiftInAttachMenu: policy.allows(.premiumGiftPurchase) && (data["premium_gift_attach_menu_icon"] as? Bool ?? defaultValue.showPremiumGiftInAttachMenu),
+                showPremiumGiftInTextField: policy.allows(.premiumGiftPurchase) && (data["premium_gift_text_field_icon"] as? Bool ?? defaultValue.showPremiumGiftInTextField),
+                giveawayGiftsPurchaseAvailable: policy.allows(.premiumGiveawayPurchase) && (data["giveaway_gifts_purchase_available"] as? Bool ?? defaultValue.giveawayGiftsPurchaseAvailable),
+                starsGiftsPurchaseAvailable: policy.allows(.starsGiftPurchase) && (data["stars_gifts_enabled"] as? Bool ?? defaultValue.starsGiftsPurchaseAvailable),
                 starGiftsPurchaseBlocked: data["stargifts_blocked"] as? Bool ?? defaultValue.starGiftsPurchaseBlocked,
                 boostsPerGiftCount: get(data["boosts_per_sent_gift"]) ?? defaultValue.boostsPerGiftCount,
                 audioTransciptionTrialMaxDuration: get(data["transcribe_audio_trial_duration_max"]) ?? defaultValue.audioTransciptionTrialMaxDuration,

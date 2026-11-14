@@ -271,7 +271,9 @@ public final class InAppPurchaseManager: NSObject {
                 
         super.init()
         
-        SKPaymentQueue.default().add(self)
+        if StorePurchasePolicy.current.allows(.storeKitProductRequests) {
+            SKPaymentQueue.default().add(self)
+        }
         
         // Both are posted on the main queue.
         self.applicationStateObservers.append(NotificationCenter.default.addObserver(forName: UIApplication.didEnterBackgroundNotification, object: nil, queue: nil, using: { [weak self] _ in
@@ -362,6 +364,10 @@ public final class InAppPurchaseManager: NSObject {
     }
     
     private func requestProducts(force: Bool) {
+        // Telegram's product ids do not exist for our bundle id; asking only fails and keeps retrying.
+        guard StorePurchasePolicy.current.allows(.storeKitProductRequests) else {
+            return
+        }
         Queue.mainQueue().async { [weak self] in
             guard let self, self.products.isEmpty else {
                 return
@@ -402,6 +408,10 @@ public final class InAppPurchaseManager: NSObject {
     }
     
     public func restorePurchases(completion: @escaping (RestoreState) -> Void) {
+        guard StorePurchasePolicy.current.allows(.receiptRestore) else {
+            completion(.succeed(false))
+            return
+        }
         Logger.shared.log("InAppPurchaseManager", "Restoring purchases")
         self.onRestoreCompletion = completion
         
@@ -420,6 +430,9 @@ public final class InAppPurchaseManager: NSObject {
     }
     
     public func buyProduct(_ product: Product, quantity: Int32 = 1, purpose: AppStoreTransactionPurpose, reportPending: Bool = false) -> Signal<PurchaseState, PurchaseError> {
+        guard StorePurchasePolicy.current.allows(.premiumSubscription) else {
+            return .fail(.notAllowed)
+        }
         let accountPeerId: String
         switch self.engine {
         case let .authorized(engine):

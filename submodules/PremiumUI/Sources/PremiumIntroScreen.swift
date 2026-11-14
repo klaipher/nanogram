@@ -3741,7 +3741,13 @@ private final class PremiumIntroScreenComponent: CombinedComponent {
             let buttonInsets = ContainerViewLayout.concentricInsets(bottomInset: environment.safeInsets.bottom, innerDiameter: 52.0, sideInset: 30.0)
             let bottomPanelPadding: CGFloat = 12.0
             let bottomInset: CGFloat = environment.safeInsets.bottom > 0.0 ? environment.safeInsets.bottom + 5.0 : bottomPanelPadding
-            let bottomPanelHeight: CGFloat = state.isPremium == true && !state.canUpgrade ? bottomInset : bottomPanelPadding + 52.0 + bottomInset
+            let canSellPremium = StorePurchasePolicy.current.allows(.premiumSubscription)
+            var isUnusedGiftCode = false
+            if case let .gift(fromId, _, _, giftCode) = context.component.source, let accountContext = context.component.screenContext.context, let giftCode, giftCode.usedDate == nil, fromId != accountContext.account.peerId {
+                isUnusedGiftCode = true
+            }
+            let showsPurchasePanel = canSellPremium || (isUnusedGiftCode && !state.justBought)
+            let bottomPanelHeight: CGFloat = !showsPurchasePanel || (state.isPremium == true && !state.canUpgrade) ? bottomInset : bottomPanelPadding + 52.0 + bottomInset
                        
             let scrollContent = scrollContent.update(
                 component: ScrollComponent<EnvironmentType>(
@@ -3884,6 +3890,8 @@ private final class PremiumIntroScreenComponent: CombinedComponent {
             if !state.justBought {
                 if isUnusedGift {
                     buttonIsHidden = false
+                } else if !canSellPremium {
+                    buttonIsHidden = true
                 } else if state.canUpgrade {
                     buttonIsHidden = false
                 } else if !(state.isPremium ?? false) {

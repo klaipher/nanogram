@@ -1956,6 +1956,10 @@ final class GiftOptionsScreenComponent: Component {
                         self.premiumProducts = premiumProducts.sorted(by: { $0.months < $1.months })
                     }
                     
+                    if !StorePurchasePolicy.current.allows(.premiumGiftPurchase) {
+                        self.premiumProducts = []
+                    }
+                    
                     if let disallowedGifts, disallowedGifts.contains(.unique) {
                     } else {
                         self.transferStarGifts = profileGiftsState.filteredGifts.compactMap { gift in

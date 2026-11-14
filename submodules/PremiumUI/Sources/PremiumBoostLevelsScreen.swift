@@ -1,4 +1,5 @@
 import Foundation
+import InAppPurchaseManager
 import UIKit
 import Display
 import AsyncDisplayKit
@@ -1133,7 +1134,7 @@ private final class PremiumBoostLevelsSheetComponent: CombinedComponent {
                     }
                 } else {
                     if isPremium {
-                        if !canBoostAgain {
+                        if !canBoostAgain || !StorePurchasePolicy.current.allows(.premiumGiftPurchase) {
                             controller.dismissAnimated()
                         } else {
                             let _ = (context.engine.data.get(TelegramEngine.EngineData.Item.Peer.Peer(id: peerId))
