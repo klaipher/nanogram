@@ -35,6 +35,7 @@ set -x
     popd
 
     tar -cf "$(location yasm.tar)" -C "$$BUILD_DIR/yasm-1.3.0/build" .
+    rm -rf "$$BUILD_DIR"
 """,
     outs = [
         "yasm.tar",

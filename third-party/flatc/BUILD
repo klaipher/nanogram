@@ -25,6 +25,7 @@ set -x
     popd
 
     cp "$$BUILD_DIR/flatbuffers-25.12.19/build/flatc" "$(location flatc_bin)"
+    rm -rf "$$BUILD_DIR"
 """,
     outs = [
         "flatc_bin",
