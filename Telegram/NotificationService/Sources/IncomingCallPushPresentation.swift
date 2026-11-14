@@ -218,6 +218,16 @@ enum IncomingCallPushPresentation {
         return false
     }
 
+    /// The call a fetched service message of a finished call is about; nil for any other message.
+    static func phoneCallServiceMessageCallId(media: [Any]) -> Int64? {
+        for item in media {
+            if let action = item as? TelegramMediaAction, case let .phoneCall(callId, _, _, _) = action.action {
+                return callId
+            }
+        }
+        return nil
+    }
+
     struct Alert: Equatable {
         var title: String?
         var body: String

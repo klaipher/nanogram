@@ -104,6 +104,21 @@ public enum IncomingCallNotificationRouting {
         }
     }
 
+    /// The calls ringing for the caller `peerId` of `accountId`, each with the keys to ask the server about it.
+    /// A ring without call keys is left out.
+    public static func calls(delivered: [(identifier: String, userInfo: [AnyHashable: Any])], accountId: Int64, peerId: Int64) -> [(identifier: String, callId: Int64, accessHash: Int64)] {
+        let identifiers = Set(self.identifiers(delivered: delivered, accountId: accountId, peerId: peerId))
+        return delivered.compactMap { item -> (identifier: String, callId: Int64, accessHash: Int64)? in
+            guard identifiers.contains(item.identifier),
+                  let callId = (item.userInfo[Key.callId] as? String).flatMap({ Int64($0) }),
+                  let accessHash = (item.userInfo[Key.callAccessHash] as? String).flatMap({ Int64($0) })
+            else {
+                return nil
+            }
+            return (item.identifier, callId, accessHash)
+        }
+    }
+
     /// The call ids of the delivered call notifications of `accountId`.
     public static func callIds(delivered: [(identifier: String, userInfo: [AnyHashable: Any])], accountId: Int64) -> [Int64] {
         let accountIdString = "\(accountId)"

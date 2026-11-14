@@ -406,5 +406,7 @@ final class IncomingCallPushPresentationTests: XCTestCase {
         let other = TelegramMediaAction(action: .historyCleared)
         XCTAssertFalse(IncomingCallPushPresentation.isPhoneCallServiceMessage(media: [other]))
         XCTAssertFalse(IncomingCallPushPresentation.isPhoneCallServiceMessage(media: []))
+        XCTAssertEqual(IncomingCallPushPresentation.phoneCallServiceMessageCallId(media: [call]), 777)
+        XCTAssertNil(IncomingCallPushPresentation.phoneCallServiceMessageCallId(media: [other]))
     }
 }
