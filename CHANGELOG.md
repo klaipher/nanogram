@@ -4,6 +4,8 @@ Newest first. Internal notes for each TestFlight build; testers see the What to 
 
 ## Unreleased
 
+- **tgcalls pin 73cc1f8d -> 7afc0b25** (fork `nanogram-shared`): ports upstream defea4a, so a group-call incoming video description with an empty ssrc group no longer reads `ssrcs[0]` of an empty vector (possible crash). `shared/` moves to nanogram-deps a17304db. The Mac and Android pins move to the same commit.
+
 Release optimization audit (branch `build/release-opt`; not built or run by its author). Verification is in `docs/bazel-build-profiling.md`.
 
 - **IOS-OPT-1** `third-party/wallet-engine/BUILD`: `_RUST_RELEASE_FLAGS` `-Copt-level=z` to `-Copt-level=3` (kept `-Ccodegen-units=1`, `-Cpanic=abort`; fat LTO comes from `Make.py`). Upstream's `z` ran PBKDF2-HMAC-SHA512, ed25519 and sha2 size-first. Keep only if mnemonic-to-key time improves and the size growth is tens of KB. The list has no select(), so it also applies to Debug builds of the first-party wallet crates (was z, now 3 with codegen-units=1) and to the bindgen cdylib; `bazel aquery` shows both `--codegen=opt-level=3` and `-Copt-level=3`; the crate_universe dependencies get neither.
