@@ -590,7 +590,11 @@ cmd_device() {
       warn "no WatchApp profile in $signing/profiles: the watch app and its widget get an ad-hoc signature (fine for tg testflight; for a device run: python3 tools/dev/device_signing.py profiles)"
     fi
   fi
+  # TG_KEEP_GOING=1: Bazel --keep_going (Make.py --continueOnError), so one failing build lists every compile error.
+  local keep_going=()
+  [ "${TG_KEEP_GOING:-0}" = 1 ] && keep_going=(--continueOnError)
   make_py ${make_args[@]+"${make_args[@]}"} build \
+    ${keep_going[@]+"${keep_going[@]}"} \
     --configurationPath="$config" \
     "${signing_args[@]}" \
     ${watch_args[@]+"${watch_args[@]}"} \
