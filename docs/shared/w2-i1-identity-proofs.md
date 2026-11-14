@@ -46,3 +46,15 @@ comparisons made before the old copy was deleted.
   `sqlite3.c` and `headers/sqlcipher/*.h`.
 - BUILD and Package.swift keep every `-D` define; the `<sqlcipher/sqlite3.h>` include path is unchanged
   (`includes = ["amalgamation/headers"]`).
+
+## wallet-engine
+
+- Old pin: i582/wallet-engine e59e0d89 ("refactor: encrypted comments key check"). New pin: klaipher/wallet-engine
+  `nanogram` 44ae85c7 = e59e0d89 + 5 commits (TON Connect envelope encrypt/decrypt, NFT transfer preparation, key
+  rotation preview and both delivery forms from the Android fork 5c65e47c; the recipient-key check stays on by default,
+  `trust_recipient_public_key` is an opt-in field).
+- `git diff e59e0d89 44ae85c --stat` in the fork: 17 files, no change to `Cargo.toml`/`Cargo.lock` (MODULE.bazel crate specs
+  and the `Cargo.Bazel.lock` files stay valid) and no new `.rs` file (the BUILD globs are unchanged).
+- iOS callers: the new `trustRecipientPublicKey` fields are UniFFI records with `default = false`, so the generated Swift
+  initialisers keep working for `CreateEncryptedCommentRequest` and `EncryptedCommentRecipientRequest`
+  (`WalletEngineRuntime.swift` passes neither). The iOS behaviour (key verified) is unchanged.

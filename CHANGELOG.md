@@ -4,6 +4,8 @@ Newest first. Internal notes for each TestFlight build; testers see the What to 
 
 ## Unreleased
 
+- **wallet-engine moves to klaipher/wallet-engine nanogram** (W2.I1). Pin 44ae85c7 (e59e0d89 + 5 commits, no crate changes), `.gitmodules` url and branch updated. iOS keeps verifying the recipient key; Android's rotated-key path is an explicit opt-in. Bindings are generated at build time. Not built.
+
 - **SQLCipher is the klaipher/sqlcipher-amalgamation submodule** (W2.I1). `submodules/sqlcipher/amalgamation` (`nanogram`, 9948d5af, shallow) replaces the vendored `Sources/sqlite3.c` and `PublicHeaders` (byte-identical; proof in `docs/shared/w2-i1-identity-proofs.md`). Include path and defines unchanged. Not built.
 
 - **libprisma is the klaipher/libprisma submodule** (W2.I1). `third-party/libprisma/libprisma` (`nanogram`, c061944d, shallow) replaces Sources, Resources and include (proof in `docs/shared/w2-i1-identity-proofs.md`); `Syntaxer.mm` is now the fork's single iOS+macOS glue. The fork also carries Android's regex move budget on top of iOS's depth and search caps. Not built (risk: include_prefix mapping of Syntaxer.h with enable_modules, the Swift import of the now implicitly unwrapped initializers).

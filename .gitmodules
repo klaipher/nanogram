@@ -25,8 +25,9 @@
 	shallow = true
 [submodule "third-party/wallet-engine"]
 	path = third-party/wallet-engine/wallet-engine
-	url = https://github.com/i582/wallet-engine.git
+	url = https://github.com/klaipher/wallet-engine.git
 	shallow = true
+	branch = nanogram
 [submodule "submodules/tlottie/tlottie"]
 	path = submodules/tlottie/tlottie
 	url = https://github.com/dkaraush/tlottie.git
