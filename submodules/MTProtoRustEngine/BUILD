@@ -31,7 +31,7 @@ swift_library(
 )
 
 # Host (macOS) test: the mapping module is pure Foundation. The bridge and end-to-end tests stay
-# SwiftPM-only (`swift test`), because they need the macOS MTProtoEngineFFI.xcframework.
+# SwiftPM-only (`swift test`), because they need packages/RustLibraries/NanogramRustFFI.xcframework (Mac).
 swift_test(
     name = "MTProtoRustEngineMappingTests",
     srcs = glob(["Tests/MTProtoRustEngineMappingTests/**/*.swift"]),

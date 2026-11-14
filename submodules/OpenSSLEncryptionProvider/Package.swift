@@ -25,6 +25,7 @@ let package = Package(
                 .headerSearchPath("PublicHeaders"),
                 .headerSearchPath("SharedHeaders/openssl/include"),
                 .headerSearchPath("SharedHeaders/EncryptionProvider"),
+                .define("TELEGRAM_USE_BORINGSSL", to: "1"),
             ]),
     ]
 )

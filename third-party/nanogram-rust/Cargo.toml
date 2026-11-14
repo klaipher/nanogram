@@ -1,0 +1,27 @@
+[package]
+name = "nanogram-rust"
+version = "0.1.0"
+edition = "2021"
+publish = false
+
+# One archive for the three Rust libraries the Mac app links. Three separate fat-LTO archives each carry their own
+# copy of std, which the linker reports as a duplicate rust_eh_personality.
+[lib]
+name = "nanogram_rust"
+path = "src/lib.rs"
+crate-type = ["staticlib"]
+
+[dependencies]
+tlottie = { path = "../../submodules/tlottie/tlottie", default-features = false, features = ["std", "cpu", "c-api"] }
+wallet-engine = { path = "../wallet-engine/wallet-engine" }
+mtproto-ffi = { path = "../mtproto-engine/crates/mtproto-ffi" }
+
+[workspace]
+
+[profile.release]
+opt-level = 3
+codegen-units = 1
+lto = "fat"
+panic = "abort"
+debug = false
+incremental = false
