@@ -157,8 +157,13 @@ public enum StarsPurchasePurpose: Equatable {
 
 public struct PremiumConfiguration {
     public static var defaultValue: PremiumConfiguration {
+        return self.defaultValue(policy: StorePurchasePolicy.current)
+    }
+    
+    public static func defaultValue(policy: StorePurchasePolicy) -> PremiumConfiguration {
         return PremiumConfiguration(
-            isPremiumDisabled: !StorePurchasePolicy.current.sellsPremium,
+            isPremiumDisabled: !policy.sellsPremium,
+            isPremiumDisplayDisabled: false,
             areStarsDisabled: true,
             subscriptionManagementUrl: "",
             showPremiumGiftInAttachMenu: false,
@@ -188,7 +193,11 @@ public struct PremiumConfiguration {
         )
     }
     
+    /// Purchase and upsell gating: the server flag OR the store purchase policy.
     public let isPremiumDisabled: Bool
+    /// Display gating, upstream semantics: the server flag (`premium_purchase_blocked`) only. Store builds
+    /// must keep showing Premium badges, emoji statuses and Premium content an account already has.
+    public let isPremiumDisplayDisabled: Bool
     public let areStarsDisabled: Bool
     public let subscriptionManagementUrl: String
     public let showPremiumGiftInAttachMenu: Bool
@@ -218,6 +227,7 @@ public struct PremiumConfiguration {
     
     fileprivate init(
         isPremiumDisabled: Bool,
+        isPremiumDisplayDisabled: Bool,
         areStarsDisabled: Bool,
         subscriptionManagementUrl: String,
         showPremiumGiftInAttachMenu: Bool,
@@ -246,6 +256,7 @@ public struct PremiumConfiguration {
         minGroupAudioTranscriptionLevel: Int32
     ) {
         self.isPremiumDisabled = isPremiumDisabled
+        self.isPremiumDisplayDisabled = isPremiumDisplayDisabled
         self.areStarsDisabled = areStarsDisabled
         self.subscriptionManagementUrl = subscriptionManagementUrl
         self.showPremiumGiftInAttachMenu = showPremiumGiftInAttachMenu
@@ -275,14 +286,18 @@ public struct PremiumConfiguration {
     }
     
     public static func with(appConfiguration: AppConfiguration) -> PremiumConfiguration {
-        let defaultValue = self.defaultValue
+        return self.with(appConfiguration: appConfiguration, policy: StorePurchasePolicy.current)
+    }
+    
+    public static func with(appConfiguration: AppConfiguration, policy: StorePurchasePolicy) -> PremiumConfiguration {
+        let defaultValue = self.defaultValue(policy: policy)
         if let data = appConfiguration.data {
             func get(_ value: Any?) -> Int32? {
                 return (value as? Double).flatMap(Int32.init)
             }
-            let policy = StorePurchasePolicy.current
             return PremiumConfiguration(
                 isPremiumDisabled: !policy.sellsPremium || (data["premium_purchase_blocked"] as? Bool ?? defaultValue.isPremiumDisabled),
+                isPremiumDisplayDisabled: data["premium_purchase_blocked"] as? Bool ?? defaultValue.isPremiumDisplayDisabled,
                 areStarsDisabled: !policy.sellsStars || (data["stars_purchase_blocked"] as? Bool ?? defaultValue.areStarsDisabled),
                 subscriptionManagementUrl: data["premium_manage_subscription_url"] as? String ?? "",
                 showPremiumGiftInAttachMenu: policy.allows(.premiumGiftPurchase) && (data["premium_gift_attach_menu_icon"] as? Bool ?? defaultValue.showPremiumGiftInAttachMenu),

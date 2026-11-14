@@ -4,6 +4,13 @@ Newest first. Internal notes for each TestFlight build; testers see the What to 
 
 ## Unreleased
 
+- **Build fixes from the first App Store build of this round**:
+  - `.bazelrc`: rules_rust pipelined compilation is off. Under `--spawn_strategy=standalone`, the .rmeta and .rlib actions both write the .rmeta, and the second fails with "not writeable".
+  - `third-party/td/build-td-bazel.sh`: `-DCCACHE_FOUND=OFF`. TDLib's CMake finds Homebrew's ccache, but the genrule's PATH lacks it (exit 127).
+  - `NanogramFeatures`: `public import Foundation`. The strict module has InternalImportsByDefault, and its public API uses `Date`, `Calendar` and `URL`.
+
+- **Premium display vs purchase split** (`PremiumConfiguration`, AccountContext): new `isPremiumDisplayDisabled` = the server key `premium_purchase_blocked` only (upstream semantics). `isPremiumDisabled` stays server OR `StorePurchasePolicy` and gates purchase/upsell entry points. Store builds had hidden other users' Premium badges, emoji statuses, Premium app icons, Premium stickers and the custom-emoji-pack tips because ~175 sites read the purchase flag. 24 changed lines now read the display flag: chat list, chat title, contacts, call list, voice chat, item-list peer rows (`ItemListPeerItem.Context.isPremiumDisabled` now returns the display value), reaction list, profile header, name colour preview, app icons list (Premium accounts only in store builds), sticker pack Premium stickers (Premium accounts only in store builds), reaction/message context menu emoji-pack tips, emoji/Premium-sticker tooltips. Non-Premium accounts in store builds still do not see locked Premium stickers or Premium app icons (those would lead to an upsell); Premium accounts see them. The chat-list closure no longer reads `defaultValue.isPremiumDisabled` (which included the policy). `PremiumConfiguration.with(appConfiguration:policy:)` takes the policy for tests; new `AccountContextTests` (`PremiumConfigurationTests`).
+
 - **Tooling**: `device_signing.py profiles` warns and continues when the Watch app or widget cannot be signed with the API key, instead of stopping before it collects the profiles. Those are the targets whose App Group needs a signed-in Apple ID; TestFlight signs them with `appstore-signing`. A stale app profile without Time Sensitive had stopped the App Store build at entitlement processing.
 
 - **Build fix** (`submodules/NanogramAppIntents/BUILD`): `linkopts = ["-framework", "AppIntents"]`. rules_apple's `app_intents_aspect` fails analysis unless the library links the AppIntents SDK framework ("does not depend on the AppIntents SDK framework").

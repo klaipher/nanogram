@@ -390,7 +390,7 @@ public final class ItemListPeerItem: ListViewItem, ItemListItem, ItemListRevealO
         public var isPremiumDisabled: Bool {
             switch self {
             case let .account(context):
-                return PremiumConfiguration.with(appConfiguration: context.currentAppConfiguration.with({ $0 })).isPremiumDisabled
+                return PremiumConfiguration.with(appConfiguration: context.currentAppConfiguration.with({ $0 })).isPremiumDisplayDisabled
             case let .custom(custom):
                 return custom.isPremiumDisabled
             }

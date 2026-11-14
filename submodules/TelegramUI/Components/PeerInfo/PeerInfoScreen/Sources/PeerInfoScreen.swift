@@ -2447,7 +2447,7 @@ final class PeerInfoScreenNode: ViewControllerTracingNode, PeerInfoScreenNodePro
                 }
                 
                 let premiumConfiguration = PremiumConfiguration.with(appConfiguration: strongSelf.context.currentAppConfiguration.with { $0 })
-                guard !premiumConfiguration.isPremiumDisabled else {
+                guard !premiumConfiguration.isPremiumDisplayDisabled else {
                     return
                 }
                 

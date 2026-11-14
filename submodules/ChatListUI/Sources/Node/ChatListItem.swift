@@ -4010,8 +4010,8 @@ public class ChatListItemNode: ItemListRevealOptionsItemNode {
             
             // Parsed only for premium peers, the only rows that read it.
             // Reads the one key instead of parsing the whole PremiumConfiguration (same default: false).
-            let isPremiumDisabled: () -> Bool = {
-                return PremiumConfiguration.defaultValue.isPremiumDisabled || (item.context.currentAppConfiguration.with { $0 }.data?["premium_purchase_blocked"] as? Bool ?? false)
+            let isPremiumDisplayDisabled: () -> Bool = {
+                return (item.context.currentAppConfiguration.with { $0 }.data?["premium_purchase_blocked"] as? Bool ?? false)
             }
             var isAccountPeer = false
             if case let .chatList(index) = item.index, index.messageIndex.id.peerId == item.context.account.peerId {
@@ -4043,7 +4043,7 @@ public class ChatListItemNode: ItemListRevealOptionsItemNode {
                                 if let color = emojiStatus.color {
                                     currentStatusIconParticleColor = UIColor(rgb: UInt32(bitPattern: color))
                                 }
-                            } else if peer.isPremium && !isPremiumDisabled() {
+                            } else if peer.isPremium && !isPremiumDisplayDisabled() {
                                 currentCredibilityIconContent = .premium(color: item.presentationData.theme.list.itemAccentColor)
                             }
                             
@@ -4074,7 +4074,7 @@ public class ChatListItemNode: ItemListRevealOptionsItemNode {
                         if let color = emojiStatus.color {
                             currentStatusIconParticleColor = UIColor(rgb: UInt32(bitPattern: color))
                         }
-                    } else if peer.isPremium && !isPremiumDisabled() {
+                    } else if peer.isPremium && !isPremiumDisplayDisabled() {
                         currentCredibilityIconContent = .premium(color: item.presentationData.theme.list.itemAccentColor)
                     }
                     

@@ -2263,7 +2263,7 @@ func contextMenuForChatPresentationInterfaceState(chatPresentationInterfaceState
                         let presentationData = context.sharedContext.currentPresentationData.with { $0 }
                         let premiumConfiguration = PremiumConfiguration.with(appConfiguration: context.currentAppConfiguration.with { $0 })
                         
-                        if !premiumConfiguration.isPremiumDisabled {
+                        if !premiumConfiguration.isPremiumDisplayDisabled {
                             if customReactionEmojiPacks.count == 1, let firstCustomEmojiReaction = firstCustomEmojiReaction {
                                 tip = .animatedEmoji(
                                     text: presentationData.strings.ChatContextMenu_ReactionEmojiSetSingle(customReactionEmojiPacks[0].title).string,

@@ -761,7 +761,7 @@ public final class ChatTitleComponent: Component {
                                 titleCredibilityIcon = .scam
                             } else if !hidePeerStatus, let emojiStatus = peer.emojiStatus {
                                 titleStatusIcon = .emojiStatus(emojiStatus)
-                            } else if peer.isPremium && !premiumConfiguration.isPremiumDisabled {
+                            } else if peer.isPremium && !premiumConfiguration.isPremiumDisplayDisabled {
                                 titleCredibilityIcon = .premium
                             }
                             

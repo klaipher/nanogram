@@ -9240,7 +9240,7 @@ public final class ChatControllerImpl: TelegramBaseController, ChatController, G
     
     func displayPremiumStickerTooltip(file: TelegramMediaFile, message: Message) {
         let premiumConfiguration = PremiumConfiguration.with(appConfiguration: self.context.currentAppConfiguration.with { $0 })
-        guard !premiumConfiguration.isPremiumDisabled else {
+        guard !premiumConfiguration.isPremiumDisplayDisabled else {
             return
         }
         
@@ -9278,7 +9278,7 @@ public final class ChatControllerImpl: TelegramBaseController, ChatController, G
     
     func displayEmojiPackTooltip(file: TelegramMediaFile, message: Message) {
         let premiumConfiguration = PremiumConfiguration.with(appConfiguration: self.context.currentAppConfiguration.with { $0 })
-        guard !premiumConfiguration.isPremiumDisabled else {
+        guard !premiumConfiguration.isPremiumDisplayDisabled else {
             return
         }
                 

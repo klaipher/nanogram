@@ -950,6 +950,9 @@ private final class StickerPackContainer: ASDisplayNode {
                 if hasPremium {
                     setStatus(file)
                 } else {
+                    guard !PremiumConfiguration.with(appConfiguration: context.currentAppConfiguration.with { $0 }).isPremiumDisabled else {
+                        return
+                    }
                     var replaceImpl: ((ViewController) -> Void)?
                     let controller = PremiumDemoScreen(context: context, subject: .animatedEmoji, action: {
                         let controller = PremiumIntroScreen(context: context, source: .animatedEmoji)
@@ -1745,7 +1748,7 @@ private final class StickerPackContainer: ASDisplayNode {
                         addItem(item, false, false)
                     }
                     
-                    if !premiumConfiguration.isPremiumDisabled {
+                    if !premiumConfiguration.isPremiumDisplayDisabled && (hasPremium || !premiumConfiguration.isPremiumDisabled) {
                         if !premiumItems.isEmpty {
                             for item in premiumItems {
                                 addItem(item, true, !hasPremium)
@@ -1864,7 +1867,7 @@ private final class StickerPackContainer: ASDisplayNode {
             addedReorderItem = true
         }
         
-        if !premiumConfiguration.isPremiumDisabled {
+        if !premiumConfiguration.isPremiumDisplayDisabled && (hasPremium || !premiumConfiguration.isPremiumDisabled) {
             if !premiumItems.isEmpty {
                 for item in premiumItems {
                     addItem(item, true, !hasPremium)

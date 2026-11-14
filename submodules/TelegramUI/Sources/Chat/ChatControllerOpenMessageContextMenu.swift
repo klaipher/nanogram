@@ -234,7 +234,7 @@ extension ChatControllerImpl {
                 }
                 let premiumConfiguration = PremiumConfiguration.with(appConfiguration: context.currentAppConfiguration.with { $0 })
                 
-                if !emojiFileIds.isEmpty && !premiumConfiguration.isPremiumDisabled {
+                if !emojiFileIds.isEmpty && !premiumConfiguration.isPremiumDisplayDisabled {
                     tip = .animatedEmoji(text: nil, arguments: nil, file: nil, action: nil)
                     actions.tip = tip
                     disableTransitionAnimations = true

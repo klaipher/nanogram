@@ -717,7 +717,7 @@ final class PeerInfoHeaderNode: ASDisplayNode {
                 credibilityIcon = .scam
             } else if let emojiStatus = peer.emojiStatus {
                 statusIcon = .emojiStatus(emojiStatus)
-            } else if peer.isPremium && !premiumConfiguration.isPremiumDisabled && (peer.id != self.context.account.peerId || self.isSettings || self.isMyProfile) {
+            } else if peer.isPremium && !premiumConfiguration.isPremiumDisplayDisabled && (peer.id != self.context.account.peerId || self.isSettings || self.isMyProfile) {
                 credibilityIcon = .premium
             } else {
                 credibilityIcon = .none
