@@ -30,6 +30,11 @@ let package = Package(
                 .headerSearchPath("PublicHeaders/OpusBinding"),
                 .headerSearchPath("SharedHeaders/libopus/include"),
                 .headerSearchPath("Sources"),
+                // ogg and opusfile: symlinks into the single sources (third-party/ogg, third-party/opusfile); Bazel
+                // builds them as //third-party/ogg and //third-party/opusfile instead (see BUILD).
+                .headerSearchPath("SwiftPMLinks/ogg-include"),
+                .headerSearchPath("SwiftPMLinks/opusfile-include"),
+                .headerSearchPath("SwiftPMLinks/opus-flat"),
             ]),
         .testTarget(
             name: "OpusBindingTests",

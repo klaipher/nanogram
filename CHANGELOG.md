@@ -4,6 +4,8 @@ Newest first. Internal notes for each TestFlight build; testers see the What to 
 
 ## Unreleased
 
+- **OpusBinding uses the single opusfile and ogg** (W2.I1 deferred item from W1.1). The second in-tree copies (old opusfile snapshot, old ogg) are deleted; BUILD depends on `//third-party/opusfile` and `//third-party/ogg`; `opusenc.m` includes `<opusfile/opusfile.h>`; Package.swift (Mac) reaches the same sources through symlinks in `submodules/OpusBinding/SwiftPMLinks/`. Current opusfile v0.12 fixes replace the old snapshot. Not built (risk: SwiftPM symlinked sources and the flat opus header shim are unverified).
+
 - **One shared tooling submodule** (W0.2). `shared/` = klaipher/nanogram-deps 6a07ce57. `tools/dev/parity/parity.py` and the new `tools/dev/native/check_shared.py` are wrappers (the 59 parity tests moved to the submodule; `tools/dev/tests/test_parity.py` keeps the repository-specific ones), `tglint` pre-push runs `check_shared.py --side ios`, `docs/mac-core-paths.txt` gains `lib` lines and `android=` on the tgcalls and tlottie pins, cachegc reads `shared/cache-policy.json`, and `docs/feature-parity.md` / `docs/development-pipeline.md` moved into `shared/`. AGENTS.md carries the shared-code rule. Not built.
 
 - **Review fixes for W1.1** (tg doctor prints the submodule path instead of the sentinel's parent dir; `.gitignore` guards `third-party/td/TdBinding/SharedHeaders/`; NANOGRAM-CHANGES points at the proofs doc). The Mac handoff list in `docs/shared/w1-1-identity-proofs.md` gained the CodeSyntax boost path and the td sync-headers removal.

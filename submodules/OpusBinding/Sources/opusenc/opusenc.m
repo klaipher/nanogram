@@ -1,5 +1,5 @@
 #include <opus/opus_types.h>
-#include "../opusfile/opusfile.h"
+#include <opusfile/opusfile.h>
 #import <CommonCrypto/CommonDigest.h>
 #include <ogg/ogg.h>
 
