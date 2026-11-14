@@ -570,6 +570,7 @@ final class ChatHistoryStore {
 
     func cancelFileDownload(fileId: Int) {
         trackedFileIds.remove(fileId)
+        fileGate.forget(fileId: fileId)
         logger.info("cancelFileDownload fileId=\(fileId, privacy: .public)")
         Task { [logger, loader] in
             do {
@@ -748,7 +749,8 @@ final class ChatHistoryStore {
             calendar: Calendar.current,
             selfUserId: selfUserId,
             unreadDividerAfterId: window.unreadDividerAfterId,
-            lastReadOutboxMessageId: lastReadOutboxMessageId
+            lastReadOutboxMessageId: lastReadOutboxMessageId,
+            presorted: true
         )
         // If a voice playback is awaiting its file, advance it now that the
         // projection has the freshest `localPath`.

@@ -155,7 +155,8 @@ struct MessageWindow: Equatable {
 
     /// Keeps the window to about `limit` messages by dropping the end the user is not reading, so memory and
     /// per-update work stop growing with scroll depth. Messages still being sent or that failed to send are
-    /// never dropped (their local ids sit at the newest end and the send-result update needs them).
+    /// never dropped (their local ids sit at the newest end and the send-result update needs them), and the newest end
+    /// stops at the first of them so the kept range stays contiguous.
     /// Dropping the newest end means the window no longer reaches the chat tail (`loadNewer` brings it back);
     /// dropping the oldest end means there is older history again. Returns how many messages were dropped.
     @discardableResult
@@ -167,7 +168,13 @@ struct MessageWindow: Equatable {
         var dropped = 0
         for id in candidates {
             if dropped == excess { break }
-            guard let message = cache[id], message.sendingState == .sent else { continue }
+            guard let message = cache[id] else { continue }
+            if message.sendingState != .sent {
+                // Unsent messages sit at the newest end. Dropping past one would leave it beside old history with
+                // a gap between, so the newest end stops here; the oldest end just skips them.
+                if end == .newest { break }
+                continue
+            }
             cache.removeValue(forKey: id)
             dropped += 1
         }

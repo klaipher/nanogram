@@ -54,10 +54,25 @@ final class CoreMessageWindowTrimTests: XCTestCase {
         )
         w.applySendSucceeded(oldId: 999, message: pending)   // inserts it
         XCTAssertNotNil(w.cache[900])
-        w.trim(toLimit: 3, droppingFrom: .newest)
+        XCTAssertEqual(w.trim(toLimit: 3, droppingFrom: .newest), 0, "the newest end stops at the unsent message, so no gap opens")
+        XCTAssertEqual(w.cache.keys.sorted(), [1, 2, 3, 4, 900])
+        XCTAssertEqual(w.trim(toLimit: 3, droppingFrom: .oldest), 2, "the oldest end skips the unsent message")
+        XCTAssertEqual(w.cache.keys.sorted(), [3, 4, 900])
         XCTAssertNotNil(w.cache[900], "a pending send stays")
-        XCTAssertEqual(w.cache.count, 3)
-        XCTAssertEqual(w.cache.keys.sorted(), [1, 2, 900])
+    }
+
+    func testTrimNewestKeepsTheRangeContiguousWithAFailedSendAtTheTail() throws {
+        var w = try window(ids: Array(1...6))
+        let failed = CachedMessage(
+            id: 900, date: 1_700_000_000, editDate: 0, isOutgoing: true,
+            senderId: .messageSenderUser(MessageSenderUser(userId: 1)),
+            content: try CachedMessage(try CoreFixtures.message(id: 1)).content,
+            sendingState: .failed, replyTo: nil
+        )
+        w.applySendFailed(oldId: 999, message: failed)
+        w.trim(toLimit: 3, droppingFrom: .newest)
+        XCTAssertEqual(w.cache.keys.sorted(), [1, 2, 3, 4, 5, 6, 900], "nothing between the old end and the failed send is dropped")
+        XCTAssertEqual(w.loadedHighestId, 900)
     }
 
     func testRevisionChangesWithTheMessagesOnly() throws {
