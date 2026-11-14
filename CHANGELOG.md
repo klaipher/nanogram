@@ -4,6 +4,8 @@ Newest first. Internal notes for each TestFlight build; testers see the What to 
 
 ## Unreleased
 
+- **twidget 477b0133: litehtml merged with upstream Telegram-iOS 13.2** (3-way, base b5878f9). WidgetRuntime (message widgets) needs 13.2's litehtml: calc(), text-overflow/ellipsis, object-fit/position, individual transforms, tabular-nums and the asserted struct layouts. The fork keeps its Mac and Android features through hooks. The keep-going build had 31 errors in WidgetRuntime against the old pin. nanogram-deps 9667f92c.
+
 - **Build fixes (keep-going build)**:
   - FlatBuffers and WalletEngineFFI: `-suppress-warnings` removed. It conflicts with the global `-Wwarning DeprecatedDeclaration` Swift copt.
   - The Watch compile copies its sources with `rsync --copy-links`. The libwebp, libogg and opus files are relative symlinks into the shared submodules and dangled in the temporary copy.
