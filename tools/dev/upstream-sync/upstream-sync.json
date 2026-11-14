@@ -210,6 +210,15 @@
    "official_tag": "v1.3.6"
   },
   {
+   "name": "opus",
+   "paths": [
+    "third-party/opus/"
+   ],
+   "note": "official pin: an upstream edit arrives as a new tag of the library; bump the submodule, no fork to patch",
+   "official_url": "https://github.com/xiph/opus.git",
+   "official_tag": "v1.6.1"
+  },
+  {
    "name": "opusfile",
    "paths": [
     "third-party/opusfile/"

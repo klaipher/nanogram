@@ -14,12 +14,8 @@ OPT_CFLAGS="-O2 -g"
 rm -rf "$SOURCE_DIR/.git"
 echo 'PACKAGE_VERSION="1.6.1"' > "$SOURCE_DIR/package_version"
 
-# configure flags: --disable-shared --enable-static -> OPUS_BUILD_SHARED_LIBRARY=OFF, --disable-extra-programs ->
-# OPUS_BUILD_PROGRAMS=OFF, --disable-doc (no CMake target), --disable-asm (no CMake option; CMake has no hand-written
-# asm switch, the arm64 NEON code is intrinsics) + --enable-intrinsics -> OPUS_DISABLE_INTRINSICS=OFF, floating
-# point (configure default) -> OPUS_FIXED_POINT=OFF, DRED/OSCE/deep PLC (configure default off) -> OPUS_DRED=OFF,
-# OPUS_OSCE=OFF, --with-pic -> CMAKE_POSITION_INDEPENDENT_CODE=ON.
-COMMON_ARGS="-DOPUS_BUILD_SHARED_LIBRARY=OFF -DOPUS_BUILD_PROGRAMS=OFF -DOPUS_BUILD_TESTING=OFF -DBUILD_TESTING=OFF -DOPUS_DISABLE_INTRINSICS=OFF -DOPUS_FIXED_POINT=OFF -DOPUS_DRED=OFF -DOPUS_OSCE=OFF -DOPUS_INSTALL_PKG_CONFIG_MODULE=OFF -DOPUS_INSTALL_CMAKE_CONFIG_MODULE=OFF -DCMAKE_POSITION_INDEPENDENT_CODE=ON -DCMAKE_BUILD_TYPE=Release -DCMAKE_TRY_COMPILE_TARGET_TYPE=STATIC_LIBRARY"
+. "$(cd "$(dirname "$0")" && pwd -P)/opus-cmake-args.sh"
+COMMON_ARGS="$OPUS_COMMON_ARGS"
 
 mkdir -p "$BUILD_DIR/build"
 cd "$BUILD_DIR/build"

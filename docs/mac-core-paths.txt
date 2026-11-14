@@ -41,6 +41,7 @@ lib ffmpeg ios=submodules/ffmpeg/Sources/FFMpeg/ffmpeg-9.0.2 mac=submodules/ffmp
 lib boost-regex ios=third-party/boost_regex/regex mac=third-party/boost_regex/regex android=TMessagesProj/jni/third_party/boost-regex
 lib wamr ios=third-party/wamr/wamr android=TMessagesProj/jni/third_party/wamr
 lib ogg ios=third-party/ogg/ogg mac=third-party/ogg/ogg android=TMessagesProj/jni/third_party/xiph/ogg
+lib opus ios=third-party/opus/opus mac=third-party/opus/opus android=TMessagesProj/jni/third_party/xiph/opus
 lib opusfile ios=third-party/opusfile/opusfile mac=third-party/opusfile/opusfile android=TMessagesProj/jni/third_party/xiph/opusfile
 lib libwebp ios=third-party/webp/libwebp mac=third-party/webp/libwebp
 lib libvpx ios=third-party/libvpx/libvpx mac=third-party/libvpx/libvpx android=TMessagesProj/jni/third_party/libvpx
@@ -99,6 +100,7 @@ share third-party/dav1d
 share third-party/mozjpeg
 share third-party/ogg
 share third-party/openh264
+share third-party/opus
 share third-party/opusfile
 share third-party/webp
 share third-party/libprisma

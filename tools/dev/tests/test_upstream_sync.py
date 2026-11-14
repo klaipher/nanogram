@@ -81,7 +81,7 @@ class MovedLibraries(unittest.TestCase):
         config = sync.load_config()
         names = {lib["name"] for lib in config["moved_libraries"]}
         for wanted in ("FFmpeg", "openh264", "rnnoise", "libprisma", "sqlcipher-amalgamation", "libyuv", "boringssl", "quickjs",
-                       "widget-sandbox", "twidget", "ogg", "opusfile", "libwebp", "boost_regex", "wamr"):
+                       "widget-sandbox", "twidget", "ogg", "opus", "opusfile", "libwebp", "boost_regex", "wamr"):
             self.assertIn(wanted, names)
 
     def test_report_lists_the_fork_to_patch(self):

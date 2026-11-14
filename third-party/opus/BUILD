@@ -30,6 +30,7 @@ genrule(
     name = "opus_build",
     srcs = [
         "build-opus-bazel.sh",
+        "opus-cmake-args.sh",
         ":opus_sources",
         "@cmake_tar_gz//file",
         "@ninja-mac_zip//file",
@@ -74,6 +75,7 @@ genrule(
     fi
 
     cp $(location :build-opus-bazel.sh) "$$BUILD_DIR/"
+    cp $(location :opus-cmake-args.sh) "$$BUILD_DIR/"
 
     SOURCE_PATH="third-party/opus/opus"
 

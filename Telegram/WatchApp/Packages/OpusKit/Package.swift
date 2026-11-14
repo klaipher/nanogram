@@ -25,7 +25,9 @@ let package = Package(
                 .unsafeFlags(["-Wno-shorten-64-to-32"]),
             ]
         ),
-        // Vendored: libopus 1.6.1 (xiph/opus tag v1.6.1, 22244de5a79bd1d6d623c32e72bf1954b56235be):
+        // libopus 1.6.1 (xiph/opus tag v1.6.1, 22244de5a79bd1d6d623c32e72bf1954b56235be): celt/, silk/, src/ and include/ are
+        // symlinks into the shared third-party/opus/opus submodule (one copy for the app); only config.h is hand-written.
+        // Sources used:
         // celt/, silk/, src/, include/ minus build files, dump_modes, fixed_c5x/c6x.h, tansig_table.h.
         // Exclude list is version-specific — verify on upgrade.
         // arm_celt_map.c and armcpu.c are intentionally kept; both are fully
