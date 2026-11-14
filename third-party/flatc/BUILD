@@ -3,7 +3,6 @@ genrule(
     name = "flatc",
     srcs = [
         "@flatbuffers_zip//file",
-        "@cmake_tar_gz//file",
     ],
     cmd_bash =
 """
@@ -13,16 +12,13 @@ set -x
     rm -rf "$$BUILD_DIR"
     mkdir -p "$$BUILD_DIR"
 
-    CMAKE_DIR="$$(pwd)/$$BUILD_DIR/cmake"
-    rm -rf "$$CMAKE_DIR"
-    mkdir -p "$$CMAKE_DIR"
-    tar -xf "$(location @cmake_tar_gz//file)" -C "$$CMAKE_DIR"
-    
+    CMAKE_BIN_DIR="$$(pwd)/$$(dirname $(execpath @cmake//:cmake))"
+
     tar -xzf "$(location @flatbuffers_zip//file)" --directory "$$BUILD_DIR"
     pushd "$$BUILD_DIR/flatbuffers-25.12.19"
     mkdir build
     cd build
-    PATH="$$CMAKE_DIR/cmake-4.1.2-macos-universal/CMake.app/Contents/bin:$$PATH" cmake .. -DCMAKE_BUILD_TYPE=Release -DFLATBUFFERS_BUILD_TESTS=0 -DFLATBUFFERS_INSTALL=0 -DFLATBUFFERS_BUILD_FLATLIB=0 -DFLATBUFFERS_STATIC_FLATC=0
+    PATH="$$CMAKE_BIN_DIR:$$PATH" cmake .. -DCMAKE_BUILD_TYPE=Release -DFLATBUFFERS_BUILD_TESTS=0 -DFLATBUFFERS_INSTALL=0 -DFLATBUFFERS_BUILD_FLATLIB=0 -DFLATBUFFERS_STATIC_FLATC=0
     make -j $$core_count
     popd
 
@@ -30,6 +26,10 @@ set -x
 """,
     outs = [
         "flatc_bin",
+    ],
+    tools = [
+        "@cmake//:all",
+        "@cmake//:cmake",
     ],
     visibility = [
         "//visibility:public",

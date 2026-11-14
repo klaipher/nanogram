@@ -26,7 +26,6 @@ genrule(
     srcs = [
         "build-webp-bazel.sh",
         ":libwebp_sources",
-        "@cmake_tar_gz//file",
     ],
     cmd_bash = 
     """
@@ -49,10 +48,7 @@ genrule(
     rm -rf "$$BUILD_DIR"
     mkdir -p "$$BUILD_DIR"
 
-    CMAKE_DIR="$$(pwd)/$$BUILD_DIR/cmake"
-    rm -rf "$$CMAKE_DIR"
-    mkdir -p "$$CMAKE_DIR"
-    tar -xzf "$(location @cmake_tar_gz//file)" -C "$$CMAKE_DIR"
+    CMAKE_BIN_DIR="$$(pwd)/$$(dirname $(execpath @cmake//:cmake))"
 
     cp $(location :build-webp-bazel.sh) "$$BUILD_DIR/"
 
@@ -62,7 +58,7 @@ genrule(
 
     mkdir -p "$$BUILD_DIR/Public/libwebp"
 
-    PATH="$$CMAKE_DIR/cmake-4.1.2-macos-universal/CMake.app/Contents/bin:$$PATH" sh $$BUILD_DIR/build-webp-bazel.sh $$BUILD_ARCH "$$BUILD_DIR/libwebp" "$$BUILD_DIR"
+    PATH="$$CMAKE_BIN_DIR:$$PATH" sh $$BUILD_DIR/build-webp-bazel.sh $$BUILD_ARCH "$$BUILD_DIR/libwebp" "$$BUILD_DIR"
     """ +
     "\n".join([
         "cp -f \"$$BUILD_DIR/libwebp/src/webp/{}\" \"$(location Public/webp/{})\"".format(header, header) for header in headers
@@ -74,6 +70,10 @@ genrule(
     "\n" + "rm -rf \"$$BUILD_DIR\"",
     outs = ["Public/webp/" + x for x in headers] +
     ["Public/webp/lib/lib{}.a".format(x) for x in libs],
+    tools = [
+        "@cmake//:all",
+        "@cmake//:cmake",
+    ],
     visibility = [
         "//visibility:public",
     ]

@@ -22,7 +22,6 @@ genrule(
     srcs = [
         "build-libjpeg-turbo-bazel.sh",
         "@libjpeg_turbo_tar_gz//file",
-        "@cmake_tar_gz//file",
     ],
     cmd_bash =
     """
@@ -43,16 +42,14 @@ genrule(
     rm -rf "$$BUILD_DIR"
     mkdir -p "$$BUILD_DIR"
 
-    CMAKE_DIR="$$(pwd)/$$BUILD_DIR/cmake"
-    mkdir -p "$$CMAKE_DIR"
-    tar -xzf "$(location @cmake_tar_gz//file)" -C "$$CMAKE_DIR"
+    CMAKE_BIN_DIR="$$(pwd)/$$(dirname $(execpath @cmake//:cmake))"
 
     tar -xzf "$(location @libjpeg_turbo_tar_gz//file)" -C "$$BUILD_DIR"
     SOURCE_DIR="$$(pwd)/$$BUILD_DIR/libjpeg-turbo-""" + VERSION + """"
 
     cp $(location :build-libjpeg-turbo-bazel.sh) "$$BUILD_DIR/"
 
-    PATH="$$PATH:$$CMAKE_DIR/cmake-4.1.2-macos-universal/CMake.app/Contents/bin" sh $$BUILD_DIR/build-libjpeg-turbo-bazel.sh $$BUILD_ARCH "$$SOURCE_DIR" "$$BUILD_DIR"
+    PATH="$$CMAKE_BIN_DIR:$$PATH" sh $$BUILD_DIR/build-libjpeg-turbo-bazel.sh $$BUILD_ARCH "$$SOURCE_DIR" "$$BUILD_DIR"
     """ +
     "\n".join([
         "cp -f \"$$SOURCE_DIR/src/{}\" \"$(location Public/libjpeg-turbo/{})\"".format(header, header) for header in headers
@@ -66,6 +63,10 @@ genrule(
     outs = ["Public/libjpeg-turbo/" + x for x in headers] +
     ["Public/libjpeg-turbo/jconfig.h"] +
     ["Public/libjpeg-turbo/lib/lib{}.a".format(x) for x in libs],
+    tools = [
+        "@cmake//:all",
+        "@cmake//:cmake",
+    ],
     visibility = [
         "//visibility:public",
     ],

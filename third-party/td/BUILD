@@ -28,7 +28,6 @@ genrule(
     srcs = [
         "build-td-bazel.sh",
         ":td_sources",
-        "@cmake_tar_gz//file",
         "//third-party/boringssl:crypto",
     ] + [
         "//third-party/boringssl:{}".format(header) for header in crypto_headers
@@ -52,10 +51,7 @@ genrule(
     rm -rf "$$BUILD_DIR"
     mkdir -p "$$BUILD_DIR"
 
-    CMAKE_DIR="$$(pwd)/$$BUILD_DIR/cmake"
-    rm -rf "$$CMAKE_DIR"
-    mkdir -p "$$CMAKE_DIR"
-    tar -xzf "$(location @cmake_tar_gz//file)" -C "$$CMAKE_DIR"
+    CMAKE_BIN_DIR="$$(pwd)/$$(dirname $(execpath @cmake//:cmake))"
 
     OPENSSL_BASE_DIR="$$(pwd)/$$BUILD_DIR"
     OPENSSL_DIR="$$OPENSSL_BASE_DIR/openssl"
@@ -83,7 +79,7 @@ genrule(
 
     mkdir -p "$$BUILD_DIR/Public/td"
 
-    PATH="$$CMAKE_DIR/cmake-4.1.2-macos-universal/CMake.app/Contents/bin:$$PATH" sh $$BUILD_DIR/build-td-bazel.sh $$BUILD_ARCH "$$BUILD_DIR/td" "$$BUILD_DIR" "$$OPENSSL_DIR"
+    PATH="$$CMAKE_BIN_DIR:$$PATH" sh $$BUILD_DIR/build-td-bazel.sh $$BUILD_ARCH "$$BUILD_DIR/td" "$$BUILD_DIR" "$$OPENSSL_DIR"
     """ +
     "\n".join([
         "cp -f \"$$BUILD_DIR/td/tde2e/{}\" \"$(location Public/td/{})\"".format(header, header) for header in headers
@@ -99,6 +95,10 @@ genrule(
     ] +
     [
         "Public/td/lib/lib{}.a".format(x) for x in libs
+    ],
+    tools = [
+        "@cmake//:all",
+        "@cmake//:cmake",
     ],
     visibility = [
         "//visibility:public",

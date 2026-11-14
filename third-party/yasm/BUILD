@@ -11,7 +11,6 @@ genrule(
     name = "yasm",
     srcs = [
         ":yasm_sources",
-        "@cmake_tar_gz//file",
     ],
     cmd_bash =
 """
@@ -21,20 +20,7 @@ set -x
     rm -rf "$$BUILD_DIR"
     mkdir -p "$$BUILD_DIR"
 
-    CMAKE_DIR="$$(pwd)/$$BUILD_DIR/cmake"
-    rm -rf "$$CMAKE_DIR"
-    mkdir -p "$$CMAKE_DIR"
-    tar -xf "$(location @cmake_tar_gz//file)" -C "$$CMAKE_DIR"
-
-    # Find cmake: try system cmake first, then downloaded macOS cmake
-    if command -v cmake >/dev/null 2>&1; then
-        CMAKE_BIN="cmake"
-    elif [ -d "$$CMAKE_DIR/cmake-4.1.2-macos-universal/CMake.app/Contents/bin" ]; then
-        CMAKE_BIN="$$CMAKE_DIR/cmake-4.1.2-macos-universal/CMake.app/Contents/bin/cmake"
-    else
-        echo "cmake not found"
-        exit 1
-    fi
+    CMAKE_BIN="$$(pwd)/$(execpath @cmake//:cmake)"
 
     SOURCE_PATH="third-party/yasm/yasm-1.3.0"
     cp -R "$$SOURCE_PATH" "$$BUILD_DIR/"
@@ -50,6 +36,10 @@ set -x
 """,
     outs = [
         "yasm.tar",
+    ],
+    tools = [
+        "@cmake//:all",
+        "@cmake//:cmake",
     ],
     visibility = [
         "//visibility:public",

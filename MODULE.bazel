@@ -220,10 +220,30 @@ apple_cc_configure = use_extension("@build_bazel_apple_support//crosstool:setup.
 use_repo(apple_cc_configure, "local_config_apple_cc", "local_config_apple_cc_toolchains")
 register_toolchains("@local_config_apple_cc_toolchains//:all")
 
-http_file(
-    name = "cmake_tar_gz",
-    sha256 = "3be85f5b999e327b1ac7d804cbc9acd767059e9f603c42ec2765f6ab68fbd367",
-    urls = ["https://github.com/Kitware/CMake/releases/download/v4.1.2/cmake-4.1.2-macos-universal.tar.gz"],
+# Build tools used by the native-library genrules (third-party/*). They are extracted ONCE as external repos and
+# listed in each genrule's `tools`, instead of every genrule untarring its own copy into its scratch tree. The genrule
+# puts the tool directory at the FRONT of PATH (dirname of $(execpath @cmake//:cmake)).
+# https://bazel.build/reference/be/general#genrule.tools
+_CMAKE_BUILD = """
+package(default_visibility = ["//visibility:public"])
+# Only the CLI and its runtime data (Modules, Templates, Licenses). The GUI frameworks, docs and the 2.5k-file Help
+# tree stay out of every action's input set.
+filegroup(
+    name = "all",
+    srcs = ["CMake.app/Contents/bin/cmake"] + glob(
+        ["CMake.app/Contents/share/cmake-4.5/**"],
+        exclude = ["CMake.app/Contents/share/cmake-4.5/Help/**"],
+    ),
+)
+alias(name = "cmake", actual = "CMake.app/Contents/bin/cmake")
+"""
+
+http_archive(
+    name = "cmake",
+    sha256 = "a645d69fd21e521759cc0c64e7c60462d43faf0c7214ac05f75c80f7c5037dde",
+    strip_prefix = "cmake-4.5.0-macos-universal",
+    urls = ["https://github.com/Kitware/CMake/releases/download/v4.5.0/cmake-4.5.0-macos-universal.tar.gz"],
+    build_file_content = _CMAKE_BUILD,
 )
 
 # libjpeg-turbo, the official release (https://github.com/libjpeg-turbo/libjpeg-turbo/releases/tag/3.2.1),
@@ -234,16 +254,28 @@ http_file(
     urls = ["https://github.com/libjpeg-turbo/libjpeg-turbo/releases/download/3.2.1/libjpeg-turbo-3.2.1.tar.gz"],
 )
 
-http_file(
-    name = "meson_tar_gz",
-    sha256 = "999b65f21c03541cf11365489c1fad22e2418bb0c3d50ca61139f2eec09d5496",
-    urls = ["https://github.com/mesonbuild/meson/releases/download/1.6.0/meson-1.6.0.tar.gz"],
+_MESON_BUILD = """
+package(default_visibility = ["//visibility:public"])
+exports_files(["meson.py"])
+filegroup(name = "all", srcs = glob(["**"], exclude = ["test cases/**", "manual tests/**", "docs/**"]))
+"""
+
+http_archive(
+    name = "meson",
+    sha256 = "ab0a6ca09f8ef70c564c8241fb5a23957886a0b53fb58412b5e07eaf07dba743",
+    strip_prefix = "meson-1.12.1",
+    urls = ["https://github.com/mesonbuild/meson/releases/download/1.12.1/meson-1.12.1.tar.gz"],
+    build_file_content = _MESON_BUILD,
 )
 
-http_file(
-    name = "ninja-mac_zip",
-    sha256 = "89a287444b5b3e98f88a945afa50ce937b8ffd1dcc59c555ad9b1baf855298c9",
-    urls = ["https://github.com/ninja-build/ninja/releases/download/v1.12.1/ninja-mac.zip"],
+http_archive(
+    name = "ninja",
+    sha256 = "c99048673aa765960a99cf10c6ddb9f1fad506099ff0a0e137ad8960a88f321b",
+    urls = ["https://github.com/ninja-build/ninja/releases/download/v1.13.2/ninja-mac.zip"],
+    build_file_content = """
+package(default_visibility = ["//visibility:public"])
+exports_files(["ninja"])
+""",
 )
 
 http_file(
