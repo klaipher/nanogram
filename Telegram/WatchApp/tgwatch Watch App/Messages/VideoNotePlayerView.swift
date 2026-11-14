@@ -97,6 +97,8 @@ struct VideoNotePlayerView: View {
                             .foregroundStyle(.white)
                     }
                     .buttonStyle(.plain)
+                    // Double Tap replays: the only primary action once the video has ended.
+                    .handGestureShortcut(.primaryAction)
                 }
             }
         case .failed(let message):

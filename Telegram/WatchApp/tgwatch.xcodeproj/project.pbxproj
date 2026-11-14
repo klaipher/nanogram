@@ -97,6 +97,7 @@
 		C2FC5C2F1B11E8B83F7FF203 /* LocationVisual.swift in Sources */ = {isa = PBXBuildFile; fileRef = 68256665FAE596E6E1E18347 /* LocationVisual.swift */; };
 		C3AD58C53B02CCF230E13BC2 /* WaveformBars.swift in Sources */ = {isa = PBXBuildFile; fileRef = 687E86C7ECD479328FAEA31A /* WaveformBars.swift */; };
 		C3DFBB28315AE47818CE77F0 /* ReplyHeaderView.swift in Sources */ = {isa = PBXBuildFile; fileRef = 1329216EB35DF3FC7636843D /* ReplyHeaderView.swift */; };
+		C4301D05D79806A88D19CB88 /* RecordFeedback.swift in Sources */ = {isa = PBXBuildFile; fileRef = B3FE50540F5B531E15364E1C /* RecordFeedback.swift */; };
 		C62226963E54795B2808A52C /* MapSnapshotRenderer.swift in Sources */ = {isa = PBXBuildFile; fileRef = CFFF41E60C5477C20897CD00 /* MapSnapshotRenderer.swift */; };
 		C6A64A26FC7DC74BDEC91308 /* ChatHistoryLoader.swift in Sources */ = {isa = PBXBuildFile; fileRef = C2C84B842AD08D079BFF08A0 /* ChatHistoryLoader.swift */; };
 		C94BD040D985FC0090CDBF84 /* StickerPickerLoader.swift in Sources */ = {isa = PBXBuildFile; fileRef = BC230FDDDFAA063019744A0E /* StickerPickerLoader.swift */; };
@@ -210,6 +211,7 @@
 		ADFD9DBB81D8F2028DAE6CF8 /* WebPStickerView.swift */ = {isa = PBXFileReference; lastKnownFileType = sourcecode.swift; path = WebPStickerView.swift; sourceTree = "<group>"; };
 		B089B6570CCD50D105C035FA /* Info.plist */ = {isa = PBXFileReference; lastKnownFileType = text.plist; path = Info.plist; sourceTree = "<group>"; };
 		B0F7533C5A9B419B29727C86 /* PhotoBubbleView.swift */ = {isa = PBXFileReference; lastKnownFileType = sourcecode.swift; path = PhotoBubbleView.swift; sourceTree = "<group>"; };
+		B3FE50540F5B531E15364E1C /* RecordFeedback.swift */ = {isa = PBXFileReference; lastKnownFileType = sourcecode.swift; path = RecordFeedback.swift; sourceTree = "<group>"; };
 		B605DE4F9A80E15250C5D693 /* MessageBubbleView.swift */ = {isa = PBXFileReference; lastKnownFileType = sourcecode.swift; path = MessageBubbleView.swift; sourceTree = "<group>"; };
 		BABCBE66AF47816CA3518036 /* Account.swift */ = {isa = PBXFileReference; lastKnownFileType = sourcecode.swift; path = Account.swift; sourceTree = "<group>"; };
 		BC230FDDDFAA063019744A0E /* StickerPickerLoader.swift */ = {isa = PBXFileReference; lastKnownFileType = sourcecode.swift; path = StickerPickerLoader.swift; sourceTree = "<group>"; };
@@ -397,6 +399,7 @@
 				6B11F6105ABCE7E74B89A881 /* PollBubbleView.swift */,
 				FE4D691106D7EA2FEE35F37F /* PollVisual.swift */,
 				DF0F4F15CB43635717B31B92 /* PollVoteView.swift */,
+				B3FE50540F5B531E15364E1C /* RecordFeedback.swift */,
 				E43D94B6C349AF9240929F5D /* RecordingMath.swift */,
 				7584BF25A84BAD24AB992A79 /* ReplyBar.swift */,
 				DDCE599C8D50EE8832B4A797 /* ReplyFormatters.swift */,
@@ -614,6 +617,7 @@
 				25F6B3EFED8EDDD9983CB0F7 /* PollVoteView.swift in Sources */,
 				F95C046A6C043344F0955815 /* QrLinkPublisher.swift in Sources */,
 				B9F6D473AA0F1DAF77799E77 /* QrLoginView.swift in Sources */,
+				C4301D05D79806A88D19CB88 /* RecordFeedback.swift in Sources */,
 				F8D37E651D4AA8D2A9832E0D /* RecordingMath.swift in Sources */,
 				A0899809BBC92D1563AC4160 /* ReplyBar.swift in Sources */,
 				FC110506EAA6FA010E83F407 /* ReplyFormatters.swift in Sources */,

@@ -31,7 +31,8 @@ struct VoiceRecordView: View {
         self.onComplete = onComplete
         _recorder = State(wrappedValue: VoiceRecorder(backend: AVRecordingBackend()))
         _playback = State(wrappedValue: VoicePlaybackController(
-            backend: AVEngineBackend(), decoder: OpusDecoderAdapter()))
+            backend: AVEngineBackend(), decoder: OpusDecoderAdapter(),
+            chunkedDecode: WatchFeatureFlags.isEnabled(.chunkedVoiceDecode)))
     }
 
     var body: some View {
@@ -51,6 +52,9 @@ struct VoiceRecordView: View {
         .navigationTitle(isRecordingOrReview ? "" : "Voice Message")
         .navigationBarBackButtonHidden(isRecordingOrReview)
         .toolbar { toolbarContent }
+        .sensoryFeedback(trigger: recorder.state) { old, new in
+            RecordHaptic.forTransition(from: old, to: new)?.feedback
+        }
         .onAppear { onPrepare() }
         .onDisappear {
             recorder.tearDown()
@@ -80,7 +84,13 @@ struct VoiceRecordView: View {
                 Button("Cancel") { playback.tearDown(); recorder.discard(); dismiss() }
             }
             ToolbarItem(placement: .confirmationAction) {
-                if isSending { ProgressView() } else { Button("Send") { send(draft) } }
+                if isSending {
+                    ProgressView()
+                } else {
+                    // Double Tap sends the reviewed note: the only primary action on this screen.
+                    Button("Send") { send(draft) }
+                        .handGestureShortcut(.primaryAction)
+                }
             }
         default:
             ToolbarItem(placement: .cancellationAction) { EmptyView() }
@@ -104,6 +114,7 @@ struct VoiceRecordView: View {
             }
         }
         .buttonStyle(.plain)
+        .handGestureShortcut(.primaryAction)
         .accessibilityIdentifier("recordStart")
     }
 
@@ -114,6 +125,7 @@ struct VoiceRecordView: View {
                 transportRing { RoundedRectangle(cornerRadius: 4).fill(.red).frame(width: 18, height: 18) }
             }
             .buttonStyle(.plain)
+            .handGestureShortcut(.primaryAction)
             .accessibilityIdentifier("recordStop")
         }
         .onChange(of: elapsed) { _, _ in
@@ -168,6 +180,7 @@ struct VoiceRecordView: View {
             let ok = await onSend(draft)
             if ok {
                 _ = recorder.consumeDraft()   // release file ownership only after success
+                WatchHaptics.sent()
                 onComplete()
             } else {
                 sendError = "Couldn't send. Try again."

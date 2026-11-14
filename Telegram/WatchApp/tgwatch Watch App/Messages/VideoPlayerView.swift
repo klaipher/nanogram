@@ -106,6 +106,8 @@ struct VideoPlayerView: View {
                         .shadow(radius: 2)
                 }
                 .buttonStyle(.plain)
+                // Double Tap replays: the only primary action once the video has ended.
+                .handGestureShortcut(.primaryAction)
             }
         }
     }
