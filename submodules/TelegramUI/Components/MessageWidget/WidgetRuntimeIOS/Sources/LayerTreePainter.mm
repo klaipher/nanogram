@@ -27,8 +27,8 @@ CGContextRef createBitmap(size_t width, size_t height) {
 // draws the document with every later item skipped.
 class Walk {
 public:
-    Walk(const LayerTree& tree, LHHostContainer& host, const PaintItem* stopAt)
-        : m_tree(tree), m_host(host), m_container(host.container()), m_stopAt(stopAt) {}
+    Walk(const LayerTree& tree, LHHostContainer& host, const PaintItem* stopAt, size_t& openFilters)
+        : m_tree(tree), m_host(host), m_container(host.container()), m_stopAt(stopAt), m_openFilters(openFilters) {}
 
     bool stopped() const { return m_stopped; }
 
@@ -192,10 +192,11 @@ private:
     litehtml::document_container& m_container;
     const PaintItem* m_stopAt;
     bool m_stopped = false;
-    size_t m_openFilters = 0;
+    size_t& m_openFilters;
 };
 
-void paintWith(const LayerTree& tree, CGContextRef context, const PaintItem* stopAt, int depth, LHEffectStore* effects);
+void paintWith(const LayerTree& tree, CGContextRef context, const PaintItem* stopAt, int depth, LHEffectStore* effects,
+               size_t openFilters);
 
 // The tree's backdrops in paint order.
 void collectBackdrops(const Layer& layer, std::vector<const void*>& owners) {
@@ -212,7 +213,7 @@ void collectBackdrops(const Layer& layer, std::vector<const void*>& owners) {
 
 // The source of the backdrop `owner`: the tree painted up to it, inside `rect`, at the filter target's scales.
 CGImageRef backdropSource(const LayerTree& tree, const void* owner, CGRect rect, CGFloat sx, CGFloat sy, bool flipped,
-                          int depth) {
+                          int depth, size_t openFilters) {
     if (depth > 0 || !owner) {
         return nullptr;
     }
@@ -234,7 +235,7 @@ CGImageRef backdropSource(const LayerTree& tree, const void* owner, CGRect rect,
     CGContextTranslateCTM(ctx, -rect.origin.x, -rect.origin.y);
     CGContextSetAllowsFontSmoothing(ctx, false);
     CGContextSetShouldAntialias(ctx, true);
-    paintWith(tree, ctx, static_cast<const PaintItem*>(owner), depth + 1, nullptr);
+    paintWith(tree, ctx, static_cast<const PaintItem*>(owner), depth + 1, nullptr, openFilters);
     CGImageRef image = CGBitmapContextCreateImage(ctx);
     CGContextRelease(ctx);
     return image;
@@ -242,10 +243,13 @@ CGImageRef backdropSource(const LayerTree& tree, const void* owner, CGRect rect,
 
 // `effects` only for the paint of a tile: a backdrop's source, painted while its backdrop is made, makes its own, so that
 // no making waits for another that may be waiting for it.
-void paintWith(const LayerTree& tree, CGContextRef context, const PaintItem* stopAt, int depth, LHEffectStore* effects) {
+void paintWith(const LayerTree& tree, CGContextRef context, const PaintItem* stopAt, int depth, LHEffectStore* effects,
+               size_t openFilters) {
+    // The replay inherits the filters open around the backdrop, so the cap counts the outer and replayed bitmaps together.
+    size_t open = openFilters;
     LHHostContainer host;
-    host.setBackdropSource([&tree, depth](const void* owner, CGRect r, CGFloat sx, CGFloat sy, bool flipped) {
-        return backdropSource(tree, owner, r, sx, sy, flipped, depth);
+    host.setBackdropSource([&tree, depth, &open](const void* owner, CGRect r, CGFloat sx, CGFloat sy, bool flipped) {
+        return backdropSource(tree, owner, r, sx, sy, flipped, depth, open);
     });
     host.setEffectStore(effects);
     std::vector<const void*> backdrops;
@@ -253,7 +257,7 @@ void paintWith(const LayerTree& tree, CGContextRef context, const PaintItem* sto
     host.allowBackdrops(backdrops);
     CGContextSaveGState(context);
     host.beginPaint(context);
-    Walk walk(tree, host, stopAt);
+    Walk walk(tree, host, stopAt, open);
     walk.layer(tree.root(), context);
     host.endPaint();
     CGContextRestoreGState(context);
@@ -265,7 +269,7 @@ void LayerTreePainter::paint(const LayerTree& tree, CGContextRef context, CGRect
     CGContextSaveGState(context);
     CGContextScaleCTM(context, scale, scale);
     CGContextTranslateCTM(context, -rect.origin.x, -rect.origin.y);
-    paintWith(tree, context, nullptr, 0, effects);
+    paintWith(tree, context, nullptr, 0, effects, 0);
     CGContextRestoreGState(context);
 }
 

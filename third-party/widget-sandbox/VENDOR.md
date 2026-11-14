@@ -38,7 +38,7 @@ Resource bundles: the test groups `:WidgetCorpus` and `:WidgetConformance` now c
 The tests were re-baselined (conformance 68 auto + 47 visual tests in 121 theme runs, channel 122 posts, corpus 279 files
 without `attacks/`, 133 attack pages as of v0.6.5), but WidgetRuntime was not ported to the new limits. Follow-ups, each deferred to a run:
 
-- the nesting-depth cap (profile decision L3, v0.6.5: 1024 levels, loop-based DOM walks; `attacks/deep-nesting`; this runtime's parser stops at `maxDepth = 256` and script-built DOM is bounded by the 50,000-node cap only, and the validator/NativeValidator are not used here), and the v0.6.5 `paint-filter-depth` / `paint-backdrop-replay` attack pages, whose stack depth and time on this runtime are unverified (watch them in the `InstanceTests` attack scan);
+- the nesting-depth cap (profile decision L3, v0.6.5: 1024 levels, loop-based DOM walks; `attacks/deep-nesting`; this runtime's parser stops at `maxDepth = 256` and script-built DOM is bounded by the 50,000-node cap only, and the validator/NativeValidator are not used here), and the v0.6.5 `paint-filter-depth` / `paint-backdrop-replay` attack pages: `LayerTreePainter` now caps nested filters at 16 (`kMaxNestedFilters`, counted through a backdrop's replay) and the render cut stops depth at 256, but their time on this runtime is still unverified (watch them in the `InstanceTests` attack scan);
 - the paint limits (profile decision L2: at most 16 heavy boxes, 2 with a backdrop filter; `auto/37`-`43`, the `paint-*`
   attack pages) and the 2,000-node cap (`auto/44-stop-nodes`; this runtime allows 50,000, the old profile's number);
 - the canvas command cap (4,000 per canvas in one task, was 10,000; `auto/19-limits`) and the batch wording of `auto/33`;

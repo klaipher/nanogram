@@ -446,4 +446,29 @@ static const char* const kEffectsPage = "<!doctype html><html><head></head><body
     XCTAssertEqual(effects.made(), 16u);
 }
 
+// A backdrop inside 16 nested filters: its source replay inherits the open count, so it filters nothing more (the replay
+// uses no store, so only the 16 outer results and the backdrop are counted).
+- (void)testBackdropInsideSixteenFiltersReplaysWithoutFurtherFilters {
+    std::string html = "<!doctype html><html><head></head><body style=\"margin:0\">";
+    for (int i = 0; i < 16; i++) {
+        html += "<div style=\"width:100px;height:100px;background:#0a0;filter:brightness(1.2)\">";
+    }
+    html += "<div style=\"position:absolute;left:10px;top:10px;width:40px;height:40px;backdrop-filter:blur(2px)\"></div>";
+    for (int i = 0; i < 16; i++) {
+        html += "</div>";
+    }
+    html += "</body></html>";
+    Booted booted(html, 1);
+    std::shared_ptr<const wr::LayerTree> tree = booted.tree();
+    XCTAssertTrue(tree != nullptr);
+    if (!tree) {
+        return;
+    }
+    LHEffectStore effects;
+    CGImageRef image = wr::ios::LayerTreePainter::copyImage(*tree, CGRectMake(0, 0, 100, 100), 1, &effects);
+    XCTAssertTrue(image != nullptr);
+    CGImageRelease(image);
+    XCTAssertEqual(effects.made(), 17u);
+}
+
 @end
