@@ -4,6 +4,8 @@ Newest first. Internal notes for each TestFlight build; testers see the What to 
 
 ## Unreleased
 
+- **libprisma compiles with BOOST_REGEX_MAX_BLOCKS=1536** (W2.I1 deferred item): the same cap Android uses on boost regex's block allocation. Not built.
+
 - **native-libs.json probes for ogg, opusfile, boost-regex and WAMR** (deferred item from W1.1): `tools/dev/native/check_native_libs.py` now fails when a BUILD comment or the submodule's version file disagrees with the shared version. Not built.
 
 - **OpusBinding uses the single opusfile and ogg** (W2.I1 deferred item from W1.1). The second in-tree copies (old opusfile snapshot, old ogg) are deleted; BUILD depends on `//third-party/opusfile` and `//third-party/ogg`; `opusenc.m` includes `<opusfile/opusfile.h>`; Package.swift (Mac) reaches the same sources through symlinks in `submodules/OpusBinding/SwiftPMLinks/`. Current opusfile v0.12 fixes replace the old snapshot. Not built (risk: SwiftPM symlinked sources and the flat opus header shim are unverified).

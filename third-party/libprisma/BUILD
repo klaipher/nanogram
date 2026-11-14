@@ -64,6 +64,7 @@ objc_library(
         ":LibprismaBundle",
     ],
     copts = [
+        "-DBOOST_REGEX_MAX_BLOCKS=1536",
     ],
     deps = [
         "//third-party/boost_regex",
@@ -98,6 +99,7 @@ cc_test(
     copts = [
         "-std=c++17",
         "-O2",
+        "-DBOOST_REGEX_MAX_BLOCKS=1536",
         "-Ithird-party/libprisma/Sources",
     ],
     data = [
