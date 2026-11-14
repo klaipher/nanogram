@@ -4,6 +4,8 @@ Newest first. Internal notes for each TestFlight build; testers see the What to 
 
 ## Unreleased
 
+- **native-libs.json probes for ogg, opusfile, boost-regex and WAMR** (deferred item from W1.1): `tools/dev/native/check_native_libs.py` now fails when a BUILD comment or the submodule's version file disagrees with the shared version. Not built.
+
 - **OpusBinding uses the single opusfile and ogg** (W2.I1 deferred item from W1.1). The second in-tree copies (old opusfile snapshot, old ogg) are deleted; BUILD depends on `//third-party/opusfile` and `//third-party/ogg`; `opusenc.m` includes `<opusfile/opusfile.h>`; Package.swift (Mac) reaches the same sources through symlinks in `submodules/OpusBinding/SwiftPMLinks/`. Current opusfile v0.12 fixes replace the old snapshot. Not built (risk: SwiftPM symlinked sources and the flat opus header shim are unverified).
 
 - **One shared tooling submodule** (W0.2). `shared/` = klaipher/nanogram-deps 6a07ce57. `tools/dev/parity/parity.py` and the new `tools/dev/native/check_shared.py` are wrappers (the 59 parity tests moved to the submodule; `tools/dev/tests/test_parity.py` keeps the repository-specific ones), `tglint` pre-push runs `check_shared.py --side ios`, `docs/mac-core-paths.txt` gains `lib` lines and `android=` on the tgcalls and tlottie pins, cachegc reads `shared/cache-policy.json`, and `docs/feature-parity.md` / `docs/development-pipeline.md` moved into `shared/`. AGENTS.md carries the shared-code rule. Not built.
