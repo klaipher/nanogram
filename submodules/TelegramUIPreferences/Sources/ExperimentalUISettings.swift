@@ -127,7 +127,7 @@ public struct ExperimentalUISettings: Codable, Equatable {
             enableVoipTcp: false,
             fakeGlass: false,
             compressedEmojiCache: true,
-            localTranscription: true,
+            localTranscription: false,
             disableQuickReaction: false,
             disableLanguageRecognition: false,
             disableImageContentAnalysis: false,
@@ -265,7 +265,7 @@ public struct ExperimentalUISettings: Codable, Equatable {
         self.enableVoipTcp = (try container.decodeIfPresent(Int32.self, forKey: "enableVoipTcp") ?? 0) != 0
         self.fakeGlass = (try container.decodeIfPresent(Int32.self, forKey: "fakeGlass") ?? 0) != 0
         self.compressedEmojiCache = (try container.decodeIfPresent(Int32.self, forKey: "compressedEmojiCache") ?? 1) != 0
-        self.localTranscription = (try container.decodeIfPresent(Int32.self, forKey: "localTranscriptionOnDevice") ?? 1) != 0
+        self.localTranscription = (try container.decodeIfPresent(Int32.self, forKey: "nanogramOnDeviceTranscription") ?? 0) != 0
         self.disableQuickReaction = try container.decodeIfPresent(Bool.self, forKey: "disableQuickReaction") ?? false
         self.disableLanguageRecognition = try container.decodeIfPresent(Bool.self, forKey: "disableLanguageRecognition") ?? false
         self.disableImageContentAnalysis = try container.decodeIfPresent(Bool.self, forKey: "disableImageContentAnalysis") ?? false
@@ -338,7 +338,7 @@ public struct ExperimentalUISettings: Codable, Equatable {
         try container.encode((self.enableVoipTcp ? 1 : 0) as Int32, forKey: "enableVoipTcp")
         try container.encode((self.fakeGlass ? 1 : 0) as Int32, forKey: "fakeGlass")
         try container.encode((self.compressedEmojiCache ? 1 : 0) as Int32, forKey: "compressedEmojiCache")
-        try container.encode((self.localTranscription ? 1 : 0) as Int32, forKey: "localTranscriptionOnDevice")
+        try container.encode((self.localTranscription ? 1 : 0) as Int32, forKey: "nanogramOnDeviceTranscription")
         try container.encode(self.disableQuickReaction, forKey: "disableQuickReaction")
         try container.encode(self.disableLanguageRecognition, forKey: "disableLanguageRecognition")
         try container.encode(self.disableImageContentAnalysis, forKey: "disableImageContentAnalysis")

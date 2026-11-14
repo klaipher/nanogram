@@ -111,3 +111,15 @@ final class ChatTranslationPeerChoiceTests: XCTestCase {
         XCTAssertFalse(chatTranslationDiscardsPeerChoice(peer: self.channel(flags: []), threadId: 100))
     }
 }
+
+final class OnDeviceTranslationRoutingTests: XCTestCase {
+    func testTheSwitchOffKeepsTheUpstreamRule() {
+        XCTAssertFalse(shouldTranslateOnDevice(userSwitchOn: false, serverPrefersSystem: false))
+        XCTAssertTrue(shouldTranslateOnDevice(userSwitchOn: false, serverPrefersSystem: true))
+    }
+
+    func testTheSwitchOnAlwaysUsesTheDevice() {
+        XCTAssertTrue(shouldTranslateOnDevice(userSwitchOn: true, serverPrefersSystem: false))
+        XCTAssertTrue(shouldTranslateOnDevice(userSwitchOn: true, serverPrefersSystem: true))
+    }
+}

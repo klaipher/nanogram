@@ -97,6 +97,12 @@ public struct ChatTranslationPeerChoice: Codable, Equatable {
 
 /// Whether a peer's locations share one `ChatTranslationPeerChoice`. A monoforum's threads are separate conversations,
 /// each with a different user, so each keeps its own choice, as separate private chats do.
+/// Settings > Nanogram Features > On-device translation forces the Translation framework; with the switch off the
+/// upstream rule stays: only a server configuration that asks for the system translator uses it.
+public func shouldTranslateOnDevice(userSwitchOn: Bool, serverPrefersSystem: Bool) -> Bool {
+    return userSwitchOn || serverPrefersSystem
+}
+
 public func chatTranslationSharesPeerChoice(peer: EnginePeer?) -> Bool {
     if let peer, peer.isMonoForum {
         return false
@@ -291,15 +297,11 @@ public func translateMessageIds(context: AccountContext, messageIds: [EngineMess
         }
         
         let translationConfiguration = TranslationConfiguration.with(appConfiguration: context.currentAppConfiguration.with { $0 })
-        var enableLocalIfPossible = false
-        switch translationConfiguration.auto {
-        case .system:
-            if #available(iOS 18.0, *) {
-                enableLocalIfPossible = true
-            }
-        default:
-            break
+        var serverPrefersSystem = false
+        if case .system = translationConfiguration.auto {
+            serverPrefersSystem = true
         }
+        let enableLocalIfPossible = shouldTranslateOnDevice(userSwitchOn: NanogramFeaturesSettings.current.with { $0.onDeviceTranslation }, serverPrefersSystem: serverPrefersSystem)
         return context.engine.messages.translateMessages(messageIds: messageIdsToTranslate, fromLang: fromLang, toLang: toLang, enableLocalIfPossible: enableLocalIfPossible)
         |> `catch` { _ -> Signal<Never, NoError> in
             return .complete()

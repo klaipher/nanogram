@@ -24,6 +24,7 @@ private final class NanogramFeaturesControllerArguments {
 private enum NanogramFeaturesSection: Int32 {
     case search
     case links
+    case onDevice
     case calls
     case widgets
 }
@@ -49,6 +50,11 @@ private enum NanogramFeaturesEntry: ItemListNodeEntry {
     case confirmTelegramLinks(Bool)
     case linksFooter
 
+    case onDeviceHeader
+    case onDeviceTranscription(Bool)
+    case onDeviceTranslation(Bool)
+    case onDeviceFooter
+
     case callsHeader
     case callsSystemNoiseSuppression(Bool)
     case callsAdvancedDucking(Bool)
@@ -66,6 +72,8 @@ private enum NanogramFeaturesEntry: ItemListNodeEntry {
             return NanogramFeaturesSection.search.rawValue
         case .linksHeader, .stripTracking, .confirmTelegramLinks, .linksFooter:
             return NanogramFeaturesSection.links.rawValue
+        case .onDeviceHeader, .onDeviceTranscription, .onDeviceTranslation, .onDeviceFooter:
+            return NanogramFeaturesSection.onDevice.rawValue
         case .callsHeader, .callsSystemNoiseSuppression, .callsAdvancedDucking, .callsGroupNoiseMode, .callsThermalVideoLadder, .callsFooter:
             return NanogramFeaturesSection.calls.rawValue
         case .widgetsHeader, .glanceables, .widgetsFooter:
@@ -89,6 +97,14 @@ private enum NanogramFeaturesEntry: ItemListNodeEntry {
             return 12
         case .linksFooter:
             return 13
+        case .onDeviceHeader:
+            return 15
+        case .onDeviceTranscription:
+            return 16
+        case .onDeviceTranslation:
+            return 17
+        case .onDeviceFooter:
+            return 18
         case .callsHeader:
             return 20
         case .callsSystemNoiseSuppression:
@@ -149,6 +165,26 @@ private enum NanogramFeaturesEntry: ItemListNodeEntry {
             })
         case .linksFooter:
             return ItemListTextItem(presentationData: presentationData, text: .plain("Removes tracking parameters such as utm_source and fbclid when you open or copy a link. The text of messages you send is never changed. Confirm Telegram Links asks before a t.me or tg:// link opens."), sectionId: self.section)
+        case .onDeviceHeader:
+            return ItemListSectionHeaderItem(presentationData: presentationData, text: "ON-DEVICE", sectionId: self.section)
+        case let .onDeviceTranscription(value):
+            return ItemListSwitchItem(presentationData: presentationData, systemStyle: .glass, title: "On-Device Voice Transcription", text: "Voice messages are turned into text on this phone. Private: it runs on this phone. The first use downloads a language model. When off, Telegram's own transcription is used.", value: value, maximumNumberOfLines: 0, sectionId: self.section, style: .blocks, updated: { value in
+                arguments.updateExperimental { settings in
+                    var settings = settings
+                    settings.localTranscription = value
+                    return settings
+                }
+            })
+        case let .onDeviceTranslation(value):
+            return ItemListSwitchItem(presentationData: presentationData, systemStyle: .glass, title: "On-Device Translation", text: "Messages are translated on this phone with Apple's Translation. Private: it runs on this phone. The first use of a language pair asks to download its language model. When off, Telegram's own translation is used.", value: value, maximumNumberOfLines: 0, sectionId: self.section, style: .blocks, updated: { value in
+                arguments.updateFeatures { settings in
+                    var settings = settings
+                    settings.onDeviceTranslation = value
+                    return settings
+                }
+            })
+        case .onDeviceFooter:
+            return ItemListTextItem(presentationData: presentationData, text: .plain("Both are off by default. If the phone cannot do it (no model yet, a language it does not support, the download was cancelled), the usual Telegram behaviour takes over."), sectionId: self.section)
         case .callsHeader:
             return ItemListSectionHeaderItem(presentationData: presentationData, text: "CALLS", sectionId: self.section)
         case let .callsSystemNoiseSuppression(value):
@@ -207,6 +243,11 @@ private func nanogramFeaturesControllerEntries(features: NanogramFeaturesSetting
     entries.append(.stripTracking(features.stripTrackingParameters))
     entries.append(.confirmTelegramLinks(features.confirmTelegramLinks))
     entries.append(.linksFooter)
+
+    entries.append(.onDeviceHeader)
+    entries.append(.onDeviceTranscription(experimental.localTranscription))
+    entries.append(.onDeviceTranslation(features.onDeviceTranslation))
+    entries.append(.onDeviceFooter)
 
     entries.append(.callsHeader)
     entries.append(.callsSystemNoiseSuppression(experimental.callsSystemNoiseSuppression))

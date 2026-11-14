@@ -361,13 +361,26 @@ marked (check) were not re-verified against the code; correct them on the next c
 - What: a user-facing ItemList screen (Settings, after Power Saving) for Nanogram's own tweaks: in-chat search operators (`from:`, `before:`, `after:`, `date:`, `type:`; default on), link hygiene (strip tracking parameters when opening and copying a link, confirm t.me and tg:// links; both default off) and the user-facing switches moved out of Debug Settings (system noise suppression, advanced ducking, group noise suppression, thermal video limits, glanceables). Message text is never rewritten.
 - Why: owner decision 2026-11-14 (Mercurygram feature parity, one screen per platform; developer experiments stay in Debug Settings).
 - Where: `submodules/NanogramFeatures` (parser, link rules, tests), `submodules/TelegramUIPreferences/Sources/NanogramFeaturesSettings.swift`, `submodules/SettingsUI/Sources/NanogramFeaturesController.swift`, `submodules/TelegramUI/Sources/ChatSearchOperators.swift` and `ChatControllerUpdateSearch.swift`, `OpenUrl.swift` (`openExternalUrlImpl`), `TextLinkHandling.swift` (copy), PeerInfo settings list. Shared grammar and data: `docs/specs/search-operators.md`, `docs/specs/link-tracking-params.txt`.
-- Upstream: no. Ideas from Mercurygram (GPL-2.0), reimplemented from the behaviour, not copied.
+- Upstream: no. Ideas from Mercurygram (GPL-2.0), reimplemented from the behaviour, not copied. Attribution (Mercurygram Android commits): search operators 291b1c0ab, 61ed3f602, 94efecb78, 0884e7357 (MgSearchQuery); tracking-parameter strip and confirm t.me links 0ec92ad56, 38dbb8733, 197a708ae, 7c876bb07 (MgUrlCleaner and toggles).
 - Sync: `updateSearch` and `openExternalUrlImpl` are small hooks; re-apply if upstream reshapes them. Copy hygiene covers the chat link menu only; the in-app browser and Instant View copy menus are not hooked.
 
 ## Mercurygram bug fixes and optimizations (iOS review, 2026-11-14)
 - What: every bug-fix, security-fix and performance item of the Mercurygram analysis checked against Telegram-iOS code; table in `docs/nanogram/mercurygram-port.md`. Result: most Android items do not exist on iOS; Google DoH removal, proxy IPv6 resolving, the sound-reset and the livestream decoder guard are already in; one change, `RequestEditMessage` no longer overflows when an indefinite live location is extended.
-- Open: secret-chat delete-for-everyone (flush-history before discard) needs a reordering of the terminate flow and a secret-chat test pair; collapsed-community members versus type folders needs a device with communities.
+- Secret-chat delete-for-everyone: fixed in the shared core (see the next entry); needs a test pair. Open: collapsed-community members versus type folders needs a device with communities.
 - Attribution: Mercurygram Android a2d04746f (live location "until stopped"), analysis only; the fix is our own code.
+
+## Secret chat: delete for everyone clears the peer's copy (iOS and Mac, shared core, 2026-11-14)
+- What: deleting a secret chat for everyone (and ending it with history removal) now sends a clear-history service message first and turns the chat "terminated" only after `messages.discardEncryption` was requested. Before, the chat was marked terminated when the operation was queued, and a terminated chat sends no service messages, so the peer kept its history.
+- Why: same bug as Mercurygram 01230d2c1 (Android), found in the iOS analysis.
+- Where: `submodules/TelegramCore/Sources/TelegramEngine/Peers/RemovePeerChat.swift` (`secretChatTerminationPlan`, `queueSecretChatTermination`), `ManagedSecretChatOutgoingOperations.swift` (`requestTerminateSecretChat` sets the terminated state). Test: `SecretChatTerminationPlanTests`. The Mac app reaches it through `engine.peers.removePeerChat`, no Mac code.
+- Upstream: no. Attribution: Mercurygram Android 01230d2c1 (GPL-2.0), behaviour only, our own implementation. Server relay issue bugs.telegram.org/c/27416.
+- Sync: re-check if upstream touches the terminate operation or `addSecretChatOutgoingOperation`.
+
+## On-device voice transcription and translation switches (iOS, 2026-11-14)
+- What: Settings > Nanogram Features > ON-DEVICE has two switches, both OFF by default. On-device voice transcription (SpeechAnalyzer; it was on for every account since d6d49452/070ce28e): off means upstream behaviour (server transcription, Premium rules and trial). On-device translation: on makes message, poll and voice-transcription translation use Apple's Translation framework; the first use of a language pair shows the system download prompt; no result (model missing, prompt dismissed, unsupported pair) falls back to the server.
+- Why: owner decision 2026-11-14 (spec diagnostics-and-debug-round2 section 10).
+- Where: `NanogramFeaturesController.swift`, `NanogramFeaturesSettings.onDeviceTranslation`, `ExperimentalUISettings.localTranscription` (stored under the new key `nanogramOnDeviceTranscription`, so earlier default-on state does not carry over; the Debug Settings row is gone), `TranslateUI/ChatTranslation.swift` (`shouldTranslateOnDevice`), `TelegramCore/.../Translate.swift` (`translateTextsLocallyOrOnServer`).
+- Upstream: upstream already translates on the device when the server config says `auto: system`; that rule stays when the switch is off.
 
 ## Send Report: one diagnostics button for testers
 - What: Settings > Send Report (and the top of Debug Settings) sends one zip with a README, device and experiment details, app, extension and notification logs, critical logs, call logs, and crash and MetricKit reports, capped at 40 MB with phone numbers and emails masked; the old fine-grained Send Logs menu stays for developers.

@@ -147,7 +147,7 @@ final class DebugControllerEntriesTests: XCTestCase {
 
     func testCpuSavingSwitchesAreShown() {
         let ids = Set(self.entries(isMainApp: true, isDevAccount: false, engineKind: "mtproto", settings: .defaultSettings).map(\.stableId))
-        for entry: DebugControllerEntry in [.disableImageContentAnalysis(false), .disableLanguageRecognition(false), .localTranscription(false), .enableVoipTcp(false), .forceListViewImplChatBackend(false)] {
+        for entry: DebugControllerEntry in [.disableImageContentAnalysis(false), .disableLanguageRecognition(false), .enableVoipTcp(false), .forceListViewImplChatBackend(false)] {
             XCTAssertTrue(ids.contains(entry.stableId))
         }
     }
@@ -184,12 +184,12 @@ final class ExperimentalUISettingsCompatibilityTests: XCTestCase {
         }
     }
 
-    func testOnDeviceTranscriptionIsOnByDefaultAndTheChoiceIsKept() throws {
-        XCTAssertTrue(ExperimentalUISettings.defaultSettings.localTranscription)
+    func testOnDeviceTranscriptionIsOffByDefaultAndTheChoiceIsKept() throws {
+        XCTAssertFalse(ExperimentalUISettings.defaultSettings.localTranscription)
         var settings = ExperimentalUISettings.defaultSettings
-        settings.localTranscription = false
+        settings.localTranscription = true
         let decoded = try EngineDecoder.decode(ExperimentalUISettings.self, from: try EngineEncoder.encode(settings))
-        XCTAssertFalse(decoded.localTranscription)
+        XCTAssertTrue(decoded.localTranscription)
     }
 
     func testOldBlobDecodesAndKeepsLiveValues() throws {
@@ -197,7 +197,7 @@ final class ExperimentalUISettingsCompatibilityTests: XCTestCase {
         let settings = try EngineDecoder.decode(ExperimentalUISettings.self, from: data)
         XCTAssertTrue(settings.keepChatNavigationStack)
         XCTAssertTrue(settings.enableVoipTcp)
-        XCTAssertTrue(settings.localTranscription)
+        XCTAssertFalse(settings.localTranscription)
         XCTAssertTrue(settings.disableImageContentAnalysis)
         XCTAssertTrue(settings.crashOnMemoryPressure)
         XCTAssertEqual(settings.useModernVideoMessagePipeline, false)

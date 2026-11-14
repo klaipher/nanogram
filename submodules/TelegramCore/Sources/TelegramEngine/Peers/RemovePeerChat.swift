@@ -10,17 +10,52 @@ func _internal_removePeerChat(account: Account, peerId: PeerId, reportChatSpam: 
     }
 }
 
+/// Delete for everyone on a secret chat: the peer only clears its copy when it receives a clear-history service message,
+/// and a service message is not sent once the chat is terminated (Mercurygram 01230d2c1). So the flush goes out first and
+/// the chat turns terminated only after discardEncryption was requested. Without the flush, or when the chat cannot
+/// send, it terminates right away as before.
+enum SecretChatTerminationPlan: Equatable {
+    case terminateNow
+    case flushHistoryThenTerminate(layer: SecretChatLayer)
+}
+
+func secretChatTerminationPlan(embeddedState: SecretChatEmbeddedState, requestRemoteHistoryRemoval: Bool) -> SecretChatTerminationPlan {
+    guard requestRemoteHistoryRemoval else {
+        return .terminateNow
+    }
+    switch embeddedState {
+        case .terminated, .handshake:
+            return .terminateNow
+        case .basicLayer:
+            return .flushHistoryThenTerminate(layer: .layer8)
+        case let .sequenceBasedLayer(sequenceState):
+            return .flushHistoryThenTerminate(layer: sequenceState.layerNegotiationState.activeLayer.secretChatLayer)
+    }
+}
+
+private func queueSecretChatTermination(transaction: Transaction, peerId: PeerId, state: SecretChatState, reportSpam: Bool, requestRemoteHistoryRemoval: Bool) {
+    var updatedState = state
+    let plan = secretChatTerminationPlan(embeddedState: state.embeddedState, requestRemoteHistoryRemoval: requestRemoteHistoryRemoval)
+    if case let .flushHistoryThenTerminate(layer) = plan {
+        updatedState = addSecretChatOutgoingOperation(transaction: transaction, peerId: peerId, operation: SecretChatOutgoingOperationContents.clearHistory(layer: layer, actionGloballyUniqueId: Int64.random(in: Int64.min ... Int64.max)), state: updatedState)
+    }
+    updatedState = addSecretChatOutgoingOperation(transaction: transaction, peerId: peerId, operation: SecretChatOutgoingOperationContents.terminate(reportSpam: reportSpam, requestRemoteHistoryRemoval: requestRemoteHistoryRemoval), state: updatedState)
+    if plan == .terminateNow {
+        updatedState = updatedState.withUpdatedEmbeddedState(.terminated)
+    }
+    if updatedState != state {
+        transaction.setPeerChatState(peerId, state: updatedState)
+        if let peer = transaction.getPeer(peerId) as? TelegramSecretChat {
+            updatePeersCustom(transaction: transaction, peers: [peer.withUpdatedEmbeddedState(updatedState.embeddedState.peerState)], update: { _, updated in
+                return updated
+            })
+        }
+    }
+}
+
 func _internal_terminateSecretChat(transaction: Transaction, peerId: PeerId, requestRemoteHistoryRemoval: Bool) {
     if let state = transaction.getPeerChatState(peerId) as? SecretChatState, state.embeddedState != .terminated {
-        let updatedState = addSecretChatOutgoingOperation(transaction: transaction, peerId: peerId, operation: SecretChatOutgoingOperationContents.terminate(reportSpam: false, requestRemoteHistoryRemoval: requestRemoteHistoryRemoval), state: state).withUpdatedEmbeddedState(.terminated)
-        if updatedState != state {
-            transaction.setPeerChatState(peerId, state: updatedState)
-            if let peer = transaction.getPeer(peerId) as? TelegramSecretChat {
-                updatePeersCustom(transaction: transaction, peers: [peer.withUpdatedEmbeddedState(updatedState.embeddedState.peerState)], update: { _, updated in
-                    return updated
-                })
-            }
-        }
+        queueSecretChatTermination(transaction: transaction, peerId: peerId, state: state, reportSpam: false, requestRemoteHistoryRemoval: requestRemoteHistoryRemoval)
     }
 }
 
@@ -49,15 +84,7 @@ func _internal_removePeerChat(account: Account, transaction: Transaction, mediaB
     })
     if peerId.namespace == Namespaces.Peer.SecretChat {
         if let state = transaction.getPeerChatState(peerId) as? SecretChatState, state.embeddedState != .terminated {
-            let updatedState = addSecretChatOutgoingOperation(transaction: transaction, peerId: peerId, operation: SecretChatOutgoingOperationContents.terminate(reportSpam: reportChatSpam, requestRemoteHistoryRemoval: deleteGloballyIfPossible), state: state).withUpdatedEmbeddedState(.terminated)
-            if updatedState != state {
-                transaction.setPeerChatState(peerId, state: updatedState)
-                if let peer = transaction.getPeer(peerId) as? TelegramSecretChat {
-                    updatePeersCustom(transaction: transaction, peers: [peer.withUpdatedEmbeddedState(updatedState.embeddedState.peerState)], update: { _, updated in
-                        return updated
-                    })
-                }
-            }
+            queueSecretChatTermination(transaction: transaction, peerId: peerId, state: state, reportSpam: reportChatSpam, requestRemoteHistoryRemoval: deleteGloballyIfPossible)
         }
         _internal_clearHistory(transaction: transaction, mediaBox: mediaBox, peerId: peerId, threadId: nil, namespaces: .all)
         transaction.updatePeerChatListInclusion(peerId, inclusion: .notIncluded)

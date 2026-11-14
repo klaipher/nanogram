@@ -2230,6 +2230,15 @@ private func requestTerminateSecretChat(postbox: Postbox, network: Network, peer
     }
     |> mapToSignal { _ -> Signal<Void, NoError> in
         return postbox.transaction { transaction -> Void in
+            if let state = transaction.getPeerChatState(peerId) as? SecretChatState, state.embeddedState != .terminated {
+                let updatedState = state.withUpdatedEmbeddedState(.terminated)
+                transaction.setPeerChatState(peerId, state: updatedState)
+                if let peer = transaction.getPeer(peerId) as? TelegramSecretChat {
+                    updatePeersCustom(transaction: transaction, peers: [peer.withUpdatedEmbeddedState(updatedState.embeddedState.peerState)], update: { _, updated in
+                        return updated
+                    })
+                }
+            }
             markOutgoingOperationAsCompleted(transaction: transaction, peerId: peerId, tagLocalIndex: tagLocalIndex, forceRemove: true)
         }
     }

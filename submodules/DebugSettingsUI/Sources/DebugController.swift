@@ -1515,7 +1515,6 @@ func debugControllerEntries(environment: DebugControllerEntriesEnvironment, them
         entries.append(.compressedEmojiCache(experimentalSettings.compressedEmojiCache))
         entries.append(.disableImageContentAnalysis(experimentalSettings.disableImageContentAnalysis))
         entries.append(.disableLanguageRecognition(experimentalSettings.disableLanguageRecognition))
-        entries.append(.localTranscription(experimentalSettings.localTranscription))
         entries.append(.enableVoipTcp(experimentalSettings.enableVoipTcp))
         entries.append(.chatMediaEditorLegacy(experimentalSettings.chatMediaEditorLegacy))
         entries.append(.mediaGridLegacy(experimentalSettings.mediaGridLegacy))

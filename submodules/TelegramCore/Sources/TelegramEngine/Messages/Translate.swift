@@ -230,6 +230,36 @@ public protocol ExperimentalInternalTranslationService: AnyObject {
     func translate(texts: [AnyHashable: String], fromLang: String, toLang: String) -> Signal<[AnyHashable: String]?, NoError>
 }
 
+/// With the on-device switch on, poll and voice-transcription texts go through the same Translation framework service as
+/// messages, so no text leaves the phone; a missing result (no language pair, a model not downloaded, the user
+/// dismissing the system download prompt) falls back to the server.
+private func translateTextsLocallyOrOnServer(network: Network, texts: [(String, [MessageTextEntity])], fromLang: String?, toLang: String, enableLocalIfPossible: Bool) -> Signal<[(String, [MessageTextEntity])], TranslationError> {
+    let server = _internal_translateTexts(network: network, texts: texts, toLang: toLang)
+    guard enableLocalIfPossible, let service = engineExperimentalInternalTranslationService, let fromLang, fromLang != toLang else {
+        return server
+    }
+    var keyed: [AnyHashable: String] = [:]
+    for (index, text) in texts.enumerated() {
+        keyed[AnyHashable(index)] = text.0
+    }
+    return service.translate(texts: keyed, fromLang: fromLang, toLang: toLang)
+    |> castError(TranslationError.self)
+    |> mapToSignal { result -> Signal<[(String, [MessageTextEntity])], TranslationError> in
+        guard let result else {
+            return server
+        }
+        var mapped: [(String, [MessageTextEntity])] = []
+        for (index, text) in texts.enumerated() {
+            if let translated = result[AnyHashable(index)] {
+                mapped.append((translated, []))
+            } else {
+                mapped.append(text)
+            }
+        }
+        return .single(mapped)
+    }
+}
+
 public var engineExperimentalInternalTranslationService: ExperimentalInternalTranslationService?
 
 /// Translates rich messages (those carrying a `RichTextMessageAttribute`) by id via
@@ -307,7 +337,7 @@ private func _internal_translateMessagesByPeerId(account: Account, peerId: Engin
             if let solution = poll.results.solution {
                 texts.append((solution.text, solution.entities))
             }
-            return _internal_translateTexts(network: account.network, texts: texts, toLang: toLang)
+            return translateTextsLocallyOrOnServer(network: account.network, texts: texts, fromLang: fromLang, toLang: toLang, enableLocalIfPossible: enableLocalIfPossible)
         }
         
         let audioTranscriptions = messages.compactMap { message in
@@ -318,7 +348,10 @@ private func _internal_translateMessagesByPeerId(account: Account, peerId: Engin
             }
         }
         let audioTranscriptionsSignals = audioTranscriptions.map { (text, id) in
-            return _internal_translate(network: account.network, text: text, toLang: toLang)
+            return translateTextsLocallyOrOnServer(network: account.network, texts: [(text, [])], fromLang: fromLang, toLang: toLang, enableLocalIfPossible: enableLocalIfPossible)
+            |> map { results -> (String, [MessageTextEntity])? in
+                return results.first
+            }
         }
         
         var flags: Int32 = 0
