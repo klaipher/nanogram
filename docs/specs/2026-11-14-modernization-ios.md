@@ -114,7 +114,7 @@ Repo: `klaipher/nanogram` (local `~/Projects/nanogram-ios`). Base for all new br
 - **Risk:** medium (latency when movement starts; Swift concurrency inside a SwiftSignalKit queue).
 - **Measurement:** Location Energy over a 1-hour stationary session; time to first update after walking.
 - **Effort:** medium
-- **Status:** open
+- **Status:** implemented behind `-NanogramStationaryLocation YES` (default off, no Debug UI row to avoid ExperimentalUISettings conflicts); needs the 1-hour Energy Log and first-update-after-movement latency measurement before it can default on
 
 ### IOS-DEPR-1: Dead UIWebView and UILocalNotification branches; legacy Telegram/Watch not built
 - **Severity:** low
