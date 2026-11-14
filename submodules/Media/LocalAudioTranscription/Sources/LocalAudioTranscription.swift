@@ -40,72 +40,79 @@ private func legacyTranscribeAudio(path: String, locale: String) -> Signal<Trans
     return Signal { subscriber in
         let disposable = MetaDisposable()
         
-        SFSpeechRecognizer.requestAuthorization { status in
-            Queue.mainQueue().async {
-                switch status {
-                case .notDetermined:
-                    subscriber.putNext(nil)
-                    subscriber.putCompletion()
-                case .restricted:
-                    subscriber.putNext(nil)
-                    subscriber.putCompletion()
-                case .denied:
-                    subscriber.putNext(nil)
-                    subscriber.putCompletion()
-                case .authorized:
-                    let speechRecognizer: SFSpeechRecognizer
-                    if let sharedRecognizer = sharedRecognizers[locale] as? SFSpeechRecognizer {
-                        speechRecognizer = sharedRecognizer
-                    } else {
-                        guard let speechRecognizerValue = SFSpeechRecognizer(locale: Locale(identifier: locale)), speechRecognizerValue.isAvailable else {
+        if #available(iOS 13.0, *) {
+            SFSpeechRecognizer.requestAuthorization { status in
+                Queue.mainQueue().async {
+                    switch status {
+                    case .notDetermined:
+                        subscriber.putNext(nil)
+                        subscriber.putCompletion()
+                    case .restricted:
+                        subscriber.putNext(nil)
+                        subscriber.putCompletion()
+                    case .denied:
+                        subscriber.putNext(nil)
+                        subscriber.putCompletion()
+                    case .authorized:
+                        let speechRecognizer: SFSpeechRecognizer
+                        if let sharedRecognizer = sharedRecognizers[locale] as? SFSpeechRecognizer {
+                            speechRecognizer = sharedRecognizer
+                        } else {
+                            guard let speechRecognizerValue = SFSpeechRecognizer(locale: Locale(identifier: locale)), speechRecognizerValue.isAvailable else {
+                                subscriber.putNext(nil)
+                                subscriber.putCompletion()
+                                
+                                return
+                            }
+                            speechRecognizerValue.defaultTaskHint = .dictation
+                            sharedRecognizers[locale] = speechRecognizerValue
+                            speechRecognizer = speechRecognizerValue
+                        }
+                        
+                        // The voice message never leaves the device: without an on-device model for this locale there
+                        // is no transcript (Apple would otherwise send the audio to its servers).
+                        guard speechRecognizer.supportsOnDeviceRecognition else {
                             subscriber.putNext(nil)
                             subscriber.putCompletion()
                             
                             return
                         }
-                        speechRecognizerValue.defaultTaskHint = .dictation
-                        sharedRecognizers[locale] = speechRecognizerValue
-                        speechRecognizer = speechRecognizerValue
-                    }
-                    
-                    // The voice message never leaves the device: without an on-device model for this locale there
-                    // is no transcript (Apple would otherwise send the audio to its servers).
-                    guard speechRecognizer.supportsOnDeviceRecognition else {
-                        subscriber.putNext(nil)
-                        subscriber.putCompletion()
                         
-                        return
-                    }
-                    
-                    let request = SFSpeechURLRecognitionRequest(url: URL(fileURLWithPath: path))
-                    request.addsPunctuation = true
-                    request.requiresOnDeviceRecognition = true
-                    request.shouldReportPartialResults = false
-                    
-                    let task = speechRecognizer.recognitionTask(with: request, resultHandler: { result, error in
-                        if let result = result {
-                            let confidence = averageTranscriptionConfidence(result.bestTranscription.segments.map(\.confidence))
-                            subscriber.putNext(TranscriptionResult(text: result.bestTranscription.formattedString, confidence: confidence, isFinal: result.isFinal))
-                            
-                            if result.isFinal {
+                        let request = SFSpeechURLRecognitionRequest(url: URL(fileURLWithPath: path))
+                        if #available(iOS 16.0, *) {
+                            request.addsPunctuation = true
+                        }
+                        request.requiresOnDeviceRecognition = true
+                        request.shouldReportPartialResults = false
+                        
+                        let task = speechRecognizer.recognitionTask(with: request, resultHandler: { result, error in
+                            if let result = result {
+                                let confidence = averageTranscriptionConfidence(result.bestTranscription.segments.map(\.confidence))
+                                subscriber.putNext(TranscriptionResult(text: result.bestTranscription.formattedString, confidence: confidence, isFinal: result.isFinal))
+                                
+                                if result.isFinal {
+                                    subscriber.putCompletion()
+                                }
+                            } else {
+                                print("transcribeAudio: locale: \(locale), error: \(String(describing: error))")
+                                
+                                subscriber.putNext(nil)
                                 subscriber.putCompletion()
                             }
-                        } else {
-                            print("transcribeAudio: locale: \(locale), error: \(String(describing: error))")
-                            
-                            subscriber.putNext(nil)
-                            subscriber.putCompletion()
-                        }
-                    })
-                    
-                    disposable.set(ActionDisposable {
-                        task.cancel()
-                    })
-                @unknown default:
-                    subscriber.putNext(nil)
-                    subscriber.putCompletion()
+                        })
+                        
+                        disposable.set(ActionDisposable {
+                            task.cancel()
+                        })
+                    @unknown default:
+                        subscriber.putNext(nil)
+                        subscriber.putCompletion()
+                    }
                 }
             }
+        } else {
+            subscriber.putNext(nil)
+            subscriber.putCompletion()
         }
         
         return disposable

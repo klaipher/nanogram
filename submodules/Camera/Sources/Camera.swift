@@ -134,6 +134,7 @@ public extension CameraProtocol {
 
 public protocol CameraSimplePreviewView: UIView {
     var isEnabled: Bool { get set }
+    @available(iOS 13.0, *)
     var isPreviewing: Signal<Bool, NoError> { get }
 
     func removePlaceholder(delay: Double)
