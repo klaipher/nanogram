@@ -68,6 +68,7 @@ swift_library(
         "//submodules/CrashReporting:CrashReporting",
         "//submodules/BackgroundDiagnostics:BackgroundDiagnostics",
         "//submodules/NanogramGlance:NanogramGlance",
+        "//submodules/NanogramAppIntents:NanogramAppIntents",
         "//submodules/DiskWriteAccounting",
         "//third-party/recaptcha:RecaptchaEnterprise",
         "//submodules/SSignalKit/SwiftSignalKit:SwiftSignalKit",
