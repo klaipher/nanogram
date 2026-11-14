@@ -40,6 +40,50 @@ public enum IncomingCallNotifications {
         }
     }
 
+    /// Pushes that say a call stopped ringing before anyone answered it on this device: the caller
+    /// hung up or the call timed out. The server sends nothing when the call is declined or
+    /// answered on another device, so the extension asks (`IncomingCallRingWatch`).
+    public static let ringEndingLocKeys: Set<String> = ["PHONE_CALL_MISSED", "VIDEO_CALL_MISSED", "CONF_CALL_MISSED"]
+
+    public static func endsRing(locKey: String?) -> Bool {
+        guard let locKey else {
+            return false
+        }
+        return ringEndingLocKeys.contains(locKey)
+    }
+
+    /// Every call-related push, for the diagnostics log.
+    public static func isCallRelated(locKey: String?) -> Bool {
+        guard let locKey else {
+            return false
+        }
+        return endsRing(locKey: locKey) || locKey == "PHONE_CALL_REQUEST" || locKey == "VIDEO_CALL_REQUEST" || locKey.hasPrefix("CONF_")
+    }
+
+    /// iOS plays the ringtone for 30 s (`UNNotificationSound.defaultRingtone`), so the extension
+    /// watches the call for as long as the ring can sound, asking every `ringWatchInterval`.
+    public static let ringWatchWindow: TimeInterval = 30.0
+    public static let ringWatchInterval: TimeInterval = 2.0
+
+    /// What a call-related push means for the rings on screen.
+    public enum PushAction: Equatable, Sendable {
+        /// A new call: ring it.
+        case ring
+        /// The same call rang already (a repeated push): show it quietly, never a second ring.
+        case showQuietly
+        /// The caller's rings are over: take them down.
+        case stopRinging
+        /// Not about a ring.
+        case ignore
+    }
+
+    public static func pushAction(locKey: String?, callId: Int64?, deliveredRingCallIds: [Int64]) -> PushAction {
+        if let callId {
+            return deliveredRingCallIds.contains(callId) ? .showQuietly : .ring
+        }
+        return endsRing(locKey: locKey) ? .stopRinging : .ignore
+    }
+
     /// Whether the extension's notification for an incoming call the app knows about must go: CallKit
     /// rings that call itself, or the call no longer rings. Without CallKit the notification is the
     /// only ring a backgrounded app has, so it stays while the call rings.

@@ -713,6 +713,20 @@ private struct NotificationContent: CustomStringConvertible {
         return IncomingCallCommunication.withFallbackSound(original: content, updated: updated)
     }
 
+    /// The same alert without the ring: no sound, no call intent, no Answer or Decline. It is shown
+    /// for a call that is already over or already rings, and taken down after delivery.
+    func quietedCall() -> NotificationContent {
+        var content = self
+        content.systemSound = nil
+        content.sound = nil
+        content.call = nil
+        content.sender = nil
+        content.senderImage = nil
+        content.category = nil
+        content.userInfo = IncomingCallPushPresentation.quietUserInfo
+        return content
+    }
+
     func generate() -> UNNotificationContent {
         var content = UNMutableNotificationContent()
         
@@ -948,6 +962,105 @@ private func getCurrentRenderedTotalUnreadCount(accountManager: AccountManager<T
 /// caller's photo (see `IncomingCallCommunication`) unless the app is locked or names are hidden on
 /// the lock screen. Made only to be shown (`IncomingCallPushPresentation.present`): the caller's
 /// device contact and photo are looked up then, never before CallKit is offered the call.
+/// One line in the always-on short log (ids only), for how a call's ring started and ended.
+private func nseCallLog(_ callId: Int64?, _ what: @autoclosure () -> String) {
+    CallDiagnostics.log("nse call \(callId.map { String($0) } ?? "-") \(what())")
+}
+
+private func secondsText(since start: Double) -> String {
+    return "+" + String(format: "%.2f", CFAbsoluteTimeGetCurrent() - start) + "s"
+}
+
+/// The push's own key, wherever the payload carries it: the decrypted payload (`loc-key` or
+/// `loc_key`) or the alert of the push as the server sent it.
+private func callPushLocKey(payloadJson: [String: Any], requestPayload: [AnyHashable: Any]) -> String? {
+    for key in ["loc-key", "loc_key"] {
+        if let value = payloadJson[key] as? String {
+            return value
+        }
+    }
+    for payload in [payloadJson, requestPayload as? [String: Any] ?? [:]] {
+        if let alert = (payload["aps"] as? [String: Any])?["alert"] as? [String: Any], let value = alert["loc-key"] as? String {
+            return value
+        }
+    }
+    return nil
+}
+
+/// Takes down the delivered rings of one call (`callId`) or, without it, of one caller, and says
+/// how many went.
+private func removeIncomingCallRings(accountId: Int64, callId: Int64?, peerId: Int64?, completion: @escaping (Int) -> Void) {
+    UNUserNotificationCenter.current().getDeliveredNotifications(completionHandler: { notifications in
+        let delivered = notifications.map { ($0.request.identifier, $0.request.content.userInfo) }
+        var identifiers: [String] = []
+        if let callId {
+            identifiers = IncomingCallNotificationRouting.identifiers(delivered: delivered, accountId: accountId, callId: callId)
+        } else if let peerId {
+            identifiers = IncomingCallNotificationRouting.identifiers(delivered: delivered, accountId: accountId, peerId: peerId)
+        }
+        if !identifiers.isEmpty {
+            UNUserNotificationCenter.current().removeDeliveredNotifications(withIdentifiers: identifiers)
+        }
+        completion(identifiers.count)
+    })
+}
+
+/// After the ring was delivered: asks the server whether the call still rings, every couple of
+/// seconds for as long as the ringtone plays, and takes the ring down once it does not. The
+/// server sends nothing when the call is declined or answered on another device, and the
+/// extension would otherwise be gone by then. Holds the connection and its own process activity
+/// until it ends.
+private func startIncomingCallRingWatch(network: Network, accountId: Int64, callId: Int64, accessHash: Int64, deliveredAt: Double) {
+    let key = "\(accountId):\(callId)"
+    if IncomingCallRingWatch.isWatching(key: key) {
+        return
+    }
+    let log: (String) -> Void = { text in
+        nseCallLog(callId, text)
+    }
+    let keepConnection = network.shouldKeepConnection
+    let probeDisposable = MetaDisposable()
+    let watchBox = Atomic<IncomingCallRingWatch?>(value: nil)
+    let activity = ExpiringProcessActivity(
+        reason: "NotificationService call ring watch",
+        flushLogs: { Logger.shared.flushPendingLogsAndWait() },
+        perform: { block in
+            ProcessInfo.processInfo.performExpiringActivity(withReason: "NotificationService call ring watch", using: { expired in
+                if expired {
+                    watchBox.with({ $0 })?.expire()
+                }
+                block(expired)
+            })
+        }
+    )
+    keepConnection.set(.single(true))
+    let watch = IncomingCallRingWatch.begin(
+        key: key,
+        probe: { done in
+            keepConnection.set(.single(true))
+            probeDisposable.set(_internal_probeIncomingCall(network: network, id: callId, accessHash: accessHash, timeout: 3.0, queue: Queue.concurrentDefaultQueue()).start(next: { result in
+                done(result)
+            }))
+        },
+        removeRing: { done in
+            removeIncomingCallRings(accountId: accountId, callId: callId, peerId: nil, completion: done)
+        },
+        log: log,
+        onFinished: { _ in
+            keepConnection.set(.single(false))
+            probeDisposable.dispose()
+            activity.end()
+        }
+    )
+    let _ = watchBox.swap(watch)
+    if watch == nil {
+        keepConnection.set(.single(false))
+        activity.end()
+    } else {
+        log("ring delivered \(secondsText(since: deliveredAt))")
+    }
+}
+
 private func makeIncomingCallNotificationContent(postbox: Postbox, accountPeerId: PeerId, callerName: String?, callerPeer: Peer?, incomingCallMessage: String, incomingCallTitle: String, recipientAccountName: String?, accountId: Int64, fromId: PeerId, isAppLocked: Bool, displayNameOnLockscreen: Bool, isGroupCall: Bool, callId: Int64?, isVideo: Bool, showCallsInRecents: Bool, callRoute: IncomingCallNotificationRouting.Call?, completion: @escaping (NotificationContent) -> Void) {
     let shownCallerName = IncomingCallPushPresentation.shownCallerName(callerName, isAppLocked: isAppLocked, displayNameOnLockscreen: displayNameOnLockscreen)
     let alert = IncomingCallPushPresentation.alert(callerName: shownCallerName, incomingCallMessage: incomingCallMessage, anonymousBody: incomingCallTitle)
@@ -994,7 +1107,7 @@ private final class NotificationServiceHandler {
     // budget started ticking; the connection deadline on the poll path counts from here.
     private let startTimestamp = CFAbsoluteTimeGetCurrent()
 
-    init?(queue: Queue, episode: String, updateCurrentContent: @escaping (NotificationContent) -> Void, completed: @escaping () -> Void, requestIdentifier: String, payload: [AnyHashable: Any], initialInterruptionLevel: UNNotificationInterruptionLevel) {
+    init?(queue: Queue, episode: String, updateCurrentContent: @escaping (NotificationContent) -> Void, afterDelivery registerAfterDelivery: @escaping (@escaping () -> Void) -> Void, completed: @escaping () -> Void, requestIdentifier: String, payload: [AnyHashable: Any], initialInterruptionLevel: UNNotificationInterruptionLevel) {
         //debug_linker_fail_test()
         self.queue = queue
 
@@ -1339,6 +1452,32 @@ private final class NotificationServiceHandler {
                         }
                     }
                     
+                    let pushLocKey = callPushLocKey(payloadJson: payloadJson, requestPayload: payload)
+                    // What the server sends after a ring (a decline or answer elsewhere may send nothing).
+                    let pushArrivedAt = CFAbsoluteTimeGetCurrent()
+                    let pushIsCallRelated = IncomingCallNotifications.isCallRelated(locKey: pushLocKey)
+                    if let peerId {
+                        UNUserNotificationCenter.current().getDeliveredNotifications(completionHandler: { notifications in
+                            let ring = notifications.first(where: { notification in
+                                let userInfo = notification.request.content.userInfo
+                                return IncomingCallNotifications.isIncomingCall(userInfo: userInfo) && (userInfo["peerId"] as? String) == "\(peerId.toInt64())"
+                            })
+                            if let ring {
+                                nseCallLog(nil, "push after ring loc=\(pushLocKey ?? "-") +\(String(format: "%.2f", Date().timeIntervalSince(ring.date)))s since ring")
+                            } else if pushIsCallRelated {
+                                nseCallLog(nil, "push loc=\(pushLocKey ?? "-") \(secondsText(since: pushArrivedAt))")
+                            }
+                        })
+                    } else if pushIsCallRelated {
+                        nseCallLog(nil, "push loc=\(pushLocKey ?? "-")")
+                    }
+                    if IncomingCallNotifications.endsRing(locKey: pushLocKey), let peerId {
+                        let startedAt = CFAbsoluteTimeGetCurrent()
+                        removeIncomingCallRings(accountId: recordId.int64, callId: nil, peerId: peerId.toInt64(), completion: { count in
+                            nseCallLog(nil, "ring removed by missed-push \(secondsText(since: startedAt)) n=\(count)")
+                        })
+                    }
+
                     #if DEBUG
                     if let locKey = payloadJson["loc-key"] as? String, locKey == "CONF_CALL_REQUEST" {
                     }
@@ -1696,6 +1835,9 @@ private final class NotificationServiceHandler {
                                     if #available(iOS 14.5, *) {
                                         reportsToCallKit = IncomingCallPushPresentation.reportsToCallKit(systemIntegrationEnabled: voiceCallSettings.enableSystemIntegration, canFilterNotifications: canFilterNotifications)
                                     }
+                                    nseCallLog(callData.id, "push \(secondsText(since: strongSelf.startTimestamp)) callkit=\(reportsToCallKit) video=\(callData.isVideo)")
+                                    // Rings already on screen: a repeated push of the same call must not ring twice.
+                                    let presentCall: (Bool) -> Void = { isRepeatedCall in
                                     IncomingCallPushPresentation.present(
                                         reportsToCallKit: reportsToCallKit,
                                         reportToCallKit: { done in
@@ -1744,16 +1886,45 @@ private final class NotificationServiceHandler {
                                             let startedAt = CFAbsoluteTimeGetCurrent()
                                             let keepConnection = stateManager.network.shouldKeepConnection
                                             keepConnection.set(.single(true))
-                                            strongSelf.acknowledgeCallDisposable.set((_internal_acknowledgeIncomingCall(network: stateManager.network, id: callData.id, accessHash: callData.accessHash)
-                                            |> timeout(IncomingCallPushPresentation.acknowledgementTimeout, queue: strongSelf.queue, alternate: .single(false))
-                                            |> take(1)).start(next: { acknowledged in
-                                                Logger.shared.log("NotificationService \(episode)", "Call acknowledged: \(acknowledged) after \(String(format: "%.2f", CFAbsoluteTimeGetCurrent() - startedAt)) s")
+                                            strongSelf.acknowledgeCallDisposable.set(_internal_probeIncomingCall(network: stateManager.network, id: callData.id, accessHash: callData.accessHash, timeout: IncomingCallPushPresentation.acknowledgementTimeout, queue: strongSelf.queue).start(next: { result in
+                                                Logger.shared.log("NotificationService \(episode)", "Call acknowledged: \(IncomingCallRingWatch.describe(result)) after \(String(format: "%.2f", CFAbsoluteTimeGetCurrent() - startedAt)) s")
+                                                nseCallLog(callData.id, "ack \(IncomingCallRingWatch.describe(result)) \(secondsText(since: startedAt))")
                                                 keepConnection.set(.single(false))
-                                                done()
+                                                done(result)
                                             }))
+                                        },
+                                        isRepeatedCall: isRepeatedCall,
+                                        makeQuietContent: { content in
+                                            return content.quietedCall()
+                                        },
+                                        decided: { decision, acknowledgement in
+                                            if decision == .quiet {
+                                                var reason = "duplicate"
+                                                if case .ended = acknowledgement {
+                                                    reason = "ended"
+                                                }
+                                                nseCallLog(callData.id, "quiet (\(reason)) \(secondsText(since: strongSelf.startTimestamp))")
+                                            }
+                                        },
+                                        startWatch: {
+                                            registerAfterDelivery {
+                                                startIncomingCallRingWatch(network: stateManager.network, accountId: callData.accountId, callId: callData.id, accessHash: callData.accessHash, deliveredAt: strongSelf.startTimestamp)
+                                            }
                                         },
                                         completed: completed
                                     )
+                                    }
+                                    if reportsToCallKit {
+                                        presentCall(false)
+                                    } else {
+                                        UNUserNotificationCenter.current().getDeliveredNotifications(completionHandler: { notifications in
+                                            let ringingCallIds = IncomingCallNotificationRouting.callIds(delivered: notifications.map { ($0.request.identifier, $0.request.content.userInfo) }, accountId: callData.accountId)
+                                            let action = IncomingCallNotifications.pushAction(locKey: nil, callId: callData.id, deliveredRingCallIds: ringingCallIds)
+                                            queue.async {
+                                                presentCall(action == .showQuietly)
+                                            }
+                                        })
+                                    }
                                 })
                             }
                         case let .groupCall(groupCallData):
@@ -1885,6 +2056,7 @@ private final class NotificationServiceHandler {
                                                     let identifiers = IncomingCallPushPresentation.ringIdentifiers(notifications, accountId: recordId.int64, peerId: peerId.toInt64())
                                                     if !identifiers.isEmpty {
                                                         Logger.shared.log("NotificationService \(episode)", "The call ended, removing \(identifiers.count) ringing notifications")
+                                                        nseCallLog(nil, "ring removed by service-message n=\(identifiers.count)")
                                                         UNUserNotificationCenter.current().removeDeliveredNotifications(withIdentifiers: identifiers)
                                                     }
                                                 })
@@ -2970,7 +3142,11 @@ private final class NotificationServiceHandler {
                                             }
                                         }
                                     }
-                                    removeIdentifiers.append(contentsOf: IncomingCallPushPresentation.ringIdentifiers(notifications, accountId: recordId.int64, peerId: id.peerId.toInt64()))
+                                    let ringIdentifiers = IncomingCallPushPresentation.ringIdentifiers(notifications, accountId: recordId.int64, peerId: id.peerId.toInt64())
+                                    if !ringIdentifiers.isEmpty {
+                                        nseCallLog(nil, "ring removed by read-history n=\(ringIdentifiers.count)")
+                                    }
+                                    removeIdentifiers.append(contentsOf: ringIdentifiers)
 
                                     let completeRemoval: () -> Void = {
                                         guard let strongSelf = self else {
@@ -3150,6 +3326,7 @@ final class NotificationService: UNNotificationServiceExtension {
 
     private var initialContent: UNNotificationContent?
     private let content = Atomic<NotificationContent?>(value: nil)
+    private let afterDelivery = Atomic<(() -> Void)?>(value: nil)
     private var contentHandler: ((UNNotificationContent) -> Void)?
     private var episode: String?
     private var requestCompletion: ExtensionRequestCompletion?
@@ -3187,6 +3364,7 @@ final class NotificationService: UNNotificationServiceExtension {
         self.requestCompletion = requestCompletion
 
         let content = self.content
+        let afterDelivery = self.afterDelivery
 
         self.impl = QueueLocalObject(queue: queue, generate: { [weak self] in
             return BoxedNotificationServiceHandler(value: NotificationServiceHandler(
@@ -3194,6 +3372,9 @@ final class NotificationService: UNNotificationServiceExtension {
                 episode: episode,
                 updateCurrentContent: { value in
                     let _ = content.swap(value)
+                },
+                afterDelivery: { action in
+                    let _ = afterDelivery.swap(action)
                 },
                 completed: {
                     guard let strongSelf = self else {
@@ -3209,9 +3390,10 @@ final class NotificationService: UNNotificationServiceExtension {
                         
                         let result = strongSelf.resultContent(generated: content.with({ $0 })?.generate())
                         let requestIdentifier = strongSelf.requestIdentifier
+                        let afterDeliveryAction = afterDelivery.swap(nil)
                         // Content goes back once no transaction is running (or after 1 s).
                         NotificationService.finish(requestCompletion, impl: impl, deliverTimeout: 1.0, deliver: {
-                            NotificationService.deliver(result, requestIdentifier: requestIdentifier, contentHandler: contentHandler)
+                            NotificationService.deliver(result, requestIdentifier: requestIdentifier, contentHandler: contentHandler, afterDelivery: afterDeliveryAction)
                         })
                     } else {
                         Logger.shared.log("NotificationService \(episode)", "Attempted to repeatedly complete handling notification")
@@ -3242,9 +3424,10 @@ final class NotificationService: UNNotificationServiceExtension {
             
             let result = self.resultContent(generated: self.content.with({ $0 })?.generate())
             let requestIdentifier = self.requestIdentifier
+            let afterDeliveryAction = self.afterDelivery.swap(nil)
             // Delivered right away; the pause still runs under the activity.
             NotificationService.finish(self.requestCompletion, impl: impl, deliverTimeout: 0.0, deliver: {
-                NotificationService.deliver(result, requestIdentifier: requestIdentifier, contentHandler: contentHandler)
+                NotificationService.deliver(result, requestIdentifier: requestIdentifier, contentHandler: contentHandler, afterDelivery: afterDeliveryAction)
             })
         }
     }
@@ -3259,11 +3442,15 @@ final class NotificationService: UNNotificationServiceExtension {
         return ServicePushPresentation.presentation(generated: generated, initialContent: self.initialContent, canFilter: self.canFilterNotifications)
     }
 
-    private static func deliver(_ result: (content: UNNotificationContent, isQuietPlaceholder: Bool)?, requestIdentifier: String?, contentHandler: (UNNotificationContent) -> Void) {
+    private static func deliver(_ result: (content: UNNotificationContent, isQuietPlaceholder: Bool)?, requestIdentifier: String?, contentHandler: (UNNotificationContent) -> Void, afterDelivery: (() -> Void)? = nil) {
         guard let result else {
             return
         }
         contentHandler(result.content)
+        // The ring watch starts only once the ring is on screen; a quiet copy never has one.
+        if !result.isQuietPlaceholder {
+            afterDelivery?()
+        }
         guard result.isQuietPlaceholder, let requestIdentifier else {
             return
         }

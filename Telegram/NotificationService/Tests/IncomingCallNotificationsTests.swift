@@ -75,4 +75,57 @@ final class IncomingCallNotificationsTests: XCTestCase {
             XCTAssertNil(IncomingCallNotifications.callBack(identifier: identifier), identifier)
         }
     }
+
+    // MARK: - Ending a ring
+
+    func testMissedCallPushesEndTheRing() {
+        for key in ["PHONE_CALL_MISSED", "VIDEO_CALL_MISSED", "CONF_CALL_MISSED"] {
+            XCTAssertTrue(IncomingCallNotifications.endsRing(locKey: key), key)
+        }
+        for key in ["PHONE_CALL_REQUEST", "MESSAGE_TEXT", "READ_HISTORY", ""] {
+            XCTAssertFalse(IncomingCallNotifications.endsRing(locKey: key), key)
+        }
+        XCTAssertFalse(IncomingCallNotifications.endsRing(locKey: nil))
+    }
+
+    func testCallRelatedPushesAreLogged() {
+        XCTAssertTrue(IncomingCallNotifications.isCallRelated(locKey: "PHONE_CALL_REQUEST"))
+        XCTAssertTrue(IncomingCallNotifications.isCallRelated(locKey: "VIDEO_CALL_MISSED"))
+        XCTAssertTrue(IncomingCallNotifications.isCallRelated(locKey: "CONF_VIDEOCALL_REQUEST"))
+        XCTAssertFalse(IncomingCallNotifications.isCallRelated(locKey: "MESSAGE_TEXT"))
+        XCTAssertFalse(IncomingCallNotifications.isCallRelated(locKey: nil))
+    }
+
+    // The ringtone lasts 30 s, so watching longer than that only wastes the extension's budget.
+    func testWatchPolicy() {
+        XCTAssertEqual(IncomingCallNotifications.ringWatchWindow, 30.0)
+        XCTAssertEqual(IncomingCallNotifications.ringWatchInterval, 2.0)
+        XCTAssertLessThan(IncomingCallNotifications.ringWatchWindow, IncomingCallNotifications.ringTimeout)
+    }
+
+    func testPushActions() {
+        XCTAssertEqual(IncomingCallNotifications.pushAction(locKey: "PHONE_CALL_REQUEST", callId: 5, deliveredRingCallIds: []), .ring)
+        XCTAssertEqual(IncomingCallNotifications.pushAction(locKey: "PHONE_CALL_REQUEST", callId: 5, deliveredRingCallIds: [4, 5]), .showQuietly)
+        XCTAssertEqual(IncomingCallNotifications.pushAction(locKey: "PHONE_CALL_REQUEST", callId: 6, deliveredRingCallIds: [5]), .ring)
+        XCTAssertEqual(IncomingCallNotifications.pushAction(locKey: "PHONE_CALL_MISSED", callId: nil, deliveredRingCallIds: [5]), .stopRinging)
+        XCTAssertEqual(IncomingCallNotifications.pushAction(locKey: "MESSAGE_TEXT", callId: nil, deliveredRingCallIds: [5]), .ignore)
+    }
+
+    // The stop path finds the ring by the call id in its userInfo, not by its APNs identifier.
+    func testRingIsFoundByCallId() {
+        func ring(_ id: String, accountId: Int64, callId: Int64) -> (identifier: String, userInfo: [AnyHashable: Any]) {
+            let call = IncomingCallNotificationRouting.Call(accountId: accountId, peerId: 100, fromId: 100, callId: callId, accessHash: 1, updates: "u", isVideo: false)
+            return (id, IncomingCallPushPresentation.userInfo(accountId: accountId, peerId: 100, fromUserId: 100, call: call))
+        }
+        let delivered = [
+            ring("a", accountId: 7, callId: 1),
+            ring("b", accountId: 7, callId: 2),
+            ring("c", accountId: 8, callId: 1),
+            (identifier: "message", userInfo: ["call_id": "1", "accountId": "7"] as [AnyHashable: Any])
+        ]
+        XCTAssertEqual(IncomingCallNotificationRouting.identifiers(delivered: delivered, accountId: 7, callId: 1), ["a"])
+        XCTAssertEqual(IncomingCallNotificationRouting.identifiers(delivered: delivered, accountId: 8, callId: 1), ["c"])
+        XCTAssertEqual(IncomingCallNotificationRouting.identifiers(delivered: delivered, accountId: 7, callId: 3), [])
+        XCTAssertEqual(IncomingCallNotificationRouting.callIds(delivered: delivered, accountId: 7).sorted(), [1, 2])
+    }
 }

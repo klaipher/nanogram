@@ -73,26 +73,99 @@ enum IncomingCallPushPresentation {
         }
     }
 
+    /// What to do with a call the server may already have ended when its push arrived.
+    enum RingDecision: Equatable {
+        case ring
+        /// Shown without sound and taken down at once: the call is over, or already rings.
+        case quiet
+    }
+
+    /// A call the server says is over is not rung; anything else (a slow or failed
+    /// acknowledgement included) rings, as a missed ring costs more than a ghost one.
+    static func ringDecision(acknowledgement: IncomingCallProbeResult) -> RingDecision {
+        if case .ended = acknowledgement {
+            return .quiet
+        }
+        return .ring
+    }
+
+    /// Marks content shown without a ring (`quieted`): it is taken down after delivery like a quiet
+    /// placeholder.
+    static let quietUserInfoKey = "nanogram.quietCall"
+
+    static var quietUserInfo: [AnyHashable: Any] {
+        return [quietUserInfoKey: true, ServicePushNotifications.placeholderUserInfoKey: true]
+    }
+
+    static func isQuietCall(userInfo: [AnyHashable: Any]) -> Bool {
+        return (userInfo[quietUserInfoKey] as? Bool) == true
+    }
+
+    /// The call content as a passive notification with no sound and no Answer or Decline.
+    static func quieted(_ content: UNNotificationContent) -> UNNotificationContent {
+        guard let quiet = content.mutableCopy() as? UNMutableNotificationContent else {
+            return content
+        }
+        quiet.sound = nil
+        quiet.categoryIdentifier = ""
+        quiet.interruptionLevel = .passive
+        quiet.relevanceScore = 0.0
+        quiet.userInfo = quietUserInfo
+        return quiet
+    }
+
     /// Hands the call to CallKit, or rings it as a notification. The ringing content is made only
     /// to be shown (without CallKit, or after `ringsAfterCallKitError`): what it looks up and draws
     /// for the caller never delays handing the call to CallKit. A call that rings as a notification
     /// is also acknowledged to the server (`acknowledgeRing`, started with the ring, so the caller
-    /// sees "Ringing"); a call CallKit takes is acknowledged by the app CallKit starts.
+    /// sees "Ringing"); a call CallKit takes is acknowledged by the app CallKit starts. The
+    /// acknowledgement's answer decides the ring (`ringDecision`): a call already over is shown
+    /// quietly (`makeQuietContent`), a ring starts `startWatch` (which runs after the content is
+    /// delivered) and the CallKit branch never does.
     static func present<Content>(
         reportsToCallKit: Bool,
         reportToCallKit: (@escaping (Error?) -> Void) -> Void,
         makeRingingContent: @escaping (@escaping (Content) -> Void) -> Void,
         showRingingContent: @escaping (Content) -> Void,
-        acknowledgeRing: @escaping (@escaping () -> Void) -> Void = { done in done() },
+        acknowledgeRing: @escaping (@escaping (IncomingCallProbeResult) -> Void) -> Void = { done in done(.unknown) },
+        isRepeatedCall: Bool = false,
+        makeQuietContent: @escaping (Content) -> Content = { $0 },
+        decided: @escaping (RingDecision, IncomingCallProbeResult) -> Void = { _, _ in },
+        startWatch: @escaping () -> Void = {},
         completed: @escaping () -> Void
     ) {
         let ring: () -> Void = {
-            let join = CompletionJoin(count: 2, action: completed)
-            acknowledgeRing {
+            let lock = NSLock()
+            var acknowledgement: IncomingCallProbeResult?
+            var content: Content?
+            let join = CompletionJoin(count: 2, action: {
+                lock.lock()
+                let result = acknowledgement ?? .unknown
+                let madeContent = content
+                lock.unlock()
+                var decision = ringDecision(acknowledgement: result)
+                if isRepeatedCall {
+                    decision = .quiet
+                }
+                decided(decision, result)
+                if let madeContent {
+                    showRingingContent(decision == .quiet ? makeQuietContent(madeContent) : madeContent)
+                }
+                if decision == .ring {
+                    startWatch()
+                }
+                completed()
+            })
+            acknowledgeRing { result in
+                lock.lock()
+                acknowledgement = result
+                lock.unlock()
                 join.complete()
             }
-            makeRingingContent { content in
-                showRingingContent(content)
+            makeRingingContent { made in
+                lock.lock()
+                content = made
+                lock.unlock()
                 join.complete()
             }
         }
@@ -230,6 +303,7 @@ enum IncomingCallPushPresentation {
         center.getDeliveredNotifications { notifications in
             let identifiers = staleRingIdentifiers(notifications, now: now())
             if !identifiers.isEmpty {
+                CallDiagnostics.log("nse call - ring removed by stale n=\(identifiers.count)")
                 center.removeDeliveredNotifications(withIdentifiers: identifiers)
             }
         }

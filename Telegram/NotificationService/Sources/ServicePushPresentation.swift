@@ -37,6 +37,9 @@ enum ServicePushPresentation {
     /// as far as `IncomingCallPushPresentation`), the server's own alert goes out unchanged,
     /// sound included, and stays.
     static func presentation(generated: UNNotificationContent, initialContent: UNNotificationContent?, canFilter: Bool) -> (content: UNNotificationContent, isQuietPlaceholder: Bool) {
+        if IncomingCallPushPresentation.isQuietCall(userInfo: generated.userInfo) {
+            return (IncomingCallPushPresentation.quieted(generated), true)
+        }
         guard !canFilter, isEmpty(generated), let initialContent, !isEmpty(initialContent) else {
             return (generated, false)
         }

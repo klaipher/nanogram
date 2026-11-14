@@ -206,6 +206,13 @@ marked (check) were not re-verified against the code; correct them on the next c
 - Upstream: differs. Shared with the Mac (`docs/mac-core-paths.txt`): `MtProtoKit` (`MTLogging`, `MTContext.m` guards; `MTLogEnabledValue` now starts false), `TelegramCore` (`Log.swift` `logNetworkDumps`, `LoggingSettings`, `ChatThemes.swift` request gate). Everything else is iOS only.
 - Sync: a new MtProtoKit dump belongs behind `MTLogEnabled()`, or `MTLogContextDumpEnabled()` when an extension loads it; a new MT line that must stay with the switch off uses `MTShortLog`.
 
+### Incoming call ring stops when the call ends elsewhere (iOS, notification fallback)
+- What: without the notification filtering entitlement an incoming call rings as the extension's notification. After delivery the extension keeps asking `phone.receivedCall` every 2 s for 30 s (the ringtone's length) and removes the ring (found by `call_id` in its userInfo) when the server says the call is over; a missed-call push removes the caller's rings; a call already over is not rung; a repeated push of the same call is shown quietly; call events go to the always-on short log (`nse call ...`), which "Send Critical Logs" now includes. Upstream shows a one-shot notification with no sound and no cleanup.
+- Why: declining or answering on another device sends this phone no push, so the ring lasted until the app was opened.
+- Where: `Telegram/NotificationService/Sources/IncomingCallRingWatch.swift`, `IncomingCallPushPresentation.swift`, `NotificationService.swift`; `submodules/NotificationsPresentationData` (`IncomingCallNotifications`, `IncomingCallNotificationRouting`); `submodules/TelegramCore/Sources/TelegramEngine/Calls/ProbeIncomingCall.swift`; `DebugController`.
+- Upstream: differs. Shared with the Mac (`docs/mac-core-paths.txt`): only the new `ProbeIncomingCall.swift` in `TelegramCore`, which the Mac does not use.
+- Sync: the watch lives on the notification branch of `IncomingCallPushPresentation.present`; with CallKit (filtering entitlement) it is never started and CallKit ends the call from the app's connection. Keep it that way when merging upstream changes to the extension's call branch.
+
 ### Notification tone "None" still vibrates (iOS)
 - What: with a chat's or category's tone set to None, a message push gets the bundled near-silent `nanogram-none-haptic.caf` as its sound, so iOS fires the Taptic Engine (per Settings, Sounds & Haptics). Upstream shows no sound and no vibration. Only when our own settings resolve to None and notifications are on; muted chats, "Send without sound", reactions, stories, calls and pushes that already carry a sound are unchanged.
 - Why: iOS vibrates only for a notification that has a sound, and the server omits `sound` for None.

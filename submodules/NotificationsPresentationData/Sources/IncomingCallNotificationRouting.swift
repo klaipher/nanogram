@@ -88,4 +88,30 @@ public enum IncomingCallNotificationRouting {
             return IncomingCallNotifications.identifiers(delivered: [item], peerId: peerId).first
         }
     }
+
+    /// Delivered call notifications for the call `callId` of `accountId`.
+    public static func identifiers(delivered: [(identifier: String, userInfo: [AnyHashable: Any])], accountId: Int64, callId: Int64) -> [String] {
+        let accountIdString = "\(accountId)"
+        let callIdString = "\(callId)"
+        return delivered.compactMap { item -> String? in
+            guard IncomingCallNotifications.isIncomingCall(userInfo: item.userInfo),
+                  (item.userInfo[Key.accountId] as? String) == accountIdString,
+                  (item.userInfo[Key.callId] as? String) == callIdString
+            else {
+                return nil
+            }
+            return item.identifier
+        }
+    }
+
+    /// The call ids of the delivered call notifications of `accountId`.
+    public static func callIds(delivered: [(identifier: String, userInfo: [AnyHashable: Any])], accountId: Int64) -> [Int64] {
+        let accountIdString = "\(accountId)"
+        return delivered.compactMap { item -> Int64? in
+            guard IncomingCallNotifications.isIncomingCall(userInfo: item.userInfo), (item.userInfo[Key.accountId] as? String) == accountIdString else {
+                return nil
+            }
+            return (item.userInfo[Key.callId] as? String).flatMap { Int64($0) }
+        }
+    }
 }

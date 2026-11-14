@@ -197,11 +197,18 @@ private enum DebugLogAction {
         case .sendCriticalLogs:
             // The short log files, one attachment each.
             return { directory, spec in
-                return Logger.shared.collectShortLogFiles()
+                // The notification extension's own short log: it holds how a call ring started and ended.
+                let notificationLogsPath = arguments.sharedContext.basePath + "/logs/notification-logs"
+                let notificationLogs = Logger(rootPath: notificationLogsPath, basePath: notificationLogsPath).collectShortLogFiles()
+                |> take(1)
+                |> map { logs -> [(String, String)] in
+                    return logs.map { ("nse-" + $0.0, $0.1) }
+                }
+                return combineLatest(Logger.shared.collectShortLogFiles() |> take(1), notificationLogs)
                 |> take(1)
                 |> deliverOn(debugLogExportPreparationQueue())
-                |> map { logs -> [DebugLogExportFile] in
-                    return debugLogCopiedFiles(logs: logs, baseName: spec.fileBaseName, mimeType: "text/plain", in: directory)
+                |> map { appLogs, extensionLogs -> [DebugLogExportFile] in
+                    return debugLogCopiedFiles(logs: appLogs + extensionLogs, baseName: spec.fileBaseName, mimeType: "text/plain", in: directory)
                 }
             }
         case .sendAllLogs:

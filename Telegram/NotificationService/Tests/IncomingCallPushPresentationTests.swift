@@ -232,7 +232,10 @@ final class IncomingCallPushPresentationTests: XCTestCase {
 
     private final class AcknowledgedFlow {
         var events: [String] = []
-        var acknowledgeCompletion: (() -> Void)?
+        var acknowledgeCompletion: ((IncomingCallProbeResult) -> Void)?
+        var decisions: [IncomingCallPushPresentation.RingDecision] = []
+        var shown: [String] = []
+        var isRepeated = false
 
         func present(reportsToCallKit: Bool, reportError: Error? = nil) {
             IncomingCallPushPresentation.present(
@@ -245,12 +248,21 @@ final class IncomingCallPushPresentationTests: XCTestCase {
                     self.events.append("make")
                     done("ringing")
                 },
-                showRingingContent: { _ in
+                showRingingContent: { content in
                     self.events.append("show")
+                    self.shown.append(content)
                 },
                 acknowledgeRing: { done in
                     self.events.append("acknowledge")
                     self.acknowledgeCompletion = done
+                },
+                isRepeatedCall: self.isRepeated,
+                makeQuietContent: { _ in "quiet" },
+                decided: { decision, _ in
+                    self.decisions.append(decision)
+                },
+                startWatch: {
+                    self.events.append("watch")
                 },
                 completed: {
                     self.events.append("completed")
@@ -264,9 +276,10 @@ final class IncomingCallPushPresentationTests: XCTestCase {
     func testRingIsHandedBackAfterTheAcknowledgement() {
         let flow = AcknowledgedFlow()
         flow.present(reportsToCallKit: false)
-        XCTAssertEqual(flow.events, ["acknowledge", "make", "show"])
-        flow.acknowledgeCompletion?()
-        XCTAssertEqual(flow.events, ["acknowledge", "make", "show", "completed"])
+        XCTAssertEqual(flow.events, ["acknowledge", "make"])
+        flow.acknowledgeCompletion?(.ringing)
+        XCTAssertEqual(flow.events, ["acknowledge", "make", "show", "watch", "completed"])
+        XCTAssertEqual(flow.shown, ["ringing"])
     }
 
     func testAcknowledgementFinishingFirstStillWaitsForTheBanner() {
@@ -279,7 +292,7 @@ final class IncomingCallPushPresentationTests: XCTestCase {
             showRingingContent: { _ in events.append("show") },
             acknowledgeRing: { done in
                 events.append("acknowledged")
-                done()
+                done(.unknown)
             },
             completed: { events.append("completed") }
         )
@@ -298,7 +311,79 @@ final class IncomingCallPushPresentationTests: XCTestCase {
     func testCallKitFailureAcknowledgesTheRing() {
         let flow = AcknowledgedFlow()
         flow.present(reportsToCallKit: true, reportError: NSError(domain: CXErrorDomainIncomingCall, code: CXErrorCodeIncomingCallError.Code.unentitled.rawValue))
-        XCTAssertEqual(flow.events, ["report", "acknowledge", "make", "show"])
+        XCTAssertEqual(flow.events, ["report", "acknowledge", "make"])
+    }
+
+    // A call the server already ended is not rung and no watch starts.
+    func testEndedCallIsShownQuietlyWithoutAWatch() {
+        let flow = AcknowledgedFlow()
+        flow.present(reportsToCallKit: false)
+        flow.acknowledgeCompletion?(.ended("rpc 400 CALL_ALREADY_DECLINED"))
+        XCTAssertEqual(flow.events, ["acknowledge", "make", "show", "completed"])
+        XCTAssertEqual(flow.shown, ["quiet"])
+        XCTAssertEqual(flow.decisions, [.quiet])
+    }
+
+    // A slow or failed acknowledgement still rings: a missed call costs more than a ghost ring.
+    func testUnknownAcknowledgementRingsAndWatches() {
+        let flow = AcknowledgedFlow()
+        flow.present(reportsToCallKit: false)
+        flow.acknowledgeCompletion?(.unknown)
+        XCTAssertEqual(flow.shown, ["ringing"])
+        XCTAssertEqual(flow.decisions, [.ring])
+        XCTAssertTrue(flow.events.contains("watch"))
+    }
+
+    // A repeated push of a call that already rings must not ring twice.
+    func testRepeatedCallIsShownQuietly() {
+        let flow = AcknowledgedFlow()
+        flow.isRepeated = true
+        flow.present(reportsToCallKit: false)
+        flow.acknowledgeCompletion?(.ringing)
+        XCTAssertEqual(flow.shown, ["quiet"])
+        XCTAssertFalse(flow.events.contains("watch"))
+    }
+
+    // CallKit rings and ends the call itself: the watch belongs to the notification branch only.
+    func testCallKitBranchNeverStartsAWatch() {
+        let flow = AcknowledgedFlow()
+        flow.present(reportsToCallKit: true)
+        XCTAssertFalse(flow.events.contains("watch"))
+    }
+
+    func testRingDecision() {
+        XCTAssertEqual(IncomingCallPushPresentation.ringDecision(acknowledgement: .ringing), .ring)
+        XCTAssertEqual(IncomingCallPushPresentation.ringDecision(acknowledgement: .unknown), .ring)
+        XCTAssertEqual(IncomingCallPushPresentation.ringDecision(acknowledgement: .ended("x")), .quiet)
+    }
+
+    func testQuietedContentHasNoSoundOrButtons() {
+        let content = UNMutableNotificationContent()
+        content.title = "Alice"
+        content.sound = .defaultRingtone
+        content.categoryIdentifier = IncomingCallNotificationRouting.categoryIdentifier
+        content.interruptionLevel = .timeSensitive
+        content.userInfo = IncomingCallPushPresentation.userInfo(accountId: 1, peerId: 2, fromUserId: 2)
+        let quiet = IncomingCallPushPresentation.quieted(content)
+        XCTAssertNil(quiet.sound)
+        XCTAssertEqual(quiet.categoryIdentifier, "")
+        XCTAssertEqual(quiet.interruptionLevel, .passive)
+        XCTAssertEqual(quiet.title, "Alice")
+        XCTAssertTrue(IncomingCallPushPresentation.isQuietCall(userInfo: quiet.userInfo))
+        XCTAssertTrue(ServicePushPresentation.isQuietPlaceholder(userInfo: quiet.userInfo))
+        XCTAssertFalse(IncomingCallPushPresentation.isIncomingCall(userInfo: quiet.userInfo))
+    }
+
+    func testQuietCallIsTakenDownAfterDelivery() {
+        let content = UNMutableNotificationContent()
+        content.title = "Alice"
+        content.sound = .defaultRingtone
+        content.userInfo = IncomingCallPushPresentation.quietUserInfo
+        for canFilter in [false, true] {
+            let result = ServicePushPresentation.presentation(generated: content, initialContent: nil, canFilter: canFilter)
+            XCTAssertTrue(result.isQuietPlaceholder)
+            XCTAssertNil(result.content.sound)
+        }
     }
 
     func testCallKitResultDescription() {
