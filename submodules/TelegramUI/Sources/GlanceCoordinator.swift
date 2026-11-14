@@ -8,6 +8,7 @@ import TelegramPresentationData
 import AppLock
 import WidgetKit
 import NanogramGlance
+import NanogramAppIntents
 #if canImport(ActivityKit)
 import ActivityKit
 #endif
@@ -296,6 +297,10 @@ final class GlanceCoordinator {
         self.writeQueue.async {
             if shouldWrite {
                 GlanceStore.write(snapshot, rootPath: rootPath)
+                if snapshot.enabled, #available(iOS 16.0, *) {
+                    // The App Shortcut phrase 'Open <chat> in Nanogram' takes its values from the chats just written.
+                    NanogramShortcuts.updateAppShortcutParameters()
+                }
             }
             if shouldReload {
                 #if arch(arm64) || arch(x86_64)
