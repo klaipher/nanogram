@@ -33,6 +33,7 @@ public import ActivityKit
 
 /// Live Activity of live-location sharing or a call that has no CallKit screen. The app composes every string, so
 /// the extension never decides what may be shown.
+@available(iOS 16.1, *)
 public struct NanogramGlanceActivityAttributes: ActivityAttributes {
     public struct ContentState: Codable, Hashable, Sendable {
         public var headline: String
