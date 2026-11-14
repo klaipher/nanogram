@@ -9,7 +9,7 @@ import subprocess
 import shutil
 import glob
 
-from BuildEnvironment import resolve_executable, call_executable, run_executable_with_output, BuildEnvironmentVersions, BuildEnvironment
+from BuildEnvironment import resolve_executable, call_executable, run_executable_with_output, get_xcode_sdk_identity, BuildEnvironmentVersions, BuildEnvironment
 from ProjectGeneration import generate
 from BazelLocation import locate_bazel
 from FileSync import write_if_changed, sync_directory
@@ -281,6 +281,13 @@ class BazelCommandLine:
 
     def get_additional_build_arguments(self):
         combined_arguments = []
+
+        # Genrules (native libraries) get only --action_env as their environment, so without this an Xcode/SDK
+        # update could serve stale codec/td objects from the disk cache. See docs/module-build-settings.md.
+        xcode_identity = get_xcode_sdk_identity()
+        if xcode_identity:
+            combined_arguments += ['--action_env=NANOGRAM_XCODE_ID={}'.format(xcode_identity)]
+
         if self.split_submodules:
             combined_arguments += [
                 # https://github.com/bazelbuild/rules_swift

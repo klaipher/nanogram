@@ -25,6 +25,10 @@ class BazelArgumentsTest(unittest.TestCase):
         patcher.start()
         self.addCleanup(patcher.stop)
 
+        identity_patcher = mock.patch.object(Make, 'get_xcode_sdk_identity', lambda: '')
+        identity_patcher.start()
+        self.addCleanup(identity_patcher.stop)
+
         self.calls = []
         call_patcher = mock.patch.object(Make, 'call_executable', lambda args, **kw: self.calls.append(args))
         call_patcher.start()

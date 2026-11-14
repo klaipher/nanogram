@@ -120,6 +120,38 @@ def get_bazel_version(bazel_path):
     return command_result
 
 
+def parse_xcode_build_version(xcodebuild_output):
+    """Returns the build id ("17E202") from `xcodebuild -version` output, or None."""
+    for line in xcodebuild_output.split('\n'):
+        line = line.strip()
+        if line.startswith('Build version '):
+            return line[len('Build version '):].strip() or None
+    return None
+
+
+def get_xcode_sdk_identity():
+    """One string naming the selected Xcode build and its iphoneos / iphonesimulator SDK builds.
+
+    Bazel genrules (the native libraries under third-party/ and submodules/ffmpeg) see only --action_env, so
+    nothing else in their action key changes when Xcode does. Make.py passes this as --action_env=NANOGRAM_XCODE_ID
+    so an Xcode or SDK update re-runs them instead of serving stale objects from the disk cache. Uses the Xcode that
+    `xcode-select` points at, so --overrideXcodeVersion and the tart VMs keep working. Returns '' when it cannot be
+    determined (the build then behaves as before)."""
+    try:
+        xcode = parse_xcode_build_version(run_executable_with_output('xcodebuild', ['-version']))
+        parts = ['xcode-' + (xcode or 'unknown')]
+        for sdk in ['iphoneos', 'iphonesimulator']:
+            sdk_build = run_executable_with_output('xcrun', ['--sdk', sdk, '--show-sdk-build-version']).strip()
+            if not sdk_build or '\n' in sdk_build:
+                return ''
+            parts.append('{}-{}'.format(sdk, sdk_build))
+        if xcode is None:
+            return ''
+        return '.'.join(parts)
+    except Exception:
+        return ''
+
+
 def get_xcode_version():
     xcode_path = run_executable_with_output('xcode-select', ['-p']).strip('\n')
     if not os.path.isdir(xcode_path):
