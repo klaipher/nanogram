@@ -282,7 +282,9 @@ final class TDClient {
                         coalesceUpdates: true
                     )
                     chatList?.setProjectionPaused(!isSceneActive)
+                    configureWidgetSnapshot()
                 }
+                registerForPushIfEnabled()
             }
             switch mapped {
             case .ready:
@@ -417,6 +419,8 @@ final class TDClient {
         guard let client else { return }
         let useTest = self.useTestDc
         let accountId = account.id
+        // Server-visible: the real language, build and OS version only with the owner's flag.
+        let systemInfo = TdlibSystemInfo.resolve(enabled: WatchFeatureFlags.isEnabled(.localizedTdlibParameters))
         Task { [weak self, logger, client] in
             let layout = await Task.detached(priority: .userInitiated) {
                 TDLibStorage.prepareLayout(accountId: accountId, roots: .production)
@@ -426,13 +430,13 @@ final class TDClient {
                 _ = try await client.setTdlibParameters(
                     apiHash: Secrets.apiHash,
                     apiId: Secrets.apiId,
-                    applicationVersion: "0.1",
+                    applicationVersion: systemInfo.applicationVersion,
                     databaseDirectory: layout.databaseDirectory.path,
                     databaseEncryptionKey: nil,
                     deviceModel: "Apple Watch",
                     filesDirectory: layout.filesDirectory.path,
-                    systemLanguageCode: "en",
-                    systemVersion: nil,
+                    systemLanguageCode: systemInfo.languageCode,
+                    systemVersion: systemInfo.systemVersion,
                     useChatInfoDatabase: true,
                     useFileDatabase: true,
                     useMessageDatabase: true,
@@ -444,6 +448,66 @@ final class TDClient {
                 Task { @MainActor in
                     self?.authState = .failed(humanMessage(error))
                 }
+            }
+        }
+    }
+
+    // MARK: - Widget summary (IOS-WATCH-WIDGET-1)
+
+    private var widgetPublisher: WidgetSnapshotPublisher?
+
+    /// Feeds the App Group summary from the chat list. Flag `widgetSnapshot`; a no-op without the App Group.
+    private func configureWidgetSnapshot() {
+        guard WatchFeatureFlags.isEnabled(.widgetSnapshot) else { return }
+        let publisher = WidgetSnapshotPublisher(store: .appGroup())
+        guard publisher.isAvailable else {
+            logger.notice("widget snapshot enabled but the App Group is missing from the entitlements")
+            return
+        }
+        widgetPublisher = publisher
+        chatList?.onProjected = { [weak self, weak publisher] in
+            publisher?.requestPublish { [weak self] in self?.chatList?.unreadInputs() ?? [] }
+        }
+    }
+
+    /// Background refresh: writes the summary now, from the cache, even though the projection is paused.
+    func publishWidgetSnapshotNow() {
+        guard let chatList else { return }
+        widgetPublisher?.publishNow(inputs: chatList.unreadInputs())
+    }
+
+    // MARK: - Push registration (WATCH-INT-1)
+
+    private var pushObserver: PushTokenObservation?
+    private var registeredPushToken: Data?
+
+    /// Registers the watch's APNs token with TDLib once the account is ready. Flag `pushRegistration`; needs the
+    /// push entitlement (owner steps in NANOGRAM-CHANGES.md). Server-visible: the account gets a new device.
+    private func registerForPushIfEnabled() {
+        guard WatchFeatureFlags.isEnabled(.pushRegistration), pushObserver == nil else { return }
+        pushObserver = PushTokenStore.shared.observe { [weak self] token in
+            self?.sendRegisterDevice(token)
+        }
+    }
+
+    private func sendRegisterDevice(_ token: Data) {
+        guard let client, registeredPushToken != token else { return }
+        registeredPushToken = token
+        let query = RegisterDeviceQuery(tokenHex: PushRegistration.hexString(token), isSandbox: PushRegistration.isSandbox)
+        do {
+            try client.send(query: query, completion: Self.registerDeviceCompletion(logger: logger))
+        } catch {
+            registeredPushToken = nil
+            logger.warning("registerDevice not sent: \(error.localizedDescription, privacy: .public)")
+        }
+    }
+
+    /// Built outside the main actor: TDLib calls it on its own queue, and a closure written inside this
+    /// `@MainActor` class would be main-actor isolated, which Swift 6 checks on entry.
+    nonisolated private static func registerDeviceCompletion(logger: os.Logger) -> (Data) -> Void {
+        return { data in
+            if let text = String(data: data, encoding: .utf8), text.contains("\"@type\":\"error\"") {
+                logger.warning("registerDevice failed")
             }
         }
     }

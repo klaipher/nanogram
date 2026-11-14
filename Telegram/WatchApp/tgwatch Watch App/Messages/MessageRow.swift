@@ -110,9 +110,11 @@ func messageRows(
     locale: Locale = .current,
     selfUserId: Int64? = nil,
     unreadDividerAfterId: Int64? = nil,
-    lastReadOutboxMessageId: Int64 = 0
+    lastReadOutboxMessageId: Int64 = 0,
+    /// True when `messages` is already ordered by id (the store's cached sort): skips the sort.
+    presorted: Bool = false
 ) -> [MessageRow] {
-    let sorted = messages.sorted { $0.id < $1.id }
+    let sorted = presorted ? messages : messages.sorted { $0.id < $1.id }
     let cacheById: [Int64: CachedMessage] = Dictionary(uniqueKeysWithValues: sorted.map { ($0.id, $0) })
 
     // Saved Messages (a private chat with our own user id) has no recipient, so

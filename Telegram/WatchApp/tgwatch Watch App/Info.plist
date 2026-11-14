@@ -22,11 +22,6 @@
 	<string>$(MARKETING_VERSION)</string>
 	<key>CFBundleVersion</key>
 	<string>$(CURRENT_PROJECT_VERSION)</string>
-	<key>NSAppTransportSecurity</key>
-	<dict>
-		<key>NSAllowsArbitraryLoads</key>
-		<true/>
-	</dict>
 	<key>NSLocationWhenInUseUsageDescription</key>
 	<string>Share your current location in chats.</string>
 	<key>NSMicrophoneUsageDescription</key>
@@ -37,6 +32,10 @@
 	<string>$(TG_API_ID)</string>
 	<key>WKApplication</key>
 	<true/>
+	<key>WKBackgroundModes</key>
+	<array>
+		<string>audio</string>
+	</array>
 	<key>WKCompanionAppBundleIdentifier</key>
 	<string>$(PRODUCT_BUNDLE_IDENTIFIER:base)</string>
 	<key>WKRunsIndependentlyOfCompanionApp</key>

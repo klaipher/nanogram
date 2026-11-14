@@ -9,3 +9,6 @@
 
 # Development project generated from project-dev.yml
 tgwatch-dev.xcodeproj/
+
+# Built from submodules/tlottie by tools/build-tlottie-xcframework.sh (not committed)
+Packages/TLottieKit/Frameworks/

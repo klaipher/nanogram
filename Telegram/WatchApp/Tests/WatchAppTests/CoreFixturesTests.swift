@@ -76,10 +76,12 @@ final class CoreFakeAudioBackend: AudioPlayerBackend {
     var onEnded: (() -> Void)?
     var onFailed: ((String) -> Void)?
     var elapsed: Double = 0
+    private(set) var skips: [Double] = []
     func load(url: URL) throws {}
     func play() {}
     func pause() {}
     func stop() {}
+    func skip(by seconds: Double) { skips.append(seconds) }
 }
 
 enum CoreFixtures {

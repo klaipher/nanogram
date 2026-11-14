@@ -3,6 +3,7 @@ import UIKit
 import AVKit
 import AVFoundation
 import OSLog
+@preconcurrency import TDShim
 
 /// Full-screen sheet that plays a round video note inside a 180pt masked circle
 /// with AVKit chrome suppressed. State machine mirrors `VideoPlayerView`:
@@ -41,16 +42,7 @@ struct VideoNotePlayerView: View {
         .onAppear { start() }
         .onChange(of: store.fileSnapshot(fileId: note.videoFileId)) { _, snap in
             guard let snap else { return }
-            if snap.local.isDownloadingCompleted, !snap.local.path.isEmpty {
-                if player == nil {
-                    setupPlayer(path: snap.local.path)
-                    phase = .playing
-                }
-            } else {
-                let total = max(1, snap.expectedSize)
-                let progress = Double(snap.local.downloadedSize) / Double(total)
-                phase = .preparing(progress: min(1, max(0, progress)))
-            }
+            handleSnapshot(snap)
         }
         .onDisappear {
             tearDownPlayer()
@@ -97,6 +89,8 @@ struct VideoNotePlayerView: View {
                             .foregroundStyle(.white)
                     }
                     .buttonStyle(.plain)
+                    // Double Tap replays: the only primary action once the video has ended.
+                    .handGestureShortcut(.primaryAction)
                 }
             }
         case .failed(let message):
@@ -140,6 +134,22 @@ struct VideoNotePlayerView: View {
         }
     }
 
+    private func handleSnapshot(_ snap: File) {
+        if snap.local.isDownloadingCompleted, !snap.local.path.isEmpty {
+            if player == nil {
+                setupPlayer(path: snap.local.path)
+                phase = .playing
+            }
+            return
+        }
+        phase = .preparing(progress: downloadProgress(of: snap))
+    }
+
+    private func downloadProgress(of snap: File) -> Double {
+        let total = max(1, snap.expectedSize)
+        return min(1, max(0, Double(snap.local.downloadedSize) / Double(total)))
+    }
+
     private func tearDownPlayer() {
         player?.pause()
         player = nil
@@ -153,7 +163,12 @@ struct VideoNotePlayerView: View {
     }
 
     private func setupPlayer(path: String) {
-        let p = AVPlayer(url: URL(fileURLWithPath: path))
+        setupPlayer(item: AVPlayerItem(url: URL(fileURLWithPath: path)), isProgressive: false)
+    }
+
+    /// A progressive player stays in `.preparing` (preview and percentage) until AVPlayer reports it can play.
+    private func setupPlayer(item playerItem: AVPlayerItem, isProgressive: Bool) {
+        let p = AVPlayer(playerItem: playerItem)
         if let item = p.currentItem {
             endObserver = NotificationCenter.default.addObserver(
                 forName: .AVPlayerItemDidPlayToEndTime,
@@ -168,6 +183,10 @@ struct VideoNotePlayerView: View {
                 if item.status == .failed {
                     Task { @MainActor in
                         phase = .failed("Could not play video")
+                    }
+                } else if item.status == .readyToPlay, isProgressive {
+                    Task { @MainActor in
+                        if case .preparing = phase { phase = .playing }
                     }
                 }
             }

@@ -33,8 +33,8 @@ packages:
   QRCodeGenerator:
     url: https://github.com/fwcd/swift-qrcode-generator
     exactVersion: 2.0.2
-  RLottieKit:
-    path: Packages/RLottieKit
+  TLottieKit:
+    path: Packages/TLottieKit
   WebPKit:
     path: Packages/WebPKit
   OpusKit:
@@ -49,6 +49,8 @@ targets:
       - path: Assets/SampleStickers
         buildPhase: resources
         type: folder
+      # Also compiled into the widget extension of the widget variant (project-widget.yml).
+      - path: Shared
     info:
       path: tgwatch Watch App/Info.plist
       properties:
@@ -63,10 +65,12 @@ targets:
         # Intentional: keeps the watch app independently installable on the watch
         # while still shipping inside the Nanogram IPA. Do not change to false.
         WKRunsIndependentlyOfCompanionApp: true
+        # Long-form music playback keeps going with the wrist down (WATCH-AUDIO-1). Only a session with the
+        # long-form route policy uses it, which stays behind WatchFeature.longFormAudio.
+        WKBackgroundModes:
+          - audio
         TG_API_ID: $(TG_API_ID)
         TG_API_HASH: $(TG_API_HASH)
-        NSAppTransportSecurity:
-          NSAllowsArbitraryLoads: true
         NSMicrophoneUsageDescription: Record voice messages to send in chats.
         NSLocationWhenInUseUsageDescription: Share your current location in chats.
     settings:
@@ -102,8 +106,8 @@ targets:
         product: TDShim
       - package: QRCodeGenerator
         product: QRCodeGenerator
-      - package: RLottieKit
-        product: RLottieKit
+      - package: TLottieKit
+        product: TLottieKit
       - package: WebPKit
         product: WebPKit
       - package: OpusKit

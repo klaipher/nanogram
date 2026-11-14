@@ -1,0 +1,66 @@
+# The widget variant of the watch project (IOS-WATCH-WIDGET-1). NOT part of the default build.
+#
+# project.yml (and the committed tgwatch.xcodeproj that the Bazel embed build compiles) has no widget. This overlay
+# adds the WidgetKit extension and embeds it, and switches the app to Xcode automatic signing so it can be built for a
+# device from Xcode. Generate it on demand:
+#
+#   cd Telegram/WatchApp && xcodegen generate --spec project-widget.yml   # writes tgwatch-widget.xcodeproj (not committed)
+#
+# It needs, in the developer portal: the App ID org.klaipher.Nanogram.watchkitapp.widget, the App Group
+# group.org.klaipher.Nanogram.watch on it and on org.klaipher.Nanogram.watchkitapp, and (for the Bazel embed build) the
+# profile plumbing in Telegram/prebuilt_watchos.bzl. WatchWidget/OWNER-STEPS.md lists the steps in order.
+include:
+  - project.yml
+name: tgwatch-widget
+targets:
+  tgwatch Watch App:
+    dependencies:
+      - target: WatchWidgetExtension
+        embed: true
+    entitlements:
+      path: WatchWidget/WatchApp.entitlements
+      properties:
+        com.apple.security.application-groups:
+          - group.org.klaipher.Nanogram.watch
+    settings:
+      base:
+        CODE_SIGNING_ALLOWED: "YES"
+        CODE_SIGNING_REQUIRED: "YES"
+        CODE_SIGN_STYLE: Automatic
+        CODE_SIGN_IDENTITY: "Apple Development"
+  WatchWidgetExtension:
+    type: app-extension
+    platform: watchOS
+    deploymentTarget: "26.0"
+    sources:
+      - path: WatchWidget
+        excludes:
+          - "*.md"
+          - "*.entitlements"
+      # The same snapshot model the app writes.
+      - path: Shared
+    info:
+      path: WatchWidget/Info.plist
+      properties:
+        CFBundleDisplayName: Nanogram
+        CFBundleShortVersionString: $(MARKETING_VERSION)
+        CFBundleVersion: $(CURRENT_PROJECT_VERSION)
+        NSExtension:
+          NSExtensionPointIdentifier: com.apple.widgetkit-extension
+    entitlements:
+      path: WatchWidget/WatchWidget.entitlements
+      properties:
+        com.apple.security.application-groups:
+          - group.org.klaipher.Nanogram.watch
+    settings:
+      base:
+        PRODUCT_BUNDLE_IDENTIFIER: org.klaipher.Nanogram.watchkitapp.widget
+        DEVELOPMENT_TEAM: YGTMYL879P
+        SWIFT_VERSION: "6.0"
+        SWIFT_STRICT_CONCURRENCY: complete
+        SWIFT_TREAT_WARNINGS_AS_ERRORS: "YES"
+        TARGETED_DEVICE_FAMILY: "4"
+        GENERATE_INFOPLIST_FILE: "NO"
+        SKIP_INSTALL: "YES"
+        CODE_SIGN_STYLE: Automatic
+        CODE_SIGN_IDENTITY: "Apple Development"

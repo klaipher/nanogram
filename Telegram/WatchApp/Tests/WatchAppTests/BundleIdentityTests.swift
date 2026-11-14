@@ -16,3 +16,26 @@ final class BundleIdentityTests: XCTestCase {
         XCTAssertEqual(companion, String(bundleId.dropLast(".watchkitapp".count)))
     }
 }
+
+/// IOS-WATCH-ATS-1: the watch app makes no HTTP requests (network goes through TDLib's own sockets), so it
+/// must not carry a blanket App Transport Security exemption.
+final class AppTransportSecurityTests: XCTestCase {
+    func testInfoPlistHasNoAppTransportSecurityExemption() {
+        XCTAssertNil(Bundle.main.object(forInfoDictionaryKey: "NSAppTransportSecurity"))
+    }
+
+    /// A future URLSession, AsyncImage or WKWebView would load plain HTTP silently under the old exemption.
+    /// If one is added on purpose, give it a narrow NSExceptionDomains entry instead and update this guard.
+    func testSourcesDoNotUseTheNetworkStack() throws {
+        let root = URL(fileURLWithPath: #filePath)
+            .deletingLastPathComponent().deletingLastPathComponent().deletingLastPathComponent()
+            .appendingPathComponent("tgwatch Watch App")
+        let files = try XCTUnwrap(FileManager.default.enumerator(at: root, includingPropertiesForKeys: nil))
+        for case let url as URL in files where url.pathExtension == "swift" {
+            let text = try String(contentsOf: url, encoding: .utf8)
+            for needle in ["URLSession", "AsyncImage", "WKWebView"] {
+                XCTAssertFalse(text.contains(needle), "\(url.lastPathComponent) uses \(needle)")
+            }
+        }
+    }
+}

@@ -106,6 +106,8 @@ struct VideoPlayerView: View {
                         .shadow(radius: 2)
                 }
                 .buttonStyle(.plain)
+                // Double Tap replays: the only primary action once the video has ended.
+                .handGestureShortcut(.primaryAction)
             }
         }
     }
@@ -191,14 +193,21 @@ struct VideoPlayerView: View {
             setupPlayer(path: snap.local.path)
             return
         }
+        phase = .preparing(progress: downloadProgress(of: snap))
+    }
+
+    private func downloadProgress(of snap: File) -> Double {
         let denom = max(1, snap.expectedSize)
-        let progress = Double(snap.local.downloadedSize) / Double(denom)
-        phase = .preparing(progress: min(max(progress, 0), 1))
+        return min(max(Double(snap.local.downloadedSize) / Double(denom), 0), 1)
     }
 
     private func setupPlayer(path: String) {
-        let url = URL(fileURLWithPath: path)
-        let p = AVPlayer(url: url)
+        attach(AVPlayer(url: URL(fileURLWithPath: path)), isProgressive: false)
+    }
+
+    /// Wires the end/failure observers, starts the audio session and playback. A progressive player stays in
+    /// `.preparing` (with the preview and the percentage) until AVPlayer reports it can play, then shows video.
+    private func attach(_ p: AVPlayer, isProgressive: Bool) {
         if let obs = endObserver {
             NotificationCenter.default.removeObserver(obs)
         }
@@ -218,14 +227,15 @@ struct VideoPlayerView: View {
                 if status == .failed {
                     phase = .failed("Could not play video")
                 } else if status == .readyToPlay {
+                    if isProgressive, case .preparing = phase { phase = .playing }
                     let audioTracks = p.currentItem?.tracks.filter { $0.assetTrack?.mediaType == .audio } ?? []
                     logger.info("ready: audioTracks=\(audioTracks.count, privacy: .public) sessionCategory=\(AVAudioSession.sharedInstance().category.rawValue, privacy: .public)")
                 }
             }
         activatePlaybackSession()
         player = p
-        phase = .playing
+        if !isProgressive { phase = .playing }
         p.play()
-        logger.info("playback started fileId=\(video.videoFileId, privacy: .public)")
+        logger.info("playback started fileId=\(video.videoFileId, privacy: .public) progressive=\(isProgressive, privacy: .public)")
     }
 }
