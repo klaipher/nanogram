@@ -67,6 +67,8 @@ func managedConfigurationUpdates(accountManager: AccountManager<TelegramAccountM
                 
                     updateLinksConfiguration(transaction: transaction, configuration: LinksConfiguration(autologinToken: autologinToken))
                 
+                    CallRingTimeout.store(transaction: transaction, serverTimeoutMs: configData.callRingTimeoutMs)
+                
                     if let defaultReaction = reactionsDefault, let reaction = MessageReaction.Reaction(apiReaction: defaultReaction) {
                         updateReactionSettings(transaction: transaction, { settings in
                             var settings = settings

@@ -1,4 +1,5 @@
 import Foundation
+import Postbox
 import SwiftSignalKit
 
 typealias CallRingTimerFactory = (_ delay: Double, _ queue: Queue, _ fire: @escaping () -> Void) -> Disposable
@@ -9,16 +10,30 @@ typealias CallRingTimerFactory = (_ delay: Double, _ queue: Queue, _ fire: @esca
 enum CallRingTimeout {
     static let defaultServerTimeoutMs: Int32 = 90_000
     static let grace: Double = 10.0
-    static let appConfigurationKey = "call_ring_timeout_ms"
 
-    static func serverTimeoutMs(appConfiguration: JSON?) -> Int32? {
-        guard let appConfiguration, case let .dictionary(values) = appConfiguration, case let .number(value)? = values[appConfigurationKey] else {
+    /// The server sends the timeout as `help.getConfig` `call_ring_timeout_ms`, not as an app config key.
+    static func validatedServerTimeoutMs(_ value: Int32?) -> Int32? {
+        guard let value, value >= 1_000, value <= 600_000 else {
             return nil
         }
-        guard value.isFinite, value >= 1_000, value <= 600_000 else {
-            return nil
+        return value
+    }
+
+    static let preferencesKey: ValueBoxKey = {
+        let key = ValueBoxKey(length: 4)
+        key.setInt32(0, value: 7_100)
+        return key
+    }()
+
+    static func store(transaction: Transaction, serverTimeoutMs: Int32?) {
+        let configuration = CallRingTimeoutConfiguration(serverTimeoutMs: validatedServerTimeoutMs(serverTimeoutMs))
+        if current(transaction: transaction) != configuration {
+            transaction.setPreferencesEntry(key: preferencesKey, value: PreferencesEntry(configuration))
         }
-        return Int32(exactly: value.rounded(.towardZero))
+    }
+
+    static func current(transaction: Transaction) -> CallRingTimeoutConfiguration {
+        return transaction.getPreferencesEntry(key: preferencesKey)?.get(CallRingTimeoutConfiguration.self) ?? CallRingTimeoutConfiguration(serverTimeoutMs: nil)
     }
 
     /// Seconds from the local receipt of the call.
@@ -45,4 +60,8 @@ enum CallRingTimeout {
             }
         })
     }
+}
+
+struct CallRingTimeoutConfiguration: Equatable, Codable {
+    var serverTimeoutMs: Int32?
 }

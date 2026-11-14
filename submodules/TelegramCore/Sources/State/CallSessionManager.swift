@@ -810,8 +810,7 @@ private final class CallSessionManagerContext {
         let queue = self.queue
         let makeRingTimer = self.makeRingTimer
         context.ringTimeoutDisposable.set((self.postbox.transaction { transaction -> Int32? in
-            let appConfiguration = transaction.getPreferencesEntry(key: PreferencesKeys.appConfiguration)?.get(AppConfiguration.self)
-            return CallRingTimeout.serverTimeoutMs(appConfiguration: appConfiguration?.data)
+            return CallRingTimeout.validatedServerTimeoutMs(CallRingTimeout.current(transaction: transaction).serverTimeoutMs)
         }
         |> deliverOn(queue)).start(next: { [weak self, weak context] serverTimeoutMs in
             guard let self, let context else {

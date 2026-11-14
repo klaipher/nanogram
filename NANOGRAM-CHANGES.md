@@ -396,3 +396,11 @@ marked (check) were not re-verified against the code; correct them on the next c
 - Where: `Telegram/WatchApp/Shared/{EnergyNumbers,WatchReportPayload}.swift`, `WatchReportSession.swift`, `ChatControllerOpenLinkContextMenu.swift`, `ChatSearchOperators.swift`.
 - Upstream: no. Mercurygram attribution for search operators (291b1c0ab, 61ed3f602, 94efecb78, 0884e7357) and the URL cleaner (0ec92ad56, 38dbb8733, 197a708ae, 7c876bb07) is in `docs/nanogram/mercurygram-port.md`; code is our own.
 - Sync: the chat link menu change is two one-line hooks.
+
+## Server config reading fixes (iOS and Mac, shared core, 2026-11-14)
+
+Patches to upstream bugs and one fix of our own code, found by the server-switches review.
+- `SearchStickers.swift` (upstream bug): the key `"stickers_premium_by_emoji_num "` had a trailing space, so `SearchStickersConfiguration` always fell back to its defaults. Key fixed.
+- `UrlHandling.swift` (upstream bug): `starref_start_param_prefixes` was read `as? String`, but the server sends an array. Now parsed by `StarRefStartParamPrefixes` (array, or a string for compatibility, default `_tgr_`).
+- `ChatMessagePollBubbleContentNode.swift` (upstream inconsistency): fallback of `poll_answers_max` 20 -> 10, same as the poll composer.
+- Our `CallRingTimeout` (4ff25ba7) read `call_ring_timeout_ms` from the app config; it is a `help.getConfig` field, now stored from `managedConfigurationUpdates`.

@@ -3029,7 +3029,7 @@ public class ChatMessagePollBubbleContentNode: ChatMessageBubbleContentNode {
                         pollOptionsFinalizeLayouts.append((optionResult != nil, result.1))
                     }
                     
-                    var maxPollOptions: Int = 20
+                    var maxPollOptions: Int = 10
                     if let data = item.context.currentAppConfiguration.with({ $0 }).data, let value = data["poll_answers_max"] as? Double {
                         maxPollOptions = Int(value)
                     }

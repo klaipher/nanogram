@@ -19,7 +19,7 @@ private struct SearchStickersConfiguration {
     }
     
     static func with(appConfiguration: AppConfiguration) -> SearchStickersConfiguration {
-        if let data = appConfiguration.data, let cacheTimeoutValue = data["stickers_emoji_cache_time"] as? Double, let normalStickersPerPremiumValue = data["stickers_normal_by_emoji_per_premium_num"] as? Double, let premiumStickersCountValue = data["stickers_premium_by_emoji_num "] as? Double {
+        if let data = appConfiguration.data, let cacheTimeoutValue = data["stickers_emoji_cache_time"] as? Double, let normalStickersPerPremiumValue = data["stickers_normal_by_emoji_per_premium_num"] as? Double, let premiumStickersCountValue = data["stickers_premium_by_emoji_num"] as? Double {
             return SearchStickersConfiguration(cacheTimeout: Int32(cacheTimeoutValue), normalStickersPerPremium: Int32(normalStickersPerPremiumValue), premiumStickersCount: Int32(premiumStickersCountValue))
         } else {
             return .defaultValue

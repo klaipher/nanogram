@@ -25,13 +25,12 @@ final class CallRingTimeoutTests: XCTestCase {
         XCTAssertEqual(CallRingTimeout.delay(serverTimeoutMs: nil), 100.0)
     }
 
-    func testServerTimeoutIsReadFromTheAppConfigurationAndBounded() {
-        XCTAssertEqual(CallRingTimeout.serverTimeoutMs(appConfiguration: .dictionary(["call_ring_timeout_ms": .number(60_000)])), 60_000)
-        XCTAssertNil(CallRingTimeout.serverTimeoutMs(appConfiguration: .dictionary(["call_ring_timeout_ms": .number(0)])))
-        XCTAssertNil(CallRingTimeout.serverTimeoutMs(appConfiguration: .dictionary(["call_ring_timeout_ms": .number(.infinity)])))
-        XCTAssertNil(CallRingTimeout.serverTimeoutMs(appConfiguration: .dictionary(["call_ring_timeout_ms": .string("90000")])))
-        XCTAssertNil(CallRingTimeout.serverTimeoutMs(appConfiguration: .dictionary([:])))
-        XCTAssertNil(CallRingTimeout.serverTimeoutMs(appConfiguration: nil))
+    func testServerTimeoutIsBounded() {
+        XCTAssertEqual(CallRingTimeout.validatedServerTimeoutMs(60_000), 60_000)
+        XCTAssertNil(CallRingTimeout.validatedServerTimeoutMs(0))
+        XCTAssertNil(CallRingTimeout.validatedServerTimeoutMs(999))
+        XCTAssertNil(CallRingTimeout.validatedServerTimeoutMs(600_001))
+        XCTAssertNil(CallRingTimeout.validatedServerTimeoutMs(nil))
     }
 
     func testExpiresWhileStillRinging() {

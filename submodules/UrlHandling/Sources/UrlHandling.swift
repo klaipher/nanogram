@@ -364,14 +364,11 @@ public func parseInternalUrl(sharedContext: SharedAccountContext, context: Accou
                                     }
                                     return .peer(.name(peerName), .attachBotStart(value, startAttach))
                                 } else if queryItem.name == "start" {
-                                    var linkRefPrefix = "_tgr_"
+                                    var linkRefPrefixes = StarRefStartParamPrefixes.defaultPrefixes
                                     if let context {
-                                        if let data = context.currentAppConfiguration.with({ $0 }).data, let value = data["starref_start_param_prefixes"] as? String {
-                                            linkRefPrefix = value
-                                        }
+                                        linkRefPrefixes = StarRefStartParamPrefixes.prefixes(appConfiguration: context.currentAppConfiguration.with({ $0 }).data)
                                     }
-                                    if value.hasPrefix(linkRefPrefix) {
-                                        let referrer = String(value[value.index(value.startIndex, offsetBy: linkRefPrefix.count)...])
+                                    if let referrer = StarRefStartParamPrefixes.referrer(startParam: value, prefixes: linkRefPrefixes) {
                                         return .peer(.name(peerName), .referrer(referrer))
                                     } else {
                                         return .peer(.name(peerName), .botStart(value))
