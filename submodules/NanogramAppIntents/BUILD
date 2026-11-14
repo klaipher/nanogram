@@ -11,6 +11,8 @@ swift_library(
     deps = [
         "//submodules/NanogramGlance:NanogramGlance",
     ],
+    # rules_apple's app_intents aspect requires the AppIntents SDK framework among the library's link flags.
+    linkopts = ["-framework", "AppIntents"],
     alwayslink = True,
     visibility = ["//visibility:public"],
 )

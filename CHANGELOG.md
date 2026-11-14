@@ -4,6 +4,8 @@ Newest first. Internal notes for each TestFlight build; testers see the What to 
 
 ## Unreleased
 
+- **Build fix** (`submodules/NanogramAppIntents/BUILD`): `linkopts = ["-framework", "AppIntents"]`. rules_apple's `app_intents_aspect` fails analysis unless the library links the AppIntents SDK framework ("does not depend on the AppIntents SDK framework").
+
 - **Build fix** (`Telegram/BUILD`): the widget extension and the app set `app_intents` as a plain attribute (an empty list when `nanogram_app_intents_metadata` is off). Bazel 9 rejects `**{...}` in BUILD files ("**kwargs arguments are not allowed in BUILD files"), so the package did not load.
 
 - **Search operators** (`ChatSearchOperators.swift`) no longer import Postbox: `EnginePeer.Id` and `EngineMessage.Tags` replace `PeerId` and `MessageTags`. PostboxImportCheck stopped `tg test` and the app build on this new file.
