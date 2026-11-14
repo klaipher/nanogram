@@ -23,3 +23,16 @@ comparisons made before the old copy was deleted.
   `src/`, `include/rnnoise.h` and `COPYING`: no difference. The fork has 5 extra tool files (dump_features.c,
   dump_rnnoise_tables.c, write_weights.c, compile.sh, rnn_train.py), which the BUILD excludes.
 - The three symbol renames (`compute_rnn`, `eband20ms`, `init_rnnoise` to `rnnoise_*`) stay in the BUILD copts.
+
+## libprisma
+
+- Old copy: `third-party/libprisma/{Sources,Resources,include}` (iOS 94640c63 + TokenizeStats/TokenizeLimits; Syntaxer.mm for iOS).
+- New source: submodule `third-party/libprisma/libprisma` = klaipher/libprisma `nanogram` c061944d (94640c63 + bounded
+  tokenizing incl. TokenizeStats/TokenizeLimits, one `apple/Syntaxer` for iOS and macOS, alias joining in generate.js).
+- `cmp`: LanguageTree.{cpp,h}, TokenList.{cpp,h}, UnicodeEscapes.h and `grammars.dat` are byte-identical to the fork's
+  `libprisma/`. Highlight.{h,cpp} and SyntaxHighlighter.{h,cpp} differ only by the additions of the Android budget work
+  (BudgetedPosition, repeat-count specialization, weak tree pointers, `search()`, `searchesToGiveUp`); the iOS-side hunks
+  (TokenizeStats, TokenizeLimits, the two caps) are all present, which is why the host test still compiles unchanged.
+- `Syntaxer.mm` and `Syntaxer.h`: the iOS file differs from the fork's `apple/Syntaxer.mm` by the `SyntaxerColor/SyntaxerFont`
+  platform aliases, the macOS `themeKeys` initializer and `static` helpers (the merged iOS+macOS version).
+- `Tests/SyntaxHighlighterRecursionTests.cpp` stays in this repository; its BUILD target reads the submodule files.

@@ -12,9 +12,9 @@ load("//build-system/bazel-utils:plist_fragment.bzl",
 
 filegroup(
     name = "LibprismaResources",
-    srcs = glob([
-        "Resources/**/*.dat",
-    ]),
+    srcs = [
+        "libprisma/libprisma/grammars.dat",
+    ],
     visibility = ["//visibility:public"],
 )
 
@@ -46,25 +46,25 @@ objc_library(
     name = "libprisma",
     enable_modules = True,
     module_name = "libprisma",
+    # Everything comes from the klaipher/libprisma submodule (nanogram): the C++ core in libprisma/libprisma and the
+    # one Objective-C++ glue for iOS and macOS in libprisma/apple. `libprisma/Syntaxer.h` keeps its import path.
     srcs = glob([
-        "Sources/**/*.c",
-        "Sources/**/*.cpp",
-        "Sources/**/*.m",
-        "Sources/**/*.mm",
-        "Sources/**/*.h",
-        "Sources/**/*.hpp",
-    ], allow_empty=True),
-    hdrs = glob([
-        "include/libprisma/*.h",
-    ]),
-    includes = [
-        "include",
+        "libprisma/libprisma/*.cpp",
+        "libprisma/libprisma/*.h",
+    ]) + [
+        "libprisma/apple/Syntaxer.mm",
     ],
+    hdrs = [
+        "libprisma/apple/Syntaxer.h",
+    ],
+    include_prefix = "libprisma",
+    strip_include_prefix = "libprisma/apple",
     data = [
         ":LibprismaBundle",
     ],
     copts = [
         "-DBOOST_REGEX_MAX_BLOCKS=1536",
+        "-Ithird-party/libprisma/libprisma/libprisma",
     ],
     deps = [
         "//third-party/boost_regex",
@@ -86,27 +86,27 @@ cc_test(
     name = "SyntaxHighlighterTests",
     srcs = [
         "Tests/SyntaxHighlighterRecursionTests.cpp",
-        "Sources/SyntaxHighlighter.cpp",
-        "Sources/SyntaxHighlighter.h",
-        "Sources/LanguageTree.cpp",
-        "Sources/LanguageTree.h",
-        "Sources/TokenList.cpp",
-        "Sources/TokenList.h",
-        "Sources/Highlight.cpp",
-        "Sources/Highlight.h",
-        "Sources/UnicodeEscapes.h",
+        "libprisma/libprisma/SyntaxHighlighter.cpp",
+        "libprisma/libprisma/SyntaxHighlighter.h",
+        "libprisma/libprisma/LanguageTree.cpp",
+        "libprisma/libprisma/LanguageTree.h",
+        "libprisma/libprisma/TokenList.cpp",
+        "libprisma/libprisma/TokenList.h",
+        "libprisma/libprisma/Highlight.cpp",
+        "libprisma/libprisma/Highlight.h",
+        "libprisma/libprisma/UnicodeEscapes.h",
     ],
     copts = [
         "-std=c++17",
         "-O2",
         "-DBOOST_REGEX_MAX_BLOCKS=1536",
-        "-Ithird-party/libprisma/Sources",
+        "-Ithird-party/libprisma/libprisma/libprisma",
     ],
     data = [
-        "Resources/grammars.dat",
+        "libprisma/libprisma/grammars.dat",
     ],
     args = [
-        "$(location Resources/grammars.dat)",
+        "$(location libprisma/libprisma/grammars.dat)",
     ],
     deps = [
         "//third-party/boost_regex",

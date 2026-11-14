@@ -75,3 +75,8 @@
 	url = https://github.com/klaipher/rnnoise.git
 	branch = nanogram
 	shallow = true
+[submodule "third-party/libprisma/libprisma"]
+	path = third-party/libprisma/libprisma
+	url = https://github.com/klaipher/libprisma.git
+	branch = nanogram
+	shallow = true
