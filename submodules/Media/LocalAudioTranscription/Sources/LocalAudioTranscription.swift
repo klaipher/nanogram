@@ -11,14 +11,10 @@ private struct TranscriptionResult {
 }
 
 private func transcribeAudio(path: String, locale: String) -> Signal<TranscriptionResult?, NoError> {
-    if isSpeechAnalyzerEnabled(), #available(iOS 26.0, *) {
-        return speechAnalyzerSignal(path: path, locale: locale)
-        |> mapToSignal { result -> Signal<TranscriptionResult?, NoError> in
-            if let result {
-                return .single(result)
-            }
+    if #available(iOS 26.0, *), transcriptionEngine(flagEnabled: isSpeechAnalyzerEnabled(), osSupportsAnalyzer: true) == .analyzer {
+        return transcriptionWithFallback(primary: speechAnalyzerSignal(path: path, locale: locale), fallback: {
             return legacyTranscribeAudio(path: path, locale: locale)
-        }
+        })
     }
     return legacyTranscribeAudio(path: path, locale: locale)
 }

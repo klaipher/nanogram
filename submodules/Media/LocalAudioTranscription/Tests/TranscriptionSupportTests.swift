@@ -1,4 +1,5 @@
 import XCTest
+import SwiftSignalKit
 @testable import LocalAudioTranscription
 
 final class TranscriptionSupportTests: XCTestCase {
@@ -27,5 +28,34 @@ final class TranscriptionSupportTests: XCTestCase {
         XCTAssertEqual(joinedTranscriptionText(["Hello ", "world "]), "Hello world")
         XCTAssertNil(joinedTranscriptionText(["  ", "\n"]))
         XCTAssertNil(joinedTranscriptionText([]))
+    }
+
+    func testTheAnalyzerNeedsTheFlagAndTheOS() {
+        XCTAssertEqual(transcriptionEngine(flagEnabled: true, osSupportsAnalyzer: true), .analyzer)
+        XCTAssertEqual(transcriptionEngine(flagEnabled: false, osSupportsAnalyzer: true), .legacy)
+        XCTAssertEqual(transcriptionEngine(flagEnabled: true, osSupportsAnalyzer: false), .legacy)
+        XCTAssertEqual(transcriptionEngine(flagEnabled: false, osSupportsAnalyzer: false), .legacy)
+    }
+
+    private func firstValue(_ signal: Signal<String?, NoError>) -> String?? {
+        var value: String??
+        let disposable = signal.start(next: { value = .some($0) })
+        disposable.dispose()
+        return value
+    }
+
+    func testAnalyzerResultIsUsedWithoutTheFallback() {
+        var fallbackCalled = false
+        let result = firstValue(transcriptionWithFallback(primary: .single("analyzer"), fallback: {
+            fallbackCalled = true
+            return .single("legacy")
+        }))
+        XCTAssertEqual(result, .some("analyzer"))
+        XCTAssertFalse(fallbackCalled)
+    }
+
+    func testMissingAnalyzerResultFallsBackToTheLegacyRecognizer() {
+        let result = firstValue(transcriptionWithFallback(primary: .single(nil), fallback: { .single("legacy") }))
+        XCTAssertEqual(result, .some("legacy"))
     }
 }

@@ -28,6 +28,7 @@ swift_library(
     ]),
     deps = [
         ":LocalAudioTranscription",
+        "//submodules/SSignalKit/SwiftSignalKit:SwiftSignalKit",
     ],
 )
 
