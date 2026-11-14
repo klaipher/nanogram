@@ -1,5 +1,4 @@
 import Foundation
-import Postbox
 import TelegramCore
 import SwiftSignalKit
 import AccountContext
@@ -11,7 +10,7 @@ import NanogramFeatures
 final class ChatSearchOperatorSenders {
     enum Entry {
         case pending
-        case resolved(PeerId)
+        case resolved(EnginePeer.Id)
         case unknown
     }
 
@@ -89,13 +88,13 @@ final class ChatSearchOperatorSenders {
 
 struct ChatSearchOperatorsResult {
     var query: String
-    var fromId: PeerId?
-    var tags: MessageTags?
+    var fromId: EnginePeer.Id?
+    var tags: EngineMessage.Tags?
     var minDate: Int32?
     var maxDate: Int32?
 }
 
-private let supportedSearchOperatorTypes: [SearchOperatorType: MessageTags] = [
+private let supportedSearchOperatorTypes: [SearchOperatorType: EngineMessage.Tags] = [
     .photo: .photo,
     .video: .video,
     .file: .file,
@@ -110,7 +109,7 @@ private let supportedSearchOperatorTypes: [SearchOperatorType: MessageTags] = [
 
 extension ChatControllerImpl {
     // nil when the setting is off, the chat is secret, or the query holds no operator.
-    func searchOperatorsResult(query: String, peerId: PeerId) -> ChatSearchOperatorsResult? {
+    func searchOperatorsResult(query: String, peerId: EnginePeer.Id) -> ChatSearchOperatorsResult? {
         guard NanogramFeaturesSettings.current.with({ $0.searchOperators }), peerId.namespace != Namespaces.Peer.SecretChat else {
             return nil
         }

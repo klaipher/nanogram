@@ -4,6 +4,8 @@ Newest first. Internal notes for each TestFlight build; testers see the What to 
 
 ## Unreleased
 
+- **Search operators** (`ChatSearchOperators.swift`) no longer import Postbox: `EnginePeer.Id` and `EngineMessage.Tags` replace `PeerId` and `MessageTags`. PostboxImportCheck stopped `tg test` and the app build on this new file.
+
 - **Build fix** (`ProbeIncomingCall.swift`): the `timeout` parameter hid SwiftSignalKit's `timeout(_:queue:alternate:)` operator inside the function ("cannot call value of non-function type 'Double'"). The internal name is now `timeoutSeconds`; the public label stays `timeout:`. Found by the macOS release build.
 
 - **App Store signing through the API** (`device_signing.py appstore-signing`): Xcode's automatic signing with an App Store Connect key cannot sign the Watch app and its widget (their App Group needs a signed-in Apple ID: "Authentication failed ... bearer token"). The new step creates an Apple Distribution certificate (key kept in `~/.config/telegram-ios/codesigning/appstore`, imported into the login keychain) and one `IOS_APP_STORE` profile per bundle (app, 6 extensions, Watch app and Watch widget). It records them, and `testflight` then exports with manual signing (`export_options`, tests `ExportOptionsTests`). Replaced profiles are removed from disk, so the export cannot pick an old one by name.
