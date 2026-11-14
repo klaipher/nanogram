@@ -115,6 +115,9 @@ private func systemEncodeProbe() -> Set<MediaVideoCodec> {
             guard let entryType = (entry[kVTVideoEncoderList_CodecType as String] as? NSNumber)?.uint32Value, entryType == type else {
                 return false
             }
+            guard #available(macOS 10.14, *) else {
+                return false
+            }
             return (entry[kVTVideoEncoderList_IsHardwareAccelerated as String] as? NSNumber)?.boolValue ?? false
         }
         if hardware {

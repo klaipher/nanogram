@@ -47,7 +47,8 @@ elif [ "$ARCH" = "arm64" ]; then
 elif [ "$ARCH" = "sim_arm64" ]; then
   TARGETS="arm64-iphonesimulator-gcc"
   LIPO=$(xcrun -sdk iphoneos${SDK} -find lipo)
-  EXTRA_CONFIGURE_ARGS="--extra-cflags=-mios-simulator-version-min=26.0"
+  # the patch adds --target=...ios7.0-simulator, which overrides -mios-simulator-version-min; the later target wins
+  EXTRA_CONFIGURE_ARGS="--extra-cflags=--target=arm64-apple-ios26.0-simulator --extra-ldflags=--target=arm64-apple-ios26.0-simulator"
 elif [ "$ARCH" = "macos_arm64" ]; then
   TARGETS="arm64-darwin22-gcc"
   LIPO=$(xcrun -sdk macosx -find lipo)

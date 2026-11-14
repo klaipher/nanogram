@@ -19,7 +19,7 @@ IOS_ARMS = {
     "third-party/td/build-td-bazel.sh": r"IOS_DEPLOYMENT_TARGET=([\d.]+)|ios([\d.]+)(?:-simulator)? -m",
     "third-party/dav1d/arm64-iPhoneSimulator.meson": r"simulator-version-min=([\d.]+)",
     "third-party/dav1d/build-dav1d-bazel.sh": r"miphoneos-version-min=([\d.]+)",
-    "third-party/libvpx/build-libvpx-bazel.sh": r"-m(?:ios-simulator|iphoneos)-version-min=([\d.]+)",
+    "third-party/libvpx/build-libvpx-bazel.sh": r"-miphoneos-version-min=([\d.]+)|--target=arm64-apple-ios([\d.]+)-simulator",
 }
 
 

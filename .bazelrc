@@ -73,11 +73,11 @@ build --copt=-fstack-protector-strong
 
 # iOS 26 floor: APIs deprecated before 26 (UIScreen.main, UIGraphicsBeginImageContext, AVAsset.tracks, ...) stay in many upstream files
 # that build with -warnings-as-errors / -Werror. Keep the diagnostics as warnings. Clang's -Wno-error wins in either order; Swift's
-# -Wwarning only works AFTER -warnings-as-errors, so check on the first build that rules_swift appends --swiftcopt after target copts
-# (swiftc action command line) or move the pair into swift_strict.bzl. Count the warnings and burn them down in Nanogram-owned code.
+# -Wwarning only works AFTER -warnings-as-errors; rules_swift 4.2.2 appends the global copt after the target's own flags, so the pair
+# goes through its copt flag (the native --swiftcopt was removed in Bazel 8). Count the warnings and burn them down in Nanogram-owned code.
 build --copt=-Wno-error=deprecated-declarations
-build --swiftcopt=-Wwarning
-build --swiftcopt=DeprecatedDeclaration
+build --@build_bazel_rules_swift//swift:copt=-Wwarning
+build --@build_bazel_rules_swift//swift:copt=DeprecatedDeclaration
 
 # CPU baseline (SHARED-APPLE-CPU-1): the iOS floor is 26.0, so clang and swiftc already default to apple-a12 (LSE atomics, CRC32,
 # RCPC, FP16, JSCVT) with no -mcpu/-target-cpu flag; std::atomic and refcounts compile to inline LSE. Do not use apple-a13: A12 iPads
