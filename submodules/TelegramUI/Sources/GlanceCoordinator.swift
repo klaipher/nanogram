@@ -14,18 +14,6 @@ import ActivityKit
 
 typealias GlanceAccounts = (primary: AccountContext?, accounts: [(id: AccountRecordId, context: AccountContext)])
 
-struct GlanceActivityRequest: Equatable {
-    var kind: GlanceActivityKind
-    var accountId: Int64
-    var peerId: Int64
-    var stopLabel: String
-    var headline: String
-    var status: String
-    var startedAt: Date
-    var endsAt: Date?
-    var staleDate: Date
-}
-
 #if canImport(ActivityKit)
 /// One Live Activity of one kind. Activities left over from a killed process are ended when the controller starts,
 /// since what to show is derived again from the live state.
@@ -84,6 +72,7 @@ private final class GlanceActivityController {
 /// handler the App Intents call into. With the switch off it writes a disabled snapshot and ends every activity.
 final class GlanceCoordinator {
     private let rootPath: String
+    private let writeQueue = DispatchQueue(label: "glance-snapshot", qos: .utility)
     private let navigateToChat: (AccountRecordId, EnginePeer.Id) -> Void
     private let accountsValue = Atomic<GlanceAccounts>(value: (nil, []))
     private let gateValue = Atomic<GlanceGate>(value: GlanceGate(enabled: false, displayNames: false, locked: true))
@@ -262,14 +251,22 @@ final class GlanceCoordinator {
             saved = GlancePeerRef(accountId: primary.account.id.int64, peerId: primary.account.peerId.toInt64(), title: strings.DialogList_SavedMessages, isSavedMessages: true)
         }
         let snapshot = GlanceSnapshotBuilder.make(gate: gate, peers: peers, savedMessages: saved)
-        if self.lastSnapshot.map({ !snapshot.hasSameContent(as: $0) }) ?? true {
+        let shouldWrite = self.lastSnapshot.map({ !snapshot.hasSameContent(as: $0) }) ?? true
+        if shouldWrite {
             self.lastSnapshot = snapshot
-            GlanceStore.write(snapshot, rootPath: self.rootPath)
         }
         let previousGate = self.lastGate
         self.lastGate = gate
-        if previousGate != nil && (previousGate?.enabled != gate.enabled || previousGate?.displayNames != gate.displayNames) {
-            DispatchQueue.global(qos: .background).async {
+        let shouldReload = previousGate != nil && (previousGate?.enabled != gate.enabled || previousGate?.displayNames != gate.displayNames)
+        if !shouldWrite && !shouldReload {
+            return
+        }
+        let rootPath = self.rootPath
+        self.writeQueue.async {
+            if shouldWrite {
+                GlanceStore.write(snapshot, rootPath: rootPath)
+            }
+            if shouldReload {
                 #if arch(arm64) || arch(x86_64)
                 WidgetCenter.shared.reloadTimelines(ofKind: "Nanogram_GlanceChats")
                 #endif
