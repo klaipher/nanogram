@@ -16,11 +16,9 @@ let package = Package(
         .package(name: "SSignalKit", path: "../SSignalKit"),
         .package(name: "EncryptionProvider", path: "../EncryptionProvider"),
         .package(name: "WebProxyTransport", path: "../WebProxyTransport"),
+        .package(name: "RustLibraries", path: "../../../../packages/RustLibraries"),
     ],
     targets: [
-        .binaryTarget(
-            name: "MTProtoEngineFFI",
-            path: "MTProtoEngineFFI.xcframework"),
         .target(
             name: "MTProtoRustEngineMapping",
             dependencies: [],
@@ -28,7 +26,7 @@ let package = Package(
         .target(
             name: "MTProtoRustEngine",
             dependencies: [
-                "MTProtoEngineFFI",
+                .product(name: "NanogramRustFFI", package: "RustLibraries", condition: nil),
                 "MTProtoRustEngineMapping",
                 .product(name: "TelegramCore", package: "TelegramCore", condition: nil),
                 .product(name: "MtProtoKit", package: "MtProtoKit", condition: nil),
@@ -44,7 +42,7 @@ let package = Package(
             name: "MTProtoRustEngineTests",
             dependencies: [
                 "MTProtoRustEngine",
-                "MTProtoEngineFFI",
+                .product(name: "NanogramRustFFI", package: "RustLibraries", condition: nil),
                 "MTProtoRustEngineMapping",
                 .product(name: "TelegramCore", package: "TelegramCore", condition: nil),
                 .product(name: "MtProtoKit", package: "MtProtoKit", condition: nil),
