@@ -51,14 +51,14 @@ final class WatchReportSession: NSObject {
         guard !started, WCSession.isSupported() else { return }
         started = true
         Self.energy.start(context: Self.currentContext())
-        delegate.provider = { @Sendable in await WatchReportSession.shared.currentPayloadData() }
+        delegate.provider = { @Sendable in await WatchReportSession.shared.currentPayloadData(maximumBytes: WatchReportMessage.maximumReplyBytes) }
         let session = WCSession.default
         session.delegate = delegate
         session.activate()
     }
 
-    /// The report as the phone expects it, cut to fit the message size.
-    func currentPayloadData() -> Data? {
+    /// The report as the phone expects it, cut to fit `maximumBytes` (the reply path passes the message cap).
+    func currentPayloadData(maximumBytes: Int = WatchReportMessage.maximumBytes) -> Data? {
         let context = Self.currentContext()
         let energy = Self.energy.report(context: context)
         let log = WatchReportBuilder.logText(since: launchDate)
@@ -75,7 +75,7 @@ final class WatchReportSession: NSObject {
             logText: log.text,
             logNote: log.note
         )
-        return WatchReportBuilder.payload(inputs).encoded()
+        return WatchReportBuilder.payload(inputs).encoded(maximumBytes: maximumBytes)
     }
 
     /// Hands the phone a copy for the times the watch is out of reach. At most one every 30 minutes unless `force`.

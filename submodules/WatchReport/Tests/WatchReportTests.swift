@@ -19,6 +19,12 @@ final class WatchReportTests: XCTestCase {
         XCTAssertEqual(decoded, original)
     }
 
+    func testReplyPayloadStaysUnderTheMessageCap() throws {
+        let data = try XCTUnwrap(self.payload(logBytes: 2_000_000).encoded(maximumBytes: WatchReportMessage.maximumReplyBytes))
+        XCTAssertLessThanOrEqual(data.count, 60 * 1024)
+        XCTAssertLessThan(WatchReportMessage.maximumReplyBytes, WatchReportMessage.maximumBytes)
+    }
+
     func testLargeLogIsCutFromTheFrontToFit() {
         guard let data = self.payload(logBytes: 2_000_000).encoded(maximumBytes: 50_000), let decoded = WatchReportPayload.decode(data) else {
             XCTFail("did not encode")

@@ -16,9 +16,18 @@ final class ChatSearchOperatorSenders {
     }
 
     private var entries: [String: Entry] = [:]
+    private var unknownSince: [String: Double] = [:]
+    private var typingKey: String?
+    private let typingDisposable = MetaDisposable()
     private let disposables = DisposableSet()
 
+    // A name is looked up only once it has stayed unchanged this long, so typing does not fire a request per letter.
+    private static let settleSeconds = 0.6
+    // A miss (or a failed lookup, which the core reports as a miss) is asked again after this long.
+    private static let retrySeconds = 30.0
+
     deinit {
+        self.typingDisposable.dispose()
         self.disposables.dispose()
     }
 
@@ -26,7 +35,12 @@ final class ChatSearchOperatorSenders {
     func entry(for name: String, context: AccountContext, onChange: @escaping () -> Void) -> Entry {
         let key = name.lowercased()
         if let entry = self.entries[key] {
-            return entry
+            if case .unknown = entry, let since = self.unknownSince[key], CFAbsoluteTimeGetCurrent() - since > ChatSearchOperatorSenders.retrySeconds {
+                self.entries[key] = nil
+                self.unknownSince[key] = nil
+            } else {
+                return entry
+            }
         }
         if key == "me" {
             let entry = Entry.resolved(context.account.peerId)
@@ -38,7 +52,19 @@ final class ChatSearchOperatorSenders {
             self.entries[key] = .unknown
             return .unknown
         }
+        if let previous = self.typingKey, previous != key, case .pending = self.entries[previous] {
+            self.entries[previous] = nil
+        }
+        self.typingKey = key
         self.entries[key] = .pending
+        self.typingDisposable.set((Signal<Void, NoError>.single(Void())
+        |> delay(ChatSearchOperatorSenders.settleSeconds, queue: Queue.mainQueue())).startStrict(next: { [weak self] _ in
+            self?.resolve(key: key, context: context, onChange: onChange)
+        }))
+        return .pending
+    }
+
+    private func resolve(key: String, context: AccountContext, onChange: @escaping () -> Void) {
         let disposable = (context.engine.peers.resolvePeerByName(name: key, referrer: nil)
         |> deliverOnMainQueue).startStrict(next: { [weak self] result in
             guard let self else {
@@ -52,12 +78,12 @@ final class ChatSearchOperatorSenders {
                     self.entries[key] = .resolved(peer.id)
                 } else {
                     self.entries[key] = .unknown
+                    self.unknownSince[key] = CFAbsoluteTimeGetCurrent()
                 }
                 onChange()
             }
         })
         self.disposables.add(disposable)
-        return .pending
     }
 }
 

@@ -125,6 +125,8 @@ not counted), so two runs of the same test compare directly:
 | Wake-ups per minute | how often the app woke the processor | lower |
 | Battery, Low Power Mode, thermal | the state of the phone at launch and at the report | context |
 
+Rates are per minute of wall-clock time in the window, including time the app was in the background or suspended. A window that was mostly charging is marked "not comparable".
+
 Each switch has its own window: the numbers since **the switch last changed** (changing a switch starts a new window
 from zero after the relaunch; the other state's last numbers stay next to it, so A and B sit side by side). The window
 carries on over relaunches while the switch stays as it is. A window shorter than 30 seconds shows no rates; a window

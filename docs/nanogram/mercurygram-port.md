@@ -32,8 +32,8 @@ Statuses: ported, already had, not applicable, declined, open (checked, needs a 
 | 21 | Photo editing and sharing fixes (crop from source, motion photos, caption lost, album stale group) | not applicable | Android media editor and SendMessagesHelper; iOS uses its own editor and has no motion-photo path. |
 | 22 | mdesktop admin log use-after-free, export -Wtype-limits, Windows submenu, folder slide with no area | not applicable | tdesktop / Qt code. |
 | 23 | mdesktop: collapsed community members must not match type folders (Groups, Channels) | open | iOS `chatListFilterPredicate` treats a community row as one entry (excluded when Groups is off). Whether members of a collapsed community can also match needs a device with communities. No change. |
-| 24 | Search operators (from:, before:, after:, date:, type:) | ported (feature, section 7) | `submodules/NanogramFeatures`, `docs/specs/search-operators.md`. |
-| 25 | Tracking-parameter stripping, confirm t.me links | ported (feature, section 7) | `LinkHygiene`, Settings > Nanogram Features. |
+| 24 | Search operators (from:, before:, after:, date:, type:) | ported (feature, section 7) | `submodules/NanogramFeatures`, `docs/specs/search-operators.md`. Mercurygram Android commits (MgSearchQuery group): 291b1c0ab, 61ed3f602, 94efecb78, 0884e7357. |
+| 25 | Tracking-parameter stripping, confirm t.me links | ported (feature, section 7) | `LinkHygiene`, Settings > Nanogram Features. Mercurygram Android commits (MgUrlCleaner / toggles group): 0ec92ad56, 38dbb8733, 197a708ae, 7c876bb07. |
 | 26 | Decorated-Unicode folding for local chat search | not in scope | A feature, not a bug fix or performance item (section 9 covers fixes). |
 | 27 | PFS temp-key ladder, CDN redirect refusal, local drafts, link previews off, global search off | declined | Change what the server sees (owner rule). |
 | 28 | Premium/ads gates, Tor, GMS/Firebase removal, UnifiedPush, reproducible-build flags | declined | Owner exclusions. |

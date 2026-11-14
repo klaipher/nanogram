@@ -166,6 +166,20 @@ final class EnergyNumbersTests: XCTestCase {
         XCTAssertEqual(run.taskEnergyNanojoules, 2_000_000_000)
     }
 
+    func testLaunchWindowReportsEveryCounterTheDeviceHas() {
+        let clock = Clock()
+        let monitor = self.monitor(self.suite(), ["a": false], clock)
+        monitor.start(context: self.unplugged)
+        clock.uptime = 1120
+        clock.counters = EnergyCounters(cpuUserSeconds: 1, taskEnergyNanojoules: 5, billedEnergyNanojoules: 6, instructions: 7, cycles: 8, diskWriteBytes: 9, wakeups: 10)
+        let run = monitor.refresh(context: self.unplugged)
+        XCTAssertEqual(run.billedEnergyNanojoules, 6)
+        XCTAssertEqual(run.instructions, 7)
+        XCTAssertEqual(run.cycles, 8)
+        XCTAssertEqual(run.diskWriteBytes, 9)
+        XCTAssertEqual(run.wakeups, 10)
+    }
+
     func testMonitorKeepsTheOtherStateAcrossLaunches() {
         let defaults = self.suite()
         let first = Clock()

@@ -28,6 +28,9 @@ public struct EnergyCounters: Equatable, Sendable {
         self.diskWriteBytes = diskWriteBytes
         self.wakeups = wakeups
     }
+
+    /// The counters of a process at exec: every counter exists and is 0.
+    public static let zero = EnergyCounters(taskEnergyNanojoules: 0, billedEnergyNanojoules: 0, instructions: 0, cycles: 0, diskWriteBytes: 0, wakeups: 0)
 }
 
 public enum EnergyPowerState: String, Codable, Sendable {
@@ -438,7 +441,7 @@ public final class EnergyMonitor: @unchecked Sendable {
             self.ledger = stored
         }
         self.bases = self.ledger.beginRun(states: self.states())
-        self.tracker = EnergyRunTracker(uptime: self.uptime(), context: context)
+        self.tracker = EnergyRunTracker(uptime: self.uptime(), context: context, counters: .zero)
         self.saveLocked()
     }
 
@@ -511,6 +514,7 @@ public final class EnergyMonitor: @unchecked Sendable {
     /// window is this launch's, or a longer run of the same setting.
     public static func reportText(title: String, run: EnergyTotals, context: EnergyContext, startContext: EnergyContext?, states: [String: Bool], ledger: EnergyLedger, defaultStates: [String: Bool]) -> String {
         var lines = [title]
+        lines.append("Rates are per minute of wall-clock time in the window, background and suspended time included.")
         lines.append("Now: " + context.text)
         if let startContext {
             lines.append("At launch: " + startContext.text)

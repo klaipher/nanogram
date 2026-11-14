@@ -377,3 +377,9 @@ marked (check) were not re-verified against the code; correct them on the next c
 
 ### Bisecting note
 - Commits b1663a0b and d6d49452 reference `//submodules/MediaCapabilities` in `submodules/MediaPlayer/BUILD` and `submodules/DebugSettingsUI/BUILD` before the package exists (it arrives in e1c4b4e7), so those two commits do not build MediaPlayer or DebugSettingsUI. Skip them when bisecting.
+
+## Review fixes: energy counters, watch reply size, link copy, from: lookups (iOS, 2026-11-14)
+- What: the launch energy window starts from zero counters (`EnergyCounters.zero`) so every kernel counter is reported; the watch reply is cut to 60 KB; "Copy Link" in the chat link menu applies the tracking-parameter setting; `from:` lookups wait 0.6 s after the last keystroke and retry after 30 s; the energy report states that rates are per wall-clock minute.
+- Where: `Telegram/WatchApp/Shared/{EnergyNumbers,WatchReportPayload}.swift`, `WatchReportSession.swift`, `ChatControllerOpenLinkContextMenu.swift`, `ChatSearchOperators.swift`.
+- Upstream: no. Mercurygram attribution for search operators (291b1c0ab, 61ed3f602, 94efecb78, 0884e7357) and the URL cleaner (0ec92ad56, 38dbb8733, 197a708ae, 7c876bb07) is in `docs/nanogram/mercurygram-port.md`; code is our own.
+- Sync: the chat link menu change is two one-line hooks.

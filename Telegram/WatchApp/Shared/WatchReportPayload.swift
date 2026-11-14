@@ -20,8 +20,10 @@ public enum WatchReportMessage {
     /// The watch's reply and the metadata of its file transfers: the encoded payload / a marker.
     public static let payloadKey = "nanogram.watchReport.payload"
     public static let fileMarkerKey = "nanogram.watchReport.file"
-    /// Over this the message path is skipped and the file copy is used.
+    /// The size of the stored file copy (transferFile has no small cap).
     public static let maximumBytes = 400 * 1024
+    /// A sendMessage reply fails around 64 KB (WCErrorCodePayloadTooLarge, size undocumented), so it is cut harder.
+    public static let maximumReplyBytes = 60 * 1024
 }
 
 public struct WatchReportPayload: Codable, Equatable, Sendable {

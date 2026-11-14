@@ -18,6 +18,7 @@ import UrlWhitelist
 import OpenInExternalAppUI
 import SafariServices
 import TelegramPresentationData
+import NanogramFeatures
 
 private struct ChatLinkOpenMode {
     let shouldOpenInApp: Bool
@@ -278,7 +279,7 @@ extension ChatControllerImpl {
                     guard let self else {
                         return
                     }
-                    UIPasteboard.general.string = cleanUrl
+                    UIPasteboard.general.string = NanogramFeaturesSettings.current.with({ $0.stripTrackingParameters }) ? LinkHygiene.strippingTracking(cleanUrl) : cleanUrl
 
                     let content: UndoOverlayContent
                     if isPhoneNumber {
@@ -390,7 +391,7 @@ extension ChatControllerImpl {
                         return
                     }
 
-                    UIPasteboard.general.string = cleanUrl
+                    UIPasteboard.general.string = NanogramFeaturesSettings.current.with({ $0.stripTrackingParameters }) ? LinkHygiene.strippingTracking(cleanUrl) : cleanUrl
 
                     self.present(UndoOverlayController(presentationData: self.presentationData, content: .copy(text: isEmail ? presentationData.strings.Conversation_EmailCopied : presentationData.strings.Conversation_LinkCopied), elevatedLayout: false, animateInAsReplacement: false, action: { _ in return false }), in: .current)
                 }))
