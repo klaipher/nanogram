@@ -53,6 +53,10 @@ public:
                 m_container.end_group(hdc);
                 break;
             case Layer::Kind::Filter: {
+                if (!canNestFilter(m_openFilters)) {
+                    this->layer(child, ctx);
+                    break;
+                }
                 // The filter's bitmap spans what litehtml's ink hands LHDocument's draw_filtered: the contents grown by
                 // the filter's reach (a blur bleeds out by 3 × its radius, a drop shadow by its offset too). The
                 // contents alone cut a blurred circle off at its square.
@@ -67,9 +71,11 @@ public:
                                                        child.box.height + litehtml::pixel_t(2 * reach));
                 }
                 filter.owner = &child;
+                m_openFilters++;
                 m_container.draw_filtered(hdc, filter, [&](litehtml::uint_ptr inner) {
                     this->layer(child, reinterpret_cast<CGContextRef>(inner));
                 });
+                m_openFilters--;
                 break;
             }
             case Layer::Kind::Isolated:
@@ -186,6 +192,7 @@ private:
     litehtml::document_container& m_container;
     const PaintItem* m_stopAt;
     bool m_stopped = false;
+    size_t m_openFilters = 0;
 };
 
 void paintWith(const LayerTree& tree, CGContextRef context, const PaintItem* stopAt, int depth, LHEffectStore* effects);

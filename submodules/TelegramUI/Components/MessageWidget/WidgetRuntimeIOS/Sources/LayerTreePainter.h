@@ -5,6 +5,8 @@
 
 #include <CoreGraphics/CoreGraphics.h>
 
+#include <cstddef>
+
 class LHEffectStore;
 
 namespace wr {
@@ -12,6 +14,12 @@ class LayerTree;
 }
 
 namespace wr::ios {
+
+/// Filters nested past this draw their content unfiltered: each level is a bitmap made inside the one around it, and
+/// widget-sandbox v0.6.5 (paint-filter-depth) has every client draw at most 16 (2,000 nested layers overflowed a stack).
+constexpr size_t kMaxNestedFilters = 16;
+
+constexpr bool canNestFilter(size_t openFilters) { return openFilters < kMaxNestedFilters; }
 
 class LayerTreePainter {
 public:

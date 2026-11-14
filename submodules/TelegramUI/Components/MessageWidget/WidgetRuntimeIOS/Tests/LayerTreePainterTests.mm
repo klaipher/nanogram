@@ -413,4 +413,37 @@ static const char* const kEffectsPage = "<!doctype html><html><head></head><body
     XCTAssertEqual(left.made(), 3u);
 }
 
+// widget-sandbox v0.6.5 (paint-filter-depth): at most 16 nested filters are drawn, the rest draw their content unfiltered.
+- (void)testSixteenNestedFiltersAreAllowedAndNoMore {
+    XCTAssertEqual(wr::ios::kMaxNestedFilters, 16u);
+    for (size_t open = 0; open < 16; open++) {
+        XCTAssertTrue(wr::ios::canNestFilter(open), @"level %zu", open + 1);
+    }
+    XCTAssertFalse(wr::ios::canNestFilter(16));
+    XCTAssertFalse(wr::ios::canNestFilter(2000));
+}
+
+// 40 nested filtered boxes paint, and only the outer 16 make a filter result each.
+- (void)testNestedFiltersPastTheCapDrawUnfiltered {
+    std::string html = "<!doctype html><html><head></head><body style=\"margin:0\">";
+    for (int i = 0; i < 40; i++) {
+        html += "<div style=\"width:100px;height:100px;background:#0a0;filter:brightness(1.2)\">";
+    }
+    for (int i = 0; i < 40; i++) {
+        html += "</div>";
+    }
+    html += "</body></html>";
+    Booted booted(html, 1);
+    std::shared_ptr<const wr::LayerTree> tree = booted.tree();
+    XCTAssertTrue(tree != nullptr);
+    if (!tree) {
+        return;
+    }
+    LHEffectStore effects;
+    CGImageRef image = wr::ios::LayerTreePainter::copyImage(*tree, CGRectMake(0, 0, 100, 100), 1, &effects);
+    XCTAssertTrue(image != nullptr);
+    CGImageRelease(image);
+    XCTAssertEqual(effects.made(), 16u);
+}
+
 @end
