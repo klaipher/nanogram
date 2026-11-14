@@ -251,3 +251,23 @@ class EnhancedSecurityVerificationTests(unittest.TestCase):
                                                      entitlements_of=lambda p: {}, profile_of=lambda p: {})
         self.assertIn('Nothing was uploaded', str(raised.exception))
         self.assertIn('TG_TF_ENHANCED_SECURITY=0', str(raised.exception))
+
+
+class FirstPhysicalDeviceTests(unittest.TestCase):
+    LISTING = """Name                           Hostname   Identifier                                    State         Model                                     Reality
+----------------------------   --------   -------------------------------------------   -----------   ---------------------------------------   ---------
+iPad Pro 13                               00008132-000E21622E39001C (UDID)              unavailable   iPad Pro 13-inch (M4) (iPad16,5)          physical
+iPhone 17 Pro Max                         00008150-001A2D1C34C1401C (UDID)              connected     iPhone 17 Pro Max (iPhone18,2)            physical
+iPhone 17                                 2803824B-7F63-4010-97A0-CA0241828E1A (UDID)   connected     iPhone 17 (iPhone18,3)                    simulated
+"""
+
+    def test_a_connected_iphone_wins_over_an_unavailable_ipad_listed_first(self):
+        self.assertEqual(device_signing.first_physical_device(self.LISTING), '00008150-001A2D1C34C1401C')
+
+    def test_simulators_are_never_picked(self):
+        only_sim = "\n".join(l for l in self.LISTING.splitlines() if 'simulated' in l or 'Name' in l)
+        self.assertIsNone(device_signing.first_physical_device(only_sim))
+
+    def test_an_unavailable_device_is_the_last_resort(self):
+        ipad_only = "\n".join(l for l in self.LISTING.splitlines() if 'iPad' in l)
+        self.assertEqual(device_signing.first_physical_device(ipad_only), '00008132-000E21622E39001C')

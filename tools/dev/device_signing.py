@@ -257,14 +257,28 @@ def write_project(directory, team_id, targets):
                 + '\n\t\t'.join(objects) + '\n\t};\n\trootObject = ' + project + ';\n}\n')
 
 
-def first_physical_device():
-    out = subprocess.run(['xcrun', 'devicectl', 'list', 'devices'], capture_output=True, text=True).stdout
-    for line in out.splitlines():
+def physical_devices(devicectl_output):
+    devices = []
+    for line in devicectl_output.splitlines():
         parts = line.split()
-        if 'physical' in parts:
-            for part in parts:
-                if len(part) == 25 and part[8] == '-':
-                    return part
+        if 'physical' not in parts:
+            continue
+        udid = next((part for part in parts if len(part) == 25 and part[8] == '-'), None)
+        if udid:
+            devices.append((udid, 'connected' in parts, 'iPhone' in line))
+    return devices
+
+
+def first_physical_device(devicectl_output=None):
+    """A connected iPhone first, then any connected device, then any physical one (an unavailable iPad listed first
+    would otherwise be picked and xcodebuild fails to find its destination)."""
+    if devicectl_output is None:
+        devicectl_output = subprocess.run(['xcrun', 'devicectl', 'list', 'devices'], capture_output=True, text=True).stdout
+    devices = physical_devices(devicectl_output)
+    for wanted in (lambda d: d[1] and d[2], lambda d: d[1], lambda d: True):
+        for device in devices:
+            if wanted(device):
+                return device[0]
     return None
 
 
