@@ -22,7 +22,9 @@ cd "$BUILD_DIR"
 # Generate source files
 mkdir native-build
 cd native-build
-cmake -G Ninja -DTD_GENERATE_SOURCE_FILES=ON ../td
+# CCACHE_FOUND=OFF: TDLib's CMake finds Homebrew's ccache and launches it by name, but the genrule's PATH has no
+# /opt/homebrew/bin ("ccache: command not found", exit 127). Bazel caches these outputs anyway.
+cmake -G Ninja -DCCACHE_FOUND=OFF -DTD_GENERATE_SOURCE_FILES=ON ../td
 cmake --build . --parallel "$(sysctl -n hw.ncpu)"
 cd ..
 
@@ -58,5 +60,5 @@ echo "set(CMAKE_SYSTEM_NAME Darwin)" >> toolchain.cmake
 echo "set(CMAKE_SYSTEM_PROCESSOR aarch64)" >> toolchain.cmake
 echo "set(CMAKE_C_COMPILER $(xcode-select -p)/Toolchains/XcodeDefault.xctoolchain/usr/bin/clang)" >> toolchain.cmake
 
-cmake -G Ninja -DCMAKE_TOOLCHAIN_FILE=toolchain.cmake -DCMAKE_OSX_SYSROOT=${IOS_SYSROOT[0]} ../td $options
+cmake -G Ninja -DCCACHE_FOUND=OFF -DCMAKE_TOOLCHAIN_FILE=toolchain.cmake -DCMAKE_OSX_SYSROOT=${IOS_SYSROOT[0]} ../td $options
 cmake --build . --parallel "$(sysctl -n hw.ncpu)" --target tde2e
