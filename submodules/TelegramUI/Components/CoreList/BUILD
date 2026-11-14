@@ -69,7 +69,7 @@ ios_test_runner(
 
 ios_unit_test(
     name = "CoreListAttachmentFlightTests",
-    minimum_os_version = "15.0",
+    minimum_os_version = "26.0",
     runner = ":CoreListTestRunner",
     deps = [
         ":CoreListAttachmentFlightTestsLib",
@@ -96,7 +96,7 @@ swift_library(
 
 ios_unit_test(
     name = "CoreListIdentityScanTests",
-    minimum_os_version = "15.0",
+    minimum_os_version = "26.0",
     runner = ":CoreListTestRunner",
     deps = [
         ":CoreListIdentityScanTestsLib",
@@ -125,7 +125,7 @@ swift_library(
 
 ios_unit_test(
     name = "CoreListScrollPathTests",
-    minimum_os_version = "15.0",
+    minimum_os_version = "26.0",
     runner = ":CoreListTestRunner",
     deps = [
         ":CoreListScrollPathTestsLib",
@@ -153,7 +153,7 @@ swift_library(
 
 ios_unit_test(
     name = "CoreListChatScrollTickTests",
-    minimum_os_version = "15.0",
+    minimum_os_version = "26.0",
     runner = ":CoreListTestRunner",
     deps = [
         ":CoreListChatScrollTickTestsLib",

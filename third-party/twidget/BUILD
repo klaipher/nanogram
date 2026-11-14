@@ -298,7 +298,7 @@ ios_test_runner(
 
 ios_unit_test(
     name = "TwidgetRenderingTests",
-    minimum_os_version = "15.0",
+    minimum_os_version = "26.0",
     runner = ":TwidgetTestRunner",
     # ~100 s in the simulator at -O0 (DamageBandTests' 480 renders take 40 s, DocumentFuzzTests' 400
     # documents 12 s), before the runner's own overhead.

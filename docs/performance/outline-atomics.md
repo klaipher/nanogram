@@ -1,10 +1,16 @@
 # Outline atomics (SHARED-APPLE-CPU-1): BLOCKED
 
-Status: blocked, the `--config=outline_atomics` opt-in was withdrawn. A device build with `-moutline-atomics` does not link.
+Status: resolved by the iOS 26.0 floor (2026-11-14). The `--config=outline_atomics` opt-in stays withdrawn and is no longer needed. Section "Why it was proposed" onward is the history for the old floor.
+
+## Resolution
+
+`Telegram/BUILD` sets `minimum_os_version = "26.0"`. Apple clang and swiftc then default to `apple-a12` (no `-mcpu` flag needed): LSE atomics (`__ARM_FEATURE_ATOMICS`), CRC32, RCPC, FP16, JSCVT. `std::atomic` read-modify-write and Swift/ObjC refcounts compile to inline `ldadd`/`cas`, with no helper calls. Do not pass `apple-a13`: A12 iPads lack dotprod and sha3. Rust gets `-Ctarget-cpu=apple-a12` through `.bazelrc`. `tools/dev/tests/test_outline_atomics.py` asserts the inline code at the floor.
+
+Old status: blocked, a device build with `-moutline-atomics` for an older floor does not link.
 
 ## Why it was proposed
 
-`Telegram/BUILD` sets `minimum_os_version = "15.0"`, so clang compiles for `apple-a7` without LSE: every `std::atomic`
+`Telegram/BUILD` set `minimum_os_version = "15.0"`, so clang compiled for `apple-a7` without LSE: every `std::atomic`
 read-modify-write is an `ldaxr/stlxr` loop. `-moutline-atomics` would call compiler-rt helpers that use the LSE instruction when the
 CPU has it (A11 and newer) and a LL/SC fallback otherwise, so the device floor would not change.
 
@@ -24,10 +30,9 @@ The iOS simulator arm64 target needs nothing: clang already targets a CPU with L
 
 - Add a `cc_library` with a small `.S` shim defining every `___aarch64_{cas,swp,ldadd,ldclr,ldeor,ldset}{1,2,4,8,16}_{relax,acq,rel,acq_rel,sync}`
   as `b __aarch64_...`, selected by a config on the same flag; prove a full `tg build --device` links; then measure.
-- Or, when the iOS floor is raised (16/17), use `-mcpu=apple-a11/a12` instead and skip this.
+- Done: the floor was raised to 26.0, which defaults to `apple-a12`; the shim is not needed.
 - Not needed on Mac (macOS 14 targets `apple-m1`, LSE) or the watch app (prebuilt).
 
 ## Guard
 
-`tools/dev/tests/test_outline_atomics.py` keeps the config withdrawn and, when `xcrun` exists, compiles and links a `fetch_add`
-file with `-moutline-atomics` for iOS to document the failure. If Apple fixes the symbol names that test fails: then revisit this.
+`tools/dev/tests/test_outline_atomics.py` keeps the config withdrawn and, when `xcrun` exists, compiles a `fetch_add` file at the floor and asserts inline `ldadd` with no `___aarch64_` calls and no `ldaxr` loop.

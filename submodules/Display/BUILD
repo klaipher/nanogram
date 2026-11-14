@@ -72,7 +72,7 @@ ios_test_runner(
 
 ios_unit_test(
     name = "DisplayTests",
-    minimum_os_version = "15.0",
+    minimum_os_version = "26.0",
     runner = ":DisplayTestRunner",
     deps = [
         ":DisplayTestsLib",
@@ -97,7 +97,7 @@ swift_library(
 
 ios_unit_test(
     name = "ListViewMotionTests",
-    minimum_os_version = "15.0",
+    minimum_os_version = "26.0",
     runner = ":DisplayTestRunner",
     deps = [
         ":ListViewMotionTestsLib",
@@ -118,7 +118,7 @@ swift_library(
 
 ios_unit_test(
     name = "TabletLayoutTests",
-    minimum_os_version = "15.0",
+    minimum_os_version = "26.0",
     runner = ":DisplayTestRunner",
     deps = [
         ":TabletLayoutTestsLib",
@@ -139,7 +139,7 @@ swift_library(
 
 ios_unit_test(
     name = "TabletSystemTests",
-    minimum_os_version = "15.0",
+    minimum_os_version = "26.0",
     runner = ":DisplayTestRunner",
     deps = [
         ":TabletSystemTestsLib",
@@ -161,7 +161,7 @@ swift_library(
 
 ios_unit_test(
     name = "SplitColumnWidthTests",
-    minimum_os_version = "15.0",
+    minimum_os_version = "26.0",
     runner = ":DisplayTestRunner",
     deps = [
         ":SplitColumnWidthTestsLib",
@@ -183,7 +183,7 @@ swift_library(
 
 ios_unit_test(
     name = "EnergyRulesTests",
-    minimum_os_version = "15.0",
+    minimum_os_version = "26.0",
     runner = ":DisplayTestRunner",
     deps = [
         ":EnergyRulesTestsLib",
@@ -207,7 +207,7 @@ swift_library(
 
 ios_unit_test(
     name = "TabletSecondBatchTests",
-    minimum_os_version = "15.0",
+    minimum_os_version = "26.0",
     runner = ":DisplayTestRunner",
     deps = [
         ":TabletSecondBatchTestsLib",
@@ -269,7 +269,7 @@ ios_application(
     testonly = True,
     bundle_id = "org.telegram.DisplayAccessibilityTestHost",
     families = ["iphone"],
-    minimum_os_version = "15.0",
+    minimum_os_version = "26.0",
     infoplists = [":DisplayAccessibilityTestHostInfoPlist"],
     deps = [
         "//Tests/Common:Main",
@@ -292,7 +292,7 @@ ios_test_runner(
 
 ios_unit_test(
     name = "DisplayAccessibilityTests",
-    minimum_os_version = "15.0",
+    minimum_os_version = "26.0",
     # One reused simulator ("BAZEL_TEST_<device>_<os>") instead of a fresh one per run.
     env = {"REUSE_GLOBAL_SIMULATOR": "1"},
     runner = ":DisplayAccessibilityTestRunner",

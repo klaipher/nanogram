@@ -41,7 +41,7 @@ ios_test_runner(
 
 ios_unit_test(
     name = "WalletCardStickersTests",
-    minimum_os_version = "15.0",
+    minimum_os_version = "26.0",
     runner = ":WalletCardStickersTestRunner",
     deps = [":WalletCardStickersTestsLib"],
 )
@@ -55,7 +55,7 @@ swift_library(
 
 ios_unit_test(
     name = "WalletStateRetryPolicyTests",
-    minimum_os_version = "15.0",
+    minimum_os_version = "26.0",
     runner = ":WalletCardStickersTestRunner",
     deps = [":WalletStateRetryPolicyTestsLib"],
 )
@@ -69,7 +69,7 @@ swift_library(
 
 ios_unit_test(
     name = "WalletWidgetCallsTests",
-    minimum_os_version = "15.0",
+    minimum_os_version = "26.0",
     runner = ":WalletCardStickersTestRunner",
     deps = [":WalletWidgetCallsTestsLib"],
 )
@@ -83,7 +83,7 @@ swift_library(
 
 ios_unit_test(
     name = "WalletRequestMemoryTests",
-    minimum_os_version = "15.0",
+    minimum_os_version = "26.0",
     runner = ":WalletCardStickersTestRunner",
     deps = [":WalletRequestMemoryTestsLib"],
 )

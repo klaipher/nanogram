@@ -38,7 +38,7 @@ ios_test_runner(
 
 ios_unit_test(
     name = "MessageWidgetTests",
-    minimum_os_version = "15.0",
+    minimum_os_version = "26.0",
     runner = ":MessageWidgetTestRunner",
     resources = [
         "//submodules/TelegramUI/Components/MessageWidget/Fixtures:WidgetFixtures",
@@ -63,7 +63,7 @@ swift_library(
 
 ios_unit_test(
     name = "MessageWidgetCorpusTests",
-    minimum_os_version = "15.0",
+    minimum_os_version = "26.0",
     runner = ":MessageWidgetTestRunner",
     # The corpus check boots ~230 widgets with taps and timers: minutes, not the main suite's seconds.
     size = "large",

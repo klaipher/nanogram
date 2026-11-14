@@ -90,7 +90,7 @@ ios_unit_test(
     # 13 -> 15 bump. At 13.0 this target does not build AT ALL on the iOS 27 SDK: libc++'s
     # `availability.h` errors with "The selected platform is no longer supported by libc++" for any C++ in
     # the dependency graph, which the -Werror config turns fatal.
-    minimum_os_version = "15.0",
+    minimum_os_version = "26.0",
     runner = ":InstantPageUITestRunner",
     deps = [
         ":InstantPageUITestsLib",

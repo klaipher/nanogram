@@ -207,7 +207,7 @@ ios_application(
     testonly = True,
     bundle_id = "org.telegram.MediaEditorExportHarness",
     families = ["iphone"],
-    minimum_os_version = "15.0",
+    minimum_os_version = "26.0",
     infoplists = [":MediaEditorExportHarnessInfoPlist"],
     deps = [
         ":MediaEditorExportHarnessLib",
@@ -222,7 +222,7 @@ ios_test_runner(
 
 ios_unit_test(
     name = "MediaEditorTests",
-    minimum_os_version = "15.0",
+    minimum_os_version = "26.0",
     runner = ":MediaEditorTestRunner",
     deps = [
         ":MediaEditorTestsLib",
@@ -237,7 +237,7 @@ ios_test_runner(
 
 ios_unit_test(
     name = "MediaEditorExportTests",
-    minimum_os_version = "15.0",
+    minimum_os_version = "26.0",
     runner = ":MediaEditorExportTestRunner",
     timeout = "eternal",
     deps = [

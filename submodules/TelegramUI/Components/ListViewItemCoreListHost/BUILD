@@ -50,7 +50,7 @@ ios_test_runner(
 ios_unit_test(
     name = "ListViewItemCoreListHostTests",
     env = {"REUSE_GLOBAL_SIMULATOR": "1"},
-    minimum_os_version = "15.0",
+    minimum_os_version = "26.0",
     runner = ":ListViewItemCoreListHostTestRunner",
     deps = [
         ":ListViewItemCoreListHostTestsLib",

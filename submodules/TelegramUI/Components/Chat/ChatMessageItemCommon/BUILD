@@ -45,7 +45,7 @@ ios_test_runner(
 
 ios_unit_test(
     name = "ChatMessageItemCommonTests",
-    minimum_os_version = "15.0",
+    minimum_os_version = "26.0",
     runner = ":ChatMessageItemCommonTestRunner",
     deps = [
         ":ChatMessageItemCommonTestsLib",

@@ -40,7 +40,7 @@ ios_test_runner(
 
 ios_unit_test(
     name = "PeerPresenceStatusManagerTests",
-    minimum_os_version = "15.0",
+    minimum_os_version = "26.0",
     runner = ":PeerPresenceStatusManagerTestRunner",
     deps = [":PeerPresenceStatusManagerTestsLib"],
     visibility = ["//visibility:public"],

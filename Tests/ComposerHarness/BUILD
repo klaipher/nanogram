@@ -90,7 +90,7 @@ ios_unit_test(
     # ContextUI pulls LegacyComponents, whose TGMediaPickerGalleryVideoItemView references
     # MPVolumeView. The app target links MediaPlayer implicitly; a standalone test binary does not.
     linkopts = ["-framework", "MediaPlayer"],
-    minimum_os_version = "15.0",
+    minimum_os_version = "26.0",
     runner = ":HarnessTestRunner",
     deps = [":HarnessAppContextTestsLib"],
     visibility = ["//Tests:__subpackages__"],
@@ -171,7 +171,7 @@ ios_application(
     # ContextUI pulls LegacyComponents, whose TGMediaPickerGalleryVideoItemView references
     # MPVolumeView. The Telegram app target links MediaPlayer implicitly; a standalone app does not.
     linkopts = ["-framework", "MediaPlayer"],
-    minimum_os_version = "15.0",
+    minimum_os_version = "26.0",
     infoplists = [":HarnessInfoPlist"],
     # `defaultPresentationStrings` force-unwraps getAppBundle().path(forResource: "Localizable"…),
     # and getAppBundle() is NSBundle.mainBundle for a plain app — so without these the harness
@@ -235,7 +235,7 @@ ios_unit_test(
     # 23 of them after one session, slowing the machine (2026-09-23).
     env = {"REUSE_GLOBAL_SIMULATOR": "1"},
     linkopts = ["-framework", "MediaPlayer"],
-    minimum_os_version = "15.0",
+    minimum_os_version = "26.0",
     runner = ":HarnessTestRunner",
     # The suite (the 30 seeds of the composer fuzz test among it) runs for 15+ minutes: more than the default
     # size's 5 and the "large" size's 15.
@@ -258,7 +258,7 @@ ios_ui_test(
     # xctestrunner for a fresh "New-<device>-<os>" simulator per run, and those were left BOOTED —
     # 23 of them after one session, slowing the machine (2026-09-23).
     env = {"REUSE_GLOBAL_SIMULATOR": "1"},
-    minimum_os_version = "15.0",
+    minimum_os_version = "26.0",
     runner = ":HarnessUITestRunner",
     test_host = ":ComposerHarness",
     deps = [":ComposerHarnessUITestsLib"],
@@ -299,7 +299,7 @@ ios_unit_test(
     name = "ForwardFlowTests",
     env = {"REUSE_GLOBAL_SIMULATOR": "1"},
     linkopts = ["-framework", "MediaPlayer"],
-    minimum_os_version = "15.0",
+    minimum_os_version = "26.0",
     resources = ["//Telegram:InstantPagePreviewTestStrings"],
     runner = ":ForwardFlowTestRunner",
     deps = [":ForwardFlowTestsLib"],

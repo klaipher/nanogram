@@ -71,10 +71,17 @@ build --copt=-ftrivial-auto-var-init=zero
 build --copt=-D_LIBCPP_HARDENING_MODE=_LIBCPP_HARDENING_MODE_FAST
 build --copt=-fstack-protector-strong
 
-# Outline atomics (SHARED-APPLE-CPU-1): BLOCKED, config withdrawn. `-moutline-atomics` for arm64-apple-ios makes clang call
-# ___aarch64_ldadd4_acq_rel and friends (three underscores), but Xcode's libclang_rt.ios.a defines them with two
-# (__aarch64_ldadd4_acq_rel), so the device link fails with "Undefined symbols". Re-enable only with a forwarding shim that
-# a full `tg build --device` proves, or replace by -mcpu=apple-a11/a12 once the iOS floor is raised. See docs/performance/outline-atomics.md.
+# iOS 26 floor: APIs deprecated before 26 (UIScreen.main, UIGraphicsBeginImageContext, AVAsset.tracks, ...) stay in many upstream files
+# that build with -warnings-as-errors / -Werror. Keep the diagnostics as warnings. Clang's -Wno-error wins in either order; Swift's
+# -Wwarning only works AFTER -warnings-as-errors, so check on the first build that rules_swift appends --swiftcopt after target copts
+# (swiftc action command line) or move the pair into swift_strict.bzl. Count the warnings and burn them down in Nanogram-owned code.
+build --copt=-Wno-error=deprecated-declarations
+build --swiftcopt=-Wwarning
+build --swiftcopt=DeprecatedDeclaration
+
+# CPU baseline (SHARED-APPLE-CPU-1): the iOS floor is 26.0, so clang and swiftc already default to apple-a12 (LSE atomics, CRC32,
+# RCPC, FP16, JSCVT) with no -mcpu/-target-cpu flag; std::atomic and refcounts compile to inline LSE. Do not use apple-a13: A12 iPads
+# lack dotprod/sha3. `-moutline-atomics` stays OFF and BLOCKED (helper symbols do not link, see docs/performance/outline-atomics.md).
 
 # apple_support's layering check is a beta lint that is on by default. It does not
 # change any output, and generating its module maps took ~30 s at the very start
@@ -87,6 +94,10 @@ common --repo_env=APPLE_SUPPORT_LAYERING_CHECK_BETA=0
 # build and `tg profile` (docs/bazel-build-profiling.md); drop the line if the cold wall time does not improve.
 # https://github.com/bazelbuild/rules_rust/blob/0.75.0/rust/settings/settings.bzl (pipelined_compilation)
 build --@rules_rust//rust/settings:pipelined_compilation=true
+
+# rustc defaults aarch64-apple-ios to apple-a7 (no LSE). The iOS floor is A12; the setting skips exec-configuration tools
+# (build scripts, proc macros), so host builds are unchanged. The Mac build does not use this Bazel config.
+build --@rules_rust//rust/settings:extra_rustc_flags=-Ctarget-cpu=apple-a12
 
 # Every build already writes command.profile.gz (generate_json_trace_profile=auto). Put the target label and the
 # primary output on each action event so the trace in ui.perfetto.dev names what an action built. Neither flag changes

@@ -6,7 +6,7 @@ ARCH="$1"
 SOURCE_DIR=$(echo "$(cd "$(dirname "$2")"; pwd -P)/$(basename "$2")")
 BUILD_DIR=$(echo "$(cd "$(dirname "$3")"; pwd -P)/$(basename "$3")")
 
-MINIOSVERSION="13.0"
+MINIOSVERSION="26.0"
 
 OPT_CFLAGS="-O2 -g"
 

@@ -72,7 +72,7 @@ swift_library(
 ios_test_runner(name = "WalletStickerPlacementTestRunner", device_type = TEST_SIMULATOR_DEVICE, os_version = TEST_SIMULATOR_OS)
 ios_unit_test(
     name = "WalletStickerPlacementTests",
-    minimum_os_version = "15.0",
+    minimum_os_version = "26.0",
     runner = ":WalletStickerPlacementTestRunner",
     deps = [":WalletStickerPlacementTestsLib"],
 )

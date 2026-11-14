@@ -7,12 +7,12 @@ ar = 'ar'
 strip = 'strip'
 
 [built-in options]
-c_args = ['-mios-simulator-version-min=11.0']
-cpp_args = ['-mios-simulator-version-min=11.0']
-c_link_args = ['-mios-simulator-version-min=11.0']
-cpp_link_args = ['-mios-simulator-version-min=11.0']
-objc_args = ['-mios-simulator-version-min=11.0']
-objcpp_args = ['-mios-simulator-version-min=11.0']
+c_args = ['-mios-simulator-version-min=26.0']
+cpp_args = ['-mios-simulator-version-min=26.0']
+c_link_args = ['-mios-simulator-version-min=26.0']
+cpp_link_args = ['-mios-simulator-version-min=26.0']
+objc_args = ['-mios-simulator-version-min=26.0']
+objcpp_args = ['-mios-simulator-version-min=26.0']
 
 [properties]
 root = '/Applications/Xcode.app/Contents/Developer/Platforms/iPhoneSimulator.platform/Developer'

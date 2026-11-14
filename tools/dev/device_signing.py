@@ -248,7 +248,7 @@ def write_project(directory, team_id, targets):
     objects += [
         '{} = {{isa = PBXGroup; children = ({}); sourceTree = "<group>"; }};'.format(main_group, ', '.join(group_children + [products_group])),
         '{} = {{isa = PBXGroup; children = ({}); name = Products; sourceTree = "<group>"; }};'.format(products_group, ', '.join(product_refs)),
-        '{} = {{isa = XCBuildConfiguration; buildSettings = {{SDKROOT = iphoneos; IPHONEOS_DEPLOYMENT_TARGET = 15.0; SWIFT_VERSION = 5.0; }}; name = Debug; }};'.format(project_config),
+        '{} = {{isa = XCBuildConfiguration; buildSettings = {{SDKROOT = iphoneos; IPHONEOS_DEPLOYMENT_TARGET = 26.0; SWIFT_VERSION = 5.0; }}; name = Debug; }};'.format(project_config),
         '{} = {{isa = XCConfigurationList; buildConfigurations = ({}); defaultConfigurationName = Debug; }};'.format(project_config_list, project_config),
         '{} = {{isa = PBXProject; attributes = {{LastUpgradeCheck = 2700; }}; buildConfigurationList = {}; compatibilityVersion = "Xcode 14.0"; developmentRegion = en; hasScannedForEncodings = 0; knownRegions = (en, Base); mainGroup = {}; productRefGroup = {}; projectDirPath = ""; projectRoot = ""; targets = ({}); }};'.format(project, project_config_list, main_group, products_group, ', '.join(target_ids)),
     ]

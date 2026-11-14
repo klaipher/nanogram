@@ -73,7 +73,7 @@ ios_application(
     name = "LegacyComponentsTestHost",
     bundle_id = "org.telegram.LegacyComponentsTestHost",
     families = ["iphone"],
-    minimum_os_version = "15.0",
+    minimum_os_version = "26.0",
     infoplists = [":LegacyComponentsTestHostInfoPlist"],
     deps = [
         "//Tests/Common:Main",
@@ -91,7 +91,7 @@ ios_test_runner(
 
 ios_unit_test(
     name = "LegacyComponentsTests",
-    minimum_os_version = "15.0",
+    minimum_os_version = "26.0",
     runner = ":LegacyComponentsTestRunner",
     test_host = ":LegacyComponentsTestHost",
     deps = [

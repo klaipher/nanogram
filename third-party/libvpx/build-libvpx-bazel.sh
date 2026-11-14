@@ -43,9 +43,11 @@ if [ "$ARCH" = "armv7" ]; then
 elif [ "$ARCH" = "arm64" ]; then
   TARGETS="arm64-darwin-gcc"
   LIPO=$(xcrun -sdk iphoneos${SDK} -find lipo)
+  EXTRA_CONFIGURE_ARGS="--extra-cflags=-miphoneos-version-min=26.0"
 elif [ "$ARCH" = "sim_arm64" ]; then
   TARGETS="arm64-iphonesimulator-gcc"
   LIPO=$(xcrun -sdk iphoneos${SDK} -find lipo)
+  EXTRA_CONFIGURE_ARGS="--extra-cflags=-mios-simulator-version-min=26.0"
 elif [ "$ARCH" = "macos_arm64" ]; then
   TARGETS="arm64-darwin22-gcc"
   LIPO=$(xcrun -sdk macosx -find lipo)

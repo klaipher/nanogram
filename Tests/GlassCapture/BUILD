@@ -64,7 +64,7 @@ ios_application(
     name = "GlassCapture",
     bundle_id = "org.telegram.GlassCapture",
     families = ["iphone"],
-    minimum_os_version = "15.0",
+    minimum_os_version = "26.0",
     infoplists = [":GlassCaptureInfoPlist"],
     resources = [
         "//submodules/TelegramUI:StaticGlassResources",

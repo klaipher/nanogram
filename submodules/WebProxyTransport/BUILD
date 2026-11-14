@@ -86,7 +86,7 @@ ios_application(
     testonly = True,
     bundle_id = "org.telegram.WebProxyTransportTestHost",
     families = ["iphone"],
-    minimum_os_version = "15.0",
+    minimum_os_version = "26.0",
     infoplists = [":WebProxyTransportTestHostInfoPlist"],
     deps = [
         "//Tests/Common:Main",
@@ -107,7 +107,7 @@ ios_test_runner(
 
 ios_unit_test(
     name = "WebProxyTransportTests",
-    minimum_os_version = "15.0",
+    minimum_os_version = "26.0",
     runner = ":WebProxyTransportTestRunner",
     test_host = ":WebProxyTransportTestHost",
     deps = [

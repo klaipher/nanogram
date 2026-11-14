@@ -10,7 +10,40 @@ MESON_OPTIONS="--buildtype=release --default-library=static -Denable_tools=false
 CROSSFILE=""
 
 if [ "$ARCH" = "arm64" ]; then
-    CROSSFILE="../package/crossfiles/arm64-iPhoneOS.meson"
+    TARGET_CROSSFILE="$BUILD_DIR/dav1d/package/crossfiles/arm64-iPhoneOS-custom.meson"
+    custom_xcode_path="$(xcode-select -p)"
+    IOS_SYSROOT="$custom_xcode_path/Platforms/iPhoneOS.platform/Developer/SDKs/iPhoneOS.sdk"
+    # The submodule's own crossfile stays at iOS 11; this one carries the app's floor so clang picks apple-a12.
+    cat > "$TARGET_CROSSFILE" << MESONEOF
+[binaries]
+c = ['clang', '-arch', 'arm64', '-isysroot', '$IOS_SYSROOT']
+cpp = ['clang++', '-arch', 'arm64', '-isysroot', '$IOS_SYSROOT']
+objc = ['clang', '-arch', 'arm64', '-isysroot', '$IOS_SYSROOT']
+objcpp = ['clang++', '-arch', 'arm64', '-isysroot', '$IOS_SYSROOT']
+ar = 'ar'
+strip = 'strip'
+
+[built-in options]
+c_args = ['-miphoneos-version-min=26.0']
+cpp_args = ['-miphoneos-version-min=26.0']
+c_link_args = ['-miphoneos-version-min=26.0']
+cpp_link_args = ['-miphoneos-version-min=26.0']
+objc_args = ['-miphoneos-version-min=26.0']
+objcpp_args = ['-miphoneos-version-min=26.0']
+
+[properties]
+root = '$custom_xcode_path/Platforms/iPhoneOS.platform/Developer'
+needs_exe_wrapper = true
+
+[host_machine]
+system = 'darwin'
+subsystem = 'ios'
+kernel = 'xnu'
+cpu_family = 'aarch64'
+cpu = 'aarch64'
+endian = 'little'
+MESONEOF
+    CROSSFILE="../package/crossfiles/arm64-iPhoneOS-custom.meson"
 elif [ "$ARCH" = "sim_arm64" ]; then
     rm -f "arm64-iPhoneSimulator-custom.meson"
     TARGET_CROSSFILE="$BUILD_DIR/dav1d/package/crossfiles/arm64-iPhoneSimulator-custom.meson"

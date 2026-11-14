@@ -123,7 +123,7 @@ ios_application(
     families = ["iphone"],
     # As the composer harness: LegacyComponents references MPVolumeView, which a standalone app must link itself.
     linkopts = ["-framework", "MediaPlayer"],
-    minimum_os_version = "15.0",
+    minimum_os_version = "26.0",
     infoplists = [":WidgetHarnessInfoPlist"],
     resources = [
         "//Telegram:AppStringResources",
@@ -187,7 +187,7 @@ ios_unit_test(
     # ConformanceSetTests runs the 40 runs of the conformance set, each waiting up to 20 s.
     size = "large",
     linkopts = ["-framework", "MediaPlayer"],
-    minimum_os_version = "15.0",
+    minimum_os_version = "26.0",
     runner = ":WidgetHarnessTestRunner",
     test_host = ":WidgetHarness",
     deps = [":WidgetHarnessTestsLib"],
@@ -205,7 +205,7 @@ ios_ui_test(
     env = {"REUSE_GLOBAL_SIMULATOR": "1"},
     # Every test launches the harness app (36, about 300 s on a loaded machine: past medium's limit).
     size = "large",
-    minimum_os_version = "15.0",
+    minimum_os_version = "26.0",
     runner = ":WidgetHarnessUITestRunner",
     test_host = ":WidgetHarness",
     deps = [":WidgetHarnessUITestsLib"],

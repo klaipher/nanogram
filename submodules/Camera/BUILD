@@ -91,7 +91,7 @@ ios_test_runner(
 
 ios_unit_test(
     name = "CameraTests",
-    minimum_os_version = "15.0",
+    minimum_os_version = "26.0",
     runner = ":CameraTestRunner",
     deps = [
         ":CameraTestsLib",
@@ -132,7 +132,7 @@ swift_library(
 
 ios_unit_test(
     name = "CameraMultitaskingPolicyTests",
-    minimum_os_version = "15.0",
+    minimum_os_version = "26.0",
     runner = ":CameraTestRunner",
     deps = [
         ":CameraMultitaskingPolicyTestsLib",

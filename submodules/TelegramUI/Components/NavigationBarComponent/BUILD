@@ -53,7 +53,7 @@ ios_test_runner(
 
 ios_unit_test(
     name = "NavigationBarComponentTests",
-    minimum_os_version = "15.0",
+    minimum_os_version = "26.0",
     runner = ":NavigationBarComponentTestRunner",
     deps = [
         ":NavigationBarComponentTestsLib",

@@ -27,6 +27,7 @@ swift_library(
         "//submodules/ManagedFile",
         "//submodules/DiskWriteAccounting",
         "//submodules/HLSPlayback:HLSPlayback",
+        "//submodules/MediaCapabilities:MediaCapabilities",
     ],
     visibility = [
         "//visibility:public",
@@ -59,7 +60,7 @@ ios_test_runner(
 
 ios_unit_test(
     name = "UniversalMediaPlayerTests",
-    minimum_os_version = "15.0",
+    minimum_os_version = "26.0",
     runner = ":UniversalMediaPlayerTestRunner",
     resources = glob([
         "Tests/Resources/*",
