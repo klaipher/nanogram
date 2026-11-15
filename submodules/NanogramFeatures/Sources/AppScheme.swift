@@ -1,4 +1,4 @@
-import Foundation
+public import Foundation
 
 /// `nanogram://` is Nanogram's own URL scheme (Telegram/BUILD registers it next to Telegram's `tg://` and
 /// `telegram://`), so launchers such as one sec can open Nanogram even when official Telegram, which also claims
