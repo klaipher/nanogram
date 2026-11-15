@@ -371,3 +371,55 @@ class SwiftLintRulesTests(RepoTestCase):
 
 if __name__ == '__main__':
     unittest.main()
+
+
+class LowDiskTestBundleTests(unittest.TestCase):
+    """Below the soft free-space floor a passed target's test bundle is removed after its test; a failed one is kept."""
+
+    def make_bin(self):
+        root = tempfile.mkdtemp(prefix='tglint-bin-')
+        self.addCleanup(shutil.rmtree, root, True)
+        package = os.path.join(root, 'submodules', 'Foo')
+        os.makedirs(os.path.join(package, 'FooTests.__internal__.__test_bundle_archive-root', 'FooTests.xctest'))
+        os.makedirs(os.path.join(package, 'FooTests.__internal__.__test_bundle-intermediates'))
+        for rel in ['FooTests.__internal__.__test_bundle.zip',
+                    'FooTests.__internal__.__test_bundle-intermediates/unprocessed_archive.zip',
+                    'FooTests.__internal__.__test_bundle_archive-root/FooTests.xctest/FooTests',
+                    'FooTestsLib.a', 'FooTestsBar.__internal__.__test_bundle.zip', 'libFoo.a']:
+            with open(os.path.join(package, rel), 'wb') as f:
+                f.write(b'x' * 10)
+        for dirpath, dirnames, filenames in os.walk(package, topdown=False):
+            for f in filenames:
+                os.chmod(os.path.join(dirpath, f), 0o444)
+            os.chmod(dirpath, 0o555)
+        self.addCleanup(lambda: [os.chmod(d, 0o755) for d, _, _ in os.walk(root)])
+        return root, package
+
+    def test_paths_match_only_the_targets_bundle(self):
+        root, package = self.make_bin()
+        names = [os.path.basename(p) for p in tglint.test_bundle_paths('//submodules/Foo:FooTests', [root])]
+        self.assertEqual(names, ['FooTests.__internal__.__test_bundle-intermediates',
+                                 'FooTests.__internal__.__test_bundle.zip',
+                                 'FooTests.__internal__.__test_bundle_archive-root'])
+
+    def run_one(self, returncode, free):
+        root, package = self.make_bin()
+        with mock.patch.object(tglint.subprocess, 'run', return_value=mock.Mock(returncode=returncode)), \
+                mock.patch('sys.stdout', new_callable=io.StringIO):
+            failed = tglint.run_tests(['//submodules/Foo:FooTests'], free_gb=lambda: free, floor_gb=50,
+                                      bin_dirs=lambda: [root])
+        return failed, sorted(os.listdir(package))
+
+    def test_low_disk_removes_a_passed_bundle_and_keeps_the_rest(self):
+        failed, left = self.run_one(0, 10)
+        self.assertEqual(failed, [])
+        self.assertEqual(left, ['FooTestsBar.__internal__.__test_bundle.zip', 'FooTestsLib.a', 'libFoo.a'])
+
+    def test_a_failed_target_keeps_its_bundle(self):
+        failed, left = self.run_one(1, 10)
+        self.assertEqual(failed, ['//submodules/Foo:FooTests'])
+        self.assertIn('FooTests.__internal__.__test_bundle.zip', left)
+
+    def test_enough_disk_keeps_every_bundle(self):
+        failed, left = self.run_one(0, 200)
+        self.assertIn('FooTests.__internal__.__test_bundle.zip', left)

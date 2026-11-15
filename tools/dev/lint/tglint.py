@@ -462,13 +462,78 @@ def parse_push_refs(text):
     return refs
 
 
-def run_tests(labels):
+# A test target's bundle outputs (rules_apple): the .xctest, its zip and the unprocessed archive, about 1.5 GB for a UI
+# module's debug test. A push that touches widely used modules affects ~100 such targets, which do not all fit on a
+# small disk; below the cache policy's soft free-space floor a passed target's bundle is removed right after its test.
+# Every test still runs; Bazel relinks a removed bundle when it is needed again. A failed target keeps its bundle.
+def soft_free_floor_gb(root=None):
+    path = os.path.join(root or ROOT, 'shared', 'cache-policy.json')
+    try:
+        with open(path) as f:
+            return float(json.load(f)['free_space_gb']['soft'])
+    except (OSError, ValueError, KeyError, TypeError):
+        return 50.0
+
+
+def free_disk_gb(path=None):
+    return shutil.disk_usage(path or ROOT).free / 1024 ** 3
+
+
+def bazel_bin_dirs(root=None):
+    out = os.path.join(root or ROOT, 'bazel-out')
+    if not os.path.isdir(out):
+        return []
+    return [os.path.join(out, c, 'bin') for c in sorted(os.listdir(out)) if os.path.isdir(os.path.join(out, c, 'bin'))]
+
+
+def test_bundle_paths(label, bin_dirs):
+    package, _, name = label.lstrip('/').partition(':')
+    if not name:
+        name = os.path.basename(package)
+    prefix = name + '.__internal__.__test_bundle'
+    paths = []
+    for bin_dir in bin_dirs:
+        base = os.path.join(bin_dir, package)
+        if not os.path.isdir(base):
+            continue
+        for entry in sorted(os.listdir(base)):
+            if entry.startswith(prefix) or entry == name + '.xctest':
+                paths.append(os.path.join(base, entry))
+    return paths
+
+
+def remove_output(path):
+    """Bazel leaves its outputs read-only; make them writable first. Returns the bytes removed."""
+    size = 0
+    os.chmod(os.path.dirname(path), 0o755)
+    if os.path.isdir(path) and not os.path.islink(path):
+        for dirpath, dirnames, filenames in os.walk(path):
+            os.chmod(dirpath, 0o755)
+            for f in filenames:
+                full = os.path.join(dirpath, f)
+                if not os.path.islink(full):
+                    size += os.path.getsize(full)
+        shutil.rmtree(path, ignore_errors=True)
+    elif os.path.lexists(path):
+        if not os.path.islink(path):
+            size = os.path.getsize(path)
+        os.remove(path)
+    return size
+
+
+def run_tests(labels, free_gb=free_disk_gb, floor_gb=None, bin_dirs=bazel_bin_dirs):
     failed = []
     tg = os.path.join(ROOT, 'tools', 'dev', 'tg')
+    floor = soft_free_floor_gb() if floor_gb is None else floor_gb
     for label in labels:
         print('tglint: tg test ' + label, flush=True)
         if subprocess.run([tg, 'test', label], cwd=ROOT).returncode != 0:
             failed.append(label)
+            continue
+        if free_gb() < floor:
+            freed = sum(remove_output(p) for p in test_bundle_paths(label, bin_dirs()))
+            if freed:
+                print('tglint: low disk: removed the test bundle of {} ({:.1f} GB)'.format(label, freed / 1024 ** 3), flush=True)
     return failed
 
 
