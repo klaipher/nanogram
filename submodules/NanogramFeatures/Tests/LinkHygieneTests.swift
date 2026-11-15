@@ -53,6 +53,14 @@ final class LinkHygieneTests: XCTestCase {
         XCTAssertTrue(LinkHygiene.isTelegramLink("https://telegram.me/a"))
         XCTAssertFalse(LinkHygiene.isTelegramLink("https://t.me.evil.com/a"))
         XCTAssertFalse(LinkHygiene.isTelegramLink("https://example.com/t.me"))
+        // Shared behaviour of the iOS and Mac apps: www.t.me counts, telesco.pe and a bare "tg:" do not.
+        XCTAssertTrue(LinkHygiene.isTelegramLink("https://www.t.me/durov"))
+        XCTAssertFalse(LinkHygiene.isTelegramLink("https://telesco.pe/durov"))
+        XCTAssertFalse(LinkHygiene.isTelegramLink("tg:resolve?domain=a"))
+    }
+
+    func testEmptyQueryItemsAreKeptWhenSomethingElseIsRemoved() {
+        XCTAssertEqual(LinkHygiene.strippingTracking("https://a.com/p?x=1&&utm_source=z&y=2"), "https://a.com/p?x=1&&y=2")
     }
 
     func testStandardListMatchesTheSharedDataFile() throws {
