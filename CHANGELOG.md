@@ -4,6 +4,8 @@ Newest first. Internal notes for each TestFlight build; testers see the What to 
 
 ## Unreleased
 
+- **Watch app: background audio is `UIBackgroundModes: audio`** (Info.plist, project.yml, the plist test). App Store Connect rejected `WKBackgroundModes: audio` (ITMS-90362, invalid value): on watchOS `WKBackgroundModes` only takes session types (workout-processing, self-care and the like), and audio goes in `UIBackgroundModes`.
+
 - **Build fix**: `.bazelrc` keeps the `UselessAvailabilityCheck` diagnostic a warning (`-Wwarning UselessAvailabilityCheck`). Upstream's `#available(iOS ...)` checks below the iOS 26 floor stay unedited, and `-warnings-as-errors` turned two of them into errors (ChunkMediaPlayerV2, InteractiveDiamondLayer).
 
 - **twidget 477b0133: litehtml merged with upstream Telegram-iOS 13.2** (3-way, base b5878f9). WidgetRuntime (message widgets) needs 13.2's litehtml: calc(), text-overflow/ellipsis, object-fit/position, individual transforms, tabular-nums and the asserted struct layouts. The fork keeps its Mac and Android features through hooks. The keep-going build had 31 errors in WidgetRuntime against the old pin. nanogram-deps 9667f92c.

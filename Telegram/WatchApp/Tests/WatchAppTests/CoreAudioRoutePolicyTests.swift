@@ -115,7 +115,7 @@ final class CoreAudioRoutePolicyTests: XCTestCase {
 
     /// The app is built from project.yml; playback with the wrist down needs the audio background mode.
     func testAudioBackgroundModeIsDeclared() {
-        let modes = Bundle.main.object(forInfoDictionaryKey: "WKBackgroundModes") as? [String]
+        let modes = Bundle.main.object(forInfoDictionaryKey: "UIBackgroundModes") as? [String]
         XCTAssertEqual(modes, ["audio"])
     }
 
