@@ -28,6 +28,38 @@ public struct ParsedSearchQuery: Equatable, Sendable {
         return self.fromName != nil || self.minDate != nil || self.maxDate != nil || self.type != nil
     }
 
+    public var isMe: Bool {
+        return self.fromName?.lowercased() == "me"
+    }
+
+    // A `from:` name the server can resolve as a public username (5 to 32 ASCII letters, digits or underscores, starting
+    // with a letter). Anything else, such as a quoted display name, is not resolvable.
+    public var resolvableUsername: String? {
+        guard let name = self.fromName, !self.isMe else {
+            return nil
+        }
+        let bytes = Array(name.utf8)
+        guard bytes.count >= 5, bytes.count <= 32 else {
+            return nil
+        }
+        let isLetter: (UInt8) -> Bool = { ($0 >= 65 && $0 <= 90) || ($0 >= 97 && $0 <= 122) }
+        guard isLetter(bytes[0]) else {
+            return nil
+        }
+        for byte in bytes where !(isLetter(byte) || (byte >= 48 && byte <= 57) || byte == 95) {
+            return nil
+        }
+        return name
+    }
+
+    // After:/before: dates that leave no day between them.
+    public var isEmptyRange: Bool {
+        if let minDate = self.minDate, let maxDate = self.maxDate {
+            return minDate >= maxDate
+        }
+        return false
+    }
+
     // The text with the `from:` token put back, for a name that did not resolve.
     public func textRestoringFrom() -> String {
         guard let raw = self.fromRawToken else {

@@ -34,6 +34,25 @@ final class SearchOperatorsTests: XCTestCase {
         XCTAssertEqual(self.parse("from:jane").fromName, "jane")
     }
 
+    func testFromMeAndResolvableUsernames() {
+        XCTAssertTrue(self.parse("from:me hi").isMe)
+        XCTAssertTrue(self.parse("FROM:Me").isMe)
+        XCTAssertNil(self.parse("from:me").resolvableUsername)
+        XCTAssertNil(self.parse("from:\"Jane Doe\" x").resolvableUsername)
+        XCTAssertEqual(self.parse("from:@some_user").resolvableUsername, "some_user")
+        XCTAssertNil(self.parse("from:ab").resolvableUsername)
+        XCTAssertNil(self.parse("from:12345").resolvableUsername)
+        XCTAssertNil(self.parse("from:9abcdef").resolvableUsername)
+    }
+
+    func testAnEmptyDateRangeIsReported() {
+        let query = self.parse("date:2024-11-05 after:2024-11-06")
+        XCTAssertEqual(query.minDate, self.seconds(2024, 11, 7))
+        XCTAssertEqual(query.maxDate, self.seconds(2024, 11, 6))
+        XCTAssertTrue(query.isEmptyRange)
+        XCTAssertFalse(self.parse("date:2024-11-05").isEmptyRange)
+    }
+
     func testFromInQuotesKeepsSpaces() {
         let result = self.parse("from:\"Jane Doe\" x")
         XCTAssertEqual(result.fromName, "Jane Doe")
