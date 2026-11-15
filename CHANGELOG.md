@@ -4,6 +4,8 @@ Newest first. Internal notes for each TestFlight build; testers see the What to 
 
 ## Unreleased
 
+- **Pins**: `shared` -> nanogram-deps a7e3db3 (one copy of the tooling/data, ffmpeg e19b1c17 final, Android in the opus options), tgcalls 198c75f -> 9f88f1d (adds the shared `voice_enhance/` core moved from Android; iOS's Bazel globs only `tgcalls/tgcalls/**` and `ios/**`, so nothing new compiles here yet). Module settings table regenerated for `MediaCapabilities` (24fa42a2).
+
 - **Cleanup review fixes (2026-11-15, not built)**. `shared` bumped to nanogram-deps ec98818 (the one link-tracking list); `NanogramFeaturesControllerTests` check the six moved switches appear on Settings > Nanogram Features (`nanogramFeaturesControllerEntries` is now internal); `test_min_os.py` fails if `-moutline-atomics` returns to a build line or native script; doc wording fixes in search-operators.md and NANOGRAM-CHANGES.md.
 - **Link tracking list: one copy (2026-11-15, not built)**. `NanogramFeatures`' LinkHygieneTests read `shared/data/link-tracking-params.txt` (nanogram-deps; also found as `submodules/telegram-ios/shared/data` when the Mac compiles the test) and the iOS copy `docs/specs/link-tracking-params.txt` is deleted. `tg native` no longer fails when the sibling Mac repo has moved to the shared tools. Follow-up: switch the iOS `tg` to `shared/tools` (cachegc, worktree, perfgate, native, upstream-sync, changelog reminder) and delete the copies in `tools/dev`, once the `shared` pin is bumped to nanogram-deps 40fdd8a or later.
 
