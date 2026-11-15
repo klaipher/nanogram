@@ -4,20 +4,20 @@
  "client": {
   "platform": "ios",
   "renderer": "telegram-native",
-  "engine": "iOS 26.5, iPhone18,3 simulator",
-  "framework": "v0.4.0",
+  "engine": "iOS 27.2, iPhone18,3 simulator",
+  "framework": "v0.5.0",
   "policy": "strict",
   "features": [
    "webAnimations"
   ],
-  "date": "2026-10-30T10:10:47Z",
-  "commit": "9a27e70"
+  "date": "2026-11-15T11:58:28Z",
+  "commit": "3a7acf1"
  },
  "summary": {
   "in": {
-   "pass": 179,
-   "partial": 2,
-   "fail": 0,
+   "pass": 178,
+   "partial": 3,
+   "fail": 3,
    "xfail": 0,
    "xpass": 0,
    "skip": 1,
@@ -2781,10 +2781,9 @@
   },
   "css.background.basic": {
    "status": "in",
-   "verdict": "partial",
+   "verdict": "pass",
    "counts": {
-    "pass": 4,
-    "fail": 1
+    "pass": 5
    },
    "evidence": [
     {
@@ -2827,8 +2826,8 @@
      "test": "auto/05-colour-backgrounds-b",
      "kind": "stage",
      "name": "background",
-     "status": "fail",
-     "detail": "diff 71.7 % of ink (max 5 %)",
+     "status": "pass",
+     "detail": "diff 3.4 % of ink (max 5 %)",
      "theme": "light",
      "width": 390
     }
@@ -2900,7 +2899,7 @@
      "kind": "stage",
      "name": "conic",
      "status": "pass",
-     "detail": "diff 0.5 % of ink (max 5 %)",
+     "detail": "diff 1.0 % of ink (max 5 %)",
      "theme": "light",
      "width": 390
     }
@@ -5709,7 +5708,7 @@
      "kind": "check",
      "name": "document.timeline.currentTime is a number",
      "status": "pass",
-     "detail": "96.00700008869171",
+     "detail": "80.22295833338285",
      "theme": "light",
      "width": 390
     },
@@ -6753,7 +6752,7 @@
      "kind": "check",
      "name": "requestAnimationFrame: three frames with increasing timestamps",
      "status": "pass",
-     "detail": "8,24,41",
+     "detail": "41,58,74",
      "theme": "light",
      "width": 390
     }
@@ -8634,6 +8633,24 @@
   },
   "limit.nodes": {
    "status": "in",
+   "verdict": "fail",
+   "counts": {
+    "fail": 1
+   },
+   "evidence": [
+    {
+     "test": "auto/44-stop-nodes",
+     "kind": "stop",
+     "name": "stopped with \"Node limit exceeded…\"",
+     "status": "fail",
+     "detail": "not stopped",
+     "theme": "light",
+     "width": 390
+    }
+   ]
+  },
+  "limit.nesting": {
+   "status": "in",
    "verdict": "untested",
    "counts": {},
    "evidence": []
@@ -8733,17 +8750,17 @@
   },
   "limit.batch": {
    "status": "in",
-   "verdict": "pass",
+   "verdict": "fail",
    "counts": {
-    "pass": 1
+    "fail": 1
    },
    "evidence": [
     {
      "test": "auto/33-stop-batch",
      "kind": "stop",
      "name": "stopped with \"Ops limit exceeded…\"",
-     "status": "pass",
-     "detail": "Ops limit exceeded: 10002 operations in one batch (max 10000)",
+     "status": "fail",
+     "detail": "not stopped",
      "theme": "light",
      "width": 390
     }
@@ -8769,17 +8786,17 @@
   },
   "limit.canvas-commands": {
    "status": "in",
-   "verdict": "pass",
+   "verdict": "fail",
    "counts": {
-    "pass": 1
+    "fail": 1
    },
    "evidence": [
     {
      "test": "auto/19-limits",
      "kind": "check",
-     "name": "the 10 001st command for one canvas in one task throws RangeError",
-     "status": "pass",
-     "detail": "10000 drawn, RangeError",
+     "name": "the 4001st command for one canvas in one task throws RangeError",
+     "status": "fail",
+     "detail": "4001 drawn, null",
      "theme": "light",
      "width": 390
     }
@@ -8810,6 +8827,116 @@
      "name": "stopped with \"Canvas limit exceeded: canvases of…\"",
      "status": "pass",
      "detail": "Canvas limit exceeded: canvases of 5242880 pixels together (max 4194304)",
+     "theme": "light",
+     "width": 390
+    }
+   ]
+  },
+  "limit.paint-heavy": {
+   "status": "in",
+   "verdict": "partial",
+   "counts": {
+    "pass": 3,
+    "fail": 5
+   },
+   "evidence": [
+    {
+     "test": "auto/37-paint-counted",
+     "kind": "check",
+     "name": "14 boxes with a blurred shadow and 2 with backdrop-filter draw with their effects, and the widget runs",
+     "status": "pass",
+     "detail": "box-shadow rgba(0, 0, 0, 0.4) 0px 2px 6px 0px",
+     "theme": "light",
+     "width": 390
+    },
+    {
+     "test": "auto/37-paint-counted",
+     "kind": "check",
+     "name": "shadows without blur, boxes under display: none, a ::before without content and a pulse of an inset fill without blur are not counted",
+     "status": "pass",
+     "detail": "the widget runs",
+     "theme": "light",
+     "width": 390
+    },
+    {
+     "test": "auto/37-paint-counted",
+     "kind": "check",
+     "name": "20 disabled buttons dimmed by the client (its own opacity) are not counted",
+     "status": "pass",
+     "detail": "opacity 0.5",
+     "theme": "light",
+     "width": 390
+    },
+    {
+     "test": "auto/38-stop-paint-load",
+     "kind": "stop",
+     "name": "stopped with \"Paint limit exceeded: 17 boxes with shadows, filters or transparency…\"",
+     "status": "fail",
+     "detail": "not stopped",
+     "theme": "light",
+     "width": 390
+    },
+    {
+     "test": "auto/39-stop-paint-class",
+     "kind": "stop",
+     "name": "stopped with \"Paint limit exceeded: 17 boxes with shadows, filters or transparency…\"",
+     "status": "fail",
+     "detail": "not stopped",
+     "theme": "light",
+     "width": 390
+    },
+    {
+     "test": "auto/40-stop-paint-animation",
+     "kind": "stop",
+     "name": "stopped with \"Paint limit exceeded: 17 boxes with shadows, filters or transparency…\"",
+     "status": "fail",
+     "detail": "not stopped",
+     "theme": "light",
+     "width": 390
+    },
+    {
+     "test": "auto/41-stop-paint-web-animation",
+     "kind": "stop",
+     "name": "stopped with \"Paint limit exceeded: 17 boxes with shadows, filters or transparency…\"",
+     "status": "fail",
+     "detail": "not stopped",
+     "theme": "light",
+     "width": 390
+    },
+    {
+     "test": "auto/42-stop-paint-before",
+     "kind": "stop",
+     "name": "stopped with \"Paint limit exceeded: 17 boxes with shadows, filters or transparency…\"",
+     "status": "fail",
+     "detail": "not stopped",
+     "theme": "light",
+     "width": 390
+    }
+   ]
+  },
+  "limit.paint-backdrop": {
+   "status": "in",
+   "verdict": "partial",
+   "counts": {
+    "pass": 1,
+    "fail": 1
+   },
+   "evidence": [
+    {
+     "test": "auto/37-paint-counted",
+     "kind": "check",
+     "name": "two boxes with backdrop-filter run",
+     "status": "pass",
+     "detail": "the widget runs",
+     "theme": "light",
+     "width": 390
+    },
+    {
+     "test": "auto/43-stop-paint-backdrop",
+     "kind": "stop",
+     "name": "stopped with \"Paint limit exceeded: 3 boxes with backdrop-filter…\"",
+     "status": "fail",
+     "detail": "not stopped",
      "theme": "light",
      "width": 390
     }
@@ -9443,8 +9570,8 @@
    "stages": [
     {
      "name": "background",
-     "diff": 0.7171,
-     "status": "fail"
+     "diff": 0.0339,
+     "status": "pass"
     },
     {
      "name": "clip-text",
@@ -9463,7 +9590,7 @@
     },
     {
      "name": "conic",
-     "diff": 0.0046,
+     "diff": 0.0096,
      "status": "pass"
     },
     {
@@ -10229,7 +10356,8 @@
    "harnessErrors": [],
    "skippedActions": [],
    "counts": {
-    "pass": 10
+    "pass": 9,
+    "fail": 1
    },
    "stages": [],
    "host": []
@@ -10635,15 +10763,18 @@
    "theme": "light",
    "width": 390,
    "loaded": true,
-   "dead": "Ops limit exceeded: 10002 operations in one batch (max 10000)",
-   "status": "running",
+   "dead": null,
+   "status": "done",
    "stops": "Ops limit exceeded",
-   "stopped": true,
+   "stopped": false,
    "errors": [],
-   "harnessErrors": [],
+   "harnessErrors": [
+    "step: TypeError: not a function"
+   ],
    "skippedActions": [],
    "counts": {
-    "pass": 1
+    "pass": 1,
+    "fail": 1
    },
    "stages": [],
    "host": []
@@ -10699,6 +10830,156 @@
    "skippedActions": [],
    "counts": {
     "pass": 14
+   },
+   "stages": [],
+   "host": []
+  },
+  {
+   "id": "auto/37-paint-counted",
+   "set": "auto",
+   "theme": "light",
+   "width": 390,
+   "loaded": true,
+   "dead": null,
+   "status": "done",
+   "errors": [],
+   "harnessErrors": [],
+   "skippedActions": [],
+   "counts": {
+    "pass": 4
+   },
+   "stages": [],
+   "host": []
+  },
+  {
+   "id": "auto/38-stop-paint-load",
+   "set": "auto",
+   "theme": "light",
+   "width": 390,
+   "loaded": true,
+   "dead": null,
+   "status": "done",
+   "stops": "Paint limit exceeded: 17 boxes with shadows, filters or transparency",
+   "stopped": false,
+   "errors": [],
+   "harnessErrors": [],
+   "skippedActions": [],
+   "counts": {
+    "pass": 1
+   },
+   "stages": [],
+   "host": []
+  },
+  {
+   "id": "auto/39-stop-paint-class",
+   "set": "auto",
+   "theme": "light",
+   "width": 390,
+   "loaded": true,
+   "dead": null,
+   "status": "done",
+   "stops": "Paint limit exceeded: 17 boxes with shadows, filters or transparency",
+   "stopped": false,
+   "errors": [],
+   "harnessErrors": [],
+   "skippedActions": [],
+   "counts": {
+    "pass": 1
+   },
+   "stages": [],
+   "host": []
+  },
+  {
+   "id": "auto/40-stop-paint-animation",
+   "set": "auto",
+   "theme": "light",
+   "width": 390,
+   "loaded": true,
+   "dead": null,
+   "status": "done",
+   "stops": "Paint limit exceeded: 17 boxes with shadows, filters or transparency",
+   "stopped": false,
+   "errors": [],
+   "harnessErrors": [],
+   "skippedActions": [],
+   "counts": {
+    "pass": 1
+   },
+   "stages": [],
+   "host": []
+  },
+  {
+   "id": "auto/41-stop-paint-web-animation",
+   "set": "auto",
+   "theme": "light",
+   "width": 390,
+   "loaded": true,
+   "dead": null,
+   "status": "done",
+   "stops": "Paint limit exceeded: 17 boxes with shadows, filters or transparency",
+   "stopped": false,
+   "errors": [],
+   "harnessErrors": [],
+   "skippedActions": [],
+   "counts": {
+    "pass": 1
+   },
+   "stages": [],
+   "host": []
+  },
+  {
+   "id": "auto/42-stop-paint-before",
+   "set": "auto",
+   "theme": "light",
+   "width": 390,
+   "loaded": true,
+   "dead": null,
+   "status": "done",
+   "stops": "Paint limit exceeded: 17 boxes with shadows, filters or transparency",
+   "stopped": false,
+   "errors": [],
+   "harnessErrors": [],
+   "skippedActions": [],
+   "counts": {
+    "pass": 1
+   },
+   "stages": [],
+   "host": []
+  },
+  {
+   "id": "auto/43-stop-paint-backdrop",
+   "set": "auto",
+   "theme": "light",
+   "width": 390,
+   "loaded": true,
+   "dead": null,
+   "status": "done",
+   "stops": "Paint limit exceeded: 3 boxes with backdrop-filter",
+   "stopped": false,
+   "errors": [],
+   "harnessErrors": [],
+   "skippedActions": [],
+   "counts": {
+    "pass": 1
+   },
+   "stages": [],
+   "host": []
+  },
+  {
+   "id": "auto/44-stop-nodes",
+   "set": "auto",
+   "theme": "light",
+   "width": 390,
+   "loaded": true,
+   "dead": null,
+   "status": "done",
+   "stops": "Node limit exceeded",
+   "stopped": false,
+   "errors": [],
+   "harnessErrors": [],
+   "skippedActions": [],
+   "counts": {
+    "pass": 2
    },
    "stages": [],
    "host": []

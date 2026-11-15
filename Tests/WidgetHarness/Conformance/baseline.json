@@ -598,7 +598,7 @@
       "behaviour.policy-strict · attr() of a non-text attribute (class) is dropped" : "pass",
       "behaviour.policy-strict · attr() of a text attribute (data-*) works" : "pass",
       "limit.attribute · a 6 K data-* attribute reaches the renderer" : "pass",
-      "limit.canvas-commands · the 10 001st command for one canvas in one task throws RangeError" : "pass",
+      "limit.canvas-commands · the 4001st command for one canvas in one task throws RangeError" : "fail",
       "limit.image-pixels · a 1024 × 1024 data: image decodes" : "pass",
       "limit.image-pixels · a 1025 × 1024 data: image is the 48 px placeholder" : "pass",
       "limit.text-budget · 3000 CJK characters render" : "pass",
@@ -767,7 +767,7 @@
       "limit.attribute · stopped with \"Attribute limit exceeded…\"" : "pass"
     },
     "auto\/33-stop-batch\/light" : {
-      "limit.batch · stopped with \"Ops limit exceeded…\"" : "pass"
+      "limit.batch · stopped with \"Ops limit exceeded…\"" : "fail"
     },
     "auto\/34-stop-css-rules\/light" : {
       "limit.css-rules · stopped with \"CSS limit exceeded…\"" : "pass"
@@ -790,6 +790,33 @@
       "tw.content-safe-area · one corner at most, on one side, and only with a band" : "pass",
       "tw.content-safe-area · only the bottom band: top, left and right are 0; the band 0–64, a corner 0–200" : "pass",
       "tw.content-safe-area · the root variables are its values" : "pass"
+    },
+    "auto\/37-paint-counted\/light" : {
+      "limit.paint-backdrop · two boxes with backdrop-filter run" : "pass",
+      "limit.paint-heavy · 14 boxes with a blurred shadow and 2 with backdrop-filter draw with their effects, and the widget runs" : "pass",
+      "limit.paint-heavy · 20 disabled buttons dimmed by the client (its own opacity) are not counted" : "pass",
+      "limit.paint-heavy · shadows without blur, boxes under display: none, a ::before without content and a pulse of an inset fill without blur are not counted" : "pass"
+    },
+    "auto\/38-stop-paint-load\/light" : {
+      "limit.paint-heavy · stopped with \"Paint limit exceeded: 17 boxes with shadows, filters or transparency…\"" : "fail"
+    },
+    "auto\/39-stop-paint-class\/light" : {
+      "limit.paint-heavy · stopped with \"Paint limit exceeded: 17 boxes with shadows, filters or transparency…\"" : "fail"
+    },
+    "auto\/40-stop-paint-animation\/light" : {
+      "limit.paint-heavy · stopped with \"Paint limit exceeded: 17 boxes with shadows, filters or transparency…\"" : "fail"
+    },
+    "auto\/41-stop-paint-web-animation\/light" : {
+      "limit.paint-heavy · stopped with \"Paint limit exceeded: 17 boxes with shadows, filters or transparency…\"" : "fail"
+    },
+    "auto\/42-stop-paint-before\/light" : {
+      "limit.paint-heavy · stopped with \"Paint limit exceeded: 17 boxes with shadows, filters or transparency…\"" : "fail"
+    },
+    "auto\/43-stop-paint-backdrop\/light" : {
+      "limit.paint-backdrop · stopped with \"Paint limit exceeded: 3 boxes with backdrop-filter…\"" : "fail"
+    },
+    "auto\/44-stop-nodes\/light" : {
+      "limit.nodes · stopped with \"Node limit exceeded…\"" : "fail"
     },
     "visual\/01-boxes\/light" : {
       "load · loads" : "pass"

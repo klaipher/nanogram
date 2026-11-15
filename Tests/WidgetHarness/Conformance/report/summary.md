@@ -1,14 +1,14 @@
 # Conformance results
 
-Generated 2026-10-30 10:10 UTC by `packages/conformance/tools/report.mjs` (profile 1; ios telegram-native — iOS 26.5, iPhone18,3 simulator @ 9a27e70; policy strict, features webAnimations).
+Generated 2026-11-15 12:28 UTC by `packages/conformance/tools/report.mjs` (profile 1; ios telegram-native — iOS 27.2, iPhone18,3 simulator @ 3a7acf1; policy strict, features webAnimations).
 
 Verdict per catalogue ID over the automatic set: ✅ pass, ◐ partly, ❌ fail, ⏳ expected to fail (not implemented yet: D23, the profile in the validator, …), ❗ passes although expected to fail, – not applicable here, · not tested. For **out** features "pass" means *neutralised as the profile says*. The native columns are a plain browser engine without the pipeline: a reference for the tests, not an expectation.
 
 ## Totals
 
-| Renderer | in (199) ✅ / ◐ / ❌ / ⏳ | out (78) neutralised ✅ / not yet ⏳ / ❌ | auto runs loaded | errors |
+| Renderer | in (202) ✅ / ◐ / ❌ / ⏳ | out (78) neutralised ✅ / not yet ⏳ / ❌ | auto runs loaded | errors |
 |---|---|---|---|---|
-| ios telegram-native | 179 / 2 / 0 / 0 | 74 / 0 / 0 | 62 / 62 | 0 |
+| ios telegram-native | 178 / 3 / 3 / 0 | 74 / 0 / 0 | 62 / 70 | 1 |
 
 ## In the profile
 
@@ -62,7 +62,7 @@ Verdict per catalogue ID over the automatic set: ✅ pass, ◐ partly, ❌ fail,
 | `css.opacity` | ✅ | ✅ |
 | `css.color.basic` | ✅ | ✅ |
 | `css.color.light-dark` | ✅ | ✅ |
-| `css.background.basic` | ◐ | ✅ |
+| `css.background.basic` | ✅ | ✅ |
 | `css.gradient.linear` | ✅ | · |
 | `css.gradient.radial` | ✅ | · |
 | `css.gradient.conic` | ✅ | · |
@@ -179,18 +179,21 @@ Verdict per catalogue ID over the automatic set: ✅ pass, ◐ partly, ❌ fail,
 | `input.prevent-default` | ✅ | ✅ |
 | `limit.text-node` | ✅ | ✅ |
 | `limit.text-budget` | ✅ | ✅ |
-| `limit.nodes` | · | · |
+| `limit.nodes` | ❌ | – |
+| `limit.nesting` | · | · |
 | `limit.timers` | ✅ | – |
 | `limit.cpu` | · | · |
 | `limit.memory` | · | · |
 | `limit.storage` | ✅ | – |
 | `limit.attribute` | ✅ | ✅ |
-| `limit.batch` | ✅ | – |
+| `limit.batch` | ❌ | – |
 | `limit.css-rules` | ✅ | – |
-| `limit.canvas-commands` | ✅ | – |
+| `limit.canvas-commands` | ❌ | – |
 | `limit.animations` | · | · |
 | `limit.main-thread` | · | · |
 | `limit.canvas-pixels` | ✅ | – |
+| `limit.paint-heavy` | ◐ | ✅ |
+| `limit.paint-backdrop` | ◐ | ✅ |
 | `limit.image-pixels` | ✅ | ✅ |
 | `limit.url-length` | ✅ | – |
 | `limit.event-handlers` | ✅ | – |
@@ -301,7 +304,11 @@ Verdict per catalogue ID over the automatic set: ✅ pass, ◐ partly, ❌ fail,
 
 ## ios telegram-native: in-profile failures
 
-- `css.background.basic`: 05-colour-backgrounds-b: background (diff 71.7 % of ink (max 5 %))
+- `limit.nodes`: 44-stop-nodes: stopped with "Node limit exceeded…" (not stopped)
+- `limit.batch`: 33-stop-batch: stopped with "Ops limit exceeded…" (not stopped)
+- `limit.canvas-commands`: 19-limits: the 4001st command for one canvas in one task throws RangeError (4001 drawn, null)
+- `limit.paint-heavy`: 38-stop-paint-load: stopped with "Paint limit exceeded: 17 boxes with shadows, filters or transparency…" (not stopped); 39-stop-paint-class: stopped with "Paint limit exceeded: 17 boxes with shadows, filters or transparency…" (not stopped); 40-stop-paint-animation: stopped with "Paint limit exceeded: 17 boxes with shadows, filters or transparency…" (not stopped); 41-stop-paint-web-animation: stopped with "Paint limit exceeded: 17 boxes with shadows, filters or transparency…" (not stopped)
+- `limit.paint-backdrop`: 43-stop-paint-backdrop: stopped with "Paint limit exceeded: 3 boxes with backdrop-filter…" (not stopped)
 - `behaviour.gesture-claim`: 23-gestures-a: a hold on auto is the message menu: pointercancel, no pointerup (a mouse hold stays the widget's) (touch: pointerup); 23-gestures-b: a vertical drag on touch-action: none is the chat's scroll: pointercancel (a mouse drag stays the widget's) (touch: pointerup after 9 moves); 23-gestures-b: a vertical drag on touch-action: pan-x is the chat's scroll too: pointercancel (touch: pointerup after 9 moves); 23-gestures-b: a drag from the leading 20 px of a touch-action: none pad is the back gesture: pointercancel (a mouse drag stays the widget's) (touch: pointerup)
 
 ## Visual set
