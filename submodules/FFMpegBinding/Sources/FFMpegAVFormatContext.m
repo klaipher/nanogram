@@ -9,12 +9,12 @@
 #import "libavutil/display.h"
 #import "libavutil/mem.h"
 
-int FFMpegCodecIdH264 = AV_CODEC_ID_H264;
-int FFMpegCodecIdHEVC = AV_CODEC_ID_HEVC;
-int FFMpegCodecIdMPEG4 = AV_CODEC_ID_MPEG4;
-int FFMpegCodecIdVP9 = AV_CODEC_ID_VP9;
-int FFMpegCodecIdVP8 = AV_CODEC_ID_VP8;
-int FFMpegCodecIdAV1 = AV_CODEC_ID_AV1;
+const int FFMpegCodecIdH264 = AV_CODEC_ID_H264;
+const int FFMpegCodecIdHEVC = AV_CODEC_ID_HEVC;
+const int FFMpegCodecIdMPEG4 = AV_CODEC_ID_MPEG4;
+const int FFMpegCodecIdVP9 = AV_CODEC_ID_VP9;
+const int FFMpegCodecIdVP8 = AV_CODEC_ID_VP8;
+const int FFMpegCodecIdAV1 = AV_CODEC_ID_AV1;
 
 static int get_stream_rotation(const AVStream *stream) {
     AVDictionaryEntry *e = av_dict_get (stream->metadata, "rotate", NULL, 0);

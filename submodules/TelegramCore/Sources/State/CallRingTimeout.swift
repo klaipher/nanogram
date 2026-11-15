@@ -1,5 +1,5 @@
 import Foundation
-import Postbox
+@preconcurrency import Postbox
 import SwiftSignalKit
 
 typealias CallRingTimerFactory = (_ delay: Double, _ queue: Queue, _ fire: @escaping () -> Void) -> Disposable
@@ -19,7 +19,7 @@ enum CallRingTimeout {
         return value
     }
 
-    static let preferencesKey: ValueBoxKey = {
+    nonisolated(unsafe) static let preferencesKey: ValueBoxKey = {
         let key = ValueBoxKey(length: 4)
         key.setInt32(0, value: 7_100)
         return key

@@ -31,12 +31,12 @@ typedef struct FFMpegAVIndexEntry {
     int32_t size;
 } FFMpegAVIndexEntry;
 
-extern int FFMpegCodecIdH264;
-extern int FFMpegCodecIdHEVC;
-extern int FFMpegCodecIdMPEG4;
-extern int FFMpegCodecIdVP9;
-extern int FFMpegCodecIdVP8;
-extern int FFMpegCodecIdAV1;
+extern const int FFMpegCodecIdH264;
+extern const int FFMpegCodecIdHEVC;
+extern const int FFMpegCodecIdMPEG4;
+extern const int FFMpegCodecIdVP9;
+extern const int FFMpegCodecIdVP8;
+extern const int FFMpegCodecIdAV1;
 
 @class FFMpegAVCodecContext;
 
