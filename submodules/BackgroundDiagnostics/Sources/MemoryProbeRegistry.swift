@@ -1,12 +1,11 @@
 import Foundation
 
 /// Where the app registers what it can measure about its own memory, cheaply (a counter or a stored size, never a walk
-/// of a structure), and what it can give back. The log reads the numbers every 30 s and at each entry into the
+/// of a structure). The log reads the numbers every 30 s and at each entry into the
 /// background, so a growing footprint can be tied to the cache or the object that grows.
 ///
 /// Thread-safe. A probe runs on whichever thread asks for a snapshot, so it must read only values that are safe to read
-/// there (an atomic, a lock-protected counter, a count kept in step by its owner). A purge runs on the thread that calls
-/// `purgeAll`; the app calls it on the main thread.
+/// there (an atomic, a lock-protected counter, a count kept in step by its owner).
 public final class MemoryProbeRegistry: @unchecked Sendable {
     public static let shared = MemoryProbeRegistry()
 
@@ -35,7 +34,7 @@ public final class MemoryProbeRegistry: @unchecked Sendable {
         }
     }
 
-    /// Keeps a probe or a purge registered. Unregisters when released, so an owner stores it next to what it measures.
+    /// Keeps a probe registered. Unregisters when released, so an owner stores it next to what it measures.
     public final class Registration: Sendable {
         private let registry: MemoryProbeRegistry
         private let id: Int
@@ -55,15 +54,9 @@ public final class MemoryProbeRegistry: @unchecked Sendable {
         let read: @Sendable () -> Reading
     }
 
-    private struct Purge {
-        let name: String
-        let run: @Sendable () -> Void
-    }
-
     private let lock = NSLock()
     private var nextId = 0
     private var probes: [Int: Probe] = [:]
-    private var purges: [Int: Purge] = [:]
     private var live: [String: Int] = [:]
 
     public init() {
@@ -77,17 +70,6 @@ public final class MemoryProbeRegistry: @unchecked Sendable {
         let id = self.nextId
         self.nextId += 1
         self.probes[id] = Probe(name: name, read: read)
-        return Registration(registry: self, id: id)
-    }
-
-    public func registerPurge(name: String, run: @escaping @Sendable () -> Void) -> Registration {
-        self.lock.lock()
-        defer {
-            self.lock.unlock()
-        }
-        let id = self.nextId
-        self.nextId += 1
-        self.purges[id] = Purge(name: name, run: run)
         return Registration(registry: self, id: id)
     }
 
@@ -111,7 +93,6 @@ public final class MemoryProbeRegistry: @unchecked Sendable {
             self.lock.unlock()
         }
         self.probes.removeValue(forKey: id)
-        self.purges.removeValue(forKey: id)
     }
 
     /// Entries by name, probes first. Probes run outside the lock.
@@ -135,28 +116,6 @@ public final class MemoryProbeRegistry: @unchecked Sendable {
         let caches = byName.values.sorted { $0.name < $1.name }
         let instances = live.map { Entry(name: $0.key, instances: $0.value, count: $0.value, bytes: nil) }.sorted { $0.name < $1.name }
         return (caches, instances)
-    }
-
-    /// Runs every registered purge once (the names of the owners that registered more than one are listed once each, with a
-    /// count) and returns what it ran.
-    @discardableResult
-    public func purgeAll() -> [String] {
-        self.lock.lock()
-        let purges = self.purges.values.sorted { $0.name < $1.name }
-        self.lock.unlock()
-        var counts: [String: Int] = [:]
-        var order: [String] = []
-        for purge in purges {
-            purge.run()
-            if counts[purge.name] == nil {
-                order.append(purge.name)
-            }
-            counts[purge.name, default: 0] += 1
-        }
-        return order.map { name in
-            let count = counts[name] ?? 1
-            return count > 1 ? "\(name) x\(count)" : name
-        }
     }
 }
 

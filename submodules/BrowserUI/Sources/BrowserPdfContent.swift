@@ -197,9 +197,6 @@ final class BrowserPdfContent: UIView, BrowserContent, UIScrollViewDelegate, PDF
         guard self.pdfView.document == nil, let documentUrl = self.documentUrl else {
             return
         }
-        if let headroom = ProcessMemory.availableHeadroom(), headroom < PdfInlineViewingPolicy.minimumHeadroom(budget: ProcessMemory.currentBudget()) {
-            MemoryProbeRegistry.shared.purgeAll()
-        }
         guard let document = PDFDocument(url: documentUrl) else {
             return
         }
