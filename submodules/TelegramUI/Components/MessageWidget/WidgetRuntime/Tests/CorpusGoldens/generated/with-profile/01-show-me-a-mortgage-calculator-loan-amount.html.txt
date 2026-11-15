@@ -82,7 +82,7 @@ root 908x610.25 items=57
   borders bounds=(149,227,62,35) borders=(left=(1,4,#d1d5dbff),top=(1,4,#d1d5dbff),right=(1,4,#d1d5dbff),bottom=(1,4,#d1d5dbff),radius=(8,8,8,8,8,8,8,8)) pos=(149,227,62,35) root=0
   borders bounds=(217,227,61,35) borders=(left=(1,4,#d1d5dbff),top=(1,4,#d1d5dbff),right=(1,4,#d1d5dbff),bottom=(1,4,#d1d5dbff),radius=(8,8,8,8,8,8,8,8)) pos=(217,227,61,35) root=0
   solid-fill bounds=(284,227,62,35) layer=(border=(284,227,62,35),radius=(8,8,8,8,8,8,8,8),clip=(284,227,62,35),origin=(0,0,0,0),attachment=0,repeat=0,root=0) color=#4338caff
-  borders bounds=(284,227,62,35) borders=(left=(1,4,#d1d5dbff),top=(1,4,#d1d5dbff),right=(1,4,#d1d5dbff),bottom=(1,4,#d1d5dbff),radius=(8,8,8,8,8,8,8,8)) pos=(284,227,62,35) root=0
+  borders bounds=(284,227,62,35) borders=(left=(1,4,#4338caff),top=(1,4,#4338caff),right=(1,4,#4338caff),bottom=(1,4,#4338caff),radius=(8,8,8,8,8,8,8,8)) pos=(284,227,62,35) root=0
   solid-fill bounds=(14,274,332,273) layer=(border=(14,274,332,273),radius=(10,10,10,10,10,10,10,10),clip=(14,274,332,273),origin=(0,0,0,0),attachment=0,repeat=0,root=0) color=#eef2ffff
   text bounds=(6,8,48,32) pos=(14,16,32,16) color=#1f2937ff text="🏠" font=f1 glyphs=4 advance=32
   text bounds=(46,8,80,32) pos=(54,16,64,16) color=#1f2937ff text="Mortgage" font=f1 glyphs=8 advance=64

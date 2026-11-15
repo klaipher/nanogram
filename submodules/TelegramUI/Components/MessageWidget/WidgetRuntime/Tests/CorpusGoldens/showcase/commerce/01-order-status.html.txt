@@ -183,7 +183,7 @@ root 360x446.65 items=119
   del-clip bounds=(0,0,0,0)
   set-clip bounds=(0,0,360,446.65) pos=(0,0,360,446.65) radius=(0,0,0,0,0,0,0,0)
   solid-fill bounds=(18,115,24,24) layer=(border=(18,115,24,24),radius=(12,12,12,12,12,12,12,12),clip=(18,115,24,24),origin=(0,0,0,0),attachment=0,repeat=0,root=0) color=#34c759ff
-  borders bounds=(18,115,24,24) borders=(left=(2,4,#00000014),top=(2,4,#00000014),right=(2,4,#00000014),bottom=(2,4,#00000014),radius=(12,12,12,12,12,12,12,12)) pos=(18,115,24,24) root=0
+  borders bounds=(18,115,24,24) borders=(left=(2,4,#34c759ff),top=(2,4,#34c759ff),right=(2,4,#34c759ff),bottom=(2,4,#34c759ff),radius=(12,12,12,12,12,12,12,12)) pos=(18,115,24,24) root=0
   set-clip bounds=(23,120.4,14,14) pos=(23,120.4,14,14) radius=(0,0,0,0,0,0,0,0)
   isolated box=(23,120.4,14,14)
     group opacity=1 matrix=(0.583333,0,0,0.583333,23,120.4) backface=0 bounds=(0,0,24,24) exact=0
@@ -198,7 +198,7 @@ root 360x446.65 items=119
   text bounds=(206,126,32,32) pos=(214,134,16,16) color=#6e6e73ff text="·" font=f3 glyphs=2 advance=16
   text bounds=(46,143,80,32) pos=(54,151,64,16) color=#6e6e73ff text="€31.40" font=f3 glyphs=8 advance=64
   text bounds=(294,107,56,32) pos=(302,115,40,16) color=#6e6e73ff text="12:41" font=f12 glyphs=5 advance=40
-  borders bounds=(18,181,24,24) borders=(left=(2,4,#00000014),top=(2,4,#00000014),right=(2,4,#00000014),bottom=(2,4,#00000014),radius=(12,12,12,12,12,12,12,12)) pos=(18,181,24,24) root=0
+  borders bounds=(18,181,24,24) borders=(left=(2,4,#ff9500ff),top=(2,4,#ff9500ff),right=(2,4,#ff9500ff),bottom=(2,4,#ff9500ff),radius=(12,12,12,12,12,12,12,12)) pos=(18,181,24,24) root=0
   set-clip bounds=(23,182.7,14,14) pos=(23,182.7,14,14) radius=(0,0,0,0,0,0,0,0)
   isolated box=(23,182.7,14,14)
     group opacity=1 matrix=(0.583333,0,0,0.583333,23,182.7) backface=0 bounds=(0,0,24,24) exact=0

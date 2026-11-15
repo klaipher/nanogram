@@ -754,8 +754,8 @@ root 362x1198.85 items=877
   text bounds=(344,221,24,32) pos=(352,229,8,16) color=#000000ff text=" " font=f9 glyphs=1 advance=8
   text bounds=(352,221,24,32) pos=(360,229,8,16) color=#000000ff text=" " font=f9 glyphs=1 advance=8
   text bounds=(360,221,80,32) pos=(368,229,64,16) color=#000000ff text="options:" font=f9 glyphs=8 advance=64
-  text bounds=(424,221,24,32) pos=(432,229,8,16) color=#1c00cfff text="0" font=f9 glyphs=1 advance=8
-  text bounds=(112,237,32,32) pos=(120,245,16,16) color=#000000ff text="];" font=f9 glyphs=2 advance=16
+  text bounds=(112,237,24,32) pos=(120,245,8,16) color=#1c00cfff text="0" font=f9 glyphs=1 advance=8
+  text bounds=(120,237,32,32) pos=(128,245,16,16) color=#000000ff text="];" font=f9 glyphs=2 advance=16
   text bounds=(4,254,24,32) pos=(12,262,8,16) color=#00000000 text="+" font=f10 glyphs=1 advance=8
   text bounds=(24,254,32,32) pos=(32,262,16,16) color=#8e8e93ff text="46" font=f11 glyphs=2 advance=16
   text bounds=(56,254,32,32) pos=(64,262,16,16) color=#8e8e93ff text=" " font=f11 glyphs=2 advance=16

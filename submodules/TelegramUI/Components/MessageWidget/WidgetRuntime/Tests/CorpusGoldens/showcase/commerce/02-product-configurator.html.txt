@@ -61,7 +61,7 @@ html 0 0 360 669.95
         div 312 10 36 36
           svg 330 28 18 18
             path 0 0 0 0
-          i 348 6 0 18
+          i 338 6 10 18
       div 18 244 324 409.95
         div 18 244 324 27
           h3 18 246 152 22.5
@@ -105,16 +105,16 @@ html 0 0 360 669.95
         div 18 637.75 324 16.2
 
 == paint
-root 360x669.95 items=98
+root 360x669.95 items=99
   solid-fill bounds=(0,0,360,670) layer=(border=(0,0,360,670),radius=(0,0,0,0,0,0,0,0),clip=(0,0,360,670),origin=(0,0,0,0),attachment=0,repeat=0,root=0) color=#ffffffff
   set-clip bounds=(0,0,360,669.95) pos=(0,0,360,669.95) radius=(0,0,0,0,0,0,0,0)
   solid-fill bounds=(18,413,103,74) layer=(border=(18,413,103,74),radius=(8,8,8,8,8,8,8,8),clip=(18,413,103,74),origin=(0,0,0,0),attachment=0,repeat=0,root=0) color=#f2f2f7ff
-  borders bounds=(18,413,103,74) borders=(left=(1.5,4,#00000014),top=(1.5,4,#00000014),right=(1.5,4,#00000014),bottom=(1.5,4,#00000014),radius=(8,8,8,8,8,8,8,8)) pos=(18,413,103,74) root=0
+  borders bounds=(18,413,103,74) borders=(left=(1.5,4,#0a0a0aff),top=(1.5,4,#0a0a0aff),right=(1.5,4,#0a0a0aff),bottom=(1.5,4,#0a0a0aff),radius=(8,8,8,8,8,8,8,8)) pos=(18,413,103,74) root=0
   borders bounds=(129,413,102,74) borders=(left=(1.5,4,#00000014),top=(1.5,4,#00000014),right=(1.5,4,#00000014),bottom=(1.5,4,#00000014),radius=(8,8,8,8,8,8,8,8)) pos=(129,413,102,74) root=0
   borders bounds=(239,413,103,74) borders=(left=(1.5,4,#00000014),top=(1.5,4,#00000014),right=(1.5,4,#00000014),bottom=(1.5,4,#00000014),radius=(8,8,8,8,8,8,8,8)) pos=(239,413,103,74) root=0
   borders bounds=(18,524,103,40) borders=(left=(1.5,4,#00000014),top=(1.5,4,#00000014),right=(1.5,4,#00000014),bottom=(1.5,4,#00000014),radius=(8,8,8,8,8,8,8,8)) pos=(18,524,103,40) root=0
   solid-fill bounds=(129,524,102,40) layer=(border=(129,524,102,40),radius=(8,8,8,8,8,8,8,8),clip=(129,524,102,40),origin=(0,0,0,0),attachment=0,repeat=0,root=0) color=#f2f2f7ff
-  borders bounds=(129,524,102,40) borders=(left=(1.5,4,#00000014),top=(1.5,4,#00000014),right=(1.5,4,#00000014),bottom=(1.5,4,#00000014),radius=(8,8,8,8,8,8,8,8)) pos=(129,524,102,40) root=0
+  borders bounds=(129,524,102,40) borders=(left=(1.5,4,#0a0a0aff),top=(1.5,4,#0a0a0aff),right=(1.5,4,#0a0a0aff),bottom=(1.5,4,#0a0a0aff),radius=(8,8,8,8,8,8,8,8)) pos=(129,524,102,40) root=0
   borders bounds=(239,524,103,40) borders=(left=(1.5,4,#00000014),top=(1.5,4,#00000014),right=(1.5,4,#00000014),bottom=(1.5,4,#00000014),radius=(8,8,8,8,8,8,8,8)) pos=(239,524,103,40) root=0
   solid-fill bounds=(18,580,324,48) layer=(border=(18,580,324,48),radius=(8,8,8,8,8,8,8,8),clip=(18,580,324,48),origin=(0,0,0,0),attachment=0,repeat=0,root=0) color=#0a0a0aff
   del-clip bounds=(0,0,0,0)
@@ -172,6 +172,7 @@ root 360x669.95 items=98
       isolated box=(180,115,220,220)
         group opacity=1 matrix=(1.1,0,0,1.1,180,115) backface=0 bounds=(0,0,200,200) exact=0
           path bounds=(23,19,154,122) ops=(0,1,3,3,1) points=(46,118,46,96,46,66.1766,70.1766,42,100,42,129.823,42,154,66.1766,154,96,154,118) fill=1 fill-color=#1d1f2bff evenodd=0 stroke=1 stroke-color=#1d1f2bff stroke-width=11 cap=1 join=0 miter=4 dashes=() dash-offset=0 gradient=(0,0,0,1,0,0.5,0.5,0.5,())
+          path bounds=(23,19,154,122) ops=(0,1,3,3,1) points=(46,118,46,96,46,66.1766,70.1766,42,100,42,129.823,42,154,66.1766,154,96,154,118) fill=0 fill-color=#000000ff evenodd=0 stroke=1 stroke-color=#ffffff00 stroke-width=11 cap=1 join=0 miter=4 dashes=() dash-offset=0 gradient=(0,0,0,1,0,0.5,0.5,0.5,())
           path bounds=(51,28.923,98,42.077) ops=(0,3,3) points=(62,60,70.5695,47.4381,84.7935,39.923,100,39.923,115.207,39.923,129.43,47.4381,138,60) fill=0 fill-color=#000000ff evenodd=0 stroke=1 stroke-color=#0000002e stroke-width=5 cap=1 join=0 miter=4 dashes=() dash-offset=0 gradient=(0,0,0,1,0,0.5,0.5,0.5,())
           path bounds=(29,111,34,56) ops=(0,1,3,1,3,1,3,1,3,4) points=(43,112,49,112,56.1797,112,62,117.82,62,125,62,153,62,160.18,56.1797,166,49,166,43,166,35.8203,166,30,160.18,30,153,30,125,30,117.82,35.8203,112,43,112) fill=1 fill-color=#1d1f2bff evenodd=0 stroke=0 stroke-color=#000000ff stroke-width=1 cap=0 join=0 miter=4 dashes=() dash-offset=0 gradient=(0,0,0,1,0,0.5,0.5,0.5,())
           path bounds=(137,111,34,56) ops=(0,1,3,1,3,1,3,1,3,4) points=(151,112,157,112,164.18,112,170,117.82,170,125,170,153,170,160.18,164.18,166,157,166,151,166,143.82,166,138,160.18,138,153,138,125,138,117.82,143.82,112,151,112) fill=1 fill-color=#1d1f2bff evenodd=0 stroke=0 stroke-color=#000000ff stroke-width=1 cap=0 join=0 miter=4 dashes=() dash-offset=0 gradient=(0,0,0,1,0,0.5,0.5,0.5,())
@@ -194,9 +195,9 @@ root 360x669.95 items=98
         group opacity=1 matrix=(0.75,0,0,0.75,330,28) backface=0 bounds=(0,0,24,24) exact=0
           path bounds=(-3,-2,29,28.05) ops=(0,1,1,1,4,0,1,1,0,3,3,3,3,0,3,3,3,3) points=(6,6,21,6,19.5,15,7.5,15,6,6,5,3,2,3,9,20,8.97287,19.4581,8.51862,19.0367,7.97624,19.0503,7.43387,19.0639,7.00125,19.5075,7.00125,20.05,7.00125,20.5925,7.43387,21.0361,7.97624,21.0497,8.51862,21.0633,8.97287,20.6419,9,20.1,18,20,17.9729,19.4581,17.5186,19.0367,16.9762,19.0503,16.4339,19.0639,16.0013,19.5075,16.0013,20.05,16.0013,20.5925,16.4339,21.0361,16.9762,21.0497,17.5186,21.0633,17.9729,20.6419,18,20.1) fill=0 fill-color=#000000ff evenodd=0 stroke=1 stroke-color=#0a0a0aff stroke-width=2 cap=1 join=1 miter=4 dashes=() dash-offset=0 gradient=(0,0,0,1,0,0.5,0.5,0.5,())
       del-clip bounds=(0,0,0,0)
-  group opacity=1 matrix=(0,0,0,0,348,15) backface=0 bounds=(344,6,12,18) exact=0
-    solid-fill bounds=(344,6,8,18) layer=(border=(344,6,8,18),radius=(4,4,4,4,4,4,4,4),clip=(344,6,8,18),origin=(0,0,0,0),attachment=0,repeat=0,root=0) color=#ff3b30ff
-    text bounds=(340,0,24,32) pos=(348,8,8,16) color=#ffffffff text="0" font=f10 glyphs=1 advance=8
+  group opacity=1 matrix=(0,0,0,0,343,15) backface=0 bounds=(334,6,18,18) exact=0
+    solid-fill bounds=(334,6,18,18) layer=(border=(334,6,18,18),radius=(9,9,9,9,9,9,9,9),clip=(334,6,18,18),origin=(0,0,0,0),attachment=0,repeat=0,root=0) color=#ff3b30ff
+    text bounds=(331,0,24,32) pos=(339,8,8,16) color=#ffffffff text="0" font=f10 glyphs=1 advance=8
   del-clip bounds=(0,0,0,0)
   solid-fill bounds=(18,342,34,34) layer=(border=(18,342,34,34),radius=(8,8,8,8,8,8,8,8),clip=(18,342,34,34),origin=(0,0,0,0),attachment=0,repeat=0,root=0) color=#1d1f2bff
   box-shadow bounds=(18,342,34,34) box=(18,342,34,34) radius=(8,8,8,8,8,8,8,8) shadow=(0,0,0,1,#0000001a,1)

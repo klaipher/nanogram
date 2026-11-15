@@ -103,7 +103,7 @@ root 360x525.4 items=100
   borders bounds=(0,131,360,186) borders=(left=(0,0,#0a0a0aff),top=(1,4,#00000014),right=(0,0,#0a0a0aff),bottom=(0,0,#0a0a0aff),radius=(0,0,0,0,0,0,0,0)) pos=(0,131,360,186) root=0
   borders bounds=(0,132,360,37) borders=(left=(0,0,#0a0a0aff),top=(0,0,#0a0a0aff),right=(0,0,#0a0a0aff),bottom=(1,4,#00000014),radius=(0,0,0,0,0,0,0,0)) pos=(0,132,360,37) root=0
   group opacity=1 matrix=(-0.130526,-0.991445,0.991445,-0.130526,-120.305,194.195) backface=0 bounds=(16,140.85,18,18) exact=0
-    borders bounds=(16,141,18,18) borders=(left=(2,4,#00000014),top=(2,4,#00000000),right=(2,4,#00000014),bottom=(2,4,#00000014),radius=(9,9,9,9,9,9,9,9)) pos=(16,141,18,18) root=0
+    borders bounds=(16,141,18,18) borders=(left=(2,4,#007affff),top=(2,4,#00000000),right=(2,4,#007affff),bottom=(2,4,#007affff),radius=(9,9,9,9,9,9,9,9)) pos=(16,141,18,18) root=0
   borders bounds=(0,169,360,37) borders=(left=(0,0,#0a0a0aff),top=(0,0,#0a0a0aff),right=(0,0,#0a0a0aff),bottom=(1,4,#00000014),radius=(0,0,0,0,0,0,0,0)) pos=(0,169,360,37) root=0
   borders bounds=(16,178,18,18) borders=(left=(2,4,#00000014),top=(2,4,#00000014),right=(2,4,#00000014),bottom=(2,4,#00000014),radius=(9,9,9,9,9,9,9,9)) pos=(16,178,18,18) root=0
   borders bounds=(0,206,360,37) borders=(left=(0,0,#0a0a0aff),top=(0,0,#0a0a0aff),right=(0,0,#0a0a0aff),bottom=(1,4,#00000014),radius=(0,0,0,0,0,0,0,0)) pos=(0,206,360,37) root=0

@@ -51,9 +51,9 @@ html 0 0 360 407
           div 75 19.4 94.8649 28.6
           div 75 48 94.8649 33
         div 169.865 13 175.135 74.4
-          span 261 15 84 19.6
-            span 270 17 24 15.6
-            span 321 17 24 15.6
+          span 259 15 84 19.6
+            span 268 17 24 15.6
+            span 310 17 24 15.6
           div 169.865 40.6 175.135 15.6
           div 169.865 56.2 175.135 31.2
             span 169.865 56.2 0 0
@@ -185,10 +185,10 @@ root 360x407 items=113
   text bounds=(123,11,32,32) pos=(131,19,16,16) color=#6e6e73ff text="·" font=f2 glyphs=2 advance=16
   text bounds=(67,26,40,32) pos=(75,34,24,16) color=#6e6e73ff text="NOW" font=f2 glyphs=3 advance=24
   text bounds=(67,48,48,32) pos=(75,56,32,16) color=#000000ff text="24°" font=f3 glyphs=4 advance=32
-  solid-fill bounds=(259,13,88,24) layer=(border=(259,13,88,24),radius=(8,8,8,8,8,8,8,8),clip=(259,13,88,24),origin=(0,0,0,0),attachment=0,repeat=0,root=0) color=#7f7f7f24
-  solid-fill bounds=(261,15,42,20) layer=(border=(261,15,42,20),radius=(6,6,6,6,6,6,6,6),clip=(261,15,42,20),origin=(0,0,0,0),attachment=0,repeat=0,root=0) color=#ffffffff
-  text bounds=(262,9,40,32) pos=(270,17,24,16) color=#000000ff text="°C" font=f4 glyphs=3 advance=24
-  text bounds=(313,9,40,32) pos=(321,17,24,16) color=#000000ff text="°F" font=f4 glyphs=3 advance=24
+  solid-fill bounds=(257,13,88,24) layer=(border=(257,13,88,24),radius=(8,8,8,8,8,8,8,8),clip=(257,13,88,24),origin=(0,0,0,0),attachment=0,repeat=0,root=0) color=#7f7f7f24
+  solid-fill bounds=(259,15,42,20) layer=(border=(259,15,42,20),radius=(6,6,6,6,6,6,6,6),clip=(259,15,42,20),origin=(0,0,0,0),attachment=0,repeat=0,root=0) color=#ffffffff
+  text bounds=(260,9,40,32) pos=(268,17,24,16) color=#000000ff text="°C" font=f4 glyphs=3 advance=24
+  text bounds=(302,9,40,32) pos=(310,17,24,16) color=#000000ff text="°F" font=f4 glyphs=3 advance=24
   text bounds=(185,33,64,32) pos=(193,41,48,16) color=#000000ff text="Sunny," font=f5 glyphs=6 advance=48
   text bounds=(241,33,56,32) pos=(249,41,40,16) color=#000000ff text="light" font=f5 glyphs=5 advance=40
   text bounds=(289,33,64,32) pos=(297,41,48,16) color=#000000ff text="breeze" font=f5 glyphs=6 advance=48

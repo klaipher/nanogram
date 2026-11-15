@@ -45,7 +45,7 @@ root 360x496 items=53
   borders bounds=(69,384,44,32) borders=(left=(1,4,#d4dfd9ff),top=(1,4,#d4dfd9ff),right=(1,4,#d4dfd9ff),bottom=(1,4,#d4dfd9ff),radius=(8,8,8,8,8,8,8,8)) pos=(69,384,44,32) root=0
   borders bounds=(118,384,60,32) borders=(left=(1,4,#d4dfd9ff),top=(1,4,#d4dfd9ff),right=(1,4,#d4dfd9ff),bottom=(1,4,#d4dfd9ff),radius=(8,8,8,8,8,8,8,8)) pos=(118,384,60,32) root=0
   solid-fill bounds=(183,384,124,32) layer=(border=(183,384,124,32),radius=(8,8,8,8,8,8,8,8),clip=(183,384,124,32),origin=(0,0,0,0),attachment=0,repeat=0,root=0) color=#246e61ff
-  borders bounds=(183,384,124,32) borders=(left=(1,4,#d4dfd9ff),top=(1,4,#d4dfd9ff),right=(1,4,#d4dfd9ff),bottom=(1,4,#d4dfd9ff),radius=(8,8,8,8,8,8,8,8)) pos=(183,384,124,32) root=0
+  borders bounds=(183,384,124,32) borders=(left=(1,4,#246e61ff),top=(1,4,#246e61ff),right=(1,4,#246e61ff),bottom=(1,4,#246e61ff),radius=(8,8,8,8,8,8,8,8)) pos=(183,384,124,32) root=0
   text bounds=(12,10,64,32) pos=(20,18,48,16) color=#246e61ff text="OBJECT" font=f1 glyphs=6 advance=48
   text bounds=(68,10,64,32) pos=(76,18,48,16) color=#246e61ff text="STUDIO" font=f1 glyphs=6 advance=48
   text bounds=(124,10,24,32) pos=(132,18,8,16) color=#246e61ff text="/" font=f1 glyphs=1 advance=8

@@ -28,7 +28,7 @@ html 0 0 360 565.05
         -tag-before 27 94.9 2 423.3
         div 27 94.9 2 0
         div 16 96.4 328 0
-          span 19 89.4 0 36.45
+          span 19 89.4 24 12.15
         div 50 86.9 294 72.3
           span 23 102.9 8 8
           div 62 96.9 270 52.3
@@ -108,7 +108,7 @@ html 0 0 360 565.05
         span 16 536.2 0 0
 
 == paint
-root 360x565.05 items=251
+root 360x565.05 items=249
   solid-fill bounds=(0,0,360,565) layer=(border=(0,0,360,565),radius=(0,0,0,0,0,0,0,0),clip=(0,0,360,565),origin=(0,0,0,0),attachment=0,repeat=0,root=0) color=#ffffffff
   set-clip bounds=(0,0,360,565.05) pos=(0,0,360,565.05) radius=(0,0,0,0,0,0,0,0)
   text bounds=(8,11,80,32) pos=(16,19,64,16) color=#0a0a0aff text="Saturday" font=f1 glyphs=8 advance=64
@@ -139,10 +139,8 @@ root 360x565.05 items=251
   solid-fill bounds=(27,95,2,423) layer=(border=(27,95,2,423),radius=(1,1,1,1,1,1,1,1),clip=(27,95,2,423),origin=(0,0,0,0),attachment=0,repeat=0,root=0) color=#00000014
   solid-fill bounds=(27,95,2,0) layer=(border=(27,95,2,0),radius=(0,0,0,0,0,0,0,0),clip=(27,95,2,0),origin=(0,0,0,0),attachment=0,repeat=0,root=0) color=#007affff
   borders bounds=(16,95,328,1) borders=(left=(0,0,#0a0a0aff),top=(1.5,3,#007affff),right=(0,0,#0a0a0aff),bottom=(0,0,#0a0a0aff),radius=(0,0,0,0,0,0,0,0)) pos=(16,95,328,1) root=0
-  solid-fill bounds=(14,87,10,41) layer=(border=(14,87,10,41),radius=(5,5,5,5,5,5,5,5),clip=(14,87,10,41),origin=(0,0,0,0),attachment=0,repeat=0,root=0) color=#007affff
-  text bounds=(11,80,24,32) pos=(19,88,8,16) color=#ffffffff text="N" font=f6 glyphs=1 advance=8
-  text bounds=(11,93,24,32) pos=(19,101,8,16) color=#ffffffff text="O" font=f6 glyphs=1 advance=8
-  text bounds=(11,105,24,32) pos=(19,113,8,16) color=#ffffffff text="W" font=f6 glyphs=1 advance=8
+  solid-fill bounds=(14,87,34,17) layer=(border=(14,87,34,17),radius=(5,5,5,5,5,5,5,5),clip=(14,87,34,17),origin=(0,0,0,0),attachment=0,repeat=0,root=0) color=#007affff
+  text bounds=(11,80,40,32) pos=(19,88,24,16) color=#ffffffff text="NOW" font=f6 glyphs=3 advance=24
   solid-fill bounds=(50,87,294,72) layer=(border=(50,87,294,72),radius=(14,14,14,14,14,14,14,14),clip=(50,87,294,72),origin=(0,0,0,0),attachment=0,repeat=0,root=0) color=#f2f2f7ff
   solid-fill bounds=(62,106,34,34) layer=(border=(62,106,34,34),radius=(10,10,10,10,10,10,10,10),clip=(62,106,34,34),origin=(0,0,0,0),attachment=0,repeat=0,root=0) color=#ff9500ff
   set-clip bounds=(318,116.05,14,14) pos=(318,116.05,14,14) radius=(0,0,0,0,0,0,0,0)

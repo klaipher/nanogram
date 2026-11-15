@@ -87,7 +87,7 @@ html 0 0 360 428.1
             div 74 220.175 188.743 21.6
             div 74 242.775 188.743 32.4
           div 274.743 214 69.2566 67.35
-            b 296 218.5 48 40.5
+            b 286.5 218.5 48 40.5
             span 274.743 266.5 69.2566 14.85
         div 16 297.35 328 33.85
           -tag-before 48.8 304.35 262.4 2
@@ -138,10 +138,10 @@ root 360x428.1 items=78
   text bounds=(162,235,64,32) pos=(170,243,48,16) color=#6e6e73ff text="Toyota" font=f3 glyphs=6 advance=48
   text bounds=(66,251,64,32) pos=(74,259,48,16) color=#6e6e73ff text="Prius," font=f3 glyphs=6 advance=48
   text bounds=(122,251,56,32) pos=(130,259,40,16) color=#6e6e73ff text="white" font=f3 glyphs=5 advance=40
-  borders bounds=(287,214,67,50) borders=(left=(1.5,4,#0a0a0aff),top=(1.5,4,#0a0a0aff),right=(1.5,4,#0a0a0aff),bottom=(1.5,4,#0a0a0aff),radius=(6,6,6,6,6,6,6,6)) pos=(287,214,67,50) root=0
-  text bounds=(288,213,32,32) pos=(296,221,16,16) color=#0a0a0aff text="TB" font=f4 glyphs=2 advance=16
-  text bounds=(312,213,40,32) pos=(320,221,24,16) color=#0a0a0aff text="471" font=f4 glyphs=3 advance=24
-  text bounds=(320,233,32,32) pos=(328,241,16,16) color=#0a0a0aff text="GK" font=f4 glyphs=2 advance=16
+  borders bounds=(277,214,67,50) borders=(left=(1.5,4,#0a0a0aff),top=(1.5,4,#0a0a0aff),right=(1.5,4,#0a0a0aff),bottom=(1.5,4,#0a0a0aff),radius=(6,6,6,6,6,6,6,6)) pos=(277,214,67,50) root=0
+  text bounds=(278.5,213,32,32) pos=(286.5,221,16,16) color=#0a0a0aff text="TB" font=f4 glyphs=2 advance=16
+  text bounds=(302.5,213,40,32) pos=(310.5,221,24,16) color=#0a0a0aff text="471" font=f4 glyphs=3 advance=24
+  text bounds=(310.5,233,32,32) pos=(318.5,241,16,16) color=#0a0a0aff text="GK" font=f4 glyphs=2 advance=16
   text bounds=(280,259,72,32) pos=(288,267,56,16) color=#6e6e73ff text="Comfort" font=f5 glyphs=7 advance=56
   text bounds=(62.5,349,48,32) pos=(70.5,357,32,16) color=#0a0a0aff text="Call" font=f6 glyphs=4 advance=32
   text bounds=(179.5,349,72,32) pos=(187.5,357,56,16) color=#0a0a0aff text="Message" font=f6 glyphs=7 advance=56
@@ -185,12 +185,12 @@ root 360x428.1 items=78
   solid-fill bounds=(49,304,87,2) layer=(border=(49,304,87,2),radius=(0,0,0,0,0,0,0,0),clip=(49,304,87,2),origin=(0,0,0,0),attachment=0,repeat=0,root=0) color=#34c759ff
   group opacity=1 matrix=(1.1,0,0,1.1,-5.7,-30.435) backface=0 bounds=(51,298.35,12,12) exact=0
     solid-fill bounds=(51,298,12,12) layer=(border=(51,298,12,12),radius=(6,6,6,6,6,6,6,6),clip=(51,298,12,12),origin=(0,0,0,0),attachment=0,repeat=0,root=0) color=#34c759ff
-    borders bounds=(51,298,12,12) borders=(left=(2,4,#00000014),top=(2,4,#00000014),right=(2,4,#00000014),bottom=(2,4,#00000014),radius=(6,6,6,6,6,6,6,6)) pos=(51,298,12,12) root=0
+    borders bounds=(51,298,12,12) borders=(left=(2,4,#34c759ff),top=(2,4,#34c759ff),right=(2,4,#34c759ff),bottom=(2,4,#34c759ff),radius=(6,6,6,6,6,6,6,6)) pos=(51,298,12,12) root=0
   text bounds=(17,308,80,32) pos=(25,316,64,16) color=#0a0a0aff text="Accepted" font=f8 glyphs=8 advance=64
   group opacity=1 matrix=(1.1,0,0,1.1,-13.9,-30.435) backface=0 bounds=(133,298.35,12,12) exact=0
     box-shadow bounds=(127,292,24,24) box=(133,298,12,12) radius=(6,6,6,6,6,6,6,6) shadow=(0,0,0,4,#34c75940,0)
     solid-fill bounds=(133,298,12,12) layer=(border=(133,298,12,12),radius=(6,6,6,6,6,6,6,6),clip=(133,298,12,12),origin=(0,0,0,0),attachment=0,repeat=0,root=0) color=#34c759ff
-    borders bounds=(133,298,12,12) borders=(left=(2,4,#00000014),top=(2,4,#00000014),right=(2,4,#00000014),bottom=(2,4,#00000014),radius=(6,6,6,6,6,6,6,6)) pos=(133,298,12,12) root=0
+    borders bounds=(133,298,12,12) borders=(left=(2,4,#34c759ff),top=(2,4,#34c759ff),right=(2,4,#34c759ff),bottom=(2,4,#34c759ff),radius=(6,6,6,6,6,6,6,6)) pos=(133,298,12,12) root=0
   text bounds=(91,308,32,32) pos=(99,316,16,16) color=#0a0a0aff text="On" font=f8 glyphs=2 advance=16
   text bounds=(115,308,40,32) pos=(123,316,24,16) color=#0a0a0aff text="the" font=f8 glyphs=3 advance=24
   text bounds=(147,308,40,32) pos=(155,316,24,16) color=#0a0a0aff text="way" font=f8 glyphs=3 advance=24

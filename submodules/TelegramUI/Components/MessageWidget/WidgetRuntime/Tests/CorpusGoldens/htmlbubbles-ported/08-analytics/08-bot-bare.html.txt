@@ -250,7 +250,7 @@ html 0 0 360 532
           div 15 459.3 190.385 28.6
           b 15 487.9 0 0
         div 205.385 456.8 139.615 62.2
-          span 241 457.8 104 28.6
+          span 233 457.8 104 28.6
           div 205.385 490.4 139.615 28.6
 
 == paint
@@ -331,13 +331,13 @@ root 360x532 items=122
   text bounds=(7,466,32,32) pos=(15,474,16,16) color=#6e6e73ff text="90" font=f4 glyphs=2 advance=16
   text bounds=(31,466,48,32) pos=(39,474,32,16) color=#6e6e73ff text="DAYS" font=f4 glyphs=4 advance=32
   text bounds=(7,486,56,32) pos=(15,494,40,16) color=#000000ff text="5.00%" font=f8 glyphs=5 advance=40
-  solid-fill bounds=(233,457,120,30) layer=(border=(233,457,120,30),radius=(9,9,9,9,9,9,9,9),clip=(233,457,120,30),origin=(0,0,0,0),attachment=0,repeat=0,root=0) color=#34c7592e
-  text bounds=(233,450,24,32) pos=(241,458,8,16) color=#34c759ff text="B" font=f4 glyphs=1 advance=8
-  text bounds=(249,450,56,32) pos=(257,458,40,16) color=#34c759ff text="lifts" font=f4 glyphs=5 advance=40
-  text bounds=(297,450,32,32) pos=(305,458,16,16) color=#34c759ff text="it" font=f4 glyphs=2 advance=16
-  text bounds=(321,450,32,32) pos=(329,458,16,16) color=#34c759ff text="by" font=f4 glyphs=2 advance=16
-  text bounds=(289,464,40,32) pos=(297,472,24,16) color=#34c759ff text="0.9" font=f4 glyphs=3 advance=24
-  text bounds=(321,464,32,32) pos=(329,472,16,16) color=#34c759ff text="pp" font=f4 glyphs=2 advance=16
+  solid-fill bounds=(225,457,120,30) layer=(border=(225,457,120,30),radius=(9,9,9,9,9,9,9,9),clip=(225,457,120,30),origin=(0,0,0,0),attachment=0,repeat=0,root=0) color=#34c7592e
+  text bounds=(225,450,24,32) pos=(233,458,8,16) color=#34c759ff text="B" font=f4 glyphs=1 advance=8
+  text bounds=(241,450,56,32) pos=(249,458,40,16) color=#34c759ff text="lifts" font=f4 glyphs=5 advance=40
+  text bounds=(289,450,32,32) pos=(297,458,16,16) color=#34c759ff text="it" font=f4 glyphs=2 advance=16
+  text bounds=(313,450,32,32) pos=(321,458,16,16) color=#34c759ff text="by" font=f4 glyphs=2 advance=16
+  text bounds=(281,464,40,32) pos=(289,472,24,16) color=#34c759ff text="0.9" font=f4 glyphs=3 advance=24
+  text bounds=(313,464,32,32) pos=(321,472,16,16) color=#34c759ff text="pp" font=f4 glyphs=2 advance=16
   text bounds=(257,482,48,32) pos=(265,490,32,16) color=#6e6e73ff text="Grey" font=f3 glyphs=4 advance=32
   text bounds=(297,482,56,32) pos=(305,490,40,16) color=#6e6e73ff text="band:" font=f3 glyphs=5 advance=40
   text bounds=(265,497,72,32) pos=(273,505,56,16) color=#6e6e73ff text="variant" font=f3 glyphs=7 advance=56

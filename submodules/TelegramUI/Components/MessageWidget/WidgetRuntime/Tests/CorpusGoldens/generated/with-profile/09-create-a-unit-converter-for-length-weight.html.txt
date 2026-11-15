@@ -73,7 +73,7 @@ html 0 0 360 407.75
 root 360x407.75 items=63
   solid-fill bounds=(0,0,360,408) layer=(border=(0,0,360,408),radius=(0,0,0,0,0,0,0,0),clip=(0,0,360,408),origin=(0,0,0,0),attachment=0,repeat=0,root=1) color=#ffffffff
   solid-fill bounds=(14,47,107,35) layer=(border=(14,47,107,35),radius=(8,8,8,8,8,8,8,8),clip=(14,47,107,35),origin=(0,0,0,0),attachment=0,repeat=0,root=0) color=#2563ebff
-  borders bounds=(14,47,107,35) borders=(left=(1,4,#d1d5dbff),top=(1,4,#d1d5dbff),right=(1,4,#d1d5dbff),bottom=(1,4,#d1d5dbff),radius=(8,8,8,8,8,8,8,8)) pos=(14,47,107,35) root=0
+  borders bounds=(14,47,107,35) borders=(left=(1,4,#2563ebff),top=(1,4,#2563ebff),right=(1,4,#2563ebff),bottom=(1,4,#2563ebff),radius=(8,8,8,8,8,8,8,8)) pos=(14,47,107,35) root=0
   borders bounds=(127,47,106,35) borders=(left=(1,4,#d1d5dbff),top=(1,4,#d1d5dbff),right=(1,4,#d1d5dbff),bottom=(1,4,#d1d5dbff),radius=(8,8,8,8,8,8,8,8)) pos=(127,47,106,35) root=0
   borders bounds=(239,47,107,35) borders=(left=(1,4,#d1d5dbff),top=(1,4,#d1d5dbff),right=(1,4,#d1d5dbff),bottom=(1,4,#d1d5dbff),radius=(8,8,8,8,8,8,8,8)) pos=(239,47,107,35) root=0
   borders bounds=(14,96,332,118) borders=(left=(1,4,#d1d5dbff),top=(1,4,#d1d5dbff),right=(1,4,#d1d5dbff),bottom=(1,4,#d1d5dbff),radius=(10,10,10,10,10,10,10,10)) pos=(14,96,332,118) root=0
@@ -82,7 +82,7 @@ root 360x407.75 items=63
   solid-fill bounds=(255,107,34,32) layer=(border=(255,107,34,32),radius=(8,8,8,8,8,8,8,8),clip=(255,107,34,32),origin=(0,0,0,0),attachment=0,repeat=0,root=0) color=#eff6ffff
   solid-fill bounds=(295,107,42,32) layer=(border=(295,107,42,32),radius=(8,8,8,8,8,8,8,8),clip=(295,107,42,32),origin=(0,0,0,0),attachment=0,repeat=0,root=0) color=#eff6ffff
   solid-fill bounds=(23,146,41,28) layer=(border=(23,146,41,28),radius=(8,8,8,8,8,8,8,8),clip=(23,146,41,28),origin=(0,0,0,0),attachment=0,repeat=0,root=0) color=#2563ebff
-  borders bounds=(23,146,41,28) borders=(left=(1,4,#d1d5dbff),top=(1,4,#d1d5dbff),right=(1,4,#d1d5dbff),bottom=(1,4,#d1d5dbff),radius=(8,8,8,8,8,8,8,8)) pos=(23,146,41,28) root=0
+  borders bounds=(23,146,41,28) borders=(left=(1,4,#2563ebff),top=(1,4,#2563ebff),right=(1,4,#2563ebff),bottom=(1,4,#2563ebff),radius=(8,8,8,8,8,8,8,8)) pos=(23,146,41,28) root=0
   borders bounds=(68,146,42,28) borders=(left=(1,4,#d1d5dbff),top=(1,4,#d1d5dbff),right=(1,4,#d1d5dbff),bottom=(1,4,#d1d5dbff),radius=(8,8,8,8,8,8,8,8)) pos=(68,146,42,28) root=0
   borders bounds=(114,146,41,28) borders=(left=(1,4,#d1d5dbff),top=(1,4,#d1d5dbff),right=(1,4,#d1d5dbff),bottom=(1,4,#d1d5dbff),radius=(8,8,8,8,8,8,8,8)) pos=(114,146,41,28) root=0
   borders bounds=(159,146,42,28) borders=(left=(1,4,#d1d5dbff),top=(1,4,#d1d5dbff),right=(1,4,#d1d5dbff),bottom=(1,4,#d1d5dbff),radius=(8,8,8,8,8,8,8,8)) pos=(159,146,42,28) root=0
@@ -93,7 +93,7 @@ root 360x407.75 items=63
   borders bounds=(14,249,332,118) borders=(left=(1,4,#d1d5dbff),top=(1,4,#d1d5dbff),right=(1,4,#d1d5dbff),bottom=(1,4,#d1d5dbff),radius=(10,10,10,10,10,10,10,10)) pos=(14,249,332,118) root=0
   borders bounds=(23,299,41,27) borders=(left=(1,4,#d1d5dbff),top=(1,4,#d1d5dbff),right=(1,4,#d1d5dbff),bottom=(1,4,#d1d5dbff),radius=(8,8,8,8,8,8,8,8)) pos=(23,299,41,27) root=0
   solid-fill bounds=(68,299,42,27) layer=(border=(68,299,42,27),radius=(8,8,8,8,8,8,8,8),clip=(68,299,42,27),origin=(0,0,0,0),attachment=0,repeat=0,root=0) color=#2563ebff
-  borders bounds=(68,299,42,27) borders=(left=(1,4,#d1d5dbff),top=(1,4,#d1d5dbff),right=(1,4,#d1d5dbff),bottom=(1,4,#d1d5dbff),radius=(8,8,8,8,8,8,8,8)) pos=(68,299,42,27) root=0
+  borders bounds=(68,299,42,27) borders=(left=(1,4,#2563ebff),top=(1,4,#2563ebff),right=(1,4,#2563ebff),bottom=(1,4,#2563ebff),radius=(8,8,8,8,8,8,8,8)) pos=(68,299,42,27) root=0
   borders bounds=(114,299,41,27) borders=(left=(1,4,#d1d5dbff),top=(1,4,#d1d5dbff),right=(1,4,#d1d5dbff),bottom=(1,4,#d1d5dbff),radius=(8,8,8,8,8,8,8,8)) pos=(114,299,41,27) root=0
   borders bounds=(159,299,42,27) borders=(left=(1,4,#d1d5dbff),top=(1,4,#d1d5dbff),right=(1,4,#d1d5dbff),bottom=(1,4,#d1d5dbff),radius=(8,8,8,8,8,8,8,8)) pos=(159,299,42,27) root=0
   borders bounds=(205,299,41,27) borders=(left=(1,4,#d1d5dbff),top=(1,4,#d1d5dbff),right=(1,4,#d1d5dbff),bottom=(1,4,#d1d5dbff),radius=(8,8,8,8,8,8,8,8)) pos=(205,299,41,27) root=0

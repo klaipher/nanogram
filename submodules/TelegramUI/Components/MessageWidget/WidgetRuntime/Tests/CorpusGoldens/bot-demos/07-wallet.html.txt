@@ -1,0 +1,120 @@
+stop -
+drive idle
+refused-loads 0
+
+== dom
+<html><head><meta name="tw-bot" content="gram">
+<style></style>
+</head><body><div class="hd"><div class="ic">💎</div><div><h3>Gram Wallet test</h3><small>Mainnet: your wallet, a signature, 0.01 TON to yourself</small></div></div>
+<div class="r"><div><b>My wallet</b><span class="w" id="mw">The card in your profile</span></div><button id="me" disabled="">Show</button></div>
+<div class="r"><div><b>Sign a text</b><span class="w" id="sw">The bot checks the signature</span></div><button id="sg" disabled="">Sign</button></div>
+<div class="r"><div><b>0.01 TON to myself</b><span class="w" id="tw">From the wallet on this device</span></div><button id="pay" disabled="">Send</button></div>
+<span class="w" id="n">No Gram Wallet in this client yet (TelegramWidget.wallet is null).</span>
+<script></script>
+</body></html>
+
+== layout
+html 0 0 360 301
+  head 0 0 0 0
+    style 0 0 0 0
+  body 14 12 332 277
+    div 14 12 332 60.5
+      div 14 22.25 40 40
+      div 64 12 282 60.5
+        h3 64 12 282 20
+        small 64 32 0 0
+    div 14 91.5 332 37.8
+      div 14 91.5 248 37.8
+        b 14 91.5 248 20.25
+        span 14 111.75 248 17.55
+      button 286 102 46 16.8
+    div 14 149.3 332 37.8
+      div 14 149.3 248 37.8
+        b 14 149.3 248 20.25
+        span 14 169.55 248 17.55
+      button 286 159.8 46 16.8
+    div 14 207.1 332 37.8
+      div 14 207.1 248 37.8
+        b 14 207.1 248 20.25
+        span 14 227.35 248 17.55
+      button 286 217.6 46 16.8
+    span 14 253.9 332 35.1
+
+== paint
+root 360x301 items=66
+  solid-fill bounds=(14,22,40,40) layer=(border=(14,22,40,40),radius=(20,20,20,20,20,20,20,20),clip=(14,22,40,40),origin=(0,0,0,0),attachment=0,repeat=0,root=0) color=#3390ecff
+  borders bounds=(14,81,332,57) borders=(left=(0,0,#000000ff),top=(1,4,#e7e7e7ff),right=(0,0,#000000ff),bottom=(0,0,#000000ff),radius=(0,0,0,0,0,0,0,0)) pos=(14,81,332,57) root=0
+  group opacity=0.5 matrix=(1,0,0,1,0,0) backface=0 bounds=(270,92,78,36.8) exact=1
+    solid-fill bounds=(272,94,74,33) layer=(border=(272,94,74,33),radius=(8,8,8,8,8,8,8,8),clip=(272,94,74,33),origin=(0,0,0,0),attachment=0,repeat=0,root=0) color=#3390ec1f
+    text bounds=(285,94,48,32) pos=(293,102,32,16) color=#000000ff text="Show" font=f1 glyphs=4 advance=32
+  borders bounds=(14,138,332,58) borders=(left=(0,0,#000000ff),top=(1,4,#e7e7e7ff),right=(0,0,#000000ff),bottom=(0,0,#000000ff),radius=(0,0,0,0,0,0,0,0)) pos=(14,138,332,58) root=0
+  group opacity=0.5 matrix=(1,0,0,1,0,0) backface=0 bounds=(270,149.8,78,36.8) exact=1
+    solid-fill bounds=(272,152,74,33) layer=(border=(272,152,74,33),radius=(8,8,8,8,8,8,8,8),clip=(272,152,74,33),origin=(0,0,0,0),attachment=0,repeat=0,root=0) color=#3390ec1f
+    text bounds=(285,152,48,32) pos=(293,160,32,16) color=#000000ff text="Sign" font=f1 glyphs=4 advance=32
+  borders bounds=(14,196,332,58) borders=(left=(0,0,#000000ff),top=(1,4,#e7e7e7ff),right=(0,0,#000000ff),bottom=(0,0,#000000ff),radius=(0,0,0,0,0,0,0,0)) pos=(14,196,332,58) root=0
+  group opacity=0.5 matrix=(1,0,0,1,0,0) backface=0 bounds=(270,207.6,78,36.8) exact=1
+    solid-fill bounds=(272,210,74,32) layer=(border=(272,210,74,32),radius=(8,8,8,8,8,8,8,8),clip=(272,210,74,32),origin=(0,0,0,0),attachment=0,repeat=0,root=0) color=#3390ec1f
+    text bounds=(285,210,48,32) pos=(293,218,32,16) color=#000000ff text="Send" font=f1 glyphs=4 advance=32
+  text bounds=(10,26,48,32) pos=(18,34,32,16) color=#ffffffff text="💎" font=f2 glyphs=4 advance=32
+  text bounds=(56,6,48,32) pos=(64,14,32,16) color=#000000ff text="Gram" font=f3 glyphs=4 advance=32
+  text bounds=(96,6,64,32) pos=(104,14,48,16) color=#000000ff text="Wallet" font=f3 glyphs=6 advance=48
+  text bounds=(152,6,48,32) pos=(160,14,32,16) color=#000000ff text="test" font=f3 glyphs=4 advance=32
+  text bounds=(56,26,80,32) pos=(64,34,64,16) color=#707579ff text="Mainnet:" font=f4 glyphs=8 advance=64
+  text bounds=(128,26,48,32) pos=(136,34,32,16) color=#707579ff text="your" font=f4 glyphs=4 advance=32
+  text bounds=(168,26,72,32) pos=(176,34,56,16) color=#707579ff text="wallet," font=f4 glyphs=7 advance=56
+  text bounds=(232,26,24,32) pos=(240,34,8,16) color=#707579ff text="a" font=f4 glyphs=1 advance=8
+  text bounds=(248,26,96,32) pos=(256,34,80,16) color=#707579ff text="signature," font=f4 glyphs=10 advance=80
+  text bounds=(56,46,48,32) pos=(64,54,32,16) color=#707579ff text="0.01" font=f4 glyphs=4 advance=32
+  text bounds=(96,46,40,32) pos=(104,54,24,16) color=#707579ff text="TON" font=f4 glyphs=3 advance=24
+  text bounds=(128,46,32,32) pos=(136,54,16,16) color=#707579ff text="to" font=f4 glyphs=2 advance=16
+  text bounds=(152,46,80,32) pos=(160,54,64,16) color=#707579ff text="yourself" font=f4 glyphs=8 advance=64
+  text bounds=(6,86,32,32) pos=(14,94,16,16) color=#000000ff text="My" font=f5 glyphs=2 advance=16
+  text bounds=(30,86,64,32) pos=(38,94,48,16) color=#000000ff text="wallet" font=f5 glyphs=6 advance=48
+  set-clip bounds=(14,111.75,248,17.55) pos=(14,111.75,248,17.55) radius=(0,0,0,0,0,0,0,0)
+  text bounds=(6,104,40,32) pos=(14,112,24,16) color=#707579ff text="The" font=f4 glyphs=3 advance=24
+  text bounds=(38,104,48,32) pos=(46,112,32,16) color=#707579ff text="card" font=f4 glyphs=4 advance=32
+  text bounds=(78,104,32,32) pos=(86,112,16,16) color=#707579ff text="in" font=f4 glyphs=2 advance=16
+  text bounds=(102,104,48,32) pos=(110,112,32,16) color=#707579ff text="your" font=f4 glyphs=4 advance=32
+  text bounds=(142,104,72,32) pos=(150,112,56,16) color=#707579ff text="profile" font=f4 glyphs=7 advance=56
+  del-clip bounds=(0,0,0,0)
+  text bounds=(6,143,48,32) pos=(14,151,32,16) color=#000000ff text="Sign" font=f5 glyphs=4 advance=32
+  text bounds=(46,143,24,32) pos=(54,151,8,16) color=#000000ff text="a" font=f5 glyphs=1 advance=8
+  text bounds=(62,143,48,32) pos=(70,151,32,16) color=#000000ff text="text" font=f5 glyphs=4 advance=32
+  set-clip bounds=(14,169.55,248,17.55) pos=(14,169.55,248,17.55) radius=(0,0,0,0,0,0,0,0)
+  text bounds=(6,162,40,32) pos=(14,170,24,16) color=#707579ff text="The" font=f4 glyphs=3 advance=24
+  text bounds=(38,162,40,32) pos=(46,170,24,16) color=#707579ff text="bot" font=f4 glyphs=3 advance=24
+  text bounds=(70,162,64,32) pos=(78,170,48,16) color=#707579ff text="checks" font=f4 glyphs=6 advance=48
+  text bounds=(126,162,40,32) pos=(134,170,24,16) color=#707579ff text="the" font=f4 glyphs=3 advance=24
+  text bounds=(158,162,88,32) pos=(166,170,72,16) color=#707579ff text="signature" font=f4 glyphs=9 advance=72
+  del-clip bounds=(0,0,0,0)
+  text bounds=(6,201,48,32) pos=(14,209,32,16) color=#000000ff text="0.01" font=f5 glyphs=4 advance=32
+  text bounds=(46,201,40,32) pos=(54,209,24,16) color=#000000ff text="TON" font=f5 glyphs=3 advance=24
+  text bounds=(78,201,32,32) pos=(86,209,16,16) color=#000000ff text="to" font=f5 glyphs=2 advance=16
+  text bounds=(102,201,64,32) pos=(110,209,48,16) color=#000000ff text="myself" font=f5 glyphs=6 advance=48
+  set-clip bounds=(14,227.35,248,17.55) pos=(14,227.35,248,17.55) radius=(0,0,0,0,0,0,0,0)
+  text bounds=(6,219,48,32) pos=(14,227,32,16) color=#707579ff text="From" font=f4 glyphs=4 advance=32
+  text bounds=(46,219,40,32) pos=(54,227,24,16) color=#707579ff text="the" font=f4 glyphs=3 advance=24
+  text bounds=(78,219,64,32) pos=(86,227,48,16) color=#707579ff text="wallet" font=f4 glyphs=6 advance=48
+  text bounds=(134,219,32,32) pos=(142,227,16,16) color=#707579ff text="on" font=f4 glyphs=2 advance=16
+  text bounds=(158,219,48,32) pos=(166,227,32,16) color=#707579ff text="this" font=f4 glyphs=4 advance=32
+  text bounds=(198,219,64,32) pos=(206,227,48,16) color=#707579ff text="device" font=f4 glyphs=6 advance=48
+  del-clip bounds=(0,0,0,0)
+  set-clip bounds=(14,253.9,332,35.1) pos=(14,253.9,332,35.1) radius=(0,0,0,0,0,0,0,0)
+  text bounds=(6,246,32,32) pos=(14,254,16,16) color=#707579ff text="No" font=f4 glyphs=2 advance=16
+  text bounds=(30,246,48,32) pos=(38,254,32,16) color=#707579ff text="Gram" font=f4 glyphs=4 advance=32
+  text bounds=(70,246,64,32) pos=(78,254,48,16) color=#707579ff text="Wallet" font=f4 glyphs=6 advance=48
+  text bounds=(126,246,32,32) pos=(134,254,16,16) color=#707579ff text="in" font=f4 glyphs=2 advance=16
+  text bounds=(150,246,48,32) pos=(158,254,32,16) color=#707579ff text="this" font=f4 glyphs=4 advance=32
+  text bounds=(190,246,64,32) pos=(198,254,48,16) color=#707579ff text="client" font=f4 glyphs=6 advance=48
+  text bounds=(246,246,40,32) pos=(254,254,24,16) color=#707579ff text="yet" font=f4 glyphs=3 advance=24
+  text bounds=(6,263,192,32) pos=(14,271,176,16) color=#707579ff text="(TelegramWidget.wallet" font=f4 glyphs=22 advance=176
+  text bounds=(190,263,32,32) pos=(198,271,16,16) color=#707579ff text="is" font=f4 glyphs=2 advance=16
+  text bounds=(214,263,64,32) pos=(222,271,48,16) color=#707579ff text="null)." font=f4 glyphs=6 advance=48
+  del-clip bounds=(0,0,0,0)
+
+== fonts
+f1 (family="system-ui,sans-serif",size=14,style=0,weight=500,decoration=(0,predef0,0,#000000ff!current),emphasis=("",#000000ff,0),letter-spacing=0,smoothing=0,shadow=(0,0,0,#00000000),extra-shadows=(),tabular=0)
+f2 (family="system-ui,sans-serif",size=20,style=0,weight=400,decoration=(0,predef0,0,#000000ff!current),emphasis=("",#000000ff,0),letter-spacing=0,smoothing=0,shadow=(0,0,0,#00000000),extra-shadows=(),tabular=0)
+f3 (family="system-ui,sans-serif",size=16,style=0,weight=600,decoration=(0,predef0,0,#000000ff!current),emphasis=("",#000000ff,0),letter-spacing=0,smoothing=0,shadow=(0,0,0,#00000000),extra-shadows=(),tabular=0)
+f4 (family="system-ui,sans-serif",size=13,style=0,weight=400,decoration=(0,predef0,0,#000000ff!current),emphasis=("",#000000ff,0),letter-spacing=0,smoothing=0,shadow=(0,0,0,#00000000),extra-shadows=(),tabular=0)
+f5 (family="system-ui,sans-serif",size=15,style=0,weight=500,decoration=(0,predef0,0,#000000ff!current),emphasis=("",#000000ff,0),letter-spacing=0,smoothing=0,shadow=(0,0,0,#00000000),extra-shadows=(),tabular=0)

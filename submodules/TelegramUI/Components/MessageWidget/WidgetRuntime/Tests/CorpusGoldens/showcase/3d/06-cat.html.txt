@@ -3,7 +3,7 @@ drive idle
 refused-loads 0
 
 == dom
-<html><head><meta charset="utf-8"><style></style></head><body><div class="card"><header><div><div class="eyebrow">CAT STUDIO / 3D</div><h2>Pocket cat</h2></div></header><p>A sculpted 3D cat.</p><canvas id="view" role="img" aria-label="Pocket cat. Mouse drag rotates X/Y." width="320" height="240"></canvas><div class="tools"><button id="left" aria-label="Turn left">↶ Left</button><button id="right" aria-label="Turn right">Right ↷</button><button id="up">Raise</button><button id="down">Lower</button><button id="near" aria-label="Zoom in">＋</button><button id="far" aria-label="Zoom out">−</button><button id="reset">Reset</button><button id="special">Move tail</button></div><div class="status" id="status" aria-live="polite">Sitting pretty · 100%</div><p class="hint">Mouse drag rotates X/Y · Vertical touch scrolls the chat</p></div>
+<html><head><meta charset="utf-8"><style></style></head><body><div class="card"><div class="eyebrow">CAT STUDIO / 3D</div><h2>Pocket cat</h2><p>A sculpted 3D cat.</p><canvas id="view" role="img" aria-label="Pocket cat. Mouse drag rotates X/Y." width="320" height="240"></canvas><div class="tools"><button id="left" aria-label="Turn left">↶ Left</button><button id="right" aria-label="Turn right">Right ↷</button><button id="up">Raise</button><button id="down">Lower</button><button id="near" aria-label="Zoom in">＋</button><button id="far" aria-label="Zoom out">−</button><button id="reset">Reset</button><button id="special">Move tail</button></div><div class="status" id="status" aria-live="polite">Sitting pretty · 100%</div><p class="hint">Mouse drag rotates X/Y · Vertical touch scrolls the chat</p></div>
 <script></script>
 </body></html>
 
@@ -13,10 +13,8 @@ html 0 0 360 496
     style 0 0 0 0
   body 0 0 360 496
     div 20 18 320 464
-      header 20 18 320 51.2
-        div 20 18 120 46.2
-          div 20 18 120 16
-          h2 20 39 120 25.2
+      div 20 18 320 16
+      h2 20 39 320 25.2
       p 20 74.2 320 16.8
       canvas 20 96 320 240
       div 20 347 320 69
@@ -44,7 +42,7 @@ root 360x496 items=47
   borders bounds=(69,384,44,32) borders=(left=(1,4,#d4dfd9ff),top=(1,4,#d4dfd9ff),right=(1,4,#d4dfd9ff),bottom=(1,4,#d4dfd9ff),radius=(8,8,8,8,8,8,8,8)) pos=(69,384,44,32) root=0
   borders bounds=(118,384,60,32) borders=(left=(1,4,#d4dfd9ff),top=(1,4,#d4dfd9ff),right=(1,4,#d4dfd9ff),bottom=(1,4,#d4dfd9ff),radius=(8,8,8,8,8,8,8,8)) pos=(118,384,60,32) root=0
   solid-fill bounds=(183,384,92,32) layer=(border=(183,384,92,32),radius=(8,8,8,8,8,8,8,8),clip=(183,384,92,32),origin=(0,0,0,0),attachment=0,repeat=0,root=0) color=#246e61ff
-  borders bounds=(183,384,92,32) borders=(left=(1,4,#d4dfd9ff),top=(1,4,#d4dfd9ff),right=(1,4,#d4dfd9ff),bottom=(1,4,#d4dfd9ff),radius=(8,8,8,8,8,8,8,8)) pos=(183,384,92,32) root=0
+  borders bounds=(183,384,92,32) borders=(left=(1,4,#246e61ff),top=(1,4,#246e61ff),right=(1,4,#246e61ff),bottom=(1,4,#246e61ff),radius=(8,8,8,8,8,8,8,8)) pos=(183,384,92,32) root=0
   text bounds=(12,10,40,32) pos=(20,18,24,16) color=#246e61ff text="CAT" font=f1 glyphs=3 advance=24
   text bounds=(44,10,64,32) pos=(52,18,48,16) color=#246e61ff text="STUDIO" font=f1 glyphs=6 advance=48
   text bounds=(100,10,24,32) pos=(108,18,8,16) color=#246e61ff text="/" font=f1 glyphs=1 advance=8

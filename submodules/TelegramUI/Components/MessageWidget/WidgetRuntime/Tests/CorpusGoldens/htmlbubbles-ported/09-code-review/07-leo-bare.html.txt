@@ -290,8 +290,8 @@ root 390x647 items=195
   text bounds=(129,512,24,32) pos=(137,520,8,16) color=#cdd6f4ff text=" " font=f13 glyphs=1 advance=8
   text bounds=(137,512,88,32) pos=(145,520,72,16) color=#a6e3a1ff text="\"<p>Hello" font=f13 glyphs=9 advance=72
   text bounds=(209,512,24,32) pos=(217,520,8,16) color=#a6e3a1ff text=" " font=f13 glyphs=1 advance=8
-  text bounds=(217,512,152,32) pos=(225,520,136,16) color=#a6e3a1ff text="<b>world</b></p>\"" font=f13 glyphs=17 advance=136
-  text bounds=(17,527,32,32) pos=(25,535,16,16) color=#cdd6f4ff text="}'" font=f13 glyphs=2 advance=16
+  text bounds=(17,527,152,32) pos=(25,535,136,16) color=#a6e3a1ff text="<b>world</b></p>\"" font=f13 glyphs=17 advance=136
+  text bounds=(153,527,32,32) pos=(161,535,16,16) color=#cdd6f4ff text="}'" font=f13 glyphs=2 advance=16
   text bounds=(7,561,88,32) pos=(15,569,72,16) color=#6e6e73ff text="RESPONSES" font=f5 glyphs=9 advance=72
   text bounds=(87,561,32,32) pos=(95,569,16,16) color=#6e6e73ff text="·" font=f14 glyphs=2 advance=16
   text bounds=(111,561,48,32) pos=(119,569,32,16) color=#6e6e73ff text="pick" font=f14 glyphs=4 advance=32

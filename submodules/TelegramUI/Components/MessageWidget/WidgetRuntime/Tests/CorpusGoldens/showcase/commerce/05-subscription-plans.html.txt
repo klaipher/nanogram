@@ -150,7 +150,7 @@ root 360x589.4 items=115
     box-shadow bounds=(13,236,334,167) box=(18,241,324,157) radius=(16,16,16,16,16,16,16,16) shadow=(0,1,2,0,#0000000f,0)
     solid-fill bounds=(18,241,324,157) layer=(border=(18,241,324,157),radius=(16,16,16,16,16,16,16,16),clip=(18,241,324,157),origin=(0,0,0,0),attachment=0,repeat=0,root=0) color=#ffffffff
     borders bounds=(18,241,324,157) borders=(left=(2,4,#007affff),top=(2,4,#007affff),right=(2,4,#007affff),bottom=(2,4,#007affff),radius=(16,16,16,16,16,16,16,16)) pos=(18,241,324,157) root=0
-    borders bounds=(36,269,20,20) borders=(left=(2,4,#00000014),top=(2,4,#00000014),right=(2,4,#00000014),bottom=(2,4,#00000014),radius=(10,10,10,10,10,10,10,10)) pos=(36,269,20,20) root=0
+    borders bounds=(36,269,20,20) borders=(left=(2,4,#007affff),top=(2,4,#007affff),right=(2,4,#007affff),bottom=(2,4,#007affff),radius=(10,10,10,10,10,10,10,10)) pos=(36,269,20,20) root=0
     solid-fill bounds=(41,274,10,10) layer=(border=(41,274,10,10),radius=(5,5,5,5,5,5,5,5),clip=(41,274,10,10),origin=(0,0,0,0),attachment=0,repeat=0,root=0) color=#007affff
     linear-gradient bounds=(108,269,70,20) layer=(border=(108,269,70,20),radius=(6,6,6,6,6,6,6,6),clip=(108,269,70,20),origin=(108,269,70,20),attachment=0,repeat=0,root=0) points=((0,#007affff,-),(1,#af52deff,-)) space=0 hue=0 start=(112.42,261.345) end=(173.58,296.655)
     text bounds=(58,262,48,32) pos=(66,270,32,16) color=#0a0a0aff text="Plus" font=f7 glyphs=4 advance=32

@@ -61,7 +61,7 @@ root 360x320.85 items=55
     text bounds=(314,50,32,32) pos=(322,58,16,16) color=#ef4444ff text="×" font=f1 glyphs=2 advance=16
   borders bounds=(14,88,332,40) borders=(left=(0,0,#111827ff),top=(0,0,#111827ff),right=(0,0,#111827ff),bottom=(1,4,#e5e7ebff),radius=(0,0,0,0,0,0,0,0)) pos=(14,88,332,40) root=0
   solid-fill bounds=(18,98,20,20) layer=(border=(18,98,20,20),radius=(8,8,8,8,8,8,8,8),clip=(18,98,20,20),origin=(0,0,0,0),attachment=0,repeat=0,root=0) color=#f59e0bff
-  borders bounds=(18,98,20,20) borders=(left=(2,4,#e5e7ebff),top=(2,4,#e5e7ebff),right=(2,4,#e5e7ebff),bottom=(2,4,#e5e7ebff),radius=(8,8,8,8,8,8,8,8)) pos=(18,98,20,20) root=0
+  borders bounds=(18,98,20,20) borders=(left=(2,4,#f59e0bff),top=(2,4,#f59e0bff),right=(2,4,#f59e0bff),bottom=(2,4,#f59e0bff),radius=(8,8,8,8,8,8,8,8)) pos=(18,98,20,20) root=0
   group opacity=0.7 matrix=(1,0,0,1,0,0) backface=0 bounds=(312,88.85,36,36) exact=1
     text bounds=(314,91,32,32) pos=(322,99,16,16) color=#ef4444ff text="×" font=f1 glyphs=2 advance=16
   borders bounds=(14,128,332,41) borders=(left=(0,0,#111827ff),top=(0,0,#111827ff),right=(0,0,#111827ff),bottom=(1,4,#e5e7ebff),radius=(0,0,0,0,0,0,0,0)) pos=(14,128,332,41) root=0

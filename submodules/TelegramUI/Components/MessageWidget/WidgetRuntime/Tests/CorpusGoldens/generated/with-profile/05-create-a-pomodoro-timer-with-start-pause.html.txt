@@ -59,7 +59,7 @@ html 0 0 360 377.6
 root 360x377.6 items=23
   solid-fill bounds=(0,0,360,378) layer=(border=(0,0,360,378),radius=(0,0,0,0,0,0,0,0),clip=(0,0,360,378),origin=(0,0,0,0),attachment=0,repeat=0,root=1) color=#ffffffff
   solid-fill bounds=(31,16,66,30) layer=(border=(31,16,66,30),radius=(8,8,8,8,8,8,8,8),clip=(31,16,66,30),origin=(0,0,0,0),attachment=0,repeat=0,root=0) color=#ef4444ff
-  borders bounds=(31,16,66,30) borders=(left=(1,4,#fecacaff),top=(1,4,#fecacaff),right=(1,4,#fecacaff),bottom=(1,4,#fecacaff),radius=(8,8,8,8,8,8,8,8)) pos=(31,16,66,30) root=0
+  borders bounds=(31,16,66,30) borders=(left=(1,4,#ef4444ff),top=(1,4,#ef4444ff),right=(1,4,#ef4444ff),bottom=(1,4,#ef4444ff),radius=(8,8,8,8,8,8,8,8)) pos=(31,16,66,30) root=0
   solid-fill bounds=(103,16,114,30) layer=(border=(103,16,114,30),radius=(8,8,8,8,8,8,8,8),clip=(103,16,114,30),origin=(0,0,0,0),attachment=0,repeat=0,root=0) color=#ffffffff
   borders bounds=(103,16,114,30) borders=(left=(1,4,#fecacaff),top=(1,4,#fecacaff),right=(1,4,#fecacaff),bottom=(1,4,#fecacaff),radius=(8,8,8,8,8,8,8,8)) pos=(103,16,114,30) root=0
   solid-fill bounds=(223,16,106,30) layer=(border=(223,16,106,30),radius=(8,8,8,8,8,8,8,8),clip=(223,16,106,30),origin=(0,0,0,0),attachment=0,repeat=0,root=0) color=#ffffffff

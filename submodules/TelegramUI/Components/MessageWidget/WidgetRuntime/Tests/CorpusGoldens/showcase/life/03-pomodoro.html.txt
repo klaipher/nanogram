@@ -60,13 +60,13 @@ root 360x484.55 items=54
   set-clip bounds=(0,0,360,484.55) pos=(0,0,360,484.55) radius=(0,0,0,0,0,0,0,0)
   group opacity=1 matrix=(1.1,0,0,1.1,-15.3,-29.48) backface=0 bounds=(148,289.8,10,10) exact=0
     solid-fill bounds=(148,290,10,10) layer=(border=(148,290,10,10),radius=(5,5,5,5,5,5,5,5),clip=(148,290,10,10),origin=(0,0,0,0),attachment=0,repeat=0,root=0) color=#ff3b30ff
-    borders bounds=(148,290,10,10) borders=(left=(1.5,4,#00000014),top=(1.5,4,#00000014),right=(1.5,4,#00000014),bottom=(1.5,4,#00000014),radius=(5,5,5,5,5,5,5,5)) pos=(148,290,10,10) root=0
+    borders bounds=(148,290,10,10) borders=(left=(1.5,4,#ff3b30ff),top=(1.5,4,#ff3b30ff),right=(1.5,4,#ff3b30ff),bottom=(1.5,4,#ff3b30ff),radius=(5,5,5,5,5,5,5,5)) pos=(148,290,10,10) root=0
   group opacity=1 matrix=(1.1,0,0,1.1,-17.1,-29.48) backface=0 bounds=(166,289.8,10,10) exact=0
     solid-fill bounds=(166,290,10,10) layer=(border=(166,290,10,10),radius=(5,5,5,5,5,5,5,5),clip=(166,290,10,10),origin=(0,0,0,0),attachment=0,repeat=0,root=0) color=#ff3b30ff
-    borders bounds=(166,290,10,10) borders=(left=(1.5,4,#00000014),top=(1.5,4,#00000014),right=(1.5,4,#00000014),bottom=(1.5,4,#00000014),radius=(5,5,5,5,5,5,5,5)) pos=(166,290,10,10) root=0
+    borders bounds=(166,290,10,10) borders=(left=(1.5,4,#ff3b30ff),top=(1.5,4,#ff3b30ff),right=(1.5,4,#ff3b30ff),bottom=(1.5,4,#ff3b30ff),radius=(5,5,5,5,5,5,5,5)) pos=(166,290,10,10) root=0
   group opacity=1 matrix=(1.2479,0,0,1.2479,-46.8531,-73.0809) backface=0 bounds=(184,289.8,10,10) exact=0
     solid-fill bounds=(184,290,10,10) layer=(border=(184,290,10,10),radius=(5,5,5,5,5,5,5,5),clip=(184,290,10,10),origin=(0,0,0,0),attachment=0,repeat=0,root=0) color=#f2f2f7ff
-    borders bounds=(184,290,10,10) borders=(left=(1.5,4,#00000014),top=(1.5,4,#00000014),right=(1.5,4,#00000014),bottom=(1.5,4,#00000014),radius=(5,5,5,5,5,5,5,5)) pos=(184,290,10,10) root=0
+    borders bounds=(184,290,10,10) borders=(left=(1.5,4,#ff3b30ff),top=(1.5,4,#ff3b30ff),right=(1.5,4,#ff3b30ff),bottom=(1.5,4,#ff3b30ff),radius=(5,5,5,5,5,5,5,5)) pos=(184,290,10,10) root=0
   solid-fill bounds=(202,290,10,10) layer=(border=(202,290,10,10),radius=(5,5,5,5,5,5,5,5),clip=(202,290,10,10),origin=(0,0,0,0),attachment=0,repeat=0,root=0) color=#f2f2f7ff
   borders bounds=(202,290,10,10) borders=(left=(1.5,4,#00000014),top=(1.5,4,#00000014),right=(1.5,4,#00000014),bottom=(1.5,4,#00000014),radius=(5,5,5,5,5,5,5,5)) pos=(202,290,10,10) root=0
   solid-fill bounds=(49,314,46,46) layer=(border=(49,314,46,46),radius=(8,8,8,8,8,8,8,8),clip=(49,314,46,46),origin=(0,0,0,0),attachment=0,repeat=0,root=0) color=#f2f2f7ff
