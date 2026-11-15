@@ -76,6 +76,11 @@ targets:
           - audio
         TG_API_ID: $(TG_API_ID)
         TG_API_HASH: $(TG_API_HASH)
+        # TDLib's watchOS build talks MTProto over plain HTTP to data-centre IP addresses (http://<ip>:80/api) through
+        # NSURLSession, the only networking watchOS allows apps. ATS has no exception form for bare IP addresses, so the
+        # blanket exemption is required: without it every request is blocked and the app waits on "Preparing QR…".
+        NSAppTransportSecurity:
+          NSAllowsArbitraryLoads: true
         NSMicrophoneUsageDescription: Record voice messages to send in chats.
         NSLocationWhenInUseUsageDescription: Share your current location in chats.
     settings:

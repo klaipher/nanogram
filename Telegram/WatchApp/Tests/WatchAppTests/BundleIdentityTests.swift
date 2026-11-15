@@ -17,14 +17,16 @@ final class BundleIdentityTests: XCTestCase {
     }
 }
 
-/// IOS-WATCH-ATS-1: the watch app makes no HTTP requests (network goes through TDLib's own sockets), so it
-/// must not carry a blanket App Transport Security exemption.
+/// TDLib's watchOS build reaches Telegram over plain HTTP to data-centre IP addresses (http://<ip>:80/api) through
+/// NSURLSession, the only networking watchOS gives apps. ATS cannot except bare IP addresses, so the app needs the
+/// blanket exemption; removing it (IOS-WATCH-ATS-1, 2026-11-14) blocked every request and login hung on "Preparing QR…".
 final class AppTransportSecurityTests: XCTestCase {
-    func testInfoPlistHasNoAppTransportSecurityExemption() {
-        XCTAssertNil(Bundle.main.object(forInfoDictionaryKey: "NSAppTransportSecurity"))
+    func testInfoPlistAllowsTDLibsPlainHTTPTransport() throws {
+        let ats = try XCTUnwrap(Bundle.main.object(forInfoDictionaryKey: "NSAppTransportSecurity") as? [String: Any])
+        XCTAssertEqual(ats["NSAllowsArbitraryLoads"] as? Bool, true)
     }
 
-    /// A future URLSession, AsyncImage or WKWebView would load plain HTTP silently under the old exemption.
+    /// A URLSession, AsyncImage or WKWebView in our own code would load plain HTTP silently under that exemption.
     /// If one is added on purpose, give it a narrow NSExceptionDomains entry instead and update this guard.
     func testSourcesDoNotUseTheNetworkStack() throws {
         let root = URL(fileURLWithPath: #filePath)
