@@ -4,6 +4,8 @@ Newest first. Internal notes for each TestFlight build; testers see the What to 
 
 ## Unreleased
 
+- **Pins**: `shared` -> nanogram-deps ff036aa (module table: NanogramFeatures is built by both apps since the Mac compiles the shared source); `docs/module-build-settings.md` regenerated. Docs only.
+
 - **Pins**: `shared` -> nanogram-deps a7e3db3 (one copy of the tooling/data, ffmpeg e19b1c17 final, Android in the opus options), tgcalls 198c75f -> 9f88f1d (adds the shared `voice_enhance/` core moved from Android; iOS's Bazel globs only `tgcalls/tgcalls/**` and `ios/**`, so nothing new compiles here yet). Module settings table regenerated for `MediaCapabilities` (24fa42a2).
 
 - **Cleanup review fixes (2026-11-15, not built)**. `shared` bumped to nanogram-deps ec98818 (the one link-tracking list); `NanogramFeaturesControllerTests` check the six moved switches appear on Settings > Nanogram Features (`nanogramFeaturesControllerEntries` is now internal); `test_min_os.py` fails if `-moutline-atomics` returns to a build line or native script; doc wording fixes in search-operators.md and NANOGRAM-CHANGES.md.
