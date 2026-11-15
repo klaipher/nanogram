@@ -69,10 +69,12 @@ final class DebugLogExportTests: XCTestCase {
         XCTAssertEqual(copied.map(\.name), ["nanogram-logs-critical-a.log", "nanogram-logs-critical-b.log"])
     }
 
-    func testOnlyTheCrashLogAsksBeforeSendingToAChat() {
+    /// The crash log and Send Report ask first (naming the chat and the account it is sent from); the developer's
+    /// log exports go straight to the picked chat. Only the crash log adds a failure note.
+    func testOnlyTheCrashLogAndTheReportAskBeforeSendingToAChat() {
         for kind in DebugLogExportKind.allCases {
             let spec = debugLogExportSpec(kind, appVersion: self.version, buildNumber: self.build)
-            XCTAssertEqual(spec.confirmsChatSend, kind == .crashReport, "\(kind)")
+            XCTAssertEqual(spec.confirmsChatSend, kind == .crashReport || kind == .report, "\(kind)")
             XCTAssertEqual(spec.failureNote != nil, kind == .crashReport, "\(kind)")
         }
         let crash = debugLogExportSpec(.crashReport, appVersion: self.version, buildNumber: self.build)

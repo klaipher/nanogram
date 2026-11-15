@@ -127,12 +127,14 @@ final class DebugControllerEntriesTests: XCTestCase {
         }))
     }
 
-    /// The PERFORMANCE section keeps the ids it had, plus the glanceables switch (145), (ids of retired switches are not reused) and sits in the main app only.
+    /// The PERFORMANCE section keeps the ids it had (ids of retired switches are not reused) and sits in the main app
+    /// only. The glanceables switch (145) moved to Settings > Nanogram Features (2026-11-14), so it is not here.
     func testPerformanceSectionHoldsTheHitchLogAndTheBackSwipeSwitch() {
         let header = DebugControllerEntry.performanceHeader(defaultPresentationTheme)
         let all = self.entries(isMainApp: true, isDevAccount: false, engineKind: nil, settings: .defaultSettings)
-        XCTAssertEqual(all.filter { $0.section == header.section }.map(\.stableId), [137, 143, 145, 148])
-        XCTAssertEqual(all.filter { $0.section == header.section }.map(\.stableId), [header.stableId, DebugControllerEntry.frameHitchLog(false).stableId, DebugControllerEntry.nanogramGlanceables(false).stableId, DebugControllerEntry.backSwipePreparePreviousScreen(true).stableId])
+        XCTAssertEqual(all.filter { $0.section == header.section }.map(\.stableId), [137, 143, 148])
+        XCTAssertEqual(all.filter { $0.section == header.section }.map(\.stableId), [header.stableId, DebugControllerEntry.frameHitchLog(false).stableId, DebugControllerEntry.backSwipePreparePreviousScreen(true).stableId])
+        XCTAssertFalse(all.contains(where: { $0.stableId == DebugControllerEntry.nanogramGlanceables(false).stableId }), "glanceables is in Nanogram Features, not Debug Settings")
         XCTAssertTrue(all.contains(DebugControllerEntry.backSwipePreparePreviousScreen(true)), "on by default")
         XCTAssertFalse(self.entries(isMainApp: false, isDevAccount: false, engineKind: nil, settings: .defaultSettings).contains(where: { $0.section == header.section }))
     }

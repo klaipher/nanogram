@@ -94,7 +94,7 @@ struct DebugReportSource: Equatable {
         self.name = name
         self.path = nil
         self.text = text
-        self.treatment = .redactedText
+        self.treatment = treatment
         self.modified = modified
         self.size = Int64(text.utf8.count)
     }
@@ -122,7 +122,8 @@ struct DebugReportPlan: Equatable {
 }
 
 /// Picks what goes into the report: sections in their order, the newest file of each first, until a cap is reached.
-/// The info and energy sections are always kept (a few kilobytes each).
+/// The info and energy sections are always kept (a few kilobytes each) and take nothing from the caps, so they never
+/// push a log out.
 func debugReportPlan(sources: [DebugReportSource], limits: DebugReportLimits = DebugReportLimits()) -> DebugReportPlan {
     var entries: [DebugReportEntry] = []
     var omitted: [DebugReportSource] = []
@@ -147,12 +148,15 @@ func debugReportPlan(sources: [DebugReportSource], limits: DebugReportLimits = D
                 bytes = limits.fileBytes
                 isCut = true
             }
-            if section != .info && section != .energy && (total + bytes > limits.totalBytes || sectionTotal + bytes > limits.sectionBytes) {
-                omitted.append(source)
-                continue
+            let isAlwaysKept = section == .info || section == .energy
+            if !isAlwaysKept {
+                if total + bytes > limits.totalBytes || sectionTotal + bytes > limits.sectionBytes {
+                    omitted.append(source)
+                    continue
+                }
+                total += bytes
+                sectionTotal += bytes
             }
-            total += bytes
-            sectionTotal += bytes
             entries.append(DebugReportEntry(source: source, entryName: debugReportEntryName(source, used: &usedNames), bytes: bytes, isCut: isCut))
         }
     }

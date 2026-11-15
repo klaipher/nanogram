@@ -4,8 +4,9 @@ import TelegramPresentationData
 import TelegramUIPreferences
 @testable import DebugSettingsUI
 
-/// The local-only call and live stream switches. All of them live in the one Debug Settings section
-/// "Streams & Calls", and none changes what is negotiated or sent. Four start on and group noise suppression
+/// The local-only call and live stream switches; none changes what is negotiated or sent. The two developer switches
+/// (live stream hardware decoding, native capture path) live in the Debug Settings section "Streams & Calls"; the
+/// user-facing ones moved to Settings > Nanogram Features (2026-11-14) and keep their stored values. Four start on and group noise suppression
 /// starts as "RNNoise only" (owner decision, 2026-11); advanced ducking stays off. Bug fixes and low-risk wins have no switch any more, and the experiments the owner removed
 /// (thread priorities, keeping the videoChat audio session mode) are gone with their old behaviour: their old keys
 /// are just ignored.
@@ -131,13 +132,16 @@ final class CallsSwitchesTests: XCTestCase {
         XCTAssertEqual(decodedOne.callsGroupNoiseMode, 2)
     }
 
-    /// Every call and stream switch sits in its own section, behind its header, in this order, and none is left in
-    /// the general experiments section.
+    /// The developer call and stream switches sit in their own section, behind its header, in this order, and none is
+    /// left in the general experiments section. The user-facing ones (system noise suppression, advanced ducking, group
+    /// noise suppression, thermal video limits) are in Settings > Nanogram Features and appear nowhere in Debug Settings.
     func testAllCallSwitchesAreInOneSectionBehindTheirHeader() {
         let expected: [DebugControllerEntry] = [
             .callsHeader(defaultPresentationTheme),
             .callsLivestreamHardwareDecoding(false),
-            .callsNativeCapturePath(false),
+            .callsNativeCapturePath(false)
+        ]
+        let moved: [DebugControllerEntry] = [
             .callsSystemNoiseSuppression(false),
             .callsAdvancedDucking(false),
             .callsGroupNoiseMode(0),
@@ -154,6 +158,9 @@ final class CallsSwitchesTests: XCTestCase {
             XCTAssertEqual(entry.section, callsSection)
         }
         XCTAssertEqual(all.filter { $0.section == callsSection }.count, expected.count)
+        for entry in moved {
+            XCTAssertFalse(all.contains(where: { $0.section == entry.section && $0.stableId == entry.stableId }), "\(entry) is in Nanogram Features")
+        }
         XCTAssertNotEqual(callsSection, DebugControllerEntry.experimentsHeader(defaultPresentationTheme).section)
         XCTAssertGreaterThan(callsSection, DebugControllerEntry.experimentsHeader(defaultPresentationTheme).section)
     }
