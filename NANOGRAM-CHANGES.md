@@ -316,7 +316,6 @@ marked (check) were not re-verified against the code; correct them on the next c
   - `chunkedVoiceDecode` (WATCH-MEM-1): `OpusKit.OpusChunkedDecoder` and streamed playback; first sound after about 100 ms of audio is decoded, 3 one-second buffers in flight, instead of the whole note first.
   - `offMainStickerRender` (WATCH-GPU-1): `LottieFrameRenderer` actor rasterises tlottie frames off the main actor, late frames are dropped, 24 Hz in Low Power Mode.
   - `messageWindowTrim`, `fileProgressThrottle` (WATCH-LIST-1): the open chat keeps about 120 messages; progress-only `updateFile` events reproject once per 5%. The cached sort per window revision has no switch (pure).
-  - `progressiveVideoStart` (WATCH-VIDEO-1): blocked, no effect. watchOS has no `AVAssetResourceLoader`; the player side was removed and video uses the full-download path. Only the pure policy code remains.
   - `localizedTdlibParameters` (WATCH-I18N-1): real language code, app version and OS version in `setTdlibParameters`. Server-visible; the owner decides.
   - `widgetSnapshot` (IOS-WATCH-WIDGET-1): the app writes counts and chat titles (never message text) to the App Group `group.org.klaipher.Nanogram.watch`; the widget reads them.
   - `backgroundRefresh`, `pushRegistration` (WATCH-INT-1): see below.

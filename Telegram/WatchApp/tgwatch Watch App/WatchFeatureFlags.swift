@@ -28,10 +28,6 @@ enum WatchFeature: String, CaseIterable, Sendable {
     /// of "en" / "0.1" / nil. SERVER-VISIBLE (service messages and bot text come back in that language; the
     /// sessions list shows the version), so it needs the owner's decision.
     case localizedTdlibParameters
-    /// WATCH-VIDEO-1: an MP4 starts playing once its first 256 KB are on disk (served to AVPlayer from TDLib's
-    /// growing file) instead of after the whole download. Round notes and videos; a clip with its index at the
-    /// end waits for the full file as before. Needs a device check on LTE and Wi-Fi.
-    case progressiveVideoStart
     /// IOS-WATCH-WIDGET-1: the app writes an unread summary (counts and chat titles) to the App Group for the widget
     /// extension. Does nothing until the App Group exists in the portal and in the app's entitlements.
     case widgetSnapshot
