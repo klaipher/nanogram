@@ -123,6 +123,7 @@ marked (check) were not re-verified against the code; correct them on the next c
 - Where: `tools/dev/lint/branding.py`, `Telegram/Telegram-iOS/Nanogram.icon`.
 - Also: the app bundle and executable are `Nanogram.app` / `Nanogram` (`Telegram/BUILD` `bundle_name`, 2026-11-08); the Bazel target and `Telegram.ipa` keep upstream's name.
 - Upstream: no.
+- Also: own URL scheme `nanogram://` (2026-11-15, owner request: launchers such as one sec open Nanogram even when official Telegram, which also claims `tg://`, is installed). `Telegram/BUILD` registers it as a third URL type; `NanogramAppScheme` (NanogramFeatures) makes `AppDelegate.openUrl` treat a bare `nanogram://` as "bring the app up" and `nanogram://x` as `tg://x`, so the scheme is never handed back to iOS (which would reopen the app).
 
 ### Call switch defaults (iOS)
 - What: livestream hardware decoding, native camera frames, system noise suppression, the thermal video ladder and group

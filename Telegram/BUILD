@@ -494,6 +494,16 @@ plist_fragment(
                 <string>tc</string>
             </array>
         </dict>
+        <dict>
+            <key>CFBundleTypeRole</key>
+            <string>Viewer</string>
+            <key>CFBundleURLName</key>
+            <string>{telegram_bundle_id}.nanogram</string>
+            <key>CFBundleURLSchemes</key>
+            <array>
+                <string>nanogram</string>
+            </array>
+        </dict>
     </array>
     """.format(
         telegram_bundle_id = telegram_bundle_id,

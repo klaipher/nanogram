@@ -2,6 +2,7 @@ import UIKit
 import SwiftSignalKit
 import Display
 import TelegramCore
+import NanogramFeatures
 import UserNotifications
 import Intents
 import Postbox
@@ -3086,7 +3087,15 @@ private func extractAccountManagerState(records: AccountRecordsView<TelegramAcco
     }
     #endif
     
-    private func openUrl(url: URL) {
+    private func openUrl(url incomingUrl: URL) {
+        // Nanogram: nanogram:// (our own scheme, for launchers like one sec) only brings the app up; nanogram://x is tg://x.
+        let url: URL
+        switch NanogramAppScheme.action(for: incomingUrl) {
+        case .openApp:
+            return
+        case let .open(resolved):
+            url = resolved
+        }
         let _ = (self.sharedContextPromise.get()
         |> take(1)
         |> mapToSignal { sharedApplicationContext -> Signal<(SharedAccountContextImpl, AuthorizedApplicationContext?, UnauthorizedApplicationContext?), NoError> in

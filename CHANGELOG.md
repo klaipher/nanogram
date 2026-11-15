@@ -4,6 +4,8 @@ Newest first. Internal notes for each TestFlight build; testers see the What to 
 
 ## Unreleased
 
+- **Own URL scheme `nanogram://`** (owner request 2026-11-15, for one sec and similar launchers; next TestFlight): `Telegram/BUILD` adds the URL type `<bundle id>.nanogram` with the scheme `nanogram` next to Telegram's `telegram`/`tg`/`ton`/`tonsite`/`tc`, which official Telegram also claims. `NanogramAppScheme.action(for:)` (new, `submodules/NanogramFeatures/Sources/AppScheme.swift`; host test `AppSchemeTests`) runs first in `AppDelegate.openUrl`: a bare `nanogram://` (also `nanogram:`, `nanogram:///`, any case) only brings the app to the front; `nanogram://x` becomes `tg://x` and opens like any Telegram link; other URLs pass unchanged. Without it, `context.openUrl(external:)` would hand the unknown scheme back to iOS, which opens Nanogram again. Checked: the source compiles in Swift 6 mode and the nine cases behave as the test expects (swiftc on the host); `AppSchemeTests` and the app build not run yet. The Mac compiles the file too (NanogramFeatures Sources symlink) but registers no scheme.
+
 - **Pins**: `shared` -> nanogram-deps ff036aa (module table: NanogramFeatures is built by both apps since the Mac compiles the shared source); `docs/module-build-settings.md` regenerated. Docs only.
 
 ## 13.2 (202611152047) — 2026-11-15 — bbdb1ba4 (TestFlight; since 202611150116 / 593cbbfb)
