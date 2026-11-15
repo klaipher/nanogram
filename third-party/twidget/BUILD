@@ -117,9 +117,8 @@ objc_library(
     # The public LHDocumentPainting.h includes "../core/lhx_painter.h" (C++, so not part of the module
     # Swift imports): exported for Objective-C++ dependents, which otherwise cannot find it in their sandbox.
     # LHHostSupport.h is WidgetRuntime's iOS host and painter over LHContainer (M1d plan, Tasks 5 and 6), C++ too.
-    # shim/Cocoa/Cocoa.h: the fork's headers import <Cocoa/Cocoa.h> ahead of their TARGET_OS_OSX guard (see the shim).
-    textual_hdrs = [APPLE + "/core/lhx_painter.h", APPLE + "/LHHostSupport.h", "shim/Cocoa/Cocoa.h"],
-    includes = [APPLE + "/include", "shim"],
+    textual_hdrs = [APPLE + "/core/lhx_painter.h", APPLE + "/LHHostSupport.h"],
+    includes = [APPLE + "/include"],
     copts = OPTIMIZE + [
         "-std=gnu++17",
         "-w",
@@ -235,7 +234,7 @@ cc_test(
 )
 
 # twidget's own tests on iOS (tests/, not Tests/: on a case-insensitive file system that is one
-# directory with tests/smoke_test.cpp above). Guards and the shim are listed in VENDOR.md.
+# directory with tests/smoke_test.cpp above). Guards are listed in VENDOR.md.
 
 # The seed corpus four LiteHTMLTests suites read, bundled at Examples/chats in the test bundle. Only twidget's own
 # tests use it: message widgets are sandbox-only (2026-10-15) and their corpus is widget-sandbox's.
