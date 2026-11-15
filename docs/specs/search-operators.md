@@ -98,6 +98,8 @@ Each platform trims the type list to what it supports.
   `prefix*` entries and per-host entries). Parameters not in the list are never touched; the order of the others and
   the fragment stay as they are; a link without a query is returned unchanged.
 - Never rewrite outgoing message text or the text of a message already shown.
-- Optional "Confirm before opening Telegram links": a confirmation sheet before a `t.me` / `telegram.me` / `tg://`
-  link opens.
+- Optional "Confirm before opening Telegram links": a confirmation sheet before a `t.me` / `telegram.me` /
+  `telegram.dog` link (with or without `www.`) or a `tg://` link opens. `telesco.pe` and a bare `tg:` (no `//`) do not
+  count. Empty query items (`a=1&&b=2`) are kept when something else is removed. The iOS and Mac apps compile the
+  same source (`submodules/NanogramFeatures`; the Mac keeps only its settings-toggle glue).
 - Toggles: "Remove tracking from links" and "Confirm Telegram links", both default OFF.
