@@ -125,6 +125,13 @@ final class TabletSecondBatchRulesTests: XCTestCase {
         XCTAssertFalse(mainMenuIsInstalled(deviceType: .phone, available: true))
     }
 
+    /// The menu a shortcut is listed in, found the way the menu bar finds it: through `mainMenuItems`.
+    private func mainMenuSection(input: String, modifiers: UIKeyModifierFlags) -> MainMenuSection? {
+        return MainMenuSection.allCases.first(where: { section in
+            return !mainMenuItems(section: section, shortcuts: [(title: "T", input: input, modifiers: modifiers)]).isEmpty
+        })
+    }
+
     func test_menuSections() {
         XCTAssertEqual(mainMenuSection(input: "N", modifiers: [.command]), .file)
         XCTAssertEqual(mainMenuSection(input: "L", modifiers: [.command]), .file)

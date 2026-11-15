@@ -100,15 +100,6 @@ private func mainMenuTableIndex(input: String, modifiers: UIKeyModifierFlags) ->
     return mainMenuTable.firstIndex(where: { $0.input == input && $0.modifiers == modifiers })
 }
 
-/// The menu a shortcut belongs to, or nil for shortcuts that stay keyboard-only (keys without ⌘, ⌥ or ⌃: Return,
-/// Tab, Escape, the arrows, `/`, `@`, `#`; and ⌥⌘0–9, which open a chat by position).
-public func mainMenuSection(input: String, modifiers: UIKeyModifierFlags) -> MainMenuSection? {
-    guard let index = mainMenuTableIndex(input: input, modifiers: modifiers) else {
-        return nil
-    }
-    return mainMenuTable[index].section
-}
-
 /// The items of `section` for the shortcuts on offer (`(title, input, modifiers)`, in the order the screens list
 /// them, later screens first wins as in `KeyShortcutsController`): untitled shortcuts are left out, every key appears
 /// once.

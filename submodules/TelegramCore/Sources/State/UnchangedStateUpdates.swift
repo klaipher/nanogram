@@ -36,20 +36,6 @@ func messageAttributesWithIncreasedViewCount(_ attributes: [MessageAttribute], c
     return nil
 }
 
-func messageAttributesWithIncreasedForwardCount(_ attributes: [MessageAttribute], count: Int) -> [MessageAttribute]? {
-    var attributes = attributes
-    for j in 0 ..< attributes.count {
-        if let attribute = attributes[j] as? ForwardCountMessageAttribute {
-            if count > attribute.count {
-                attributes[j] = ForwardCountMessageAttribute(count: count)
-                return attributes
-            }
-            return nil
-        }
-    }
-    return nil
-}
-
 struct MessageViewsPollResult {
     var views: Int32?
     var forwards: Int32?
