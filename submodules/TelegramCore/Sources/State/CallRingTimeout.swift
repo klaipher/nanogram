@@ -1,5 +1,5 @@
 import Foundation
-@preconcurrency import Postbox
+import Postbox
 import SwiftSignalKit
 
 typealias CallRingTimerFactory = (_ delay: Double, _ queue: Queue, _ fire: @escaping () -> Void) -> Disposable
