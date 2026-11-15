@@ -13,16 +13,15 @@
   ordered with `F_BARRIERFSYNC` (`ManagedFile.barrierSync`), not `fsync`. A context writes **no** map
   when it opens: a resource whose status is only looked at creates no file, and a missing map reads as
   empty (it used to write an empty `.meta` for every resource it opened; `MediaBoxWriteAccountingTests`).
-- **The HLS player writes each streamed byte once** (`HLSStreamingStorage`, MediaPlayer). A segment is
-  fetched into its MediaBox resource and served to hls.js from there (a cached one with no write and no
-  fetch); the server source records what it served (`HLSServedSegments`), and an appended segment whose
-  bytes are exactly a served range (confirmed byte for byte against the cache) becomes a
-  `ChunkMediaPlayerPart.MediaBoxRanges` part (initialization range + segment range) that FFmpeg reads in
-  place, holding the resource with `keepResource`. Only bytes hls.js changed, and hardware AV1 (played
-  by AVFoundation from a path), still go through a TempBox `.mp4`. It used to be three writes per byte
-  (a TempBox partial file, a copy into MediaBox, the `.mp4`) and two per cached replay (MetricKit
-  2026-11-02: 35 of 101 disk-write samples). Probing is in memory (`extractFFMpegMediaInfo(data:)`).
-  `HLSStreamingStorageTests` count the writes.
+- **The native HLS player writes each streamed byte at most once** (`HLSStreamingStorage`, MediaPlayer;
+  Telegram removed the hls.js player in 13.2, so the old served-segments bookkeeping is gone). A segment is
+  read from its MediaBox resource and becomes a `ChunkMediaPlayerPart.MediaBoxRanges` part
+  (initialization range + segment range) that FFmpeg reads in place, holding the resource with
+  `keepResource`: no copy, no write. Only hardware AV1 (played by AVFoundation from a path) goes
+  through a TempBox `.mp4`, kept in `HLSTempFileCache` so the same segment is not written twice. It used
+  to be three writes per byte (a TempBox partial file, a copy into MediaBox, the `.mp4`) and two per
+  cached replay (MetricKit 2026-11-02: 35 of 101 disk-write samples). Probing is in memory
+  (`extractFFMpegMediaInfo(data:)`). `HLSStreamingStorageTests` count the writes.
 - **Disk writes are counted by writer** (`DiskWriteAccounting`, always on): MediaBox data per media
   type (`mediaBox.video`, `mediaBox.sticker`, … from the fetch's `contentType`), file maps, cached
   representations, SQLite WAL frames and checkpoints per database (from the WAL hook and the idle
