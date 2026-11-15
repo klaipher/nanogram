@@ -42,6 +42,14 @@ class MinOsTests(unittest.TestCase):
         for rel in ["third-party/webp/build-webp-bazel.sh", "third-party/td/build-td-bazel.sh", "third-party/dav1d/build-dav1d-bazel.sh"]:
             self.assertIn("macosx-version-min=14.0", (ROOT / rel).read_text(), rel)
 
+    def test_outline_atomics_flag_stays_out(self):
+        # Comments may mention the flag; no build line or native script may add it.
+        self.assertNotRegex((ROOT / ".bazelrc").read_text(), r"(?m)^build .*-moutline-atomics")
+        for path in list((ROOT / "third-party").rglob("*.sh")) + list((ROOT / "tools/dev/native").rglob("*.sh")):
+            for line in path.read_text(errors="ignore").splitlines():
+                if "-moutline-atomics" in line and not line.lstrip().startswith("#"):
+                    self.fail(f"{path.relative_to(ROOT)} adds -moutline-atomics: {line.strip()}")
+
     # SHARED-APPLE-CPU-1: the 26.0 floor gives inline LSE atomics, so outline atomics are not needed (and do not link on Darwin).
     @unittest.skipUnless(shutil.which("xcrun"), "xcrun not available")
     def test_ios_floor_compiles_inline_lse_atomics(self):
