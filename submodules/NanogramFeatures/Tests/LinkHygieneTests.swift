@@ -64,11 +64,13 @@ final class LinkHygieneTests: XCTestCase {
     }
 
     func testStandardListMatchesTheSharedDataFile() throws {
-        let url = URL(fileURLWithPath: #filePath)
+        // The one list is data/link-tracking-params.txt of nanogram-deps: shared/data in the iOS repository, and
+        // submodules/telegram-ios/shared/data when the Mac compiles this test through its symlink.
+        let root = URL(fileURLWithPath: #filePath)
             .deletingLastPathComponent().deletingLastPathComponent().deletingLastPathComponent().deletingLastPathComponent()
-            .appendingPathComponent("docs/specs/link-tracking-params.txt")
-        guard let contents = try? String(contentsOf: url, encoding: .utf8) else {
-            throw XCTSkip("docs/specs/link-tracking-params.txt is not reachable from the test sandbox")
+        let candidates = ["shared/data/link-tracking-params.txt", "submodules/telegram-ios/shared/data/link-tracking-params.txt"]
+        guard let contents = candidates.lazy.compactMap({ try? String(contentsOf: root.appendingPathComponent($0), encoding: .utf8) }).first else {
+            throw XCTSkip("shared/data/link-tracking-params.txt is not reachable from the test sandbox")
         }
         let file = TrackingParameterList(fileContents: contents)
         XCTAssertEqual(file.ruleCount, TrackingParameterList.standard.ruleCount)

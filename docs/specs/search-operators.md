@@ -3,7 +3,7 @@
 Owner decision 2026-11-14 (diagnostics-and-debug-round2 section 7). The iOS repo owns this file; the Mac and Android
 apps implement the same grammar. The idea comes from Mercurygram (GPL-2.0); the grammar below is written from the
 behaviour, not copied from code. Tracking-parameter data for link hygiene lives next to it in
-[link-tracking-params.txt](link-tracking-params.txt).
+`shared/data/link-tracking-params.txt` (nanogram-deps `data/`).
 
 ## Where it applies
 
@@ -94,7 +94,7 @@ Each platform trims the type list to what it supports.
 ## Link hygiene (same Nanogram features screen)
 
 - Strip known tracking parameters from a link when it is OPENED and when it is COPIED (link menu, copy link, share
-  sheet link copy). The list is the data file [link-tracking-params.txt](link-tracking-params.txt) (exact names,
+  sheet link copy). The list is the data file `shared/data/link-tracking-params.txt` (nanogram-deps `data/`) (exact names,
   `prefix*` entries and per-host entries). Parameters not in the list are never touched; the order of the others and
   the fragment stay as they are; a link without a query is returned unchanged.
 - Never rewrite outgoing message text or the text of a message already shown.

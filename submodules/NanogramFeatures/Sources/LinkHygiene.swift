@@ -1,6 +1,6 @@
 import Foundation
 
-// Rules: docs/specs/search-operators.md (link hygiene) and docs/specs/link-tracking-params.txt.
+// Rules: docs/specs/search-operators.md (link hygiene) and shared/data/link-tracking-params.txt (nanogram-deps).
 
 public struct TrackingParameterList: Sendable {
     private struct Rule: Sendable {
@@ -54,7 +54,7 @@ public struct TrackingParameterList: Sendable {
         return false
     }
 
-    // The built-in list. It mirrors docs/specs/link-tracking-params.txt (a test compares the two).
+    // The built-in list. It mirrors shared/data/link-tracking-params.txt (nanogram-deps) (a test compares the two).
     public static let standard = TrackingParameterList(fileContents: """
     utm_*
     fbclid
