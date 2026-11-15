@@ -146,7 +146,9 @@ final class EnergyNumbersTests: XCTestCase {
     private func suite() -> UserDefaults {
         let name = "energy-\(UUID().uuidString)"
         let defaults = UserDefaults(suiteName: name) ?? .standard
-        addTeardownBlock { defaults.removePersistentDomain(forName: name) }
+        // The teardown block is main-actor isolated and UserDefaults is not Sendable, so it captures only
+        // the suite name; removing a persistent domain works from any UserDefaults instance.
+        addTeardownBlock { UserDefaults.standard.removePersistentDomain(forName: name) }
         return defaults
     }
 

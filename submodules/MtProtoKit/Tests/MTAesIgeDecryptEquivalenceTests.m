@@ -6,19 +6,6 @@
 // CommonCrypto code elsewhere. MyAesIgeDecryptReference is the original code,
 // so every case below checks that both give identical output and iv state.
 @interface MTAesIgeDecryptEquivalenceTests : XCTestCase
-
-- (void)testDecryptBenchmark {
-    NSMutableData *input = [[NSMutableData alloc] initWithLength:1048576];
-    NSMutableData *output = [[NSMutableData alloc] initWithLength:1048576];
-    fillRandom(input.mutableBytes, input.length);
-    uint8_t key[32];
-    fillRandom(key, sizeof(key));
-    [self measureBlock:^{
-        uint8_t iv[32] __attribute__((aligned(16))) = { 0 };
-        MyAesIgeDecrypt(input.bytes, 1048576, output.mutableBytes, key, 32, iv);
-    }];
-}
-
 @end
 
 @implementation MTAesIgeDecryptEquivalenceTests
@@ -168,9 +155,11 @@ static void fillRandom(uint8_t *bytes, size_t length) {
     fillRandom(input.mutableBytes, input.length);
     uint8_t key[32];
     fillRandom(key, sizeof(key));
+    // A block cannot capture a C array; it captures this pointer, and measureBlock runs synchronously.
+    const uint8_t *keyBytes = key;
     [self measureBlock:^{
         uint8_t iv[32] __attribute__((aligned(16))) = { 0 };
-        MyAesIgeDecrypt(input.bytes, 1048576, output.mutableBytes, key, 32, iv);
+        MyAesIgeDecrypt(input.bytes, 1048576, output.mutableBytes, keyBytes, 32, iv);
     }];
 }
 

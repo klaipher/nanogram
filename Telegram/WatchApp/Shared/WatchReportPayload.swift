@@ -55,9 +55,15 @@ public struct WatchReportPayload: Codable, Equatable, Sendable {
                 return nil
             }
             let text = payload.files[index].text
+            let textBytes = text.utf8.count
+            // The excess is in JSON bytes, where escapes ("\n", "\/", quotes) make the text longer than its UTF-8,
+            // so the cut is sized in encoded bytes and scaled back to UTF-8 bytes. Sized in UTF-8 bytes directly, a
+            // log of short lines read as larger than all of its text and was dropped whole.
+            let encodedTextBytes = max(textBytes, (try? encoder.encode(text).count) ?? textBytes)
             let excess = data.count - maximumBytes
-            let drop = max(excess + 256, text.utf8.count / 4)
-            if drop >= text.utf8.count {
+            let encodedDrop = max(excess + 256, encodedTextBytes / 4)
+            let drop = Int((Double(encodedDrop) * Double(textBytes) / Double(max(1, encodedTextBytes))).rounded(.up))
+            if encodedDrop >= encodedTextBytes || drop >= textBytes {
                 payload.files[index].text = "[cut: did not fit]\n"
                 continue
             }
