@@ -34,8 +34,8 @@ final class HarnessPastedForeignColourTests: XCTestCase {
 
     override func tearDown() {
         self.verifier?.restore()
-        self.driver.host.updatePresentationInterfaceState { $0.updatedTheme(defaultPresentationTheme) }
-        _ = self.driver.node.resignInputFirstResponder()
+        self.driver?.host.updatePresentationInterfaceState { $0.updatedTheme(defaultPresentationTheme) }
+        _ = self.driver?.node.resignInputFirstResponder()
         self.driver = nil
     }
 

@@ -29,7 +29,7 @@ import ObjectiveC
 /// with them is the fix.
 final class HarnessPastePromptTests: XCTestCase {
     private func root() throws -> HarnessRootViewController {
-        let value = try XCTUnwrap(AppDelegate.harnessRootViewController)
+        let value = try HarnessEngine.awaitHarnessRoot()
         value.loadViewIfNeeded()
         value.view.frame = CGRect(x: 0.0, y: 0.0, width: 402.0, height: 874.0)
         let deadline = Date().addingTimeInterval(30.0)

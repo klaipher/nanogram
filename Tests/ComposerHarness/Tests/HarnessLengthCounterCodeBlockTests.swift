@@ -41,8 +41,8 @@ final class HarnessLengthCounterCodeBlockTests: XCTestCase {
 
     override func tearDown() {
         self.verifier?.restore()
-        self.driver.host.panel.customInputTextMaxLength = nil
-        _ = self.driver.node.resignInputFirstResponder()
+        self.driver?.host.panel.customInputTextMaxLength = nil
+        _ = self.driver?.node.resignInputFirstResponder()
         self.driver = nil
     }
 

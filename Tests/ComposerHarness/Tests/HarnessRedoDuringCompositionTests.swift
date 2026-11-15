@@ -46,7 +46,7 @@ final class HarnessRedoDuringCompositionTests: XCTestCase {
 
     override func tearDown() {
         self.verifier?.restore()
-        _ = self.driver.node.resignInputFirstResponder()
+        _ = self.driver?.node.resignInputFirstResponder()
         self.driver = nil
     }
 

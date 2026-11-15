@@ -5,7 +5,7 @@ import XCTest
 /// value. Changing the format is a breaking change — bump `formatVersion` and fix every caller.
 final class ComposerModelDumpTests: XCTestCase {
     private func host() throws -> HarnessPanelHost {
-        let root = try XCTUnwrap(AppDelegate.harnessRootViewController)
+        let root = try HarnessEngine.awaitHarnessRoot()
         root.loadViewIfNeeded()
         root.view.frame = CGRect(x: 0.0, y: 0.0, width: 402.0, height: 874.0)
         let deadline = Date().addingTimeInterval(30.0)

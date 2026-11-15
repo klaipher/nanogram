@@ -1019,15 +1019,15 @@ final class EngineFuzzDriver: FuzzDriver {
     init() throws {
         self.root = try HarnessEngine.root()
         self.root.setBackend(.engine)
-        self.host = try XCTUnwrap(self.root.panelHost)
+        self.host = try XCTUnwrap(self.root.panelHost, "harness step 2: the root has no panel host after 30 s (the account signal never delivered)")
         self.node = try HarnessEngine.node(self.host)
         self.view = try HarnessEngine.textView(in: self.root)
-        self.input = try XCTUnwrap(self.view as? (UIView & UITextInput), "precondition: the engine view is not a UITextInput")
+        self.input = try XCTUnwrap(self.view as? (UIView & UITextInput), "harness step 5: the engine view is not a UITextInput")
         var editor: UIView? = self.view
         while let candidate = editor, !(candidate is RichTextEngineEditorView) {
             editor = candidate.superview
         }
-        self.editor = try XCTUnwrap(editor as? RichTextEngineEditorView, "precondition: no RichTextEngineEditorView above the engine view")
+        self.editor = try XCTUnwrap(editor as? RichTextEngineEditorView, "harness step 6: no RichTextEngineEditorView above the engine view")
     }
 
     let editor: RichTextEngineEditorView

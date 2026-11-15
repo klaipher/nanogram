@@ -46,7 +46,7 @@ final class HarnessRoleRecoveryByIdentityTests: XCTestCase {
         EngineDocumentBridge.testHookRenderedBlocks = nil
         RichTextEngineEditorView.testHookExpectsRoleCountMismatch = false
         self.verifier?.restore()
-        _ = self.driver.node.resignInputFirstResponder()
+        _ = self.driver?.node.resignInputFirstResponder()
         self.driver = nil
     }
 

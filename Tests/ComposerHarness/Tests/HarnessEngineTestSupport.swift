@@ -8,8 +8,29 @@ import ChatInputTextNode
 /// The older test files each carry their own `root()`; this one is shared because the three
 /// families below need the same three extra handles (the node, the engine text view, a settle).
 enum HarnessEngine {
+    /// The host app's root view controller. The scene delegate installs it when the window scene
+    /// connects, which can land after the first test starts, so poll the run loop for it.
+    /// Set once the first wait ran out: later tests fail at once instead of each waiting 30 s again (about 860 tests
+    /// need the root, so a host whose scene never connects would otherwise outlast the target's timeout).
+    private static var rootWaitExpired = false
+
+    static func awaitHarnessRoot() throws -> HarnessRootViewController {
+        if !HarnessEngine.rootWaitExpired {
+            let deadline = Date().addingTimeInterval(30.0)
+            while AppDelegate.harnessRootViewController == nil && Date() < deadline {
+                RunLoop.current.run(mode: .default, before: Date().addingTimeInterval(0.02))
+            }
+            if AppDelegate.harnessRootViewController == nil {
+                HarnessEngine.rootWaitExpired = true
+            }
+        }
+        return try XCTUnwrap(
+            AppDelegate.harnessRootViewController,
+            "harness step 1: AppDelegate.harnessRootViewController is nil after waiting 30 s once (no window scene connected to the test host, or the root was released)")
+    }
+
     static func root() throws -> HarnessRootViewController {
-        let value = try XCTUnwrap(AppDelegate.harnessRootViewController)
+        let value = try HarnessEngine.awaitHarnessRoot()
         value.loadViewIfNeeded()
         value.view.frame = CGRect(x: 0.0, y: 0.0, width: 402.0, height: 874.0)
         let deadline = Date().addingTimeInterval(30.0)
@@ -29,8 +50,8 @@ enum HarnessEngine {
     }
 
     static func node(_ host: HarnessPanelHost) throws -> ChatRichTextInputNode {
-        XCTAssertEqual(host.liveBackend, .engine, "precondition: the engine backend is not live")
-        return try XCTUnwrap(host.panel.richTextInputNode, "precondition: no rich input node")
+        XCTAssertEqual(host.liveBackend, .engine, "harness step 4: the engine backend is not live after setBackend(.engine)")
+        return try XCTUnwrap(host.panel.richTextInputNode, "harness step 4: the panel has no rich input node")
     }
 
     /// The engine's `UITextInput` view. It is what UIKit (and the keyboard) actually talks to,
@@ -47,7 +68,7 @@ enum HarnessEngine {
             }
             return nil
         }
-        return try XCTUnwrap(find(root.view), "precondition: no engine text view in the hierarchy")
+        return try XCTUnwrap(find(root.view), "harness step 5: no TGIDObservingBlockTextView in the root view hierarchy")
     }
 
     static func paragraph(_ text: String, _ attributes: ChatInputInlineAttributes = ChatInputInlineAttributes()) -> ChatInputBlock {

@@ -12,8 +12,7 @@ final class HarnessPanelSmokeTests: XCTestCase {
     /// these cases deterministic; asserting immediately after `loadViewIfNeeded()` reads the state
     /// one turn too early and fails with a nil `panelHost` that looks like a real defect.
     private func root() throws -> HarnessRootViewController {
-        let value = try XCTUnwrap(AppDelegate.harnessRootViewController,
-                                  "the app did not install a root view controller")
+        let value = try HarnessEngine.awaitHarnessRoot()
         value.loadViewIfNeeded()
         value.view.frame = CGRect(x: 0.0, y: 0.0, width: 402.0, height: 874.0)
 

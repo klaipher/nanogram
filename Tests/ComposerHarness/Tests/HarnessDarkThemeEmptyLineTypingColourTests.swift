@@ -50,9 +50,11 @@ final class HarnessDarkThemeEmptyLineTypingColourTests: XCTestCase {
     }
 
     override func tearDown() {
-        HarnessComposerFuzzTests.resetEnvironment(self.driver)
+        if let driver = self.driver {
+            HarnessComposerFuzzTests.resetEnvironment(driver)
+        }
         self.verifier?.restore()
-        _ = self.driver.node.resignInputFirstResponder()
+        _ = self.driver?.node.resignInputFirstResponder()
         self.driver = nil
     }
 

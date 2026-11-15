@@ -55,8 +55,8 @@ final class HarnessUnreportedSetNormalisationTests: XCTestCase {
 
     override func tearDown() {
         self.verifier?.restore()
-        self.driver.host.panel.formulaRenderer = nil
-        _ = self.driver.node.resignInputFirstResponder()
+        self.driver?.host.panel.formulaRenderer = nil
+        _ = self.driver?.node.resignInputFirstResponder()
         self.driver = nil
     }
 

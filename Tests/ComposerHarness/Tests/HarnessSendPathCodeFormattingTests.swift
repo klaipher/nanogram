@@ -44,8 +44,8 @@ final class HarnessSendPathCodeFormattingTests: XCTestCase {
 
     override func tearDown() {
         self.verifier?.restore()
-        self.driver.root.linkPromptOverride = nil
-        _ = self.driver.node.resignInputFirstResponder()
+        self.driver?.root.linkPromptOverride = nil
+        _ = self.driver?.node.resignInputFirstResponder()
         self.driver = nil
     }
 
