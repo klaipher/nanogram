@@ -14,6 +14,7 @@ import ComponentFlow
 import TelegramPresentationData
 import TelegramCallsUI
 import TelegramAudio
+import UniversalMediaPlayer
 import TelegramUIPreferences
 import TelegramStringFormatting
 import AccountContext
@@ -550,6 +551,8 @@ public final class SharedAccountContextImpl: SharedAccountContext {
         |> deliverOnMainQueue).start(next: { sharedData in
             let settings = sharedData.entries[ApplicationSpecificSharedDataKeys.nanogramFeaturesSettings]?.get(NanogramFeaturesSettings.self) ?? NanogramFeaturesSettings.defaultSettings
             let _ = NanogramFeaturesSettings.current.swap(settings)
+            // Read by the Opus decoders when a playback opens one, so a change applies to the next message played.
+            OpusSpeechEnhancement.isEnabled = settings.voiceEnhancement
         })
         
         self.mediaInputSettingsDisposable = (self.accountManager.sharedData(keys: [ApplicationSpecificSharedDataKeys.mediaInputSettings])

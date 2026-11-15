@@ -25,4 +25,22 @@ final class NanogramFeaturesSettingsTests: XCTestCase {
         let settings = try JSONDecoder().decode(ExperimentalUISettings.self, from: blob)
         XCTAssertFalse(settings.localTranscription)
     }
+
+    func testVoiceEnhancementIsOffByDefault() {
+        XCTAssertFalse(NanogramFeaturesSettings.defaultSettings.voiceEnhancement)
+    }
+
+    func testVoiceEnhancementIsOffWhenTheKeyIsMissing() throws {
+        let settings = try JSONDecoder().decode(NanogramFeaturesSettings.self, from: Data("{\"searchOperators\":true,\"onDeviceTranslation\":true}".utf8))
+        XCTAssertFalse(settings.voiceEnhancement)
+        XCTAssertTrue(settings.onDeviceTranslation)
+    }
+
+    func testVoiceEnhancementChoiceSurvivesARoundTrip() throws {
+        var settings = NanogramFeaturesSettings.defaultSettings
+        settings.voiceEnhancement = true
+        let decoded = try JSONDecoder().decode(NanogramFeaturesSettings.self, from: JSONEncoder().encode(settings))
+        XCTAssertTrue(decoded.voiceEnhancement)
+        XCTAssertEqual(decoded, settings)
+    }
 }

@@ -442,6 +442,9 @@ public final class FFMpegFileReader {
                 case .audio:
                     if let codec = FFMpegAVCodec.find(forId: codecId, preferHardwareAccelerationCapable: false) {
                         let codecContext = FFMpegAVCodecContext(codec: codec)
+                        // The only audio reader of this file is the player's (MediaDataReaderFFMpeg), so this is a playback
+                        // open: the opt-in Opus speech enhancement (no effect on other codecs).
+                        OpusSpeechEnhancement.applyIfPlayback(to: codecContext)
                         if avFormatContext.codecParams(atStreamIndex: Int32(streamIndex), to: codecContext) {
                             if codecContext.open() {
                                 stream = Stream(

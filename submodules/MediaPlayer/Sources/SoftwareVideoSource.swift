@@ -511,6 +511,10 @@ public final class SoftwareAudioSource {
             
             if let codec = codec {
                 let codecContext = FFMpegAVCodecContext(codec: codec)
+                // Only the playback source (MediaDataReader) enhances. The speech-to-text conversion (convertOpusToAAC) opens
+                // this class with isPlayback false and keeps the stock decoder, as do the notification extension and the Mac's
+                // transcription.
+                OpusSpeechEnhancement.applyIfPlayback(to: codecContext, isPlayback: isPlayback)
                 if avFormatContext.codecParams(atStreamIndex: streamIndex, to: codecContext) {
                     if codecContext.open() {
                         audioStream = SoftwareAudioStream(index: Int(streamIndex), fps: fps, timebase: timebase, duration: duration, decoder: FFMpegAudioFrameDecoder(codecContext: codecContext, sampleRate: 48000, channelCount: isPlayback ? FFMpegAudioFrameDecoder.playbackChannelCount(codecContext: codecContext) : 1))

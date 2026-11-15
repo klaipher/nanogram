@@ -27,6 +27,7 @@ private enum NanogramFeaturesSection: Int32 {
     case onDevice
     case calls
     case widgets
+    case voice
 }
 
 private func nanogramGroupNoiseModeTitle(_ mode: Int32) -> String {
@@ -66,6 +67,10 @@ private enum NanogramFeaturesEntry: ItemListNodeEntry {
     case glanceables(Bool)
     case widgetsFooter
 
+    case voiceHeader
+    case voiceEnhancement(Bool)
+    case voiceFooter
+
     var section: ItemListSectionId {
         switch self {
         case .searchHeader, .searchOperators, .searchFooter:
@@ -78,6 +83,8 @@ private enum NanogramFeaturesEntry: ItemListNodeEntry {
             return NanogramFeaturesSection.calls.rawValue
         case .widgetsHeader, .glanceables, .widgetsFooter:
             return NanogramFeaturesSection.widgets.rawValue
+        case .voiceHeader, .voiceEnhancement, .voiceFooter:
+            return NanogramFeaturesSection.voice.rawValue
         }
     }
 
@@ -123,6 +130,12 @@ private enum NanogramFeaturesEntry: ItemListNodeEntry {
             return 31
         case .widgetsFooter:
             return 32
+        case .voiceHeader:
+            return 40
+        case .voiceEnhancement:
+            return 41
+        case .voiceFooter:
+            return 42
         }
     }
 
@@ -231,6 +244,18 @@ private enum NanogramFeaturesEntry: ItemListNodeEntry {
             })
         case .widgetsFooter:
             return ItemListTextItem(presentationData: presentationData, text: .plain("Turns on the chats widget (small and Lock Screen), the Saved Messages control, Live Activities for live location and calls without CallKit, and the Shortcuts actions. Chat names show only while the app is unlocked and, on the Lock Screen, only if names are allowed in notification settings."), sectionId: self.section)
+        case .voiceHeader:
+            return ItemListSectionHeaderItem(presentationData: presentationData, text: "VOICE MESSAGES", sectionId: self.section)
+        case let .voiceEnhancement(value):
+            return ItemListSwitchItem(presentationData: presentationData, systemStyle: .glass, title: "Enhance voice messages", value: value, sectionId: self.section, style: .blocks, updated: { value in
+                arguments.updateFeatures { settings in
+                    var settings = settings
+                    settings.voiceEnhancement = value
+                    return settings
+                }
+            })
+        case .voiceFooter:
+            return ItemListTextItem(presentationData: presentationData, text: .plain("Cleans up the voice in voice messages while they play, using Opus speech enhancement on this phone. Uses a little more battery during playback. Applies from the next message you play. Off by default."), sectionId: self.section)
         }
     }
 }
@@ -261,6 +286,10 @@ private func nanogramFeaturesControllerEntries(features: NanogramFeaturesSetting
     entries.append(.widgetsHeader)
     entries.append(.glanceables(experimental.nanogramGlanceables))
     entries.append(.widgetsFooter)
+
+    entries.append(.voiceHeader)
+    entries.append(.voiceEnhancement(features.voiceEnhancement))
+    entries.append(.voiceFooter)
     return entries
 }
 

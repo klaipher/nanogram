@@ -9,16 +9,20 @@ public struct NanogramFeaturesSettings: Codable, Equatable {
     public var stripTrackingParameters: Bool
     public var confirmTelegramLinks: Bool
     public var onDeviceTranslation: Bool
+    /// Opus speech enhancement (LACE/NoLACE and bandwidth extension) while playing voice messages. Default off. Read when a
+    /// decoder is opened, so a change applies from the next message played.
+    public var voiceEnhancement: Bool
 
     public static var defaultSettings: NanogramFeaturesSettings {
-        return NanogramFeaturesSettings(searchOperators: true, stripTrackingParameters: false, confirmTelegramLinks: false, onDeviceTranslation: false)
+        return NanogramFeaturesSettings(searchOperators: true, stripTrackingParameters: false, confirmTelegramLinks: false, onDeviceTranslation: false, voiceEnhancement: false)
     }
 
-    public init(searchOperators: Bool, stripTrackingParameters: Bool, confirmTelegramLinks: Bool, onDeviceTranslation: Bool = false) {
+    public init(searchOperators: Bool, stripTrackingParameters: Bool, confirmTelegramLinks: Bool, onDeviceTranslation: Bool = false, voiceEnhancement: Bool = false) {
         self.searchOperators = searchOperators
         self.stripTrackingParameters = stripTrackingParameters
         self.confirmTelegramLinks = confirmTelegramLinks
         self.onDeviceTranslation = onDeviceTranslation
+        self.voiceEnhancement = voiceEnhancement
     }
 
     public init(from decoder: Decoder) throws {
@@ -28,6 +32,7 @@ public struct NanogramFeaturesSettings: Codable, Equatable {
         self.stripTrackingParameters = try container.decodeIfPresent(Bool.self, forKey: "stripTrackingParameters") ?? defaults.stripTrackingParameters
         self.confirmTelegramLinks = try container.decodeIfPresent(Bool.self, forKey: "confirmTelegramLinks") ?? defaults.confirmTelegramLinks
         self.onDeviceTranslation = try container.decodeIfPresent(Bool.self, forKey: "onDeviceTranslation") ?? defaults.onDeviceTranslation
+        self.voiceEnhancement = try container.decodeIfPresent(Bool.self, forKey: "voiceEnhancement") ?? defaults.voiceEnhancement
     }
 
     public func encode(to encoder: Encoder) throws {
@@ -36,6 +41,7 @@ public struct NanogramFeaturesSettings: Codable, Equatable {
         try container.encode(self.stripTrackingParameters, forKey: "stripTrackingParameters")
         try container.encode(self.confirmTelegramLinks, forKey: "confirmTelegramLinks")
         try container.encode(self.onDeviceTranslation, forKey: "onDeviceTranslation")
+        try container.encode(self.voiceEnhancement, forKey: "voiceEnhancement")
     }
 
     /// The value the app last read, for places that cannot wait for a signal (opening and copying a link).

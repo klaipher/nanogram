@@ -23,6 +23,12 @@ typedef NS_ENUM(NSUInteger, FFMpegAVCodecContextReceiveResult)
 - (int32_t)sampleRate;
 - (FFMpegAVSampleFormat)sampleFormat;
 
+// Opus speech enhancement (libopus 1.6 OSCE: LACE at complexity 6, NoLACE at 7, optional bandwidth extension of SILK-only
+// wideband streams). Per context, so a caller opts in at each open: playback does, transcription and the notification
+// extension never call it and keep the decoder default (complexity 0, output bit-identical to a libopus without OSCE).
+// Applied by `open` through the libopus decoder options `osce_complexity` / `osce_bwe`, and only when the codec is Opus; a
+// libopus built without OSCE ignores the complexity above 0 harmlessly. 0 turns it off. Must be called before `open`.
+- (void)setOpusDecoderComplexity:(int32_t)complexity bandwidthExtension:(bool)bandwidthExtension;
 - (bool)open;
 - (bool)sendEnd;
 - (void)setupHardwareAccelerationIfPossible;

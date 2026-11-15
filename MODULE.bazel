@@ -263,6 +263,16 @@ http_file(
     urls = ["https://github.com/libjpeg-turbo/libjpeg-turbo/releases/download/3.2.1/libjpeg-turbo-3.2.1.tar.gz"],
 )
 
+# The Opus 1.6.1 model weights (LACE, NoLACE, bandwidth extension; the deep-PLC ones the CMake source list names), official
+# release data from xiph (autogen.sh:12 of the opus pin). //third-party/opus verifies and extracts only the needed
+# dnn/*_data.[ch] through shared/opus/fetch-models.sh. The same sha256 is in shared/opus/opus-options.sh and
+# shared-libraries.json ("opus-models"); an opus bump must move all of them (the fetch script checks the opus pin).
+http_file(
+    name = "opus_models_tar_gz",
+    sha256 = "a5177ec6fb7d15058e99e57029746100121f68e4890b1467d4094aa336b6013e",
+    urls = ["https://media.xiph.org/opus/models/opus_data-a5177ec6fb7d15058e99e57029746100121f68e4890b1467d4094aa336b6013e.tar.gz"],
+)
+
 # Meson stays at 1.6.0 on purpose: meson.py runs through its `#!/usr/bin/env python3` shebang with the system Python
 # (3.9 from Xcode, also the only Python in the tart VMs). Meson 1.12 needs Python >= 3.10 and exits at once on 3.9.
 _MESON_BUILD = """

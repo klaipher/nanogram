@@ -176,7 +176,7 @@
       "id": "cmake options",
       "what": "flags",
       "kind": "flags",
-      "file": "third-party/opus/opus-cmake-args.sh",
+      "file": "shared/opus/opus-options.sh",
       "region": [
        "^OPUS_COMMON_ARGS=\"",
        "\"\\s*$"
@@ -195,7 +195,7 @@
       "id": "cmake options",
       "what": "flags",
       "kind": "flags",
-      "file": "submodules/telegram-ios/third-party/opus/opus-cmake-args.sh",
+      "file": "submodules/telegram-ios/shared/opus/opus-options.sh",
       "region": [
        "^OPUS_COMMON_ARGS=\"",
        "\"\\s*$"
@@ -217,7 +217,6 @@
      "-DOPUS_FIXED_POINT=OFF",
      "-DOPUS_INSTALL_CMAKE_CONFIG_MODULE=OFF",
      "-DOPUS_INSTALL_PKG_CONFIG_MODULE=OFF",
-     "-DOPUS_OSCE=OFF",
      "-DOPUS_PRESUME_NEON=ON"
     ]
    },

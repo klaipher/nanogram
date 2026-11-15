@@ -5,6 +5,7 @@
 
 #import "libavformat/avformat.h"
 #import "libavcodec/avcodec.h"
+#import "libavutil/dict.h"
 
 // VideoToolbox when FFmpeg offers it. When the hwaccel setup fails (no device, session limit, a
 // profile VideoToolbox cannot decode), FFmpeg calls this again without it; then the software
@@ -23,6 +24,8 @@ static enum AVPixelFormat getPreferredPixelFormat(__unused AVCodecContext *ctx, 
 @interface FFMpegAVCodecContext () {
     FFMpegAVCodec *_codec;
     AVCodecContext *_impl;
+    int32_t _opusDecoderComplexity;
+    bool _opusBandwidthExtension;
 }
 
 @end
@@ -65,8 +68,24 @@ static enum AVPixelFormat getPreferredPixelFormat(__unused AVCodecContext *ctx, 
     return (FFMpegAVSampleFormat)_impl->sample_fmt;
 }
 
+- (void)setOpusDecoderComplexity:(int32_t)complexity bandwidthExtension:(bool)bandwidthExtension {
+    _opusDecoderComplexity = complexity;
+    _opusBandwidthExtension = bandwidthExtension;
+}
+
 - (bool)open {
-    int result = avcodec_open2(_impl, (AVCodec *)[_codec impl], nil);
+    AVCodec *codec = (AVCodec *)[_codec impl];
+    AVDictionary *options = NULL;
+    if (_opusDecoderComplexity > 0 && codec->id == AV_CODEC_ID_OPUS) {
+        // Private options of the libopus decoder (klaipher/FFmpeg libopusdec.c): complexity 6/7 turns LACE/NoLACE on and
+        // `osce_bwe` the bandwidth extension. avcodec_open2 consumes the entries it knows; a decoder without them ignores them.
+        av_dict_set_int(&options, "osce_complexity", _opusDecoderComplexity, 0);
+        if (_opusBandwidthExtension) {
+            av_dict_set_int(&options, "osce_bwe", 1, 0);
+        }
+    }
+    int result = avcodec_open2(_impl, codec, options != NULL ? &options : nil);
+    av_dict_free(&options);
     return result >= 0;
 }
 

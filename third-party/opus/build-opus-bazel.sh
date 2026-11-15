@@ -14,14 +14,18 @@ OPT_CFLAGS="-O2 -g"
 rm -rf "$SOURCE_DIR/.git"
 echo 'PACKAGE_VERSION="1.6.1"' > "$SOURCE_DIR/package_version"
 
-. "$(cd "$(dirname "$0")" && pwd -P)/opus-cmake-args.sh"
-COMMON_ARGS="$OPUS_COMMON_ARGS"
+# The shared option list (nanogram-deps shared/opus/opus-options.sh, copied next to this script by the genrule). OSCE is
+# its own variable so a consumer of the shared source can stay stock.
+. "$(cd "$(dirname "$0")" && pwd -P)/opus-options.sh"
+COMMON_ARGS="$OPUS_COMMON_ARGS $OPUS_OSCE_ARGS"
+# Appended to CMAKE_C_FLAGS_RELEASE, never CMAKE_C_FLAGS: on iOS that would replace the target flags in CFLAGS.
+RELEASE_CFLAGS="${OPT_CFLAGS} ${OPUS_OSCE_C_FLAGS}"
 
 mkdir -p "$BUILD_DIR/build"
 cd "$BUILD_DIR/build"
 
 if [ "${ARCH}" = "linux_x86_64" ] || [ "${ARCH}" = "linux_arm64" ]; then
-  cmake -G Ninja $COMMON_ARGS -DCMAKE_C_FLAGS_RELEASE="${OPT_CFLAGS}" "$SOURCE_DIR"
+  cmake -G Ninja $COMMON_ARGS -DCMAKE_C_FLAGS_RELEASE="${RELEASE_CFLAGS}" "$SOURCE_DIR"
   ninja
   exit 0
 elif [ "${ARCH}" = "x86_64" ]; then
@@ -55,5 +59,5 @@ export CFLAGS="${TARGET_FLAGS} -fPIE -funwind-tables"
   echo "set(CMAKE_C_COMPILER $(xcode-select -p)/Toolchains/XcodeDefault.xctoolchain/usr/bin/clang)"
 } > toolchain.cmake
 
-cmake -G Ninja -DCMAKE_TOOLCHAIN_FILE=toolchain.cmake -DCMAKE_OSX_SYSROOT="${SDK_PATH}" $COMMON_ARGS -DCMAKE_C_FLAGS_RELEASE="${OPT_CFLAGS}" "$SOURCE_DIR"
+cmake -G Ninja -DCMAKE_TOOLCHAIN_FILE=toolchain.cmake -DCMAKE_OSX_SYSROOT="${SDK_PATH}" $COMMON_ARGS -DCMAKE_C_FLAGS_RELEASE="${RELEASE_CFLAGS}" "$SOURCE_DIR"
 ninja

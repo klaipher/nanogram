@@ -528,6 +528,8 @@ final class FFMpegMediaFrameSourceContext: NSObject {
             
             if let codec = codec {
                 let codecContext = FFMpegAVCodecContext(codec: codec)
+                // Playback of an audio stream: the opt-in Opus speech enhancement (no effect on other codecs).
+                OpusSpeechEnhancement.applyIfPlayback(to: codecContext)
                 if avFormatContext.codecParams(atStreamIndex: streamIndex, to: codecContext) {
                     if codecContext.open() {
                         let fpsAndTimebase = avFormatContext.fpsAndTimebase(forStreamIndex: streamIndex, defaultTimeBase: CMTimeMake(value: 1, timescale: 40000))

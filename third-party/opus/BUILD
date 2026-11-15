@@ -14,7 +14,8 @@ libs = [
 ]
 
 # libopus v1.6.1 (tag commit 22244de5a79bd1d6d623c32e72bf1954b56235be) from the xiph/opus submodule in opus/,
-# the same commit Android pins.
+# the same commit Android pins. Built with the shared options (shared/opus/opus-options.sh): OSCE speech enhancement
+# (LACE + NoLACE + bandwidth extension, no deep PLC) compiled in and off until a caller raises the decoder complexity.
 filegroup(
     name = "opus_sources",
     srcs = glob(
@@ -30,7 +31,11 @@ genrule(
     name = "opus_build",
     srcs = [
         "build-opus-bazel.sh",
-        "opus-cmake-args.sh",
+        # The option list and the model fetch script live in nanogram-deps (the `shared/` submodule), one source for iOS
+        # and Mac. The model archive is pinned in MODULE.bazel (opus_models_tar_gz) like libjpeg-turbo's.
+        "//shared/opus:opus-options.sh",
+        "//shared/opus:fetch-models.sh",
+        "@opus_models_tar_gz//file",
         ":opus_sources",
     ],
     cmd_bash =
@@ -69,11 +74,18 @@ genrule(
     fi
 
     cp $(location :build-opus-bazel.sh) "$$BUILD_DIR/"
-    cp $(location :opus-cmake-args.sh) "$$BUILD_DIR/"
+    cp $(location //shared/opus:opus-options.sh) "$$BUILD_DIR/"
+    cp $(location //shared/opus:fetch-models.sh) "$$BUILD_DIR/"
 
     SOURCE_PATH="third-party/opus/opus"
 
     cp -R "$$SOURCE_PATH" "$$BUILD_DIR/"
+
+    # The OSCE speech enhancer (opt-in "Enhance voice messages") compiles the model weights into libopus: verify the pinned
+    # archive, check it matches the opus pin (autogen.sh) and extract only the needed files into this build COPY, never
+    # into the submodule. The Watch app does not use this target.
+    rm -rf "$$BUILD_DIR/opus/.git"
+    sh "$$BUILD_DIR/fetch-models.sh" --archive "$(location @opus_models_tar_gz//file)" "$$BUILD_DIR/opus"
 
     mkdir -p "$$BUILD_DIR/Public/opus"
 
