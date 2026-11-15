@@ -9,7 +9,8 @@ namespace wr {
 
 // Stops for the counted caps of the strict policy (Limits, widget-sandbox v0.3.0), with the reasons upstream's validator
 // stops a widget with (validator.ts): the conformance set's stop tests are judged by their start. Each latches
-// StopReason::Limit and throws Aborted; only call one where Limits::stops holds.
+// StopReason::Limit and throws Aborted; only call one where Limits::stops holds (the one exception is the layout budget in
+// RenderTree.cpp's renderWithinBudget, which protects the layout thread and stops under either policy).
 
 [[noreturn]] inline void stopForLimit(JSContext* ctx, std::string reason) {
     Runtime::from(ctx).stopForLimit(std::move(reason));

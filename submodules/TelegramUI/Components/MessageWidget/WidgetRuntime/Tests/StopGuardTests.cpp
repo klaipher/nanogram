@@ -1,6 +1,7 @@
 // What stops a widget besides its CPU limits, held through the removal of the work-unit accounting (the CPU-clock limits
 // plan, Task 7; its Review Focus 5): the memory limit, the uncatchable stop, a widget-sandbox v0.3.0 count cap and the
 // parse's count limits still stop what they stopped.
+#include <chrono>
 #include <string>
 
 #include "Sources/Host/Boot.h"
@@ -72,4 +73,45 @@ WR_TEST(testTheParseLimitsStillHold) {
     CHECK(env.bootOutcome().stoppedAtNodeLimit);
     env.drain();
     CHECK(env.runtime().stopReason() == wr::StopReason::None);
+}
+
+/// widget-sandbox's attacks/render-nested-flex: forty nested display:flex boxes, each container measuring its children
+/// several times, ask for about 2^40 box layouts on the layout thread, outside every JS quota. The layout budget (100,000
+/// + 50 per element, twidget's) stops the widget at the boot, in bounded time, with upstream's reason.
+WR_TEST(testNestedFlexPastTheLayoutBudgetStopsTheWidget) {
+    std::string html = "<!doctype html><p id=\"p\">drawn</p>";
+    for (int i = 0; i < 40; i++) {
+        html += "<div style=\"display:flex\">";
+    }
+    html += "<span>x</span>";
+    for (int i = 0; i < 40; i++) {
+        html += "</div>";
+    }
+    const auto start = std::chrono::steady_clock::now();
+    RenderEnv env(html);
+    const auto elapsed = std::chrono::duration_cast<std::chrono::milliseconds>(std::chrono::steady_clock::now() - start);
+    CHECK(env.env().runtime().stopReason() == wr::StopReason::Limit);
+    const std::string& detail = env.env().runtime().stopDetail();
+    CHECK(detail.rfind("Layout limit exceeded: more than ", 0) == 0);
+    CHECK(detail.find(" boxes in one layout") != std::string::npos);
+    // Bounded: a debug build lays out the 100,000-box budget in seconds at worst; 2^40 passes would never finish.
+    CHECK(elapsed.count() < 30000);
+}
+
+/// A document of a few hundred elements with a few nested flexes lays out well inside the budget: no stop.
+WR_TEST(testANormalDocumentStaysInsideTheLayoutBudget) {
+    std::string html = "<!doctype html>";
+    for (int i = 0; i < 6; i++) {
+        html += "<div style=\"display:flex\">";
+    }
+    html += "<span>deep</span>";
+    for (int i = 0; i < 6; i++) {
+        html += "</div>";
+    }
+    for (int i = 0; i < 300; i++) {
+        html += "<div style=\"display:flex\"><p>row " + std::to_string(i) + "</p><span>x</span></div>";
+    }
+    RenderEnv env(html);
+    CHECK(env.env().runtime().stopReason() == wr::StopReason::None);
+    CHECK(env.env().runtime().stopDetail().empty());
 }

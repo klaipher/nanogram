@@ -22,6 +22,7 @@
 #include "Sources/Render/LayerDiff.h"
 #include "Sources/Render/RenderCut.h"
 #include "Sources/Render/RenderDump.h"
+#include "Sources/Runtime/LimitStops.h"
 #include "Sources/Runtime/Runtime.h"
 #include "Sources/Support/Callbacks.h"
 #include "Sources/Support/Errors.h"
@@ -533,6 +534,53 @@ struct SnapScope {
 
 } // namespace
 
+namespace {
+
+/// Boxes one layout may lay out afresh, twidget's (core/src/renderer.cpp, upstream 8c6d311): nested flex, grid and table
+/// boxes measure their children several times each, so a few hundred bytes of markup ask for 2^depth layouts, on the
+/// layout thread and outside every JS quota. The heaviest widget of widget-sandbox's corpus lays out 2,600 boxes in a
+/// pass; the base is 40 times that, and a document of many elements gets more.
+constexpr uint64_t kLayoutBudgetBase = 100000;
+constexpr uint64_t kLayoutBudgetPerElement = 50;
+
+/// Every render of a document goes through here (the build, a flush's patch, a structural patch, a replacement of the
+/// document element). The budget counts the elements as they are now (a patch changes them), the render stops at it
+/// and leaves the document as far as it got, and a document past it stops the widget (StopReason::Limit, upstream's
+/// "Layout limit exceeded") by throwing Aborted before anything is published: the last published tree stays, and the
+/// document is never rendered again (layout_exhausted latches, and a stopped runtime builds nothing). Returns the
+/// natural width.
+double renderWithinBudget(JSContext* ctx, litehtml::document& document, float width) {
+    uint64_t elements = 0;
+    std::vector<const litehtml::element*> pending;
+    if (auto root = document.root()) {
+        pending.push_back(root.get());
+    }
+    while (!pending.empty()) {
+        const litehtml::element* element = pending.back();
+        pending.pop_back();
+        elements++;
+        for (const auto& child : element->children()) {
+            pending.push_back(child.get());
+        }
+    }
+    document.set_layout_budget(kLayoutBudgetBase + kLayoutBudgetPerElement * elements);
+    const double naturalWidth = double(document.render(litehtml::pixel_t(width)).value());
+    if (document.layout_exhausted()) {
+        Runtime& runtime = Runtime::from(ctx);
+        const std::string boxes = std::to_string(document.layout_spent() - 1);
+        try {
+            runtime.host().diagnostic("renderer-violation", "layout limit: more than " + boxes + " boxes in one layout");
+        } catch (...) {
+        }
+        // Deliberately not gated on Limits::stops: the budget protects the layout thread (an exhausted document never
+        // lays out again), so it stops under the compat policy too. Do not add a stops check here.
+        stopForLimit(ctx, "Layout limit exceeded: more than " + boxes + " boxes in one layout");
+    }
+    return naturalWidth;
+}
+
+} // namespace
+
 void RenderTree::build(JSContext* ctx) {
     if (m_buildCount > 0) {
         throw std::logic_error("the render tree builds once, at the boot");
@@ -568,7 +616,7 @@ void RenderTree::build(JSContext* ctx) {
         next->mayCutSteps = m_container.options().selectorStepCut;
         buildDocument(ctx, m_container, *next);
         next->naturalWidth =
-            double(next->document->render(litehtml::pixel_t(float(m_container.options().width))).value());
+            renderWithinBudget(ctx, *next->document, float(m_container.options().width));
         // Task 10b: the new document's mirror, keyed from the new build's maps (with the previous keys carried over).
         {
             struct Keys {
@@ -1405,7 +1453,7 @@ RenderTree::PatchResult RenderTree::flushPatch(JSContext* ctx, const std::unorde
             m_current.input.swap(newInput);
         }
         m_current.naturalWidth =
-            double(document.render(litehtml::pixel_t(float(m_container.options().width))).value());
+            renderWithinBudget(ctx, document, float(m_container.options().width));
         this->styleLimits(document, limits);
         // Task 10b: the operations the fork's reports give, the painted canvases with them.
         this->reportRepaints();
@@ -1766,7 +1814,7 @@ RenderTree::PatchResult RenderTree::flushRoot(JSContext* ctx, litehtml::document
         m_current.stepCut = false; // the commit replayed a cut boot's matching (twidget edit 84)
         m_lastPatchSteps = used;
         m_current.naturalWidth =
-            double(document.render(litehtml::pixel_t(float(m_container.options().width))).value());
+            renderWithinBudget(ctx, document, float(m_container.options().width));
         limits = staging.limits;
         this->styleLimits(document, limits);
         this->reportRepaints();
@@ -2877,7 +2925,7 @@ RenderTree::PatchResult RenderTree::flushStructure(JSContext* ctx, bool walk) {
         m_current.stepCut = false; // the commit replayed a cut boot's matching (twidget edit 84)
         m_lastPatchSteps = used;
         m_current.naturalWidth =
-            double(document.render(litehtml::pixel_t(float(m_container.options().width))).value());
+            renderWithinBudget(ctx, document, float(m_container.options().width));
         if (walk) {
             limits = cut->limits;
         }

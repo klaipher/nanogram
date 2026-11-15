@@ -42,6 +42,7 @@ without `attacks/`, 133 attack pages as of v0.6.5), but WidgetRuntime was not po
 - the paint limits (profile decision L2: at most 16 heavy boxes, 2 with a backdrop filter; `auto/37`-`43`, the `paint-*`
   attack pages) and the 2,000-node cap (`auto/44-stop-nodes`; this runtime allows 50,000, the old profile's number);
 - the canvas command cap (4,000 per canvas in one task, was 10,000; `auto/19-limits`) and the batch wording of `auto/33`;
+- the layout limit is in (v0.6.x `attacks/render-nested-flex`): `RenderTree`'s `renderWithinBudget` gives every document 100,000 + 50 per element boxes per render and stops the widget with "Layout limit exceeded" past it (`StopGuardTests`);
 - the layout-query limit (128 queries and 1,000 ms per task; this runtime keeps its own 100 ms and counts no queries);
 - the CPU quota's debt model is in (`CpuBudget`: whole slice for every task, no floor), and so are its test changes.
 
