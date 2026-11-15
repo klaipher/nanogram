@@ -35,8 +35,8 @@ index b37b998..5e5a7ae 100644
  
 -            alt_libc="$(show_darwin_sdk_path iphoneos)"
 +            if [ "${tgt_os}" == "iphonesimulator" ]; then
-+              add_cflags --target=arm64-apple-ios7.0-simulator
-+              add_ldflags --target=arm64-apple-ios7.0-simulator
++              add_cflags --target=arm64-apple-ios26.0-simulator
++              add_ldflags --target=arm64-apple-ios26.0-simulator
 +            fi
 +
 +            alt_libc="$(show_darwin_sdk_path $sdk_platform_name)"
