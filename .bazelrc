@@ -85,7 +85,7 @@ build --@build_bazel_rules_swift//swift:copt=UselessAvailabilityCheck
 
 # CPU baseline (SHARED-APPLE-CPU-1): the iOS floor is 26.0, so clang and swiftc already default to apple-a12 (LSE atomics, CRC32,
 # RCPC, FP16, JSCVT) with no -mcpu/-target-cpu flag; std::atomic and refcounts compile to inline LSE. Do not use apple-a13: A12 iPads
-# lack dotprod/sha3. `-moutline-atomics` stays OFF and BLOCKED (helper symbols do not link, see docs/performance/outline-atomics.md).
+# lack dotprod/sha3. Do not add `-moutline-atomics`: Xcode's compiler-rt helper symbol names do not match on Darwin (device link fails), and the floor makes it unnecessary.
 
 # apple_support's layering check is a beta lint that is on by default. It does not
 # change any output, and generating its module maps took ~30 s at the very start

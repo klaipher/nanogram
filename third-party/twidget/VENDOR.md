@@ -14,7 +14,6 @@ What stays here is ours:
 | `tests/*.cpp`, `tests/test_container.h` | the host tests of the litehtml fork and the deterministic test container |
 | `tests/LiteHTMLTests/` | 21 iOS-simulator tests of the Apple layer that differ from the fork's, with `LHTestShim.h` (AppKit spellings and the corpus path). The other 9 (BackgroundImageExclusion, SVGLayerExport, PixelSnap, ColorMatch, FormRendering, SourceFilterCache, PointerEventsHit, FontCache, CSSMath) are byte-identical to `twidget/apple/Tests/LiteHTMLTests` and compiled from the submodule by `FORK_LITEHTML_TESTS` in the BUILD |
 | `tests/DocumentTests/` | two Swift renderer tests (DashboardLayout, CompositorClip) that differ from the fork's; DamageBand and CachePurge are byte-identical to `twidget/apple/Tests/TwidgetRendererTests` and compiled from the submodule (`FORK_RENDERER_TESTS`). The 19 that differ stay here until their iOS changes are upstreamed into the fork |
-| `shim/Cocoa/Cocoa.h` | a temporary answer to the fork's stray `#import <Cocoa/Cocoa.h>` (below) |
 
 ## Where each former path now comes from
 
@@ -31,8 +30,6 @@ Consumers include the host-support header as `third-party/twidget/twidget/apple/
 
 ## Fork follow-up
 
-- The fork has the Cocoa import fix (the five files import it inside the `TARGET_OS_OSX` guard), so `shim/Cocoa/Cocoa.h` and its
-  two BUILD entries can be removed; they are kept until an app build confirms it.
 - Carried by the fork since 456583c: edit 47 (UAX #9 levels through the host, `bidi_levels`). Not carried: the calc trees of
   edits 48, 49 and 56 (the fork's registry holds 16,384 expressions per process). The first edit 48 block of
   `tests/fork_test.cpp` (calc_node, is_calc, calc_value, calc_fonts) is dropped; its tabular-nums check reads the `tnum`

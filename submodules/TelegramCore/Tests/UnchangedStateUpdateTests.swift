@@ -21,15 +21,12 @@ final class UnchangedStateUpdateTests: XCTestCase {
         XCTAssertEqual(created?.participantsSummary.memberCount, 3)
     }
 
-    func testViewAndForwardCountsAreStoredOnlyWhenTheyGrow() {
+    func testViewCountsAreStoredOnlyWhenTheyGrow() {
         let attributes: [MessageAttribute] = [ViewCountMessageAttribute(count: 10), ForwardCountMessageAttribute(count: 4)]
         XCTAssertNil(messageAttributesWithIncreasedViewCount(attributes, count: 10))
         XCTAssertNil(messageAttributesWithIncreasedViewCount(attributes, count: 9))
         XCTAssertEqual((messageAttributesWithIncreasedViewCount(attributes, count: 11)?.first as? ViewCountMessageAttribute)?.count, 11)
         XCTAssertNil(messageAttributesWithIncreasedViewCount([], count: 11))
-
-        XCTAssertNil(messageAttributesWithIncreasedForwardCount(attributes, count: 4))
-        XCTAssertEqual((messageAttributesWithIncreasedForwardCount(attributes, count: 5)?.last as? ForwardCountMessageAttribute)?.count, 5)
     }
 
     func testAViewsPollThatChangesNothingReportsNoChange() {

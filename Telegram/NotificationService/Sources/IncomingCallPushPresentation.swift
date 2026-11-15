@@ -207,17 +207,6 @@ enum IncomingCallPushPresentation {
         return "domain: \(nsError.domain), code: \(nsError.code), rings: \(ringsAfterCallKitError(nsError))"
     }
 
-    /// Whether a fetched message is the service message of a finished call (answered, missed or
-    /// declined): the moment a ring for that caller is over.
-    static func isPhoneCallServiceMessage(media: [Any]) -> Bool {
-        for item in media {
-            if let action = item as? TelegramMediaAction, case .phoneCall = action.action {
-                return true
-            }
-        }
-        return false
-    }
-
     /// The call a fetched service message of a finished call is about; nil for any other message.
     static func phoneCallServiceMessageCallId(media: [Any]) -> Int64? {
         for item in media {

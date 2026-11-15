@@ -2302,11 +2302,9 @@ private func extractAccountManagerState(records: AccountRecordsView<TelegramAcco
         }
     }
     
-    /// Entering the background or a memory warning: asks every registered cache to drop what it kept for speed, hands free
-    /// heap pages back to the system, and logs the footprint before and after (with "Log to File" on).
+    /// Entering the background or a memory warning: hands free heap pages back to the system, and logs the footprint before and after (with "Log to File" on).
     private func purgeMemory(reason: String) {
         let before = ProcessMemory.current()
-        let purged = MemoryProbeRegistry.shared.purgeAll()
         let episodeId = self.episodeId
         let logToFile = Logger.shared.logToFile
         DispatchQueue.global(qos: .utility).async {
@@ -2314,7 +2312,7 @@ private func extractAccountManagerState(records: AccountRecordsView<TelegramAcco
             guard logToFile else {
                 return
             }
-            let report = MemoryPurgeReport(reason: reason, before: before, after: ProcessMemory.current(), purged: purged)
+            let report = MemoryPurgeReport(reason: reason, before: before, after: ProcessMemory.current())
             Logger.shared.log("App \(episodeId)", report.logLine)
             // The app may be suspended (and killed for memory) right after this: write the line out now.
             Logger.shared.flushPendingLogs()

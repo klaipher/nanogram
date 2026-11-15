@@ -1,10 +1,6 @@
 import XCTest
 @testable import BackgroundDiagnostics
 
-private final class Counter: @unchecked Sendable {
-    var value = 0
-}
-
 final class MemoryProbeRegistryTests: XCTestCase {
     func testSnapshotAddsUpProbesWithTheSameName() {
         let registry = MemoryProbeRegistry()
@@ -19,29 +15,13 @@ final class MemoryProbeRegistryTests: XCTestCase {
         withExtendedLifetime((first, second, other)) {}
     }
 
-    func testReleasingRegistrationRemovesProbeAndPurge() {
+    func testReleasingRegistrationRemovesProbe() {
         let registry = MemoryProbeRegistry()
-        let purged = Counter()
         var probe: MemoryProbeRegistry.Registration? = registry.register(name: "x", read: { .init(count: 1) })
-        var purge: MemoryProbeRegistry.Registration? = registry.registerPurge(name: "x", run: { purged.value += 1 })
         XCTAssertEqual(registry.snapshot().caches.count, 1)
-        XCTAssertEqual(registry.purgeAll(), ["x"])
-        XCTAssertEqual(purged.value, 1)
         probe = nil
-        purge = nil
         XCTAssertEqual(registry.snapshot().caches, [])
-        XCTAssertEqual(registry.purgeAll(), [])
-        XCTAssertEqual(purged.value, 1)
-        _ = (probe, purge)
-    }
-
-    func testPurgeAllListsRepeatedNamesOnce() {
-        let registry = MemoryProbeRegistry()
-        let a = registry.registerPurge(name: "rows", run: {})
-        let b = registry.registerPurge(name: "rows", run: {})
-        let c = registry.registerPurge(name: "avatars", run: {})
-        XCTAssertEqual(registry.purgeAll(), ["avatars", "rows x2"])
-        withExtendedLifetime((a, b, c)) {}
+        _ = probe
     }
 
     func testLiveInstanceTokenCountsUntilReleased() {
@@ -70,8 +50,8 @@ final class MemoryProbeRegistryTests: XCTestCase {
 
     func testPurgeReportLine() {
         let memory = ProcessMemory(footprint: 1024 * 1024 * 100, footprintPeak: 0, internalBytes: 0, compressed: 0, purgeableVolatile: 0, graphics: 0, media: 0, mallocInUse: 0)
-        let line = MemoryPurgeReport(reason: "background", before: memory, after: nil, purged: ["a", "b"]).logLine
+        let line = MemoryPurgeReport(reason: "background", before: memory, after: nil).logLine
         XCTAssertTrue(line.hasPrefix("Memory purge (background): before footprint 100.0 MB"))
-        XCTAssertTrue(line.hasSuffix("after not measured; purged [a, b]"))
+        XCTAssertTrue(line.hasSuffix("after not measured"))
     }
 }

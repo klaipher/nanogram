@@ -134,7 +134,7 @@ final class DebugControllerEntriesTests: XCTestCase {
         let all = self.entries(isMainApp: true, isDevAccount: false, engineKind: nil, settings: .defaultSettings)
         XCTAssertEqual(all.filter { $0.section == header.section }.map(\.stableId), [137, 143, 148])
         XCTAssertEqual(all.filter { $0.section == header.section }.map(\.stableId), [header.stableId, DebugControllerEntry.frameHitchLog(false).stableId, DebugControllerEntry.backSwipePreparePreviousScreen(true).stableId])
-        XCTAssertFalse(all.contains(where: { $0.stableId == DebugControllerEntry.nanogramGlanceables(false).stableId }), "glanceables is in Nanogram Features, not Debug Settings")
+        XCTAssertFalse(all.contains(where: { $0.stableId == 145 }), "glanceables (145) is in Nanogram Features, not Debug Settings")
         XCTAssertTrue(all.contains(DebugControllerEntry.backSwipePreparePreviousScreen(true)), "on by default")
         XCTAssertFalse(self.entries(isMainApp: false, isDevAccount: false, engineKind: nil, settings: .defaultSettings).contains(where: { $0.section == header.section }))
     }

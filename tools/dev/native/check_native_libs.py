@@ -132,6 +132,8 @@ def check(root: Path, data: dict) -> list[str]:
 
 def compare_sibling(sibling: Path) -> list[str]:
     other = sibling / "tools/dev/native/native-libs.json"
+    if not other.is_file() and (sibling / "submodules/telegram-ios/shared/tools/native/native-libs.json").is_file():
+        return []  # the sibling already runs the one shared copy (nanogram-deps tools/native): nothing to compare
     if not other.is_file():
         return [f"sibling repo {sibling} has no tools/dev/native/native-libs.json"]
     if other.read_bytes() != DATA.read_bytes():

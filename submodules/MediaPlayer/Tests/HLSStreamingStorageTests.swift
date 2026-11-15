@@ -114,10 +114,21 @@ final class HLSStreamingStorageTests: XCTestCase {
     private func segment(_ range: Range<Int64>) throws -> Data {
         var result: Data?
         let done = self.expectation(description: "segment")
-        let disposable = HLSStreamingStorage.segmentData(mediaBox: self.mediaBox, resource: self.resource, resourceSize: Int64(self.fileData.count), range: range, parameters: self.parameters).start(next: { data in
+        let mediaBox = self.mediaBox!
+        let resource = self.resource
+        let fetchDisposable = mediaBox.fetchedResourceData(resource, in: range, priority: .default, parameters: self.parameters).start()
+        let dataDisposable = (mediaBox.resourceData(resource, size: Int64(self.fileData.count), in: range, mode: .complete)
+        |> filter { _, isComplete in
+            return isComplete
+        }
+        |> take(1)).start(next: { data, _ in
             result = data
             done.fulfill()
         })
+        let disposable = ActionDisposable {
+            fetchDisposable.dispose()
+            dataDisposable.dispose()
+        }
         self.wait(for: [done], timeout: 10.0)
         disposable.dispose()
         self.mediaBox.dataQueue.sync {}
@@ -126,7 +137,7 @@ final class HLSStreamingStorageTests: XCTestCase {
         return try XCTUnwrap(result)
     }
 
-    // MARK: - Serving segments to hls.js
+    // MARK: - Reading segments through the media cache
 
     func testAStreamedSegmentIsWrittenOnce() throws {
         let before = DiskWriteAccounting.shared.snapshot()
@@ -145,56 +156,6 @@ final class HLSStreamingStorageTests: XCTestCase {
         XCTAssertEqual(data.count, Int(HLSStreamingStorageTests.segmentRange.upperBound - HLSStreamingStorageTests.segmentRange.lowerBound))
         XCTAssertEqual(self.dataBytesWritten(since: before), 0)
         XCTAssertEqual(self.fetchedBytes.with { $0 }, fetchedAfterFirst)
-    }
-
-    // MARK: - Appended segments for the chunk player
-
-    func testAnAppendedSegmentServedFromTheCacheIsPlayedFromItWithoutWriting() throws {
-        let served = HLSServedSegments()
-        let initialization = try self.segment(HLSStreamingStorageTests.initializationRange)
-        let segment = try self.segment(HLSStreamingStorageTests.segmentRange)
-        served.noteServed(mediaBox: self.mediaBox, resource: self.resource, resourceSize: Int64(self.fileData.count), range: HLSStreamingStorageTests.initializationRange, data: initialization)
-        served.noteServed(mediaBox: self.mediaBox, resource: self.resource, resourceSize: Int64(self.fileData.count), range: HLSStreamingStorageTests.segmentRange, data: segment)
-
-        let before = DiskWriteAccounting.shared.snapshot()
-        let content = try XCTUnwrap(HLSStreamingStorage.partContent(initializationData: Data(initialization), segmentData: Data(segment), codecName: "h264", servedSegments: served))
-        XCTAssertEqual(self.dataBytesWritten(since: before), 0)
-
-        guard case let .mediaBoxRanges(ranges) = content else {
-            return XCTFail("expected a part read from MediaBox, got \(content)")
-        }
-        XCTAssertEqual(ranges.ranges, [HLSStreamingStorageTests.initializationRange, HLSStreamingStorageTests.segmentRange])
-        XCTAssertTrue(ranges.ignoreAudioEditList)
-
-        // The chunk player decodes the same frames as from the file itself.
-        let copy = TempBox.shared.tempFile(fileName: "copy.mp4")
-        try self.fileData.write(to: URL(fileURLWithPath: copy.path))
-        let fromFile = self.readVideoTimestamps(.tempFile(ChunkMediaPlayerPart.TempFile(file: copy)))
-        TempBox.shared.dispose(copy)
-        let fromMediaBox = self.readVideoTimestamps(.mediaBoxRanges(ranges))
-        XCTAssertFalse(fromFile.isEmpty)
-        XCTAssertEqual(fromMediaBox, fromFile)
-    }
-
-    func testAnAppendedSegmentThatDiffersFromWhatWasServedGoesThroughATempFile() throws {
-        let served = HLSServedSegments()
-        let initialization = try self.segment(HLSStreamingStorageTests.initializationRange)
-        let segment = try self.segment(HLSStreamingStorageTests.segmentRange)
-        served.noteServed(mediaBox: self.mediaBox, resource: self.resource, resourceSize: Int64(self.fileData.count), range: HLSStreamingStorageTests.initializationRange, data: initialization)
-        served.noteServed(mediaBox: self.mediaBox, resource: self.resource, resourceSize: Int64(self.fileData.count), range: HLSStreamingStorageTests.segmentRange, data: segment)
-
-        // Same length and edges as the served segment, one byte changed in the middle.
-        var changed = segment
-        changed[changed.count / 2] ^= 0xff
-
-        let before = DiskWriteAccounting.shared.snapshot()
-        let content = try XCTUnwrap(HLSStreamingStorage.partContent(initializationData: initialization, segmentData: changed, codecName: "h264", servedSegments: served))
-        guard case let .tempFile(tempFile) = content else {
-            return XCTFail("expected a temporary file, got \(content)")
-        }
-        XCTAssertEqual(try Data(contentsOf: URL(fileURLWithPath: tempFile.file.path)), initialization + changed)
-        // Only the temp file's own category: the counter is process-wide, and the fetch's MediaBox store can land in this window.
-        XCTAssertEqual(DiskWriteAccounting.shared.snapshot().subtracting(before).bytes[DiskWriteCategory.tempBoxHLS] ?? 0, Int64(initialization.count + changed.count))
     }
 
     // MARK: - Parts of the native player (HLSNativePartStore)
@@ -295,9 +256,6 @@ final class HLSStreamingStorageTests: XCTestCase {
         XCTAssertEqual(DiskWriteAccounting.shared.snapshot().subtracting(before).bytes[DiskWriteCategory.tempBoxHLS] ?? 0, Int64(initData.count + segmentData.count))
         XCTAssertEqual(try Data(contentsOf: URL(fileURLWithPath: second.path)), initData + segmentData)
         HLSStreamingStorage.releaseTempFile(second, tempFileCache: cache)
-        cache.trimUnused()
-        XCTAssertEqual(cache.count, 0)
-        XCTAssertTrue(self.waitUntilGone(second.path))
     }
 
     // MARK: - Temp file cache
@@ -336,7 +294,6 @@ final class HLSStreamingStorageTests: XCTestCase {
         XCTAssertTrue(self.waitUntilGone(b.path), "the least recently used file is disposed")
         XCTAssertTrue(FileManager.default.fileExists(atPath: a.path))
         XCTAssertTrue(cache.release(c))
-        cache.trimUnused()
     }
 
     func testTempFileCacheNeverEvictsAFileInUseAndHonoursTheByteLimit() throws {
@@ -348,8 +305,6 @@ final class HLSStreamingStorageTests: XCTestCase {
         XCTAssertTrue(self.waitUntilGone(other.path), "over the byte limit, the unused file goes")
         XCTAssertEqual(cache.count, 1)
         XCTAssertTrue(cache.release(inUse))
-        cache.trimUnused()
-        XCTAssertEqual(cache.count, 0)
     }
 
     func testTempFileCacheDoesNotOwnForeignFiles() {

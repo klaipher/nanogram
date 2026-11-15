@@ -9,7 +9,7 @@ import ItemListUI
 import PresentationDataUtils
 import AccountContext
 
-private final class NanogramFeaturesControllerArguments {
+final class NanogramFeaturesControllerArguments {
     let updateFeatures: (@escaping (NanogramFeaturesSettings) -> NanogramFeaturesSettings) -> Void
     let updateExperimental: (@escaping (ExperimentalUISettings) -> ExperimentalUISettings) -> Void
     let openGroupNoiseMode: () -> Void
@@ -41,7 +41,7 @@ private func nanogramGroupNoiseModeTitle(_ mode: Int32) -> String {
     }
 }
 
-private enum NanogramFeaturesEntry: ItemListNodeEntry {
+enum NanogramFeaturesEntry: ItemListNodeEntry {
     case searchHeader
     case searchOperators(Bool)
     case searchFooter
@@ -260,7 +260,7 @@ private enum NanogramFeaturesEntry: ItemListNodeEntry {
     }
 }
 
-private func nanogramFeaturesControllerEntries(features: NanogramFeaturesSettings, experimental: ExperimentalUISettings) -> [NanogramFeaturesEntry] {
+func nanogramFeaturesControllerEntries(features: NanogramFeaturesSettings, experimental: ExperimentalUISettings) -> [NanogramFeaturesEntry] {
     var entries: [NanogramFeaturesEntry] = []
     entries.append(.searchHeader)
     entries.append(.searchOperators(features.searchOperators))

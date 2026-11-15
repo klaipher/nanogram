@@ -266,17 +266,6 @@ private enum DebugLogAction {
     }
 }
 
-private func debugGroupNoiseModeTitle(_ mode: Int32) -> String {
-    switch mode {
-    case 1:
-        return "WebRTC only"
-    case 2:
-        return "RNNoise only"
-    default:
-        return "Both"
-    }
-}
-
 private enum DebugControllerSection: Int32 {
     case appInfo
     case logs
@@ -337,7 +326,6 @@ enum DebugControllerEntry: ItemListNodeEntry {
     case stickerRendererMode(ExperimentalUISettings.StickerRendererMode)
     case disableImageContentAnalysis(Bool)
     case disableLanguageRecognition(Bool)
-    case localTranscription(Bool)
     case enableVoipTcp(Bool)
     case coreListScrollTrace(Bool)
     case chatMediaEditorLegacy(Bool)
@@ -362,17 +350,12 @@ enum DebugControllerEntry: ItemListNodeEntry {
     case callsHeader(PresentationTheme)
     case callsLivestreamHardwareDecoding(Bool)
     case callsNativeCapturePath(Bool)
-    case callsSystemNoiseSuppression(Bool)
-    case callsAdvancedDucking(Bool)
-    case callsGroupNoiseMode(Int32)
-    case callsThermalVideoLadder(Bool)
     case glassGroupsHeader(PresentationTheme)
     case glassGroupNavigationBar(Bool)
     case glassGroupInputPanel(Bool)
     case glassGroupFloatingButtons(Bool)
     case performanceHeader(PresentationTheme)
     case frameHitchLog(Bool)
-    case nanogramGlanceables(Bool)
     case backSwipePreparePreviousScreen(Bool)
     case performanceExperimentsHeader(PresentationTheme)
     case performanceExperiment(PerformanceExperiment, Bool)
@@ -402,15 +385,15 @@ enum DebugControllerEntry: ItemListNodeEntry {
             return DebugControllerSection.experiments.rawValue
         case .compressedEmojiCache, .checkSerializedData, .enableQuickReactionSwitch, .fakeGlass, .inputDecEngineEditor, .forceListViewImplChatBackend, .coreListScrollTrace, .respectSystemMicrophone, .videoMessageCameraMode, .videoMessageCloseFocus, .videoMessageCameraMatrix, .liveStreamV2, .groupCallReferenceEngine:
             return DebugControllerSection.experiments.rawValue
-        case .callsHeader, .callsLivestreamHardwareDecoding, .callsNativeCapturePath, .callsSystemNoiseSuppression, .callsAdvancedDucking, .callsGroupNoiseMode, .callsThermalVideoLadder:
+        case .callsHeader, .callsLivestreamHardwareDecoding, .callsNativeCapturePath:
             return DebugControllerSection.streamsAndCalls.rawValue
         case .glassGroupsHeader, .glassGroupNavigationBar, .glassGroupInputPanel, .glassGroupFloatingButtons:
             return DebugControllerSection.glassGroups.rawValue
-        case .performanceHeader, .frameHitchLog, .nanogramGlanceables, .backSwipePreparePreviousScreen:
+        case .performanceHeader, .frameHitchLog, .backSwipePreparePreviousScreen:
             return DebugControllerSection.performance.rawValue
         case .performanceExperimentsHeader, .performanceExperiment, .performanceExperimentsInfo:
             return DebugControllerSection.performanceExperiments.rawValue
-        case .springSendAnimation, .fakeWalletTransfers, .stickerRendererMode, .disableImageContentAnalysis, .disableLanguageRecognition, .localTranscription, .enableVoipTcp, .chatMediaEditorLegacy, .mediaGridLegacy, .sharedMediaGridLegacy, .storyLegacyVideoWriter, .chatLegacyVideoWriter, .chatSideListLegacy, .messageWidgets, .messageWidgetWallet, .stickerParallelQueues, .gifGridParallelDecode:
+        case .springSendAnimation, .fakeWalletTransfers, .stickerRendererMode, .disableImageContentAnalysis, .disableLanguageRecognition, .enableVoipTcp, .chatMediaEditorLegacy, .mediaGridLegacy, .sharedMediaGridLegacy, .storyLegacyVideoWriter, .chatLegacyVideoWriter, .chatSideListLegacy, .messageWidgets, .messageWidgetWallet, .stickerParallelQueues, .gifGridParallelDecode:
             return DebugControllerSection.experiments.rawValue
         case .enableNetworkFramework, .enableNetworkExperiments, .rustMTProtoEngine, .networkEngineInfo:
             return DebugControllerSection.videoExperiments2.rawValue
@@ -499,8 +482,6 @@ enum DebugControllerEntry: ItemListNodeEntry {
             return 77
         case .disableLanguageRecognition:
             return 78
-        case .localTranscription:
-            return 79
         case .enableVoipTcp:
             return 80
         case .chatMediaEditorLegacy:
@@ -546,14 +527,6 @@ enum DebugControllerEntry: ItemListNodeEntry {
             return 91
         case .callsNativeCapturePath:
             return 92
-        case .callsSystemNoiseSuppression:
-            return 93
-        case .callsAdvancedDucking:
-            return 94
-        case .callsGroupNoiseMode:
-            return 95
-        case .callsThermalVideoLadder:
-            return 97
         case .glassGroupsHeader:
             // Its own section, so these ids only order it inside itself.
             return 120
@@ -569,8 +542,6 @@ enum DebugControllerEntry: ItemListNodeEntry {
         case .frameHitchLog:
             // Kept its id when the switches between it and the header were retired; see the ordering note at `springSendAnimation`.
             return 143
-        case .nanogramGlanceables:
-            return 145
         case .backSwipePreparePreviousScreen:
             // Kept its id when the switches before it were retired; see the ordering note at `springSendAnimation`.
             return 148
@@ -665,14 +636,6 @@ enum DebugControllerEntry: ItemListNodeEntry {
             return glassGroupSwitch(presentationData: presentationData, arguments: arguments, sectionId: self.section, title: "Floating buttons glass off", text: "Replaces the scroll-to-bottom, mentions and reactions buttons' glass with a solid fill. Default: off. Applies at once.", bit: ExperimentalUISettings.glassDebugFloatingButtons, value: value)
         case .performanceHeader:
             return ItemListSectionHeaderItem(presentationData: presentationData, text: "PERFORMANCE", sectionId: self.section)
-        case let .nanogramGlanceables(value):
-            return ItemListSwitchItem(presentationData: presentationData, systemStyle: .glass, title: "Glanceables: widgets, Live Activities, Shortcuts", text: "Turns on the chats widget (small and Lock Screen), the Saved Messages control, Live Activities for live location and calls without CallKit, and the Shortcuts actions. Chat names show only while the app is unlocked and, on the Lock Screen, only if names are allowed in notification settings. Default: off.", value: value, maximumNumberOfLines: 0, sectionId: self.section, style: .blocks, updated: { value in
-                let _ = updateExperimentalUISettingsInteractively(accountManager: arguments.sharedContext.accountManager, { settings in
-                    var settings = settings
-                    settings.nanogramGlanceables = value
-                    return settings
-                }).start()
-            })
         case let .frameHitchLog(value):
             return ItemListSwitchItem(presentationData: presentationData, systemStyle: .glass, title: "Frame hitches: log with main-thread stacks", text: "While you scroll a chat, the chat list or any list, and while the keyboard opens or closes, every frame is timed. One \"Frame hitches\" line per scroll or keyboard animation (frames, hitches, hitch time, longest gap), followed by what the main thread was doing during its longest stalls (\"Frame hitch stack\"). Holds the screen at its top rate and samples the main thread while measuring, so use it only to collect logs. Turns itself off after 30 minutes and when the app goes to the background. Needs Log to File; send with Send Logs. Default: off.", value: value, maximumNumberOfLines: 0, sectionId: self.section, style: .blocks, updated: { value in
                 let _ = updateExperimentalUISettingsInteractively(accountManager: arguments.sharedContext.accountManager, { settings in
@@ -1088,14 +1051,6 @@ enum DebugControllerEntry: ItemListNodeEntry {
                     return settings
                 }).start()
             })
-        case let .localTranscription(value):
-            return ItemListSwitchItem(presentationData: presentationData, systemStyle: .glass, title: "Voice messages: on-device transcription", value: value, maximumNumberOfLines: 2, sectionId: self.section, style: .blocks, updated: { value in
-                let _ = updateExperimentalUISettingsInteractively(accountManager: arguments.sharedContext.accountManager, { settings in
-                    var settings = settings
-                    settings.localTranscription = value
-                    return settings
-                }).start()
-            })
         case let .enableVoipTcp(value):
             return ItemListSwitchItem(presentationData: presentationData, systemStyle: .glass, title: "Calls: allow TCP fallback", value: value, maximumNumberOfLines: 2, sectionId: self.section, style: .blocks, updated: { value in
                 let _ = updateExperimentalUISettingsInteractively(accountManager: arguments.sharedContext.accountManager, { settings in
@@ -1229,57 +1184,6 @@ enum DebugControllerEntry: ItemListNodeEntry {
                 let _ = updateExperimentalUISettingsInteractively(accountManager: arguments.sharedContext.accountManager, { settings in
                     var settings = settings
                     settings.callsNativeCapturePath = value
-                    return settings
-                }).start()
-            })
-        case let .callsSystemNoiseSuppression(value):
-            return ItemListSwitchItem(presentationData: presentationData, systemStyle: .glass, title: "System noise suppression", text: "Lets the system voice-processing unit do all noise suppression and drops the extra software one. Default: on. Applies to the next call.", value: value, maximumNumberOfLines: 0, sectionId: self.section, style: .blocks, updated: { value in
-                let _ = updateExperimentalUISettingsInteractively(accountManager: arguments.sharedContext.accountManager, { settings in
-                    var settings = settings
-                    settings.callsSystemNoiseSuppression = value
-                    return settings
-                }).start()
-            })
-        case let .callsAdvancedDucking(value):
-            return ItemListSwitchItem(presentationData: presentationData, systemStyle: .glass, title: "Advanced ducking (iOS 17)", text: "Other audio is lowered only while someone speaks, and only a little. Default: off. Applies to the next call.", value: value, maximumNumberOfLines: 0, sectionId: self.section, style: .blocks, updated: { value in
-                let _ = updateExperimentalUISettingsInteractively(accountManager: arguments.sharedContext.accountManager, { settings in
-                    var settings = settings
-                    settings.callsAdvancedDucking = value
-                    return settings
-                }).start()
-            })
-        case let .callsGroupNoiseMode(value):
-            return ItemListDisclosureItem(presentationData: presentationData, systemStyle: .glass, title: "Group noise suppression", label: debugGroupNoiseModeTitle(value), sectionId: self.section, style: .blocks, action: {
-                let presentationData = arguments.sharedContext.currentPresentationData.with { $0 }
-                let actionSheet = ActionSheetController(presentationData: presentationData)
-                var items: [ActionSheetItem] = [
-                    ActionSheetTextItem(title: "Which noise suppressors run in group calls. Default: RNNoise only. Applies to the next group call.")
-                ]
-                for mode in [Int32(0), Int32(1), Int32(2)] {
-                    items.append(ActionSheetButtonItem(title: debugGroupNoiseModeTitle(mode), color: .accent, action: { [weak actionSheet] in
-                        actionSheet?.dismissAnimated()
-                        let _ = updateExperimentalUISettingsInteractively(accountManager: arguments.sharedContext.accountManager, { settings in
-                            var settings = settings
-                            settings.callsGroupNoiseMode = mode
-                            return settings
-                        }).start()
-                    }))
-                }
-                actionSheet.setItemGroups([
-                    ActionSheetItemGroup(items: items),
-                    ActionSheetItemGroup(items: [
-                        ActionSheetButtonItem(title: presentationData.strings.Common_Cancel, color: .accent, font: .bold, action: { [weak actionSheet] in
-                            actionSheet?.dismissAnimated()
-                        })
-                    ])
-                ])
-                arguments.presentController(actionSheet, nil)
-            })
-        case let .callsThermalVideoLadder(value):
-            return ItemListSwitchItem(presentationData: presentationData, systemStyle: .glass, title: "Thermal video limits", text: "When the phone is hot, the outgoing camera video gets smaller and slower. Default: on. Applies at once.", value: value, maximumNumberOfLines: 0, sectionId: self.section, style: .blocks, updated: { value in
-                let _ = updateExperimentalUISettingsInteractively(accountManager: arguments.sharedContext.accountManager, { settings in
-                    var settings = settings
-                    settings.callsThermalVideoLadder = value
                     return settings
                 }).start()
             })

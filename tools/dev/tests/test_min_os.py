@@ -1,6 +1,9 @@
 """The iOS minimum lives in Telegram/BUILD; every target and script-built library must agree with it."""
 import importlib.util
 import re
+import shutil
+import subprocess
+import tempfile
 import unittest
 from pathlib import Path
 
@@ -38,6 +41,37 @@ class MinOsTests(unittest.TestCase):
     def test_mac_arms_stay_at_macos_14(self):
         for rel in ["third-party/webp/build-webp-bazel.sh", "third-party/td/build-td-bazel.sh", "third-party/dav1d/build-dav1d-bazel.sh"]:
             self.assertIn("macosx-version-min=14.0", (ROOT / rel).read_text(), rel)
+
+    def test_outline_atomics_flag_stays_out(self):
+        # Comments may mention the flag; no build line or native script may add it.
+        self.assertNotRegex((ROOT / ".bazelrc").read_text(), r"(?m)^build .*-moutline-atomics")
+        for path in list((ROOT / "third-party").rglob("*.sh")) + list((ROOT / "tools/dev/native").rglob("*.sh")):
+            for line in path.read_text(errors="ignore").splitlines():
+                if "-moutline-atomics" in line and not line.lstrip().startswith("#"):
+                    self.fail(f"{path.relative_to(ROOT)} adds -moutline-atomics: {line.strip()}")
+
+    # SHARED-APPLE-CPU-1: the 26.0 floor gives inline LSE atomics, so outline atomics are not needed (and do not link on Darwin).
+    @unittest.skipUnless(shutil.which("xcrun"), "xcrun not available")
+    def test_ios_floor_compiles_inline_lse_atomics(self):
+        res = subprocess.run(["xcrun", "-sdk", "iphoneos", "clang", "-target", f"arm64-apple-ios{set_min_os.source_version(ROOT)}", "-dM", "-E", "-x", "c", "/dev/null"],
+                             capture_output=True, text=True)
+        if res.returncode != 0:
+            self.skipTest("iphoneos SDK not installed")
+        self.assertRegex(res.stdout, r"#define __ARM_FEATURE_ATOMICS 1")
+        self.assertNotIn("__ARM_FEATURE_DOTPROD", res.stdout, "apple-a13 would break A12 iPads")
+
+    @unittest.skipUnless(shutil.which("xcrun"), "xcrun not available")
+    def test_atomic_rmw_is_inline_lse_without_helper_calls(self):
+        with tempfile.TemporaryDirectory() as tmp:
+            src = Path(tmp) / "a.cpp"
+            src.write_text("#include <atomic>\nstd::atomic<int> g;\nint f() { return g.fetch_add(1); }\n")
+            cmd = ["xcrun", "-sdk", "iphoneos", "clang++", "-target", f"arm64-apple-ios{set_min_os.source_version(ROOT)}", "-O2", "-S", str(src), "-o", "-"]
+            res = subprocess.run(cmd, capture_output=True, text=True)
+            if res.returncode != 0:
+                self.skipTest("iphoneos SDK not installed")
+            self.assertIn("ldadd", res.stdout)
+            self.assertNotIn("___aarch64_", res.stdout)
+            self.assertNotIn("ldaxr", res.stdout)
 
 
 if __name__ == "__main__":

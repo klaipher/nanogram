@@ -124,21 +124,6 @@ public final class HLSTempFileCache: @unchecked Sendable {
         return true
     }
 
-    /// Disposes every file nobody uses.
-    public func trimUnused() {
-        self.lock.lock()
-        var files: [TempBoxFile] = []
-        for entry in Array(self.entries.values) where entry.users == 0 {
-            self.remove(entry: entry)
-            files.append(entry.file)
-        }
-        self.lock.unlock()
-
-        for file in files {
-            TempBox.shared.dispose(file)
-        }
-    }
-
     private func remove(entry: Entry) {
         self.entries.removeValue(forKey: entry.key)
         if self.pathToKey[entry.file.path] == entry.key {

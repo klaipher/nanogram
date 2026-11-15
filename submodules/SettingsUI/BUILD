@@ -164,6 +164,7 @@ swift_library(
     deps = [
         ":SettingsUI",
         "//submodules/TelegramCore:TelegramCore",
+        "//submodules/TelegramUIPreferences:TelegramUIPreferences",
     ],
 )
 

@@ -53,14 +53,24 @@ final class LinkHygieneTests: XCTestCase {
         XCTAssertTrue(LinkHygiene.isTelegramLink("https://telegram.me/a"))
         XCTAssertFalse(LinkHygiene.isTelegramLink("https://t.me.evil.com/a"))
         XCTAssertFalse(LinkHygiene.isTelegramLink("https://example.com/t.me"))
+        // Shared behaviour of the iOS and Mac apps: www.t.me counts, telesco.pe and a bare "tg:" do not.
+        XCTAssertTrue(LinkHygiene.isTelegramLink("https://www.t.me/durov"))
+        XCTAssertFalse(LinkHygiene.isTelegramLink("https://telesco.pe/durov"))
+        XCTAssertFalse(LinkHygiene.isTelegramLink("tg:resolve?domain=a"))
+    }
+
+    func testEmptyQueryItemsAreKeptWhenSomethingElseIsRemoved() {
+        XCTAssertEqual(LinkHygiene.strippingTracking("https://a.com/p?x=1&&utm_source=z&y=2"), "https://a.com/p?x=1&&y=2")
     }
 
     func testStandardListMatchesTheSharedDataFile() throws {
-        let url = URL(fileURLWithPath: #filePath)
+        // The one list is data/link-tracking-params.txt of nanogram-deps: shared/data in the iOS repository, and
+        // submodules/telegram-ios/shared/data when the Mac compiles this test through its symlink.
+        let root = URL(fileURLWithPath: #filePath)
             .deletingLastPathComponent().deletingLastPathComponent().deletingLastPathComponent().deletingLastPathComponent()
-            .appendingPathComponent("docs/specs/link-tracking-params.txt")
-        guard let contents = try? String(contentsOf: url, encoding: .utf8) else {
-            throw XCTSkip("docs/specs/link-tracking-params.txt is not reachable from the test sandbox")
+        let candidates = ["shared/data/link-tracking-params.txt", "submodules/telegram-ios/shared/data/link-tracking-params.txt"]
+        guard let contents = candidates.lazy.compactMap({ try? String(contentsOf: root.appendingPathComponent($0), encoding: .utf8) }).first else {
+            throw XCTSkip("shared/data/link-tracking-params.txt is not reachable from the test sandbox")
         }
         let file = TrackingParameterList(fileContents: contents)
         XCTAssertEqual(file.ruleCount, TrackingParameterList.standard.ruleCount)

@@ -123,19 +123,17 @@ public struct MemoryDetailReport: Sendable, Equatable {
     }
 }
 
-/// One purge (entering the background, a memory warning): the footprint before and after, and what was asked to give
-/// memory back.
+/// One memory release (entering the background, a memory warning): the footprint before and after free heap pages
+/// are handed back to the system.
 public struct MemoryPurgeReport: Sendable, Equatable {
     public var reason: String
     public var before: ProcessMemory?
     public var after: ProcessMemory?
-    public var purged: [String]
 
-    public init(reason: String, before: ProcessMemory?, after: ProcessMemory?, purged: [String]) {
+    public init(reason: String, before: ProcessMemory?, after: ProcessMemory?) {
         self.reason = reason
         self.before = before
         self.after = after
-        self.purged = purged
     }
 
     public var logLine: String {
@@ -150,7 +148,6 @@ public struct MemoryPurgeReport: Sendable, Equatable {
         } else {
             parts.append("after not measured")
         }
-        parts.append("purged [" + self.purged.joined(separator: ", ") + "]")
         return "Memory purge (\(self.reason)): " + parts.joined(separator: "; ")
     }
 }

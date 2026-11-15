@@ -11,8 +11,8 @@ marked (check) were not re-verified against the code; correct them on the next c
 ### Build speed and disk use
 - What: Bazel 9.3 with APFS copy-on-write disk cache, `--watchfs`, extensions skipped by default, host tools at
   `-O0`, parallel `make` in native library scripts, shallow submodules, history-free repository, shared bounded
-  caches, cache cleanup after build commands. SHARED-APPLE-CPU-1 outline atomics: blocked (Xcode compiler-rt helper symbol names do not
-  match on Darwin, device link fails), config withdrawn; see docs/performance/outline-atomics.md.
+  caches, cache cleanup after build commands. SHARED-APPLE-CPU-1 outline atomics: resolved by the iOS 26.0 floor (inline LSE atomics,
+  `tools/dev/tests/test_min_os.py`); `-moutline-atomics` does not link on Darwin (helper symbol names differ), so never add it.
 - Why: local builds on one 32 GB laptop with a full disk.
 - Where: `.bazelrc`, `versions.json`, `MODULE.bazel`, `tools/dev/tg`, `tools/dev/cachegc/`, `build-system/Make/`.
 - Upstream: no (their CI uses other trade-offs).
@@ -126,7 +126,7 @@ marked (check) were not re-verified against the code; correct them on the next c
 
 ### Call switch defaults (iOS)
 - What: livestream hardware decoding, native camera frames, system noise suppression, the thermal video ladder and group
-  noise = RNNoise only are on by default and stay switchable in Debug Settings; each has a new storage key so earlier saved
+  noise = RNNoise only are on by default and stay switchable in Settings > Nanogram Features; each has a new storage key so earlier saved
   values do not count. Advanced ducking (other apps' audio may reach the peer; unchecked on a call), the reference engine, VoIP TCP
   and on-device translation stay off.
 - Why: owner decision, 2026-11-06 (measured wins, local only, nothing on the wire).
@@ -254,6 +254,7 @@ marked (check) were not re-verified against the code; correct them on the next c
 - rnnoise: `third-party/rnnoise/rnnoise` = klaipher/rnnoise `nanogram` d2d79970 (xiph v0.2 + portability headers, denoise.c hardening, trimmed model). `cmp` shows all 29 source files, `rnnoise.h` and COPYING of the old copy identical to the fork. BUILD globs `rnnoise/src` (minus the three tools with `main`), header `rnnoise/include/rnnoise.h`, same 3 symbol renames.
 - libprisma: `third-party/libprisma/libprisma` = klaipher/libprisma `nanogram` c061944d. The core (`libprisma/`), the grammar data and ONE `apple/Syntaxer` (iOS and macOS, replaces both copies) come from the fork; the BUILD maps `libprisma/Syntaxer.h` with `include_prefix`, bundles the fork's grammars.dat (byte-identical to the old Resources file) and keeps `SyntaxHighlighterRecursionTests` in this repo. New in the fork: Android's per-move regex budget, weak tree pointers, `searchesToGiveUp` (both budgets kept), so highlighting hostile code blocks is bounded in time as well as depth.
 - SQLCipher: `submodules/sqlcipher/amalgamation` = klaipher/sqlcipher-amalgamation `nanogram` 9948d5af (tag v4.20.0-nanogram1, SQLCipher 4.20.0 / SQLite 3.54.1). `sqlite3.c` and the three headers are byte-identical to the old vendored files; BUILD and Package.swift keep all defines and the `<sqlcipher/sqlite3.h>` include path. Android takes the same amalgamation (codec on against BoringSSL, no key).
+- Unneeded-code cleanup (2026-11-15): two branded RMIntro PNGs that were never bundled are back to upstream (shipped copies are in `Resources/intro`), and the twidget Cocoa shim is gone (the fork guards its imports). Both remove sync conflicts and diffs.
 - QuickJS: `third-party/quickjs-ng/quickjs` = klaipher/quickjs `nanogram` f6fc68b9 (TelegramMessenger/quickjs b526a817 + the widget runtime's host API: auto-init properties, class prototypes on first use, string access, host-class global, host time and randomness, memory-limit hook, `JS_SetStopped`, dumps only on request). One engine for iOS, macOS and Android. The shim, `BUILD` and the C tests stay here; `JSInterruptHandler` now takes the `JSContext*`. VENDOR.md is a pointer to the fork's NANOGRAM-CHANGES.md.
 - widget-sandbox: `third-party/widget-sandbox/widget-sandbox` = klaipher/widget-sandbox `nanogram` 1b21a48e (Telegram v0.6.3 line + Mac remote engine; nested QuickJS = klaipher/quickjs). Replaces the vendored v0.5.0 subset. Ours stay: BUILD, `WidgetSandboxIntl.swift`, the three policy test hosts. The runtime still enforces v0.5.0-era limits where v0.6.x tightened them (paint, nodes, canvas commands, layout-query count); see `third-party/widget-sandbox/VENDOR.md`.
 - Widget painter: `LayerTreePainter` draws at most 16 nested filters (`kMaxNestedFilters`, `canNestFilter`); deeper filters draw their content unfiltered (a backdrop's source replay continues the outer count), as widget-sandbox v0.6.5 `paint-filter-depth` asks of clients. Ours; upstream's iOS client has it in the engine's paint limit.
@@ -296,7 +297,7 @@ marked (check) were not re-verified against the code; correct them on the next c
 
 ### Voice transcription: on-device by default (SpeechAnalyzer)
 - What: tapping the transcribe button on a voice message transcribes it on the device with `SpeechTranscriber`/`SpeechAnalyzer` (iOS 26), for every account: no Premium, no trial or cooldown, no server. The file is read in place (no tmp copy). The locale's model is downloaded ahead (`prepareOnDeviceTranscription`, once per launch, when a voice message with the button is laid out; Apple's `AssetInventory`) and a tap while that download runs awaits the same download (one in-flight task per locale in `SpeechAssetInstalls`). A voice file that is not downloaded is fetched before transcribing; the trial cooldown lock is not shown when on-device transcription is on. SFSpeechRecognizer (on-device only) is the fallback for a locale the analyzer does not support. Telegram's server transcription is used only when the device produced no text and the account is Premium or the group is boosted (`shouldRetryTranscriptionOnServer`). Secret chats, view-once and previews have no button, as before.
-- Switches: Debug Settings "Voice messages: on-device transcription" (default on; stored under the new key `localTranscriptionOnDevice`, so the old default-off value saved by testers is dropped on purpose); `-NanogramSpeechAnalyzer NO` forces the SFSpeechRecognizer engine.
+- Switches: Settings > Nanogram Features "On-Device Voice Transcription" (the Debug Settings row was removed 2026-11-15) (default on; stored under the new key `localTranscriptionOnDevice`, so the old default-off value saved by testers is dropped on purpose); `-NanogramSpeechAnalyzer NO` forces the SFSpeechRecognizer engine.
 - Privacy: audio and text never leave the device on this path; no new entitlement (the speech-recognition usage description exists). Apple docs: Speech framework (`AssetInventory`, `AssetInstallationRequest.downloadAndInstall`, iOS 26).
 - Why: more accurate model, runs out of process, removes the Premium dependency.
 - Where: `submodules/Media/LocalAudioTranscription`, `ChatMessageInteractiveFileNode.transcribe`, `ExperimentalUISettings.localTranscription`.
@@ -316,7 +317,6 @@ marked (check) were not re-verified against the code; correct them on the next c
   - `chunkedVoiceDecode` (WATCH-MEM-1): `OpusKit.OpusChunkedDecoder` and streamed playback; first sound after about 100 ms of audio is decoded, 3 one-second buffers in flight, instead of the whole note first.
   - `offMainStickerRender` (WATCH-GPU-1): `LottieFrameRenderer` actor rasterises tlottie frames off the main actor, late frames are dropped, 24 Hz in Low Power Mode.
   - `messageWindowTrim`, `fileProgressThrottle` (WATCH-LIST-1): the open chat keeps about 120 messages; progress-only `updateFile` events reproject once per 5%. The cached sort per window revision has no switch (pure).
-  - `progressiveVideoStart` (WATCH-VIDEO-1): blocked, no effect. watchOS has no `AVAssetResourceLoader`; the player side was removed and video uses the full-download path. Only the pure policy code remains.
   - `localizedTdlibParameters` (WATCH-I18N-1): real language code, app version and OS version in `setTdlibParameters`. Server-visible; the owner decides.
   - `widgetSnapshot` (IOS-WATCH-WIDGET-1): the app writes counts and chat titles (never message text) to the App Group `group.org.klaipher.Nanogram.watch`; the widget reads them.
   - `backgroundRefresh`, `pushRegistration` (WATCH-INT-1): see below.
@@ -347,10 +347,10 @@ marked (check) were not re-verified against the code; correct them on the next c
 - Upstream: upstream has `internal_isHardwareAv1Supported` and the unconditional open paths; the edits there are small, in `MediaPlayer` only.
 - Sync: re-apply the `VideoDecodePolicy` calls at the four open sites if upstream rewrites them. `MediaPlayer/Package.swift` (Mac) must list `MediaCapabilities`.
 
-### Glanceables: chats widget, App Intents, Live Activities (iOS, Debug switch, default off)
+### Glanceables: chats widget, App Intents, Live Activities (iOS, Settings > Nanogram Features, default off)
 - What: a second widget kind (`Nanogram_GlanceChats`, small and Lock Screen families, iOS 17+), App Intents with App Shortcuts and a Control Center button, and Live Activities for live location and for calls without CallKit. Names appear only while the app is unlocked and, on Lock Screen surfaces, only if "name on lock screen" allows it; counts always show.
 - Where: `submodules/NanogramGlance` (pure model, policy, app-group store, intent bridge; host tests), `submodules/NanogramAppIntents`, `Telegram/WidgetKitWidget/{GlanceWidgets,GlanceControls,GlanceActivityWidget}.swift`, `submodules/TelegramUI/Sources/GlanceCoordinator.swift`, `Telegram/BUILD`.
-- Upstream: no (upstream has no AppIntents or accessory families). Shared edits to keep in step on sync: `TodayViewController.swift` (`getCommonTimeline` split into `loadWidgetPeers`, `WidgetExtensionEnvironment` and `buildConfig` no longer private, three entries in `AllWidgets`), `ExperimentalUISettings` (`nanogramGlanceables`), `DebugController` (entry id 145), `SharedAccountContext` (coordinator creation), `Telegram/BUILD` (deps, `app_intents`, `NSSupportsLiveActivities`).
+- Upstream: no (upstream has no AppIntents or accessory families). Shared edits to keep in step on sync: `TodayViewController.swift` (`getCommonTimeline` split into `loadWidgetPeers`, `WidgetExtensionEnvironment` and `buildConfig` no longer private, three entries in `AllWidgets`), `ExperimentalUISettings` (`nanogramGlanceables`), `NanogramFeaturesController` (`.glanceables` row), `SharedAccountContext` (coordinator creation), `Telegram/BUILD` (deps, `app_intents`, `NSSupportsLiveActivities`).
 - Sync: if upstream converts the widgets to AppIntents, drop our `SelectChatsIntent` in favour of theirs and keep `GlanceVisibility`.
 
 ### A/B report labels (iOS, 2026-11-14)
@@ -368,7 +368,7 @@ marked (check) were not re-verified against the code; correct them on the next c
 ## Settings > Nanogram Features (iOS, 2026-11-14)
 - What: a user-facing ItemList screen (Settings, after Power Saving) for Nanogram's own tweaks: in-chat search operators (`from:`, `before:`, `after:`, `date:`, `type:`; default on), a Voice messages section ("Enhance voice messages", default off, see the section above), link hygiene (strip tracking parameters when opening and copying a link, confirm t.me and tg:// links; both default off) and the user-facing switches moved out of Debug Settings (system noise suppression, advanced ducking, group noise suppression, thermal video limits, glanceables). Message text is never rewritten.
 - Why: owner decision 2026-11-14 (Mercurygram feature parity, one screen per platform; developer experiments stay in Debug Settings).
-- Where: `submodules/NanogramFeatures` (parser, link rules, tests), `submodules/TelegramUIPreferences/Sources/NanogramFeaturesSettings.swift`, `submodules/SettingsUI/Sources/NanogramFeaturesController.swift`, `submodules/TelegramUI/Sources/ChatSearchOperators.swift` and `ChatControllerUpdateSearch.swift`, `OpenUrl.swift` (`openExternalUrlImpl`), `TextLinkHandling.swift` (copy), PeerInfo settings list. Shared grammar and data: `docs/specs/search-operators.md`, `docs/specs/link-tracking-params.txt`.
+- Where: `submodules/NanogramFeatures` (parser, link rules, tests), `submodules/TelegramUIPreferences/Sources/NanogramFeaturesSettings.swift`, `submodules/SettingsUI/Sources/NanogramFeaturesController.swift`, `submodules/TelegramUI/Sources/ChatSearchOperators.swift` and `ChatControllerUpdateSearch.swift`, `OpenUrl.swift` (`openExternalUrlImpl`), `TextLinkHandling.swift` (copy), PeerInfo settings list. Shared grammar and data: `docs/specs/search-operators.md`, `shared/data/link-tracking-params.txt` (nanogram-deps; the iOS copy under docs/specs is gone).
 - Upstream: no. Ideas from Mercurygram (GPL-2.0), reimplemented from the behaviour, not copied. Attribution (Mercurygram Android commits): search operators 291b1c0ab, 61ed3f602, 94efecb78, 0884e7357 (MgSearchQuery); tracking-parameter strip and confirm t.me links 0ec92ad56, 38dbb8733, 197a708ae, 7c876bb07 (MgUrlCleaner and toggles).
 - Sync: `updateSearch` and `openExternalUrlImpl` are small hooks; re-apply if upstream reshapes them. Copy hygiene covers the chat link menu only; the in-app browser and Instant View copy menus are not hooked.
 

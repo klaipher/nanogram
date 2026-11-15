@@ -141,12 +141,6 @@ final class CallsSwitchesTests: XCTestCase {
             .callsLivestreamHardwareDecoding(false),
             .callsNativeCapturePath(false)
         ]
-        let moved: [DebugControllerEntry] = [
-            .callsSystemNoiseSuppression(false),
-            .callsAdvancedDucking(false),
-            .callsGroupNoiseMode(0),
-            .callsThermalVideoLadder(false)
-        ]
         let all = self.entries()
         guard let start = all.firstIndex(where: { $0.stableId == expected[0].stableId && $0.section == expected[0].section }) else {
             XCTFail("no Streams & Calls header")
@@ -158,9 +152,6 @@ final class CallsSwitchesTests: XCTestCase {
             XCTAssertEqual(entry.section, callsSection)
         }
         XCTAssertEqual(all.filter { $0.section == callsSection }.count, expected.count)
-        for entry in moved {
-            XCTAssertFalse(all.contains(where: { $0.section == entry.section && $0.stableId == entry.stableId }), "\(entry) is in Nanogram Features")
-        }
         XCTAssertNotEqual(callsSection, DebugControllerEntry.experimentsHeader(defaultPresentationTheme).section)
         XCTAssertGreaterThan(callsSection, DebugControllerEntry.experimentsHeader(defaultPresentationTheme).section)
     }

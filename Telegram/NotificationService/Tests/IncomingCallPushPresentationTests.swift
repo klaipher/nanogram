@@ -402,10 +402,7 @@ final class IncomingCallPushPresentationTests: XCTestCase {
     // The ring for a caller goes when that caller's call ended: the phone-call service message.
     func testPhoneCallServiceMessageEndsTheRing() {
         let call = TelegramMediaAction(action: .phoneCall(callId: 777, discardReason: .missed, duration: nil, isVideo: false))
-        XCTAssertTrue(IncomingCallPushPresentation.isPhoneCallServiceMessage(media: [call]))
         let other = TelegramMediaAction(action: .historyCleared)
-        XCTAssertFalse(IncomingCallPushPresentation.isPhoneCallServiceMessage(media: [other]))
-        XCTAssertFalse(IncomingCallPushPresentation.isPhoneCallServiceMessage(media: []))
         XCTAssertEqual(IncomingCallPushPresentation.phoneCallServiceMessageCallId(media: [call]), 777)
         XCTAssertNil(IncomingCallPushPresentation.phoneCallServiceMessageCallId(media: [other]))
     }
