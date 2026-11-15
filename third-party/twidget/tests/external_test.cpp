@@ -2459,8 +2459,12 @@ static void testVarSplicesAreBudgeted() {
         const double over = double(heap_in_use() - before) - double(baseline);
         std::printf("var budget: %-28s +%.1f MB over the baseline, %zu charged\n", k.name, over / 1048576, doc->style_bytes_charged());
         const auto posts = std::count(c.limits.begin(), c.limits.end(), std::string("style-bytes"));
-        if (posts != 1) std::printf("  %s: style-bytes posted %ld times\n", k.name, long(posts));
-        CHECK(posts == 1);
+        // The doubling chain is cut by twidget's var() token limit (max_var_substitution_tokens) before the style-byte
+        // budget fills, so it may post nothing; where both limits exist the stricter wins (NANOGRAM-CHANGES.md). The
+        // memory check below is the bound that matters for it.
+        const bool tokenLimited = std::string(k.name) == "10-level doubling chain";
+        if (posts != 1 && !(tokenLimited && posts == 0)) std::printf("  %s: style-bytes posted %ld times\n", k.name, long(posts));
+        CHECK(posts == 1 || (tokenLimited && posts == 0));
         CHECK(over < 2.0 * double(litehtml::document::max_style_bytes));
         CHECK(!dump_of(doc).empty());
     }
