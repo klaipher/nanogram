@@ -723,7 +723,7 @@ public final class NavigationContainer: ASDisplayNode, ASGestureRecognizerDelega
         if controllersUpdated {
             let previousControllers = self.controllers
             self.controllers = controllers
-            NavigationDiagnostics.emit("stack \(NavigationDiagnostics.describeStack(previousControllers)) -> \(NavigationDiagnostics.describeStack(controllers)) top=\(NavigationDiagnostics.describe(self.state.top?.value)) pending=\(NavigationDiagnostics.describe(self.state.pending?.value.value)) transition=\(self.state.transition.map { "\($0.type)" } ?? "none")")
+            NavigationDiagnostics.emit("stack \(NavigationDiagnostics.describeStack(previousControllers)) -> \(NavigationDiagnostics.describeStack(controllers)) top=\(NavigationDiagnostics.describe(self.state.top?.value)) pending=\(NavigationDiagnostics.describe(self.state.pending?.value.value)) transition=\(self.state.transition.map { "\($0.type)" } ?? "none") flat=\(self.isFlat) width=\(layout.metrics.widthClass) size=\(layout.size.width)x\(layout.size.height) inFocus=\(self.isInFocus)")
 
             for i in 0 ..< controllers.count {
                 if i == 0 {

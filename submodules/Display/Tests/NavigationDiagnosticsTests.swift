@@ -36,6 +36,18 @@ final class NavigationDiagnosticsTests: XCTestCase {
         XCTAssertEqual(lines, ["stack [] -> []"])
     }
 
+    func testDifferingFieldsListsOnlyChangedProperties() {
+        struct Settings {
+            var keepStack: Bool
+            var mode: Int32
+            var name: String?
+        }
+        let defaults = Settings(keepStack: false, mode: 0, name: nil)
+        XCTAssertEqual(NavigationDiagnostics.differingFields(defaults, from: defaults), [])
+        let changed = Settings(keepStack: true, mode: 0, name: "x")
+        XCTAssertEqual(NavigationDiagnostics.differingFields(changed, from: defaults), ["keepStack=true", "name=Optional(\"x\")"])
+    }
+
     func testStackDescriptionNamesEachScreenByType() {
         let a = NSObject()
         let b = NSString(string: "s")

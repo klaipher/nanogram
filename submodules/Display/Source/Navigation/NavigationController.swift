@@ -1047,6 +1047,7 @@ open class NavigationController: UINavigationController, ContainableController, 
                         self.displayNode.insertSubnode(flatContainer, at: 0)
                     }
                     self.rootContainer = .flat(flatContainer)
+                    NavigationDiagnostics.emit("root container -> flat width=\(layout.metrics.widthClass) size=\(layout.size.width)x\(layout.size.height) controllers=\(NavigationDiagnostics.describeStack(self._viewControllers))")
                     flatContainer.frame = CGRect(origin: CGPoint(), size: layout.size)
                     flatContainer.update(layout: layout, canBeClosed: false, controllers: controllers, transition: .immediate)
                     splitContainer.clearDetailSelection()
@@ -1078,6 +1079,7 @@ open class NavigationController: UINavigationController, ContainableController, 
                     self.displayNode.insertSubnode(flatContainer, at: 0)
                 }
                 self.rootContainer = .flat(flatContainer)
+                NavigationDiagnostics.emit("root container -> flat width=\(layout.metrics.widthClass) size=\(layout.size.width)x\(layout.size.height) controllers=\(NavigationDiagnostics.describeStack(self._viewControllers))")
                 
                 let updatedLayout = layout.withUpdatedSize(updatedSize).withUpdatedIntrinsicInsets(updatedIntrinsicInsets)
                 flatContainer.frame = CGRect(origin: CGPoint(), size: updatedSize)
@@ -1096,6 +1098,7 @@ open class NavigationController: UINavigationController, ContainableController, 
                         self.displayNode.insertSubnode(splitContainer, at: 0)
                     }
                     self.rootContainer = .split(splitContainer)
+                    NavigationDiagnostics.emit("root container -> split width=\(layout.metrics.widthClass) size=\(layout.size.width)x\(layout.size.height) controllers=\(NavigationDiagnostics.describeStack(self._viewControllers))")
                     if previousModalContainer == nil {
                         splitContainer.canHaveKeyboardFocus = true
                     } else {
@@ -1129,6 +1132,7 @@ open class NavigationController: UINavigationController, ContainableController, 
                     self.displayNode.insertSubnode(splitContainer, at: 0)
                 }
                 self.rootContainer = .split(splitContainer)
+                NavigationDiagnostics.emit("root container -> split width=\(layout.metrics.widthClass) size=\(layout.size.width)x\(layout.size.height) controllers=\(NavigationDiagnostics.describeStack(self._viewControllers))")
                 if previousModalContainer == nil {
                     splitContainer.canHaveKeyboardFocus = true
                 } else {

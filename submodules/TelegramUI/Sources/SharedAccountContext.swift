@@ -593,6 +593,9 @@ public final class SharedAccountContextImpl: SharedAccountContext {
         
         let immediateExperimentalUISettingsValue = self.immediateExperimentalUISettingsValue
         let _ = immediateExperimentalUISettingsValue.swap(initialPresentationDataAndSettings.experimentalUISettings)
+        // Debug switches live outside the account database (a database reset keeps them, a reinstall does not): log the
+        // ones this phone has changed, for reports that only one phone shows.
+        Logger.shared.log("Navigation", "Debug settings changed from defaults: \(NavigationDiagnostics.differingFields(initialPresentationDataAndSettings.experimentalUISettings, from: ExperimentalUISettings.defaultSettings).joined(separator: ", "))")
         
         GlassBackgroundView.useCustomGlassImpl = immediateExperimentalUISettingsValue.with({ $0.fakeGlass })
         GlassDebugGroups.setDisabledMask(immediateExperimentalUISettingsValue.with({ $0.glassDebugDisabledGroups }))

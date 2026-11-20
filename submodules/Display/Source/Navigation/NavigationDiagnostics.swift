@@ -31,6 +31,28 @@ public enum NavigationDiagnostics {
         return "[" + controllers.map { describe($0) }.joined(separator: ", ") + "]"
     }
 
+    /// The stored properties of `value` that differ from `defaults`, as `name=value` (for logging which Debug switches
+    /// a phone has changed: they live outside the account database, so a database reset keeps them).
+    public static func differingFields<T>(_ value: T, from defaults: T) -> [String] {
+        var defaultValues: [String: String] = [:]
+        for child in Mirror(reflecting: defaults).children {
+            if let label = child.label {
+                defaultValues[label] = String(describing: child.value)
+            }
+        }
+        var result: [String] = []
+        for child in Mirror(reflecting: value).children {
+            guard let label = child.label else {
+                continue
+            }
+            let text = String(describing: child.value)
+            if defaultValues[label] != text {
+                result.append("\(label)=\(text)")
+            }
+        }
+        return result
+    }
+
     /// The readiness inputs a screen waits for, as recorded so far: each input's last value, or "never" when it has
     /// not produced one. Inputs are listed in the order given.
     public static func readinessReport(order: [String], values: [String: Bool]) -> String {
