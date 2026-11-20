@@ -723,7 +723,8 @@ public final class NavigationContainer: ASDisplayNode, ASGestureRecognizerDelega
         if controllersUpdated {
             let previousControllers = self.controllers
             self.controllers = controllers
-            
+            NavigationDiagnostics.emit("stack \(NavigationDiagnostics.describeStack(previousControllers)) -> \(NavigationDiagnostics.describeStack(controllers)) top=\(NavigationDiagnostics.describe(self.state.top?.value)) pending=\(NavigationDiagnostics.describe(self.state.pending?.value.value)) transition=\(self.state.transition.map { "\($0.type)" } ?? "none")")
+
             for i in 0 ..< controllers.count {
                 if i == 0 {
                     if canBeClosed {
@@ -800,9 +801,20 @@ public final class NavigationContainer: ASDisplayNode, ASGestureRecognizerDelega
                         if last.view.disableAutomaticKeyboardHandling.isEmpty {
                             updatedLayout = updatedLayout.withUpdatedInputHeight(nil)
                         }
-                        self.state.pending = PendingChild(value: self.makeChild(layout: updatedLayout, value: last), transitionType: transitionType, transition: transition, update: { [weak self] pendingChild in
+                        let pendingChild = PendingChild(value: self.makeChild(layout: updatedLayout, value: last), transitionType: transitionType, transition: transition, update: { [weak self] pendingChild in
                             self?.pendingChildIsReady(pendingChild)
                         })
+                        self.state.pending = pendingChild
+                        NavigationDiagnostics.emit("pending \(transitionType) \(NavigationDiagnostics.describe(last)) ready=\(pendingChild.isReady)")
+                        if !pendingChild.isReady {
+                            Queue.mainQueue().after(NavigationDiagnostics.stallDelay, { [weak self, weak pendingChild] in
+                                guard let self, let pendingChild, self.state.pending === pendingChild, !pendingChild.isReady else {
+                                    return
+                                }
+                                let controller = pendingChild.value.value
+                                NavigationDiagnostics.emit("stall: \(NavigationDiagnostics.describe(controller)) not ready after \(NavigationDiagnostics.stallDelay) s; waits for: \(controller.navigationReadinessReport ?? "no report")")
+                            })
+                        }
                     }
                 }
             }
@@ -1018,6 +1030,13 @@ public final class NavigationContainer: ASDisplayNode, ASGestureRecognizerDelega
                 }
             }
             self.state.transition = topTransition
+            NavigationDiagnostics.emit("transition start \(transitionType) \(NavigationDiagnostics.describe(fromValue.value)) -> \(NavigationDiagnostics.describe(toValue.value)) expansion=\(topTransition.coordinator.isExpansion)")
+            Queue.mainQueue().after(NavigationDiagnostics.stallDelay, { [weak self, weak topTransition] in
+                guard let self, let topTransition, self.state.transition === topTransition else {
+                    return
+                }
+                NavigationDiagnostics.emit("stall: transition \(topTransition.type) to \(NavigationDiagnostics.describe(topTransition.destination.value)) still running after \(NavigationDiagnostics.stallDelay) s; interactive=\(topTransition.coordinator.isInteractive) expansion=\(topTransition.coordinator.isExpansion)")
+            })
             if topTransition.coordinator.isExpansion {
                 self.expansionStatusBar = (topTransition, false)
             }
@@ -1078,6 +1097,7 @@ public final class NavigationContainer: ASDisplayNode, ASGestureRecognizerDelega
     /// navigation controller always does); if it kept it, the transition just ends and the stack's next update lays the
     /// container out, since the removal is not repeated.
     private func endCommittedSwipe(_ transition: TopTransition, leaving: ViewController) {
+        NavigationDiagnostics.emit("transition swipe end leaving=\(NavigationDiagnostics.describe(leaving)) leftStack=\(transition.committedTopLeftStack)")
         self.endHitchWindow()
         if transition.committedTopLeftStack {
             self.landOnScreenBeneath(transition, leaving: leaving)
@@ -1094,6 +1114,7 @@ public final class NavigationContainer: ASDisplayNode, ASGestureRecognizerDelega
     /// A transition heading to the screen beneath, whose top the stack has dropped, lands: the top screen leaves and the
     /// screen beneath appears, laid out as the container's top.
     private func landOnScreenBeneath(_ transition: TopTransition, leaving: ViewController) {
+        NavigationDiagnostics.emit("transition landed beneath -> \(NavigationDiagnostics.describe(transition.previous.value)) leaving=\(NavigationDiagnostics.describe(leaving))")
         self.endHitchWindow()
         self.state.transition = nil
         self.expansionStatusBar = nil
@@ -1136,6 +1157,7 @@ public final class NavigationContainer: ASDisplayNode, ASGestureRecognizerDelega
     }
 
     private func completeTopTransition(_ topTransition: TopTransition) {
+        NavigationDiagnostics.emit("transition end \(topTransition.type) -> \(NavigationDiagnostics.describe(topTransition.destination.value))")
         self.endHitchWindow()
         self.expansionStatusBar = nil
         if viewTreeContainsFirstResponder(view: topTransition.previous.value.view) {
@@ -1232,6 +1254,7 @@ public final class NavigationContainer: ASDisplayNode, ASGestureRecognizerDelega
     }
     
     private func pendingChildIsReady(_ child: PendingChild) {
+        NavigationDiagnostics.emit("ready \(NavigationDiagnostics.describe(child.value.value)) current=\(self.state.pending === child)")
         if let pending = self.state.pending, pending === child {
             pending.isReady = true
             self.performUpdate(transition: .immediate)

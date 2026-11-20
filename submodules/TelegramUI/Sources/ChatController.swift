@@ -289,6 +289,21 @@ public final class ChatControllerImpl: TelegramBaseController, ChatController, G
 
     let wallpaperReady = Promise<Bool>()
     let presentationReady = Promise<Bool>()
+    /// The inputs `ready` waits for, as recorded so far (the navigation stall log, `NavigationDiagnostics`).
+    let readinessRecorder = NavigationReadinessRecorder(order: ["contentData", "wallpaper", "presentation"])
+
+    override public var navigationReadinessReport: String? {
+        var report = self.readinessRecorder.report
+        if let pendingContentData = self.pendingContentData {
+            report += "; pending content: " + pendingContentData.contentData.readinessRecorder.report
+        } else if let contentData = self.contentData {
+            report += "; content: " + contentData.readinessRecorder.report
+        } else {
+            report += "; no content data"
+        }
+        report += "; viewLoaded=\(self.isViewLoaded) nodeLoaded=\(self.isNodeLoaded)"
+        return report
+    }
     
     var presentationInterfaceState: ChatPresentationInterfaceState
     let presentationInterfaceStatePromise: ValuePromise<ChatPresentationInterfaceState>

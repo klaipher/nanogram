@@ -228,6 +228,12 @@ public protocol CustomViewControllerNavigationDataSummary: AnyObject {
         }
         return navigationBar
     }
+    /// What this screen waits for before it reports ready, for the navigation stall log (`NavigationDiagnostics`):
+    /// each input's last value, or "never". Nil: the screen does not report.
+    open var navigationReadinessReport: String? {
+        return nil
+    }
+
     /// This screen's side when the screen above it expands out of it (a push or pop between the two); nil: it does not
     /// take part.
     open func navigationExpansionSource(above controller: ViewController, operation: NavigationExpansionOperation) -> NavigationExpansionSource? {

@@ -5,6 +5,7 @@ import Postbox
 import ChatInterfaceState
 import TelegramCore
 import SwiftSignalKit
+import Display
 import ChatTitleView
 import AvatarNode
 import ChatPresentationInterfaceState
@@ -197,6 +198,8 @@ extension ChatControllerImpl {
         }
         
         let isReady = Promise<Bool>()
+        /// The inputs `isReady` waits for, as recorded so far (the navigation stall log, `NavigationDiagnostics`).
+        let readinessRecorder = NavigationReadinessRecorder(order: ["peerInfo", "chatLocationInfo", "cachedData", "history", "initialData", "persistentPeerData"])
         var onUpdated: ((State) -> Void)?
         
         let scrolledToMessageId = ValuePromise<ScrolledToMessageId?>(nil, ignoreRepeated: true)
@@ -2098,13 +2101,20 @@ extension ChatControllerImpl {
             }
             |> map { _ -> Bool in true }
             
+            let readinessRecorder = self.readinessRecorder
+            readinessRecorder.reset()
+            func recorded(_ name: String, _ signal: Signal<Bool, NoError>) -> Signal<Bool, NoError> {
+                return signal |> beforeNext { value in
+                    readinessRecorder.record(name, value)
+                }
+            }
             self.isReady.set(combineLatest(queue: .mainQueue(), [
-                self.isPeerInfoReady.get(),
-                self.isChatLocationInfoReady.get(),
-                self.isCachedDataReady.get(),
-                historyNode.isReady,
-                initialData |> map { _ -> Bool in true },
-                initialPersistentPeerDataReady
+                recorded("peerInfo", self.isPeerInfoReady.get()),
+                recorded("chatLocationInfo", self.isChatLocationInfoReady.get()),
+                recorded("cachedData", self.isCachedDataReady.get()),
+                recorded("history", historyNode.isReady),
+                recorded("initialData", initialData |> map { _ -> Bool in true }),
+                recorded("persistentPeerData", initialPersistentPeerDataReady)
             ])
             |> map { values in
                 return !values.contains(where: { !$0 })

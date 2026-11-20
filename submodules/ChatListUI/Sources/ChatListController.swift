@@ -1480,8 +1480,10 @@ public class ChatListControllerImpl: TelegramBaseController, ChatListController 
                         return
                     }
                     guard let navigationController = self.navigationController as? NavigationController else {
+                        Logger.shared.log("Navigation", "chat list tap \(peer.id): no navigation controller (\(String(describing: self.navigationController.map { type(of: $0) })))")
                         return
                     }
+                    Logger.shared.log("Navigation", "chat list tap \(peer.id) thread=\(String(describing: threadId)) stack=\(NavigationDiagnostics.describeStack(navigationController.viewControllers))")
                     
                     var peer = peer
                     var threadId = threadId

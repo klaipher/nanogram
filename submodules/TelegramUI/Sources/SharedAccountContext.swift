@@ -608,6 +608,11 @@ public final class SharedAccountContextImpl: SharedAccountContext {
         FrameHitchMonitor.log = { line in
             Logger.shared.log("FrameHitch", line)
         }
+        // Every screen change of a navigation container, and any screen or transition still pending 3 s later
+        // (tester report 2026-11-20: chats never open on one phone after iOS 27.2.1).
+        NavigationDiagnostics.log = { line in
+            Logger.shared.log("Navigation", line)
+        }
         FrameHitchMonitor.context = frameRateContext
         FrameHitchMonitor.autoDisabled = { [weak self] reason in
             Logger.shared.log("FrameHitch", "Frame hitches switched off automatically (\(reason.rawValue)); it stays off until it is turned on again in Debug Settings")

@@ -22,6 +22,7 @@ import ChatMessageNotificationItem
 import FaceScanScreen
 
 public func navigateToChatControllerImpl(_ params: NavigateToChatControllerParams) {
+    Logger.shared.log("Navigation", "navigateToChat \(String(describing: params.chatLocation.asChatLocation.peerId)) thread=\(String(describing: params.chatLocation.asChatLocation.threadId)) keepStack=\(params.keepStack) useExisting=\(params.useExisting) animated=\(params.animated) stack=\(NavigationDiagnostics.describeStack(params.navigationController.viewControllers))")
     if case let .peer(peer) = params.chatLocation {
         let _ = params.context.engine.peers.ensurePeerIsLocallyAvailable(peer: peer).startStandalone()
     }

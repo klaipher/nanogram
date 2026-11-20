@@ -655,10 +655,17 @@ extension ChatControllerImpl {
         let initTimestamp = self.initTimestamp
         #endif
         
+        let readinessRecorder = self.readinessRecorder
+        readinessRecorder.reset()
+        func recorded(_ name: String, _ signal: Signal<Bool, NoError>) -> Signal<Bool, NoError> {
+            return signal |> beforeNext { value in
+                readinessRecorder.record(name, value)
+            }
+        }
         self.ready.set(combineLatest(queue: .mainQueue(), [
-            self.contentDataReady.get(),
-            self.wallpaperReady.get(),
-            self.presentationReady.get()
+            recorded("contentData", self.contentDataReady.get()),
+            recorded("wallpaper", self.wallpaperReady.get()),
+            recorded("presentation", self.presentationReady.get())
         ])
         |> map { values in
             return !values.contains(where: { !$0 })

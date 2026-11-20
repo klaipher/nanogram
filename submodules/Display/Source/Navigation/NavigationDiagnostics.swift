@@ -1,0 +1,75 @@
+import Foundation
+
+/// Diagnostic log for screen changes in a navigation container (tester report 2026-11-20: on one phone, after
+/// iOS 27.2.1, a chat tapped in the chat list never appears and back does nothing; no crash or hang). Logs every
+/// change of the stack, the screen a push or pop waits for, and each transition's start and end; a screen still not
+/// ready, or a transition still running, `stallDelay` seconds later is logged with what the screen reports about
+/// itself (`ViewController.navigationReadinessReport`). Nothing here changes behaviour.
+public enum NavigationDiagnostics {
+    /// Set by the app to its file log (`Logger.shared.log("Navigation", ...)`); nil logs nothing.
+    public static var log: ((String) -> Void)?
+
+    public static let stallDelay: Double = 3.0
+
+    static func emit(_ text: @autoclosure () -> String) {
+        guard let log = NavigationDiagnostics.log else {
+            return
+        }
+        log(text())
+    }
+
+    /// A short, stable name for a screen in the log: its type and identity.
+    public static func describe(_ controller: AnyObject?) -> String {
+        guard let controller else {
+            return "nil"
+        }
+        return "\(type(of: controller))@\(UInt(bitPattern: ObjectIdentifier(controller).hashValue) & 0xffffff)"
+    }
+
+    /// One line for a stack: its screens bottom to top.
+    public static func describeStack(_ controllers: [AnyObject]) -> String {
+        return "[" + controllers.map { describe($0) }.joined(separator: ", ") + "]"
+    }
+
+    /// The readiness inputs a screen waits for, as recorded so far: each input's last value, or "never" when it has
+    /// not produced one. Inputs are listed in the order given.
+    public static func readinessReport(order: [String], values: [String: Bool]) -> String {
+        return order.map { name -> String in
+            if let value = values[name] {
+                return "\(name)=\(value)"
+            } else {
+                return "\(name)=never"
+            }
+        }.joined(separator: " ")
+    }
+}
+
+/// Records the last value of each named readiness input; read from any thread.
+public final class NavigationReadinessRecorder {
+    private let lock = NSLock()
+    private var values: [String: Bool] = [:]
+    public let order: [String]
+
+    public init(order: [String]) {
+        self.order = order
+    }
+
+    public func record(_ name: String, _ value: Bool) {
+        self.lock.lock()
+        self.values[name] = value
+        self.lock.unlock()
+    }
+
+    public func reset() {
+        self.lock.lock()
+        self.values.removeAll()
+        self.lock.unlock()
+    }
+
+    public var report: String {
+        self.lock.lock()
+        let values = self.values
+        self.lock.unlock()
+        return NavigationDiagnostics.readinessReport(order: self.order, values: values)
+    }
+}
