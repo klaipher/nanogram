@@ -160,6 +160,9 @@ public final class NavigationContainer: ASDisplayNode, ASGestureRecognizerDelega
         var isVertical: Bool = false
     }
     private var interactivePop: InteractivePop?
+    /// Screens `NavigationRecovery` showed before they reported ready. Their `ready` may never come, so a pop back to one
+    /// does not wait for it again.
+    private let shownBeforeReady = NSHashTable<ViewController>.weakObjects()
 
     public func beginVerticalExpansionPop(anchor: CGPoint) -> Bool {
         guard self.interactivePop == nil else {
@@ -804,6 +807,10 @@ public final class NavigationContainer: ASDisplayNode, ASGestureRecognizerDelega
                         let pendingChild = PendingChild(value: self.makeChild(layout: updatedLayout, value: last), transitionType: transitionType, transition: transition, update: { [weak self] pendingChild in
                             self?.pendingChildIsReady(pendingChild)
                         })
+                        if transitionType == .pop, !pendingChild.isReady, self.shownBeforeReady.contains(last) {
+                            pendingChild.isReady = true
+                            NavigationDiagnostics.emit("recovery: \(NavigationDiagnostics.describe(last)) was shown before it was ready; the pop back does not wait for it")
+                        }
                         self.state.pending = pendingChild
                         NavigationDiagnostics.emit("pending \(transitionType) \(NavigationDiagnostics.describe(last)) ready=\(pendingChild.isReady)")
                         if !pendingChild.isReady {
@@ -823,6 +830,7 @@ public final class NavigationContainer: ASDisplayNode, ASGestureRecognizerDelega
                                     return
                                 }
                                 NavigationDiagnostics.emit("recovery: showing \(NavigationDiagnostics.describe(controller)) not ready after \(NavigationRecovery.pendingReadyTimeout) s; waits for: \(controller.navigationReadinessReport ?? "no report")")
+                                self.shownBeforeReady.add(controller)
                                 self.pendingChildIsReady(pendingChild)
                             })
                         }

@@ -64,6 +64,26 @@ final class DebugControllerEntriesTests: XCTestCase {
         }
     }
 
+    /// The reset restores every Debug switch but keeps what Settings ▸ Nanogram Features owns.
+    func testResetDebugSwitchesKeepsNanogramFeatures() {
+        var settings = self.allSettings(true)
+        settings.callsSystemNoiseSuppression = !ExperimentalUISettings.defaultSettings.callsSystemNoiseSuppression
+        settings.callsAdvancedDucking = !ExperimentalUISettings.defaultSettings.callsAdvancedDucking
+        settings.callsThermalVideoLadder = !ExperimentalUISettings.defaultSettings.callsThermalVideoLadder
+        settings.callsGroupNoiseMode = ExperimentalUISettings.defaultSettings.callsGroupNoiseMode + 1
+        let reset = settings.resettingDebugSwitches()
+        XCTAssertEqual(reset.localTranscription, settings.localTranscription)
+        XCTAssertEqual(reset.nanogramGlanceables, settings.nanogramGlanceables)
+        XCTAssertEqual(reset.callsSystemNoiseSuppression, settings.callsSystemNoiseSuppression)
+        XCTAssertEqual(reset.callsAdvancedDucking, settings.callsAdvancedDucking)
+        XCTAssertEqual(reset.callsGroupNoiseMode, settings.callsGroupNoiseMode)
+        XCTAssertEqual(reset.callsThermalVideoLadder, settings.callsThermalVideoLadder)
+        XCTAssertEqual(reset.keepChatNavigationStack, ExperimentalUISettings.defaultSettings.keepChatNavigationStack)
+        XCTAssertEqual(reset.forceListViewImplChatBackend, ExperimentalUISettings.defaultSettings.forceListViewImplChatBackend)
+        XCTAssertEqual(reset.fakeGlass, ExperimentalUISettings.defaultSettings.fakeGlass)
+        XCTAssertEqual(reset.chatSideListLegacy, ExperimentalUISettings.defaultSettings.chatSideListLegacy)
+    }
+
     func testEntriesAreInStrictlyIncreasingOrder() {
         for isMainApp in [true, false] {
             for isDevAccount in [true, false] {

@@ -381,6 +381,21 @@ public struct ExperimentalUISettings: Codable, Equatable {
     }
 }
 
+public extension ExperimentalUISettings {
+    /// Debug ▸ Reset Debug Settings: every Debug switch back to its default, keeping the fields Settings ▸ Nanogram
+    /// Features owns (on-device transcription, the four call switches, Widgets/Live Activities/Shortcuts).
+    func resettingDebugSwitches() -> ExperimentalUISettings {
+        var result = ExperimentalUISettings.defaultSettings
+        result.localTranscription = self.localTranscription
+        result.callsSystemNoiseSuppression = self.callsSystemNoiseSuppression
+        result.callsAdvancedDucking = self.callsAdvancedDucking
+        result.callsGroupNoiseMode = self.callsGroupNoiseMode
+        result.callsThermalVideoLadder = self.callsThermalVideoLadder
+        result.nanogramGlanceables = self.nanogramGlanceables
+        return result
+    }
+}
+
 public func updateExperimentalUISettingsInteractively(accountManager: AccountManager<TelegramAccountManagerTypes>, _ f: @escaping (ExperimentalUISettings) -> ExperimentalUISettings) -> Signal<Void, NoError> {
     return accountManager.transaction { transaction -> Void in
         transaction.updateSharedData(ApplicationSpecificSharedDataKeys.experimentalUISettings, { entry in

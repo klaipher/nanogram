@@ -871,15 +871,15 @@ enum DebugControllerEntry: ItemListNodeEntry {
                 })
             })
         case .resetDebugSettings:
-            // Every Debug switch back to its default. They live outside the account database, so Reset Database keeps
-            // them and only a reinstall cleared them (tester report 2026-11-20: chats stopped opening, a reinstall fixed it).
+            // Every Debug switch back to its default, Nanogram Features kept (`resettingDebugSwitches`). They live outside
+            // the account database, so Reset Database keeps them and only a reinstall cleared them (tester report 2026-11-20: chats stopped opening, a reinstall fixed it).
             return ItemListActionItem(presentationData: presentationData, systemStyle: .glass, title: "Reset Debug Settings", kind: .destructive, alignment: .natural, sectionId: self.section, style: .blocks, action: {
-                let _ = (updateExperimentalUISettingsInteractively(accountManager: arguments.sharedContext.accountManager, { _ in
-                    return ExperimentalUISettings.defaultSettings
+                let _ = (updateExperimentalUISettingsInteractively(accountManager: arguments.sharedContext.accountManager, { settings in
+                    return settings.resettingDebugSwitches()
                 })
                 |> deliverOnMainQueue).start(completed: {
                     if let context = arguments.context {
-                        let controller = textAlertController(context: context, title: nil, text: "Debug settings are back to their defaults. Restart the app.", actions: [TextAlertAction(type: .genericAction, title: "OK", action: {})])
+                        let controller = textAlertController(context: context, title: nil, text: "Debug settings are back to their defaults (Nanogram Features are kept). Restart the app.", actions: [TextAlertAction(type: .genericAction, title: "OK", action: {})])
                         arguments.presentController(controller, nil)
                     }
                 })

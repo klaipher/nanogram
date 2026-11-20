@@ -433,7 +433,9 @@ Patches to upstream bugs and one fix of our own code, found by the server-switch
   landed at its end (a finger-held swipe is never touched); each recovery is logged as `[Navigation] recovery:`. The
   navigation container also logs every stack change, the screen a push waits for, each transition's start and end, a
   `stall:` line naming the chat's missing readiness inputs, flat/split switches and, at launch, the Debug switches that
-  differ from their defaults. Debug ▸ "Reset Debug Settings" puts every Debug switch back to its default.
+  differ from their defaults. Debug ▸ "Reset Debug Settings" puts every Debug switch back to its default and keeps the
+  Nanogram Features fields stored with them (`ExperimentalUISettings.resettingDebugSwitches`). A screen shown before it was
+  ready does not delay a tap back to it.
 - Why: on one tester's iPhone 14 Pro (iOS 27.2.1) chats tapped in the chat list never appeared and back did nothing until
   the app was reinstalled; upstream waits for a pushed screen's `ready` and for a transition's landing with no timeout,
   so one input that never arrives freezes the stack silently. The cause was not found.
