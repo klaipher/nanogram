@@ -234,6 +234,12 @@ public protocol CustomViewControllerNavigationDataSummary: AnyObject {
         return nil
     }
 
+    /// Whether a push of this screen shows it anyway when it has not reported ready `NavigationRecovery.pendingReadyTimeout`
+    /// seconds after the push (logged). Off by default: some screens wait for the network on purpose.
+    open var showsWhenReadyStalls: Bool {
+        return false
+    }
+
     /// This screen's side when the screen above it expands out of it (a push or pop between the two); nil: it does not
     /// take part.
     open func navigationExpansionSource(above controller: ViewController, operation: NavigationExpansionOperation) -> NavigationExpansionSource? {

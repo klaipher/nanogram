@@ -48,6 +48,25 @@ final class NavigationDiagnosticsTests: XCTestCase {
         XCTAssertEqual(NavigationDiagnostics.differingFields(changed, from: defaults), ["keepStack=true", "name=Optional(\"x\")"])
     }
 
+    func testAStalledScreenIsShownOnlyWhenStillPendingNotReadyAndOptedIn() {
+        XCTAssertTrue(NavigationRecovery.showsPendingScreen(isStillPending: true, isReady: false, optedIn: true))
+        XCTAssertFalse(NavigationRecovery.showsPendingScreen(isStillPending: false, isReady: false, optedIn: true))
+        XCTAssertFalse(NavigationRecovery.showsPendingScreen(isStillPending: true, isReady: true, optedIn: true))
+        XCTAssertFalse(NavigationRecovery.showsPendingScreen(isStillPending: true, isReady: false, optedIn: false))
+    }
+
+    func testAStuckTransitionIsLandedOnlyWhenNothingSteersIt() {
+        XCTAssertTrue(NavigationRecovery.landsTransition(isStillRunning: true, isInteractive: false, hasInteractivePop: false))
+        XCTAssertFalse(NavigationRecovery.landsTransition(isStillRunning: false, isInteractive: false, hasInteractivePop: false))
+        XCTAssertFalse(NavigationRecovery.landsTransition(isStillRunning: true, isInteractive: true, hasInteractivePop: false))
+        XCTAssertFalse(NavigationRecovery.landsTransition(isStillRunning: true, isInteractive: false, hasInteractivePop: true))
+    }
+
+    func testRecoveryWaitsLongerThanANormalOpenAndAnimation() {
+        XCTAssertGreaterThanOrEqual(NavigationRecovery.pendingReadyTimeout, 3.0)
+        XCTAssertGreaterThanOrEqual(NavigationRecovery.transitionTimeout, 2.0)
+    }
+
     func testStackDescriptionNamesEachScreenByType() {
         let a = NSObject()
         let b = NSString(string: "s")

@@ -814,6 +814,17 @@ public final class NavigationContainer: ASDisplayNode, ASGestureRecognizerDelega
                                 let controller = pendingChild.value.value
                                 NavigationDiagnostics.emit("stall: \(NavigationDiagnostics.describe(controller)) not ready after \(NavigationDiagnostics.stallDelay) s; waits for: \(controller.navigationReadinessReport ?? "no report")")
                             })
+                            Queue.mainQueue().after(NavigationRecovery.pendingReadyTimeout, { [weak self, weak pendingChild] in
+                                guard let self, let pendingChild else {
+                                    return
+                                }
+                                let controller = pendingChild.value.value
+                                guard NavigationRecovery.showsPendingScreen(isStillPending: self.state.pending === pendingChild, isReady: pendingChild.isReady, optedIn: controller.showsWhenReadyStalls) else {
+                                    return
+                                }
+                                NavigationDiagnostics.emit("recovery: showing \(NavigationDiagnostics.describe(controller)) not ready after \(NavigationRecovery.pendingReadyTimeout) s; waits for: \(controller.navigationReadinessReport ?? "no report")")
+                                self.pendingChildIsReady(pendingChild)
+                            })
                         }
                     }
                 }
@@ -1036,6 +1047,16 @@ public final class NavigationContainer: ASDisplayNode, ASGestureRecognizerDelega
                     return
                 }
                 NavigationDiagnostics.emit("stall: transition \(topTransition.type) to \(NavigationDiagnostics.describe(topTransition.destination.value)) still running after \(NavigationDiagnostics.stallDelay) s; interactive=\(topTransition.coordinator.isInteractive) expansion=\(topTransition.coordinator.isExpansion)")
+            })
+            Queue.mainQueue().after(NavigationRecovery.transitionTimeout, { [weak self, weak topTransition] in
+                guard let self, let topTransition else {
+                    return
+                }
+                guard NavigationRecovery.landsTransition(isStillRunning: self.state.transition === topTransition, isInteractive: topTransition.coordinator.isInteractive, hasInteractivePop: self.interactivePop != nil) else {
+                    return
+                }
+                NavigationDiagnostics.emit("recovery: landing transition \(topTransition.type) to \(NavigationDiagnostics.describe(topTransition.destination.value)) still running after \(NavigationRecovery.transitionTimeout) s")
+                topTransition.coordinator.performCompletion(completion: {})
             })
             if topTransition.coordinator.isExpansion {
                 self.expansionStatusBar = (topTransition, false)

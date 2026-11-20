@@ -292,6 +292,13 @@ public final class ChatControllerImpl: TelegramBaseController, ChatController, G
     /// The inputs `ready` waits for, as recorded so far (the navigation stall log, `NavigationDiagnostics`).
     let readinessRecorder = NavigationReadinessRecorder(order: ["contentData", "wallpaper", "presentation"])
 
+    /// A chat still not ready 5 s after it was pushed is shown as it is (`NavigationRecovery`): its inputs are local
+    /// (the history reports ready after its first layout, loading or not), so a wait that long is a stall, and a chat
+    /// that fills in late beats a tap that does nothing. Every read of `contentData` is optional.
+    override public var showsWhenReadyStalls: Bool {
+        return true
+    }
+
     override public var navigationReadinessReport: String? {
         var report = self.readinessRecorder.report
         if let pendingContentData = self.pendingContentData {

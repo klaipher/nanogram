@@ -95,3 +95,27 @@ public final class NavigationReadinessRecorder {
         return NavigationDiagnostics.readinessReport(order: self.order, values: values)
     }
 }
+
+/// Recovery from a stalled screen change (tester report 2026-11-20: on one phone a chat tapped in the chat list never
+/// appeared and back did nothing until the app was reinstalled; the cause was not found). A push waits for its screen's
+/// `ready` with no timeout and a tap push or pop waits for its animation to land, so either one never finishing
+/// leaves the stack frozen. These rules bound both waits; each recovery is logged (`NavigationDiagnostics`).
+public enum NavigationRecovery {
+    /// How long a screen that opted in (`ViewController.showsWhenReadyStalls`) may stay not ready before it is shown
+    /// as it is. A chat reports ready after its first local layout (well under a second), not after the network.
+    public static let pendingReadyTimeout: Double = 5.0
+    /// How long a tap push or pop may animate before it is landed at its end. Its spring settles in about 0.5 s.
+    public static let transitionTimeout: Double = 3.0
+
+    /// Whether a pending screen is shown although it never reported ready: it is still the one the push waits for,
+    /// it has not become ready, and it opted in.
+    public static func showsPendingScreen(isStillPending: Bool, isReady: Bool, optedIn: Bool) -> Bool {
+        return isStillPending && !isReady && optedIn
+    }
+
+    /// Whether a running transition is landed at its end: it is still the container's transition and nothing is
+    /// steering it (a finger may hold a swipe for as long as it likes).
+    public static func landsTransition(isStillRunning: Bool, isInteractive: Bool, hasInteractivePop: Bool) -> Bool {
+        return isStillRunning && !isInteractive && !hasInteractivePop
+    }
+}

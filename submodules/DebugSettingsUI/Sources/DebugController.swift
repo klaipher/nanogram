@@ -318,6 +318,7 @@ enum DebugControllerEntry: ItemListNodeEntry {
     case reindexCache
     case resetWebViewCache(PresentationTheme)
     case optimizeDatabase(PresentationTheme)
+    case resetDebugSettings
     case fakeGlass(Bool)
     case inputDecEngineEditor(Bool)
     case forceListViewImplChatBackend(Bool)
@@ -377,7 +378,7 @@ enum DebugControllerEntry: ItemListNodeEntry {
             return DebugControllerSection.logs.rawValue
         case .logToFile, .logToConsole, .redactSensitiveData, .logNetworkDumps:
             return DebugControllerSection.logs.rawValue
-        case .resetAppHeader, .resetDatabase, .resetDatabaseAndCache, .resetNotifications, .reindexUnread, .reindexCache, .optimizeDatabase:
+        case .resetAppHeader, .resetDatabase, .resetDatabaseAndCache, .resetNotifications, .reindexUnread, .reindexCache, .optimizeDatabase, .resetDebugSettings:
             return DebugControllerSection.resetApp.rawValue
         case .resetWebViewCache:
             return DebugControllerSection.web.rawValue
@@ -469,6 +470,9 @@ enum DebugControllerEntry: ItemListNodeEntry {
             return 40
         case .optimizeDatabase:
             return 42
+        case .resetDebugSettings:
+            // Appended right after `optimizeDatabase`, last in its section (sortIndex 12).
+            return 165
         case .fakeGlass:
             return 47
         case .inputDecEngineEditor:
@@ -602,6 +606,7 @@ enum DebugControllerEntry: ItemListNodeEntry {
         case .reindexUnread: return 8
         case .reindexCache: return 10
         case .optimizeDatabase: return 11
+        case .resetDebugSettings: return 12
         default: return self.stableId
         }
     }
@@ -863,6 +868,20 @@ enum DebugControllerEntry: ItemListNodeEntry {
                     
                     let controller = OverlayStatusController(theme: presentationData.theme, type: .success)
                     arguments.presentController(controller, nil)
+                })
+            })
+        case .resetDebugSettings:
+            // Every Debug switch back to its default. They live outside the account database, so Reset Database keeps
+            // them and only a reinstall cleared them (tester report 2026-11-20: chats stopped opening, a reinstall fixed it).
+            return ItemListActionItem(presentationData: presentationData, systemStyle: .glass, title: "Reset Debug Settings", kind: .destructive, alignment: .natural, sectionId: self.section, style: .blocks, action: {
+                let _ = (updateExperimentalUISettingsInteractively(accountManager: arguments.sharedContext.accountManager, { _ in
+                    return ExperimentalUISettings.defaultSettings
+                })
+                |> deliverOnMainQueue).start(completed: {
+                    if let context = arguments.context {
+                        let controller = textAlertController(context: context, title: nil, text: "Debug settings are back to their defaults. Restart the app.", actions: [TextAlertAction(type: .genericAction, title: "OK", action: {})])
+                        arguments.presentController(controller, nil)
+                    }
                 })
             })
         case let .fakeGlass(value):
@@ -1386,6 +1405,7 @@ func debugControllerEntries(environment: DebugControllerEntriesEnvironment, them
         entries.append(.reindexCache)
     }
     entries.append(.optimizeDatabase(theme))
+    entries.append(.resetDebugSettings)
 
     entries.append(.experimentsHeader(theme))
     if isMainApp {

@@ -55,6 +55,15 @@ final class DebugControllerEntriesTests: XCTestCase {
         return debugControllerEntries(environment: environment, theme: defaultPresentationTheme, loggingSettings: LoggingSettings.defaultSettings, experimentalSettings: settings, networkSettings: nil, networkEngineSettings: NetworkEngineSettings.defaultSettings)
     }
 
+    /// Reset Debug Settings is offered in every configuration, last in the reset section: Reset Database keeps the Debug
+    /// switches, so it is the only way back to the defaults short of a reinstall.
+    func testResetDebugSettingsIsAlwaysOffered() {
+        for isMainApp in [true, false] {
+            let list = self.entries(isMainApp: isMainApp, isDevAccount: false, engineKind: "mtproto", settings: ExperimentalUISettings.defaultSettings)
+            XCTAssertTrue(list.contains(where: { if case .resetDebugSettings = $0 { return true } else { return false } }), "isMainApp=\(isMainApp)")
+        }
+    }
+
     func testEntriesAreInStrictlyIncreasingOrder() {
         for isMainApp in [true, false] {
             for isDevAccount in [true, false] {

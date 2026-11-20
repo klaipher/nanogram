@@ -427,3 +427,20 @@ Patches to upstream bugs and one fix of our own code, found by the server-switch
 - `PremiumConfiguration` has two flags. `isPremiumDisabled` (server `premium_purchase_blocked` OR store policy) gates purchase and upsell entry points only. `isPremiumDisplayDisabled` (server value only, as upstream) gates everything that shows Premium status or lets a Premium account use what it has: badges, emoji statuses, Premium app icons, Premium stickers, emoji-pack tips. Store builds therefore still show other users' Premium badges. Non-Premium accounts in store builds still do not see locked Premium stickers or Premium app icons (they would lead to an upsell).
 - Defining `NANOGRAM_PURCHASES_ENABLED` turns purchases back on for a non-store build.
 - Check in the build: another user's Premium star shows in the chat list and the chat title; Settings > Premium shows the feature list with no subscribe button; opening a Stars top-up link shows the "can't be bought" alert; the gift sheet has no Premium options; Send Report info says `Store build: yes`; the log shows no `SKProductsRequest` at launch.
+
+### Navigation: stalled screen changes recover, and are logged (iOS, 2026-11-21)
+- What: a chat still not ready 5 s after it was pushed is shown as it is, and a tap push or pop still animating after 3 s is
+  landed at its end (a finger-held swipe is never touched); each recovery is logged as `[Navigation] recovery:`. The
+  navigation container also logs every stack change, the screen a push waits for, each transition's start and end, a
+  `stall:` line naming the chat's missing readiness inputs, flat/split switches and, at launch, the Debug switches that
+  differ from their defaults. Debug ▸ "Reset Debug Settings" puts every Debug switch back to its default.
+- Why: on one tester's iPhone 14 Pro (iOS 27.2.1) chats tapped in the chat list never appeared and back did nothing until
+  the app was reinstalled; upstream waits for a pushed screen's `ready` and for a transition's landing with no timeout,
+  so one input that never arrives freezes the stack silently. The cause was not found.
+- Where: `submodules/Display/Source/Navigation/NavigationDiagnostics.swift` (`NavigationDiagnostics`, `NavigationRecovery`),
+  `NavigationContainer.swift`, `NavigationController.swift`, `ViewController.navigationReadinessReport` /
+  `showsWhenReadyStalls` (the chat opts in), `ChatControllerContentData.swift` and `ChatControllerLoadDisplayNode.swift`
+  (readiness recorders), `DebugController.swift` (`resetDebugSettings`).
+- Upstream: no.
+- Sync: `NavigationContainer.swift` is fork-heavy already; keep the pending-child and transition-start hooks when merging.
+
