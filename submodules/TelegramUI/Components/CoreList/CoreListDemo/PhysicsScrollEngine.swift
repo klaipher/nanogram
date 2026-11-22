@@ -183,6 +183,9 @@ public final class PhysicsScrollEngine: NSObject, ScrollEngine {
     /// Published only in `.keyframe` mode, where the render server plays the trajectory.
     public var onFlightChanged: ((ScrollFlight?) -> Void)?
     public var onDidEndDecelerating: (() -> Void)?
+    /// Diagnostics only: a flight finished, with the offset before it settled, the offset it settled at and the declared
+    /// edges. Fired once per flight, before the list is told it ended.
+    public var onDiagnosticFlightSettled: ((CGFloat, CGFloat, (min: CGFloat?, max: CGFloat?)) -> Void)?
     public var onWillBeginDragging: (() -> Void)?
     public var onDidEndDragging: (() -> Void)?
     public var shouldStopScrollingOnRelease: ((CGFloat) -> Bool)?
@@ -197,6 +200,8 @@ public final class PhysicsScrollEngine: NSObject, ScrollEngine {
     /// The instantaneous position is deliberately NOT exposed: `catchFlight` samples
     /// `flight.liveOffset(now: localNow())` directly, which is the one operation that genuinely needs it.
     public var offset: CGFloat { core.offset }
+    /// A finger is on the list or a drag is in progress. Diagnostics read it to avoid judging a list that is being held.
+    public var isTrackingTouch: Bool { pan.numberOfTouches > 0 || core.isDragging }
     public var contentHost: UIView { host }
 
     /// Whether any driver is running. Exposed for the seam tests and for MediaGrid, which reads it to
@@ -766,6 +771,7 @@ public final class PhysicsScrollEngine: NSObject, ScrollEngine {
     private func finalizeFlight() {
         guard let f = flight else { return }          // idempotent
         stopDisplayLink()
+        let offsetBeforeSettle = core.offset
         core.setOffset(f.settledOffset)            // settle at the LIST-coord rest (finalOffset + accrued shift)
         core.cancelDeceleration()                  // idle the core (phase → .idle) — matches TestScrollEngine
         core.noteDecelerationEnded()               // a finished flight has settled, which clears the streak
@@ -773,6 +779,7 @@ public final class PhysicsScrollEngine: NSObject, ScrollEngine {
             + "totalTravel=\(core.offset - flightLaunchOffset) rebakes=\(flightRebakes)")
         FlightTrace.shared.flush()
         flight = nil
+        onDiagnosticFlightSettled?(offsetBeforeSettle, core.offset, core.edges)
         onFlightChanged?(nil)                      // BEFORE onScroll: a consumer re-entering must see no flight
         onScroll?(core.offset)
     }

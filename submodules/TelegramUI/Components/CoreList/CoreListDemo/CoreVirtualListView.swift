@@ -1321,6 +1321,22 @@ public final class CoreVirtualListView: UIView {
         // `onFlightChanged(nil)` below.
         engine.onDidEndDecelerating = { [weak self] in
             self?.didEndScrolling?()
+            self?.checkViewportInvariant(trigger: "decel-end")
+        }
+        engine.onDiagnosticFlightSettled = { [weak self] previousOffset, settledOffset, edges in
+            guard let self else { return }
+            self.recordEvent(.flightFinalize, a: previousOffset, b: settledOffset)
+            let outside: CGFloat
+            if let minimum = edges.min, settledOffset < minimum {
+                outside = minimum - settledOffset
+            } else if let maximum = edges.max, settledOffset > maximum {
+                outside = settledOffset - maximum
+            } else {
+                outside = 0
+            }
+            if outside > 0.5 || abs(settledOffset - previousOffset) > self.logicalSize.height {
+                self.logDiagnosticEvent(key: "flightFinalize", "flight settled outside=\(Int(outside)) jump=\(Int(settledOffset - previousOffset)) viewport=\(Int(self.logicalSize.height)) edges=\(edges.min.map { String(Int($0)) } ?? "-")/\(edges.max.map { String(Int($0)) } ?? "-") deferredRows=\(self.rebalanceDeferredRows)")
+            }
         }
         engine.onFlightChanged = { [weak self] flight in
             guard let self else { return }
@@ -1337,6 +1353,7 @@ public final class CoreVirtualListView: UIView {
             // the state it is being told about rather than the one it replaced.
             if wasFlying && flight == nil {
                 self.didEndScrolling?()
+                self.checkViewportInvariant(trigger: "flight-end")
             }
         }
         container.backgroundColor = .clear
@@ -1416,7 +1433,10 @@ public final class CoreVirtualListView: UIView {
         }
         let animationDuration = transition.duration
         if isApplyingChanges {
+            recordEvent(.deferredApplyQueued, a: CGFloat(newItems?.count ?? -1), flags: scrollTo != nil ? 1 : 0)
+            logDiagnosticEvent(key: "deferredApplyQueued", "re-entrant applyChanges deferred items=\(newItems.map { String($0.count) } ?? "-") scrollTo=\(scrollTo != nil)")
             scheduler.schedule { [weak self] in
+                self?.recordEvent(.deferredApplyRan, a: CGFloat(newItems?.count ?? -1), flags: scrollTo != nil ? 1 : 0)
                 self?.applyChanges(items: newItems,
                                    newSize: newSize,
                                    newInsets: newInsets,
@@ -1449,7 +1469,12 @@ public final class CoreVirtualListView: UIView {
             currentPassTransition = .immediate
             refreshReachedLoadedEdges()
             assertOverlayInvariants()
+            checkViewportInvariant(trigger: "pass-end")
         }
+        recordEvent(.transaction,
+                    a: CGFloat(newItems?.count ?? -1),
+                    b: engine.offset,
+                    flags: (scrollTo != nil ? 1 : 0) | (newSize != nil ? 2 : 0) | (newInsets != nil ? 4 : 0) | (heldRow != nil ? 8 : 0))
 
         let hasItems = newItems != nil
         let hasNewSize = newSize != nil
@@ -3260,7 +3285,10 @@ public final class CoreVirtualListView: UIView {
         let timestamp = CACurrentMediaTime()
         var delta = currentY - previousOffset
         if abs(delta) > logicalSize.height {
+            let unclamped = delta
             delta = logicalSize.height * (delta > 0 ? 1 : -1)
+            recordEvent(.deltaClamp, a: unclamped, b: logicalSize.height, flags: activeScrollFlight != nil ? 1 : 0)
+            logDiagnosticEvent(key: "deltaClamp", "delta clamp fired delta=\(Int(unclamped)) viewport=\(Int(logicalSize.height)) flight=\(activeScrollFlight != nil) deferredRows=\(rebalanceDeferredRows)")
             engine.setOffset(previousOffset + delta)
         }
         previousOffset = engine.offset
@@ -3838,6 +3866,88 @@ public final class CoreVirtualListView: UIView {
         let minimum = window.startIndex == 0 ? max(0, window.minY - topEdge) : 0
         let maximum = window.endIndex == _items.count - 1 ? max(0, bottomEdge - window.maxY) : 0
         return (minimum, maximum)
+    }
+
+    // MARK: - Viewport invariant diagnostics
+
+    /// Receives diagnostic lines (numbers only: no item content, no identities). Set by the host; `nil` turns every check
+    /// in this section off, so a list without a host pays nothing.
+    public var diagnosticLog: ((String) -> Void)?
+    private var eventRing = CoreListEventRing()
+    private var diagnosticLimiter = CoreListDiagnosticRateLimiter(interval: 1.0)
+
+    /// What the list looks like now, for `CoreListViewportInvariant`. Reads state only. Walks the loaded rows once.
+    private func viewportSnapshot() -> CoreListViewportSnapshot {
+        let window = activeWindow
+        let offset = engine.offset
+        let visibleTop = offset + viewportInsets.top
+        let visibleBottom = offset + logicalSize.height - viewportInsets.bottom
+        let absoluteBase = containerOriginY - window.minY
+        var anyIntersects = false
+        var hidden = 0
+        for item in window.items {
+            let minY = absoluteBase + item.frame.minY
+            let maxY = absoluteBase + item.frame.maxY
+            if maxY > visibleTop, minY < visibleBottom {
+                anyIntersects = true
+                if item.view.isHidden || item.view.alpha <= 0.0 {
+                    hidden += 1
+                }
+            }
+        }
+        // Content y of the newest row's top and the oldest row's bottom (offset space, see `loadedEdgeRange`).
+        let newestGap = containerOriginY - visibleTop
+        let oldestGap = visibleBottom - (containerOriginY - window.minY + window.maxY)
+        return CoreListViewportSnapshot(
+            itemCount: _items.count,
+            windowIsEmpty: window.isEmpty,
+            windowStartIndex: window.startIndex,
+            windowEndIndex: window.endIndex,
+            visibleHeight: logicalSize.height - viewportInsets.top - viewportInsets.bottom,
+            newestEdgeGap: newestGap,
+            oldestEdgeGap: oldestGap,
+            offset: offset,
+            declaredMinEdge: declaredEdges.min,
+            declaredMaxEdge: declaredEdges.max,
+            bottomEdgePinSlack: bottomEdgePinSlack(for: window),
+            holdSlackMin: holdSlack.min,
+            holdSlackMax: holdSlack.max,
+            stackFromBottomSlack: stackFromBottomSlack(for: window, itemCount: _items.count),
+            hasHeldRow: heldRow != nil,
+            lowestPinnedItemIndex: lowestPinnedItemIndex,
+            anyRowIntersectsBand: anyIntersects,
+            hiddenRowsInBand: hidden,
+            hasActiveFlight: activeScrollFlight != nil,
+            isTrackingTouch: engine.isTrackingTouch,
+            rebalanceDeferredRows: rebalanceDeferredRows,
+            windowRevision: windowRevision
+        )
+    }
+
+    /// Checks the list for "a big empty area" and logs ONE line (numbers only, at most once per second) together with the
+    /// recent events when it finds one. Called only where the list comes to rest: the end of a pass and the end of a flight
+    /// or deceleration, never from a scroll tick. Does nothing while the list moves, is empty, or has no `diagnosticLog`.
+    func checkViewportInvariant(trigger: String) {
+        guard let diagnosticLog else { return }
+        let snapshot = viewportSnapshot()
+        let findings = CoreListViewportInvariant.evaluate(snapshot)
+        guard !findings.isEmpty else { return }
+        let now = CACurrentMediaTime()
+        guard diagnosticLimiter.allow(key: "invariant", now: now) else { return }
+        diagnosticLog(CoreListViewportInvariant.format(snapshot, findings: findings, trigger: trigger))
+        diagnosticLog("recent \(eventRing.formatted(now: now))")
+    }
+
+    private func recordEvent(_ kind: CoreListEventRing.Kind, a: CGFloat = 0, b: CGFloat = 0, flags: UInt8 = 0) {
+        guard diagnosticLog != nil else { return }
+        eventRing.record(kind, time: CACurrentMediaTime(), a: a, b: b, flags: flags)
+    }
+
+    /// A rate-limited event line, for the engine's rare surprises (a delta clamp, a flight settling outside its edges).
+    private func logDiagnosticEvent(key: String, _ line: @autoclosure () -> String) {
+        guard let diagnosticLog else { return }
+        guard diagnosticLimiter.allow(key: key, now: CACurrentMediaTime()) else { return }
+        diagnosticLog(line())
     }
 
     /// After release, shrinks the hold's slack to what the current offset still needs, so content in

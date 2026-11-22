@@ -159,3 +159,24 @@ ios_unit_test(
         ":CoreListChatScrollTickTestsLib",
     ],
 )
+
+# Always-on "empty viewport" diagnostics: the pure violation predicate, rate limiter and event ring.
+swift_library(
+    name = "CoreListViewportInvariantTestsLib",
+    testonly = True,
+    srcs = [
+        "CoreListDemoTests/ViewportInvariantTests.swift",
+    ],
+    deps = [
+        ":CoreListDemoForTests",
+    ],
+)
+
+ios_unit_test(
+    name = "CoreListViewportInvariantTests",
+    minimum_os_version = "26.0",
+    runner = ":CoreListTestRunner",
+    deps = [
+        ":CoreListViewportInvariantTestsLib",
+    ],
+)

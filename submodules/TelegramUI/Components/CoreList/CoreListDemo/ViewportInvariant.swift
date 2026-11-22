@@ -1,0 +1,217 @@
+import Foundation
+import CoreGraphics
+
+// Always-on, read-only diagnostics for "the list shows a big empty area" (chat history: one bubble cut at the top, wallpaper
+// below). Everything here is pure: numbers in, a verdict or a line of numbers out. No message text, no peer ids.
+//
+// Why it does not filter designed slack out: the two leading causes (the bottom-edge pin's slack and the scroll hold's slack)
+// are DECLARED scroll room, so the gap they leave equals the declared slack and a "gap beyond slack" test would never fire.
+// It reports a large newest-edge gap together with the term that backs it, which separates pin / hold / stack slack from an
+// offset that left the declared edges.
+
+/// What the list looked like at one settled moment, read from the engine and the loaded window.
+struct CoreListViewportSnapshot: Equatable {
+    var itemCount: Int
+    var windowIsEmpty: Bool
+    var windowStartIndex: Int
+    var windowEndIndex: Int
+    /// Height between the top and bottom insets.
+    var visibleHeight: CGFloat
+    /// Blank height between the top inset edge and the newest loaded row (index 0), positive when the row starts below the
+    /// edge. Only meaningful when the window reaches index 0.
+    var newestEdgeGap: CGFloat
+    /// The mirror at the oldest end: blank below the last item, only meaningful when the window reaches the last item.
+    var oldestEdgeGap: CGFloat
+    var offset: CGFloat
+    var declaredMinEdge: CGFloat?
+    var declaredMaxEdge: CGFloat?
+    var bottomEdgePinSlack: CGFloat
+    var holdSlackMin: CGFloat
+    var holdSlackMax: CGFloat
+    var stackFromBottomSlack: CGFloat
+    var hasHeldRow: Bool
+    var lowestPinnedItemIndex: Int?
+    /// Whether any loaded row's frame intersects the visible band.
+    var anyRowIntersectsBand: Bool
+    /// Loaded rows inside the band whose view is hidden or fully transparent.
+    var hiddenRowsInBand: Int
+    var hasActiveFlight: Bool
+    var isTrackingTouch: Bool
+    var rebalanceDeferredRows: Bool
+    var windowRevision: Int
+}
+
+enum CoreListBlankBacking: String, Equatable {
+    case pinSlack
+    case holdSlack
+    case stackSlack
+    /// Nothing declared backs the gap: the offset left the declared edges, or the window sits away from them.
+    case none
+}
+
+enum CoreListInvariantFinding: Equatable {
+    case noRowInBand
+    case newestEdgeGap(gap: CGFloat, backing: CoreListBlankBacking)
+    case oldestEdgeGap(gap: CGFloat, backing: CoreListBlankBacking)
+    case offsetOutsideDeclaredEdges(by: CGFloat)
+    case hiddenRowInBand(count: Int)
+
+    var name: String {
+        switch self {
+        case .noRowInBand: return "noRowInBand"
+        case .newestEdgeGap: return "newestEdgeGap"
+        case .oldestEdgeGap: return "oldestEdgeGap"
+        case .offsetOutsideDeclaredEdges: return "offsetOutsideEdges"
+        case .hiddenRowInBand: return "hiddenRowInBand"
+        }
+    }
+}
+
+enum CoreListViewportInvariant {
+    /// A gap smaller than this share of the visible area is ordinary (a short chat, a row's own spacing).
+    static let gapShareOfVisibleArea: CGFloat = 0.25
+    static let edgeTolerance: CGFloat = 0.5
+
+    /// Findings for a list that is AT REST: no flight, no finger. Empty while it is moving or empty of items.
+    static func evaluate(_ s: CoreListViewportSnapshot) -> [CoreListInvariantFinding] {
+        guard s.itemCount > 0, !s.windowIsEmpty, !s.hasActiveFlight, !s.isTrackingTouch, s.visibleHeight > 0 else { return [] }
+        var findings: [CoreListInvariantFinding] = []
+        let threshold = s.visibleHeight * gapShareOfVisibleArea
+
+        if !s.anyRowIntersectsBand {
+            findings.append(.noRowInBand)
+        }
+        if s.windowStartIndex == 0, s.newestEdgeGap > threshold {
+            findings.append(.newestEdgeGap(gap: s.newestEdgeGap, backing: newestBacking(s)))
+        }
+        if s.windowEndIndex == s.itemCount - 1, s.oldestEdgeGap > threshold {
+            findings.append(.oldestEdgeGap(gap: s.oldestEdgeGap, backing: oldestBacking(s)))
+        }
+        var outside: CGFloat = 0
+        if let minimum = s.declaredMinEdge, s.offset < minimum - edgeTolerance { outside = minimum - s.offset }
+        if let maximum = s.declaredMaxEdge, s.offset > maximum + edgeTolerance { outside = max(outside, s.offset - maximum) }
+        if outside > 0 {
+            findings.append(.offsetOutsideDeclaredEdges(by: outside))
+        }
+        if s.hiddenRowsInBand > 0 {
+            findings.append(.hiddenRowInBand(count: s.hiddenRowsInBand))
+        }
+        return findings
+    }
+
+    /// The largest declared term that can account for a newest-edge gap; `.none` when no term is positive.
+    static func newestBacking(_ s: CoreListViewportSnapshot) -> CoreListBlankBacking {
+        let pin = s.bottomEdgePinSlack
+        let hold = s.holdSlackMin
+        let stack = s.stackFromBottomSlack
+        let largest = max(pin, hold, stack)
+        guard largest > edgeTolerance else { return .none }
+        if pin == largest { return .pinSlack }
+        if hold == largest { return .holdSlack }
+        return .stackSlack
+    }
+
+    static func oldestBacking(_ s: CoreListViewportSnapshot) -> CoreListBlankBacking {
+        return s.holdSlackMax > edgeTolerance ? .holdSlack : .none
+    }
+
+    /// One line of numbers for the log.
+    static func format(_ s: CoreListViewportSnapshot, findings: [CoreListInvariantFinding], trigger: String) -> String {
+        func n(_ v: CGFloat) -> String { String(format: "%.1f", Double(v)) }
+        func o(_ v: CGFloat?) -> String { v.map { n($0) } ?? "-" }
+        var parts: [String] = ["trigger=\(trigger)"]
+        for finding in findings {
+            switch finding {
+            case .noRowInBand:
+                parts.append("noRowInBand")
+            case let .newestEdgeGap(gap, backing):
+                parts.append("newestGap=\(n(gap)) backing=\(backing.rawValue)")
+            case let .oldestEdgeGap(gap, backing):
+                parts.append("oldestGap=\(n(gap)) backing=\(backing.rawValue)")
+            case let .offsetOutsideDeclaredEdges(by):
+                parts.append("outsideEdgesBy=\(n(by))")
+            case let .hiddenRowInBand(count):
+                parts.append("hiddenRows=\(count)")
+            }
+        }
+        parts.append("items=\(s.itemCount) window=\(s.windowStartIndex)...\(s.windowEndIndex) visible=\(n(s.visibleHeight))")
+        parts.append("offset=\(n(s.offset)) edges=\(o(s.declaredMinEdge))/\(o(s.declaredMaxEdge))")
+        parts.append("pinSlack=\(n(s.bottomEdgePinSlack)) pinIndex=\(s.lowestPinnedItemIndex.map { String($0) } ?? "-") holdSlack=\(n(s.holdSlackMin))/\(n(s.holdSlackMax)) held=\(s.hasHeldRow) stackSlack=\(n(s.stackFromBottomSlack))")
+        parts.append("deferredRows=\(s.rebalanceDeferredRows) rev=\(s.windowRevision)")
+        return parts.joined(separator: " ")
+    }
+}
+
+/// At most one line per interval, per key, so a state that persists does not flood the log.
+struct CoreListDiagnosticRateLimiter {
+    let interval: Double
+    private var lastByKey: [String: Double] = [:]
+
+    init(interval: Double = 1.0) {
+        self.interval = interval
+    }
+
+    mutating func allow(key: String, now: Double) -> Bool {
+        if let last = lastByKey[key], now - last < interval, now >= last {
+            return false
+        }
+        lastByKey[key] = now
+        return true
+    }
+}
+
+/// A fixed-size record of the last events that moved the list. Numbers and enums only; formatted when a violation is
+/// dumped, so recording is a struct write.
+struct CoreListEventRing {
+    enum Kind: String {
+        case transaction
+        case scrollTo
+        case flightFinalize
+        case deltaClamp
+        case deferredApplyQueued
+        case deferredApplyRan
+        case settleCheck
+    }
+
+    struct Event: Equatable {
+        var kind: Kind
+        var time: Double
+        var a: CGFloat
+        var b: CGFloat
+        var flags: UInt8
+    }
+
+    let capacity: Int
+    private var storage: [Event] = []
+    private var next = 0
+
+    init(capacity: Int = 40) {
+        self.capacity = max(1, capacity)
+        self.storage.reserveCapacity(self.capacity)
+    }
+
+    var count: Int { storage.count }
+
+    mutating func record(_ kind: Kind, time: Double, a: CGFloat = 0, b: CGFloat = 0, flags: UInt8 = 0) {
+        let event = Event(kind: kind, time: time, a: a, b: b, flags: flags)
+        if storage.count < capacity {
+            storage.append(event)
+        } else {
+            storage[next] = event
+        }
+        next = (next + 1) % capacity
+    }
+
+    /// Oldest first.
+    var events: [Event] {
+        if storage.count < capacity { return storage }
+        return Array(storage[next...] + storage[..<next])
+    }
+
+    func formatted(now: Double) -> String {
+        return events.map { event in
+            let age = String(format: "%.2f", now - event.time)
+            return "\(event.kind.rawValue)@-\(age)s(\(String(format: "%.0f", Double(event.a))),\(String(format: "%.0f", Double(event.b))),f\(event.flags))"
+        }.joined(separator: " ")
+    }
+}

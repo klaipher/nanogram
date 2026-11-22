@@ -834,6 +834,11 @@ final class CoreListChatHistoryBackend: ASDisplayNode, ChatHistoryListViewBacken
         self.coreList = CoreVirtualListView(forEmbedding: .zero)
         super.init()
         self.coreList.maxSpeculativeRowsPerTick = 1
+        // Always-on, numbers-only diagnostics for an empty viewport and engine surprises (delta clamp, flight settled
+        // outside its edges); the checks run at rest only, rate-limited to one line per second.
+        self.coreList.diagnosticLog = { line in
+            Logger.shared.log("CoreListInvariant", line)
+        }
         // Force the ASDisplayNode's view to load eagerly. The composed ChatHistoryListNode wrapper
         // gates its history dequeue on isNodeLoaded, mirroring ListViewImpl's eager view load.
         let _ = self.view

@@ -1618,6 +1618,39 @@ Signposts (category Performance, point events): `chatRowPrefetchHit`, `chatRowPr
 `//submodules/TelegramUI/Components/Chat/ChatMessageStickerItemNode:ChatMessageStickerItemNodeTests`,
 `//submodules/TelegramUI/Components/CoreList:CoreListScrollPathTests`, `//submodules/DebugSettingsUI:DebugSettingsUITests`.
 
+## Empty-viewport diagnostics (`CoreListInvariant`)
+
+Always on, read-only, logging only. Written for the report "messages jump, then the history shows one bubble cut off at the
+top and wallpaper below" (owner, iOS 27.2.1, TestFlight 13.2), whose cause is not proven. Two families of cause are
+candidates: designed slack that is never retired (the bottom-edge pin's `bottomEdgePinSlack` and the scroll hold's
+`holdSlack`, both declared as scroll room), and a flight or window that left the declared edges. The check separates them on the
+next occurrence without a reproduction.
+
+- Where: `CoreList/CoreListDemo/ViewportInvariant.swift` (pure: `CoreListViewportSnapshot`, `CoreListViewportInvariant.evaluate`,
+  `CoreListDiagnosticRateLimiter`, `CoreListEventRing`), `CoreVirtualListView.checkViewportInvariant(trigger:)` and
+  `viewportSnapshot()`. The host sets `CoreVirtualListView.diagnosticLog`; the chat backend routes it to `Logger` with the tag
+  `CoreListInvariant`.
+- When it runs: the end of an `applyChanges` pass, the end of a flight (`onFlightChanged(nil)`) and the end of a
+  deceleration. Never from a scroll tick, no timer. Skips while a flight runs, a finger is down, or the list is empty.
+- What it reports, one line of numbers (no message text, no peer ids), at most once per second, followed by the last 40 events
+  (transaction, delta clamp, flight settled, deferred pass) as kind, age and two numbers:
+  - `newestGap` / `oldestGap`: blank height between the inset edge and the newest (index 0) or oldest row, when it is more than
+    25% of the visible area, with `backing=` the declared term that explains it (`pinSlack`, `holdSlack`, `stackSlack`) or
+    `none`. It deliberately does not filter designed slack out: the pin and hold produce exactly a gap equal to their slack,
+    so a "gap beyond slack" test would never fire for the two leading hypotheses.
+  - `noRowInBand`: no loaded row intersects the visible band. `outsideEdgesBy`: the offset left the declared edges at rest.
+    `hiddenRows`: a loaded row inside the band is hidden or transparent (may fire during a row's fade-in at pass end).
+  - `pinIndex`, `held`, `holdSlack`, `pinSlack`, `deferredRows` and the window range, to tell the causes apart.
+- Event lines, rate limited per kind: `delta clamp fired` (the one-viewport clamp in `handleUserScroll`), `flight settled`
+  (`PhysicsScrollEngine.onDiagnosticFlightSettled`: settled outside the declared edges, or further from the previous offset
+  than a viewport), `re-entrant applyChanges deferred`. The chat node also logs `pin to top set by streaming draft` when
+  `pinToTopStableId` is set (it is never cleared, see "Pin to bottom edge").
+- Reading a line: `backing=pinSlack` with `pinIndex=0` and no gap on the next pass after a drag means the bottom-edge pin
+  (upstream behaviour, identical in `ListViewImpl`). `backing=holdSlack` with `held=true` means a scroll hold. `backing=none`
+  with `outsideEdgesBy` means the offset rests outside its edges (flight or pass left it overscrolled). `flight settled`
+  or `delta clamp` right before it points at flight/window lag, then A/B `pinsSamplingLinkRate` (0c8a0aa58).
+- Not a repair: nothing here moves the list.
+
 ## Deferred items / known limitations
 
 These are still open with the backend now default for the rotated history, and are what

@@ -2237,6 +2237,9 @@ public final class ChatHistoryListNodeImpl: ASDisplayNode, ChatHistoryNode, Chat
                                     if strongSelf.pinToTopStableId != otherMessage.stableId {
                                         strongSelf.pinToTopStableId = otherMessage.stableId
                                         scrollToPinToTopStableId = true
+                                        // Numbers only. This id is never cleared, so a later empty area below the pinned
+                                        // message (see the CoreListInvariant lines) can be matched to the stream that set it.
+                                        Logger.shared.log("CoreListInvariant", "pin to top set by streaming draft: entries=\(view.entries.count) draftIndex=\(i) pinnedIndex=\(j)")
                                     }
                                 }
                                 break
