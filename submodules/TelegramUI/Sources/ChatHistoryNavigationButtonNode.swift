@@ -53,6 +53,11 @@ class ChatHistoryNavigationButtonNode: ContextControllerSourceNode {
     private var preferClearGlass: Bool
     private let type: ChatHistoryNavigationButtonType
     
+    /// Whether this button's glass is meant to be seen. It starts hidden: a button that was never shown is not glass. The
+    /// shared glass container keeps drawing a member that is only faded or scaled down (an 8 pt dot at the old scale 0.2), so
+    /// a hidden button has to give its glass up (`isVisible: false`), not just fade.
+    private(set) var glassVisibility = GlassMemberVisibility()
+    
     init(theme: PresentationTheme, preferClearGlass: Bool, backgroundNode: WallpaperBackgroundNode, type: ChatHistoryNavigationButtonType) {
         self.theme = theme
         self.preferClearGlass = preferClearGlass
@@ -106,7 +111,7 @@ class ChatHistoryNavigationButtonNode: ContextControllerSourceNode {
         self.containerNode.contentNode.view.addSubview(self.backgroundView)
 
         self.backgroundView.frame = CGRect(origin: CGPoint(), size: size)
-        self.backgroundView.update(size: size, cornerRadius: size.height * 0.5, isDark: theme.overallDarkAppearance, tintColor: .init(kind: self.preferClearGlass ? .clear : .panel), isInteractive: true, transition: .immediate)
+        self.backgroundView.update(size: size, cornerRadius: size.height * 0.5, isDark: theme.overallDarkAppearance, tintColor: .init(kind: self.preferClearGlass ? .clear : .panel), isInteractive: true, isVisible: self.glassVisibility.isShown, transition: .immediate)
         self.imageView.tintColor = theme.chat.inputPanel.panelControlColor
 
         self.backgroundView.contentView.addSubview(self.imageView)
@@ -123,7 +128,7 @@ class ChatHistoryNavigationButtonNode: ContextControllerSourceNode {
             self.theme = theme
             self.preferClearGlass = preferClearGlass
 
-            self.backgroundView.update(size: self.backgroundView.bounds.size, cornerRadius: self.backgroundView.bounds.size.height * 0.5, isDark: theme.overallDarkAppearance, tintColor: .init(kind: self.preferClearGlass ? .clear : .panel), isInteractive: true, transition: .immediate)
+            self.backgroundView.update(size: self.backgroundView.bounds.size, cornerRadius: self.backgroundView.bounds.size.height * 0.5, isDark: theme.overallDarkAppearance, tintColor: .init(kind: self.preferClearGlass ? .clear : .panel), isInteractive: true, isVisible: self.glassVisibility.isShown, transition: .immediate)
             self.imageView.tintColor = theme.chat.inputPanel.panelControlColor
             
             switch self.type {
@@ -152,6 +157,17 @@ class ChatHistoryNavigationButtonNode: ContextControllerSourceNode {
             }
             self.badgeTextNode.segments = segments
         }
+    }
+    
+    /// Shows or hides this button's glass. Called as the show or the hide STARTS (before the alpha and scale animations), so the
+    /// effect is gone while the button fades out and is back before it fades in. Does nothing when the state is unchanged.
+    func setGlassShown(_ shown: Bool, transition: ContainedViewLayoutTransition) {
+        let changed = shown ? self.glassVisibility.show() : self.glassVisibility.hide()
+        guard changed else {
+            return
+        }
+        let size = self.backgroundView.bounds.size
+        self.backgroundView.update(size: size, cornerRadius: size.height * 0.5, isDark: self.theme.overallDarkAppearance, tintColor: .init(kind: self.preferClearGlass ? .clear : .panel), isInteractive: true, isVisible: shown, transition: ComponentTransition(transition))
     }
     
     private var absoluteRect: (CGRect, CGSize)?

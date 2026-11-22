@@ -6,6 +6,7 @@ import TelegramPresentationData
 import WallpaperBackgroundNode
 import ComponentFlow
 import GlassBackgroundComponent
+import SwiftSignalKit
 
 final class ChatHistoryNavigationButtons: ASDisplayNode {
     struct ButtonState: Equatable {
@@ -248,8 +249,54 @@ final class ChatHistoryNavigationButtons: ASDisplayNode {
     
     /// The glass container (88 x 456 pt) samples its backdrop even when empty: hide it while no button is visible.
     private func updateGlassContainerVisibility() {
-        let anyVisible = [self.downButton, self.upButton, self.mentionsButton, self.reactionsButton, self.pollVotesButton].contains(where: { !$0.isHidden })
+        let anyVisible = GlassMemberVisibility.containerIsVisible(memberIsHidden: self.buttons.map { $0.isHidden })
         self.glassContainer.isHidden = !anyVisible
+        self.logStuckMembers(trigger: "container-visibility")
+    }
+    
+    /// Shows or hides one button. The glass goes first on both paths: off as the hide starts and on before the show starts,
+    /// because the shared container draws a member that is merely faded or scaled down (the dot that merged with the chevron).
+    /// The hide keeps its fade and scale; `isHidden` is committed only by a completed hide that is still wanted.
+    private func updateVisibility(of button: ChatHistoryNavigationButtonNode, name: String, shown: Bool, transition: ContainedViewLayoutTransition) {
+        button.setGlassShown(shown, transition: transition)
+        if shown {
+            button.isHidden = false
+            transition.updateAlpha(node: button, alpha: 1.0)
+            transition.updateTransformScale(node: button, scale: 1.0)
+        } else {
+            transition.updateAlpha(node: button, alpha: 0.0, completion: { [weak self, weak button] completed in
+                guard let strongSelf = self, let button else {
+                    return
+                }
+                if !completed {
+                    strongSelf.logMember(name: name, button: button, trigger: "hide-cancelled")
+                }
+                guard button.glassVisibility.mayCommitHidden(animationCompleted: completed) else {
+                    return
+                }
+                button.isHidden = true
+                strongSelf.updateGlassContainerVisibility()
+            })
+            transition.updateTransformScale(node: button, scale: 0.2)
+        }
+    }
+    
+    /// Diagnostics for the floating-button dot: the state of one member, numbers and flags only.
+    private func logMember(name: String, button: ChatHistoryNavigationButtonNode, trigger: String) {
+        let presentationOpacity = button.layer.presentation()?.opacity ?? -1.0
+        Logger.shared.log("ChatHistoryButtons", "member \(name) trigger=\(trigger) shown=\(button.glassVisibility.isShown) isHidden=\(button.isHidden) opacity=\(button.layer.opacity) presentationOpacity=\(presentationOpacity) scale=\(button.layer.transform.m11) containerHidden=\(self.glassContainer.isHidden)")
+    }
+    
+    /// A member that is faded out but not hidden and has no fade running will not be hidden by a completion that is not coming:
+    /// the container keeps it, so it is logged (once per layout pass that finds it).
+    private func logStuckMembers(trigger: String) {
+        let named: [(String, ChatHistoryNavigationButtonNode)] = [("down", self.downButton), ("up", self.upButton), ("mentions", self.mentionsButton), ("reactions", self.reactionsButton), ("pollVotes", self.pollVotesButton)]
+        for (name, button) in named {
+            let stuck = GlassMemberVisibility.isStuckMember(layerOpacity: button.layer.opacity, isHidden: button.isHidden, hasRunningOpacityAnimation: button.layer.animation(forKey: "opacity") != nil, isShown: button.glassVisibility.isShown)
+            if stuck {
+                self.logMember(name: name, button: button, trigger: trigger)
+            }
+        }
     }
     
     func updateLayout(transition: ContainedViewLayoutTransition) -> CGSize {
@@ -266,88 +313,28 @@ final class ChatHistoryNavigationButtons: ASDisplayNode {
             
             mentionsOffset += buttonSize.height + 12.0
             upOffset += buttonSize.height + 12.0
-
-            self.downButton.isHidden = false
-            transition.updateAlpha(node: self.downButton, alpha: 1.0)
-            transition.updateTransformScale(node: self.downButton, scale: 1.0)
-        } else {
-            transition.updateAlpha(node: self.downButton, alpha: 0.0, completion: { [weak self] completed in
-                guard let strongSelf = self, completed else {
-                    return
-                }
-                strongSelf.downButton.isHidden = true
-                strongSelf.updateGlassContainerVisibility()
-            })
-            transition.updateTransformScale(node: self.downButton, scale: 0.2)
         }
+        self.updateVisibility(of: self.downButton, name: "down", shown: self.directionButtonState.down != nil, transition: transition)
         
         if let up = self.directionButtonState.up {
             self.upButton.imageView.alpha = up.isEnabled ? 1.0 : 0.5
             self.upButton.isEnabled = up.isEnabled
             
             mentionsOffset += buttonSize.height + 12.0
-
-            self.upButton.isHidden = false
-            transition.updateAlpha(node: self.upButton, alpha: 1.0)
-            transition.updateTransformScale(node: self.upButton, scale: 1.0)
-        } else {
-            transition.updateAlpha(node: self.upButton, alpha: 0.0, completion: { [weak self] completed in
-                guard let strongSelf = self, completed else {
-                    return
-                }
-                strongSelf.upButton.isHidden = true
-                strongSelf.updateGlassContainerVisibility()
-            })
-            transition.updateTransformScale(node: self.upButton, scale: 0.2)
         }
+        self.updateVisibility(of: self.upButton, name: "up", shown: self.directionButtonState.up != nil, transition: transition)
         
         if self.mentionCount != 0 {
             reactionsOffset += buttonSize.height + 12.0
-            
-            self.mentionsButton.isHidden = false
-            transition.updateAlpha(node: self.mentionsButton, alpha: 1.0)
-            transition.updateTransformScale(node: self.mentionsButton, scale: 1.0)
-        } else {
-            transition.updateAlpha(node: self.mentionsButton, alpha: 0.0, completion: { [weak self] completed in
-                guard let strongSelf = self, completed else {
-                    return
-                }
-                strongSelf.mentionsButton.isHidden = true
-                strongSelf.updateGlassContainerVisibility()
-            })
-            transition.updateTransformScale(node: self.mentionsButton, scale: 0.2)
         }
+        self.updateVisibility(of: self.mentionsButton, name: "mentions", shown: self.mentionCount != 0, transition: transition)
         
         if self.reactionsCount != 0 {
             pollVotesOffset += buttonSize.height + 12.0
-            self.reactionsButton.isHidden = false
-            transition.updateAlpha(node: self.reactionsButton, alpha: 1.0)
-            transition.updateTransformScale(node: self.reactionsButton, scale: 1.0)
-        } else {
-            transition.updateAlpha(node: self.reactionsButton, alpha: 0.0, completion: { [weak self] completed in
-                guard let strongSelf = self, completed else {
-                    return
-                }
-                strongSelf.reactionsButton.isHidden = true
-                strongSelf.updateGlassContainerVisibility()
-            })
-            transition.updateTransformScale(node: self.reactionsButton, scale: 0.2)
         }
+        self.updateVisibility(of: self.reactionsButton, name: "reactions", shown: self.reactionsCount != 0, transition: transition)
         
-        if self.pollVotesCount != 0 {
-            self.pollVotesButton.isHidden = false
-            transition.updateAlpha(node: self.pollVotesButton, alpha: 1.0)
-            transition.updateTransformScale(node: self.pollVotesButton, scale: 1.0)
-        } else {
-            transition.updateAlpha(node: self.pollVotesButton, alpha: 0.0, completion: { [weak self] completed in
-                guard let strongSelf = self, completed else {
-                    return
-                }
-                strongSelf.pollVotesButton.isHidden = true
-                strongSelf.updateGlassContainerVisibility()
-            })
-            transition.updateTransformScale(node: self.pollVotesButton, scale: 0.2)
-        }
+        self.updateVisibility(of: self.pollVotesButton, name: "pollVotes", shown: self.pollVotesCount != 0, transition: transition)
         
         self.updateGlassContainerVisibility()
         
