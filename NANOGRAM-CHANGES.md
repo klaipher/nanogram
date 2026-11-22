@@ -105,6 +105,7 @@ marked (check) were not re-verified against the code; correct them on the next c
   Sync: keep the token in `animateTo`'s completion and the `begin()` in `animateFrom` if upstream changes these methods.
 - Gift store and gift transfer list: loading the next page from the scroll callback is dispatched to the next main-queue turn (`Queue.mainQueue().justDispatch`, upstream's own idiom in the craft and profile gift lists). Upstream calls it inline, and a scroll event during the screen's layout re-entered the update and crashed (TestFlight 202611061452). Where: `Gifts/GiftStoreScreen/Sources/GiftStoreScreen.swift`, `Gifts/GiftOptionsScreen/Sources/GiftOptionsScreen.swift`. On an upstream merge keep the dispatch.
 - What: News feed, opening a channel at a post, suspicious-peer chat gate, Postbox to TelegramEngine refactor, CoreList chat history backend. (check)
+- Also: always-on numbers-only diagnostics for an empty history viewport (`CoreListInvariant` log tag; `CoreList/CoreListDemo/ViewportInvariant.swift`, `CoreVirtualListView.checkViewportInvariant`, `docs/chat/corelist-chat-history-backend.md` "Empty-viewport diagnostics"). Logging only, no behaviour change.
 - Where: docs/subsystems/channel-post-and-news-feed.md, docs/subsystems/suspicious-peer.md, docs/chat/.
 - Context-menu reaction with the keyboard up lands through the chat's standalone animation (menu in the keyboard window cannot show the flight). Where: `ContextReactionLandingRoute.swift`, `ChatContextReactionStandaloneLanding.swift`. Upstream: no.
 
@@ -154,9 +155,10 @@ marked (check) were not re-verified against the code; correct them on the next c
 - Why: Apple's Liquid Glass guidance (group glass in a container, no glass on glass, honour accessibility settings) and the
   iOS chat-scroll GPU traces of 2026-11-06 (~5 "Read Surface" passes per frame).
 - Where: `submodules/TelegramUI/Sources/{ChatHistoryNavigationButtons,ChatHistoryNavigationButtonNode,SharedAccountContext}.swift`,
-  `submodules/TelegramUI/Components/GlassBackgroundComponent/Sources/{GlassBackgroundComponent,GlassEnvironment,GlassDebugGroups,GlassStackHostGeometry,GlassContainerUpdateGate}.swift`,
+  `submodules/TelegramUI/Components/GlassBackgroundComponent/Sources/{GlassBackgroundComponent,GlassEnvironment,GlassDebugGroups,GlassStackHostGeometry,GlassContainerUpdateGate,GlassMemberVisibility}.swift`,
   `NavigationBarNode.swift` and `ChatTextInputPanelNode.swift` (one `debugGroup` line each), `DebugController.swift`, `ExperimentalUISettings.swift`.
 - Upstream: `ChatHistoryNavigationButton*` and `GlassBackgroundComponent.swift` are upstream files (the container, the view init and `update` changed in a few places); the rest is new.
+- Also: a hidden floating button gives up its glass (`GlassBackgroundView.update(isVisible: false)`, state in `GlassMemberVisibility`), because the shared container draws a member that is only faded or scaled down (a visible dot that merged with the visible button).
 - Sync: re-apply the container hosting if upstream changes how `ChatHistoryNavigationButtons` adds its buttons.
 - Not done: replacing Telegram's navigation bar, tab bar or edge effect with system ones, and the iOS 26 luma clamp, are owner decisions.
 
