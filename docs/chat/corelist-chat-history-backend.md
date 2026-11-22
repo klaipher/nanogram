@@ -1630,13 +1630,21 @@ next occurrence without a reproduction.
   `CoreListDiagnosticRateLimiter`, `CoreListEventRing`), `CoreVirtualListView.checkViewportInvariant(trigger:)` and
   `viewportSnapshot()`. The host sets `CoreVirtualListView.diagnosticLog`; the chat backend routes it to `Logger` with the tag
   `CoreListInvariant`.
-- When it runs: the end of an `applyChanges` pass, the end of a flight (`onFlightChanged(nil)`) and the end of a
-  deceleration. Never from a scroll tick, no timer. Skips while a flight runs, a finger is down, or the list is empty.
-- What it reports, one line of numbers (no message text, no peer ids), at most once per second, followed by the last 40 events
+- When it runs: the end of an `applyChanges` pass, and one main-queue turn after the end of a flight (`onFlightChanged(nil)`)
+  or a deceleration. The flight-end check is deferred because `finalizeFlight` reports the end before its last `onScroll`
+  (the window is not yet rebalanced for the settled offset) and a halt inside a pass ends the flight mid-pass. Never from a
+  scroll tick, no timer. Skips while a flight runs, a finger is down (`PhysicsScrollEngine.isTrackingTouch`; other engines
+  report no touch), or the list is empty.
+- What it reports, one line of numbers (no message text, no peer ids), at most once per second, and the same kind of finding
+  (same `CoreListViewportInvariant.signature`, magnitudes ignored) at most every 10 s, followed by the last 40 events
   (transaction, delta clamp, flight settled, deferred pass) as kind, age and two numbers:
   - `newestGap` / `oldestGap`: blank height between the inset edge and the newest (index 0) or oldest row, when it is more than
-    25% of the visible area, with `backing=` the declared term that explains it (`pinSlack`, `holdSlack`, `stackSlack`) or
-    `none`. It deliberately does not filter designed slack out: the pin and hold produce exactly a gap equal to their slack,
+    25% of the visible area and the window reaches that end, with `backing=` the declared term that explains it (`pinSlack`,
+    `holdSlack`, `stackSlack`) or `none`. A whole collection shorter than the visible area (a chat with a few messages) is
+    not an `oldestGap`.
+  - `unloadedGap=… edge=newest|oldest`: the same blank when the window stops SHORT of that end, so rows that exist are not
+    loaded where they would be seen (a window rebalanced for an older offset, or one that fell behind a flight). This is the
+    screenshot shape (one bubble at the top, blank below) when the window does not reach index 0. It deliberately does not filter designed slack out: the pin and hold produce exactly a gap equal to their slack,
     so a "gap beyond slack" test would never fire for the two leading hypotheses.
   - `noRowInBand`: no loaded row intersects the visible band. `outsideEdgesBy`: the offset left the declared edges at rest.
     `hiddenRows`: a loaded row inside the band is hidden or transparent (may fire during a row's fade-in at pass end).

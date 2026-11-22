@@ -6,7 +6,7 @@ final class ViewportInvariantTests: XCTestCase {
     private func snapshot(_ configure: (inout CoreListViewportSnapshot) -> Void = { _ in }) -> CoreListViewportSnapshot {
         var s = CoreListViewportSnapshot(
             itemCount: 50, windowIsEmpty: false, windowStartIndex: 0, windowEndIndex: 20,
-            visibleHeight: 600, newestEdgeGap: 0, oldestEdgeGap: 0, offset: -100,
+            visibleHeight: 600, windowHeight: 2000, newestEdgeGap: 0, oldestEdgeGap: 0, offset: -100,
             declaredMinEdge: -100, declaredMaxEdge: 4000,
             bottomEdgePinSlack: 0, holdSlackMin: 0, holdSlackMax: 0, stackFromBottomSlack: 0,
             hasHeldRow: false, lowestPinnedItemIndex: nil,
@@ -82,12 +82,45 @@ final class ViewportInvariantTests: XCTestCase {
         XCTAssertEqual(CoreListViewportInvariant.evaluate(snapshot { $0.newestEdgeGap = 151 }).count, 1)
     }
 
-    func testNewestGapIgnoredWhenWindowDoesNotReachIndexZero() {
-        XCTAssertEqual(CoreListViewportInvariant.evaluate(snapshot { $0.windowStartIndex = 5; $0.newestEdgeGap = 500 }), [])
+    /// Short of index 0 a gap is not edge room: newer rows exist and are not loaded where they would be seen.
+    func testNewestGapShortOfIndexZeroIsAnUnloadedGap() {
+        XCTAssertEqual(CoreListViewportInvariant.evaluate(snapshot { $0.windowStartIndex = 5; $0.newestEdgeGap = 500 }),
+                       [.unloadedGap(edge: .newest, gap: 500)])
     }
 
-    func testOldestGapOnlyWhenWindowReachesTheLastItem() {
-        XCTAssertEqual(CoreListViewportInvariant.evaluate(snapshot { $0.oldestEdgeGap = 500 }), [])
+    /// The screenshot case: one bubble at the far end of the band, the rest blank, the window not reaching index 0.
+    func testOneRowInBandWithBlankBelowIsReported() {
+        let findings = CoreListViewportInvariant.evaluate(snapshot {
+            $0.windowStartIndex = 12
+            $0.newestEdgeGap = 540
+            $0.anyRowIntersectsBand = true
+        })
+        XCTAssertEqual(findings, [.unloadedGap(edge: .newest, gap: 540)])
+    }
+
+    func testOldestGapShortOfTheLastItemIsAnUnloadedGap() {
+        XCTAssertEqual(CoreListViewportInvariant.evaluate(snapshot { $0.oldestEdgeGap = 500 }),
+                       [.unloadedGap(edge: .oldest, gap: 500)])
+    }
+
+    /// A chat with a few messages leaves blank above them by its own geometry.
+    func testShortFullyLoadedCollectionHasNoOldestGapFinding() {
+        XCTAssertEqual(CoreListViewportInvariant.evaluate(snapshot {
+            $0.itemCount = 3
+            $0.windowEndIndex = 2
+            $0.windowHeight = 200
+            $0.oldestEdgeGap = 400
+        }), [])
+    }
+
+    func testSignatureIgnoresMagnitudes() {
+        let a = CoreListViewportInvariant.signature([.newestEdgeGap(gap: 300, backing: .pinSlack), .hiddenRowInBand(count: 1)])
+        let b = CoreListViewportInvariant.signature([.newestEdgeGap(gap: 420, backing: .pinSlack), .hiddenRowInBand(count: 3)])
+        XCTAssertEqual(a, b)
+        XCTAssertNotEqual(a, CoreListViewportInvariant.signature([.newestEdgeGap(gap: 300, backing: .holdSlack)]))
+    }
+
+    func testOldestGapWhenWindowReachesTheLastItem() {
         let findings = CoreListViewportInvariant.evaluate(snapshot {
             $0.windowStartIndex = 10
             $0.windowEndIndex = 49

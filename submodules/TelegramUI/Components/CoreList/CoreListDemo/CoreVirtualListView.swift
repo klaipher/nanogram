@@ -1321,9 +1321,11 @@ public final class CoreVirtualListView: UIView {
         // `onFlightChanged(nil)` below.
         engine.onDidEndDecelerating = { [weak self] in
             self?.didEndScrolling?()
-            self?.checkViewportInvariant(trigger: "decel-end")
+            self?.scheduleViewportInvariantCheck(trigger: "decel-end")
         }
-        engine.onDiagnosticFlightSettled = { [weak self] previousOffset, settledOffset, edges in
+        // `onDiagnosticFlightSettled` and `isTrackingTouch` are PhysicsScrollEngine-only (the `ScrollEngine` seam does not
+        // carry them), so other engines simply report nothing here.
+        (engine as? PhysicsScrollEngine)?.onDiagnosticFlightSettled = { [weak self] previousOffset, settledOffset, edges in
             guard let self else { return }
             self.recordEvent(.flightFinalize, a: previousOffset, b: settledOffset)
             let outside: CGFloat
@@ -1353,7 +1355,9 @@ public final class CoreVirtualListView: UIView {
             // the state it is being told about rather than the one it replaced.
             if wasFlying && flight == nil {
                 self.didEndScrolling?()
-                self.checkViewportInvariant(trigger: "flight-end")
+                // Deferred: `finalizeFlight` reports the end BEFORE its last `onScroll`, so the window has not been
+                // rebalanced for the settled offset yet, and a halt inside a pass lands here mid-pass.
+                self.scheduleViewportInvariantCheck(trigger: "flight-end")
             }
         }
         container.backgroundColor = .clear
@@ -1471,10 +1475,14 @@ public final class CoreVirtualListView: UIView {
             assertOverlayInvariants()
             checkViewportInvariant(trigger: "pass-end")
         }
-        recordEvent(.transaction,
-                    a: CGFloat(newItems?.count ?? -1),
-                    b: engine.offset,
-                    flags: (scrollTo != nil ? 1 : 0) | (newSize != nil ? 2 : 0) | (newInsets != nil ? 4 : 0) | (heldRow != nil ? 8 : 0))
+        if diagnosticLog != nil {
+            var transactionFlags: UInt8 = 0
+            if scrollTo != nil { transactionFlags |= 1 }
+            if newSize != nil { transactionFlags |= 2 }
+            if newInsets != nil { transactionFlags |= 4 }
+            if heldRow != nil { transactionFlags |= 8 }
+            recordEvent(.transaction, a: CGFloat(newItems?.count ?? -1), b: engine.offset, flags: transactionFlags)
+        }
 
         let hasItems = newItems != nil
         let hasNewSize = newSize != nil
@@ -3875,6 +3883,8 @@ public final class CoreVirtualListView: UIView {
     public var diagnosticLog: ((String) -> Void)?
     private var eventRing = CoreListEventRing()
     private var diagnosticLimiter = CoreListDiagnosticRateLimiter(interval: 1.0)
+    /// The same kind of finding again (same signature) is logged at most every 10 s.
+    private var invariantSignatureLimiter = CoreListDiagnosticRateLimiter(interval: 10.0)
 
     /// What the list looks like now, for `CoreListViewportInvariant`. Reads state only. Walks the loaded rows once.
     private func viewportSnapshot() -> CoreListViewportSnapshot {
@@ -3904,6 +3914,7 @@ public final class CoreVirtualListView: UIView {
             windowStartIndex: window.startIndex,
             windowEndIndex: window.endIndex,
             visibleHeight: logicalSize.height - viewportInsets.top - viewportInsets.bottom,
+            windowHeight: window.height,
             newestEdgeGap: newestGap,
             oldestEdgeGap: oldestGap,
             offset: offset,
@@ -3918,7 +3929,7 @@ public final class CoreVirtualListView: UIView {
             anyRowIntersectsBand: anyIntersects,
             hiddenRowsInBand: hidden,
             hasActiveFlight: activeScrollFlight != nil,
-            isTrackingTouch: engine.isTrackingTouch,
+            isTrackingTouch: (engine as? PhysicsScrollEngine)?.isTrackingTouch ?? false,
             rebalanceDeferredRows: rebalanceDeferredRows,
             windowRevision: windowRevision
         )
@@ -3934,8 +3945,22 @@ public final class CoreVirtualListView: UIView {
         guard !findings.isEmpty else { return }
         let now = CACurrentMediaTime()
         guard diagnosticLimiter.allow(key: "invariant", now: now) else { return }
+        guard invariantSignatureLimiter.allow(key: CoreListViewportInvariant.signature(findings), now: now) else { return }
         diagnosticLog(CoreListViewportInvariant.format(snapshot, findings: findings, trigger: trigger))
         diagnosticLog("recent \(eventRing.formatted(now: now))")
+    }
+
+    /// Runs the check on the next main-queue turn, once, so the engine has finished the callback chain that ended the
+    /// motion (the settled offset's `onScroll` and rebalance) and no pass is in progress.
+    private var viewportInvariantCheckScheduled = false
+    private func scheduleViewportInvariantCheck(trigger: String) {
+        guard diagnosticLog != nil, !viewportInvariantCheckScheduled else { return }
+        viewportInvariantCheckScheduled = true
+        scheduler.schedule { [weak self] in
+            guard let self else { return }
+            self.viewportInvariantCheckScheduled = false
+            self.checkViewportInvariant(trigger: trigger)
+        }
     }
 
     private func recordEvent(_ kind: CoreListEventRing.Kind, a: CGFloat = 0, b: CGFloat = 0, flags: UInt8 = 0) {

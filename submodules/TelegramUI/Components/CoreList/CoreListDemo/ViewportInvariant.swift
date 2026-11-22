@@ -17,10 +17,13 @@ struct CoreListViewportSnapshot: Equatable {
     var windowEndIndex: Int
     /// Height between the top and bottom insets.
     var visibleHeight: CGFloat
-    /// Blank height between the top inset edge and the newest loaded row (index 0), positive when the row starts below the
-    /// edge. Only meaningful when the window reaches index 0.
+    /// Height of the loaded window (rows plus reserved attachment bands).
+    var windowHeight: CGFloat
+    /// Blank height between the top inset edge and the newest loaded row, positive when the row starts below the edge.
+    /// With the window at index 0 it is edge room (pin, hold or stack slack); with it short of index 0 it is a part of
+    /// the visible band that newer rows should cover and do not.
     var newestEdgeGap: CGFloat
-    /// The mirror at the oldest end: blank below the last item, only meaningful when the window reaches the last item.
+    /// The mirror at the oldest end: blank below the oldest loaded row.
     var oldestEdgeGap: CGFloat
     var offset: CGFloat
     var declaredMinEdge: CGFloat?
@@ -49,8 +52,16 @@ enum CoreListBlankBacking: String, Equatable {
     case none
 }
 
+enum CoreListViewportEdge: String, Equatable {
+    case newest
+    case oldest
+}
+
 enum CoreListInvariantFinding: Equatable {
     case noRowInBand
+    /// The window stops short of that end of the collection, yet the visible band reaches past its loaded rows: rows that
+    /// exist are not loaded where they would be seen (a window rebalanced for an older offset, or one that fell behind).
+    case unloadedGap(edge: CoreListViewportEdge, gap: CGFloat)
     case newestEdgeGap(gap: CGFloat, backing: CoreListBlankBacking)
     case oldestEdgeGap(gap: CGFloat, backing: CoreListBlankBacking)
     case offsetOutsideDeclaredEdges(by: CGFloat)
@@ -59,6 +70,7 @@ enum CoreListInvariantFinding: Equatable {
     var name: String {
         switch self {
         case .noRowInBand: return "noRowInBand"
+        case .unloadedGap: return "unloadedGap"
         case .newestEdgeGap: return "newestEdgeGap"
         case .oldestEdgeGap: return "oldestEdgeGap"
         case .offsetOutsideDeclaredEdges: return "offsetOutsideEdges"
@@ -81,11 +93,21 @@ enum CoreListViewportInvariant {
         if !s.anyRowIntersectsBand {
             findings.append(.noRowInBand)
         }
-        if s.windowStartIndex == 0, s.newestEdgeGap > threshold {
-            findings.append(.newestEdgeGap(gap: s.newestEdgeGap, backing: newestBacking(s)))
+        if s.newestEdgeGap > threshold {
+            if s.windowStartIndex == 0 {
+                findings.append(.newestEdgeGap(gap: s.newestEdgeGap, backing: newestBacking(s)))
+            } else {
+                findings.append(.unloadedGap(edge: .newest, gap: s.newestEdgeGap))
+            }
         }
-        if s.windowEndIndex == s.itemCount - 1, s.oldestEdgeGap > threshold {
-            findings.append(.oldestEdgeGap(gap: s.oldestEdgeGap, backing: oldestBacking(s)))
+        if s.oldestEdgeGap > threshold {
+            if s.windowEndIndex != s.itemCount - 1 {
+                findings.append(.unloadedGap(edge: .oldest, gap: s.oldestEdgeGap))
+            } else if !(s.windowStartIndex == 0 && s.windowHeight < s.visibleHeight) {
+                // A whole collection shorter than the visible area leaves this blank by its own geometry (a chat with a
+                // few messages): not a finding. An offset that left the edges is reported below either way.
+                findings.append(.oldestEdgeGap(gap: s.oldestEdgeGap, backing: oldestBacking(s)))
+            }
         }
         var outside: CGFloat = 0
         if let minimum = s.declaredMinEdge, s.offset < minimum - edgeTolerance { outside = minimum - s.offset }
@@ -115,6 +137,23 @@ enum CoreListViewportInvariant {
         return s.holdSlackMax > edgeTolerance ? .holdSlack : .none
     }
 
+    /// What kind of state the findings describe, without their magnitudes: a state that persists (a pin held through a
+    /// whole streaming reply) is logged again only after a longer interval, not once a second.
+    static func signature(_ findings: [CoreListInvariantFinding]) -> String {
+        return findings.map { finding -> String in
+            switch finding {
+            case let .unloadedGap(edge, _):
+                return "unloadedGap.\(edge.rawValue)"
+            case let .newestEdgeGap(_, backing):
+                return "newestEdgeGap.\(backing.rawValue)"
+            case let .oldestEdgeGap(_, backing):
+                return "oldestEdgeGap.\(backing.rawValue)"
+            default:
+                return finding.name
+            }
+        }.joined(separator: ",")
+    }
+
     /// One line of numbers for the log.
     static func format(_ s: CoreListViewportSnapshot, findings: [CoreListInvariantFinding], trigger: String) -> String {
         func n(_ v: CGFloat) -> String { String(format: "%.1f", Double(v)) }
@@ -124,6 +163,8 @@ enum CoreListViewportInvariant {
             switch finding {
             case .noRowInBand:
                 parts.append("noRowInBand")
+            case let .unloadedGap(edge, gap):
+                parts.append("unloadedGap=\(n(gap)) edge=\(edge.rawValue)")
             case let .newestEdgeGap(gap, backing):
                 parts.append("newestGap=\(n(gap)) backing=\(backing.rawValue)")
             case let .oldestEdgeGap(gap, backing):
@@ -134,7 +175,7 @@ enum CoreListViewportInvariant {
                 parts.append("hiddenRows=\(count)")
             }
         }
-        parts.append("items=\(s.itemCount) window=\(s.windowStartIndex)...\(s.windowEndIndex) visible=\(n(s.visibleHeight))")
+        parts.append("items=\(s.itemCount) window=\(s.windowStartIndex)...\(s.windowEndIndex) windowHeight=\(n(s.windowHeight)) visible=\(n(s.visibleHeight))")
         parts.append("offset=\(n(s.offset)) edges=\(o(s.declaredMinEdge))/\(o(s.declaredMaxEdge))")
         parts.append("pinSlack=\(n(s.bottomEdgePinSlack)) pinIndex=\(s.lowestPinnedItemIndex.map { String($0) } ?? "-") holdSlack=\(n(s.holdSlackMin))/\(n(s.holdSlackMax)) held=\(s.hasHeldRow) stackSlack=\(n(s.stackFromBottomSlack))")
         parts.append("deferredRows=\(s.rebalanceDeferredRows) rev=\(s.windowRevision)")

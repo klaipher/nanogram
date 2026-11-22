@@ -6,7 +6,7 @@ import TelegramPresentationData
 import WallpaperBackgroundNode
 import ComponentFlow
 import GlassBackgroundComponent
-import SwiftSignalKit
+import TelegramCore
 
 final class ChatHistoryNavigationButtons: ASDisplayNode {
     struct ButtonState: Equatable {
