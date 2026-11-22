@@ -3,6 +3,7 @@ import Postbox
 internal import TelegramApi
 import SwiftSignalKit
 import CryptoUtils
+import MtProtoKit
 
 enum PendingMessageUploadedContent {
     case text(String)
@@ -122,7 +123,7 @@ enum PendingMessageUploadError {
 }
 
 func pendingUploadMediaError(_ error: MTRpcError) -> PendingMessageUploadError {
-    pendingMessageLog("messages.uploadMedia failed \(error.errorCode) \(error.errorDescription)")
+    pendingMessageLog("messages.uploadMedia failed \(error.errorCode) \(error.errorDescription ?? "")")
     return .server(code: error.errorCode, text: error.errorDescription)
 }
 

@@ -1,5 +1,6 @@
 import Foundation
 import SwiftSignalKit
+import MtProtoKit
 import Reachability
 
 // Nanogram-only (upstream: no). What a failed send or upload may do to a pending message. The red "!"
@@ -177,7 +178,7 @@ func pendingSendRetrying<T>(queue: Queue, enabled: Bool, logName: String) -> (Si
             return nil
         }
     }, onRetry: { (error: MTRpcError, failed: Int, delay: Double) in
-        pendingMessageLog("\(logName) request failed \(error.errorCode) \(error.errorDescription), attempt \(failed), again in \(delay) s")
+        pendingMessageLog("\(logName) request failed \(error.errorCode) \(error.errorDescription ?? ""), attempt \(failed), again in \(delay) s")
     })
 }
 

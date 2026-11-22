@@ -38,7 +38,7 @@ func requestNeedsTimeoutTimer(useRequestTimeoutTimers: Bool, override: Bool?) ->
 /// Nanogram-only: the part error for a failed saveFilePart/saveBigFilePart, logged with its real reason (the
 /// error used to be reduced to `.generic`/`.invalidMedia` and the reason was lost).
 func uploadPartError(_ error: MTRpcError, fileId: Int64, index: Int, size: Int) -> UploadPartError {
-    pendingMessageLog("upload part \(index) of \(size) bytes (file \(fileId)) rejected \(error.errorCode) \(error.errorDescription)")
+    pendingMessageLog("upload part \(index) of \(size) bytes (file \(fileId)) rejected \(error.errorCode) \(error.errorDescription ?? "")")
     if error.errorCode == 400 {
         return .invalidMedia
     } else {
