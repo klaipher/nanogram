@@ -391,6 +391,9 @@
 }
 
 - (void)requestTimerTimeoutEvent {
+    // Nanogram-only: this reset restarts every request in flight (all upload parts from byte 0). Logged to find out
+    // whether it fires during failing uploads.
+    MTLog(@"[MTRequestMessageService#%" PRIxPTR " no incoming bytes for 5 s with %lu requests pending, resetting the transport]", (intptr_t)self, (unsigned long)_requests.count);
     MTProto *mtProto = _mtProto;
     if (mtProto) {
         [mtProto requestSecureTransportReset];

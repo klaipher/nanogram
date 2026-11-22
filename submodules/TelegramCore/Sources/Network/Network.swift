@@ -1372,7 +1372,7 @@ public final class Network: NSObject {
         }
     }
     
-    func requestWithAdditionalInfo<T>(_ data: (FunctionDescription, Buffer, DeserializeFunctionResponse<T>), info: NetworkRequestAdditionalInfo, tag: NetworkRequestDependencyTag? = nil, automaticFloodWait: Bool = true, onFloodWaitError: ((String) -> Void)? = nil) -> Signal<NetworkRequestResult<T>, MTRpcError> {
+    func requestWithAdditionalInfo<T>(_ data: (FunctionDescription, Buffer, DeserializeFunctionResponse<T>), info: NetworkRequestAdditionalInfo, tag: NetworkRequestDependencyTag? = nil, automaticFloodWait: Bool = true, onFloodWaitError: ((String) -> Void)? = nil, safeToRepeat: Bool = false) -> Signal<NetworkRequestResult<T>, MTRpcError> {
         let requestService = self.requestService
         return Signal { [requestService] subscriber in
             let request = NetworkEngineRequest(
@@ -1385,7 +1385,7 @@ public final class Network: NSObject {
                     }
                     return nil
                 },
-                options: NetworkEngineRequestOptions(),
+                options: NetworkEngineRequestOptions(safeToRepeat: safeToRepeat),
                 shouldContinueAfterError: networkRequestErrorPolicy(automaticFloodWait: automaticFloodWait, onFloodWaitError: onFloodWaitError, failOnServerErrors: false),
                 dependsOn: networkRequestDependency(tag: tag),
                 acknowledged: {
@@ -1418,7 +1418,7 @@ public final class Network: NSObject {
         }
     }
     
-    func request<T>(_ data: (FunctionDescription, Buffer, DeserializeFunctionResponse<T>), tag: NetworkRequestDependencyTag? = nil, automaticFloodWait: Bool = true, onFloodWaitError: ((String) -> Void)? = nil) -> Signal<T, MTRpcError> {
+    func request<T>(_ data: (FunctionDescription, Buffer, DeserializeFunctionResponse<T>), tag: NetworkRequestDependencyTag? = nil, automaticFloodWait: Bool = true, onFloodWaitError: ((String) -> Void)? = nil, safeToRepeat: Bool = false) -> Signal<T, MTRpcError> {
         let requestService = self.requestService
         return Signal { [requestService] subscriber in
             let request = NetworkEngineRequest(
@@ -1431,7 +1431,7 @@ public final class Network: NSObject {
                     }
                     return nil
                 },
-                options: NetworkEngineRequestOptions(),
+                options: NetworkEngineRequestOptions(safeToRepeat: safeToRepeat),
                 shouldContinueAfterError: networkRequestErrorPolicy(automaticFloodWait: automaticFloodWait, onFloodWaitError: onFloodWaitError, failOnServerErrors: false),
                 dependsOn: networkRequestDependency(tag: tag),
                 acknowledged: nil,

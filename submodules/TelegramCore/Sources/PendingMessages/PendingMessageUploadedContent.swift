@@ -116,6 +116,14 @@ func assembleInputRichMessage(instantPage: InstantPage, uploadedMedia: [MediaId:
 
 enum PendingMessageUploadError {
     case generic
+    /// Nanogram-only: a server error from `messages.uploadMedia` with its real code and text, which the failure log
+    /// and the retry decision use (it used to be reduced to `.generic`).
+    case server(code: Int32, text: String)
+}
+
+func pendingUploadMediaError(_ error: MTRpcError) -> PendingMessageUploadError {
+    pendingMessageLog("messages.uploadMedia failed \(error.errorCode) \(error.errorDescription)")
+    return .server(code: error.errorCode, text: error.errorDescription)
 }
 
 enum MessageContentToUpload {
@@ -1020,7 +1028,7 @@ private func uploadedMediaImageContent(network: Network, postbox: Postbox, trans
                                         return .single(.content(PendingMessageUploadedContentAndReuploadInfo(content: .media(.inputMediaUploadedPhoto(.init(flags: flags, file: file, stickers: stickers, ttlSeconds: ttlSeconds, video: video)), text), reuploadInfo: nil, cacheReferenceKey: nil)))
                                     }
                                     return network.request(Api.functions.messages.uploadMedia(flags: 0, businessConnectionId: nil, peer: inputPeer, media: Api.InputMedia.inputMediaUploadedPhoto(.init(flags: flags, file: file, stickers: stickers, ttlSeconds: ttlSeconds, video: video))))
-                                    |> mapError { _ -> PendingMessageUploadError in return .generic }
+                                    |> mapError { pendingUploadMediaError($0) }
                                     |> mapToSignal { result -> Signal<PendingMessageUploadedContentResult, PendingMessageUploadError> in
                                         switch result {
                                         case let .messageMediaPhoto(messageMediaPhotoData):
@@ -1228,7 +1236,7 @@ private func uploadedVideoCover(network: Network, postbox: Postbox, resourceRefe
                 return .complete()
             case let .inputFile(file):
                 return network.request(Api.functions.messages.uploadMedia(flags: 0, businessConnectionId: nil, peer: inputPeer, media: Api.InputMedia.inputMediaUploadedPhoto(.init(flags: 0, file: file, stickers: [], ttlSeconds: nil, video: nil))))
-                |> mapError { _ -> PendingMessageUploadError in return .generic }
+                |> mapError { pendingUploadMediaError($0) }
                 |> map { uploadResult in
                     switch uploadResult {
                     case let .messageMediaPhoto(messageMediaPhotoData):
@@ -1614,7 +1622,7 @@ private func uploadedMediaFileContent(network: Network, postbox: Postbox, auxili
                         |> mapToSignal { inputPeer -> Signal<PendingMessageUploadedContentResult, PendingMessageUploadError> in
                             if let inputPeer = inputPeer {
                                 return network.request(Api.functions.messages.uploadMedia(flags: 0, businessConnectionId: nil, peer: inputPeer, media: .inputMediaUploadedDocument(.init(flags: flags, file: inputFile, thumb: thumbnailFile, mimeType: file.mimeType, attributes: inputDocumentAttributesFromFileAttributes(file.attributes), stickers: stickers, videoCover: videoCoverPhoto, videoTimestamp: videoTimestamp, ttlSeconds: ttlSeconds))))
-                                |> mapError { _ -> PendingMessageUploadError in return .generic }
+                                |> mapError { pendingUploadMediaError($0) }
                                 |> mapToSignal { result -> Signal<PendingMessageUploadedContentResult, PendingMessageUploadError> in
                                     switch result {
                                         case let .messageMediaDocument(messageMediaDocumentData):

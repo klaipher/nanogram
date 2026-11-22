@@ -16,10 +16,16 @@ public struct NetworkEngineRequestOptions: Equatable {
     /// When set, a pending request that sees no transport activity for 5 seconds triggers a
     /// secure transport reset and a new transport transaction.
     public var needsTimeoutTimer: Bool
+    /// Nanogram-only. The caller guarantees that sending the call again is harmless: it is idempotent
+    /// (`upload.saveFilePart`) or carries a random id the server answers once (`messages.sendMessage`, `sendMedia`,
+    /// `sendMultiMedia`). The Rust bridge then sends such a call again for every `PROTOCOL_ERROR_ANSWER_LOST` (with
+    /// a growing delay) instead of failing it after three tries, which would show a delivered message as failed.
+    public var safeToRepeat: Bool
     
-    public init(expectedResponseSize: Int32 = 0, needsTimeoutTimer: Bool = false) {
+    public init(expectedResponseSize: Int32 = 0, needsTimeoutTimer: Bool = false, safeToRepeat: Bool = false) {
         self.expectedResponseSize = expectedResponseSize
         self.needsTimeoutTimer = needsTimeoutTimer
+        self.safeToRepeat = safeToRepeat
     }
 }
 

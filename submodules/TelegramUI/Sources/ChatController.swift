@@ -4132,8 +4132,16 @@ public final class ChatControllerImpl: TelegramBaseController, ChatController, G
                         return
                     }
                     
+                    // Nanogram: say why it failed. No stored code means the app was closed or suspended past the 10 minute limit.
+                    var retryTextLayout: ContextMenuActionItemTextLayout = .twoLinesMax
+                    for attribute in topMessage.attributes {
+                        if let attribute = attribute as? OutgoingMessageInfoAttribute {
+                            retryTextLayout = .secondLineWithValue(pendingMessageFailureDescription(sendErrorCode: attribute.sendErrorCode).text)
+                            break
+                        }
+                    }
                     var actions: [ContextMenuItem] = []
-                    actions.append(.action(ContextMenuActionItem(text: strongSelf.presentationData.strings.Conversation_MessageDialogRetry, icon: { theme in
+                    actions.append(.action(ContextMenuActionItem(text: strongSelf.presentationData.strings.Conversation_MessageDialogRetry, textLayout: retryTextLayout, icon: { theme in
                         return generateTintedImage(image: UIImage(bundleImageName: "Chat/Context Menu/Resend"), color: theme.actionSheet.primaryTextColor)
                     }, action: { [weak self] _, f in
                         if let self {

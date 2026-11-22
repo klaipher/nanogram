@@ -341,6 +341,40 @@ marked (check) were not re-verified against the code; correct them on the next c
 - Build baseline (stream 1): `tools/dev/set-min-os.py` makes every BUILD file follow `Telegram/BUILD` (upstream test targets carry 15.0); native-library scripts (`submodules/ffmpeg/.../build-ffmpeg-bazel.sh`, `third-party/{opus,webp,libjpeg-turbo,td,dav1d,libvpx}`) use 26.0 on their iOS arms and keep macOS arms at 14.0; `.bazelrc` adds `extra_rustc_flags=-Ctarget-cpu=apple-a12` and the deprecation downgrade (`-Wno-error=deprecated-declarations`, `--@build_bazel_rules_swift//swift:copt=-Wwarning` and `...copt=DeprecatedDeclaration` (the native `--swiftcopt` was removed in Bazel 8)). The CPU is the compiler default for the 26.0 floor (apple-a12); no `-mcpu`. Do not use apple-a13 (A12 iPads lack dotprod/sha3). Watch app stays 26.0.
 - Sync: after each release merge run `python3 tools/dev/set-min-os.py` and `tools/dev/tests/test_min_os.py`; expect conflicts at `Telegram/BUILD` (`minimum_os_version`), `.bazelrc` and `third-party/*/build-*-bazel.sh`. Known risk: the Swift `-Wwarning` ordering relative to `-warnings-as-errors` is unverified until the first build (rules_swift 4.2.2 appends the global copt after the target's, which is the working order); swift_strict.bzl would only cover strict modules, not the upstream ones.
 
+### Send failures: fewer red marks, reasons in the log and the Retry menu (iOS and Mac, shared core, 2026-11-22)
+
+- What: the red "!" (`MessageFlags.Failed`) is a final state the user clears by hand, so a transient problem must not reach it.
+  (1) A send RPC (`sendMessage`, `sendMedia`, `sendMultiMedia`, forward, inline result) that fails with a negative code, a code of
+  500 or more, or an engine-invented `PROTOCOL_ERROR_*` / `TL_PARSING_ERROR` / `ENGINE_SWITCHED` is sent again with the same random
+  id and the already uploaded content, up to 5 tries (2, 4, 8, 16, 30 s); any other 4xx fails at once (the reference clients'
+  rule). A lost file part (`FILE_PART_N_MISSING`, `FILE_PARTS_INVALID`, `FILE_ID_INVALID`) re-uploads once through the existing
+  `forcedReuploadOnce` path. Paid-star messages are not repeated. (2) An upload that fails transiently starts again (new file id)
+  up to 3 tries, in the same `.uploading` state, so later media in the chat keeps waiting behind it; secret chats are left out.
+  (3) One `saveFilePart` that fails transiently is retried 4 times (0.5 to 4 s) by re-subscribing the same part signal (no second
+  encryption transform). (4) saveFilePart requests of the multiplexed upload no longer arm the 5 s no-incoming-bytes guard
+  (`pendingUploadPartsNeedTimeoutTimer`); a stall fix, it never set the failed mark itself. (5) Rust bridge: a call marked
+  `NetworkEngineRequestOptions.safeToRepeat` (file parts and random-id sends) is sent again for every `PROTOCOL_ERROR_ANSWER_LOST`
+  with a growing delay instead of failing after 3 (a delivered message was shown as failed and Retry posted it twice). (6) The
+  Postbox launch expiry (unsent for 10 minutes becomes failed) runs only in the app's own process, not in the notification
+  service, share or Siri extensions that open the same database. (7) Every failure line names the real reason, the engine kind
+  and the network type, the Postbox expiry is logged, and the waiting-upload path now alerts like the direct one. (8) The Retry
+  menu shows a second line from `sendErrorCode` ("Too many messages", "Not allowed in this chat", "Media rejected", "Not sent in
+  time. Tap to retry." when no code was stored, "Could not send. Tap to retry."), plain English like the other Nanogram screens.
+- Why: owner report (iPhone 17 Pro Max, iOS 27.2.1): photos often end red on mobile data and almost never on Wi-Fi. Upstream's
+  fail paths needed a definitive server error, but the upload dropped the real error and had no part retry, and the Nanogram
+  edec43752 rules made lost answers and empty uploads terminal.
+- Where: `TelegramCore/Sources/PendingMessages/PendingSendFailurePolicy.swift` (classifier, budgets, retry operator, reason text),
+  `State/PendingMessageManager.swift`, `Network/Download.swift`, `MultipartUpload.swift`, `MultiplexedRequestManager.swift`,
+  `Network.swift`, `NetworkEngine.swift`, `PendingMessageUploadedContent.swift`; `MTProtoRustEngine` (`RustEngineMapping.swift`,
+  `RustNetworkSession.swift`); `Postbox/Sources/Postbox.swift`; `MtProtoKit/MTRequestMessageService.m` (log line);
+  `TelegramUI/Sources/ChatController.swift` (Retry menu).
+- Upstream: partly (Postbox expiry and the upload/send catches are upstream code with Nanogram edits; the policy file is ours).
+- Sync: keep the `pendingSendRetrying` wrap at the two `return sendMessageRequest` sites and the `retryingUpload` wraps at the two
+  upload subscriptions; `PostboxImpl.init` gained `isMainProcess`. Mac port: shared core, the same code builds there; the Rust
+  bridge change matters most on the Mac (Rust is its default engine).
+- Not done: automatic resend of a message already marked failed, a Postbox-level `launch_expired` stamp, widening MtProtoKit's
+  500-only retry to every 5xx/negative code (documented in the research, left for the logs to justify), BAD_MSG/REJECTED handling.
+
 ### Hardware codec capability probe (iOS, 2026-11-14)
 
 - What: `submodules/MediaCapabilities` (new, Nanogram-only) caches hardware decode and encode answers; `internal_isHardwareAv1Supported` delegates to it. `VideoDecodePolicy.usesPassthrough` / `usesHardwareAcceleration` keep AV1 off the passthrough and VideoToolbox hwaccel paths unless hardware AV1 exists (A17 Pro, M3 and newer), in `FFMpegFileReader` and `SoftwareVideoSource`. `DecodePathLog` logs codec and hardware or software once per launch. Send Logs adds a "Media capabilities" block.

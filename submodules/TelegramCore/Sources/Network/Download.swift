@@ -20,6 +20,30 @@ private func roundUp(_ value: Int, to multiple: Int) -> Int {
 enum UploadPartError {
     case generic
     case invalidMedia
+    /// Nanogram-only: a server error other than 400, with its code and text kept for the retry decision and the log.
+    case server(code: Int32, text: String)
+}
+
+/// Nanogram-only. The 5 s guard (`MTRequestMessageService.requestTimerTimeoutEvent`) resets the connection when
+/// a request has seen no INCOMING bytes for 5 s, and all parts in flight restart from byte 0. A part upload on
+/// a slow uplink can sit that long without an answer, so the saveFilePart requests of the multiplexed upload
+/// opt out; the 12 s first-response timeout and the keepalive still detect a dead socket. Set to true to
+/// restore the upstream behaviour. It never sets the failed mark by itself; it removes upload stalls.
+let pendingUploadPartsNeedTimeoutTimer = false
+
+func requestNeedsTimeoutTimer(useRequestTimeoutTimers: Bool, override: Bool?) -> Bool {
+    return useRequestTimeoutTimers && (override ?? true)
+}
+
+/// Nanogram-only: the part error for a failed saveFilePart/saveBigFilePart, logged with its real reason (the
+/// error used to be reduced to `.generic`/`.invalidMedia` and the reason was lost).
+func uploadPartError(_ error: MTRpcError, fileId: Int64, index: Int, size: Int) -> UploadPartError {
+    pendingMessageLog("upload part \(index) of \(size) bytes (file \(fileId)) rejected \(error.errorCode) \(error.errorDescription)")
+    if error.errorCode == 400 {
+        return .invalidMedia
+    } else {
+        return .server(code: error.errorCode, text: error.errorDescription)
+    }
 }
 
 private func wrapMethodBody(_ body: (FunctionDescription, Buffer, DeserializeFunctionResponse<Api.Bool>), useCompression: Bool) -> (FunctionDescription, Buffer, DeserializeFunctionResponse<Api.Bool>) {
@@ -105,13 +129,9 @@ class Download: NSObject {
             saveFilePart = Api.functions.upload.saveFilePart(fileId: fileId, filePart: Int32(index), bytes: Buffer(data: data))
         }
         
-        return multiplexedManager.request(to: .main(datacenterId), consumerId: consumerId, resourceId: nil, data: wrapMethodBody(saveFilePart, useCompression: useCompression), tag: tag, continueInBackground: true, onFloodWaitError: onFloodWaitError, expectedResponseSize: nil)
+        return multiplexedManager.request(to: .main(datacenterId), consumerId: consumerId, resourceId: nil, data: wrapMethodBody(saveFilePart, useCompression: useCompression), tag: tag, continueInBackground: true, onFloodWaitError: onFloodWaitError, expectedResponseSize: nil, needsTimeoutTimer: pendingUploadPartsNeedTimeoutTimer ? nil : false, safeToRepeat: true)
         |> mapError { error -> UploadPartError in
-            if error.errorCode == 400 {
-                return .invalidMedia
-            } else {
-               return .generic
-            }
+            return uploadPartError(error, fileId: fileId, index: index, size: data.count)
         }
         |> mapToSignal { _ -> Signal<Void, UploadPartError> in
             return .complete()
@@ -145,7 +165,7 @@ class Download: NSObject {
                     }
                     return nil
                 },
-                options: NetworkEngineRequestOptions(),
+                options: NetworkEngineRequestOptions(safeToRepeat: true),
                 shouldContinueAfterError: networkRequestErrorPolicy(automaticFloodWait: true, onFloodWaitError: onFloodWaitError, failOnServerErrors: false),
                 dependsOn: nil,
                 acknowledged: nil,
@@ -162,11 +182,7 @@ class Download: NSObject {
             
             return self.addRequest(request)
         } |> `catch` { value -> Signal<Void, UploadPartError> in
-            if value.errorCode == 400 {
-                return .fail(.invalidMedia)
-            } else {
-               return .fail(.generic)
-            }
+            return .fail(uploadPartError(value, fileId: fileId, index: index, size: data.count))
         }
     }
     
@@ -343,7 +359,7 @@ class Download: NSObject {
         }
     }
     
-    func rawRequest(_ data: (FunctionDescription, Buffer, (Buffer) -> Any?), automaticFloodWait: Bool = true, onFloodWaitError: ((String) -> Void)? = nil, failOnServerErrors: Bool = false, logPrefix: String = "", expectedResponseSize: Int32? = nil) -> Signal<(Any, NetworkResponseInfo), (MTRpcError, Double)> {
+    func rawRequest(_ data: (FunctionDescription, Buffer, (Buffer) -> Any?), automaticFloodWait: Bool = true, onFloodWaitError: ((String) -> Void)? = nil, failOnServerErrors: Bool = false, logPrefix: String = "", expectedResponseSize: Int32? = nil, needsTimeoutTimer: Bool? = nil, safeToRepeat: Bool = false) -> Signal<(Any, NetworkResponseInfo), (MTRpcError, Double)> {
         let requestService = self.requestService
         return Signal { [requestService] subscriber in
             let request = NetworkEngineRequest(
@@ -356,7 +372,7 @@ class Download: NSObject {
                     }
                     return nil
                 },
-                options: NetworkEngineRequestOptions(expectedResponseSize: expectedResponseSize ?? 0, needsTimeoutTimer: self.useRequestTimeoutTimers),
+                options: NetworkEngineRequestOptions(expectedResponseSize: expectedResponseSize ?? 0, needsTimeoutTimer: requestNeedsTimeoutTimer(useRequestTimeoutTimers: self.useRequestTimeoutTimers, override: needsTimeoutTimer), safeToRepeat: safeToRepeat),
                 shouldContinueAfterError: networkRequestErrorPolicy(automaticFloodWait: automaticFloodWait, onFloodWaitError: onFloodWaitError, failOnServerErrors: failOnServerErrors),
                 dependsOn: nil,
                 acknowledged: nil,

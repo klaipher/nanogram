@@ -261,6 +261,7 @@ public final class PendingMessageManager {
     
     init(network: Network, postbox: Postbox, accountPeerId: PeerId, auxiliaryMethods: AccountAuxiliaryMethods, stateManager: AccountStateManager, localInputActivityManager: PeerInputActivityManager, messageMediaPreuploadManager: MessageMediaPreuploadManager, revalidationContext: MediaReferenceRevalidationContext) {
         Logger.shared.log("PendingMessageManager", "create instance")
+        let _ = pendingFailureNetworkDescription()
         self.network = network
         self.postbox = postbox
         self.accountPeerId = accountPeerId
@@ -1058,6 +1059,51 @@ public final class PendingMessageManager {
         }))
     }
     
+    /// Nanogram-only: engine kind and network type, appended to every pending-send failure line.
+    private func failureContext() -> String {
+        return "engine \(self.network.engineKind.rawValue), network \(pendingFailureNetworkDescription())"
+    }
+    
+    /// Nanogram-only: an upload that fails with a transient error is started again (a new file id, from byte 0)
+    /// instead of ending in the red mark. The message keeps its `.uploading` state, so later media in the chat
+    /// still wait behind it. The budget is `PendingSendRetryPolicy.maximumUploadAttempts` tries, once for a lost
+    /// file part. Secret chats are left out until the retry is tested with their encryption.
+    private func retryingUpload(_ signal: Signal<PendingMessageUploadedContentResult, PendingMessageUploadError>, id: MessageId) -> Signal<PendingMessageUploadedContentResult, PendingMessageUploadError> {
+        if id.peerId.namespace == Namespaces.Peer.SecretChat {
+            return signal
+        }
+        return signal |> pendingRetryingWithBackoff(queue: self.queue, decide: { error, failed -> Double? in
+            let failureClass: PendingSendFailureClass
+            switch error {
+            case let .server(code, text):
+                failureClass = classifyPendingSendError(code: code, text: text)
+            case .generic:
+                failureClass = .transient
+            }
+            let decision: PendingSendRetryDecision
+            if failureClass == .reupload {
+                decision = PendingSendRetryPolicy.decision(failureClass: .transient, failedAttempts: failed, maximumAttempts: 2)
+            } else {
+                decision = PendingSendRetryPolicy.decision(failureClass: failureClass, failedAttempts: failed, maximumAttempts: PendingSendRetryPolicy.maximumUploadAttempts)
+            }
+            switch decision {
+            case let .retry(after):
+                return after
+            case .fail:
+                return nil
+            }
+        }, blocksRetry: { value -> Bool in
+            if case .content = value {
+                return true
+            }
+            return false
+        }, onRetry: { [weak self] error, failed, delay in
+            self?.queue.async {
+                pendingMessageLog("message \(id.id) upload failed (\(pendingUploadErrorDescription(error))), attempt \(failed), again in \(delay) s")
+            }
+        })
+    }
+    
     private func notifyMessageFailure(ids: [MessageId], code: String) {
         if let reason = sendMessageReasonForError(code) {
             for id in ids {
@@ -1098,16 +1144,18 @@ public final class PendingMessageManager {
         var progressMilestones = PendingUploadProgressMilestones()
         var contentReceived = false
         
-        messageContext.uploadDisposable.set((uploadSignal
+        messageContext.uploadDisposable.set((self.retryingUpload(uploadSignal, id: id)
         |> deliverOn(queue)
-        |> `catch` { [weak self] _ -> Signal<PendingMessageUploadedContentResult, NoError> in
+        |> `catch` { [weak self] error -> Signal<PendingMessageUploadedContentResult, NoError> in
             contentReceived = true
-            pendingMessageFailureLog("message \(id.id) upload failed")
             guard let self else {
+                pendingMessageFailureLog("message \(id.id) upload failed (\(pendingUploadErrorDescription(error)))")
                 return .complete()
             }
-            self.notifyMessageFailure(ids: [id], code: "internal")
-            return failMessages(postbox: self.postbox, ids: [id])
+            pendingMessageFailureLog("message \(id.id) upload failed (\(pendingUploadErrorDescription(error))), \(self.failureContext())")
+            let errorCode = pendingUploadErrorCode(error)
+            self.notifyMessageFailure(ids: [id], code: errorCode)
+            return failMessages(postbox: self.postbox, ids: [id], errorCode: errorCode)
             |> mapToSignal { _ in
                 return .complete()
             }
@@ -1157,7 +1205,7 @@ public final class PendingMessageManager {
         guard let context = self.messageContexts[id], case .uploading = context.state else {
             return
         }
-        pendingMessageFailureLog("message \(id.id) upload ended without content, failing it")
+        pendingMessageFailureLog("message \(id.id) upload ended without content, failing it, \(self.failureContext())")
         let _ = failMessages(postbox: self.postbox, ids: [id]).start()
     }
     
@@ -1194,7 +1242,7 @@ public final class PendingMessageManager {
                     pendingMessageLog("begin uploading message \(contextId.id) in peer \(contextId.peerId.id._internalGetInt64Value()), was waiting")
                     var progressMilestones = PendingUploadProgressMilestones()
                     var contentReceived = false
-                    context.uploadDisposable.set((uploadSignal
+                    context.uploadDisposable.set((self.retryingUpload(uploadSignal, id: contextId)
                     |> deliverOn(self.queue)).start(next: { [weak self] next in
                         if let strongSelf = self {
                             assert(strongSelf.queue.isCurrent())
@@ -1224,13 +1272,17 @@ public final class PendingMessageManager {
                                     }
                             }
                         }
-                    }, error: { [weak self] _ in
+                    }, error: { [weak self] error in
                         contentReceived = true
-                        pendingMessageFailureLog("message \(contextId.id) upload failed")
                         guard let strongSelf = self else {
+                            pendingMessageFailureLog("message \(contextId.id) upload failed (\(pendingUploadErrorDescription(error))), was waiting")
                             return
                         }
-                        let _ = failMessages(postbox: strongSelf.postbox, ids: [contextId]).start()
+                        pendingMessageFailureLog("message \(contextId.id) upload failed (\(pendingUploadErrorDescription(error))), was waiting, \(strongSelf.failureContext())")
+                        let errorCode = pendingUploadErrorCode(error)
+                        // The direct path tells the chat (alert); the waiting path used to fail silently.
+                        strongSelf.notifyMessageFailure(ids: [contextId], code: errorCode)
+                        let _ = failMessages(postbox: strongSelf.postbox, ids: [contextId], errorCode: errorCode).start()
                     }, completed: { [weak self] in
                         guard let strongSelf = self else {
                             return
@@ -1438,7 +1490,7 @@ public final class PendingMessageManager {
                     } else if let inputSourcePeerId = forwardPeerIds.first, let inputSourcePeer = transaction.getPeer(inputSourcePeerId).flatMap(apiInputPeer) {
                         let dependencyTag = PendingMessageRequestDependencyTag(messageId: messages[0].0.id)
 
-                        sendMessageRequest = network.request(Api.functions.messages.forwardMessages(flags: flags, fromPeer: inputSourcePeer, id: forwardIds.map { $0.0.id }, randomId: forwardIds.map { $0.1 }, toPeer: inputPeer, topMsgId: topMsgId, replyTo: replyTo, scheduleDate: scheduleTime, scheduleRepeatPeriod: scheduleRepeatPeriod, sendAs: sendAsInputPeer, quickReplyShortcut: quickReplyShortcut, effect: nil, videoTimestamp: videoTimestamp, allowPaidStars: allowPaidStars, suggestedPost: suggestedPost), tag: dependencyTag)
+                        sendMessageRequest = network.request(Api.functions.messages.forwardMessages(flags: flags, fromPeer: inputSourcePeer, id: forwardIds.map { $0.0.id }, randomId: forwardIds.map { $0.1 }, toPeer: inputPeer, topMsgId: topMsgId, replyTo: replyTo, scheduleDate: scheduleTime, scheduleRepeatPeriod: scheduleRepeatPeriod, sendAs: sendAsInputPeer, quickReplyShortcut: quickReplyShortcut, effect: nil, videoTimestamp: videoTimestamp, allowPaidStars: allowPaidStars, suggestedPost: suggestedPost), tag: dependencyTag, safeToRepeat: true)
                     } else {
                         assertionFailure()
                         sendMessageRequest = .fail(MTRpcError(errorCode: 400, errorDescription: "Invalid forward source"))
@@ -1567,11 +1619,11 @@ public final class PendingMessageManager {
                         flags |= 1 << 21
                     }
                     
-                    sendMessageRequest = network.request(Api.functions.messages.sendMultiMedia(flags: flags, peer: inputPeer, replyTo: replyTo, multiMedia: singleMedias, scheduleDate: scheduleTime, sendAs: sendAsInputPeer, quickReplyShortcut: quickReplyShortcut, effect: messageEffectId, allowPaidStars: allowPaidStars))
+                    sendMessageRequest = network.request(Api.functions.messages.sendMultiMedia(flags: flags, peer: inputPeer, replyTo: replyTo, multiMedia: singleMedias, scheduleDate: scheduleTime, sendAs: sendAsInputPeer, quickReplyShortcut: quickReplyShortcut, effect: messageEffectId, allowPaidStars: allowPaidStars), safeToRepeat: true)
                 }
                 
                 pendingMessageLog("group of \(messages.count) messages starting at \(messages[0].0.id.id) request sent")
-                return sendMessageRequest
+                return (sendMessageRequest |> pendingSendRetrying(queue: queue, enabled: allowPaidStars == nil, logName: "group of \(messages.count) messages starting at \(messages[0].0.id.id)"))
                 |> deliverOn(queue)
                 |> mapToSignal { result -> Signal<Void, MTRpcError> in
                     if let strongSelf = self {
@@ -1584,12 +1636,12 @@ public final class PendingMessageManager {
                     }
                 }
                 |> `catch` { error -> Signal<Void, NoError> in
-                    pendingMessageFailureLog("group of \(messages.count) messages starting at \(messages[0].0.id.id) request failed \(error.errorCode) \(error.errorDescription ?? "")")
+                    pendingMessageFailureLog("group of \(messages.count) messages starting at \(messages[0].0.id.id) request failed \(error.errorCode) \(error.errorDescription ?? ""), \(self?.failureContext() ?? "")")
                     return deferred {
                         if let strongSelf = self {
                             let errorText: String = error.errorDescription
                             
-                            if errorText.hasPrefix("FILEREF_INVALID") || errorText.hasPrefix("FILE_REFERENCE_") {
+                            if errorText.hasPrefix("FILEREF_INVALID") || errorText.hasPrefix("FILE_REFERENCE_") || classifyPendingSendError(code: error.errorCode, text: errorText) == .reupload {
                                 var selectiveIndices: [Int]?
                                 if errorText.hasPrefix("FILE_REFERENCE_") && errorText.hasSuffix("_EXPIRED") {
                                     if let value = Int(errorText[errorText.index(errorText.startIndex, offsetBy: "FILE_REFERENCE_".count)..<errorText.index(errorText.endIndex, offsetBy: -"_EXPIRED".count)]) {
@@ -1953,7 +2005,7 @@ public final class PendingMessageManager {
                             flags |= 1 << 22
                         }
                     
-                        sendMessageRequest = network.requestWithAdditionalInfo(Api.functions.messages.sendMessage(flags: flags, peer: inputPeer, replyTo: replyTo, message: message.text, randomId: uniqueId, replyMarkup: nil, entities: messageEntities, scheduleDate: scheduleTime, scheduleRepeatPeriod: scheduleRepeatPeriod, sendAs: sendAsInputPeer, quickReplyShortcut: quickReplyShortcut, effect: messageEffectId, allowPaidStars: allowPaidStars, suggestedPost: suggestedPost, richMessage: apiRichMessage), info: .acknowledgement, tag: dependencyTag)
+                        sendMessageRequest = network.requestWithAdditionalInfo(Api.functions.messages.sendMessage(flags: flags, peer: inputPeer, replyTo: replyTo, message: message.text, randomId: uniqueId, replyMarkup: nil, entities: messageEntities, scheduleDate: scheduleTime, scheduleRepeatPeriod: scheduleRepeatPeriod, sendAs: sendAsInputPeer, quickReplyShortcut: quickReplyShortcut, effect: messageEffectId, allowPaidStars: allowPaidStars, suggestedPost: suggestedPost, richMessage: apiRichMessage), info: .acknowledgement, tag: dependencyTag, safeToRepeat: true)
                     case let .media(inputMedia, text):
                         if bubbleUpEmojiOrStickersets {
                             flags |= Int32(1 << 15)
@@ -2030,7 +2082,7 @@ public final class PendingMessageManager {
                             flags |= 1 << 22
                         }
                     
-                        sendMessageRequest = network.request(Api.functions.messages.sendMedia(flags: flags, peer: inputPeer, replyTo: replyTo, media: inputMedia, message: text, randomId: uniqueId, replyMarkup: nil, entities: messageEntities, scheduleDate: scheduleTime, scheduleRepeatPeriod: scheduleRepeatPeriod, sendAs: sendAsInputPeer, quickReplyShortcut: quickReplyShortcut, effect: messageEffectId, allowPaidStars: allowPaidStars, suggestedPost: suggestedPost), tag: dependencyTag)
+                        sendMessageRequest = network.request(Api.functions.messages.sendMedia(flags: flags, peer: inputPeer, replyTo: replyTo, media: inputMedia, message: text, randomId: uniqueId, replyMarkup: nil, entities: messageEntities, scheduleDate: scheduleTime, scheduleRepeatPeriod: scheduleRepeatPeriod, sendAs: sendAsInputPeer, quickReplyShortcut: quickReplyShortcut, effect: messageEffectId, allowPaidStars: allowPaidStars, suggestedPost: suggestedPost), tag: dependencyTag, safeToRepeat: true)
                         |> map(NetworkRequestResult.result)
                     case let .forward(sourceInfo):
                         var topMsgId: Int32?
@@ -2079,7 +2131,7 @@ public final class PendingMessageManager {
                         }
                     
                         if let forwardSourceInfoAttribute = forwardSourceInfoAttribute, let sourcePeer = transaction.getPeer(forwardSourceInfoAttribute.messageId.peerId), let sourceInputPeer = apiInputPeer(sourcePeer) {
-                            sendMessageRequest = network.request(Api.functions.messages.forwardMessages(flags: flags, fromPeer: sourceInputPeer, id: [sourceInfo.messageId.id], randomId: [uniqueId], toPeer: inputPeer, topMsgId: topMsgId, replyTo: replyTo, scheduleDate: scheduleTime, scheduleRepeatPeriod: scheduleRepeatPeriod, sendAs: sendAsInputPeer, quickReplyShortcut: quickReplyShortcut, effect: nil, videoTimestamp: videoTimestamp, allowPaidStars: allowPaidStars, suggestedPost: suggestedPost), tag: dependencyTag)
+                            sendMessageRequest = network.request(Api.functions.messages.forwardMessages(flags: flags, fromPeer: sourceInputPeer, id: [sourceInfo.messageId.id], randomId: [uniqueId], toPeer: inputPeer, topMsgId: topMsgId, replyTo: replyTo, scheduleDate: scheduleTime, scheduleRepeatPeriod: scheduleRepeatPeriod, sendAs: sendAsInputPeer, quickReplyShortcut: quickReplyShortcut, effect: nil, videoTimestamp: videoTimestamp, allowPaidStars: allowPaidStars, suggestedPost: suggestedPost), tag: dependencyTag, safeToRepeat: true)
                             |> map(NetworkRequestResult.result)
                         } else {
                             sendMessageRequest = .fail(MTRpcError(errorCode: 400, errorDescription: "internal"))
@@ -2142,7 +2194,7 @@ public final class PendingMessageManager {
                             flags |= 1 << 21
                         }
                     
-                        sendMessageRequest = network.request(Api.functions.messages.sendInlineBotResult(flags: flags, peer: inputPeer, replyTo: replyTo, randomId: uniqueId, queryId: chatContextResult.queryId, id: chatContextResult.id, scheduleDate: scheduleTime, sendAs: sendAsInputPeer, quickReplyShortcut: quickReplyShortcut, allowPaidStars: allowPaidStars))
+                        sendMessageRequest = network.request(Api.functions.messages.sendInlineBotResult(flags: flags, peer: inputPeer, replyTo: replyTo, randomId: uniqueId, queryId: chatContextResult.queryId, id: chatContextResult.id, scheduleDate: scheduleTime, sendAs: sendAsInputPeer, quickReplyShortcut: quickReplyShortcut, allowPaidStars: allowPaidStars), safeToRepeat: true)
                         |> map(NetworkRequestResult.result)
                     case .messageScreenshot:
                         let replyTo: Api.InputReplyTo
@@ -2171,7 +2223,7 @@ public final class PendingMessageManager {
                 }
                 
                 pendingMessageLog("message \(messageId.id) request sent")
-                return sendMessageRequest
+                return (sendMessageRequest |> pendingSendRetrying(queue: queue, enabled: allowPaidStars == nil, logName: "message \(messageId.id)"))
                 |> deliverOn(queue)
                 |> mapToSignal { result -> Signal<Void, MTRpcError> in
                     guard let strongSelf = self else {
@@ -2193,12 +2245,12 @@ public final class PendingMessageManager {
                     }
                 }
                 |> `catch` { error -> Signal<Void, NoError> in
-                    pendingMessageFailureLog("message \(messageId.id) request failed \(error.errorCode) \(error.errorDescription ?? "")")
+                    pendingMessageFailureLog("message \(messageId.id) request failed \(error.errorCode) \(error.errorDescription ?? ""), \(self?.failureContext() ?? "")")
                     queue.async {
                         guard let strongSelf = self, let context = strongSelf.messageContexts[messageId] else {
                             return
                         }
-                        if error.errorDescription.hasPrefix("FILEREF_INVALID") || error.errorDescription.hasPrefix("FILE_REFERENCE_") {
+                        if error.errorDescription.hasPrefix("FILEREF_INVALID") || error.errorDescription.hasPrefix("FILE_REFERENCE_") || classifyPendingSendError(code: error.errorCode, text: error.errorDescription) == .reupload {
                             if !context.forcedReuploadOnce {
                                 context.forcedReuploadOnce = true
                                 strongSelf.beginSendingMessages([messageId])
