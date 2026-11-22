@@ -1072,7 +1072,7 @@ public final class PendingMessageManager {
         if id.peerId.namespace == Namespaces.Peer.SecretChat {
             return signal
         }
-        return signal |> pendingRetryingWithBackoff(queue: self.queue, decide: { error, failed -> Double? in
+        return signal |> pendingRetryingWithBackoff(queue: self.queue, decide: { (error: PendingMessageUploadError, failed: Int) -> Double? in
             let failureClass: PendingSendFailureClass
             switch error {
             case let .server(code, text):
@@ -1092,12 +1092,12 @@ public final class PendingMessageManager {
             case .fail:
                 return nil
             }
-        }, blocksRetry: { value -> Bool in
+        }, blocksRetry: { (value: PendingMessageUploadedContentResult) -> Bool in
             if case .content = value {
                 return true
             }
             return false
-        }, onRetry: { [weak self] error, failed, delay in
+        }, onRetry: { [weak self] (error: PendingMessageUploadError, failed: Int, delay: Double) in
             self?.queue.async {
                 pendingMessageLog("message \(id.id) upload failed (\(pendingUploadErrorDescription(error))), attempt \(failed), again in \(delay) s")
             }

@@ -374,6 +374,12 @@ marked (check) were not re-verified against the code; correct them on the next c
   bridge change matters most on the Mac (Rust is its default engine).
 - Not done: automatic resend of a message already marked failed, a Postbox-level `launch_expired` stamp, widening MtProtoKit's
   500-only retry to every 5xx/negative code (documented in the research, left for the logs to justify), BAD_MSG/REJECTED handling.
+- Known limits (review): a text sent while an earlier message waits out a send backoff can reach the chat before it (the
+  request dependency only orders requests in flight; before this change the earlier one failed instead). Uploads keep their
+  order. A transient upload error restarts the whole file (new file id) up to 3 times, so a large video can cost up to three
+  times its size on mobile data. Whether the server answers a repeated random id with the original message or with
+  `RANDOM_ID_DUPLICATE` (500, which both engines retry without end) is not verified; the lost-answer resubmit relies on the
+  former.
 
 ### Hardware codec capability probe (iOS, 2026-11-14)
 

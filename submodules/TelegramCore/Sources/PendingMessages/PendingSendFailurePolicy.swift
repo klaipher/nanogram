@@ -96,12 +96,12 @@ enum PendingUploadPartRetryPolicy {
 /// Nanogram-only. The same signal is subscribed again, so the part keeps its index and its bytes, and the
 /// encryption state of a secret chat file is not advanced twice.
 func pendingUploadPartRetrying(_ signal: Signal<Void, UploadPartError>) -> Signal<Void, UploadPartError> {
-    return signal |> pendingRetryingWithBackoff(queue: Queue.concurrentDefaultQueue(), decide: { error, failed -> Double? in
+    return signal |> pendingRetryingWithBackoff(queue: Queue.concurrentDefaultQueue(), decide: { (error: UploadPartError, failed: Int) -> Double? in
         if case let .server(code, text) = error {
             return PendingUploadPartRetryPolicy.delay(code: code, text: text, failedAttempts: failed)
         }
         return nil
-    }, onRetry: { error, failed, delay in
+    }, onRetry: { (error: UploadPartError, failed: Int, delay: Double) in
         if case let .server(code, text) = error {
             pendingMessageLog("upload part failed \(code) \(text), attempt \(failed), again in \(delay) s")
         }
@@ -121,8 +121,13 @@ func pendingRetryingWithBackoff<T, E>(queue: Queue, decide: @escaping (E, Int) -
             
             // The subscription and the pending timer are kept apart: a signal that fails synchronously calls the
             // error handler before `start` returns, and that must not dispose the timer it has just armed.
+            // Each try gets its own holder, installed before the signal starts: a retry whose timer fires before
+            // the previous `start` has returned replaces (and disposes) the old holder, instead of the old
+            // `start` later overwriting, and so cancelling, the retry's subscription.
             func start() {
-                subscription.set(signal.start(next: { value in
+                let current = MetaDisposable()
+                subscription.set(current)
+                current.set(signal.start(next: { value in
                     if blocksRetry(value) {
                         let _ = blocked.swap(true)
                     }
