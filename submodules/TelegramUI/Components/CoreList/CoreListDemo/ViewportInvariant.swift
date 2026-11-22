@@ -256,3 +256,26 @@ struct CoreListEventRing {
         }.joined(separator: " ")
     }
 }
+
+/// Nanogram: the one repair the list makes by itself for a blank area. When the list has come to rest (no flight, no
+/// deceleration, no finger) with its offset outside the declared edges, it springs back with the engine's own edge bounce,
+/// as a tap on an overscrolled list does. The declared edges already include the pin, hold and stack slack and the
+/// overscroll-action hold, so designed room is never taken away. A pass that lands during an edge bounce and halts the
+/// motion (the settle clamp is skipped for an overscrolled pass) used to leave the list resting past the newest edge, blank
+/// below the newest bubble, until the next touch. At most once per `minimumInterval`, so it cannot loop.
+struct CoreListRestSpringBack {
+    static let minimumInterval: CFTimeInterval = 1.0
+    private var lastAt: CFTimeInterval?
+
+    static func isNeeded(isFlying: Bool, isDecelerating: Bool, isTrackingTouch: Bool, isOverscrolled: Bool) -> Bool {
+        return isOverscrolled && !isFlying && !isDecelerating && !isTrackingTouch
+    }
+
+    mutating func allow(now: CFTimeInterval) -> Bool {
+        if let lastAt, now - lastAt < Self.minimumInterval {
+            return false
+        }
+        self.lastAt = now
+        return true
+    }
+}

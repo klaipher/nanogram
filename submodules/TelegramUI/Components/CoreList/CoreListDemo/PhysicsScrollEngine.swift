@@ -469,6 +469,25 @@ public final class PhysicsScrollEngine: NSObject, ScrollEngine {
         if core.resumeBounceIfOverscrolled() { startDeceleration() }
     }
 
+    /// Nanogram: spring back if the list is resting outside its declared edges (see `CoreListRestSpringBack`). Does nothing
+    /// while a flight or deceleration runs or a finger is on the list. Returns whether a spring-back started.
+    public var isRestingOverscrolled: Bool {
+        return CoreListRestSpringBack.isNeeded(isFlying: flight != nil, isDecelerating: core.isDecelerating, isTrackingTouch: isTrackingTouch, isOverscrolled: core.isOverscrolled)
+    }
+
+    public func springBackIfRestingOverscrolled() -> Bool {
+        guard self.isRestingOverscrolled else {
+            return false
+        }
+        FlightTrace.shared.log("REST-SPRING-BACK offset=\(core.offset)")
+        refreshScale()
+        if core.resumeBounceIfOverscrolled() {
+            startDeceleration()
+            return true
+        }
+        return false
+    }
+
     /// Match the deceleration's pixel-rounding to the device's real display scale, like
     /// `PhysicsScrollView.makePhysics`. Read at gesture start (the host is in a window then, so the
     /// trait collection is valid). Window-guarded: a detached host — e.g. in unit tests — keeps the

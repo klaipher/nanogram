@@ -1474,6 +1474,7 @@ public final class CoreVirtualListView: UIView {
             refreshReachedLoadedEdges()
             assertOverlayInvariants()
             checkViewportInvariant(trigger: "pass-end")
+            springBackIfRestingOverscrolled(trigger: "pass-end")
         }
         if diagnosticLog != nil {
             var transactionFlags: UInt8 = 0
@@ -3954,12 +3955,27 @@ public final class CoreVirtualListView: UIView {
     /// motion (the settled offset's `onScroll` and rebalance) and no pass is in progress.
     private var viewportInvariantCheckScheduled = false
     private func scheduleViewportInvariantCheck(trigger: String) {
-        guard diagnosticLog != nil, !viewportInvariantCheckScheduled else { return }
+        guard !viewportInvariantCheckScheduled else { return }
         viewportInvariantCheckScheduled = true
         scheduler.schedule { [weak self] in
             guard let self else { return }
             self.viewportInvariantCheckScheduled = false
             self.checkViewportInvariant(trigger: trigger)
+            self.springBackIfRestingOverscrolled(trigger: trigger)
+        }
+    }
+
+    /// Nanogram: the list never rests outside its declared edges (see `CoreListRestSpringBack`). Runs where the list comes
+    /// to rest (pass end, and the next turn after a flight or deceleration ends), never from a scroll tick or inside a pass.
+    private var restSpringBack = CoreListRestSpringBack()
+    private func springBackIfRestingOverscrolled(trigger: String) {
+        guard !isApplyingChanges, let physicsEngine = engine as? PhysicsScrollEngine, physicsEngine.isRestingOverscrolled else { return }
+        guard restSpringBack.allow(now: CACurrentMediaTime()) else {
+            diagnosticLog?("spring-back at rest (\(trigger)) skipped, rate limit, offset=\(Int(physicsEngine.offset))")
+            return
+        }
+        if physicsEngine.springBackIfRestingOverscrolled() {
+            diagnosticLog?("spring-back at rest (\(trigger)) offset=\(Int(physicsEngine.offset))")
         }
     }
 

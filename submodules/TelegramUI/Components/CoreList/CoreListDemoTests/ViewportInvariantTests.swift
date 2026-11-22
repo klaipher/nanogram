@@ -177,3 +177,20 @@ final class ViewportInvariantTests: XCTestCase {
         XCTAssertTrue(ring.formatted(now: 3).contains("scrollTo@-2.00s"))
     }
 }
+
+final class RestSpringBackTests: XCTestCase {
+    func testSpringsBackOnlyWhenRestingOverscrolled() {
+        XCTAssertTrue(CoreListRestSpringBack.isNeeded(isFlying: false, isDecelerating: false, isTrackingTouch: false, isOverscrolled: true))
+        XCTAssertFalse(CoreListRestSpringBack.isNeeded(isFlying: false, isDecelerating: false, isTrackingTouch: false, isOverscrolled: false))
+        XCTAssertFalse(CoreListRestSpringBack.isNeeded(isFlying: true, isDecelerating: false, isTrackingTouch: false, isOverscrolled: true))
+        XCTAssertFalse(CoreListRestSpringBack.isNeeded(isFlying: false, isDecelerating: true, isTrackingTouch: false, isOverscrolled: true))
+        XCTAssertFalse(CoreListRestSpringBack.isNeeded(isFlying: false, isDecelerating: false, isTrackingTouch: true, isOverscrolled: true))
+    }
+
+    func testAtMostOncePerInterval() {
+        var limiter = CoreListRestSpringBack()
+        XCTAssertTrue(limiter.allow(now: 10.0))
+        XCTAssertFalse(limiter.allow(now: 10.5))
+        XCTAssertTrue(limiter.allow(now: 10.0 + CoreListRestSpringBack.minimumInterval))
+    }
+}

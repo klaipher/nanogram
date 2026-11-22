@@ -1618,6 +1618,17 @@ Signposts (category Performance, point events): `chatRowPrefetchHit`, `chatRowPr
 `//submodules/TelegramUI/Components/Chat/ChatMessageStickerItemNode:ChatMessageStickerItemNodeTests`,
 `//submodules/TelegramUI/Components/CoreList:CoreListScrollPathTests`, `//submodules/DebugSettingsUI:DebugSettingsUITests`.
 
+## Spring-back at rest
+
+The list never rests outside its declared edges. A pass that lands during an edge bounce halts the motion and keeps the
+presented overscroll (`newBoundsOriginY = settled + presentationOverscroll`; the settle clamp is skipped for a pass that was
+overscrolled before it), and nothing sprang back until the next touch: blank under the newest bubble. Where the list comes to
+rest (pass end; the next main-queue turn after a flight or deceleration ends), `CoreVirtualListView` asks the engine
+`springBackIfRestingOverscrolled()`, which starts the same edge bounce a tap on an overscrolled list starts. It does nothing
+during a flight, a deceleration or while a finger is down, runs at most once a second (`CoreListRestSpringBack`), and logs a
+line to the diagnostic log. Declared edges already contain pin, hold and stack slack and the overscroll-action hold, so it never
+takes designed room away.
+
 ## Empty-viewport diagnostics (`CoreListInvariant`)
 
 Always on, read-only, logging only. Written for the report "messages jump, then the history shows one bubble cut off at the
