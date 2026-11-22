@@ -2011,7 +2011,7 @@ final class PostboxImpl {
         self.currentAfterCommitActions.append(f)
     }
 
-    init(queue: Queue, basePath: String, seedConfiguration: SeedConfiguration, valueBox: SqliteValueBox, timestampForAbsoluteTimeBasedOperations: Int32, isTemporary: Bool, tempDir: TempBoxDirectory?, useCaches: Bool, isInTransaction: Atomic<Bool>) {
+    init(queue: Queue, basePath: String, seedConfiguration: SeedConfiguration, valueBox: SqliteValueBox, timestampForAbsoluteTimeBasedOperations: Int32, isMainProcess: Bool, isTemporary: Bool, tempDir: TempBoxDirectory?, useCaches: Bool, isInTransaction: Atomic<Bool>) {
         assert(queue.isCurrent())
         
         let startTime = CFAbsoluteTimeGetCurrent()
@@ -2242,7 +2242,10 @@ final class PostboxImpl {
                 }
             }
             
-            if !isTemporary {
+            // Nanogram: only the app itself expires unsent messages. The notification service, share and Siri
+            // extensions open this database too, and a push that woke the extension 10 minutes after a photo was
+            // queued (the app suspended with the upload unfinished) used to turn that photo red.
+            if postboxShouldExpireUnsentMessages(isTemporary: isTemporary, isMainProcess: isMainProcess) {
                 for id in self.messageHistoryUnsentTable.get() {
                     transaction.updateMessage(id, update: { message in
                         if !message.flags.contains(.Failed) {
@@ -2252,9 +2255,11 @@ final class PostboxImpl {
                                 }
                             }
 
-                            if Int64(message.timestamp) + 60 * 10 > Int64(timestampForAbsoluteTimeBasedOperations) {
+                            if !postboxUnsentMessageIsExpired(messageTimestamp: message.timestamp, now: timestampForAbsoluteTimeBasedOperations) {
                                 return .skip
                             }
+                            // Critical log: a red mark from this rule has no other trace (sendErrorCode stays unset).
+                            postboxLog("unsent message \(id.id) expired after \(Int64(timestampForAbsoluteTimeBasedOperations) - Int64(message.timestamp)) s, marked failed (main process)")
                             var flags = StoreMessageFlags(message.flags)
                             flags.remove(.Unsent)
                             flags.remove(.Sending)
@@ -4934,6 +4939,7 @@ public class Postbox {
                 seedConfiguration: seedConfiguration,
                 valueBox: valueBox,
                 timestampForAbsoluteTimeBasedOperations: timestampForAbsoluteTimeBasedOperations,
+                isMainProcess: isMainProcess,
                 isTemporary: isTemporary,
                 tempDir: tempDir,
                 useCaches: useCaches,
@@ -5655,4 +5661,15 @@ enum PostboxUnreadReindexSchedule {
     static func setLastRun(markerPath: String, timestamp: Double) {
         let _ = try? "\(timestamp)".data(using: .utf8)?.write(to: URL(fileURLWithPath: markerPath), options: .atomic)
     }
+}
+
+
+/// Nanogram: the launch expiry runs only in the app's own process (see `Postbox.init`).
+func postboxShouldExpireUnsentMessages(isTemporary: Bool, isMainProcess: Bool) -> Bool {
+    return !isTemporary && isMainProcess
+}
+
+/// An unsent message older than 10 minutes (its timestamp is the enqueue time) fails at launch (upstream rule).
+func postboxUnsentMessageIsExpired(messageTimestamp: Int32, now: Int32) -> Bool {
+    return Int64(messageTimestamp) + 60 * 10 <= Int64(now)
 }
