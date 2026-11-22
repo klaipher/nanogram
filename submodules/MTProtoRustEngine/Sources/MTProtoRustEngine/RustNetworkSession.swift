@@ -936,14 +936,32 @@ final class RustNetworkSession: NetworkEngineSession, RustEngineEventHandler {
         if rustEngineResubmitsAfterLostAnswer(code: event.code, text: event.text) {
             let errorContext = pending.errorState.applyServerError()
             let policyAllows = pending.request.shouldContinueAfterError(NetworkEngineErrorContext(floodWaitSeconds: errorContext.floodWaitSeconds, floodWaitErrorText: errorContext.floodWaitErrorText, internalServerErrorCount: errorContext.internalServerErrorCount)) && !pending.isCancelled && !pending.isFinished
-            switch rustEngineLostAnswerAction(resubmissionsSoFar: pending.errorState.lostAnswerResubmissions, policyAllows: policyAllows) {
+            let safeToRepeat = pending.request.options.safeToRepeat
+            switch rustEngineLostAnswerAction(resubmissionsSoFar: pending.errorState.lostAnswerResubmissions, policyAllows: policyAllows, safeToRepeat: safeToRepeat) {
             case .resubmit:
                 if self.verifyingRequests.removeValue(forKey: event.requestId) != nil {
                     pending.releaseResources()
                 }
+                let resubmitDelay = rustEngineLostAnswerResubmitDelay(resubmissionsSoFar: pending.errorState.lostAnswerResubmissions, safeToRepeat: safeToRepeat)
                 pending.errorState.didResubmitAfterLostAnswer()
-                rustEngineImportantLog("\(self.logPrefix) #\(event.requestId) ran on the server but its answer is gone; it goes again")
-                self.sendToEngine(pending)
+                rustEngineImportantLog("\(self.logPrefix) #\(event.requestId) ran on the server but its answer is gone; it goes again\(resubmitDelay > 0.0 ? " in \(resubmitDelay) s" : "")")
+                if resubmitDelay > 0.0 {
+                    pending.resubmitTimer?.invalidate()
+                    let timer = SwiftSignalKit.Timer(timeout: resubmitDelay, repeat: false, completion: { [weak self, weak pending] in
+                        guard let self = self, let pending = pending else {
+                            return
+                        }
+                        pending.resubmitTimer = nil
+                        if pending.isFinished || pending.isCancelled || self.isStopped.with({ $0 }) {
+                            return
+                        }
+                        self.sendToEngine(pending)
+                    }, queue: self.queue)
+                    pending.resubmitTimer = timer
+                    timer.start()
+                } else {
+                    self.sendToEngine(pending)
+                }
                 return
             case .fail:
                 if self.verifyingRequests.removeValue(forKey: event.requestId) != nil {

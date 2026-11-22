@@ -269,6 +269,27 @@ final class RustEngineMappingTests: XCTestCase {
         XCTAssertEqual(state.context.internalServerErrorCount, 1)
     }
 
+    func testASafeToRepeatCallIsNeverFailedForALostAnswer() {
+        XCTAssertEqual(rustEngineLostAnswerAction(resubmissionsSoFar: 3, policyAllows: true, safeToRepeat: true), .resubmit)
+        XCTAssertEqual(rustEngineLostAnswerAction(resubmissionsSoFar: 40, policyAllows: true, safeToRepeat: true), .resubmit)
+        XCTAssertEqual(rustEngineLostAnswerAction(resubmissionsSoFar: 3, policyAllows: false, safeToRepeat: true), .fail)
+        // A call that is not safe to repeat keeps the cap.
+        XCTAssertEqual(rustEngineLostAnswerAction(resubmissionsSoFar: 3, policyAllows: true, safeToRepeat: false), .fail)
+        XCTAssertEqual(rustEngineLostAnswerAction(resubmissionsSoFar: 3, policyAllows: true), .fail)
+    }
+
+    func testTheLostAnswerResubmitDelayGrowsAndIsCapped() {
+        for n in 0 ..< 3 {
+            XCTAssertEqual(rustEngineLostAnswerResubmitDelay(resubmissionsSoFar: n, safeToRepeat: true), 0.0)
+        }
+        XCTAssertEqual(rustEngineLostAnswerResubmitDelay(resubmissionsSoFar: 3, safeToRepeat: true), 1.0)
+        XCTAssertEqual(rustEngineLostAnswerResubmitDelay(resubmissionsSoFar: 4, safeToRepeat: true), 2.0)
+        XCTAssertEqual(rustEngineLostAnswerResubmitDelay(resubmissionsSoFar: 7, safeToRepeat: true), 16.0)
+        XCTAssertEqual(rustEngineLostAnswerResubmitDelay(resubmissionsSoFar: 8, safeToRepeat: true), 30.0)
+        XCTAssertEqual(rustEngineLostAnswerResubmitDelay(resubmissionsSoFar: 500, safeToRepeat: true), 30.0)
+        XCTAssertEqual(rustEngineLostAnswerResubmitDelay(resubmissionsSoFar: 9, safeToRepeat: false), 0.0)
+    }
+
     func testALostAnswerIsSentAgain() {
         XCTAssertTrue(rustEngineResubmitsAfterLostAnswer(code: 500, text: "PROTOCOL_ERROR_ANSWER_LOST"))
         XCTAssertFalse(rustEngineResubmitsAfterLostAnswer(code: 500, text: "PROTOCOL_ERROR_REJECTED"))

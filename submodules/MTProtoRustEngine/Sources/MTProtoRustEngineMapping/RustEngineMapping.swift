@@ -217,8 +217,28 @@ public enum RustEngineLostAnswerAction: Equatable {
     case fail
 }
 
-public func rustEngineLostAnswerAction(resubmissionsSoFar: Int, policyAllows: Bool) -> RustEngineLostAnswerAction {
+public func rustEngineLostAnswerAction(resubmissionsSoFar: Int, policyAllows: Bool, safeToRepeat: Bool = false) -> RustEngineLostAnswerAction {
+    if safeToRepeat {
+        // Nanogram-only. The caller guarantees the call can be repeated (an idempotent file part, or a send
+        // with a random id), and the server already ran it: failing it would show a delivered message as
+        // failed, and the user's Retry would post it twice. Only the request's own policy can stop it.
+        return policyAllows ? .resubmit : .fail
+    }
     return policyAllows && resubmissionsSoFar < rustEngineMaximumLostAnswerResubmissions ? .resubmit : .fail
+}
+
+/// Nanogram-only. The delay before the next send of a call whose answer is gone. The first
+/// `rustEngineMaximumLostAnswerResubmissions` repeats go at once (as before); a call that is `safeToRepeat`
+/// and needs more waits 1, 2, 4, 8, 16 and then 30 s each time, so a persistent fault cannot spin.
+public func rustEngineLostAnswerResubmitDelay(resubmissionsSoFar: Int, safeToRepeat: Bool) -> Double {
+    if !safeToRepeat || resubmissionsSoFar < rustEngineMaximumLostAnswerResubmissions {
+        return 0.0
+    }
+    let step = resubmissionsSoFar - rustEngineMaximumLostAnswerResubmissions
+    if step >= 5 {
+        return 30.0
+    }
+    return Double(1 << step)
 }
 
 public func rustEngineResubmitsAfterLostAnswer(code: Int32, text: String) -> Bool {
