@@ -450,7 +450,9 @@ final class MultipartUploadTests: XCTestCase {
             let manager = MultipartUploadManager(headerSize: { 0 }, data: .single(.data(Data(count: 200 * 1024))), encryptionKey: nil, hintFileSize: nil, hintFileIsLarge: false, forceNoBigParts: false, useLargerParts: false, increaseParallelParts: false, networkClass: .wifi, stallTimeout: 100.0, hardDeadline: 0.4, uploadPart: { part in
                 let call = calls.modify { $0 + 1 }
                 if call == 1 {
-                    return .complete()
+                    // Answered a little later, as the network does: both parts are in flight first, so the second
+                    // one sees the first answered after it was issued (the proof that the link is alive).
+                    return .complete() |> delay(0.05, queue: Queue.concurrentDefaultQueue())
                 }
                 return Signal<Void, UploadPartError> { subscriber in
                     let number = subscriptions.modify { $0 + 1 }

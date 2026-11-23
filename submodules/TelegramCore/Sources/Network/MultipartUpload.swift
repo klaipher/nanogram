@@ -452,7 +452,7 @@ final class MultipartUploadManager {
                         }
                         self.partWillStart(offset: partOffset, size: partSize)
                         self.partRequests[partOffset] = PartRequest(signal: part, partIndex: partIndex, isHeader: false)
-                        self.uploadingParts[nextOffset] = (partSize, self.subscribe(part, offset: partOffset, size: partSize, partIndex: partIndex, isHeader: false))
+                        self.startPart(part, offset: partOffset, size: partSize, partIndex: partIndex, isHeader: false)
                     } else {
                         self.finish(nil)
                         return
@@ -477,6 +477,15 @@ final class MultipartUploadManager {
         return { delay in
             sink.onRetry?(offset, fileId, now(), delay)
         }
+    }
+    
+    /// Records the part as in flight, then starts its request. The entry goes in first: a request may answer, fail or
+    /// report a retry while it is being subscribed (on this queue, so synchronously), and it must find the part in flight;
+    /// storing the subscription afterwards would leave a finished part in `uploadingParts` and drop the retry notice.
+    private func startPart(_ part: Signal<Void, UploadPartError>, offset: Int64, size: Int64, partIndex: Int, isHeader: Bool) {
+        let subscription = MetaDisposable()
+        self.uploadingParts[offset] = (size, subscription)
+        subscription.set(self.subscribe(part, offset: offset, size: size, partIndex: partIndex, isHeader: isHeader))
     }
     
     /// Starts one part's request signal. Also used to send the same part again after a hard deadline.
@@ -572,8 +581,10 @@ final class MultipartUploadManager {
         let at = self.now()
         self.issuedAt[offset] = (count: self.finishedCount, at: at)
         self.window.partRetried(id: offset, at: at, resumesAt: at)
-        self.uploadingParts[offset] = (size, self.subscribe(request.signal, offset: offset, size: size, partIndex: request.partIndex, isHeader: request.isHeader))
-        self.armHardDeadline(offset: offset, size: size, after: 0)
+        self.startPart(request.signal, offset: offset, size: size, partIndex: request.partIndex, isHeader: request.isHeader)
+        if self.uploadingParts[offset] != nil {
+            self.armHardDeadline(offset: offset, size: size, after: 0)
+        }
     }
     
     private func partWillStart(offset: Int64, size: Int64) {
@@ -712,7 +723,7 @@ final class MultipartUploadManager {
             self.partWillStart(offset: partOffset, size: partSize)
             let headerPartIndex = Int(partOffset / self.defaultPartSize)
             self.partRequests[partOffset] = PartRequest(signal: part, partIndex: headerPartIndex, isHeader: true)
-            self.uploadingParts[partOffset] = (partSize, self.subscribe(part, offset: partOffset, size: partSize, partIndex: headerPartIndex, isHeader: true))
+            self.startPart(part, offset: partOffset, size: partSize, partIndex: headerPartIndex, isHeader: true)
         }
     }
 }
