@@ -395,6 +395,36 @@ final class MultipartUploadTests: XCTestCase {
         return (completed: (result.with { $0 } ?? nil) != nil, callCount: calls.with { $0 }, maxConcurrentAfterFirstSix: maxAfterFirstSix.with { $0 })
     }
 
+    /// M5: a part with no answer for the hard deadline is subscribed again once; if it still gets none, the upload
+    /// fails through the normal error path instead of hanging.
+    func testAPartWithNoAnswerIsSentAgainOnceThenFails() {
+        for secondAttemptAnswers in [true, false] {
+            let subscriptions = Atomic<Int>(value: 0)
+            let calls = Atomic<Int>(value: 0)
+            let finished = expectation(description: "the upload finished (\(secondAttemptAnswers))")
+            let result = Atomic<MultipartIntermediateResult??>(value: nil)
+            let manager = MultipartUploadManager(headerSize: { 0 }, data: .single(.data(Data(count: 100 * 1024))), encryptionKey: nil, hintFileSize: nil, hintFileIsLarge: false, forceNoBigParts: false, useLargerParts: false, increaseParallelParts: false, networkClass: .wifi, stallTimeout: 100.0, hardDeadline: 0.4, uploadPart: { _ in
+                let _ = calls.modify { $0 + 1 }
+                return Signal<Void, UploadPartError> { subscriber in
+                    let number = subscriptions.modify { $0 + 1 }
+                    if number >= 2 && secondAttemptAnswers {
+                        subscriber.putCompletion()
+                    }
+                    return EmptyDisposable
+                }
+            }, progress: { _ in
+            }, completed: { value in
+                let _ = result.swap(.some(value))
+                finished.fulfill()
+            })
+            manager.start()
+            wait(for: [finished], timeout: 10.0)
+            XCTAssertEqual(calls.with { $0 }, 1, "the signal is built once")
+            XCTAssertEqual(subscriptions.with { $0 }, 2)
+            XCTAssertEqual((result.with { $0 } ?? nil) != nil, secondAttemptAnswers)
+        }
+    }
+
     /// M8: one summary line per upload, on success and on failure, whatever the number of failing parts.
     func testOneFinishLinePerUpload() {
         for succeed in [true, false] {
