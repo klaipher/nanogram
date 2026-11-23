@@ -383,6 +383,30 @@ marked (check) were not re-verified against the code; correct them on the next c
   `RANDOM_ID_DUPLICATE` (500, which both engines retry without end) is not verified; the lost-answer resubmit relies on the
   former.
 
+### Uploads: adaptive part window and first-answer limit (iOS and Mac, shared core, 2026-11-23)
+
+- What: the number of upload parts in flight (`MultipartUploadManager.parallelParts`) is no longer fixed. `UploadPartWindow`
+  (pure value type, `Network/UploadPartWindow.swift`) starts at the old 6 (parts under 512 KB) or 3 (512 KB parts) on Wi-Fi or an
+  unknown network, lower on cellular (4 for 128 KB parts, 2 for bigger), grows by one for each clean fast part that started with
+  the window full (Reno-style above the last decrease; not past what the measured goodput carries in 6 s), halves at most once
+  per holdoff when a part is slow (over 8 s), retried, stalled or failed, and is capped at 8 parts and 1.5 MB. A flip to
+  cellular lowers it; a part-size change or the big-file restart starts it over. History import (30) is untouched. A part with
+  no answer after 8 s only shrinks the window. Phase 2 (`MultipartUploadManager.hardDeadlineEnabled`, own commit): a part with
+  no answer for 12 s + size / 12 KB/s + 8 s (about 30.7 s for 128 KB) is subscribed again once (same signal, same bytes), then
+  the upload fails through the normal path. One log line per upload (`upload end ok= parts= bytes= ms= part= win=min/max/final
+  retries= stalls= fails= dec= net=a>b`) goes to the Send Report log. `pendingUploadPartRetrying` gained an optional `onRetry`.
+- Why: owner sees red failed sends on cellular, almost never on Wi-Fi; a fixed window of 6 parts can hold more than a slow
+  uplink answers in time, and nothing timed out a part that never got a first answer while other traffic kept the socket alive.
+  Expect modest gains; the structural fix (a dedicated upload pool as in TDLib, tdesktop and Android) is not done.
+- Where: `TelegramCore/Sources/Network/UploadPartWindow.swift`, `MultipartUpload.swift`,
+  `PendingMessages/PendingSendFailurePolicy.swift`; tests `UploadPartWindowTests`, `MultipartUploadTests`.
+- Upstream: no (Nanogram-only).
+- Sync: keep `window` calls at part start, finish, failure and retry in `MultipartUploadManager`; the four `defaultPartSize`
+  assignments go through `updatePartSize`. Mac: shared core, the Mac app picks this up through its core pin
+  (`submodules/telegram-ios`), so bump the pin there (gitlink commit without a pathspec) and run the same tests.
+- Not done: dedicated upload connection pool, resume of partial uploads, part-size adaptation, `networkDuration` samples.
+- Not built; tests written, not run. The simulator scenarios use the worst case (any attempt of 12 s or more resets the connection).
+
 ### Hardware codec capability probe (iOS, 2026-11-14)
 
 - What: `submodules/MediaCapabilities` (new, Nanogram-only) caches hardware decode and encode answers; `internal_isHardwareAv1Supported` delegates to it. `VideoDecodePolicy.usesPassthrough` / `usesHardwareAcceleration` keep AV1 off the passthrough and VideoToolbox hwaccel paths unless hardware AV1 exists (A17 Pro, M3 and newer), in `FFMpegFileReader` and `SoftwareVideoSource`. `DecodePathLog` logs codec and hardware or software once per launch. Send Logs adds a "Media capabilities" block.
