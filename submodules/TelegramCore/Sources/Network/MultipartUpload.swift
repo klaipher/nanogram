@@ -15,6 +15,16 @@ struct UploadPart {
     let data: Data
     let bigTotalParts: Int?
     let bigPart: Bool
+    /// The part's offset in the file, which is the manager's key for it.
+    var offset: Int64 = 0
+    /// Called by the retry wrapper with the back-off delay when this part's request is sent again.
+    var onRetry: ((Double) -> Void)? = nil
+}
+
+/// Carries a part's retry notice from the request signal back to the manager that owns the window. Weakly bound
+/// by the manager, so a retry that fires after the upload ended reaches nothing.
+final class UploadPartRetrySink {
+    var onRetry: ((Int64, Double) -> Void)?
 }
 
 private func md5(_ data: Data) -> Data {
@@ -117,18 +127,28 @@ enum HeaderPartState {
 
 final class MultipartUploadManager {
     private let increaseParallelParts: Bool
-    /// Parts in flight. Parts smaller than 512 KB are bound by latency, so six go at once (measured on a
-    /// 4.6 MB video: 2.9 -> 4.5 MB/s, and 4.1 -> 2.7 s with 200 ms of added latency); three big parts
-    /// already fill the link.
+    /// Parts in flight. History import (`increaseParallelParts`) always gets 30. Otherwise `UploadPartWindow` decides:
+    /// it starts at six for parts under 512 KB (bound by latency; measured on a 4.6 MB video: 2.9 -> 4.5 MB/s, and
+    /// 4.1 -> 2.7 s with 200 ms of added latency) and three for 512 KB parts (three already fill the link), lower on
+    /// cellular, and follows how fast parts really finish.
     var parallelParts: Int {
         if self.increaseParallelParts {
             return 30
-        } else if self.defaultPartSize < 512 * 1024 {
-            return 6
         } else {
-            return 3
+            return self.window.allowedInFlight
         }
     }
+    private var window: UploadPartWindow
+    private let now: () -> Double
+    private let stallTimeout: Double
+    private let finishLog: ((String) -> Void)?
+    private let networkIsInjected: Bool
+    private var lastNetworkDescription: String
+    private let startNetworkName: String
+    private let retrySink = UploadPartRetrySink()
+    private var partTimers: [Int64: Disposable] = [:]
+    private var finishLogged = false
+    private var startedAt: Double
     var defaultPartSize: Int64
     var bigTotalParts: Int?
     var bigParts: Bool
@@ -161,7 +181,7 @@ final class MultipartUploadManager {
     
     let state: MultipartUploadState
     
-    init(headerSize: @escaping () -> Int64, data: Signal<MultipartUploadData, NoError>, encryptionKey: SecretFileEncryptionKey?, hintFileSize: Int64?, hintFileIsLarge: Bool, forceNoBigParts: Bool, useLargerParts: Bool, increaseParallelParts: Bool, uploadPart: @escaping (UploadPart) -> Signal<Void, UploadPartError>, progress: @escaping (Float) -> Void, completed: @escaping (MultipartIntermediateResult?) -> Void) {
+    init(headerSize: @escaping () -> Int64, data: Signal<MultipartUploadData, NoError>, encryptionKey: SecretFileEncryptionKey?, hintFileSize: Int64?, hintFileIsLarge: Bool, forceNoBigParts: Bool, useLargerParts: Bool, increaseParallelParts: Bool, networkClass: UploadPartWindow.NetworkClass? = nil, stallTimeout: Double = 8.0, now: @escaping () -> Double = { ProcessInfo.processInfo.systemUptime }, finishLog: ((String) -> Void)? = nil, uploadPart: @escaping (UploadPart) -> Signal<Void, UploadPartError>, progress: @escaping (Float) -> Void, completed: @escaping (MultipartIntermediateResult?) -> Void) {
         self.dataSignal = data
         
         var fileId: Int64 = 0
@@ -204,13 +224,48 @@ final class MultipartUploadManager {
             self.defaultPartSize = 128 * 1024
             self.bigTotalParts = nil
         }
+        
+        self.now = now
+        self.stallTimeout = stallTimeout
+        self.finishLog = finishLog
+        self.startedAt = now()
+        let startDescription = pendingFailureNetworkDescription()
+        let resolvedNetwork = networkClass ?? MultipartUploadManager.networkClass(description: startDescription)
+        self.networkIsInjected = networkClass != nil
+        self.lastNetworkDescription = startDescription
+        self.startNetworkName = networkClass != nil ? resolvedNetwork.rawValue : startDescription
+        self.window = UploadPartWindow(UploadPartWindow.Config(partSize: Int(self.defaultPartSize), network: resolvedNetwork))
+        self.retrySink.onRetry = { [weak self] offset, delay in
+            guard let self else {
+                return
+            }
+            let at = self.now()
+            self.queue.async { [weak self] in
+                self?.partRetried(offset: offset, at: at, delay: delay)
+            }
+        }
+    }
+    
+    private static func networkClass(description: String) -> UploadPartWindow.NetworkClass {
+        switch description {
+        case "wifi":
+            return .wifi
+        case "cellular":
+            return .cellular
+        default:
+            return .unknown
+        }
     }
     
     deinit {
         let uploadingParts = self.uploadingParts
+        let partTimers = self.partTimers
         let dataDisposable = self.dataDisposable
         
         self.queue.async {
+            for (_, timer) in partTimers {
+                timer.dispose()
+            }
             for (_, (_, disposable)) in uploadingParts {
                 disposable.dispose()
             }
@@ -220,6 +275,7 @@ final class MultipartUploadManager {
     
     func start() {
         self.queue.async { [self] in
+            self.startedAt = self.now()
             self.dataDisposable.set((self.dataSignal
             |> deliverOn(self.queue)).startStrict(next: { [weak self] data in
                 if let strongSelf = self {
@@ -232,6 +288,7 @@ final class MultipartUploadManager {
     
     func cancel() {
         self.queue.async {
+            self.cancelPartTimers()
             for (_, (_, disposable)) in self.uploadingParts {
                 disposable.dispose()
             }
@@ -241,7 +298,7 @@ final class MultipartUploadManager {
     func checkState() {
         if let resourceData = self.resourceData, !resourceData.complete, !self.bigParts, !self.forceNoBigParts, resourceData.size > 10 * 1024 * 1024, self.uploadedParts.isEmpty, self.uploadingParts.isEmpty, self.committedOffset <= self.heldHeaderLength {
             // Nothing beyond the held header went out yet. Once small parts are committed, the restart below handles the crossing.
-            self.defaultPartSize = 512 * 1024
+            self.updatePartSize(512 * 1024)
             self.bigTotalParts = nil
             self.bigParts = true
             self.committedOffset = 0
@@ -250,11 +307,13 @@ final class MultipartUploadManager {
         if let resourceData = self.resourceData, resourceData.complete, resourceData.size > 10 * 1024 * 1024, !self.bigParts, !self.forceNoBigParts, self.committedOffset != 0 || !self.uploadedParts.isEmpty || !self.uploadingParts.isEmpty {
             // Parts went out while the file was still growing, as a small file; it ended up over the
             // small-file limit, which the server accepts only as a big file. Start over under a new id.
+            self.cancelPartTimers()
             for (_, (_, disposable)) in self.uploadingParts {
                 disposable.dispose()
             }
             self.uploadingParts.removeAll()
             self.uploadedParts.removeAll()
+            self.window.restart(partSize: Int(self.defaultPartSize), at: self.now())
             self.committedOffset = 0
             // Only an unencrypted upload sends parts before the data is complete, so the count is all there is to reset.
             self.state.effectiveSize = 0
@@ -268,17 +327,17 @@ final class MultipartUploadManager {
         if let resourceData = self.resourceData, resourceData.complete && resourceData.size != 0 {
             if self.committedOffset == 0 && self.uploadedParts.isEmpty && self.uploadingParts.isEmpty {
                 if resourceData.size > 10 * 1024 * 1024, !self.forceNoBigParts {
-                    self.defaultPartSize = 512 * 1024
+                    self.updatePartSize(512 * 1024)
                     self.bigTotalParts = Int(resourceData.size / self.defaultPartSize) + (resourceData.size % self.defaultPartSize == 0 ? 0 : 1)
                     self.bigParts = true
                 } else {
                     self.bigParts = false
                     if self.useLargerParts {
-                        self.defaultPartSize = 256 * 1024
+                        self.updatePartSize(256 * 1024)
                     } else {
                         // 128 KB, as before the size was known: 16 KB parts cost a round trip per 48 KB
                         // (measured: a 120 KB photo in 1.04 -> 0.48 s with 200 ms of added latency).
-                        self.defaultPartSize = 128 * 1024
+                        self.updatePartSize(128 * 1024)
                     }
                     self.bigTotalParts = nil
                 }
@@ -309,7 +368,7 @@ final class MultipartUploadManager {
                     if self.bigParts {
                         currentBigTotalParts = Int(resourceData.size / self.defaultPartSize) + (resourceData.size % self.defaultPartSize == 0 ? 0 : 1)
                     }
-                    self.completed(MultipartIntermediateResult(id: self.fileId, partCount: effectivePartCount, md5Digest: "", size: resourceData.size, bigTotalParts: currentBigTotalParts))
+                    self.finish(MultipartIntermediateResult(id: self.fileId, partCount: effectivePartCount, md5Digest: "", size: resourceData.size, bigTotalParts: currentBigTotalParts))
                 case .notStarted:
                     let headerLength = self.heldHeaderLength > 0 ? self.heldHeaderLength : self.defaultPartSize
                     var offsets = Array(stride(from: Int64(0), to: min(headerLength, resourceData.size), by: Int(self.defaultPartSize)))
@@ -355,7 +414,7 @@ final class MultipartUploadManager {
                         if self.bigParts && resourceData.complete && partOffset + partSize == resourceData.size {
                             currentBigTotalParts = Int(resourceData.size / self.defaultPartSize) + (resourceData.size % self.defaultPartSize == 0 ? 0 : 1)
                         }
-                        let part = self.uploadPart(UploadPart(fileId: self.fileId, index: partIndex, data: partData, bigTotalParts: currentBigTotalParts, bigPart: self.bigParts))
+                        let part = self.uploadPart(UploadPart(fileId: self.fileId, index: partIndex, data: partData, bigTotalParts: currentBigTotalParts, bigPart: self.bigParts, offset: partOffset, onRetry: self.retryNotice(offset: partOffset)))
                         |> deliverOn(self.queue)
                         if partIndex == 0 {
                             switch self.headerPartState {
@@ -365,11 +424,14 @@ final class MultipartUploadManager {
                                     break
                             }
                         }
+                        self.partWillStart(offset: partOffset, size: partSize)
                         self.uploadingParts[nextOffset] = (partSize, part.startStrict(error: { [weak self] error in
                             pendingMessageFailureLog("upload part \(partIndex) of \(partSize) bytes failed (\(error)), \(self?.uploadingParts.count ?? 0) in flight")
-                            self?.completed(nil)
+                            self?.partDidFail(offset: partOffset)
+                            self?.finish(nil)
                         }, completed: { [weak self] in
                             if let strongSelf = self {
+                                strongSelf.partDidFinish(offset: partOffset)
                                 strongSelf.uploadingParts.removeValue(forKey: nextOffset)?.1.dispose()
                                 strongSelf.uploadedParts[partOffset] = partSize
                                 if partIndex == 0 {
@@ -379,7 +441,7 @@ final class MultipartUploadManager {
                             }
                         }))
                     } else {
-                        self.completed(nil)
+                        self.finish(nil)
                         return
                     }
                 } else {
@@ -387,6 +449,96 @@ final class MultipartUploadManager {
                 }
             }
         }
+    }
+    
+    /// Sets the part size and starts the window over for it. Only legal while nothing is in flight.
+    private func updatePartSize(_ size: Int64) {
+        self.defaultPartSize = size
+        self.window.restart(partSize: Int(size), at: self.now())
+    }
+    
+    private func retryNotice(offset: Int64) -> (Double) -> Void {
+        let sink = self.retrySink
+        return { delay in
+            sink.onRetry?(offset, delay)
+        }
+    }
+    
+    private func partWillStart(offset: Int64, size: Int64) {
+        self.window.partStarted(id: offset, bytes: Int(size), inFlight: self.uploadingParts.count, at: self.now())
+        self.armStallTimer(offset: offset, after: self.stallTimeout)
+    }
+    
+    private func partDidFinish(offset: Int64) {
+        self.partTimers.removeValue(forKey: offset)?.dispose()
+        let at = self.now()
+        self.window.partFinished(id: offset, at: at)
+        self.checkNetwork(at: at)
+    }
+    
+    private func partDidFail(offset: Int64) {
+        self.partTimers.removeValue(forKey: offset)?.dispose()
+        self.window.partFailed(id: offset, at: self.now())
+    }
+    
+    private func partRetried(offset: Int64, at: Double, delay: Double) {
+        guard self.uploadingParts[offset] != nil else {
+            return
+        }
+        self.window.partRetried(id: offset, at: at, resumesAt: at + delay)
+        self.armStallTimer(offset: offset, after: delay + self.stallTimeout)
+    }
+    
+    /// No answer for a while: the window shrinks. The part itself is not touched.
+    private func armStallTimer(offset: Int64, after delay: Double) {
+        self.partTimers.removeValue(forKey: offset)?.dispose()
+        let timer = SignalKitTimer(timeout: delay, repeat: false, completion: { [weak self] in
+            guard let self, self.uploadingParts[offset] != nil else {
+                return
+            }
+            self.partTimers.removeValue(forKey: offset)
+            self.window.partStalled(id: offset, at: self.now())
+        }, queue: self.queue)
+        self.partTimers[offset] = ActionDisposable {
+            timer.invalidate()
+        }
+        timer.start()
+    }
+    
+    private func cancelPartTimers() {
+        for (_, timer) in self.partTimers {
+            timer.dispose()
+        }
+        self.partTimers.removeAll()
+    }
+    
+    private func checkNetwork(at: Double) {
+        if self.networkIsInjected {
+            return
+        }
+        let description = pendingFailureNetworkDescription()
+        if description != self.lastNetworkDescription {
+            self.lastNetworkDescription = description
+            self.window.networkChanged(MultipartUploadManager.networkClass(description: description), at: at)
+        }
+    }
+    
+    /// The end of the upload, ok or not; logs one line (numbers and fixed tokens only) and reports the result.
+    private func finish(_ result: MultipartIntermediateResult?) {
+        self.cancelPartTimers()
+        if !self.finishLogged {
+            self.finishLogged = true
+            let stats = self.window.stats
+            let milliseconds = Int(max(0.0, self.now() - self.startedAt) * 1000.0)
+            let endNetwork = self.networkIsInjected ? stats.endNetwork.rawValue : pendingFailureNetworkDescription()
+            let line = "upload end ok=\(result != nil ? 1 : 0) parts=\(stats.parts) bytes=\(stats.bytes) ms=\(milliseconds) part=\(self.defaultPartSize) win=\(stats.minWindow)/\(stats.maxWindow)/\(self.window.window) retries=\(stats.retries) stalls=\(stats.stalls) fails=\(stats.failures) dec=\(stats.decreases) net=\(self.startNetworkName)>\(endNetwork)"
+            if let finishLog = self.finishLog {
+                finishLog(line)
+            } else {
+                pendingMessageFailureLog(line)
+            }
+        }
+        self.completed(result)
     }
     
     private func readPart(resourceData: MultipartUploadData, offset: Int64, size: Int64) -> Data? {
@@ -413,7 +565,7 @@ final class MultipartUploadManager {
             let partSize = min(resourceData.size - partOffset, self.defaultPartSize)
             guard let fileData = self.readPart(resourceData: resourceData, offset: partOffset, size: partSize) else {
                 self.pendingHeaderOffsets.removeAll()
-                self.completed(nil)
+                self.finish(nil)
                 return
             }
             let partData = self.state.transformHeader(data: fileData)
@@ -421,13 +573,16 @@ final class MultipartUploadManager {
             if self.bigParts {
                 currentBigTotalParts = Int(resourceData.size / self.defaultPartSize) + (resourceData.size % self.defaultPartSize == 0 ? 0 : 1)
             }
-            let part = self.uploadPart(UploadPart(fileId: self.fileId, index: Int(partOffset / self.defaultPartSize), data: partData, bigTotalParts: currentBigTotalParts, bigPart: self.bigParts))
+            let part = self.uploadPart(UploadPart(fileId: self.fileId, index: Int(partOffset / self.defaultPartSize), data: partData, bigTotalParts: currentBigTotalParts, bigPart: self.bigParts, offset: partOffset, onRetry: self.retryNotice(offset: partOffset)))
             |> deliverOn(self.queue)
+            self.partWillStart(offset: partOffset, size: partSize)
             self.uploadingParts[partOffset] = (partSize, part.startStrict(error: { [weak self] error in
                 pendingMessageFailureLog("upload header part at \(partOffset) of \(partSize) bytes failed (\(error)), \(self?.uploadingParts.count ?? 0) in flight")
-                self?.completed(nil)
+                self?.partDidFail(offset: partOffset)
+                self?.finish(nil)
             }, completed: { [weak self] in
                 if let strongSelf = self {
+                    strongSelf.partDidFinish(offset: partOffset)
                     strongSelf.uploadingParts.removeValue(forKey: partOffset)?.1.dispose()
                     if strongSelf.pendingHeaderOffsets.isEmpty && strongSelf.uploadingParts.isEmpty {
                         strongSelf.headerPartState = .ready
@@ -555,9 +710,9 @@ func multipartUpload(network: Network, postbox: Postbox, source: MultipartUpload
             let manager = MultipartUploadManager(headerSize: headerSize, data: dataSignal, encryptionKey: encryptionKey, hintFileSize: hintFileSize, hintFileIsLarge: hintFileIsLarge, forceNoBigParts: forceNoBigParts, useLargerParts: useLargerParts, increaseParallelParts: increaseParallelParts, uploadPart: { part in
                 switch uploadInterface {
                 case let .download(download):
-                    return pendingUploadPartRetrying(download.uploadPart(fileId: part.fileId, index: part.index, data: part.data, asBigPart: part.bigPart, bigTotalParts: part.bigTotalParts, useCompression: useCompression, onFloodWaitError: onFloodWaitError))
+                    return pendingUploadPartRetrying(download.uploadPart(fileId: part.fileId, index: part.index, data: part.data, asBigPart: part.bigPart, bigTotalParts: part.bigTotalParts, useCompression: useCompression, onFloodWaitError: onFloodWaitError), onRetry: part.onRetry.map { notify in { _, delay in notify(delay) } })
                 case let .multiplexed(multiplexed, datacenterId, consumerId):
-                    return pendingUploadPartRetrying(Download.uploadPart(multiplexedManager: multiplexed, datacenterId: datacenterId, consumerId: consumerId, tag: nil, fileId: part.fileId, index: part.index, data: part.data, asBigPart: part.bigPart, bigTotalParts: part.bigTotalParts, useCompression: useCompression, onFloodWaitError: onFloodWaitError))
+                    return pendingUploadPartRetrying(Download.uploadPart(multiplexedManager: multiplexed, datacenterId: datacenterId, consumerId: consumerId, tag: nil, fileId: part.fileId, index: part.index, data: part.data, asBigPart: part.bigPart, bigTotalParts: part.bigTotalParts, useCompression: useCompression, onFloodWaitError: onFloodWaitError), onRetry: part.onRetry.map { notify in { _, delay in notify(delay) } })
                 }
             }, progress: { progress in
                 subscriber.putNext(.progress(progress))

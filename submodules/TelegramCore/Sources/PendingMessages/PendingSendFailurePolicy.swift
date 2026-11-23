@@ -96,7 +96,7 @@ enum PendingUploadPartRetryPolicy {
 /// Wraps one part upload: a transient server error is retried (see `PendingUploadPartRetryPolicy`).
 /// Nanogram-only. The same signal is subscribed again, so the part keeps its index and its bytes, and the
 /// encryption state of a secret chat file is not advanced twice.
-func pendingUploadPartRetrying(_ signal: Signal<Void, UploadPartError>) -> Signal<Void, UploadPartError> {
+func pendingUploadPartRetrying(_ signal: Signal<Void, UploadPartError>, onRetry: ((Int, Double) -> Void)? = nil) -> Signal<Void, UploadPartError> {
     return signal |> pendingRetryingWithBackoff(queue: Queue.concurrentDefaultQueue(), decide: { (error: UploadPartError, failed: Int) -> Double? in
         if case let .server(code, text) = error {
             return PendingUploadPartRetryPolicy.delay(code: code, text: text, failedAttempts: failed)
@@ -106,6 +106,7 @@ func pendingUploadPartRetrying(_ signal: Signal<Void, UploadPartError>) -> Signa
         if case let .server(code, text) = error {
             pendingMessageLog("upload part failed \(code) \(text), attempt \(failed), again in \(delay) s")
         }
+        onRetry?(failed, delay)
     })
 }
 

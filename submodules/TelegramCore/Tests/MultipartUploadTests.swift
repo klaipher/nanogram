@@ -335,9 +335,147 @@ final class MultipartUploadTests: XCTestCase {
         XCTAssertEqual(self.partsInFlight(size: 8 * 1024 * 1024, increaseParallelParts: true), 30)
     }
 
-    private func partsInFlight(size: Int, increaseParallelParts: Bool) -> Int {
+    /// M1: on cellular the first window is 4 parts of 128 KB.
+    func testCellularStartsWithFourSmallParts() {
+        XCTAssertEqual(self.partsInFlight(size: 4 * 1024 * 1024, increaseParallelParts: false, networkClass: .cellular), 4)
+    }
+
+    /// M2: and 2 big parts of 512 KB (the window restarts for the big part size before anything is sent).
+    func testCellularStartsWithTwoBigParts() {
+        XCTAssertEqual(self.partsInFlight(size: 11 * 1024 * 1024, increaseParallelParts: false, networkClass: .cellular), 2)
+    }
+
+    /// M4: a part with no answer after the stall timeout shrinks the window; nothing is cancelled and the upload ends.
+    func testAStalledPartShrinksTheWindow() {
+        let run = self.runWithSlowParts(stallTimeout: 0.2, announceRetry: false)
+        XCTAssertTrue(run.completed)
+        XCTAssertGreaterThan(run.callCount, 6)
+        XCTAssertLessThanOrEqual(run.maxConcurrentAfterFirstSix, 3)
+    }
+
+    /// M6: a part the retry wrapper reports as retried halves the window the same way.
+    func testARetriedPartShrinksTheWindow() {
+        let run = self.runWithSlowParts(stallTimeout: 100.0, announceRetry: true)
+        XCTAssertTrue(run.completed)
+        XCTAssertLessThanOrEqual(run.maxConcurrentAfterFirstSix, 3)
+    }
+
+    private func runWithSlowParts(stallTimeout: Double, announceRetry: Bool) -> (completed: Bool, callCount: Int, maxConcurrentAfterFirstSix: Int) {
+        let calls = Atomic<Int>(value: 0)
+        let concurrent = Atomic<Int>(value: 0)
+        let maxAfterFirstSix = Atomic<Int>(value: 0)
+        let finished = expectation(description: "the upload finished")
+        let result = Atomic<MultipartIntermediateResult??>(value: nil)
+        let manager = MultipartUploadManager(headerSize: { 0 }, data: .single(.data(Data(count: 2 * 1024 * 1024))), encryptionKey: nil, hintFileSize: nil, hintFileIsLarge: false, forceNoBigParts: false, useLargerParts: false, increaseParallelParts: false, networkClass: .wifi, stallTimeout: stallTimeout, uploadPart: { part in
+            let call = calls.modify { $0 + 1 }
+            let now = concurrent.modify { $0 + 1 }
+            if call > 6 {
+                let _ = maxAfterFirstSix.modify { max($0, now) }
+            }
+            if announceRetry && call <= 6 {
+                part.onRetry?(0.01)
+            }
+            return Signal<Void, UploadPartError> { subscriber in
+                let timer = SwiftSignalKit.Timer(timeout: 0.5, repeat: false, completion: {
+                    let _ = concurrent.modify { $0 - 1 }
+                    subscriber.putCompletion()
+                }, queue: Queue.concurrentDefaultQueue())
+                timer.start()
+                return ActionDisposable {
+                    timer.invalidate()
+                }
+            }
+        }, progress: { _ in
+        }, completed: { value in
+            let _ = result.swap(.some(value))
+            finished.fulfill()
+        })
+        manager.start()
+        wait(for: [finished], timeout: 30.0)
+        return (completed: (result.with { $0 } ?? nil) != nil, callCount: calls.with { $0 }, maxConcurrentAfterFirstSix: maxAfterFirstSix.with { $0 })
+    }
+
+    /// M8: one summary line per upload, on success and on failure, whatever the number of failing parts.
+    func testOneFinishLinePerUpload() {
+        for succeed in [true, false] {
+            let lines = Atomic<[String]>(value: [])
+            let finished = expectation(description: "the upload finished (\(succeed))")
+            finished.assertForOverFulfill = false
+            let manager = MultipartUploadManager(headerSize: { 0 }, data: .single(.data(Data(count: 300 * 1024))), encryptionKey: nil, hintFileSize: nil, hintFileIsLarge: false, forceNoBigParts: false, useLargerParts: false, increaseParallelParts: false, networkClass: .wifi, finishLog: { line in
+                let _ = lines.modify { $0 + [line] }
+            }, uploadPart: { _ in
+                return succeed ? .complete() : .fail(.generic)
+            }, progress: { _ in
+            }, completed: { _ in
+                finished.fulfill()
+            })
+            manager.start()
+            wait(for: [finished], timeout: 5.0)
+            Thread.sleep(forTimeInterval: 0.1)
+            let recorded = lines.with { $0 }
+            XCTAssertEqual(recorded.count, 1)
+            let line = recorded.first ?? ""
+            XCTAssertTrue(line.hasPrefix("upload end ok=\(succeed ? 1 : 0) "), line)
+            for key in ["parts=", "bytes=", "ms=", "part=131072", "win=", "retries=", "stalls=", "fails=", "dec=", "net=wifi>wifi"] {
+                XCTAssertTrue(line.contains(key), "\(key) in \(line)")
+            }
+            if succeed {
+                XCTAssertTrue(line.contains("parts=3 bytes=307200"), line)
+            }
+        }
+    }
+
+    /// M7: with a growing file whose head goes last, the window shrinking underneath changes nothing about the order.
+    func testAShrinkingWindowKeepsTheHeadLast() {
+        let path = NSTemporaryDirectory() + "multipart-upload-\(UUID().uuidString)"
+        let size = 1024 * 1024
+        XCTAssertTrue(FileManager.default.createFile(atPath: path, contents: Data(count: size)))
+        defer {
+            try? FileManager.default.removeItem(atPath: path)
+        }
+        let data = Promise<MultipartUploadData>()
+        let order = Atomic<[Int]>(value: [])
+        let concurrent = Atomic<Int>(value: 0)
+        let maxConcurrent = Atomic<Int>(value: 0)
+        let finished = expectation(description: "the upload finished")
+        let result = Atomic<MultipartIntermediateResult??>(value: nil)
+        let manager = MultipartUploadManager(headerSize: { 32 }, data: data.get(), encryptionKey: nil, hintFileSize: nil, hintFileIsLarge: false, forceNoBigParts: false, useLargerParts: false, increaseParallelParts: false, networkClass: .wifi, stallTimeout: 0.05, uploadPart: { part in
+            let _ = order.modify { $0 + [part.index] }
+            let now = concurrent.modify { $0 + 1 }
+            let _ = maxConcurrent.modify { max($0, now) }
+            return Signal<Void, UploadPartError> { subscriber in
+                let timer = SwiftSignalKit.Timer(timeout: 0.15, repeat: false, completion: {
+                    let _ = concurrent.modify { $0 - 1 }
+                    subscriber.putCompletion()
+                }, queue: Queue.concurrentDefaultQueue())
+                timer.start()
+                return ActionDisposable {
+                    timer.invalidate()
+                }
+            }
+        }, progress: { _ in
+        }, completed: { value in
+            let _ = result.swap(.some(value))
+            finished.fulfill()
+        })
+        manager.start()
+        data.set(.single(.resourceData(MediaResourceData(path: path, offset: 0, size: Int64(size), complete: false))))
+        let deadline = Date().addingTimeInterval(10.0)
+        while order.with({ $0.count }) < 7 && Date() < deadline {
+            Thread.sleep(forTimeInterval: 0.01)
+        }
+        Thread.sleep(forTimeInterval: 0.5)
+        data.set(.single(.resourceData(MediaResourceData(path: path, offset: 0, size: Int64(size), complete: true))))
+        wait(for: [finished], timeout: 10.0)
+        XCTAssertNotNil(result.with { $0 } ?? nil)
+        XCTAssertEqual(order.with { $0 }.sorted(), [0, 1, 2, 3, 4, 5, 6, 7])
+        XCTAssertEqual(order.with { $0 }.last, 0, "the head goes last")
+        XCTAssertLessThanOrEqual(maxConcurrent.with { $0 }, 6)
+    }
+
+    private func partsInFlight(size: Int, increaseParallelParts: Bool, networkClass: UploadPartWindow.NetworkClass? = nil) -> Int {
         let sentParts = Atomic<Int>(value: 0)
-        let manager = MultipartUploadManager(headerSize: { 0 }, data: .single(.data(Data(count: size))), encryptionKey: nil, hintFileSize: nil, hintFileIsLarge: false, forceNoBigParts: false, useLargerParts: false, increaseParallelParts: increaseParallelParts, uploadPart: { _ in
+        let manager = MultipartUploadManager(headerSize: { 0 }, data: .single(.data(Data(count: size))), encryptionKey: nil, hintFileSize: nil, hintFileIsLarge: false, forceNoBigParts: false, useLargerParts: false, increaseParallelParts: increaseParallelParts, networkClass: networkClass, uploadPart: { _ in
             let _ = sentParts.modify { $0 + 1 }
             return .never()
         }, progress: { _ in
