@@ -155,6 +155,10 @@ final class MultipartUploadManager {
         let isHeader: Bool
     }
     private var partRequests: [Int64: PartRequest] = [:]
+    /// True while `startPart` subscribes a request, so an answer that arrives inside it does not recurse.
+    private var isStartingPart = false
+    /// The upload ended, ok or not; nothing more is sent or reported.
+    private var isFinished = false
     private var reissuedParts = Set<Int64>()
     private let hardDeadlineOverride: Double?
     /// Phase 2 of the first-answer limit: a part with no answer for `hardDeadline` is sent once more, then fails.
@@ -322,6 +326,9 @@ final class MultipartUploadManager {
     }
     
     func checkState() {
+        if self.isFinished {
+            return
+        }
         if let resourceData = self.resourceData, !resourceData.complete, !self.bigParts, !self.forceNoBigParts, resourceData.size > 10 * 1024 * 1024, self.uploadedParts.isEmpty, self.uploadingParts.isEmpty, self.committedOffset <= self.heldHeaderLength {
             // Nothing beyond the held header went out yet. Once small parts are committed, the restart below handles the crossing.
             self.updatePartSize(512 * 1024)
@@ -485,7 +492,10 @@ final class MultipartUploadManager {
     private func startPart(_ part: Signal<Void, UploadPartError>, offset: Int64, size: Int64, partIndex: Int, isHeader: Bool) {
         let subscription = MetaDisposable()
         self.uploadingParts[offset] = (size, subscription)
+        let wasStartingPart = self.isStartingPart
+        self.isStartingPart = true
         subscription.set(self.subscribe(part, offset: offset, size: size, partIndex: partIndex, isHeader: isHeader))
+        self.isStartingPart = wasStartingPart
     }
     
     /// Starts one part's request signal. Also used to send the same part again after a hard deadline.
@@ -510,7 +520,15 @@ final class MultipartUploadManager {
                     strongSelf.headerPartState = .ready
                 }
             }
-            strongSelf.checkState()
+            if strongSelf.isStartingPart {
+                // Answered while it was being started (a synchronous signal): go on in the next turn of the queue,
+                // not one level deeper in this stack for every part.
+                strongSelf.queue.justDispatch { [weak strongSelf] in
+                    strongSelf?.checkState()
+                }
+            } else {
+                strongSelf.checkState()
+            }
         })
     }
     
@@ -670,6 +688,11 @@ final class MultipartUploadManager {
     
     /// The end of the upload, ok or not; logs one line (numbers and fixed tokens only) and reports the result.
     private func finish(_ result: MultipartIntermediateResult?) {
+        // Once: a part that fails after another one did, or a check deferred by `startPart`, must not end it again.
+        if self.isFinished {
+            return
+        }
+        self.isFinished = true
         self.cancelPartTimers()
         if !self.finishLogged {
             self.finishLogged = true
