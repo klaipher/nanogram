@@ -252,13 +252,16 @@ func pendingUploadErrorCode(_ error: PendingMessageUploadError) -> String {
     }
 }
 
-private final class PendingFailureNetworkObserver {
+/// Safe to share between threads: the value is an `Atomic` and both stored properties are set once in `init`.
+private final class PendingFailureNetworkObserver: @unchecked Sendable {
     static let shared = PendingFailureNetworkObserver()
-    private let value = Atomic<String>(value: "unknown")
-    private var disposable: Disposable?
+    private let value: Atomic<String>
+    private let disposable: Disposable
 
     private init() {
-        self.disposable = (Reachability.networkType |> deliverOnMainQueue).start(next: { [value] type in
+        let value = Atomic<String>(value: "unknown")
+        self.value = value
+        self.disposable = (Reachability.networkType |> deliverOnMainQueue).start(next: { type in
             let _ = value.swap("\(type)")
         })
     }
