@@ -391,9 +391,11 @@ marked (check) were not re-verified against the code; correct them on the next c
   the window full (Reno-style above the last decrease; not past what the measured goodput carries in 6 s), halves at most once
   per holdoff when a part is slow (over 8 s), retried, stalled or failed, and is capped at 8 parts and 1.5 MB. A flip to
   cellular lowers it; a part-size change or the big-file restart starts it over. History import (30) is untouched. A part with
-  no answer after 8 s only shrinks the window. Phase 2 (`MultipartUploadManager.hardDeadlineEnabled`, own commit): a part with
-  no answer for 12 s + size / 12 KB/s + 8 s (about 30.7 s for 128 KB) is subscribed again once (same signal, same bytes), then
-  the upload fails through the normal path. One log line per upload (`upload end ok= parts= bytes= ms= part= win=min/max/final
+  no answer after 8 s only shrinks the window. Phase 2 (`MultipartUploadManager.hardDeadlineEnabled`, own commit, OFF by
+  default until tried on a device on a slow and an offline link): a part with no answer for 12 s + (bytes queued ahead + its
+  size) / max(goodput, 12 KB/s) + 8 s is subscribed again once (same signal, same bytes) only when another part of the upload
+  was answered meanwhile and the network is not "none"; the second expiry fails the upload only when nothing was answered in
+  the whole period, else it waits with a doubled limit; never for history import or the non-multiplexed interface. One log line per upload (`upload end ok= parts= bytes= ms= part= win=min/max/final
   retries= stalls= fails= dec= net=a>b`) goes to the Send Report log. `pendingUploadPartRetrying` gained an optional `onRetry`.
 - Why: owner sees red failed sends on cellular, almost never on Wi-Fi; a fixed window of 6 parts can hold more than a slow
   uplink answers in time, and nothing timed out a part that never got a first answer while other traffic kept the socket alive.
