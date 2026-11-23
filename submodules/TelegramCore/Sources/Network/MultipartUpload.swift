@@ -24,7 +24,8 @@ struct UploadPart {
 /// Carries a part's retry notice from the request signal back to the manager that owns the window. Weakly bound
 /// by the manager, so a retry that fires after the upload ended reaches nothing.
 final class UploadPartRetrySink {
-    var onRetry: ((Int64, Double) -> Void)?
+    /// Offset, the file id the part belongs to, when the notice was raised, and the back-off delay.
+    var onRetry: ((Int64, Int64, Double, Double) -> Void)?
 }
 
 private func md5(_ data: Data) -> Data {
@@ -157,7 +158,15 @@ final class MultipartUploadManager {
     private var reissuedParts = Set<Int64>()
     private let hardDeadlineOverride: Double?
     /// Phase 2 of the first-answer limit: a part with no answer for `hardDeadline` is sent once more, then fails.
-    static let hardDeadlineEnabled = true
+    /// Off until it has run on a device on a slow and an offline link: it fails uploads that are slow but alive.
+    /// Even when on, a part is sent again only while other parts of this upload are still being answered.
+    nonisolated(unsafe) static var hardDeadlineEnabled = false
+    private let hardDeadlineAllowed: Bool
+    /// Parts of this upload that finished so far, and their bytes, for the proof that the link is alive.
+    private var finishedCount = 0
+    private var finishedBytes: Int64 = 0
+    /// Per part in flight: finished-part counter and time when its request was last issued or sent again.
+    private var issuedAt: [Int64: (count: Int, at: Double)] = [:]
     private var finishLogged = false
     private var startedAt: Double
     var defaultPartSize: Int64
@@ -192,7 +201,7 @@ final class MultipartUploadManager {
     
     let state: MultipartUploadState
     
-    init(headerSize: @escaping () -> Int64, data: Signal<MultipartUploadData, NoError>, encryptionKey: SecretFileEncryptionKey?, hintFileSize: Int64?, hintFileIsLarge: Bool, forceNoBigParts: Bool, useLargerParts: Bool, increaseParallelParts: Bool, networkClass: UploadPartWindow.NetworkClass? = nil, stallTimeout: Double = 8.0, hardDeadline: Double? = nil, now: @escaping () -> Double = { ProcessInfo.processInfo.systemUptime }, finishLog: ((String) -> Void)? = nil, uploadPart: @escaping (UploadPart) -> Signal<Void, UploadPartError>, progress: @escaping (Float) -> Void, completed: @escaping (MultipartIntermediateResult?) -> Void) {
+    init(headerSize: @escaping () -> Int64, data: Signal<MultipartUploadData, NoError>, encryptionKey: SecretFileEncryptionKey?, hintFileSize: Int64?, hintFileIsLarge: Bool, forceNoBigParts: Bool, useLargerParts: Bool, increaseParallelParts: Bool, hardDeadlineAllowed: Bool = true, networkClass: UploadPartWindow.NetworkClass? = nil, stallTimeout: Double = 8.0, hardDeadline: Double? = nil, now: @escaping () -> Double = { ProcessInfo.processInfo.systemUptime }, finishLog: ((String) -> Void)? = nil, uploadPart: @escaping (UploadPart) -> Signal<Void, UploadPartError>, progress: @escaping (Float) -> Void, completed: @escaping (MultipartIntermediateResult?) -> Void) {
         self.dataSignal = data
         
         var fileId: Int64 = 0
@@ -200,6 +209,7 @@ final class MultipartUploadManager {
         self.fileId = fileId
         
         self.increaseParallelParts = increaseParallelParts
+        self.hardDeadlineAllowed = hardDeadlineAllowed
         
         self.forceNoBigParts = forceNoBigParts
         self.useLargerParts = useLargerParts
@@ -247,13 +257,13 @@ final class MultipartUploadManager {
         self.lastNetworkDescription = startDescription
         self.startNetworkName = networkClass != nil ? resolvedNetwork.rawValue : startDescription
         self.window = UploadPartWindow(UploadPartWindow.Config(partSize: Int(self.defaultPartSize), network: resolvedNetwork))
-        self.retrySink.onRetry = { [weak self] offset, delay in
+        self.retrySink.onRetry = { [weak self] offset, fileId, raisedAt, delay in
             guard let self else {
                 return
             }
             let at = self.now()
             self.queue.async { [weak self] in
-                self?.partRetried(offset: offset, at: at, delay: delay)
+                self?.partRetried(offset: offset, fileId: fileId, raisedAt: raisedAt, at: at, delay: delay)
             }
         }
     }
@@ -462,8 +472,10 @@ final class MultipartUploadManager {
     
     private func retryNotice(offset: Int64) -> (Double) -> Void {
         let sink = self.retrySink
+        let fileId = self.fileId
+        let now = self.now
         return { delay in
-            sink.onRetry?(offset, delay)
+            sink.onRetry?(offset, fileId, now(), delay)
         }
     }
     
@@ -494,17 +506,30 @@ final class MultipartUploadManager {
     }
     
     /// Seconds a part may go without any answer before it is sent once more: the engine's own response allowance
-    /// for its size (12 s plus 12 KB/s, as MtProtoKit computes it) and a margin of 8 s.
-    private func hardDeadline(size: Int64) -> Double {
-        return self.hardDeadlineOverride ?? (12.0 + Double(size) / (12.0 * 1024.0) + 8.0)
+    /// (12 s plus 12 KB/s, as MtProtoKit computes it) for the bytes queued ahead of it on this upload plus its own, at
+    /// the measured goodput of this upload (never below 12 KB/s), and a margin of 8 s.
+    private func hardDeadline(offset: Int64, size: Int64) -> Double {
+        if let override = self.hardDeadlineOverride {
+            return override
+        }
+        var ahead: Int64 = 0
+        for (otherOffset, (otherSize, _)) in self.uploadingParts where otherOffset != offset {
+            ahead += otherSize
+        }
+        var rate = 12.0 * 1024.0
+        let elapsed = self.now() - self.startedAt
+        if self.finishedBytes > 0 && elapsed > 0.001 {
+            rate = max(rate, Double(self.finishedBytes) / elapsed)
+        }
+        return 12.0 + Double(ahead + size) / rate + 8.0
     }
     
-    private func armHardDeadline(offset: Int64, size: Int64, after delay: Double) {
-        guard MultipartUploadManager.hardDeadlineEnabled else {
+    private func armHardDeadline(offset: Int64, size: Int64, after delay: Double, scale: Double = 1.0) {
+        guard MultipartUploadManager.hardDeadlineEnabled, self.hardDeadlineAllowed, !self.increaseParallelParts else {
             return
         }
         self.hardTimers.removeValue(forKey: offset)?.dispose()
-        let timer = SignalKitTimer(timeout: delay + self.hardDeadline(size: size), repeat: false, completion: { [weak self] in
+        let timer = SignalKitTimer(timeout: delay + self.hardDeadline(offset: offset, size: size) * scale, repeat: false, completion: { [weak self] in
             self?.hardDeadlineExpired(offset: offset)
         }, queue: self.queue)
         self.hardTimers[offset] = ActionDisposable {
@@ -513,23 +538,39 @@ final class MultipartUploadManager {
         timer.start()
     }
     
-    /// First expiry: the same signal is subscribed again (same file id, part index and bytes, so the server
-    /// overwrites the part; the bytes were encrypted once when the signal was built). Second expiry: the upload fails.
+    /// First expiry: if another part of this upload was answered since this one was issued and the device is online,
+    /// the same signal is subscribed again (same file id, part index and bytes, so the server overwrites the part;
+    /// the bytes were encrypted once when the signal was built); otherwise the clock restarts, since the part may only
+    /// be waiting behind others, offline or in a flood wait. Second expiry: the upload fails only if no part of it
+    /// was answered during the whole period and the device is online; else the clock restarts with a doubled limit.
     private func hardDeadlineExpired(offset: Int64) {
         self.hardTimers.removeValue(forKey: offset)
         guard let (size, subscription) = self.uploadingParts[offset], let request = self.partRequests[offset] else {
             return
         }
+        let issued = self.issuedAt[offset] ?? (count: 0, at: self.startedAt)
+        let progressed = self.finishedCount > issued.count
+        let online = self.networkIsInjected || pendingFailureNetworkDescription() != "none"
         if self.reissuedParts.contains(offset) {
+            if progressed || !online {
+                self.issuedAt[offset] = (count: self.finishedCount, at: issued.at)
+                self.armHardDeadline(offset: offset, size: size, after: 0, scale: 2.0)
+                return
+            }
             pendingMessageFailureLog("upload part at \(offset) of \(size) bytes got no answer twice, giving up")
             self.partDidFail(offset: offset)
             self.finish(nil)
+            return
+        }
+        if !progressed || !online {
+            self.armHardDeadline(offset: offset, size: size, after: 0)
             return
         }
         pendingMessageFailureLog("upload part at \(offset) of \(size) bytes got no answer, sending it again")
         self.reissuedParts.insert(offset)
         subscription.dispose()
         let at = self.now()
+        self.issuedAt[offset] = (count: self.finishedCount, at: at)
         self.window.partRetried(id: offset, at: at, resumesAt: at)
         self.uploadingParts[offset] = (size, self.subscribe(request.signal, offset: offset, size: size, partIndex: request.partIndex, isHeader: request.isHeader))
         self.armHardDeadline(offset: offset, size: size, after: 0)
@@ -537,6 +578,7 @@ final class MultipartUploadManager {
     
     private func partWillStart(offset: Int64, size: Int64) {
         self.window.partStarted(id: offset, bytes: Int(size), inFlight: self.uploadingParts.count, at: self.now())
+        self.issuedAt[offset] = (count: self.finishedCount, at: self.now())
         self.armStallTimer(offset: offset, after: self.stallTimeout)
         self.armHardDeadline(offset: offset, size: size, after: 0)
     }
@@ -546,6 +588,9 @@ final class MultipartUploadManager {
         self.hardTimers.removeValue(forKey: offset)?.dispose()
         self.partRequests.removeValue(forKey: offset)
         self.reissuedParts.remove(offset)
+        self.issuedAt.removeValue(forKey: offset)
+        self.finishedCount += 1
+        self.finishedBytes += self.uploadingParts[offset]?.0 ?? 0
         let at = self.now()
         self.window.partFinished(id: offset, at: at)
         self.checkNetwork(at: at)
@@ -554,11 +599,14 @@ final class MultipartUploadManager {
     private func partDidFail(offset: Int64) {
         self.partTimers.removeValue(forKey: offset)?.dispose()
         self.hardTimers.removeValue(forKey: offset)?.dispose()
+        self.issuedAt.removeValue(forKey: offset)
         self.window.partFailed(id: offset, at: self.now())
     }
     
-    private func partRetried(offset: Int64, at: Double, delay: Double) {
-        guard self.uploadingParts[offset] != nil else {
+    private func partRetried(offset: Int64, fileId: Int64, raisedAt: Double, at: Double, delay: Double) {
+        // A notice raised before the part was last sent again, or for an attempt of an earlier file id (the upload
+        // started over), belongs to a request that is gone.
+        guard fileId == self.fileId, self.uploadingParts[offset] != nil, raisedAt >= (self.issuedAt[offset]?.at ?? 0) else {
             return
         }
         self.window.partRetried(id: offset, at: at, resumesAt: at + delay)
@@ -595,6 +643,7 @@ final class MultipartUploadManager {
         self.hardTimers.removeAll()
         self.partRequests.removeAll()
         self.reissuedParts.removeAll()
+        self.issuedAt.removeAll()
     }
     
     private func checkNetwork(at: Double) {
@@ -781,7 +830,7 @@ func multipartUpload(network: Network, postbox: Postbox, source: MultipartUpload
                 }
             }
             
-            let manager = MultipartUploadManager(headerSize: headerSize, data: dataSignal, encryptionKey: encryptionKey, hintFileSize: hintFileSize, hintFileIsLarge: hintFileIsLarge, forceNoBigParts: forceNoBigParts, useLargerParts: useLargerParts, increaseParallelParts: increaseParallelParts, uploadPart: { part in
+            let manager = MultipartUploadManager(headerSize: headerSize, data: dataSignal, encryptionKey: encryptionKey, hintFileSize: hintFileSize, hintFileIsLarge: hintFileIsLarge, forceNoBigParts: forceNoBigParts, useLargerParts: useLargerParts, increaseParallelParts: increaseParallelParts, hardDeadlineAllowed: useMultiplexedRequests, uploadPart: { part in
                 switch uploadInterface {
                 case let .download(download):
                     return pendingUploadPartRetrying(download.uploadPart(fileId: part.fileId, index: part.index, data: part.data, asBigPart: part.bigPart, bigTotalParts: part.bigTotalParts, useCompression: useCompression, onFloodWaitError: onFloodWaitError), onRetry: part.onRetry.map { notify in { _, delay in notify(delay) } })

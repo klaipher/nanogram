@@ -12,6 +12,8 @@ private struct SimulatedUplink {
         var stats: UploadPartWindow.Stats
         var finalWindow: Int
         var windowTrace: [(at: Double, window: Int)]
+        /// Finishes of a part that had been retried after which the window was larger than before (must be 0).
+        var retriedCredits: Int = 0
     }
 
     private struct Rng {
@@ -74,6 +76,7 @@ private struct SimulatedUplink {
         var now = 0.0
         var linkFree = 0.0
         var resets = 0
+        var retriedCredits = 0
         var done = 0
         var nextPart = 0
         var inFlight: [Int64: Attempt] = [:]
@@ -120,14 +123,18 @@ private struct SimulatedUplink {
             } else {
                 inFlight.removeValue(forKey: next.key)
                 done += 1
+                let before = window.window
                 window.partFinished(id: next.key, at: now)
+                if next.value.retries > 0 && window.window > before {
+                    retriedCredits += 1
+                }
             }
             if trace.last?.window != window.window {
                 trace.append((at: now, window: window.window))
             }
         }
         let finished = done == totalParts
-        return Result(finishTime: finished ? now : Double.infinity, finished: finished, resets: resets, stats: window.stats, finalWindow: window.window, windowTrace: trace)
+        return Result(finishTime: finished ? now : Double.infinity, finished: finished, resets: resets, stats: window.stats, finalWindow: window.window, windowTrace: trace, retriedCredits: retriedCredits)
     }
 }
 
@@ -184,7 +191,7 @@ final class UploadPartWindowTests: XCTestCase {
         let adaptive = link.run(fileSize: 2 * mb, partSize: 128 * kb, network: .cellular)
         let fixed6 = link.run(fileSize: 2 * mb, partSize: 128 * kb, network: .cellular, fixedWindow: 6)
         let fixed4 = link.run(fileSize: 2 * mb, partSize: 128 * kb, network: .cellular, fixedWindow: 4)
-        XCTAssertEqual(adaptive.windowTrace.first?.window, 4)
+        XCTAssertEqual(UploadPartWindow(UploadPartWindow.Config(partSize: 128 * kb, network: .cellular)).window, 4, "the cellular start")
         XCTAssertEqual(adaptive.resets, 0)
         XCTAssertGreaterThanOrEqual(fixed6.resets, 1, "a 6th part takes 12.8 s on this link")
         XCTAssertEqual(adaptive.finalWindow, 2)
@@ -212,6 +219,7 @@ final class UploadPartWindowTests: XCTestCase {
         XCTAssertTrue(result.finished)
         XCTAssertGreaterThanOrEqual(result.stats.retries, 1)
         XCTAssertGreaterThanOrEqual(result.stats.decreases, 1)
+        XCTAssertEqual(result.retriedCredits, 0, "a part that was retried earns no fast credit")
         // The window halves (and never more than once at a time) at the first decrease. The spec expected the
         // window to stay at or below the cellular start of 4 until then; on a fast link it legitimately grows first.
         let trace = result.windowTrace.map(\.window)

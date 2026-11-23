@@ -249,6 +249,45 @@ final class MultipartUploadTests: XCTestCase {
         XCTAssertEqual(value.size, Int64(size))
     }
 
+    /// M9: after the restart as a big file the window is back at its start for 512 KB parts: three on wifi or unknown,
+    /// two on cellular.
+    func testTheRestartAsABigFileStartsTheWindowOverForBigParts() {
+        for (network, expected) in [(UploadPartWindow.NetworkClass.unknown, 3), (.wifi, 3), (.cellular, 2)] {
+            let path = NSTemporaryDirectory() + "multipart-upload-\(UUID().uuidString)"
+            let size = 10 * 1024 * 1024 + 512 * 1024
+            XCTAssertTrue(FileManager.default.createFile(atPath: path, contents: Data(count: size)))
+            defer {
+                try? FileManager.default.removeItem(atPath: path)
+            }
+            let data = Promise<MultipartUploadData>()
+            let sentParts = Atomic<[UploadPart]>(value: [])
+            let manager = MultipartUploadManager(headerSize: { 32 * 1024 }, data: data.get(), encryptionKey: nil, hintFileSize: nil, hintFileIsLarge: false, forceNoBigParts: false, useLargerParts: false, increaseParallelParts: false, networkClass: network, uploadPart: { part in
+                let _ = sentParts.modify { $0 + [part] }
+                return part.bigPart ? .never() : .complete()
+            }, progress: { _ in
+            }, completed: { _ in
+            })
+            manager.start()
+            data.set(.single(.resourceData(MediaResourceData(path: path, offset: 0, size: 1024 * 1024, complete: false))))
+            let early = Date().addingTimeInterval(5.0)
+            while sentParts.with({ $0.count }) < 7 && Date() < early {
+                Thread.sleep(forTimeInterval: 0.01)
+            }
+            XCTAssertGreaterThanOrEqual(sentParts.with { $0.count }, 7)
+            let earlyCount = sentParts.with { $0.count }
+            data.set(.single(.resourceData(MediaResourceData(path: path, offset: 0, size: Int64(size), complete: true))))
+            let deadline = Date().addingTimeInterval(5.0)
+            while sentParts.with({ $0.count }) - earlyCount < expected && Date() < deadline {
+                Thread.sleep(forTimeInterval: 0.01)
+            }
+            Thread.sleep(forTimeInterval: 0.3)
+            let bigParts = sentParts.with { Array($0.dropFirst(earlyCount)) }
+            XCTAssertEqual(bigParts.count, expected, "window for 512 KB parts on \(network)")
+            XCTAssertTrue(bigParts.allSatisfy { $0.bigPart && $0.data.count == 512 * 1024 })
+            manager.cancel()
+        }
+    }
+
     /// The upload catches up with the writer while the file crosses 10 MB, with no part in flight: the early switch to
     /// big parts must not fire after small parts were committed (same file id, inflated part count).
     func testACrossingOf10MBWhileGrowingAfterSmallPartsWereSentDoesNotSwitchToBigPartsUnderTheSameId() {
@@ -372,10 +411,11 @@ final class MultipartUploadTests: XCTestCase {
             if call > 6 {
                 let _ = maxAfterFirstSix.modify { max($0, now) }
             }
-            if announceRetry && call <= 6 {
-                part.onRetry?(0.01)
-            }
             return Signal<Void, UploadPartError> { subscriber in
+                if announceRetry {
+                    // From inside the subscription, as the retry wrapper does; every part counts as retried, so none earns a fast credit.
+                    part.onRetry?(0.01)
+                }
                 let timer = SwiftSignalKit.Timer(timeout: 0.5, repeat: false, completion: {
                     let _ = concurrent.modify { $0 - 1 }
                     subscriber.putCompletion()
@@ -395,16 +435,23 @@ final class MultipartUploadTests: XCTestCase {
         return (completed: (result.with { $0 } ?? nil) != nil, callCount: calls.with { $0 }, maxConcurrentAfterFirstSix: maxAfterFirstSix.with { $0 })
     }
 
-    /// M5: a part with no answer for the hard deadline is subscribed again once; if it still gets none, the upload
-    /// fails through the normal error path instead of hanging.
+    /// M5: a part with no answer for the hard deadline, while another part of the upload was answered, is subscribed
+    /// again once; if it still gets none and nothing else was answered, the upload fails through the normal error path.
     func testAPartWithNoAnswerIsSentAgainOnceThenFails() {
+        MultipartUploadManager.hardDeadlineEnabled = true
+        defer {
+            MultipartUploadManager.hardDeadlineEnabled = false
+        }
         for secondAttemptAnswers in [true, false] {
             let subscriptions = Atomic<Int>(value: 0)
             let calls = Atomic<Int>(value: 0)
             let finished = expectation(description: "the upload finished (\(secondAttemptAnswers))")
             let result = Atomic<MultipartIntermediateResult??>(value: nil)
-            let manager = MultipartUploadManager(headerSize: { 0 }, data: .single(.data(Data(count: 100 * 1024))), encryptionKey: nil, hintFileSize: nil, hintFileIsLarge: false, forceNoBigParts: false, useLargerParts: false, increaseParallelParts: false, networkClass: .wifi, stallTimeout: 100.0, hardDeadline: 0.4, uploadPart: { _ in
-                let _ = calls.modify { $0 + 1 }
+            let manager = MultipartUploadManager(headerSize: { 0 }, data: .single(.data(Data(count: 200 * 1024))), encryptionKey: nil, hintFileSize: nil, hintFileIsLarge: false, forceNoBigParts: false, useLargerParts: false, increaseParallelParts: false, networkClass: .wifi, stallTimeout: 100.0, hardDeadline: 0.4, uploadPart: { part in
+                let call = calls.modify { $0 + 1 }
+                if call == 1 {
+                    return .complete()
+                }
                 return Signal<Void, UploadPartError> { subscriber in
                     let number = subscriptions.modify { $0 + 1 }
                     if number >= 2 && secondAttemptAnswers {
@@ -419,10 +466,34 @@ final class MultipartUploadTests: XCTestCase {
             })
             manager.start()
             wait(for: [finished], timeout: 10.0)
-            XCTAssertEqual(calls.with { $0 }, 1, "the signal is built once")
+            XCTAssertEqual(calls.with { $0 }, 2, "each signal is built once")
             XCTAssertEqual(subscriptions.with { $0 }, 2)
             XCTAssertEqual((result.with { $0 } ?? nil) != nil, secondAttemptAnswers)
         }
+    }
+
+    /// A part alone on the link, with nothing else answered, is never sent again nor failed by the hard deadline.
+    func testALoneUnansweredPartIsNotSentAgain() {
+        MultipartUploadManager.hardDeadlineEnabled = true
+        defer {
+            MultipartUploadManager.hardDeadlineEnabled = false
+        }
+        let subscriptions = Atomic<Int>(value: 0)
+        let done = Atomic<Bool>(value: false)
+        let manager = MultipartUploadManager(headerSize: { 0 }, data: .single(.data(Data(count: 100 * 1024))), encryptionKey: nil, hintFileSize: nil, hintFileIsLarge: false, forceNoBigParts: false, useLargerParts: false, increaseParallelParts: false, networkClass: .wifi, stallTimeout: 100.0, hardDeadline: 0.2, uploadPart: { _ in
+            return Signal<Void, UploadPartError> { _ in
+                let _ = subscriptions.modify { $0 + 1 }
+                return EmptyDisposable
+            }
+        }, progress: { _ in
+        }, completed: { _ in
+            let _ = done.swap(true)
+        })
+        manager.start()
+        Thread.sleep(forTimeInterval: 1.0)
+        manager.cancel()
+        XCTAssertEqual(subscriptions.with { $0 }, 1)
+        XCTAssertFalse(done.with { $0 })
     }
 
     /// M8: one summary line per upload, on success and on failure, whatever the number of failing parts.
@@ -503,7 +574,7 @@ final class MultipartUploadTests: XCTestCase {
         XCTAssertLessThanOrEqual(maxConcurrent.with { $0 }, 6)
     }
 
-    private func partsInFlight(size: Int, increaseParallelParts: Bool, networkClass: UploadPartWindow.NetworkClass? = nil) -> Int {
+    private func partsInFlight(size: Int, increaseParallelParts: Bool, networkClass: UploadPartWindow.NetworkClass? = .unknown) -> Int {
         let sentParts = Atomic<Int>(value: 0)
         let manager = MultipartUploadManager(headerSize: { 0 }, data: .single(.data(Data(count: size))), encryptionKey: nil, hintFileSize: nil, hintFileIsLarge: false, forceNoBigParts: false, useLargerParts: false, increaseParallelParts: increaseParallelParts, networkClass: networkClass, uploadPart: { _ in
             let _ = sentParts.modify { $0 + 1 }
