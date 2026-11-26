@@ -243,6 +243,8 @@ private func extractAccountManagerState(records: AccountRecordsView<TelegramAcco
     private var dataImportSplash: LegacyDataImportSplash?
     private var memoryUsageOverlayView: UILabel?
     private var memoryProbeRegistrations: [MemoryProbeRegistry.Registration] = []
+    /// Limits the memory lines in the short log, which is written with "Log to File" off too (main thread only).
+    private var memoryShortLogBudget = MemoryShortLogBudget()
     
     private let crashReportPromptDisposable = MetaDisposable()
     private var buildConfig: BuildConfig?
@@ -1793,6 +1795,7 @@ private func extractAccountManagerState(records: AccountRecordsView<TelegramAcco
         var previousReportedMemoryConsumption = 0
         self.registerMemoryProbes()
         Logger.shared.log("App \(self.episodeId)", "Memory headroom at launch: \(ProcessMemory.availableHeadroom().map { "\($0 / (1024 * 1024)) MB" } ?? "unknown"), footprint \(ProcessMemory.current().map { "\($0.footprint / (1024 * 1024)) MB" } ?? "unknown")")
+        self.shortLogMemory(reason: "launch")
         var memoryDetailTick = 0
         // Every 5 s (was 0.5 s, for the life of the app, background included). The value is only
         // logged on a >1 MB change and shown by a debug overlay; 2 Hz kept the main thread waking.
@@ -1803,6 +1806,10 @@ private func extractAccountManagerState(records: AccountRecordsView<TelegramAcco
                 self.logMemoryDetail()
             }
             let value = getMemoryConsumption()
+            // Above 1 GB, one compact line every 10 min reaches the short log whatever "Log to File" says.
+            if self.memoryShortLogBudget.shouldLogPeriodic(footprint: UInt64(clamping: value), now: ProcessInfo.processInfo.systemUptime) {
+                self.shortLogMemory(reason: "high")
+            }
             if abs(value - previousReportedMemoryConsumption) > 1 * 1024 * 1024 {
                 previousReportedMemoryConsumption = value
                 Logger.shared.log("App \(self.episodeId)", "Memory consumption: \(value / (1024 * 1024)) MB")
@@ -2303,19 +2310,37 @@ private func extractAccountManagerState(records: AccountRecordsView<TelegramAcco
         }
     }
     
-    /// Entering the background or a memory warning: hands free heap pages back to the system, and logs the footprint before and after (with "Log to File" on).
+    /// One compact memory line in the short log (`MemoryShortLogLine`), which is written with "Log to File" off too, so a
+    /// report from a tester who never turned it on still shows the memory before a jetsam. The zones are read off the
+    /// main thread.
+    private func shortLogMemory(reason: String) {
+        DispatchQueue.global(qos: .utility).async {
+            Logger.shared.shortLog("App", MemoryShortLogLine.collect(reason: reason, memory: ProcessMemory.current()).text)
+        }
+    }
+    
+    /// Entering the background or a memory warning: hands free heap pages back to the system, and logs the footprint
+    /// before and after: the full line with "Log to File" on, a compact one in the short log always (at most once a
+    /// minute per reason). "After" is right after the heap pages are handed back; the Postbox caches are cleared later.
     private func purgeMemory(reason: String) {
         let before = ProcessMemory.current()
         let episodeId = self.episodeId
         let logToFile = Logger.shared.logToFile
+        let shortLog = self.memoryShortLogBudget.shouldLogEvent(reason: reason, now: ProcessInfo.processInfo.systemUptime)
         DispatchQueue.global(qos: .utility).async {
             MemoryRelief.returnFreeHeapPages()
-            guard logToFile else {
+            guard logToFile || shortLog else {
                 return
             }
-            let report = MemoryPurgeReport(reason: reason, before: before, after: ProcessMemory.current())
-            Logger.shared.log("App \(episodeId)", report.logLine)
-            // The app may be suspended (and killed for memory) right after this: write the line out now.
+            let after = ProcessMemory.current()
+            if shortLog {
+                Logger.shared.shortLog("App", MemoryShortLogLine.collect(reason: reason, memory: after, footprintBefore: before?.footprint).text)
+            }
+            if logToFile {
+                let report = MemoryPurgeReport(reason: reason, before: before, after: after)
+                Logger.shared.log("App \(episodeId)", report.logLine)
+            }
+            // The app may be suspended (and killed for memory) right after this: write the lines out now.
             Logger.shared.flushPendingLogs()
         }
     }
