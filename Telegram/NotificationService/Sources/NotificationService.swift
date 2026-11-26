@@ -30,8 +30,17 @@ private var installedSharedLogger = false
 private func setupSharedLogger(rootPath: String, path: String) {
     if !installedSharedLogger {
         installedSharedLogger = true
-        Logger.setSharedLogger(Logger(rootPath: rootPath, basePath: path))
+        // Holds the lines logged before the stored "Log to File" setting is read (applyLoggingSettings), which
+        // writes or drops them.
+        Logger.setSharedLogger(Logger(rootPath: rootPath, basePath: path, holdsFileLinesUntilConfigured: true))
     }
+}
+
+private func applyLoggingSettings(_ settings: LoggingSettings) {
+    Logger.shared.logToFile = settings.logToFile
+    Logger.shared.logToConsole = settings.logToConsole
+    Logger.shared.redactSensitiveData = settings.redactSensitiveData
+    Logger.shared.logNetworkDumps = settings.logNetworkDumps
 }
 
 private let accountAuxiliaryMethods = AccountAuxiliaryMethods(fetchResource: { account, resource, ranges, _ in
@@ -1188,10 +1197,17 @@ private final class NotificationServiceHandler {
 
         let appVersion = (Bundle.main.infoDictionary?["CFBundleShortVersionString"] as? String) ?? "unknown"
 
+        var defaultLoggingSettings = LoggingSettings.defaultSettings
+        if buildConfig.isInternalBuild {
+            defaultLoggingSettings = LoggingSettings(logToFile: true, logToConsole: false, redactSensitiveData: true)
+        }
+
         guard let accountManager: AccountManager<TelegramAccountManagerTypes> = setupExtensionAccountManager(basePath: rootPath + "/accounts-metadata", isTemporary: true, isReadOnly: false, useCaches: false) else {
             // The app holds the databases, or protected data is unavailable: hand back the server's own alert now
             // instead of waiting for the system to expire the request.
             nseFailureLog(episode, "The account databases cannot be opened")
+            // The stored setting cannot be read: the build's default decides about the held lines.
+            applyLoggingSettings(defaultLoggingSettings)
             queue.async {
                 completed()
             }
@@ -1203,10 +1219,7 @@ private final class NotificationServiceHandler {
         self.encryptionParameters = ValueBoxEncryptionParameters(forceEncryptionIfNoSet: false, key: ValueBoxEncryptionParameters.Key(data: deviceSpecificEncryptionParameters.key)!, salt: ValueBoxEncryptionParameters.Salt(data: deviceSpecificEncryptionParameters.salt)!)
         
         let semaphore = DispatchSemaphore(value: 0)
-        var loggingSettings = LoggingSettings.defaultSettings
-        if buildConfig.isInternalBuild {
-            loggingSettings = LoggingSettings(logToFile: true, logToConsole: false, redactSensitiveData: true)
-        }
+        var loggingSettings = defaultLoggingSettings
         let _ = (self.accountManager.transaction { transaction -> LoggingSettings? in
             if let value = transaction.getSharedData(SharedDataKeys.loggingSettings)?.get(LoggingSettings.self) {
                 return value
@@ -1221,12 +1234,8 @@ private final class NotificationServiceHandler {
         })
         semaphore.wait()
         
+        applyLoggingSettings(loggingSettings)
         Logger.shared.log("NotificationService \(episode)", "Logging settings: (logToFile: \(loggingSettings.logToFile))")
-        
-        Logger.shared.logToFile = loggingSettings.logToFile
-        Logger.shared.logToConsole = loggingSettings.logToConsole
-        Logger.shared.redactSensitiveData = loggingSettings.redactSensitiveData
-        Logger.shared.logNetworkDumps = loggingSettings.logNetworkDumps
 
         let networkArguments = NetworkInitializationArguments(apiId: apiId, apiHash: apiHash, languagesCategory: languagesCategory, appVersion: appVersion, voipMaxLayer: 0, voipVersions: [], appData: .single(buildConfig.bundleData(withAppToken: nil, tokenType: nil, tokenEnvironment: nil, signatureDict: nil)), externalRequestVerificationStream: .never(), externalRecaptchaRequestVerification: { _, _ in return .never() }, autolockDeadine: .single(nil), encryptionProvider: OpenSSLEncryptionProvider(), deviceModelName: nil, useBetaFeatures: !buildConfig.isAppStoreBuild, isICloudEnabled: false)
         

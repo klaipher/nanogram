@@ -125,6 +125,27 @@ public final class Logger {
     private var pendingLogData = Data()
     private var isLogFlushScheduled: Bool = false
     
+    // The app and the extensions log for a while before they have read the stored "Log to File" setting (data
+    // paths, database opens, the push token), and `logToFile` starts as true. A logger created with
+    // `holdsFileLinesUntilConfigured` keeps those lines here, on the logger queue, instead of writing them; the first
+    // assignment to `logToFile` writes them in order (true) or drops them (false). Bounded by `heldFileLinesLimit`
+    // bytes of text, oldest dropped first; if the setting never arrives nothing is written.
+    private struct HeldFileLine {
+        let content: String
+        let timeinfo: tm
+        let milliseconds: Int
+        let byteCount: Int
+    }
+    private var holdsFileLines: Bool
+    private var heldFileLines: [HeldFileLine] = []
+    private var heldFileLinesBytes: Int = 0
+    private var droppedHeldFileLines: Int = 0
+    // Internal so tests can use a small limit.
+    var heldFileLinesLimit: Int = 128 * 1024
+    // `logToFile` as the logger queue sees it: set by the queue hop of every assignment, so a line that passed the
+    // `logToFile` check on its thread just before the switch went off is not written after it.
+    private var writesFileLines: Bool = true
+    
     // What the logger holds that has not reached the files yet, for the memory log. `queuedEntries` counts the
     // `log`/`shortLog` calls whose closure is queued on the logger queue and has not run (a utility queue that is
     // starved while the main thread is busy lets them pile up, each holding its message); `pendingBytes` is the size
@@ -169,7 +190,7 @@ public final class Logger {
     }
 
     private func updatePendingBytes() {
-        let total = self.pendingLogData.count + self.pendingShortLogData.count
+        let total = self.pendingLogData.count + self.pendingShortLogData.count + self.heldFileLinesBytes
         self.statsLock.lock()
         self.pendingBytesValue = total
         self.statsLock.unlock()
@@ -191,10 +212,14 @@ public final class Logger {
 
     public var logToFile: Bool = true {
         didSet {
-            if oldValue && !self.logToFile {
-                self.queue.async {
+            let logToFile = self.logToFile
+            let switchedOff = oldValue && !logToFile
+            self.queue.async {
+                self.writesFileLines = logToFile
+                if switchedOff {
                     self.flushLog()
                 }
+                self.endFileLineHold()
             }
             self.updateNetworkLogging(oldLogToFile: oldValue, oldLogToConsole: self.logToConsole, oldLogNetworkDumps: self.logNetworkDumps)
         }
@@ -243,9 +268,13 @@ public final class Logger {
         }
     }
     
-    public init(rootPath: String, basePath: String) {
+    /// - Parameter holdsFileLinesUntilConfigured: keep the lines logged before the first assignment to `logToFile`
+    ///   in memory and write or drop them by that assignment. For a process that logs before it has read the stored
+    ///   logging settings (the app, the extensions); it must assign `logToFile` on every path, or nothing is written.
+    public init(rootPath: String, basePath: String, holdsFileLinesUntilConfigured: Bool = false) {
         self.rootPath = rootPath
         self.basePath = basePath
+        self.holdsFileLines = holdsFileLinesUntilConfigured
         let queue = self.queue
         self.scheduleLogFlush = { delay, f in
             queue.after(delay, f)
@@ -297,6 +326,62 @@ public final class Logger {
     /// Waits until the logger queue ran everything queued so far, without flushing (tests).
     func drainForTesting() {
         self.queue.sync {
+        }
+    }
+    
+    /// A push token (APNs or VoIP) for a log line: its length and first bytes, never the whole token.
+    public static func pushTokenSummary(_ token: Data) -> String {
+        let prefixLength = 4
+        guard token.count >= prefixLength * 4 else {
+            return "\(token.count) bytes"
+        }
+        let prefix = token.prefix(prefixLength).map { String(format: "%02x", $0) }.joined()
+        return "\(token.count) bytes, \(prefix)..."
+    }
+    
+    private static func formatLine(tag: String, timeinfo: tm, milliseconds: Int, string: String) -> String {
+        return String(format: "[%@] %d-%d-%d %02d:%02d:%02d.%03d %@", arguments: [tag, Int(timeinfo.tm_year) + 1900, Int(timeinfo.tm_mon + 1), Int(timeinfo.tm_mday), Int(timeinfo.tm_hour), Int(timeinfo.tm_min), Int(timeinfo.tm_sec), milliseconds, string])
+    }
+    
+    private func holdFileLine(_ line: HeldFileLine) {
+        assert(self.queue.isCurrent())
+        self.heldFileLines.append(line)
+        self.heldFileLinesBytes += line.byteCount
+        var dropCount = 0
+        var droppedBytes = 0
+        while dropCount < self.heldFileLines.count && self.heldFileLinesBytes - droppedBytes > self.heldFileLinesLimit {
+            droppedBytes += self.heldFileLines[dropCount].byteCount
+            dropCount += 1
+        }
+        if dropCount != 0 {
+            self.heldFileLines.removeFirst(dropCount)
+            self.heldFileLinesBytes -= droppedBytes
+            self.droppedHeldFileLines += dropCount
+        }
+    }
+    
+    private func endFileLineHold() {
+        assert(self.queue.isCurrent())
+        guard self.holdsFileLines else {
+            return
+        }
+        self.holdsFileLines = false
+        let lines = self.heldFileLines
+        let droppedCount = self.droppedHeldFileLines
+        self.heldFileLines = []
+        self.heldFileLinesBytes = 0
+        self.droppedHeldFileLines = 0
+        defer {
+            self.updatePendingBytes()
+        }
+        guard self.writesFileLines else {
+            return
+        }
+        if droppedCount != 0, let first = lines.first {
+            self.writeFileLine(content: Logger.formatLine(tag: "Logger", timeinfo: first.timeinfo, milliseconds: first.milliseconds, string: "\(droppedCount) lines logged before the settings were read were dropped (in-memory limit \(self.heldFileLinesLimit) bytes)"), timeinfo: first.timeinfo, milliseconds: first.milliseconds)
+        }
+        for line in lines {
+            self.writeFileLine(content: line.content, timeinfo: line.timeinfo, milliseconds: line.milliseconds)
         }
     }
     
@@ -547,7 +632,7 @@ public final class Logger {
         
         var consoleContent: String?
         if self.logToConsole {
-            let content = String(format: "[%@] %d-%d-%d %02d:%02d:%02d.%03d %@", arguments: [tag, Int(timeinfo.tm_year) + 1900, Int(timeinfo.tm_mon + 1), Int(timeinfo.tm_mday), Int(timeinfo.tm_hour), Int(timeinfo.tm_min), Int(timeinfo.tm_sec), Int(milliseconds), string])
+            let content = Logger.formatLine(tag: tag, timeinfo: timeinfo, milliseconds: Int(milliseconds), string: string)
             consoleContent = content
             print(content)
         }
@@ -560,89 +645,100 @@ public final class Logger {
                 defer {
                     self.updatePendingBytes()
                 }
+                guard self.writesFileLines else {
+                    return
+                }
                 let content: String
                 if let consoleContent = consoleContent {
                     content = consoleContent
                 } else {
-                    content = String(format: "[%@] %d-%d-%d %02d:%02d:%02d.%03d %@", arguments: [tag, Int(timeinfo.tm_year) + 1900, Int(timeinfo.tm_mon + 1), Int(timeinfo.tm_mday), Int(timeinfo.tm_hour), Int(timeinfo.tm_min), Int(timeinfo.tm_sec), Int(milliseconds), string])
+                    content = Logger.formatLine(tag: tag, timeinfo: timeinfo, milliseconds: Int(milliseconds), string: string)
                 }
-                
-                var currentFile: ManagedFile?
-                var openNew = false
-                if let (file, length) = self.file {
-                    if length >= self.maxLength {
-                        // Pending lines belong to the file being closed.
-                        self.flushLog()
-                        self.file = nil
-                        openNew = true
-                    } else {
-                        currentFile = file
-                    }
+                if self.holdsFileLines {
+                    self.holdFileLine(HeldFileLine(content: content, timeinfo: timeinfo, milliseconds: Int(milliseconds), byteCount: content.utf8.count + 1))
                 } else {
-                    openNew = true
+                    self.writeFileLine(content: content, timeinfo: timeinfo, milliseconds: Int(milliseconds))
                 }
-                if openNew {
-                    let _ = try? FileManager.default.createDirectory(atPath: self.basePath, withIntermediateDirectories: true, attributes: nil)
-                    
-                    var createNew = false
-                    if let files = try? FileManager.default.contentsOfDirectory(at: URL(fileURLWithPath: self.basePath), includingPropertiesForKeys: [URLResourceKey.creationDateKey], options: []) {
-                        var minCreationDate: (Date, URL)?
-                        var maxCreationDate: (Date, URL)?
-                        var count = 0
-                        for url in files {
-                            if url.lastPathComponent.hasPrefix("log-") {
-                                if let values = try? url.resourceValues(forKeys: Set([URLResourceKey.creationDateKey])), let creationDate = values.creationDate {
-                                    count += 1
-                                    if minCreationDate == nil || minCreationDate!.0 > creationDate {
-                                        minCreationDate = (creationDate, url)
-                                    }
-                                    if maxCreationDate == nil || maxCreationDate!.0 < creationDate {
-                                        maxCreationDate = (creationDate, url)
-                                    }
-                                }
+            }
+        }
+    }
+    
+    private func writeFileLine(content: String, timeinfo: tm, milliseconds: Int) {
+        assert(self.queue.isCurrent())
+        var currentFile: ManagedFile?
+        var openNew = false
+        if let (file, length) = self.file {
+            if length >= self.maxLength {
+                // Pending lines belong to the file being closed.
+                self.flushLog()
+                self.file = nil
+                openNew = true
+            } else {
+                currentFile = file
+            }
+        } else {
+            openNew = true
+        }
+        if openNew {
+            let _ = try? FileManager.default.createDirectory(atPath: self.basePath, withIntermediateDirectories: true, attributes: nil)
+            
+            var createNew = false
+            if let files = try? FileManager.default.contentsOfDirectory(at: URL(fileURLWithPath: self.basePath), includingPropertiesForKeys: [URLResourceKey.creationDateKey], options: []) {
+                var minCreationDate: (Date, URL)?
+                var maxCreationDate: (Date, URL)?
+                var count = 0
+                for url in files {
+                    if url.lastPathComponent.hasPrefix("log-") {
+                        if let values = try? url.resourceValues(forKeys: Set([URLResourceKey.creationDateKey])), let creationDate = values.creationDate {
+                            count += 1
+                            if minCreationDate.map({ $0.0 > creationDate }) ?? true {
+                                minCreationDate = (creationDate, url)
                             }
-                        }
-                        if let (_, url) = minCreationDate, count >= self.maxFiles {
-                            let _ = try? FileManager.default.removeItem(at: url)
-                        }
-                        if let (_, url) = maxCreationDate {
-                            var value = stat()
-                            if stat(url.path, &value) == 0 && Int(value.st_size) < self.maxLength {
-                                if let file = ManagedFile(queue: self.queue, path: url.path, mode: .append) {
-                                    self.file = (file, Int(value.st_size))
-                                    currentFile = file
-                                }
-                            } else {
-                                createNew = true
+                            if maxCreationDate.map({ $0.0 < creationDate }) ?? true {
+                                maxCreationDate = (creationDate, url)
                             }
-                        } else {
-                            createNew = true
                         }
                     }
-                    
-                    if createNew {
-                        let fileName = String(format: "log-%d-%d-%d_%02d-%02d-%02d.%03d.txt", arguments: [Int(timeinfo.tm_year) + 1900, Int(timeinfo.tm_mon + 1), Int(timeinfo.tm_mday), Int(timeinfo.tm_hour), Int(timeinfo.tm_min), Int(timeinfo.tm_sec), Int(milliseconds)])
-                        
-                        let path = self.basePath + "/" + fileName
-                        
-                        if let file = ManagedFile(queue: self.queue, path: path, mode: .append) {
-                            self.file = (file, 0)
+                }
+                if let (_, url) = minCreationDate, count >= self.maxFiles {
+                    let _ = try? FileManager.default.removeItem(at: url)
+                }
+                if let (_, url) = maxCreationDate {
+                    var value = stat()
+                    if stat(url.path, &value) == 0 && Int(value.st_size) < self.maxLength {
+                        if let file = ManagedFile(queue: self.queue, path: url.path, mode: .append) {
+                            self.file = (file, Int(value.st_size))
                             currentFile = file
                         }
+                    } else {
+                        createNew = true
                     }
+                } else {
+                    createNew = true
                 }
+            }
+            
+            if createNew {
+                let fileName = String(format: "log-%d-%d-%d_%02d-%02d-%02d.%03d.txt", arguments: [Int(timeinfo.tm_year) + 1900, Int(timeinfo.tm_mon + 1), Int(timeinfo.tm_mday), Int(timeinfo.tm_hour), Int(timeinfo.tm_min), Int(timeinfo.tm_sec), milliseconds])
                 
-                if let currentFile = currentFile {
-                    if var data = content.data(using: .utf8) {
-                        data.append(0x0a)
-                        let lineLength = data.count
-                        self.appendLog(data, to: currentFile)
-                        if let file = self.file {
-                            self.file = (file.0, file.1 + lineLength)
-                        } else {
-                            assertionFailure()
-                        }
-                    }
+                let path = self.basePath + "/" + fileName
+                
+                if let file = ManagedFile(queue: self.queue, path: path, mode: .append) {
+                    self.file = (file, 0)
+                    currentFile = file
+                }
+            }
+        }
+        
+        if let currentFile = currentFile {
+            if var data = content.data(using: .utf8) {
+                data.append(0x0a)
+                let lineLength = data.count
+                self.appendLog(data, to: currentFile)
+                if let file = self.file {
+                    self.file = (file.0, file.1 + lineLength)
+                } else {
+                    assertionFailure()
                 }
             }
         }

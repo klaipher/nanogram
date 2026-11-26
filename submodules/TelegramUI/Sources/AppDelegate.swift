@@ -829,7 +829,9 @@ private func extractAccountManagerState(records: AccountRecordsView<TelegramAcco
         
         let logsPath = rootPath + "/logs/app-logs"
         let _ = try? FileManager.default.createDirectory(atPath: logsPath, withIntermediateDirectories: true, attributes: nil)
-        Logger.setSharedLogger(Logger(rootPath: rootPath, basePath: logsPath))
+        // Holds the launch lines (data paths, database opens, the push token) in memory until the stored "Log to File"
+        // setting is applied below (after the account manager transaction), which writes or drops them.
+        Logger.setSharedLogger(Logger(rootPath: rootPath, basePath: logsPath, holdsFileLinesUntilConfigured: true))
         self.startDiskWriteReports(ledgerPath: rootPath + "/logs/disk-writes.json")
 
         setManagedAudioSessionLogger({ s in
@@ -2562,7 +2564,7 @@ private func extractAccountManagerState(records: AccountRecordsView<TelegramAcco
     }
     
     func application(_ application: UIApplication, didRegisterForRemoteNotificationsWithDeviceToken deviceToken: Data) {
-        Logger.shared.log("App \(self.episodeId)", "register for notifications: didRegisterForRemoteNotificationsWithDeviceToken (deviceToken: \(hexString(deviceToken)))")
+        Logger.shared.log("App \(self.episodeId)", "register for notifications: didRegisterForRemoteNotificationsWithDeviceToken (deviceToken: \(Logger.pushTokenSummary(deviceToken)))")
         self.notificationTokenPromise.set(.single(deviceToken))
     }
     
@@ -2639,7 +2641,7 @@ private func extractAccountManagerState(records: AccountRecordsView<TelegramAcco
     public func pushRegistry(_ registry: PKPushRegistry, didUpdate credentials: PKPushCredentials, for type: PKPushType) {
         if #available(iOS 9.0, *) {
             if case PKPushType.voIP = type {
-                Logger.shared.log("App \(self.episodeId)", "pushRegistry credentials: \(credentials.token as NSData)")
+                Logger.shared.log("App \(self.episodeId)", "pushRegistry credentials: \(Logger.pushTokenSummary(credentials.token))")
                 
                 self.voipTokenPromise.set(.single(credentials.token))
             }

@@ -42,7 +42,8 @@ private var installedSharedLogger = false
 private func setupSharedLogger(rootPath: String, path: String) {
     if !installedSharedLogger {
         installedSharedLogger = true
-        Logger.setSharedLogger(Logger(rootPath: rootPath, basePath: path))
+        // Holds the lines logged before the stored "Log to File" setting is read, which writes or drops them.
+        Logger.setSharedLogger(Logger(rootPath: rootPath, basePath: path, holdsFileLinesUntilConfigured: true))
     }
 }
 
@@ -267,11 +268,20 @@ public class ShareRootControllerImpl {
             }, forceOrientation: { _ in
             })
             
+            var defaultLoggingSettings = LoggingSettings.defaultSettings
+            if self.initializationData.appBuildType == .internal {
+                defaultLoggingSettings = LoggingSettings(logToFile: true, logToConsole: false, redactSensitiveData: true)
+            }
+            
             initializeAccountManagement()
             guard let accountManager: AccountManager<TelegramAccountManagerTypes> = setupExtensionAccountManager(basePath: rootPath + "/accounts-metadata", isTemporary: true, isReadOnly: false, useCaches: false) else {
                 // The app holds the databases, or protected data is unavailable: the same alert as without an
                 // account (I-5) instead of a crash. The presentation data cannot be read without them.
                 Logger.shared.log("ShareExtension", "The account databases cannot be opened")
+                // The stored setting cannot be read: the build's default decides about the held lines.
+                Logger.shared.logToFile = defaultLoggingSettings.logToFile
+                Logger.shared.logToConsole = defaultLoggingSettings.logToConsole
+                Logger.shared.redactSensitiveData = defaultLoggingSettings.redactSensitiveData
                 let presentationData = defaultPresentationData()
                 let controller = standardTextAlertController(theme: AlertControllerTheme(presentationData: presentationData), title: presentationData.strings.Share_AuthTitle, text: presentationData.strings.Share_AuthDescription, actions: [TextAlertAction(type: .defaultAction, title: presentationData.strings.Common_OK, action: { [weak self] in
                     self?.getExtensionContext()?.completeRequest(returningItems: nil, completionHandler: nil)
@@ -282,10 +292,7 @@ public class ShareRootControllerImpl {
             
             do {
                 let semaphore = DispatchSemaphore(value: 0)
-                var loggingSettings = LoggingSettings.defaultSettings
-                if self.initializationData.appBuildType == .internal {
-                    loggingSettings = LoggingSettings(logToFile: true, logToConsole: false, redactSensitiveData: true)
-                }
+                var loggingSettings = defaultLoggingSettings
                 let _ = (accountManager.transaction { transaction -> LoggingSettings? in
                     if let value = transaction.getSharedData(SharedDataKeys.loggingSettings)?.get(LoggingSettings.self) {
                         return value
