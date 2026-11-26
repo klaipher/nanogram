@@ -796,10 +796,14 @@ Each: the rule; why; where enforced; what pins it.
     nothing and is started again. A history fill's confirmation and the reset's `getDialogs` retry a definite answer
     too, by the owner's decision (Open issues). The resolve stages and `resetChannels` (C6) are not retried at all, and
     the read-state validation confirms a read state without validating it when its `messages.getHistory` fails
-    (`dialogTopMessage`, `SynchronizePeerReadState.swift`). Enforced: `retryingDifferenceRequest`,
-    `consecutiveResetDelay`, `staleRestartDelay`, the confirmation and fill retries. Pinned:
-    `testDifferenceTooLongWithDialogsNotModifiedRetriesTheReset`,
-    `testResetThatStaysSlowerThanTheRecordBacksOffBeforeEachRestart`, `HistoryFillRequestErrorTests`.
+    (`dialogTopMessage`, `SynchronizePeerReadState.swift`). A read-state operation that asks to retry (validation
+    finds the server's mark behind the local one, `localReadMarkIsAheadOfServer`) runs again after 1 s, doubling to
+    30 s per peer, instead of at once; an operation with another payload (a new read mark) starts at once, and the
+    retry sends a pushed mark again (the push ledger drops it). Enforced: `retryingDifferenceRequest`,
+    `consecutiveResetDelay`, `staleRestartDelay`, `peerReadStateSyncRetryDelay`, the confirmation and fill retries.
+    Pinned: `testDifferenceTooLongWithDialogsNotModifiedRetriesTheReset`,
+    `testResetThatStaysSlowerThanTheRecordBacksOffBeforeEachRestart`, `HistoryFillRequestErrorTests`,
+    `PeerReadStateRetryBackoffTests`.
 13. **The notification extension never resets the account, never queues an operation, never touches `isUpdating`**
     (the share extension's standalone manager never gets `reset()`, so it queues nothing either). It shares the
     database on a short budget; its old `preconditionFailure()` crashed every non-channel push (Q3). Enforced:
@@ -928,7 +932,8 @@ Requests per scenario, from the code and the harness's `requestNames`. Transacti
   compares the update's pts with the stored pts before `applyStateAdvance` moves it (R3):
   `setNeedsIncomingReadStateSynchronization`, then `managedSynchronizePeerReadStates` (`synchronizePeerReadState`)
   sends `messages.getHistory` (limit 1), then, when that returns a message, `messages.getPeerDialogs`, and applies the
-  answer as a `custom` operation.
+  answer as a `custom` operation. While the server's mark stays behind the local one, +1 `getPeerDialogs` (and the
+  read mark again for a push) per retry, 1 s doubling to 30 s apart (upstream: one per round trip).
 - **Channel gap or unknown channel state in a push:** +1 `getChannelDifference` per channel, in parallel, retried
   without limit while `processBatch` holds the head; then the resolve stages (thread infos not stored yet, for forums,
   monoforums and bots with topics; reply targets, emoji, stories, `getPeerDialogs`), not retried; no gap wait
