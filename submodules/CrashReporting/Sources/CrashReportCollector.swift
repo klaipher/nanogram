@@ -9,7 +9,8 @@ import MetricKit
 /// iOS 27 replaced the payload API with `MetricManager` (`MXMetricPayload` and `MXDiagnosticPayload` are marked
 /// to-be-deprecated in the iOS 27 SDK). There the reports come from `MetricManager.metricReports` and
 /// `diagnosticReports`; the `MXMetricManager` subscription stays only for the crash list, whose text rendering reads
-/// the MXCrashDiagnostic JSON layout. iOS 15-26 store the MX payloads themselves.
+/// the MXCrashDiagnostic JSON layout (memory-limit kills from `diagnosticReports` use the iOS 27 call stack tree
+/// layout, which `MemoryExceptionReport` converts to it). iOS 15-26 store the MX payloads themselves.
 public final class CrashReportCollector: NSObject, MXMetricManagerSubscriber {
     public static let shared = CrashReportCollector()
     private var started = false
