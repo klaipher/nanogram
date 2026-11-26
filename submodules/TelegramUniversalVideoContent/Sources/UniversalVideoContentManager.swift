@@ -38,14 +38,34 @@ private final class UniversalVideoContentHolder {
     var bufferingStatusValue: (RangeSet<Int64>, Int64)?
     
     var isNativePictureInPictureActiveDisposable: Disposable?
-    var isNativePictureInPictureActiveValue: Bool = false
-    
+    var isNativePictureInPictureActiveValue: Bool = false {
+        didSet {
+            self.updatePlaybackActivity()
+        }
+    }
+
+    // A silent video in the background is suspended by its player but still reports `.playing`; the interval must
+    // not run on through the process suspension that follows.
+    private var isApplicationInBackground: Bool = false
+    private var applicationStateObservers: [NSObjectProtocol] = []
+
     var playbackCompletedIndex: Int?
-    
+
     init(content: UniversalVideoContent, contentNode: UniversalVideoContentNode & ASDisplayNode, statusUpdated: @escaping (MediaPlayerStatus?) -> Void, bufferingStatusUpdated: @escaping ((RangeSet<Int64>, Int64)?) -> Void, playbackCompleted: @escaping () -> Void, isNativePictureInPictureActiveUpdated: @escaping (Bool) -> Void) {
         self.content = content
         self.contentNode = contentNode
-        
+
+        // An extension has no UIApplication.shared and never posts these notifications.
+        if !Bundle.main.bundlePath.hasSuffix(".appex") {
+            self.isApplicationInBackground = UIApplication.shared.applicationState == .background
+        }
+        self.applicationStateObservers.append(NotificationCenter.default.addObserver(forName: UIApplication.didEnterBackgroundNotification, object: nil, queue: .main, using: { [weak self] _ in
+            self?.updateIsApplicationInBackground(true)
+        }))
+        self.applicationStateObservers.append(NotificationCenter.default.addObserver(forName: UIApplication.willEnterForegroundNotification, object: nil, queue: .main, using: { [weak self] _ in
+            self?.updateIsApplicationInBackground(false)
+        }))
+
         self.statusDisposable = (contentNode.status |> deliverOnMainQueue).start(next: { [weak self] value in
             if let strongSelf = self {
                 strongSelf.statusValue = value
@@ -72,6 +92,13 @@ private final class UniversalVideoContentHolder {
         }
     }
     
+    private func updateIsApplicationInBackground(_ value: Bool) {
+        if self.isApplicationInBackground != value {
+            self.isApplicationInBackground = value
+            self.updatePlaybackActivity()
+        }
+    }
+
     private func updatePlaybackActivity() {
         var isPlaying = false
         var isBufferingWhilePlaying = false
@@ -85,11 +112,20 @@ private final class UniversalVideoContentHolder {
                 break
             }
         }
-        let isActive = VideoPlaybackActivityPolicy.isActive(isPlaying: isPlaying, isBufferingWhilePlaying: isBufferingWhilePlaying)
+        let isActive = VideoPlaybackActivityPolicy.isActive(
+            isPlaying: isPlaying,
+            isBufferingWhilePlaying: isBufferingWhilePlaying,
+            isApplicationInBackground: self.isApplicationInBackground,
+            isSoundEnabled: self.statusValue?.soundEnabled ?? false,
+            isPictureInPictureActive: self.isNativePictureInPictureActiveValue
+        )
         self.playbackActivity = MetricActivityIntervals.update(self.playbackActivity, .videoPlayback, active: isActive)
     }
-    
+
     deinit {
+        for observer in self.applicationStateObservers {
+            NotificationCenter.default.removeObserver(observer)
+        }
         self.playbackActivity?.end()
         self.statusDisposable?.dispose()
         self.bufferingStatusDisposable?.dispose()
