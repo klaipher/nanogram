@@ -2845,6 +2845,7 @@ public final class ReactionContextNode: ASDisplayNode, ASScrollViewDelegate {
         itemNode.updateLayout(size: expandedFrame.size, isExpanded: true, largeExpanded: self.didTriggerExpandedReaction, isPreviewing: false, transition: transition)
         
         let additionalAnimationNode: DefaultAnimatedStickerNodeImpl?
+        let effectPlayStart = ReactionAnimationPlayStart()
         var genericAnimationView: AnimationView?
         
         var additionalAnimation: TelegramMediaFile.Accessor?
@@ -2900,7 +2901,7 @@ public final class ReactionContextNode: ASDisplayNode, ASScrollViewDelegate {
             additionalAnimationNodeValue.started = {
                 if !didLogEffectStart {
                     didLogEffectStart = true
-                    Logger.shared.shortLog("ReactionContextNode", effectLog.firstFrameLine(now: CFAbsoluteTimeGetCurrent()))
+                    Logger.shared.shortLog("ReactionContextNode", effectLog.firstFrameLine(now: CFAbsoluteTimeGetCurrent(), playStartTime: effectPlayStart.time))
                 }
             }
 
@@ -3066,6 +3067,7 @@ public final class ReactionContextNode: ASDisplayNode, ASScrollViewDelegate {
         })
         
         DispatchQueue.main.asyncAfter(deadline: DispatchTime.now() + 0.15 * UIView.animationDurationFactor(), execute: {
+            effectPlayStart.time = CFAbsoluteTimeGetCurrent()
             additionalAnimationNode?.visibility = true
             if let animateTargetContainer = animateTargetContainer {
                 animateTargetContainer.isHidden = false
