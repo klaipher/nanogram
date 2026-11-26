@@ -526,9 +526,14 @@ Patches to upstream bugs and one fix of our own code, found by the server-switch
   - Chat open: the viewDidAppear full-peer refresh is skipped while the peer view's fetch started under 5 s ago is running or succeeded (`AccountViewTracker.refreshCachedPeerDataOnChatOpen`; upstream always forces it).
   - AppDelegate: the nightly cleanup task writes `TelegramCacheIndexTimestamp_v2` (upstream only the launch check does).
   - AccountManager: access-challenge open errors are logged with their error; wording depends on whether a migration can happen.
+  - EntityKeyboard: emoji/sticker keyboard data is built on its own serial queue (upstream builds it on whatever thread delivered last, often inside a Postbox transaction).
+  - TelegramAudio: audio ports are logged by type and uid tag, never by name; the route line only on change.
+  - TelegramCore: our own unchanged typing activity is re-sent after 4.5 s (upstream 1 s).
+  - TelegramCore: greeting/premium/all-premium `messages.getStickers` lists send the server's stored hash (item-cache collection 30; upstream 0).
+  - Postbox: `StoryGeneralStatesTable.set` skips identical bytes like `PreferencesTable.set` (upstream rewrites every time).
   - Background tasks (fork code): drain until 2 s before expiration, expiration ends a drain, no write window without a granted task.
   - tgcalls (fork): video start bitrate floor when outgoing video turns on; call logs redact addresses, ICE passwords and fingerprints.
 - Why: tester report 2026-11-25 (0xdead10cc, log volume, redundant requests and writes, privacy of logs).
 - Where: CHANGELOG.md Unreleased entry "Tester log report 2026-11-25" lists every file and commit.
 - Upstream: candidates for PRs (sticker sync double entry, chat-open double fetch, backup getConfig, derived-data no-op writes).
-- Sync: expect conflicts in AccountViewTracker.swift, ChatController.swift (~8209), TelegramEngineMessages.swift, UniversalVideoGalleryItem.swift, CachedStickerPack.swift/LoadedStickerPack.swift, Synchronize*Operation(s).swift, ManagedSynchronizePeerReadStates.swift, MTRequestMessageService.m, Log.swift.
+- Sync: expect conflicts in AccountViewTracker.swift, ChatController.swift (~8209), TelegramEngineMessages.swift, UniversalVideoGalleryItem.swift, CachedStickerPack.swift/LoadedStickerPack.swift, Synchronize*Operation(s).swift, ManagedSynchronizePeerReadStates.swift, MTRequestMessageService.m, Log.swift, EmojiPagerContentSignals.swift, ManagedAudioSession.swift, PeerInputActivityManager.swift, ManagedRecentStickers.swift, StoryStatesTable.swift.
