@@ -12,6 +12,10 @@ protocol MutablePostboxView: AnyObject {
 final class CombinedMutableView {
     let views: [PostboxViewKey: MutablePostboxView]
     
+    /// Nanogram: how many keys of each kind this view has, for the slow-transaction log. `views` never changes, so
+    /// it is counted once, on the Postbox queue the first time a slow transaction lists the live views.
+    private(set) lazy var keyKindCounts: [String: Int] = postboxViewKeyKindCounts(self.views.keys)
+    
     init(views: [PostboxViewKey: MutablePostboxView]) {
         self.views = views
     }

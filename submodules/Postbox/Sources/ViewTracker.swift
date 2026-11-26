@@ -10,12 +10,66 @@ public enum ViewUpdateType: Equatable {
 }
 
 /// The case name of a view key, without its payload (peer ids and the like stay out of the slow-transaction log).
+/// A case with a payload is named by its mirror's one child label, so the payload (sets of peer or message ids) is
+/// never printed only to be cut off; a case without one prints as its bare name.
 func postboxViewKeyKind(_ key: PostboxViewKey) -> String {
-    let description = String(describing: key)
-    if let end = description.firstIndex(of: "(") {
-        return String(description[description.startIndex ..< end])
+    if let label = Mirror(reflecting: key).children.first?.label {
+        return label
     }
-    return description
+    return String(describing: key)
+}
+
+/// How many of the keys there are of each kind (`postboxViewKeyKind`).
+func postboxViewKeyKindCounts<Keys: Sequence>(_ keys: Keys) -> [String: Int] where Keys.Element == PostboxViewKey {
+    var counts: [String: Int] = [:]
+    for key in keys {
+        counts[postboxViewKeyKind(key), default: 0] += 1
+    }
+    return counts
+}
+
+/// "kind=count" pairs, the largest count first (ties by name). With a `limit`, only that many kinds are listed and
+/// the rest are summed into "others".
+func postboxViewKindCountsDescription(_ counts: [String: Int], prefix: String = "", limit: Int? = nil) -> String {
+    let sorted = counts.sorted(by: { lhs, rhs in
+        if lhs.value != rhs.value {
+            return lhs.value > rhs.value
+        }
+        return lhs.key < rhs.key
+    })
+    var listed = sorted
+    var others = 0
+    if let limit, sorted.count > limit {
+        listed = Array(sorted.prefix(max(0, limit)))
+        others = sorted.dropFirst(max(0, limit)).reduce(0, { $0 + $1.value })
+    }
+    var parts = listed.map({ "\(prefix)\($0.key)=\($0.value)" })
+    if others != 0 {
+        parts.append("\(prefix)others=\(others)")
+    }
+    return parts.joined(separator: " ")
+}
+
+/// When a slow transaction also logs its live views (`ViewTracker.liveViewCountsDescription`). Listing them blocks
+/// the Postbox queue right after the commit and the counts change slowly, so only a transaction of 100 ms or more
+/// is described, at most once a minute. Times are `CFAbsoluteTime` seconds; a clock that went backwards does not
+/// silence the log.
+struct SlowTransactionLiveViewsLog: Equatable {
+    static let minimumTransactionDuration: Double = 0.1
+    static let minimumInterval: Double = 60.0
+
+    private(set) var lastLogTime: Double?
+
+    mutating func shouldLog(transactionDuration: Double, now: Double) -> Bool {
+        if transactionDuration < SlowTransactionLiveViewsLog.minimumTransactionDuration {
+            return false
+        }
+        if let lastLogTime = self.lastLogTime, now >= lastLogTime, now - lastLogTime < SlowTransactionLiveViewsLog.minimumInterval {
+            return false
+        }
+        self.lastLogTime = now
+        return true
+    }
 }
 
 final class ViewTracker {
@@ -233,9 +287,10 @@ final class ViewTracker {
     }
     
     /// The live views per kind, for the log of a slow transaction (every one of them is updated by each transaction
-    /// that touches what it shows). Combined views are counted by the kinds of their keys. Diagnostic only.
+    /// that touches what it shows). Combined views are counted by the kinds of their keys, each view's counted once
+    /// (`CombinedMutableView.keyKindCounts`); the 8 largest kinds are listed. Diagnostic only.
     func liveViewCountsDescription() -> String {
-        var counts: [(String, Int)] = [
+        let counts: [(String, Int)] = [
             ("chatList", self.chatListViews.copyItems().count),
             ("messageHistory", self.messageHistoryViews.copyItems().count),
             ("contactPeerIds", self.contactPeerIdsViews.copyItems().count),
@@ -253,14 +308,11 @@ final class ViewTracker {
         ]
         var combinedKeyKinds: [String: Int] = [:]
         for (view, _) in self.combinedViews.copyItems() {
-            for key in view.views.keys {
-                combinedKeyKinds[postboxViewKeyKind(key), default: 0] += 1
-            }
+            combinedKeyKinds.merge(view.keyKindCounts, uniquingKeysWith: +)
         }
-        for (kind, count) in combinedKeyKinds.sorted(by: { $0.key < $1.key }) {
-            counts.append(("combined." + kind, count))
-        }
-        return counts.filter({ $0.1 != 0 }).map({ "\($0.0)=\($0.1)" }).joined(separator: " ")
+        let viewCounts = counts.filter({ $0.1 != 0 }).map({ "\($0.0)=\($0.1)" }).joined(separator: " ")
+        let combinedCounts = postboxViewKindCountsDescription(combinedKeyKinds, prefix: "combined.", limit: 8)
+        return combinedCounts.isEmpty ? viewCounts : viewCounts + " " + combinedCounts
     }
     
     func removeCombinedView(_ index: Bag<(CombinedMutableView, ValuePipe<CombinedView>)>.Index) {
