@@ -1,4 +1,5 @@
 import XCTest
+import AVFoundation
 import TelegramAudio
 
 /// Audio route lines go to the always-on critical log, which the report does not mask. A port's name is the one the
@@ -36,5 +37,60 @@ final class AudioPortLogLabelTests: XCTestCase {
         XCTAssertFalse(deduplicator.shouldLog("route A"))
         XCTAssertTrue(deduplicator.shouldLog("route B"))
         XCTAssertTrue(deduplicator.shouldLog("route A"))
+    }
+
+    // MARK: - Output modes in log lines
+
+    /// The call's audio menu offers AirPods as `.port`, and picking them sends `.custom(.port(...))`, which
+    /// `ManagedAudioSession` writes into its setup, output request and voice chat lines as it is.
+    private func pickedAirPods() -> AudioSessionOutput? {
+        let iPhoneMic = AudioSessionRoutePort(portType: .builtInMic, uid: "Built-In Microphone", name: "iPhone Microphone")
+        let airPods = AudioSessionRoutePort(portType: .bluetoothHFP, uid: "AA:BB:CC:DD:EE:FF-tsco", name: "Alice's AirPods Pro")
+        let route = AudioSessionRoute(outputs: [airPods], inputs: [airPods], availableInputs: [iPhoneMic, airPods])
+        let current = audioSessionOutputs(route: route, hasLoudspeaker: true).current
+        guard case .port = current else {
+            XCTFail("AirPods are not offered as a port: \(current)")
+            return nil
+        }
+        return current
+    }
+
+    func testAPickedPortIsDescribedByKindAndTagOnly() {
+        guard let airPods = self.pickedAirPods() else {
+            return
+        }
+        let texts = [
+            String(describing: AudioSessionOutputMode.custom(airPods)),
+            String(reflecting: AudioSessionOutputMode.custom(airPods)),
+            "\(AudioSessionOutputMode.custom(airPods))",
+            String(describing: airPods),
+            String(reflecting: airPods),
+            String(describing: [airPods]),
+        ]
+        for text in texts {
+            XCTAssertFalse(text.contains("Alice"), text)
+            XCTAssertFalse(text.contains("AirPods"), text)
+            XCTAssertFalse(text.contains("AA:BB"), "the uid of a Bluetooth port holds its address: \(text)")
+            XCTAssertFalse(text.contains("tsco"), text)
+        }
+        XCTAssertEqual("\(AudioSessionOutputMode.custom(airPods))", "custom(port(bluetooth#539f39))")
+    }
+
+    func testDumpShowsNeitherTheNameNorTheUid() {
+        guard let airPods = self.pickedAirPods() else {
+            return
+        }
+        var text = ""
+        dump(AudioSessionOutputMode.custom(airPods), to: &text)
+        XCTAssertFalse(text.contains("Alice"), text)
+        XCTAssertFalse(text.contains("AA:BB"), text)
+    }
+
+    func testTheOtherModesKeepTheirNames() {
+        XCTAssertEqual("\(AudioSessionOutputMode.system)", "system")
+        XCTAssertEqual("\(AudioSessionOutputMode.speakerIfNoHeadphones)", "speakerIfNoHeadphones")
+        XCTAssertEqual("\(AudioSessionOutputMode.custom(.speaker))", "custom(speaker)")
+        XCTAssertEqual("\(AudioSessionOutputMode.custom(.builtin))", "custom(builtin)")
+        XCTAssertEqual("\(AudioSessionOutputMode.custom(.headphones))", "custom(headphones)")
     }
 }

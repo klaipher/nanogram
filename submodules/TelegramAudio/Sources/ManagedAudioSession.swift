@@ -150,6 +150,44 @@ public enum AudioSessionOutput: Equatable {
     case port(AudioSessionPort)
 }
 
+/// How a port picked in the call's audio menu appears in text: its kind and the tag of its uid (`bluetooth#539f39`), never
+/// its name ("<first name>'s AirPods Pro") or its uid (a Bluetooth address). Without this, Swift's default description
+/// lists every stored field, and `AudioSessionOutputMode` values are put into the session's log lines, which go to the
+/// always-on critical log.
+extension AudioSessionPort: CustomStringConvertible, CustomDebugStringConvertible, CustomReflectable {
+    public var description: String {
+        return "\(self.type)#\(audioPortLogTag(uid: self.uid))"
+    }
+
+    public var debugDescription: String {
+        return self.description
+    }
+
+    /// `dump` and debuggers read a value's fields through its mirror; it shows the same two things.
+    public var customMirror: Mirror {
+        return Mirror(self, children: ["type": self.type, "tag": audioPortLogTag(uid: self.uid)], displayStyle: .struct)
+    }
+}
+
+extension AudioSessionOutput: CustomStringConvertible, CustomDebugStringConvertible {
+    public var description: String {
+        switch self {
+        case .builtin:
+            return "builtin"
+        case .speaker:
+            return "speaker"
+        case .headphones:
+            return "headphones"
+        case let .port(port):
+            return "port(\(port))"
+        }
+    }
+
+    public var debugDescription: String {
+        return self.description
+    }
+}
+
 private let bluetoothPortTypes = Set<AVAudioSession.Port>([.bluetoothA2DP, .bluetoothLE, .bluetoothHFP])
 
 private extension AudioSessionOutput {
@@ -343,6 +381,24 @@ public enum AudioSessionOutputMode: Equatable {
                     return false
                 }
         }
+    }
+}
+
+/// The log lines put the mode in as it is ("setup custom(port(bluetooth#539f39)) for voiceCall"); see `AudioSessionPort`.
+extension AudioSessionOutputMode: CustomStringConvertible, CustomDebugStringConvertible {
+    public var description: String {
+        switch self {
+        case .system:
+            return "system"
+        case .speakerIfNoHeadphones:
+            return "speakerIfNoHeadphones"
+        case let .custom(output):
+            return "custom(\(output))"
+        }
+    }
+
+    public var debugDescription: String {
+        return self.description
     }
 }
 

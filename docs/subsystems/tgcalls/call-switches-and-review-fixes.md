@@ -141,7 +141,10 @@ Report: on one iPhone 14 the speaker button did nothing. No log, so the cause is
 - **Diagnostics for the next report** (short log, no names): `audio output request <route> (last request, session reports,
   CallKit|direct): applying|skipped`, and after every apply `ManagedAudioSession output request ... -> route <headset|loudspeaker|receiver|other>
   outputs=[...]`, with `MISSED` when the loudspeaker was asked for and the route is not on it. `audioInputStateDescription` now also
-  lists the route outputs, category, mode and options.
+  lists the route outputs, category, mode and options. A port appears as its type and a hash of its uid
+  (`BluetoothHFP#539f39` in the route line, `custom(port(bluetooth#539f39))` for a requested output mode), never its
+  name or uid: `AudioSessionPort`, `AudioSessionOutput` and `AudioSessionOutputMode` have their own descriptions, because
+  the default one lists every field and the mode is put into the setup and output request lines whole.
 
 Hypotheses for that iPhone 14, most likely first (none proven): (1) the session does not honour
 `overrideOutputAudioPort(.speaker)` because the category or mode was changed under the call (the audio device module's own
