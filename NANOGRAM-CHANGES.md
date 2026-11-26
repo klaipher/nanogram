@@ -514,3 +514,21 @@ Patches to upstream bugs and one fix of our own code, found by the server-switch
 - Upstream: no.
 - Sync: `NavigationContainer.swift` is fork-heavy already; keep the pending-child and transition-start hooks when merging.
 
+
+### Tester log report fixes (iOS and Mac where shared core, 2026-11-26)
+- What (differs from upstream):
+  - MtProtoKit: `MTRequestMessageService.alwaysInitializeApi`; the backup-address getConfig is always wrapped in invokeWithLayer + initConnection (upstream sends it bare once the key remembers the environment, and the base-layer answer fails to parse).
+  - TelegramCore Logger: early file lines are held until the stored Log to File setting is applied (upstream writes from launch with logToFile = true); push tokens are logged as a short prefix only. Short log: `ShortLogFilter` keeps routine MTProto/Postbox lines out of the critlog and counts them.
+  - TelegramCore: `updateLocallyDerivedData`/`storeLocallyDerivedData` skip unchanged data; the gallery stores the video position at most every 5 s (upstream 0.5 s).
+  - TelegramCore: read-state sync retries back off 1 s -> 30 s per chat (upstream retries at once).
+  - TelegramCore: forced refreshes of a consistent cached sticker pack send its hash to `messages.getStickerSet` (upstream always 0).
+  - TelegramCore: a `.sync` request queues one sync entry for recent stickers, faved stickers and saved GIFs (upstream queues two).
+  - Chat open: the viewDidAppear full-peer refresh is skipped while the peer view's fetch started under 5 s ago is running or succeeded (`AccountViewTracker.refreshCachedPeerDataOnChatOpen`; upstream always forces it).
+  - AppDelegate: the nightly cleanup task writes `TelegramCacheIndexTimestamp_v2` (upstream only the launch check does).
+  - AccountManager: access-challenge open errors are logged with their error; wording depends on whether a migration can happen.
+  - Background tasks (fork code): drain until 2 s before expiration, expiration ends a drain, no write window without a granted task.
+  - tgcalls (fork): video start bitrate floor when outgoing video turns on; call logs redact addresses, ICE passwords and fingerprints.
+- Why: tester report 2026-11-25 (0xdead10cc, log volume, redundant requests and writes, privacy of logs).
+- Where: CHANGELOG.md Unreleased entry "Tester log report 2026-11-25" lists every file and commit.
+- Upstream: candidates for PRs (sticker sync double entry, chat-open double fetch, backup getConfig, derived-data no-op writes).
+- Sync: expect conflicts in AccountViewTracker.swift, ChatController.swift (~8209), TelegramEngineMessages.swift, UniversalVideoGalleryItem.swift, CachedStickerPack.swift/LoadedStickerPack.swift, Synchronize*Operation(s).swift, ManagedSynchronizePeerReadStates.swift, MTRequestMessageService.m, Log.swift.
