@@ -1,5 +1,7 @@
 #import <CpuProfiler/CpuProfiler.h>
 
+#include "CallTreeLine.h"
+
 #import <dlfcn.h>
 #import <mach-o/dyld.h>
 #import <mach-o/loader.h>
@@ -159,9 +161,8 @@ void appendTree(NSMutableString *output, const TreeNode &node, int depth, int th
         if (child.second->count < threshold) {
             continue;
         }
-        [output appendFormat:@"  %5d  %*s%@\n",
-         child.second->count,
-         depth * 2, "",
+        [output appendFormat:@"%s%@\n",
+         cpu_profiler::callTreeLinePrefix(child.second->count, depth).c_str(),
          describeAddress(child.first, imageBases)];
         appendTree(output, *child.second, depth + 1, threshold, imageBases, maxDepth);
     }

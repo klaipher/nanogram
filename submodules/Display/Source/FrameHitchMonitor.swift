@@ -214,8 +214,8 @@ public final class FrameHitchMonitor {
     /// the app; runs on the main thread when a keyboard window ends.
     public static var keyboardState: (() -> String)?
 
-    /// One stack per window: every stack is a few KB of log text, and a long window with 4 of them, repeated on each
-    /// back swipe, added to the daily log volume.
+    /// One stack per window: a stack is tens of KB of log text (~55 KB each on 2026-11-11, before CpuProfiler capped
+    /// the tree's indent), and a long window with 4 of them, repeated on each back swipe, added to the daily log volume.
     static let keptStallLimit = 1
 
     /// Stacks are logged only while the Frame hitches switch is on (a window the switch's turn-off closes logs its
