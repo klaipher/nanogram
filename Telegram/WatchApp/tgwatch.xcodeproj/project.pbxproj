@@ -12,6 +12,7 @@
 		039B8E2B7418D9004EAF9533 /* AttachmentSheet.swift in Sources */ = {isa = PBXBuildFile; fileRef = E58B862E5D64B739DD085735 /* AttachmentSheet.swift */; };
 		04CEF3F9C267D8A7CEC5EC3C /* ClosedView.swift in Sources */ = {isa = PBXBuildFile; fileRef = 4A6F6CB0F23C3C64FB122393 /* ClosedView.swift */; };
 		06031F19E55E96E43173C712 /* MessageWindow.swift in Sources */ = {isa = PBXBuildFile; fileRef = F9D2B0900E5A5C5981823DDC /* MessageWindow.swift */; };
+		0620D52050947D35562C7F00 /* WatchEventJournal.swift in Sources */ = {isa = PBXBuildFile; fileRef = AA0389FA13E6AF7577B066A0 /* WatchEventJournal.swift */; };
 		074BE3F4D6AB9EA220A8EDF2 /* VideoNoteBubbleView.swift in Sources */ = {isa = PBXBuildFile; fileRef = D4AF5A180BB3A37832AC5349 /* VideoNoteBubbleView.swift */; };
 		0BB25527B21E71352126154B /* AuthStateMapping.swift in Sources */ = {isa = PBXBuildFile; fileRef = FEBF4774F6AA5888CD53F478 /* AuthStateMapping.swift */; };
 		0BE4BEE5802CD229F61FF464 /* Account.swift in Sources */ = {isa = PBXBuildFile; fileRef = BABCBE66AF47816CA3518036 /* Account.swift */; };
@@ -253,6 +254,7 @@
 		A1593EB189930F0283E61C73 /* Info.plist */ = {isa = PBXFileReference; lastKnownFileType = text.plist; path = Info.plist; sourceTree = "<group>"; };
 		A4BDBD692A424C5C24D61B4F /* tgwatchApp.swift */ = {isa = PBXFileReference; lastKnownFileType = sourcecode.swift; path = tgwatchApp.swift; sourceTree = "<group>"; };
 		A63843FEEB957FF475FF41D6 /* UserNamesStore.swift */ = {isa = PBXFileReference; lastKnownFileType = sourcecode.swift; path = UserNamesStore.swift; sourceTree = "<group>"; };
+		AA0389FA13E6AF7577B066A0 /* WatchEventJournal.swift */ = {isa = PBXFileReference; lastKnownFileType = sourcecode.swift; path = WatchEventJournal.swift; sourceTree = "<group>"; };
 		AD112509F0A51E97F7034940 /* NowPlayingPublisher.swift */ = {isa = PBXFileReference; lastKnownFileType = sourcecode.swift; path = NowPlayingPublisher.swift; sourceTree = "<group>"; };
 		ADFD9DBB81D8F2028DAE6CF8 /* WebPStickerView.swift */ = {isa = PBXFileReference; lastKnownFileType = sourcecode.swift; path = WebPStickerView.swift; sourceTree = "<group>"; };
 		B089B6570CCD50D105C035FA /* Info.plist */ = {isa = PBXFileReference; lastKnownFileType = text.plist; path = Info.plist; sourceTree = "<group>"; };
@@ -459,6 +461,7 @@
 		9DC304CDC624D3392B03D8AF /* Diagnostics */ = {
 			isa = PBXGroup;
 			children = (
+				AA0389FA13E6AF7577B066A0 /* WatchEventJournal.swift */,
 				8DBFF83F75E278BFD39540CA /* WatchReportBuilder.swift */,
 				16FFDDD7ED6E3B0A2DFAF469 /* WatchReportSession.swift */,
 			);
@@ -808,6 +811,7 @@
 				7DD192512B16EA3515244C22 /* VoicePlaybackController.swift in Sources */,
 				B777F8B2ACBABCC223BE25A4 /* VoiceRecordView.swift in Sources */,
 				93A8BCCF8EE61D81215359A9 /* VoiceRecorder.swift in Sources */,
+				0620D52050947D35562C7F00 /* WatchEventJournal.swift in Sources */,
 				87271C9D884F85991ECA499A /* WatchFeatureFlags.swift in Sources */,
 				3BC78ED85505F893FC4E473D /* WatchReportBuilder.swift in Sources */,
 				B63A2B80596DAE9169BE22C7 /* WatchReportPayload.swift in Sources */,

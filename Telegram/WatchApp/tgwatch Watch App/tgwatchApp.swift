@@ -33,7 +33,13 @@ struct TgwatchApp: App {
             factory: factory
         )
         if !isUnderXCTest {
+            // journal.txt of the iPhone's "Send Report": watchOS drops the app's log lines long before a launch is reported.
+            let info = Bundle.main.infoDictionary
+            let version = info?["CFBundleShortVersionString"] as? String ?? "?"
+            let build = info?[kCFBundleVersionKey as String] as? String ?? "?"
+            WatchEventJournal.shared.record("app", "launch", detail: "\(version) (\(build))")
             mgr.bootstrap()
+            WatchEventJournal.shared.record("app", "bootstrap", detail: mgr.activeClient == nil ? "no active account" : "account started")
             // The iPhone's "Send Report" asks for this report; the watch has no button of its own.
             WatchReportSession.shared.start()
             // A system refresh launches the app, which bootstraps TDLib above; give it a moment to connect and
@@ -67,6 +73,7 @@ struct TgwatchApp: App {
             if phase != .active {
                 BackgroundRefreshCoordinator.shared.scheduleNext()
                 WatchReportSession.shared.scheduleTransfer()
+                WatchEventJournal.shared.flush()
             }
         }
     }

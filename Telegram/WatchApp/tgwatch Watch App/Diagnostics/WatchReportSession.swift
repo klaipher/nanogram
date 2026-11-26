@@ -73,7 +73,8 @@ final class WatchReportSession: NSObject {
             context: context,
             energyText: energy,
             logText: log.text,
-            logNote: log.note
+            logNote: log.note,
+            journalText: WatchEventJournal.shared.text()
         )
         return WatchReportBuilder.payload(inputs).encoded(maximumBytes: maximumBytes)
     }
@@ -90,6 +91,7 @@ final class WatchReportSession: NSObject {
             try data.write(to: url, options: .atomic)
         } catch {
             logger.warning("report copy not written: \(error.localizedDescription, privacy: .public)")
+            WatchEventJournal.shared.record("report", "copy not written", detail: error.localizedDescription)
             return
         }
         // Only the newest copy is worth sending.
@@ -98,6 +100,7 @@ final class WatchReportSession: NSObject {
         }
         WCSession.default.transferFile(url, metadata: [WatchReportMessage.fileMarkerKey: true])
         defaults.set(Date(), forKey: Self.lastTransferKey)
+        WatchEventJournal.shared.record("report", "copy handed to the phone")
     }
 
     private static func hardwareIdentifier() -> String {

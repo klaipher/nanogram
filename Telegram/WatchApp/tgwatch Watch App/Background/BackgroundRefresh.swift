@@ -95,14 +95,19 @@ final class WatchAppDelegate: NSObject, WKApplicationDelegate {
 
     func didFailToRegisterForRemoteNotificationsWithError(_ error: Error) {
         logger.warning("push registration failed: \(error.localizedDescription, privacy: .public)")
+        WatchEventJournal.shared.record("push", "registration failed", detail: error.localizedDescription)
     }
 
     func handle(_ backgroundTasks: Set<WKRefreshBackgroundTask>) {
         for task in backgroundTasks {
             if let refresh = task as? WKApplicationRefreshBackgroundTask {
                 Task {
+                    let started = Date()
                     await BackgroundRefreshCoordinator.shared.runRefresh()
+                    WatchEventJournal.shared.record("refresh", "background refresh done", detail: String(format: "%.1f s", Date().timeIntervalSince(started)))
                     WatchReportSession.shared.scheduleTransfer()
+                    // A refresh launch may end without the scene ever going inactive, so the journal is written here too.
+                    WatchEventJournal.shared.flush()
                     refresh.setTaskCompletedWithSnapshot(false)
                 }
             } else if let snapshot = task as? WKSnapshotRefreshBackgroundTask {
