@@ -65,6 +65,16 @@ func cacheStickerPack(transaction: Transaction, info: StickerPackCollectionInfo,
     }
 }
 
+/// The hash a refresh of a cached pack sends with `messages.getStickerSet`: the cached hash when the
+/// cached entry is consistent (its stored hash equals its info's), so an unchanged pack comes back as
+/// `stickerSetNotModified` and is not rewritten; 0 (the whole set) when there is no entry or it is stale.
+func stickerPackRefreshKnownHash(cachedHash: Int32?, cacheIsStale: Bool) -> Int32 {
+    if cacheIsStale {
+        return 0
+    }
+    return cachedHash ?? 0
+}
+
 func _internal_cachedStickerPack(postbox: Postbox, network: Network, reference: StickerPackReference, forceRemote: Bool, ignoreCache: Bool = false) -> Signal<CachedStickerPackResult, NoError> {
     return postbox.transaction { transaction -> CachedStickerPackResult? in
         if let (info, items, local) = cachedStickerPack(transaction: transaction, reference: reference) {
@@ -236,7 +246,12 @@ func _internal_cachedStickerPack(postbox: Postbox, network: Network, reference: 
             }
             |> mapToSignal { result, loadRemote, previousHash in
                 if loadRemote || forceRemote {
-                    let appliedRemote = updatedRemoteStickerPack(postbox: postbox, network: network, reference: reference)
+                    // A forced refresh of an unchanged pack (the animated-emoji polls, the icon sets at
+                    // launch) gets stickerSetNotModified instead of the whole set, so it writes nothing.
+                    // Its file references are not refreshed then; an expired one is revalidated on use
+                    // through FetchedMediaResource, which asks with hash 0.
+                    let knownHash = stickerPackRefreshKnownHash(cachedHash: previousHash, cacheIsStale: loadRemote)
+                    let appliedRemote = updatedRemoteStickerPack(postbox: postbox, network: network, reference: reference, knownHash: knownHash)
                     |> mapToSignal { result -> Signal<CachedStickerPackResult, NoError> in
                         if let result = result, result.0.hash == previousHash {
                             return .complete()

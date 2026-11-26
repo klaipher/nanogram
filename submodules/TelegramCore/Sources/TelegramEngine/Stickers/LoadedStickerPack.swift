@@ -42,8 +42,18 @@ public enum LoadedStickerPack {
     case result(info: StickerPackCollectionInfo.Accessor, items: [StickerPackItem], installed: Bool)
 }
 
-func updatedRemoteStickerPack(postbox: Postbox, network: Network, reference: StickerPackReference) -> Signal<(StickerPackCollectionInfo, [StickerPackItem])?, NoError> {
-    return network.request(Api.functions.messages.getStickerSet(stickerset: reference.apiInputStickerSet, hash: 0))
+/// `messages.getStickerSet` for a pack. A non-zero `knownHash` lets the server answer
+/// `stickerSetNotModified` while the pack still has that hash.
+func stickerSetRequest(reference: StickerPackReference, knownHash: Int32) -> (FunctionDescription, Buffer, DeserializeFunctionResponse<Api.messages.StickerSet>) {
+    return Api.functions.messages.getStickerSet(stickerset: reference.apiInputStickerSet, hash: knownHash)
+}
+
+/// Fetches a pack and caches the answer. With a `knownHash` that still matches, the server answers
+/// `stickerSetNotModified` and the signal completes without a value and without a write.
+/// File-reference revalidation (FetchedMediaResource) keeps the default 0: it needs the fresh file
+/// references only a full answer carries.
+func updatedRemoteStickerPack(postbox: Postbox, network: Network, reference: StickerPackReference, knownHash: Int32 = 0) -> Signal<(StickerPackCollectionInfo, [StickerPackItem])?, NoError> {
+    return network.request(stickerSetRequest(reference: reference, knownHash: knownHash))
         |> map(Optional.init)
         |> `catch` { _ -> Signal<Api.messages.StickerSet?, NoError> in
             return .single(nil)
