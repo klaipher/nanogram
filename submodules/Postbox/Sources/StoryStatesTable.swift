@@ -95,6 +95,13 @@ final class StoryGeneralStatesTable: Table {
     }
     
     func set(key: Key, value: CodableEntry?, events: inout [Event]) {
+        // A "not modified" stories refresh stores the state it already has (twice a foreground minute); that
+        // rewrote the row, made the transaction non-empty for every view and bumped the transaction state version.
+        // Same rule as PreferencesTable.set: the comparison is with the latest value of this transaction, so
+        // A -> B -> A inside one transaction still stores A, and removing a missing row is no change.
+        if self.get(key: key)?.data == value?.data {
+            return
+        }
         if let value = value {
             self.valueBox.set(self.table, key: key.asKey(), value: MemoryBuffer(data: value.data))
         } else {
