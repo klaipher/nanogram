@@ -84,4 +84,14 @@ public enum VideoPlaybackActivityPolicy {
     public static func isActive(isPlaying: Bool, isBufferingWhilePlaying: Bool) -> Bool {
         return isPlaying || isBufferingWhilePlaying
     }
+
+    /// In the background a video counts only while it is heard or shown in picture-in-picture. The player suspends a
+    /// silent one there (`ChunkMediaPlayerV2.shouldSuspendInBackground`) yet keeps reporting it as playing, so without
+    /// this the interval would stay open across the process suspension and count those hours as video playback.
+    public static func isActive(isPlaying: Bool, isBufferingWhilePlaying: Bool, isApplicationInBackground: Bool, isSoundEnabled: Bool, isPictureInPictureActive: Bool) -> Bool {
+        if !self.isActive(isPlaying: isPlaying, isBufferingWhilePlaying: isBufferingWhilePlaying) {
+            return false
+        }
+        return !isApplicationInBackground || isSoundEnabled || isPictureInPictureActive
+    }
 }

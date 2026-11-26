@@ -75,6 +75,54 @@ final class ActivityIntervalCounterTests: XCTestCase {
         XCTAssertFalse(VideoPlaybackActivityPolicy.isActive(isPlaying: false, isBufferingWhilePlaying: false))
     }
 
+    // The player suspends a silent video in the background (no PiP) but keeps reporting it as playing, so the
+    // interval must end there, or it spans the process suspension that follows.
+    func testVideoPlaybackInTheBackgroundCountsOnlyWithSoundOrPictureInPicture() {
+        XCTAssertTrue(VideoPlaybackActivityPolicy.isActive(isPlaying: true, isBufferingWhilePlaying: false, isApplicationInBackground: false, isSoundEnabled: false, isPictureInPictureActive: false))
+        XCTAssertFalse(VideoPlaybackActivityPolicy.isActive(isPlaying: true, isBufferingWhilePlaying: false, isApplicationInBackground: true, isSoundEnabled: false, isPictureInPictureActive: false))
+        XCTAssertTrue(VideoPlaybackActivityPolicy.isActive(isPlaying: true, isBufferingWhilePlaying: false, isApplicationInBackground: true, isSoundEnabled: true, isPictureInPictureActive: false))
+        XCTAssertTrue(VideoPlaybackActivityPolicy.isActive(isPlaying: true, isBufferingWhilePlaying: false, isApplicationInBackground: true, isSoundEnabled: false, isPictureInPictureActive: true))
+        XCTAssertFalse(VideoPlaybackActivityPolicy.isActive(isPlaying: false, isBufferingWhilePlaying: true, isApplicationInBackground: true, isSoundEnabled: false, isPictureInPictureActive: false))
+        XCTAssertTrue(VideoPlaybackActivityPolicy.isActive(isPlaying: false, isBufferingWhilePlaying: true, isApplicationInBackground: true, isSoundEnabled: true, isPictureInPictureActive: false))
+        XCTAssertFalse(VideoPlaybackActivityPolicy.isActive(isPlaying: false, isBufferingWhilePlaying: false, isApplicationInBackground: true, isSoundEnabled: true, isPictureInPictureActive: true))
+        XCTAssertFalse(VideoPlaybackActivityPolicy.isActive(isPlaying: false, isBufferingWhilePlaying: false, isApplicationInBackground: false, isSoundEnabled: true, isPictureInPictureActive: false))
+    }
+
+    // A silent video that stays "playing" through a trip to the background: the interval ends on entering the
+    // background and begins again on returning, once each.
+    func testSilentVideoIntervalEndsInTheBackgroundAndBeginsAgainInTheForeground() {
+        var events: [Bool] = []
+        let counter = ActivityIntervalCounter(onChange: { activity, isActive in
+            if activity == .videoPlayback {
+                events.append(isActive)
+            }
+        })
+        var token: ActivityIntervalCounter.Token?
+        func update(isApplicationInBackground: Bool) {
+            let isActive = VideoPlaybackActivityPolicy.isActive(isPlaying: true, isBufferingWhilePlaying: false, isApplicationInBackground: isApplicationInBackground, isSoundEnabled: false, isPictureInPictureActive: false)
+            if isActive {
+                if token == nil {
+                    token = counter.begin(.videoPlayback)
+                }
+            } else {
+                token?.end()
+                token = nil
+            }
+        }
+        update(isApplicationInBackground: false)
+        XCTAssertEqual(events, [true])
+        update(isApplicationInBackground: true)
+        update(isApplicationInBackground: true)
+        XCTAssertEqual(events, [true, false])
+        XCTAssertFalse(counter.isActive(.videoPlayback))
+        update(isApplicationInBackground: false)
+        update(isApplicationInBackground: false)
+        XCTAssertEqual(events, [true, false, true])
+        XCTAssertTrue(counter.isActive(.videoPlayback))
+        token?.end()
+        XCTAssertEqual(events, [true, false, true, false])
+    }
+
     func testTwoPlayingVideosAreOneIntervalThatEndsWithTheLastOne() {
         var events: [Bool] = []
         let counter = ActivityIntervalCounter(onChange: { activity, isActive in
