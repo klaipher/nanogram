@@ -246,6 +246,10 @@ private func validatePeerReadState(network: Network, postbox: Postbox, stateMana
                         case let .idBased(localMaxIncomingReadId, _, _, _, _):
                             if case let .idBased(updatedMaxIncomingReadId, _, _, updatedCount, updatedMarkedUnread) = readState {
                                 if localReadMarkIsAheadOfServer(localMaxIncomingReadId: localMaxIncomingReadId, serverMaxIncomingReadId: updatedMaxIncomingReadId, serverCount: updatedCount, serverMarkedUnread: updatedMarkedUnread) {
+                                    // The server is behind a push it may have answered: drop that from the ledger, so
+                                    // the retry sends the read mark again instead of taking it as accepted and only
+                                    // asking for the dialog, round after round.
+                                    ledger?.note(peerId: peerId, serverMaxIncomingReadId: updatedMaxIncomingReadId, serverMarkedUnread: updatedMarkedUnread)
                                     return .retry
                                 }
                             }
