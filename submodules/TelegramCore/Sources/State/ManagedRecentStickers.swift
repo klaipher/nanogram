@@ -13,6 +13,20 @@ private func hashForIds(_ ids: [Int64]) -> Int64 {
     return finalizeInt64Hash(acc)
 }
 
+/// The items in order, each id once (the first occurrence kept); a list is never stored with an id twice.
+private func uniqueOrderedItemListEntries(_ sourceItems: [OrderedItemListEntry]) -> [OrderedItemListEntry] {
+    var items: [OrderedItemListEntry] = []
+    var existingIds = Set<Data>()
+    for item in sourceItems {
+        let id = item.id.makeData()
+        if !existingIds.contains(id) {
+            existingIds.insert(id)
+            items.append(item)
+        }
+    }
+    return items
+}
+
 private func managedRecentMedia(postbox: Postbox, network: Network, collectionId: Int32, extractItemId: @escaping (MemoryBuffer) -> Int64?, reverseHashOrder: Bool, forceFetch: Bool, fetch: @escaping (Int64) -> Signal<[OrderedItemListEntry]?, NoError>) -> Signal<Void, NoError> {
     return postbox.transaction { transaction -> Signal<Void, NoError> in
         var itemIds = transaction.getOrderedListItemIds(collectionId: collectionId).compactMap(extractItemId)
@@ -21,17 +35,8 @@ private func managedRecentMedia(postbox: Postbox, network: Network, collectionId
         }
         return fetch(forceFetch ? 0 : hashForIds(itemIds))
             |> mapToSignal { sourceItems in
-                var items: [OrderedItemListEntry] = []
                 if let sourceItems = sourceItems {
-                    var existingIds = Set<Data>()
-                    for item in sourceItems {
-                        let id = item.id.makeData()
-                        if !existingIds.contains(id) {
-                            existingIds.insert(id)
-                            items.append(item)
-                        }
-                    }
-
+                    let items = uniqueOrderedItemListEntries(sourceItems)
                     return postbox.transaction { transaction -> Void in
                         transaction.replaceOrderedItemListItems(collectionId: collectionId, items: items)
                     }
@@ -143,19 +148,67 @@ func managedSavedStickers(postbox: Postbox, network: Network, forceFetch: Bool =
     })
 }
 
-func managedGreetingStickers(postbox: Postbox, network: Network) -> Signal<Void, NoError> {
-    let poll = managedRecentMedia(postbox: postbox, network: network, collectionId: Namespaces.OrderedItemList.CloudGreetingStickers, extractItemId: { RecentMediaItemId($0).mediaId.id }, reverseHashOrder: false, forceFetch: false, fetch: { hash in
-        return network.request(Api.functions.messages.getStickers(emoticon: "👋⭐️", hash: 0))
+/// `messages.getStickers(emoticon:)` answers with a hash of its own (`messages.stickers.hash`, which the sticker
+/// search also sends back), so the standard hash of the stored ids is no use for these lists. The server's hash is
+/// kept per list together with the hash of the ids stored with it, written in the transaction that stores the list.
+private struct EmoticonStickerListHash: Codable {
+    let serverHash: Int64
+    let idsHash: Int64
+
+    enum CodingKeys: String, CodingKey {
+        case serverHash = "s"
+        case idsHash = "i"
+    }
+}
+
+private func emoticonStickerListHashEntryId(collectionId: Int32) -> ItemCacheEntryId {
+    let key = ValueBoxKey(length: 4)
+    key.setInt32(0, value: collectionId)
+    return ItemCacheEntryId(collectionId: Namespaces.CachedItemCollection.emoticonStickerListHashes, key: key)
+}
+
+/// The hash to ask with: the server's hash kept with the stored list, or 0 (the full list) when nothing is stored,
+/// no hash is kept, or the list changed since the hash was kept. A cleared list is asked for in full, or the server
+/// would answer "not modified" and leave it empty.
+private func emoticonStickerListRequestHash(transaction: Transaction, collectionId: Int32) -> Int64 {
+    let storedIds = transaction.getOrderedListItemIds(collectionId: collectionId).map { RecentMediaItemId($0).mediaId.id }
+    guard !storedIds.isEmpty, let kept = transaction.retrieveItemCacheEntry(id: emoticonStickerListHashEntryId(collectionId: collectionId))?.get(EmoticonStickerListHash.self), kept.idsHash == hashForIds(storedIds) else {
+        return 0
+    }
+    return kept.serverHash
+}
+
+private func storeEmoticonStickerList(transaction: Transaction, collectionId: Int32, items sourceItems: [OrderedItemListEntry], serverHash: Int64) {
+    let items = uniqueOrderedItemListEntries(sourceItems)
+    transaction.replaceOrderedItemListItems(collectionId: collectionId, items: items)
+    let entryId = emoticonStickerListHashEntryId(collectionId: collectionId)
+    let storedIds = items.map { RecentMediaItemId($0.id).mediaId.id }
+    if serverHash != 0, !storedIds.isEmpty, let entry = CodableEntry(EmoticonStickerListHash(serverHash: serverHash, idsHash: hashForIds(storedIds))) {
+        transaction.putItemCacheEntry(id: entryId, entry: entry)
+    } else {
+        transaction.removeItemCacheEntry(id: entryId)
+    }
+}
+
+/// One poll of a list fetched with `messages.getStickers(emoticon:)`. Upstream asks with hash 0, so the server can never
+/// answer `stickersNotModified` and every poll rewrites the whole list (fresh file references change its bytes).
+/// This sends the kept server hash; "not modified" opens no transaction.
+func managedEmoticonStickerListPoll(postbox: Postbox, network: Network, collectionId: Int32, emoticon: String) -> Signal<Void, NoError> {
+    return postbox.transaction { transaction -> Int64 in
+        return emoticonStickerListRequestHash(transaction: transaction, collectionId: collectionId)
+    }
+    |> mapToSignal { hash -> Signal<Void, NoError> in
+        return network.request(Api.functions.messages.getStickers(emoticon: emoticon, hash: hash))
         |> retryRequestIfNotFrozen
-        |> mapToSignal { result -> Signal<[OrderedItemListEntry]?, NoError> in
+        |> mapToSignal { result -> Signal<Void, NoError> in
             guard let result else {
-                return .single(nil)
+                return .complete()
             }
             switch result {
                 case .stickersNotModified:
-                    return .single(nil)
+                    return .complete()
                 case let .stickers(stickersData):
-                    let stickers = stickersData.stickers
+                    let (serverHash, stickers) = (stickersData.hash, stickersData.stickers)
                     var items: [OrderedItemListEntry] = []
                     for sticker in stickers {
                         if let file = telegramMediaFileFromApiDocument(sticker, altDocuments: []), let id = file.id {
@@ -164,67 +217,29 @@ func managedGreetingStickers(postbox: Postbox, network: Network) -> Signal<Void,
                             }
                         }
                     }
-                    return .single(items)
+                    return postbox.transaction { transaction -> Void in
+                        storeEmoticonStickerList(transaction: transaction, collectionId: collectionId, items: items, serverHash: serverHash)
+                    }
             }
         }
-    })
+    }
+}
+
+private func managedEmoticonStickerList(postbox: Postbox, network: Network, collectionId: Int32, emoticon: String) -> Signal<Void, NoError> {
+    let poll = managedEmoticonStickerListPoll(postbox: postbox, network: network, collectionId: collectionId, emoticon: emoticon)
     return (poll |> then(.complete() |> suspendAwareDelay(3.0 * 60.0 * 60.0, queue: Queue.concurrentDefaultQueue()))) |> restart
+}
+
+func managedGreetingStickers(postbox: Postbox, network: Network) -> Signal<Void, NoError> {
+    return managedEmoticonStickerList(postbox: postbox, network: network, collectionId: Namespaces.OrderedItemList.CloudGreetingStickers, emoticon: "👋⭐️")
 }
 
 func managedPremiumStickers(postbox: Postbox, network: Network) -> Signal<Void, NoError> {
-    let poll = managedRecentMedia(postbox: postbox, network: network, collectionId: Namespaces.OrderedItemList.CloudPremiumStickers, extractItemId: { RecentMediaItemId($0).mediaId.id }, reverseHashOrder: false, forceFetch: false, fetch: { hash in
-        return network.request(Api.functions.messages.getStickers(emoticon: "⭐️⭐️", hash: 0))
-        |> retryRequestIfNotFrozen
-        |> mapToSignal { result -> Signal<[OrderedItemListEntry]?, NoError> in
-            guard let result else {
-                return .single(nil)
-            }
-            switch result {
-                case .stickersNotModified:
-                    return .single(nil)
-                case let .stickers(stickersData):
-                    let stickers = stickersData.stickers
-                    var items: [OrderedItemListEntry] = []
-                    for sticker in stickers {
-                        if let file = telegramMediaFileFromApiDocument(sticker, altDocuments: []), let id = file.id {
-                            if let entry = CodableEntry(RecentMediaItem(file)) {
-                                items.append(OrderedItemListEntry(id: RecentMediaItemId(id).rawValue, contents: entry))
-                            }
-                        }
-                    }
-                    return .single(items)
-            }
-        }
-    })
-    return (poll |> then(.complete() |> suspendAwareDelay(3.0 * 60.0 * 60.0, queue: Queue.concurrentDefaultQueue()))) |> restart
+    return managedEmoticonStickerList(postbox: postbox, network: network, collectionId: Namespaces.OrderedItemList.CloudPremiumStickers, emoticon: "⭐️⭐️")
 }
 
 func managedAllPremiumStickers(postbox: Postbox, network: Network) -> Signal<Void, NoError> {
-    let poll = managedRecentMedia(postbox: postbox, network: network, collectionId: Namespaces.OrderedItemList.CloudAllPremiumStickers, extractItemId: { RecentMediaItemId($0).mediaId.id }, reverseHashOrder: false, forceFetch: false, fetch: { hash in
-        return network.request(Api.functions.messages.getStickers(emoticon: "📂⭐️", hash: 0))
-        |> retryRequestIfNotFrozen
-        |> mapToSignal { result -> Signal<[OrderedItemListEntry]?, NoError> in
-            guard let result else {
-                return .single(nil)
-            }
-            switch result {
-                case .stickersNotModified:
-                    return .single(nil)
-                case let .stickers(stickersData):
-                    let stickers = stickersData.stickers
-                    var items: [OrderedItemListEntry] = []
-                    for sticker in stickers {
-                        if let file = telegramMediaFileFromApiDocument(sticker, altDocuments: []), let id = file.id {
-                            if let entry = CodableEntry(RecentMediaItem(file)) {
-                                items.append(OrderedItemListEntry(id: RecentMediaItemId(id).rawValue, contents: entry))
-                            }
-                        }
-                    }
-                    return .single(items)
-            }
-        }
-    })
-    return (poll |> then(.complete() |> suspendAwareDelay(3.0 * 60.0 * 60.0, queue: Queue.concurrentDefaultQueue()))) |> restart
+    return managedEmoticonStickerList(postbox: postbox, network: network, collectionId: Namespaces.OrderedItemList.CloudAllPremiumStickers, emoticon: "📂⭐️")
 }
 
 func managedRecentStatusEmoji(postbox: Postbox, network: Network) -> Signal<Void, NoError> {
