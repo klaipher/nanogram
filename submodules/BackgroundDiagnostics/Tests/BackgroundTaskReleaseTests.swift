@@ -93,6 +93,58 @@ final class BackgroundTaskReleaseTests: XCTestCase {
         XCTAssertEqual(self.scheduled.map(\.delay), [3.0])
     }
 
+    /// The system's expiration comes while the drain still waits for the running transaction: the task's expiration
+    /// handler ends it at once (a task held past its expiration is a task-timeout kill), and neither the paused
+    /// writes nor the deadline end it a second time.
+    func testExpirationDuringDrainEndsOnce() {
+        let release = self.makeRelease()
+        var ends = 0
+        var timeouts = 0
+        let drain = release.release(writesStayEnabled: false, backgroundTimeRemaining: 30.0, timedOut: { _ in
+            timeouts += 1
+        }, end: { ends += 1 })
+        XCTAssertTrue(drain.isPending)
+        drain.endNow()
+        XCTAssertEqual(ends, 1)
+        XCTAssertFalse(drain.isPending)
+        self.pauseCallbacks.forEach { $0() }
+        self.scheduled.forEach { $0.action() }
+        drain.endNow()
+        XCTAssertEqual(ends, 1)
+        XCTAssertEqual(timeouts, 0, "an expiration is not a drain timeout")
+    }
+
+    /// An expiration that comes after the drain ended the task does nothing.
+    func testExpirationAfterTheDrainEndedDoesNothing() {
+        let release = self.makeRelease()
+        var ends = 0
+        let drain = release.release(writesStayEnabled: false, backgroundTimeRemaining: 30.0, end: { ends += 1 })
+        self.pauseCallbacks.forEach { $0() }
+        XCTAssertEqual(ends, 1)
+        XCTAssertFalse(drain.isPending)
+        drain.endNow()
+        XCTAssertEqual(ends, 1)
+    }
+
+    /// Writes stay enabled: the task ended at once, and the drain it returns is already over.
+    func testDrainIsOverWhenWritesStayEnabled() {
+        let release = self.makeRelease()
+        var ends = 0
+        let drain = release.release(writesStayEnabled: true, backgroundTimeRemaining: 30.0, end: { ends += 1 })
+        XCTAssertFalse(drain.isPending)
+        drain.endNow()
+        XCTAssertEqual(ends, 1)
+    }
+
+    /// A task whose expiration ends it ("audio-end-drain", while `backgroundTimeRemaining` still reads DBL_MAX as the
+    /// audio assertion is let go) can wait longer than the short no-deadline cap.
+    func testNoDeadlineWaitCanBeLongerForATaskBoundByItsExpiration() {
+        let release = self.makeRelease()
+        release.release(writesStayEnabled: false, backgroundTimeRemaining: Double.greatestFiniteMagnitude, noDeadlineWait: BackgroundTaskRelease.taskMaximumWait, end: {})
+        XCTAssertEqual(self.scheduled.map(\.delay), [25.0])
+        XCTAssertEqual(BackgroundTaskRelease.drainTimeout(backgroundTimeRemaining: Double.greatestFiniteMagnitude, maximum: BackgroundTaskRelease.completionMaximumWait, noDeadlineWait: BackgroundTaskRelease.taskMaximumWait), 3.0)
+    }
+
     func testEndsOnceWhenPausedThenDeadline() {
         let release = self.makeRelease()
         var ends = 0

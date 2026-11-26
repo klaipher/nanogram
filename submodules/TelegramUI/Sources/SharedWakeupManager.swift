@@ -84,6 +84,9 @@ public final class SharedWakeupManager {
     private var isInBackgroundExtension: Bool = false
     /// Ends background tasks and push/fetch completions only after database writes stopped (0xdead10cc).
     private var taskRelease: BackgroundTaskRelease?
+    /// Tasks begun through `beginManagedBackgroundTask` that `releaseBackgroundTask` is draining: their expiration
+    /// ends them at once (a task held past its expiration is a task-timeout kill).
+    private var releasingTasks: [UIBackgroundTaskIdentifier: BackgroundTaskRelease.Drain] = [:]
     
     private var accountSettingsDisposable: Disposable?
     private var inForegroundDisposable: Disposable?
@@ -647,8 +650,9 @@ public final class SharedWakeupManager {
                             self.checkTasks()
                             self.updateBackgroundProcessingTaskStateFromPendingMediaUploads()
                         }
-                        // Completing the task lets iOS suspend the app: writes stop first.
-                        self.releaseBackgroundTime {
+                        // Completing the task lets iOS suspend the app: writes stop first. A BG task's deadline is its
+                        // own, not `backgroundTimeRemaining`: the completion cap.
+                        self.releaseBackgroundTime(maximumWait: BackgroundTaskRelease.completionMaximumWait) {
                             task.setTaskCompleted(success: true)
                         }
                         return
@@ -828,8 +832,9 @@ public final class SharedWakeupManager {
                             self.checkTasks()
                             self.updateBackgroundProcessingTaskStateFromPendingStoryUploads()
                         }
-                        // Completing the task lets iOS suspend the app: writes stop first.
-                        self.releaseBackgroundTime {
+                        // Completing the task lets iOS suspend the app: writes stop first. A BG task's deadline is its
+                        // own, not `backgroundTimeRemaining`: the completion cap.
+                        self.releaseBackgroundTime(maximumWait: BackgroundTaskRelease.completionMaximumWait) {
                             task.setTaskCompleted(success: true)
                         }
                         return
@@ -954,12 +959,10 @@ public final class SharedWakeupManager {
         self.allowBackgroundTimeExtensionDeadline = CFAbsoluteTimeGetCurrent() + timeout
         
         if self.transactionWindowTask == nil {
-            let taskId = self.beginBackgroundTask("transaction-window", { [weak self] in
+            // Writes are enabled for the window only while this task is held (`updateAccounts`).
+            self.transactionWindowTask = self.beginManagedBackgroundTask("transaction-window", { [weak self] in
                 self?.endTransactionWindow()
             })
-            if let taskId, taskId != .invalid {
-                self.transactionWindowTask = taskId
-            }
         }
         self.allowBackgroundTimeExtensionDeadlineTimer?.invalidate()
         self.allowBackgroundTimeExtensionDeadlineTimer = SwiftSignalKit.Timer(timeout: timeout, repeat: false, completion: { [weak self] in
@@ -982,13 +985,12 @@ public final class SharedWakeupManager {
                     // Writes stop first (checkTasks pauses them unless something else keeps the app awake).
                     strongSelf.checkTasks()
                     if let activeExplicitExtensionTask {
-                        strongSelf.releaseBackgroundTime {
-                            strongSelf.endBackgroundTask(activeExplicitExtensionTask)
-                        }
+                        strongSelf.releaseBackgroundTask(activeExplicitExtensionTask)
                     }
                 }, queue: .mainQueue())
                 
-                let activeExplicitExtensionTask = self.beginBackgroundTask("explicit-extension") { [weak self, weak activeExplicitExtensionTimer] in
+                // Once its timer fired the task is draining, and its expiration ends it in `beginManagedBackgroundTask`.
+                let activeExplicitExtensionTask = self.beginManagedBackgroundTask("explicit-extension") { [weak self, weak activeExplicitExtensionTimer] in
                     guard let self, let activeExplicitExtensionTimer else {
                         return
                     }
@@ -999,13 +1001,11 @@ public final class SharedWakeupManager {
                         self.activeExplicitExtensionTask = nil
                         self.checkTasks()
                         if let activeExplicitExtensionTask {
-                            self.releaseBackgroundTime {
-                                self.endBackgroundTask(activeExplicitExtensionTask)
-                            }
+                            self.releaseBackgroundTask(activeExplicitExtensionTask)
                         }
                     }
                 }
-                if let activeExplicitExtensionTask, activeExplicitExtensionTask != .invalid {
+                if let activeExplicitExtensionTask {
                     self.activeExplicitExtensionTask = activeExplicitExtensionTask
                     self.activeExplicitExtensionTimer = activeExplicitExtensionTimer
                     activeExplicitExtensionTimer.start()
@@ -1140,25 +1140,29 @@ public final class SharedWakeupManager {
                             // Ending the task first let the app suspend in the middle of a database
                             // write in the shared container, and iOS kills an app that suspends
                             // holding a file lock (0xdead10cc).
-                            strongSelf.releaseBackgroundTime {
-                                strongSelf.endBackgroundTask(actualTaskId)
-                            }
+                            strongSelf.releaseBackgroundTask(actualTaskId)
                         }
-                        // An invalid id keeps nothing awake: holding it would keep writes enabled (isInBackgroundExtension).
-                        if let taskId = self.beginBackgroundTask("background-wakeup", {
+                        // nil when not granted: an invalid id keeps nothing awake, so it is not held (holding it
+                        // would keep writes enabled through isInBackgroundExtension).
+                        let grantedTaskId = self.beginManagedBackgroundTask("background-wakeup", {
                             handleExpiration()
-                        }), taskId != .invalid {
-                            actualTaskId = taskId
+                        })
+                        if let grantedTaskId {
+                            actualTaskId = grantedTaskId
                             let timer = SwiftSignalKit.Timer(timeout: min(30.0, max(0.0, self.backgroundTimeRemaining() - 5.0)), repeat: false, completion: {
                                 handleExpiration()
                             }, queue: Queue.mainQueue())
-                            self.currentTask = (taskId, currentTime, timer)
+                            self.currentTask = (grantedTaskId, currentTime, timer)
                             timer.start()
-                            
-                            endTaskId.flatMap(self.endBackgroundTask)
-                            
-                            self.isInBackgroundExtension = true
                         }
+                        // The replaced task ends at once only when the new one keeps the app awake; otherwise it
+                        // goes through the release after `updateAccounts`, and writes are not kept enabled for it.
+                        let rotation = BackgroundTaskRotation<UIBackgroundTaskIdentifier>.rotate(replaced: endTaskId, granted: grantedTaskId)
+                        rotation.endNow.flatMap(self.endBackgroundTask)
+                        if let releasedTaskId = rotation.release {
+                            endTaskAfterTransactionsComplete = releasedTaskId
+                        }
+                        self.isInBackgroundExtension = rotation.held != nil
                     }
                 }
             } else if let (taskId, _, timer) = self.currentTask {
@@ -1186,9 +1190,7 @@ public final class SharedWakeupManager {
         self.updateAccounts(hasTasks: hasTasksForBackgroundExtension)
         
         if let endTaskAfterTransactionsComplete {
-            self.releaseBackgroundTime {
-                self.endBackgroundTask(endTaskAfterTransactionsComplete)
-            }
+            self.releaseBackgroundTask(endTaskAfterTransactionsComplete)
         }
         if let externalCompletionToRelease {
             self.releaseBackgroundTime(maximumWait: BackgroundTaskRelease.completionMaximumWait, externalCompletionToRelease)
@@ -1232,16 +1234,18 @@ public final class SharedWakeupManager {
     /// (something else keeps the app awake), it pauses database transactions and ends the task once the running
     /// one committed, or at `BackgroundTaskRelease.drainTimeout` at the latest (capped at `maximumWait`: pass
     /// `BackgroundTaskRelease.completionMaximumWait` for a completion handler, whose deadline is its own). A drain that
-    /// times out is written to the short log with the transactions still running. Main queue only.
-    func releaseBackgroundTime(maximumWait: Double = BackgroundTaskRelease.taskMaximumWait, _ end: @escaping () -> Void) {
+    /// times out is written to the short log with the transactions still running. A background task this manager
+    /// began goes through `releaseBackgroundTask` instead, so its expiration ends it at once. Main queue only.
+    @discardableResult
+    func releaseBackgroundTime(maximumWait: Double = BackgroundTaskRelease.taskMaximumWait, noDeadlineWait: Double = BackgroundTaskRelease.noDeadlineWait, _ end: @escaping () -> Void) -> BackgroundTaskRelease.Drain? {
         assert(Queue.mainQueue().isCurrent())
         guard let taskRelease = self.taskRelease else {
             end()
-            return
+            return nil
         }
         let writesStayEnabled = self.transactionsEnabled
         let remaining = self.backgroundTimeRemaining()
-        taskRelease.release(writesStayEnabled: writesStayEnabled, backgroundTimeRemaining: remaining, maximumWait: maximumWait, timedOut: { [weak self] waited in
+        return taskRelease.release(writesStayEnabled: writesStayEnabled, backgroundTimeRemaining: remaining, maximumWait: maximumWait, noDeadlineWait: noDeadlineWait, timedOut: { [weak self] waited in
             // The task ends while a transaction may still hold the lock: if iOS kills the suspended app, this line
             // (flushed by `end` below) says which one.
             Logger.shared.shortLog("Wakeup", "drain timeout after \(waited) s (remaining at release \(remaining) s): writes not paused, running: \(self?.runningTransactionsDescription() ?? "?")")
@@ -1294,25 +1298,51 @@ public final class SharedWakeupManager {
     /// app as soon as it is gone: a short task holds the app until writes are paused and the running transaction
     /// committed (0xdead10cc), unless something else keeps it awake.
     private func drainAfterAudioEnded() {
-        var drainTask: UIBackgroundTaskIdentifier?
-        let endBackgroundTask = self.endBackgroundTask
-        let endDrainTask: () -> Void = {
-            guard let taskId = drainTask else {
+        // Its expiration, while the release waits, ends it in `beginManagedBackgroundTask`; it reaches this handler
+        // only after the release ended the task, so there is nothing left to do.
+        let drainTask = self.beginManagedBackgroundTask("audio-end-drain", {})
+        self.checkTasks()
+        if let drainTask {
+            // `backgroundTimeRemaining` can still read DBL_MAX while the audio assertion is let go. The task's own
+            // expiration bounds this drain, so it does not need the short no-deadline cap.
+            self.releaseBackgroundTask(drainTask, noDeadlineWait: BackgroundTaskRelease.taskMaximumWait)
+        }
+    }
+    
+    /// Begins a background task whose release goes through `releaseBackgroundTask`. Nil when iOS did not grant it
+    /// (`.invalid`): an invalid id keeps nothing awake and must not be held. If the system's expiration comes while
+    /// the task is draining, the task ends at once (a task held past its expiration is a task-timeout kill, and the
+    /// task's own handler may no longer know it); otherwise `expiration` runs.
+    private func beginManagedBackgroundTask(_ name: String, _ expiration: @escaping () -> Void) -> UIBackgroundTaskIdentifier? {
+        var taskId: UIBackgroundTaskIdentifier?
+        let begun = self.beginBackgroundTask(name, { [weak self] in
+            if let self, let taskId, let drain = self.releasingTasks.removeValue(forKey: taskId) {
+                if drain.isPending {
+                    // Ending it flushes the logs, so this line is there if iOS kills the suspended app.
+                    Logger.shared.shortLog("Wakeup", "background task \(name) expired while draining: ended now, running: \(self.runningTransactionsDescription())")
+                }
+                drain.endNow()
                 return
             }
-            drainTask = nil
+            expiration()
+        })
+        guard let begun, begun != .invalid else {
+            return nil
+        }
+        taskId = begun
+        return begun
+    }
+    
+    /// Ends a task begun through `beginManagedBackgroundTask` through `releaseBackgroundTime`, and keeps the drain
+    /// so the task's expiration can end it at once. Main queue only.
+    private func releaseBackgroundTask(_ taskId: UIBackgroundTaskIdentifier, noDeadlineWait: Double = BackgroundTaskRelease.noDeadlineWait) {
+        let endBackgroundTask = self.endBackgroundTask
+        let drain = self.releaseBackgroundTime(noDeadlineWait: noDeadlineWait, { [weak self] in
+            self?.releasingTasks.removeValue(forKey: taskId)
             endBackgroundTask(taskId)
-        }
-        if let taskId = self.beginBackgroundTask("audio-end-drain", {
-            endDrainTask()
-        }), taskId != .invalid {
-            drainTask = taskId
-        }
-        self.checkTasks()
-        if drainTask != nil {
-            self.releaseBackgroundTime {
-                endDrainTask()
-            }
+        })
+        if let drain, drain.isPending {
+            self.releasingTasks[taskId] = drain
         }
     }
     
@@ -1355,9 +1385,7 @@ public final class SharedWakeupManager {
         self.transactionWindowTask = nil
         self.checkTasks()
         if let transactionWindowTask {
-            self.releaseBackgroundTime {
-                self.endBackgroundTask(transactionWindowTask)
-            }
+            self.releaseBackgroundTask(transactionWindowTask)
         }
     }
     
@@ -1385,8 +1413,10 @@ public final class SharedWakeupManager {
                 account.shouldKeepBackgroundDownloadConnections.set(.single(tasks.backgroundDownloads))
             }
         } else {
+            // The window keeps writes enabled only while its "transaction-window" task keeps the app awake: iOS can
+            // refuse that task, and then nothing would hold the app while a write runs (0xdead10cc).
             var enableBeginTransactions = false
-            if self.allowBackgroundTimeExtensionDeadlineTimer != nil {
+            if self.allowBackgroundTimeExtensionDeadlineTimer != nil && self.transactionWindowTask != nil {
                 enableBeginTransactions = true
             }
             Logger.shared.log("Wakeup", "enableBeginTransactions: \(enableBeginTransactions)")

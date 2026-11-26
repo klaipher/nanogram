@@ -13,6 +13,10 @@
 ///    expiration, which iOS also kills. A background transaction can take several seconds (a 3 s cap ended the task
 ///    under a running one, 24 Nov 2026), so the wait lasts until shortly before the background time runs out.
 ///
+/// The system's expiration of the task is the real deadline: `release` returns a `Drain`, and the task's expiration
+/// handler calls `Drain.endNow()`, which ends the task at once if the drain still waits. The margin in `drainTimeout`
+/// is a backstop for an expiration that is not wired.
+///
 /// Each `release` ends its task exactly once. Not thread-safe: call it, and deliver `pauseWrites`' callback and
 /// `schedule`'s actions, on one queue (the main queue in the app).
 public final class BackgroundTaskRelease {
@@ -34,13 +38,33 @@ public final class BackgroundTaskRelease {
     /// The longest wait before calling a push's or background fetch's completion handler, or completing a BG task:
     /// their deadlines are their own, not `backgroundTimeRemaining` (the push timer fires 5 s before it).
     public static let completionMaximumWait: Double = 3.0
-    /// What the wait leaves before the background time runs out. The "explicit-extension" expiration handler does
-    /// nothing once its timer fired, so a task still held at expiration would be a task-timeout kill.
+    /// What the wait leaves before the background time runs out, so the drain ends the task before its expiration
+    /// even when that expiration is not wired to `Drain.endNow()` (a task held past it is a task-timeout kill).
     public static let expirationMargin: Double = 2.0
     /// The shortest wait: the one the app used before, which never produced a task-timeout exit in MetricKit.
     public static let minimumWait: Double = 1.0
     /// The wait when `backgroundTimeRemaining` is no deadline: DBL_MAX in the foreground or while audio plays.
     public static let noDeadlineWait: Double = 3.0
+
+    /// A release in progress. The released task's expiration handler calls `endNow()`: iOS kills an app that holds a
+    /// task past its expiration, so then the task ends at once even though writes have not paused yet.
+    public final class Drain {
+        private let once: EndOnce?
+
+        fileprivate init(once: EndOnce?) {
+            self.once = once
+        }
+
+        /// Whether the task has not ended yet (writes have not paused and the deadline has not come).
+        public var isPending: Bool {
+            return self.once?.isPending ?? false
+        }
+
+        /// Ends the task now if the drain still waits; nothing if it already ended.
+        public func endNow() {
+            self.once?.end()
+        }
+    }
 
     /// - Parameters:
     ///   - writesStayEnabled: whether database writes stay enabled after this task is gone, as the caller decided
@@ -48,16 +72,20 @@ public final class BackgroundTaskRelease {
     ///   - backgroundTimeRemaining: `UIApplication.backgroundTimeRemaining` now; bounds the wait.
     ///   - maximumWait: the cap on the wait: `taskMaximumWait` for a background task, `completionMaximumWait` for a
     ///     completion handler.
+    ///   - noDeadlineWait: the wait when `backgroundTimeRemaining` is no deadline (DBL_MAX). Longer than
+    ///     `BackgroundTaskRelease.noDeadlineWait` only for a task whose expiration calls `Drain.endNow()`.
     ///   - timedOut: called with the wait, just before `end`, when the deadline ends the task before writes paused
     ///     (a transaction may still hold the lock).
     ///   - end: ends the task (or calls the completion handler).
-    public func release(writesStayEnabled: Bool, backgroundTimeRemaining: Double, maximumWait: Double = BackgroundTaskRelease.taskMaximumWait, timedOut: ((_ waited: Double) -> Void)? = nil, end: @escaping () -> Void) {
+    /// - Returns: the drain, for the task's expiration handler; already ended when writes stay enabled.
+    @discardableResult
+    public func release(writesStayEnabled: Bool, backgroundTimeRemaining: Double, maximumWait: Double = BackgroundTaskRelease.taskMaximumWait, noDeadlineWait: Double = BackgroundTaskRelease.noDeadlineWait, timedOut: ((_ waited: Double) -> Void)? = nil, end: @escaping () -> Void) -> Drain {
         if writesStayEnabled {
             end()
-            return
+            return Drain(once: nil)
         }
         let once = EndOnce(end)
-        let timeout = BackgroundTaskRelease.drainTimeout(backgroundTimeRemaining: backgroundTimeRemaining, maximum: maximumWait)
+        let timeout = BackgroundTaskRelease.drainTimeout(backgroundTimeRemaining: backgroundTimeRemaining, maximum: maximumWait, noDeadlineWait: noDeadlineWait)
         self.schedule(timeout, {
             if once.isPending {
                 timedOut?(timeout)
@@ -67,17 +95,18 @@ public final class BackgroundTaskRelease {
         self.pauseWrites({
             once.end()
         })
+        return Drain(once: once)
     }
 
     /// How long to wait for the running transaction: until `expirationMargin` before the background time runs out,
     /// at least `minimumWait`, at most `maximum`. NaN waits `minimumWait`; a value that is no deadline (DBL_MAX,
-    /// infinity) waits `noDeadlineWait`.
-    public static func drainTimeout(backgroundTimeRemaining: Double, maximum: Double = BackgroundTaskRelease.taskMaximumWait) -> Double {
+    /// infinity) waits `noDeadlineWait` (at most `maximum`).
+    public static func drainTimeout(backgroundTimeRemaining: Double, maximum: Double = BackgroundTaskRelease.taskMaximumWait, noDeadlineWait: Double = BackgroundTaskRelease.noDeadlineWait) -> Double {
         guard !backgroundTimeRemaining.isNaN else {
             return BackgroundTaskRelease.minimumWait
         }
         if backgroundTimeRemaining >= 1.0e6 {
-            return min(maximum, BackgroundTaskRelease.noDeadlineWait)
+            return min(maximum, noDeadlineWait)
         }
         return min(maximum, max(BackgroundTaskRelease.minimumWait, backgroundTimeRemaining - BackgroundTaskRelease.expirationMargin))
     }
