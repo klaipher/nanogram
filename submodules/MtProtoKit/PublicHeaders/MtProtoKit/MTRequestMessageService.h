@@ -23,6 +23,11 @@
 
 @property (nonatomic, strong) MTApiEnvironment *apiEnvironment;
 @property (nonatomic) bool forceBackgroundRequests;
+/// Wraps every request in invokeWithLayer + initConnection, even when the key's stored
+/// apiInitializationHash says the server already knows this environment. For a short-lived service
+/// on a reused key (the backup address fetch), where the server may no longer hold our layer and a
+/// bare request is answered in its base layer, which we cannot parse. Off by default.
+@property (nonatomic) bool alwaysInitializeApi;
     
 @property (nonatomic, copy) void (^didReceiveSoftAuthResetError)(void);
 
