@@ -3,8 +3,8 @@ import XCTest
 import SwiftSignalKit
 @testable import Postbox
 
-/// A preference or a cache entry stored again with the bytes it already has writes nothing and is no change for the
-/// views: the transaction is empty. A different value is stored as before.
+/// A preference, a cache entry or a story state stored again with the bytes it already has writes nothing and is no
+/// change for the views: the transaction is empty. A different value is stored as before.
 final class PostboxIdenticalStoreWriteTests: XCTestCase {
     private var fixture: PostboxFixture!
 
@@ -148,5 +148,95 @@ final class PostboxIdenticalStoreWriteTests: XCTestCase {
             transaction.putItemCacheEntry(id: id, entry: CodableEntry(data: Data()))
         }
         XCTAssertEqual(self.fixture.writeTransactionCount(), before)
+    }
+
+    // MARK: - Story general states
+
+    func testStoringTheSameStoriesStateIsAnEmptyTransaction() {
+        self.fixture.transaction { transaction in
+            transaction.setSubscriptionsStoriesState(key: .filtered, state: CodableEntry(data: Data([1, 2, 3])))
+        }
+        let before = self.fixture.writeTransactionCount()
+        // What a "not modified" stories.getAllStories answer stores: the state that is already there.
+        self.fixture.transaction { transaction in
+            transaction.setSubscriptionsStoriesState(key: .filtered, state: CodableEntry(data: Data([1, 2, 3])))
+        }
+        XCTAssertEqual(self.fixture.writeTransactionCount(), before, "the same stories state must not be written")
+
+        self.fixture.transaction { transaction in
+            transaction.setSubscriptionsStoriesState(key: .filtered, state: CodableEntry(data: Data([1, 2, 4])))
+        }
+        XCTAssertEqual(self.fixture.writeTransactionCount(), before + 1)
+        let stored = self.fixture.transaction { transaction in
+            return transaction.getSubscriptionsStoriesState(key: .filtered)?.data
+        }
+        XCTAssertEqual(stored ?? nil, Data([1, 2, 4]))
+    }
+
+    func testTheSameBytesUnderAnotherStoriesKeyAreStored() {
+        self.fixture.transaction { transaction in
+            transaction.setSubscriptionsStoriesState(key: .filtered, state: CodableEntry(data: Data([7])))
+        }
+        let before = self.fixture.writeTransactionCount()
+        self.fixture.transaction { transaction in
+            transaction.setSubscriptionsStoriesState(key: .hidden, state: CodableEntry(data: Data([7])))
+        }
+        XCTAssertEqual(self.fixture.writeTransactionCount(), before + 1)
+        let stored = self.fixture.transaction { transaction in
+            return transaction.getSubscriptionsStoriesState(key: .hidden)?.data
+        }
+        XCTAssertEqual(stored ?? nil, Data([7]))
+    }
+
+    func testRemovingAMissingStoriesStateIsAnEmptyTransaction() {
+        let before = self.fixture.writeTransactionCount()
+        self.fixture.transaction { transaction in
+            transaction.setSubscriptionsStoriesState(key: .hidden, state: nil)
+            transaction.setLocalStoryState(state: nil)
+        }
+        XCTAssertEqual(self.fixture.writeTransactionCount(), before)
+
+        self.fixture.transaction { transaction in
+            transaction.setSubscriptionsStoriesState(key: .hidden, state: CodableEntry(data: Data([9])))
+        }
+        self.fixture.transaction { transaction in
+            transaction.setSubscriptionsStoriesState(key: .hidden, state: nil)
+        }
+        let stored = self.fixture.transaction { transaction in
+            return transaction.getSubscriptionsStoriesState(key: .hidden)?.data
+        }
+        XCTAssertNil(stored ?? nil)
+    }
+
+    func testAStoriesStateChangedAndRestoredInOneTransactionIsStoredAsRestored() {
+        self.fixture.transaction { transaction in
+            transaction.setLocalStoryState(state: CodableEntry(data: Data([1])))
+        }
+        self.fixture.transaction { transaction in
+            transaction.setLocalStoryState(state: CodableEntry(data: Data([2])))
+            transaction.setLocalStoryState(state: CodableEntry(data: Data([1])))
+        }
+        let stored = self.fixture.transaction { transaction in
+            return transaction.getLocalStoryState()?.data
+        }
+        XCTAssertEqual(stored ?? nil, Data([1]))
+    }
+
+    func testAChangedStoriesStateStillReachesItsView() {
+        self.fixture.transaction { transaction in
+            transaction.setSubscriptionsStoriesState(key: .filtered, state: CodableEntry(data: Data([1])))
+        }
+        let recorder = self.fixture.observe(.storiesState(key: .subscriptions(.filtered)), as: StoryStatesView.self)
+        recorder.waitForValues(count: 1)
+        self.fixture.transaction { transaction in
+            transaction.setSubscriptionsStoriesState(key: .filtered, state: CodableEntry(data: Data([1])))
+        }
+        self.fixture.transaction { _ in }
+        XCTAssertEqual(recorder.values.count, 1, "the same state is no change")
+        self.fixture.transaction { transaction in
+            transaction.setSubscriptionsStoriesState(key: .filtered, state: CodableEntry(data: Data([2])))
+        }
+        let values = recorder.waitForValues(count: 2)
+        XCTAssertEqual(values.last?.value?.data, Data([2]))
     }
 }
