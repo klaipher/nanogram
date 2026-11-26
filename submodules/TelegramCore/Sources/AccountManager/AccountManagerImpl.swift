@@ -38,21 +38,28 @@ public struct AccountManagerAccessChallenge {
     }
 }
 
-/// The line logged when the access challenge cannot be prepared at open. The error is a `PasscodeError` (a case,
-/// or a keychain `OSStatus`), never secret material.
+/// The line logged when the access challenge cannot be prepared at open. The error is typically a `PasscodeError`
+/// (a case, or a keychain `OSStatus`); it can also be whatever the app's `resetLocalSecrets` closure or the credential
+/// store's encode/load paths throw (Foundation or CryptoKit errors). None of these carry secret material.
 func accessChallengePrepareFailedLogLine(error: Error) -> String {
     return "Access challenge installation initialization deferred: \(error)"
 }
 
-/// The line logged when the access challenge cannot be resolved at open; the existing lock stays. Only a process
-/// that may migrate (the app, with its own state) defers a migration. The extensions never try one and fail here
-/// on most pushes, while the device is locked (`keychain(-25308)`, errSecInteractionNotAllowed), so the error is
-/// logged to tell that apart from a missing credential (`unavailable`) or another keychain status.
+/// The line logged when the open-time resolve of the access challenge throws; the existing lock stays. The error
+/// is typically a `PasscodeError`; the catch also covers `finishInitialization` and the cleanup it resumes, which go
+/// through the credential store (Foundation or CryptoKit errors). None of these carry secret material.
+///
+/// Only an open that allows migration (the app, with its own state) defers one. The open-time resolve of an
+/// extension (`isTemporary`) or of a read-only or in-memory open never migrates, and the line says only that it did
+/// not resolve: such a process can still migrate later, in a transaction's `getAccessChallengeData` when its state is
+/// the app's file, so the line makes no claim about that. The Notification Service fails here on most pushes, while
+/// the device is locked (`keychain(-25308)`, errSecInteractionNotAllowed), so the error is logged to tell that apart
+/// from a missing credential (`unavailable`) or another keychain status.
 func accessChallengeResolveFailedLogLine(error: Error, allowMigration: Bool) -> String {
     if allowMigration {
         return "AccountManager: access challenge credential migration deferred: \(error)"
     } else {
-        return "AccountManager: access challenge not resolved at open (no migration in this process): \(error)"
+        return "AccountManager: access challenge not resolved at open (open-time resolve without migration): \(error)"
     }
 }
 

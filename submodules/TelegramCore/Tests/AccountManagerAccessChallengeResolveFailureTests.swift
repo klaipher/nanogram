@@ -6,9 +6,11 @@ import SwiftSignalKit
 
 /// The Notification Service opens the account manager on every push, mostly while the device is locked: the passcode
 /// credential is `WhenUnlockedThisDeviceOnly`, so the open-time resolve throws (errSecInteractionNotAllowed). The catch
-/// dropped the error and logged "credential migration deferred" on about 92% of NSE launches, although an extension
-/// (`isTemporary`) never migrates. The line now names the error and says a migration was deferred only where one can
-/// be. The lock itself must not change: a resolve that throws keeps the stored passcode (fail closed).
+/// dropped the error and logged "credential migration deferred" on about 92% of NSE launches, although the open-time
+/// resolve of an extension (`isTemporary`) never migrates. The line now names the error and says a migration was
+/// deferred only where the open-time resolve may migrate. An extension whose state is the app's file can still migrate
+/// later, in a transaction's `getAccessChallengeData` (resolve with migration allowed); the tests pin that sequence.
+/// The lock itself must not change: a resolve that throws keeps the stored passcode (fail closed).
 final class AccountManagerAccessChallengeResolveFailureTests: XCTestCase {
     private typealias Types = TelegramAccountManagerTypes
 
@@ -36,7 +38,8 @@ final class AccountManagerAccessChallengeResolveFailureTests: XCTestCase {
         let line = accessChallengeResolveFailedLogLine(error: FakePasscodeError.keychain(Self.errSecInteractionNotAllowedStatus), allowMigration: false)
 
         XCTAssertTrue(line.contains("keychain(-25308)"), line)
-        XCTAssertFalse(line.contains("migration deferred"), "an extension never migrates: \(line)")
+        XCTAssertTrue(line.contains("not resolved at open"), line)
+        XCTAssertFalse(line.contains("migration deferred"), "the open-time resolve of an extension does not migrate: \(line)")
     }
 
     func testAppLineSaysTheMigrationIsDeferredAndNamesTheError() {
@@ -91,7 +94,9 @@ final class AccountManagerAccessChallengeResolveFailureTests: XCTestCase {
         let manager = open(isTemporary: true, removeDatabaseOnError: false, migrationRequests: { migrationRequests.append($0) }, finishInitialization: { finishInitializationCalls += 1 })
 
         XCTAssertEqual(run(manager, { $0.getAccessChallengeData() }), Self.storedPasscode, "a resolve that throws must keep the lock")
-        XCTAssertEqual(migrationRequests.first, false, "the open-time resolve of an extension does not migrate")
+        // Open: resolve without migration. Transaction: getAccessChallengeData resolves with migration allowed,
+        // because the state is the app's file and not the in-memory fallback.
+        XCTAssertEqual(migrationRequests, [false, true], "the open-time resolve of an extension does not migrate; the transaction-time one may")
         XCTAssertEqual(finishInitializationCalls, 0, "an extension never finishes the passcode initialization")
     }
 
@@ -103,7 +108,7 @@ final class AccountManagerAccessChallengeResolveFailureTests: XCTestCase {
         let manager = open(isTemporary: false, removeDatabaseOnError: true, migrationRequests: { migrationRequests.append($0) }, finishInitialization: { finishInitializationCalls += 1 })
 
         XCTAssertEqual(run(manager, { $0.getAccessChallengeData() }), Self.storedPasscode, "a resolve that throws must keep the lock")
-        XCTAssertEqual(migrationRequests.first, true, "the app's open-time resolve may migrate")
+        XCTAssertEqual(migrationRequests, [true, true], "the app's open-time and transaction-time resolves may migrate")
         XCTAssertEqual(finishInitializationCalls, 0, "finishing waits for a resolve that succeeds")
     }
 }
