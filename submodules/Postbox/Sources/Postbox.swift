@@ -2011,7 +2011,7 @@ final class PostboxImpl {
         self.currentAfterCommitActions.append(f)
     }
 
-    init(queue: Queue, basePath: String, seedConfiguration: SeedConfiguration, valueBox: SqliteValueBox, timestampForAbsoluteTimeBasedOperations: Int32, isMainProcess: Bool, isTemporary: Bool, tempDir: TempBoxDirectory?, useCaches: Bool, isInTransaction: Atomic<Bool>) {
+    init(queue: Queue, basePath: String, seedConfiguration: SeedConfiguration, valueBox: SqliteValueBox, timestampForAbsoluteTimeBasedOperations: Int32, isMainProcess: Bool, isTemporary: Bool, tempDir: TempBoxDirectory?, useCaches: Bool, isInTransaction: Atomic<Bool>, runningTransaction: Atomic<PostboxRunningTransaction?>) {
         assert(queue.isCurrent())
         
         let startTime = CFAbsoluteTimeGetCurrent()
@@ -2024,6 +2024,7 @@ final class PostboxImpl {
         self.valueBox = valueBox
         
         self.isInTransaction = isInTransaction
+        self.runningTransaction = runningTransaction
         
         self.metadataTable = MetadataTable(valueBox: self.valueBox, table: MetadataTable.tableSpec(0), useCaches: useCaches)
         
@@ -3456,12 +3457,15 @@ final class PostboxImpl {
     }
     
     let isInTransaction: Atomic<Bool>
+    /// The running transaction's call site and start, for a background drain that times out (see `PostboxRunningTransaction`).
+    let runningTransaction: Atomic<PostboxRunningTransaction?>
     private var transactionWriteAttribution = TransactionWriteAttribution()
     
     private func internalTransaction<T>(_ f: (Transaction) -> T, file: String = #file, line: Int = #line, detail: String? = nil) -> (result: T, updatedTransactionStateVersion: Int64?, updatedMasterClientId: Int64?) {
         let _ = self.isInTransaction.swap(true)
         
         let startTime = CFAbsoluteTimeGetCurrent()
+        let _ = self.runningTransaction.swap(PostboxRunningTransaction(file: file, line: line, startTime: startTime))
         
         let _ = self.valueBox.takeLastCommitAppendedFrames()
         self.valueBox.begin()
@@ -3498,6 +3502,7 @@ final class PostboxImpl {
         }
         
         let _ = self.isInTransaction.swap(false)
+        let _ = self.runningTransaction.swap(nil)
         
         if let currentUpdatedState = self.currentUpdatedState {
             self.statePipe.putNext(currentUpdatedState)
@@ -4910,6 +4915,7 @@ public class Postbox {
     public let mediaBox: MediaBox
     
     private let isInTransaction = Atomic<Bool>(value: false)
+    private let runningTransactionValue = Atomic<PostboxRunningTransaction?>(value: nil)
 
     init(
         queue: Queue,
@@ -4931,6 +4937,7 @@ public class Postbox {
         self.mediaBox = MediaBox(basePath: basePath + "/media", isMainProcess: isMainProcess)
 
         let isInTransaction = self.isInTransaction
+        let runningTransaction = self.runningTransactionValue
         
         self.impl = QueueLocalObject(queue: queue, generate: {
             let impl = PostboxImpl(
@@ -4943,7 +4950,8 @@ public class Postbox {
                 isTemporary: isTemporary,
                 tempDir: tempDir,
                 useCaches: useCaches,
-                isInTransaction: isInTransaction
+                isInTransaction: isInTransaction,
+                runningTransaction: runningTransaction
             )
             return impl
         })
@@ -4964,6 +4972,11 @@ public class Postbox {
         self.impl.with { impl in
             impl.removeKeychainEntryForKey(key)
         }
+    }
+
+    /// The transaction running on the Postbox queue now, if any. Any thread; does not wait for the queue.
+    public func runningTransaction() -> PostboxRunningTransaction? {
+        return self.runningTransactionValue.with { $0 }
     }
 
     public func setCanBeginTransactions(_ value: Bool, afterTransactionIfRunning: @escaping () -> Void = {}) {

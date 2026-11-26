@@ -1314,6 +1314,10 @@ private func extractAccountManagerState(records: AccountRecordsView<TelegramAcco
             let wakeupManager = SharedWakeupManager(beginBackgroundTask: { name, expiration in
                 let id = application.beginBackgroundTask(withName: name, expirationHandler: expiration)
                 Logger.shared.log("App \(self.episodeId)", "Begin background task \(name): \(id)")
+                if id == .invalid {
+                    // Nothing keeps the app awake for this one: in the short log, which is on without "Log to File".
+                    Logger.shared.shortLog("Wakeup", "background task \(name) not granted (invalid)")
+                }
                 print("App \(self.episodeId)", "Begin background task \(name): \(id)")
                 return id
             }, endBackgroundTask: { id in

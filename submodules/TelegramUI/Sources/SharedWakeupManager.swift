@@ -169,7 +169,8 @@ public final class SharedWakeupManager {
                 return
             }
             strongSelf.inForeground = value
-            Logger.shared.log("Wakeup", "app \(value ? "foreground" : "background") at \(Int(CFAbsoluteTimeGetCurrent() + kCFAbsoluteTimeIntervalSince1970))")
+            // In the short log: with "Log to File" off it is what dates a background kill.
+            Logger.shared.shortLog("Wakeup", "app \(value ? "foreground" : "background")")
             if value {
                 strongSelf.activeExplicitExtensionTimer?.invalidate()
                 strongSelf.activeExplicitExtensionTimer = nil
@@ -199,8 +200,13 @@ public final class SharedWakeupManager {
             guard let strongSelf = self else {
                 return
             }
+            let audioEnded = strongSelf.hasActiveAudioSession && !value
             strongSelf.hasActiveAudioSession = value
-            strongSelf.checkTasks()
+            if audioEnded && !strongSelf.inForeground {
+                strongSelf.drainAfterAudioEnded()
+            } else {
+                strongSelf.checkTasks()
+            }
         })
         
         self.managedPausedInBackgroundPlayer = combineLatest(queue: .mainQueue(), mediaManager.activeGlobalMediaPlayerAccountId, inForeground).startStrict(next: { [weak mediaManager] accountAndActive, inForeground in
@@ -963,6 +969,8 @@ public final class SharedWakeupManager {
         
         if extendNow {
             if self.activeExplicitExtensionTimer == nil {
+                // The timer keeps writes enabled (`updateAccounts`), so it runs only while the task it ends keeps the
+                // app awake: without one, iOS may suspend the app in the middle of a write (0xdead10cc).
                 let activeExplicitExtensionTimer = SwiftSignalKit.Timer(timeout: 20.0, repeat: false, completion: { [weak self] in
                     guard let strongSelf = self else {
                         return
@@ -979,10 +987,8 @@ public final class SharedWakeupManager {
                         }
                     }
                 }, queue: .mainQueue())
-                self.activeExplicitExtensionTimer = activeExplicitExtensionTimer
-                activeExplicitExtensionTimer.start()
                 
-                self.activeExplicitExtensionTask = self.beginBackgroundTask("explicit-extension") { [weak self, weak activeExplicitExtensionTimer] in
+                let activeExplicitExtensionTask = self.beginBackgroundTask("explicit-extension") { [weak self, weak activeExplicitExtensionTimer] in
                     guard let self, let activeExplicitExtensionTimer else {
                         return
                     }
@@ -998,6 +1004,13 @@ public final class SharedWakeupManager {
                             }
                         }
                     }
+                }
+                if let activeExplicitExtensionTask, activeExplicitExtensionTask != .invalid {
+                    self.activeExplicitExtensionTask = activeExplicitExtensionTask
+                    self.activeExplicitExtensionTimer = activeExplicitExtensionTimer
+                    activeExplicitExtensionTimer.start()
+                } else {
+                    Logger.shared.shortLog("Wakeup", "explicit-extension not granted: writes are not kept enabled for it")
                 }
             }
         }
@@ -1024,7 +1037,7 @@ public final class SharedWakeupManager {
             // The push's completion lets iOS suspend the app: writes stop first.
             strongSelf.checkTasks()
             if let completion = completion?.0 {
-                strongSelf.releaseBackgroundTime(completion)
+                strongSelf.releaseBackgroundTime(maximumWait: BackgroundTaskRelease.completionMaximumWait, completion)
             }
         }, queue: Queue.mainQueue())
         self.currentExternalCompletion = (completion, timer)
@@ -1131,9 +1144,10 @@ public final class SharedWakeupManager {
                                 strongSelf.endBackgroundTask(actualTaskId)
                             }
                         }
+                        // An invalid id keeps nothing awake: holding it would keep writes enabled (isInBackgroundExtension).
                         if let taskId = self.beginBackgroundTask("background-wakeup", {
                             handleExpiration()
-                        }) {
+                        }), taskId != .invalid {
                             actualTaskId = taskId
                             let timer = SwiftSignalKit.Timer(timeout: min(30.0, max(0.0, self.backgroundTimeRemaining() - 5.0)), repeat: false, completion: {
                                 handleExpiration()
@@ -1177,7 +1191,7 @@ public final class SharedWakeupManager {
             }
         }
         if let externalCompletionToRelease {
-            self.releaseBackgroundTime(externalCompletionToRelease)
+            self.releaseBackgroundTime(maximumWait: BackgroundTaskRelease.completionMaximumWait, externalCompletionToRelease)
         }
         
         /*if !self.inForeground && pendingMessageCount != 0 && !self.hasActiveAudioSession {
@@ -1216,15 +1230,22 @@ public final class SharedWakeupManager {
     /// Ends a background task, or calls a push/fetch completion, the last thing before iOS may suspend the app.
     /// Call it after the state that held the task was dropped and `checkTasks` ran: unless writes stay enabled
     /// (something else keeps the app awake), it pauses database transactions and ends the task once the running
-    /// one committed, or at `BackgroundTaskRelease.drainTimeout` at the latest. Main queue only.
-    func releaseBackgroundTime(_ end: @escaping () -> Void) {
+    /// one committed, or at `BackgroundTaskRelease.drainTimeout` at the latest (capped at `maximumWait`: pass
+    /// `BackgroundTaskRelease.completionMaximumWait` for a completion handler, whose deadline is its own). A drain that
+    /// times out is written to the short log with the transactions still running. Main queue only.
+    func releaseBackgroundTime(maximumWait: Double = BackgroundTaskRelease.taskMaximumWait, _ end: @escaping () -> Void) {
         assert(Queue.mainQueue().isCurrent())
         guard let taskRelease = self.taskRelease else {
             end()
             return
         }
         let writesStayEnabled = self.transactionsEnabled
-        taskRelease.release(writesStayEnabled: writesStayEnabled, backgroundTimeRemaining: self.backgroundTimeRemaining(), end: writesStayEnabled ? end : {
+        let remaining = self.backgroundTimeRemaining()
+        taskRelease.release(writesStayEnabled: writesStayEnabled, backgroundTimeRemaining: remaining, maximumWait: maximumWait, timedOut: { [weak self] waited in
+            // The task ends while a transaction may still hold the lock: if iOS kills the suspended app, this line
+            // (flushed by `end` below) says which one.
+            Logger.shared.shortLog("Wakeup", "drain timeout after \(waited) s (remaining at release \(remaining) s): writes not paused, running: \(self?.runningTransactionsDescription() ?? "?")")
+        }, end: writesStayEnabled ? end : {
             // iOS may suspend the app once this ends and kill it while suspended, with no later report: a process
             // the system launched for a push never gets an hourly or a foreground one. What it wrote reaches the
             // per-day ledger first (from 1 MB, so short wakeups do not rewrite the ledger every time).
@@ -1256,7 +1277,43 @@ public final class SharedWakeupManager {
         assert(Queue.mainQueue().isCurrent())
         self.cleanupProcessingTaskActive = false
         self.checkTasks()
-        self.releaseBackgroundTime(end)
+        self.releaseBackgroundTime(maximumWait: BackgroundTaskRelease.completionMaximumWait, end)
+    }
+    
+    /// The account transactions running now ("none" when only the media storage or accounts-metadata databases are
+    /// still busy), for the drain-timeout line.
+    private func runningTransactionsDescription() -> String {
+        let now = CFAbsoluteTimeGetCurrent()
+        let running = self.accountsAndTasks.compactMap { entry -> String? in
+            return entry.0.postbox.runningTransaction()?.logDescription(now: now)
+        }
+        return running.isEmpty ? "none" : running.joined(separator: ", ")
+    }
+    
+    /// The audio session ended in the background. It kept the app awake with writes enabled, and iOS may suspend the
+    /// app as soon as it is gone: a short task holds the app until writes are paused and the running transaction
+    /// committed (0xdead10cc), unless something else keeps it awake.
+    private func drainAfterAudioEnded() {
+        var drainTask: UIBackgroundTaskIdentifier?
+        let endBackgroundTask = self.endBackgroundTask
+        let endDrainTask: () -> Void = {
+            guard let taskId = drainTask else {
+                return
+            }
+            drainTask = nil
+            endBackgroundTask(taskId)
+        }
+        if let taskId = self.beginBackgroundTask("audio-end-drain", {
+            endDrainTask()
+        }), taskId != .invalid {
+            drainTask = taskId
+        }
+        self.checkTasks()
+        if drainTask != nil {
+            self.releaseBackgroundTime {
+                endDrainTask()
+            }
+        }
     }
     
     /// Stops new transactions on every account database (Postbox, media storage and cache statistics) and calls
@@ -1309,6 +1366,9 @@ public final class SharedWakeupManager {
         
         if self.inForeground || self.hasActiveAudioSession || self.isInBackgroundExtension || self.backgroundProcessingTaskId != nil || self.backgroundStoryProcessingTaskId != nil || self.cleanupProcessingTaskActive || hasBackgroundLocationTask || (hasTasks && self.currentExternalCompletion != nil) || self.activeExplicitExtensionTimer != nil || self.silenceAudioRenderer != nil {
             Logger.shared.log("Wakeup", "enableBeginTransactions: true (active)")
+            if !self.transactionsEnabled {
+                Logger.shared.shortLog("Wakeup", "enableBeginTransactions: true (\(self.transactionsHolderDescription(hasTasks: hasTasks, hasBackgroundLocationTask: hasBackgroundLocationTask)))")
+            }
             self.transactionsEnabled = true
             self.accountManager?.setCanBeginTransactions(true)
             
@@ -1330,6 +1390,9 @@ public final class SharedWakeupManager {
                 enableBeginTransactions = true
             }
             Logger.shared.log("Wakeup", "enableBeginTransactions: \(enableBeginTransactions)")
+            if self.transactionsEnabled != enableBeginTransactions {
+                Logger.shared.shortLog("Wakeup", "enableBeginTransactions: \(enableBeginTransactions)\(enableBeginTransactions ? " (transaction-window)" : "")")
+            }
             self.transactionsEnabled = enableBeginTransactions
             self.accountManager?.setCanBeginTransactions(enableBeginTransactions)
             
@@ -1340,5 +1403,38 @@ public final class SharedWakeupManager {
                 account.shouldKeepBackgroundDownloadConnections.set(.single(false))
             }
         }
+    }
+    
+    /// What keeps writes enabled, for the short-log line of the transition.
+    private func transactionsHolderDescription(hasTasks: Bool, hasBackgroundLocationTask: Bool) -> String {
+        var holders: [String] = []
+        if self.inForeground {
+            holders.append("foreground")
+        }
+        if self.hasActiveAudioSession {
+            holders.append("audio")
+        }
+        if self.isInBackgroundExtension {
+            holders.append("background-wakeup")
+        }
+        if self.backgroundProcessingTaskId != nil || self.backgroundStoryProcessingTaskId != nil {
+            holders.append("upload processing task")
+        }
+        if self.cleanupProcessingTaskActive {
+            holders.append("cleanup task")
+        }
+        if hasBackgroundLocationTask {
+            holders.append("location")
+        }
+        if hasTasks && self.currentExternalCompletion != nil {
+            holders.append("push")
+        }
+        if self.activeExplicitExtensionTimer != nil {
+            holders.append("explicit-extension")
+        }
+        if self.silenceAudioRenderer != nil {
+            holders.append("silence audio")
+        }
+        return holders.joined(separator: ", ")
     }
 }
