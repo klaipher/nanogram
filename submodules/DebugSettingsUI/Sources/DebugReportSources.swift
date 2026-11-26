@@ -194,9 +194,10 @@ func debugReportPrepare(sharedContext: SharedAccountContext, context: AccountCon
         |> take(1)
         |> deliverOn(debugLogExportPreparationQueue())
         |> map { sources, watch -> [DebugLogExportFile] in
-            let plan = debugReportPlan(sources: sources + debugReportWatchSources(files: watch.files, created: watch.created))
+            let created = Date()
+            let plan = debugReportPlan(sources: sources + debugReportWatchSources(files: watch.files, created: watch.created), now: created)
             let info = debugReportCurrentInfo(sharedContext: sharedContext, context: context)
-            let manifest = debugReportManifest(infoLines: debugReportInfoLines(info), watchLine: watch.line, plan: plan, created: Date())
+            let manifest = debugReportManifest(infoLines: debugReportInfoLines(info), watchLine: watch.line, plan: plan, created: created)
             return debugReportArchive(plan: plan, manifest: manifest, baseName: spec.fileBaseName, in: directory).flatMap { [$0] } ?? []
         }
     }

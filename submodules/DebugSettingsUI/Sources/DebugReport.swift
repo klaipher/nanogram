@@ -56,6 +56,18 @@ enum DebugReportSection: CaseIterable, Equatable {
         case .cpuProfiles: return "CPU profiles"
         }
     }
+
+    /// The log parts, whose files pile up for weeks (text logs stay on disk after Log to File is turned off). A file
+    /// of these older than `DebugReportLimits.staleLogAge` only fills the room the newer files leave. Crash reports,
+    /// call logs and MetricKit reports are kept in their section order whatever their age.
+    var holdsRotatingLogs: Bool {
+        switch self {
+        case .criticalLogs, .appLogs, .notificationLogs, .shareLogs, .otherExtensionLogs, .cpuProfiles:
+            return true
+        case .info, .energy, .watch, .crashes, .callLogs, .groupCallLogs, .metricKit:
+            return false
+        }
+    }
 }
 
 /// How a file is written into the report.
@@ -104,6 +116,15 @@ struct DebugReportLimits: Equatable {
     var totalBytes: Int64 = 40 * 1024 * 1024
     var sectionBytes: Int64 = 16 * 1024 * 1024
     var fileBytes: Int64 = 8 * 1024 * 1024
+    /// The critical logs are the only always-on record of memory kills and stalls. They rotate in 1 MB files, up to 20
+    /// each for the app and the notification extension, so 16 MB held only the last two or three days.
+    var criticalLogSectionBytes: Int64 = 28 * 1024 * 1024
+    /// A log file older than this is planned after every newer file, so it only fills the room that is left.
+    var staleLogAge: TimeInterval = 7 * 24 * 60 * 60
+
+    func sectionCap(for section: DebugReportSection) -> Int64 {
+        return section == .criticalLogs ? criticalLogSectionBytes : sectionBytes
+    }
 }
 
 struct DebugReportEntry: Equatable {
@@ -122,43 +143,48 @@ struct DebugReportPlan: Equatable {
 }
 
 /// Picks what goes into the report: sections in their order, the newest file of each first, until a cap is reached.
-/// The info and energy sections are always kept (a few kilobytes each) and take nothing from the caps, so they never
-/// push a log out.
-func debugReportPlan(sources: [DebugReportSource], limits: DebugReportLimits = DebugReportLimits()) -> DebugReportPlan {
-    var entries: [DebugReportEntry] = []
-    var omitted: [DebugReportSource] = []
-    var total: Int64 = 0
-    var usedNames = Set<String>()
-    for section in DebugReportSection.allCases {
-        let candidates = sources.filter { $0.section == section }.sorted { lhs, rhs in
+/// Log files older than `limits.staleLogAge` before `now` come after every newer file (again by section, newest
+/// first), so a log left on disk for weeks never pushes out a recent one. The info and energy sections are always kept
+/// (a few kilobytes each) and take nothing from the caps, so they never push a log out.
+func debugReportPlan(sources: [DebugReportSource], limits: DebugReportLimits = DebugReportLimits(), now: Date = Date()) -> DebugReportPlan {
+    let staleBefore = now.addingTimeInterval(-limits.staleLogAge)
+    let ordered = DebugReportSection.allCases.flatMap { section in
+        return sources.filter { $0.section == section }.sorted { lhs, rhs in
             if lhs.modified != rhs.modified {
                 return lhs.modified > rhs.modified
             }
             return lhs.name < rhs.name
         }
-        var sectionTotal: Int64 = 0
-        for source in candidates {
-            var bytes = source.size
-            var isCut = false
-            if bytes > limits.fileBytes {
-                if source.treatment == .unchanged {
-                    omitted.append(source)
-                    continue
-                }
-                bytes = limits.fileBytes
-                isCut = true
+    }
+    let isStale: (DebugReportSource) -> Bool = { $0.section.holdsRotatingLogs && $0.modified < staleBefore }
+    var entries: [DebugReportEntry] = []
+    var omitted: [DebugReportSource] = []
+    var total: Int64 = 0
+    var sectionTotals: [DebugReportSection: Int64] = [:]
+    var usedNames = Set<String>()
+    for source in ordered.filter({ !isStale($0) }) + ordered.filter(isStale) {
+        let section = source.section
+        var bytes = source.size
+        var isCut = false
+        if bytes > limits.fileBytes {
+            if source.treatment == .unchanged {
+                omitted.append(source)
+                continue
             }
-            let isAlwaysKept = section == .info || section == .energy
-            if !isAlwaysKept {
-                if total + bytes > limits.totalBytes || sectionTotal + bytes > limits.sectionBytes {
-                    omitted.append(source)
-                    continue
-                }
-                total += bytes
-                sectionTotal += bytes
-            }
-            entries.append(DebugReportEntry(source: source, entryName: debugReportEntryName(source, used: &usedNames), bytes: bytes, isCut: isCut))
+            bytes = limits.fileBytes
+            isCut = true
         }
+        let isAlwaysKept = section == .info || section == .energy
+        if !isAlwaysKept {
+            let sectionTotal = sectionTotals[section] ?? 0
+            if total + bytes > limits.totalBytes || sectionTotal + bytes > limits.sectionCap(for: section) {
+                omitted.append(source)
+                continue
+            }
+            total += bytes
+            sectionTotals[section] = sectionTotal + bytes
+        }
+        entries.append(DebugReportEntry(source: source, entryName: debugReportEntryName(source, used: &usedNames), bytes: bytes, isCut: isCut))
     }
     return DebugReportPlan(entries: entries, omitted: omitted)
 }
