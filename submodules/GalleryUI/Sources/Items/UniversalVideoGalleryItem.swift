@@ -2412,7 +2412,10 @@ final class UniversalVideoGalleryItemNode: ZoomableContentGalleryItemNode {
     
     /// Stores the resume position. The status signal reports every 0.5 s while playing; the throttle keeps that to
     /// one store per few seconds and skips repeated values (each store rewrites the message). `force` is for the item
-    /// closing or scrolling away, which always stores.
+    /// closing or scrolling away, which always stores. Trade-off: on an exit that reaches neither (the process is
+    /// killed or crashes during playback, or the controller goes away without animateOut) the stored resume position
+    /// can be up to `MediaPlaybackPositionStoreThrottle.periodicInterval` (5 s) old instead of about 0.5 s. Pause, seek
+    /// and the end of playback still store at once.
     private func maybeStorePlaybackStatus(status: MediaPlayerStatus, force: Bool = false) {
         guard let item = self.item else {
             return

@@ -41,7 +41,7 @@ final class MediaPlaybackPositionStoreThrottleTests: XCTestCase {
         // The first and last 5 s of a long video store 0.0; a short video stores nothing.
         XCTAssertTrue(throttle.shouldStore(Entry(timestamp: 0.0, rate: 1.0), seekId: 0, isPlaying: true, now: 100.0))
         XCTAssertFalse(throttle.shouldStore(Entry(timestamp: 0.0, rate: 1.0), seekId: 0, isPlaying: true, now: 110.0))
-        XCTAssertFalse(throttle.shouldStore(Entry(timestamp: 0.0, rate: 1.0), seekId: 1, isPlaying: false, now: 120.0))
+        XCTAssertFalse(throttle.shouldStore(Entry(timestamp: 0.0, rate: 1.0), seekId: 0, isPlaying: false, now: 120.0))
 
         var short = MediaPlaybackPositionStoreThrottle()
         XCTAssertTrue(short.shouldStore(Entry(timestamp: nil, rate: 1.0), seekId: 0, isPlaying: true, now: 100.0))
@@ -62,6 +62,16 @@ final class MediaPlaybackPositionStoreThrottleTests: XCTestCase {
         XCTAssertTrue(throttle.shouldStore(Entry(timestamp: 60.0, rate: 1.0), seekId: 1, isPlaying: true, now: 101.0))
         // The next tick after the seek is ordinary playback again.
         XCTAssertFalse(throttle.shouldStore(Entry(timestamp: 60.5, rate: 1.0), seekId: 1, isPlaying: true, now: 101.5))
+    }
+
+    func testSeekToTheSameValueIsStoredAnyway() {
+        var throttle = MediaPlaybackPositionStoreThrottle()
+        // Another writer may have changed the stored position since; the in-memory duplicate check cannot see that, so
+        // a seek always stores (TelegramCore skips the write if the database already holds the value).
+        XCTAssertTrue(throttle.shouldStore(Entry(timestamp: 0.0, rate: 1.0), seekId: 0, isPlaying: true, now: 100.0))
+        XCTAssertTrue(throttle.shouldStore(Entry(timestamp: 0.0, rate: 1.0), seekId: 1, isPlaying: true, now: 101.0))
+        XCTAssertTrue(throttle.shouldStore(Entry(timestamp: 0.0, rate: 1.0), seekId: 2, isPlaying: false, now: 102.0))
+        XCTAssertFalse(throttle.shouldStore(Entry(timestamp: 0.0, rate: 1.0), seekId: 2, isPlaying: false, now: 103.0))
     }
 
     func testRateChangeIsStoredAtOnce() {
