@@ -38,6 +38,24 @@ public struct AccountManagerAccessChallenge {
     }
 }
 
+/// The line logged when the access challenge cannot be prepared at open. The error is a `PasscodeError` (a case,
+/// or a keychain `OSStatus`), never secret material.
+func accessChallengePrepareFailedLogLine(error: Error) -> String {
+    return "Access challenge installation initialization deferred: \(error)"
+}
+
+/// The line logged when the access challenge cannot be resolved at open; the existing lock stays. Only a process
+/// that may migrate (the app, with its own state) defers a migration. The extensions never try one and fail here
+/// on most pushes, while the device is locked (`keychain(-25308)`, errSecInteractionNotAllowed), so the error is
+/// logged to tell that apart from a missing credential (`unavailable`) or another keychain status.
+func accessChallengeResolveFailedLogLine(error: Error, allowMigration: Bool) -> String {
+    if allowMigration {
+        return "AccountManager: access challenge credential migration deferred: \(error)"
+    } else {
+        return "AccountManager: access challenge not resolved at open (no migration in this process): \(error)"
+    }
+}
+
 public struct AccountManagerModifier<Types: AccountManagerTypes> {
     public let getRecords: () -> [AccountRecord<Types.Attribute>]
     public let updateRecord: (AccountRecordId, (AccountRecord<Types.Attribute>?) -> (AccountRecord<Types.Attribute>?)) -> Void
@@ -185,8 +203,8 @@ final class AccountManagerImpl<Types: AccountManagerTypes> {
             && self.legacyMetadataTable.getAccessChallengeData() == .none
         do {
             try accessChallenge.prepare(isFreshInstallation)
-        } catch {
-            postboxLog("Access challenge installation initialization deferred")
+        } catch let error {
+            postboxLog(accessChallengePrepareFailedLogLine(error: error))
         }
         
         // The app (`removeDatabaseOnError`) owns the atomic state: it builds it from the legacy tables
@@ -260,8 +278,8 @@ final class AccountManagerImpl<Types: AccountManagerTypes> {
             self.syncAtomicStateToFile()
         }
         
+        let allowMigration = !isReadOnly && !isTemporary && !self.isStateInMemoryOnly
         do {
-            let allowMigration = !isReadOnly && !isTemporary && !self.isStateInMemoryOnly
             let migrated = try self.resolveAccessChallenge(self.currentAtomicState.accessChallengeData, allowMigration)
             if allowMigration {
                 if let migrated, migrated != self.currentAtomicState.accessChallengeData || migrated != self.legacyMetadataTable.getAccessChallengeData() {
@@ -274,9 +292,9 @@ final class AccountManagerImpl<Types: AccountManagerTypes> {
                 self.cleanPasscodeMetadataIfNeeded()
                 try accessChallenge.finishInitialization()
             }
-        } catch {
+        } catch let error {
             // An unavailable credential must not remove the existing lock.
-            postboxLog("AccountManager: access challenge credential migration deferred")
+            postboxLog(accessChallengeResolveFailedLogLine(error: error, allowMigration: allowMigration))
         }
 
         postboxLog("AccountManager: currentAccountId = \(String(describing: currentAtomicState.currentRecordId))")
