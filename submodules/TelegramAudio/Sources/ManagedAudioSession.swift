@@ -13,8 +13,9 @@ func managedAudioSessionLog(_ what: @autoclosure () -> String) {
     managedAudioSessionLogger(what())
 }
 
+/// The port's type and uid tag, never its name: see `audioPortLogLabel`.
 private func describeAudioPort(_ port: AVAudioSessionPortDescription) -> String {
-    return "\(port.portName) [\(port.portType.rawValue)]"
+    return audioPortLogLabel(portType: port.portType.rawValue, uid: port.uid)
 }
 
 /// Everything needed to tell "the app pinned this input" apart from "the system chose this input".
@@ -575,6 +576,8 @@ public final class ManagedAudioSessionImpl: NSObject, ManagedAudioSession {
     }
     private var deactivateTimer: SwiftSignalKit.Timer?
     private var deactivationRetryGate = ManagedAudioSessionDeactivationRetryGate()
+    /// Touched only on `queue`.
+    private var routeLogDeduplicator = AudioRouteLogDeduplicator()
     
     private let isHeadsetPluggedInSync = Atomic<Bool>(value: false)
     private var isHeadsetPluggedInValue = false {
@@ -667,7 +670,10 @@ public final class ManagedAudioSessionImpl: NSObject, ManagedAudioSession {
     }
     
     private func updateCurrentAudioRouteInfo() {
-        managedAudioSessionLog("ManagedAudioSession current route: \(audioInputStateDescription())")
+        let routeDescription = audioInputStateDescription()
+        if self.routeLogDeduplicator.shouldLog(routeDescription) {
+            managedAudioSessionLog("ManagedAudioSession current route: \(routeDescription)")
+        }
 
         let value = self.isHeadsetPluggedIn()
         if self.isHeadsetPluggedInValue != value {
