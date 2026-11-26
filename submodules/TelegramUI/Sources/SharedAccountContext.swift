@@ -594,9 +594,12 @@ public final class SharedAccountContextImpl: SharedAccountContext {
         let immediateExperimentalUISettingsValue = self.immediateExperimentalUISettingsValue
         let _ = immediateExperimentalUISettingsValue.swap(initialPresentationDataAndSettings.experimentalUISettings)
         // Debug switches live outside the account database (a database reset keeps them, a reinstall does not): log the
-        // ones this phone has changed, for reports that only one phone shows.
-        Logger.shared.log("Navigation", "Debug settings changed from defaults: \(NavigationDiagnostics.differingFields(initialPresentationDataAndSettings.experimentalUISettings, from: ExperimentalUISettings.defaultSettings).joined(separator: ", "))")
-        
+        // ones this phone has changed, for reports that only one phone shows. Once per launch, and switches only (no
+        // account data), so it also goes to the always-on short log: the file log is off unless Log to File is on.
+        let debugSettingsLine = "Debug settings changed from defaults: \(NavigationDiagnostics.differingFields(initialPresentationDataAndSettings.experimentalUISettings, from: ExperimentalUISettings.defaultSettings).joined(separator: ", "))"
+        Logger.shared.log("Navigation", debugSettingsLine)
+        Logger.shared.shortLog("Navigation", "[Navigation] " + DiagnosticShortLogBudget.trimmed(debugSettingsLine, maxBytes: 1024))
+
         GlassBackgroundView.useCustomGlassImpl = immediateExperimentalUISettingsValue.with({ $0.fakeGlass })
         GlassDebugGroups.setDisabledMask(immediateExperimentalUISettingsValue.with({ $0.glassDebugDisabledGroups }))
         ManagedAudioSessionImpl.respectsSystemRecordingInput = immediateExperimentalUISettingsValue.with({ $0.respectSystemMicrophone })
@@ -612,9 +615,15 @@ public final class SharedAccountContextImpl: SharedAccountContext {
             Logger.shared.log("FrameHitch", line)
         }
         // Every screen change of a navigation container, and any screen or transition still pending 3 s later
-        // (tester report 2026-11-20: chats never open on one phone after iOS 27.2.1).
+        // (tester report 2026-11-20: chats never open on one phone after iOS 27.2.1). The stall and recovery lines also
+        // go to the always-on short log, which a report carries with Log to File off; one per stalled screen change,
+        // capped at 30 an hour so a loop cannot crowd that small log.
+        let navigationShortLogGate = DiagnosticShortLogGate(interval: 0.0, maxLinesPerWindow: 30, window: 3600.0)
         NavigationDiagnostics.log = { line in
             Logger.shared.log("Navigation", line)
+            if NavigationDiagnostics.belongsInShortLog(line) && navigationShortLogGate.allow(key: "Navigation", now: CFAbsoluteTimeGetCurrent()) {
+                Logger.shared.shortLog("Navigation", "[Navigation] " + DiagnosticShortLogBudget.trimmed(line, maxBytes: 1024))
+            }
         }
         FrameHitchMonitor.context = frameRateContext
         FrameHitchMonitor.autoDisabled = { [weak self] reason in

@@ -201,6 +201,47 @@ struct CoreListDiagnosticRateLimiter {
     }
 }
 
+/// Nanogram: which `diagnosticLog` lines a host may also send to an always-on, size-capped log, and the key it may
+/// budget them by. The finding and event lines go; the dump of recent events (long, and only useful next to the full
+/// log) does not.
+public enum CoreListDiagnosticShortLog {
+    /// The start of the recent-events line `checkViewportInvariant` writes after a finding.
+    public static let recentEventsPrefix = "recent "
+    public static let maxKeyLength = 120
+
+    public static func belongsInShortLog(_ line: String) -> Bool {
+        return !line.hasPrefix(recentEventsPrefix)
+    }
+
+    /// The kind of line, without its magnitudes: the part before the list-shape numbers (`items=`), with every number
+    /// dropped. Two findings of the same kinds and backings share a key; a different finding or event does not.
+    public static func budgetKey(_ line: String) -> String {
+        var head = Substring(line)
+        if let range = line.range(of: " items=") {
+            head = line[line.startIndex ..< range.lowerBound]
+        }
+        let characters = Array(head)
+        var key = ""
+        for index in characters.indices {
+            let character = characters[index]
+            if character.isASCII && character.isNumber {
+                continue
+            }
+            if character == "." || character == "-" {
+                let nextIndex = index + 1
+                if nextIndex < characters.count, characters[nextIndex].isASCII, characters[nextIndex].isNumber {
+                    continue
+                }
+            }
+            key.append(character)
+            if key.count >= maxKeyLength {
+                break
+            }
+        }
+        return key
+    }
+}
+
 /// A fixed-size record of the last events that moved the list. Numbers and enums only; formatted when a violation is
 /// dumped, so recording is a struct write.
 struct CoreListEventRing {

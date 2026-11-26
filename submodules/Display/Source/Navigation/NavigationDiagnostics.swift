@@ -6,10 +6,18 @@ import Foundation
 /// ready, or a transition still running, `stallDelay` seconds later is logged with what the screen reports about
 /// itself (`ViewController.navigationReadinessReport`). Nothing here changes behaviour.
 public enum NavigationDiagnostics {
-    /// Set by the app to its file log (`Logger.shared.log("Navigation", ...)`); nil logs nothing.
+    /// Set by the app to its file log (`Logger.shared.log("Navigation", ...)`); nil logs nothing. The app also sends the
+    /// lines `belongsInShortLog` picks to its always-on short log.
     public static var log: ((String) -> Void)?
 
     public static let stallDelay: Double = 3.0
+
+    /// Whether a line is one of the rare ones (a screen or transition still pending `stallDelay` later, or a recovery
+    /// from one) that must also reach the always-on short log, which a report carries even with Log to File off. Every
+    /// stack change, transition and ready line stays in the file log only: they come with every screen change.
+    public static func belongsInShortLog(_ line: String) -> Bool {
+        return line.hasPrefix("stall:") || line.hasPrefix("recovery:")
+    }
 
     static func emit(_ text: @autoclosure () -> String) {
         guard let log = NavigationDiagnostics.log else {
