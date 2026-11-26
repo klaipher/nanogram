@@ -8206,7 +8206,7 @@ public final class ChatControllerImpl: TelegramBaseController, ChatController, G
             if case let .peer(peerId) = self.chatLocation {
                 let _ = self.context.engine.peers.checkPeerChatServiceActions(peerId: peerId).startStandalone()
                 
-                self.context.account.viewTracker.forceUpdateCachedPeerData(peerId: peerId)
+                self.context.account.viewTracker.refreshCachedPeerDataOnChatOpen(peerId: peerId)
                 self.chatDisplayNode.adMessagesContext?.activate()
                 self.updatePreloadNextChatPeerId()
             }
