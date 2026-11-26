@@ -837,7 +837,7 @@ final class CoreListChatHistoryBackend: ASDisplayNode, ChatHistoryListViewBacken
         // Always-on, numbers-only diagnostics for an empty viewport and engine surprises (delta clamp, flight settled
         // outside its edges); the checks run at rest only, rate-limited to one line per second.
         self.coreList.diagnosticLog = { line in
-            Logger.shared.log("CoreListInvariant", line)
+            CoreListInvariantLog.log(line)
         }
         // Force the ASDisplayNode's view to load eagerly. The composed ChatHistoryListNode wrapper
         // gates its history dequeue on isNodeLoaded, mirroring ListViewImpl's eager view load.
@@ -2656,6 +2656,27 @@ private final class CoreListNodeHostView: UIView, CoreListItemView {
         // Same argument, and it also covers the node being REPLACED: the binding CoreList last named
         // is still correct for this row, but the new node's own array is empty.
         self.applyAttachedItems()
+    }
+}
+
+/// Where the chat's `CoreListInvariant` lines go. The file log gets every line in full, but it is off unless Log to File
+/// is on, so the finding and event lines (not the recent-events dump) also go to the always-on short log, cut to
+/// `maxShortLogBytes` and budgeted: the same kind of line at most once a minute, and at most `maxShortLogLinesPerHour`
+/// lines an hour in all, so a misbehaving check cannot crowd that small log.
+public enum CoreListInvariantLog {
+    static let maxShortLogBytes = 512
+    static let maxShortLogLinesPerHour = 30
+    private static let shortLogGate = DiagnosticShortLogGate(interval: 60.0, maxLinesPerWindow: maxShortLogLinesPerHour, window: 3600.0)
+
+    public static func log(_ line: String) {
+        Logger.shared.log("CoreListInvariant", line)
+        guard CoreListDiagnosticShortLog.belongsInShortLog(line) else {
+            return
+        }
+        guard shortLogGate.allow(key: CoreListDiagnosticShortLog.budgetKey(line), now: CFAbsoluteTimeGetCurrent()) else {
+            return
+        }
+        Logger.shared.shortLog("CoreListInvariant", "[CoreListInvariant] " + DiagnosticShortLogBudget.trimmed(line, maxBytes: maxShortLogBytes))
     }
 }
 

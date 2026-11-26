@@ -1639,8 +1639,11 @@ next occurrence without a reproduction.
 
 - Where: `CoreList/CoreListDemo/ViewportInvariant.swift` (pure: `CoreListViewportSnapshot`, `CoreListViewportInvariant.evaluate`,
   `CoreListDiagnosticRateLimiter`, `CoreListEventRing`), `CoreVirtualListView.checkViewportInvariant(trigger:)` and
-  `viewportSnapshot()`. The host sets `CoreVirtualListView.diagnosticLog`; the chat backend routes it to `Logger` with the tag
-  `CoreListInvariant`.
+  `viewportSnapshot()`. The host sets `CoreVirtualListView.diagnosticLog`; the chat backend routes it through
+  `CoreListInvariantLog`: every line to `Logger.log` with the tag `CoreListInvariant` (written only with Log to File on), and
+  the finding and event lines (not the `recent` dump, `CoreListDiagnosticShortLog`) also to the always-on `Logger.shortLog`
+  (the critlog) prefixed `[CoreListInvariant] `, cut to 512 bytes, the same kind of line (`budgetKey`: numbers dropped) at
+  most once a minute and at most 30 lines an hour in all (`DiagnosticShortLogBudget` in Display).
 - When it runs: the end of an `applyChanges` pass, and one main-queue turn after the end of a flight (`onFlightChanged(nil)`)
   or a deceleration. The flight-end check is deferred because `finalizeFlight` reports the end before its last `onScroll`
   (the window is not yet rebalanced for the settled offset) and a halt inside a pass ends the flight mid-pass. Never from a

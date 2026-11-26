@@ -36,6 +36,19 @@ final class NavigationDiagnosticsTests: XCTestCase {
         XCTAssertEqual(lines, ["stack [] -> []"])
     }
 
+    func testOnlyStallAndRecoveryLinesGoToTheShortLog() {
+        XCTAssertTrue(NavigationDiagnostics.belongsInShortLog("stall: ChatControllerImpl@1234 not ready after 3.0 s; waits for history=never"))
+        XCTAssertTrue(NavigationDiagnostics.belongsInShortLog("stall: transition push to ChatControllerImpl@1234 still running after 3.0 s"))
+        XCTAssertTrue(NavigationDiagnostics.belongsInShortLog("recovery: showing ChatControllerImpl@1234 not ready after 5.0 s"))
+        XCTAssertTrue(NavigationDiagnostics.belongsInShortLog("recovery: landing transition push to ChatControllerImpl@1234 still running after 3.0 s"))
+        XCTAssertFalse(NavigationDiagnostics.belongsInShortLog("stack [] -> [ChatListControllerImpl@1] top=ChatListControllerImpl@1"))
+        XCTAssertFalse(NavigationDiagnostics.belongsInShortLog("pending push ChatControllerImpl@1234 ready=false"))
+        XCTAssertFalse(NavigationDiagnostics.belongsInShortLog("transition start push ChatListControllerImpl@1 -> ChatControllerImpl@1234"))
+        XCTAssertFalse(NavigationDiagnostics.belongsInShortLog("transition end push -> ChatControllerImpl@1234"))
+        XCTAssertFalse(NavigationDiagnostics.belongsInShortLog("ready ChatControllerImpl@1234 current=true"))
+        XCTAssertFalse(NavigationDiagnostics.belongsInShortLog("root container -> flat width=compact size=402.0x874.0 controllers=[]"))
+    }
+
     func testDifferingFieldsListsOnlyChangedProperties() {
         struct Settings {
             var keepStack: Bool

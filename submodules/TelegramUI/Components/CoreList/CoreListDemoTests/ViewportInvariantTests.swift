@@ -160,6 +160,42 @@ final class ViewportInvariantTests: XCTestCase {
         XCTAssertTrue(limiter.allow(key: "a", now: 5.0))
     }
 
+    func testShortLogTakesFindingAndEventLinesButNotTheEventRing() {
+        let s = snapshot { $0.newestEdgeGap = 420; $0.bottomEdgePinSlack = 420; $0.lowestPinnedItemIndex = 0 }
+        let line = CoreListViewportInvariant.format(s, findings: CoreListViewportInvariant.evaluate(s), trigger: "pass-end")
+        XCTAssertTrue(CoreListDiagnosticShortLog.belongsInShortLog(line))
+        XCTAssertTrue(CoreListDiagnosticShortLog.belongsInShortLog("delta clamp fired delta=900 viewport=800 flight=true deferredRows=false"))
+        XCTAssertTrue(CoreListDiagnosticShortLog.belongsInShortLog("pin to top set by streaming draft: entries=40 draftIndex=39 pinnedIndex=38"))
+        var ring = CoreListEventRing(capacity: 2)
+        ring.record(.transaction, time: 1)
+        XCTAssertFalse(CoreListDiagnosticShortLog.belongsInShortLog(CoreListDiagnosticShortLog.recentEventsPrefix + ring.formatted(now: 2)))
+    }
+
+    func testShortLogKeyIgnoresMagnitudesButKeepsKinds() {
+        func line(_ configure: (inout CoreListViewportSnapshot) -> Void) -> String {
+            let s = snapshot(configure)
+            return CoreListViewportInvariant.format(s, findings: CoreListViewportInvariant.evaluate(s), trigger: "pass-end")
+        }
+        let pin420 = line { $0.newestEdgeGap = 420; $0.bottomEdgePinSlack = 420; $0.lowestPinnedItemIndex = 0 }
+        let pin500 = line { $0.newestEdgeGap = 500; $0.bottomEdgePinSlack = 500; $0.lowestPinnedItemIndex = 0; $0.itemCount = 70 }
+        let unbacked = line { $0.newestEdgeGap = 420 }
+        XCTAssertEqual(CoreListDiagnosticShortLog.budgetKey(pin420), CoreListDiagnosticShortLog.budgetKey(pin500))
+        XCTAssertNotEqual(CoreListDiagnosticShortLog.budgetKey(pin420), CoreListDiagnosticShortLog.budgetKey(unbacked))
+        XCTAssertEqual(
+            CoreListDiagnosticShortLog.budgetKey("delta clamp fired delta=900 viewport=800 flight=true deferredRows=false"),
+            CoreListDiagnosticShortLog.budgetKey("delta clamp fired delta=-1200 viewport=812 flight=true deferredRows=false")
+        )
+        XCTAssertNotEqual(
+            CoreListDiagnosticShortLog.budgetKey("delta clamp fired delta=900 viewport=800 flight=true deferredRows=false"),
+            CoreListDiagnosticShortLog.budgetKey("spring-back at rest (pass-end) offset=-140")
+        )
+        XCTAssertEqual(
+            CoreListDiagnosticShortLog.budgetKey("spring-back at rest (pass-end) offset=-140"),
+            "spring-back at rest (pass-end) offset="
+        )
+        XCTAssertLessThanOrEqual(CoreListDiagnosticShortLog.budgetKey(String(repeating: "x", count: 1000)).count, CoreListDiagnosticShortLog.maxKeyLength)
+    }
+
     func testRingKeepsTheLastEventsOldestFirst() {
         var ring = CoreListEventRing(capacity: 3)
         for i in 0..<5 {

@@ -3948,7 +3948,7 @@ public final class CoreVirtualListView: UIView {
         guard diagnosticLimiter.allow(key: "invariant", now: now) else { return }
         guard invariantSignatureLimiter.allow(key: CoreListViewportInvariant.signature(findings), now: now) else { return }
         diagnosticLog(CoreListViewportInvariant.format(snapshot, findings: findings, trigger: trigger))
-        diagnosticLog("recent \(eventRing.formatted(now: now))")
+        diagnosticLog(CoreListDiagnosticShortLog.recentEventsPrefix + eventRing.formatted(now: now))
     }
 
     /// Runs the check on the next main-queue turn, once, so the engine has finished the callback chain that ended the
