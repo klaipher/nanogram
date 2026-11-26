@@ -958,6 +958,12 @@ private func getCurrentRenderedTotalUnreadCount(accountManager: AccountManager<T
     }
 }
 
+/// A request that cannot be handled: in the full log and the short log, which is kept in every build.
+private func nseFailureLog(_ episode: String, _ what: String) {
+    Logger.shared.log("NotificationService \(episode)", what)
+    Logger.shared.shortLog("NotificationService", "NotificationService \(episode) \(what)")
+}
+
 /// One line in the always-on short log (ids only), for how a call's ring started and ended.
 private func nseCallLog(_ callId: Int64?, _ what: @autoclosure () -> String) {
     CallDiagnostics.log("nse call \(callId.map { String($0) } ?? "-") \(what())")
@@ -1185,7 +1191,7 @@ private final class NotificationServiceHandler {
         guard let accountManager: AccountManager<TelegramAccountManagerTypes> = setupExtensionAccountManager(basePath: rootPath + "/accounts-metadata", isTemporary: true, isReadOnly: false, useCaches: false) else {
             // The app holds the databases, or protected data is unavailable: hand back the server's own alert now
             // instead of waiting for the system to expire the request.
-            Logger.shared.log("NotificationService \(episode)", "The account databases cannot be opened")
+            nseFailureLog(episode, "The account databases cannot be opened")
             queue.async {
                 completed()
             }
@@ -1330,7 +1336,7 @@ private final class NotificationServiceHandler {
             }
 
             guard let strongSelf = self, let recordId = recordId else {
-                Logger.shared.log("NotificationService \(episode)", "Couldn't find a matching decryption key")
+                nseFailureLog(episode, "Couldn't find a matching decryption key")
 
                 let content = NotificationContent(isLockedMessage: nil)
                 updateCurrentContent(content)
@@ -1352,7 +1358,7 @@ private final class NotificationServiceHandler {
                     return
                 }
                 guard let stateManager = stateManager else {
-                    Logger.shared.log("NotificationService \(episode)", "Didn't receive stateManager")
+                    nseFailureLog(episode, "Didn't receive stateManager")
 
                     let content = NotificationContent(isLockedMessage: nil)
                     updateCurrentContent(content)
@@ -1392,7 +1398,7 @@ private final class NotificationServiceHandler {
                         return
                     }
                     guard let notificationsKey = notificationsKey else {
-                        Logger.shared.log("NotificationService \(episode)", "Didn't receive decryption key")
+                        nseFailureLog(episode, "Didn't receive decryption key")
 
                         let content = NotificationContent(isLockedMessage: nil)
                         updateCurrentContent(content)
@@ -1401,7 +1407,7 @@ private final class NotificationServiceHandler {
                         return
                     }
                     guard let decryptedPayload = decryptedNotificationPayload(key: notificationsKey, data: payloadData) else {
-                        Logger.shared.log("NotificationService \(episode)", "Couldn't decrypt payload")
+                        nseFailureLog(episode, "Couldn't decrypt payload")
 
                         let content = NotificationContent(isLockedMessage: nil)
                         updateCurrentContent(content)
@@ -1410,7 +1416,7 @@ private final class NotificationServiceHandler {
                         return
                     }
                     guard let payloadJson = try? JSONSerialization.jsonObject(with: decryptedPayload, options: []) as? [String: Any] else {
-                        Logger.shared.log("NotificationService \(episode)", "Couldn't process payload as JSON")
+                        nseFailureLog(episode, "Couldn't process payload as JSON")
 
                         let content = NotificationContent(isLockedMessage: nil)
                         updateCurrentContent(content)
@@ -3362,6 +3368,7 @@ final class NotificationService: UNNotificationServiceExtension {
     private let afterDelivery = Atomic<(() -> Void)?>(value: nil)
     private var contentHandler: ((UNNotificationContent) -> Void)?
     private var episode: String?
+    private var startTimestamp: Double = 0.0
     private var requestCompletion: ExtensionRequestCompletion?
     private var requestIdentifier: String?
     private let canFilterNotifications: Bool = ServicePushPresentation.appCanFilterNotifications(infoDictionary: Bundle.main.infoDictionary)
@@ -3373,6 +3380,8 @@ final class NotificationService: UNNotificationServiceExtension {
     override func didReceive(_ request: UNNotificationRequest, withContentHandler contentHandler: @escaping (UNNotificationContent) -> Void) {
         let episode = String(UInt32.random(in: 0 ..< UInt32.max), radix: 16)
         self.episode = episode
+        let startTimestamp = CFAbsoluteTimeGetCurrent()
+        self.startTimestamp = startTimestamp
         
         self.initialContent = request.content
         self.contentHandler = contentHandler
@@ -3421,7 +3430,9 @@ final class NotificationService: UNNotificationServiceExtension {
                         
                         strongSelf.contentHandler = nil
                         
-                        let result = strongSelf.resultContent(generated: content.with({ $0 })?.generate())
+                        let generated = content.with({ $0 })?.generate()
+                        let result = strongSelf.resultContent(generated: generated)
+                        NotificationService.logOutcome(episode: episode, ending: .completed, generated: generated, result: result, startTimestamp: startTimestamp)
                         let requestIdentifier = strongSelf.requestIdentifier
                         let afterDeliveryAction = afterDelivery.swap(nil)
                         // Content goes back once no transaction is running (or after 1 s).
@@ -3455,7 +3466,9 @@ final class NotificationService: UNNotificationServiceExtension {
             
             Logger.shared.log("NotificationService \(self.episode ?? "???")", "Completing due to serviceExtensionTimeWillExpire")
             
-            let result = self.resultContent(generated: self.content.with({ $0 })?.generate())
+            let generated = self.content.with({ $0 })?.generate()
+            let result = self.resultContent(generated: generated)
+            NotificationService.logOutcome(episode: self.episode ?? "???", ending: .timeExpired, generated: generated, result: result, startTimestamp: self.startTimestamp)
             let requestIdentifier = self.requestIdentifier
             let afterDeliveryAction = self.afterDelivery.swap(nil)
             // Delivered right away; the pause still runs under the activity.
@@ -3473,6 +3486,17 @@ final class NotificationService: UNNotificationServiceExtension {
             return self.initialContent.flatMap { ($0, false) }
         }
         return ServicePushPresentation.presentation(generated: generated, initialContent: self.initialContent, canFilter: self.canFilterNotifications)
+    }
+
+    private static func logOutcome(episode: String, ending: NotificationServiceOutcome.Ending, generated: UNNotificationContent?, result: (content: UNNotificationContent, isQuietPlaceholder: Bool)?, startTimestamp: Double) {
+        let isCall = result.flatMap({ IncomingCallPushPresentation.isIncomingCall(userInfo: $0.content.userInfo) }) ?? false
+        Logger.shared.shortLog("NotificationService", NotificationServiceOutcome.line(
+            episode: episode,
+            ending: ending,
+            delivered: NotificationServiceOutcome.delivered(generated: generated != nil, result: result),
+            isCall: isCall,
+            duration: CFAbsoluteTimeGetCurrent() - startTimestamp
+        ))
     }
 
     private static func deliver(_ result: (content: UNNotificationContent, isQuietPlaceholder: Bool)?, requestIdentifier: String?, contentHandler: (UNNotificationContent) -> Void, afterDelivery: (() -> Void)? = nil) {

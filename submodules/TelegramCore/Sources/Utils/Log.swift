@@ -56,17 +56,29 @@ public func registerLoggingFunctions() {
     })
     setBridgingShortTraceFunction({ domain, what in
         if let what = what {
-            if let domain = domain {
-                Logger.shared.shortLog(domain, what as String)
-            } else {
-                Logger.shared.shortLog("", what as String)
+            let string = what as String
+            // Acks and pings stay out of the short log; the full log has them (`ShortLogFilter`).
+            if ShortLogFilter.shared.admitMTProto(string) {
+                if let domain = domain {
+                    Logger.shared.shortLog(domain, string)
+                } else {
+                    Logger.shared.shortLog("", string)
+                }
             }
+            shortLogFilterSummary()
         }
     })
     setTelegramApiLogger({ what in
         Logger.shared.log("Api", what as String)
         Logger.shared.shortLog("Api", what as String)
     })
+}
+
+/// Writes what `ShortLogFilter` left out of the short log, once per `ShortLogFilter.summaryInterval`.
+private func shortLogFilterSummary() {
+    if let summary = ShortLogFilter.shared.takeSummary(now: CFAbsoluteTimeGetCurrent()) {
+        Logger.shared.shortLog("ShortLog", summary)
+    }
 }
 
 private var sharedLogger: Logger?
@@ -203,7 +215,11 @@ public final class Logger {
         sharedLogger = logger
         setPostboxLogger({ s in
             Logger.shared.log("Postbox", s)
-            Logger.shared.shortLog("Postbox", s)
+            // Routine lines stay out of the short log (`ShortLogFilter`); the full log has every line.
+            if ShortLogFilter.shared.admitPostbox(s, now: CFAbsoluteTimeGetCurrent()) {
+                Logger.shared.shortLog("Postbox", s)
+            }
+            shortLogFilterSummary()
         }, sync: {
             Logger.shared.sync()
         })
