@@ -2408,7 +2408,7 @@ private func extractAccountManagerState(records: AccountRecordsView<TelegramAcco
         self.diskWriteReportTimer = timer
     }
     
-    private func reportDiskWrites(reason: String) {
+    private func reportDiskWrites(reason: String, savesLedger: Bool = true) {
         guard let reporter = DiskWriteAccountingReporting.current else {
             return
         }
@@ -2416,7 +2416,7 @@ private func extractAccountManagerState(records: AccountRecordsView<TelegramAcco
         DispatchQueue.global(qos: .utility).async {
             // Outside the log call: its message is only evaluated with "Log to File" on, and the ledger must be
             // updated either way.
-            let line = reporter.report(reason: reason)
+            let line = reporter.report(reason: reason, savesLedger: savesLedger)
             Logger.shared.log("App \(episodeId)", line)
         }
     }
@@ -2465,8 +2465,10 @@ private func extractAccountManagerState(records: AccountRecordsView<TelegramAcco
         }
         self.interruptDatabaseMaintenance()
         self.backgroundDiagnostics.willEnterForeground()
-        // What was written while in the background (background sync, downloads, pushes).
-        self.reportDiskWrites(reason: "foreground")
+        // What was written while in the background (background sync, downloads, pushes). The ledger file is saved by
+        // the next background entry or hourly report, not here: rewriting it on both transitions was ~250 writes of
+        // ~40 KB a day.
+        self.reportDiskWrites(reason: "foreground", savesLedger: false)
         if self.isActiveValue {
             self.isInForegroundValue = true
             self.isInForegroundPromise.set(true)
