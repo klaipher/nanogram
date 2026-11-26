@@ -515,6 +515,20 @@ policy_cc_test(
     headers = ["platform/darwin/DarwinCodecSupport.h"],
 )
 
+# Start bitrate when outgoing video turns on after an audio-only phase (InstanceV2Impl).
+policy_cc_test(
+    name = "video_start_bitrate_policy_test",
+    src = "tgcalls/tests/video_start_bitrate_policy/VideoStartBitratePolicyTest.cpp",
+    headers = ["VideoStartBitratePolicy.h"],
+)
+
+# Call log redaction: shortened IP addresses, no ICE passwords or DTLS fingerprints.
+policy_cc_test(
+    name = "call_log_redaction_test",
+    src = "tgcalls/tests/call_log_redaction/CallLogRedactionPolicyTest.cpp",
+    headers = ["CallLogRedaction.h"],
+)
+
 # Pure C++ core library for non-iOS targets (e.g. CLI tools).
 # Uses FakeInterface instead of darwin platform files.
 cc_library(
