@@ -1636,7 +1636,9 @@ public final class PendingMessageManager {
                     }
                 }
                 |> `catch` { error -> Signal<Void, NoError> in
-                    pendingMessageFailureLog("group of \(messages.count) messages starting at \(messages[0].0.id.id) request failed \(error.errorCode) \(error.errorDescription ?? ""), \(self?.failureContext() ?? "")")
+                    // One line, written once the next step is known, so a group that goes out again with a fresh
+                    // reference does not read as a failure in the critical log.
+                    let logSubject = "group of \(messages.count) messages starting at \(messages[0].0.id.id)"
                     return deferred {
                         if let strongSelf = self {
                             let errorText: String = error.errorDescription
@@ -1673,6 +1675,7 @@ public final class PendingMessageManager {
                                             }
                                         }
                                         
+                                        pendingMessageFailureLog(pendingSendFailureLogText(logSubject, code: error.errorCode, text: errorText, outcome: .sendingAgainWithFreshMedia(items: selectiveIndices), context: strongSelf.failureContext()))
                                         strongSelf.beginSendingMessages(messages.map({ $0.0.id }))
                                         return .complete()
                                     }
@@ -1697,12 +1700,17 @@ public final class PendingMessageManager {
                                             }
                                         }
                                         
+                                        pendingMessageFailureLog(pendingSendFailureLogText(logSubject, code: error.errorCode, text: errorText, outcome: .sendingAgainWithFreshMedia(items: nil), context: strongSelf.failureContext()))
                                         strongSelf.beginSendingMessages(messages.map({ $0.0.id }))
                                         return .complete()
                                     }
                                 }
                             }
+                            let afterFreshTry = messages.contains(where: { strongSelf.messageContexts[$0.0.id]?.forcedReuploadOnce == true })
+                            pendingMessageFailureLog(pendingSendFailureLogText(logSubject, code: error.errorCode, text: errorText, outcome: .failing(afterFreshTry: afterFreshTry), context: strongSelf.failureContext()))
                             strongSelf.notifyMessageFailure(ids: messages.map { $0.0.id }, code: errorText)
+                        } else {
+                            pendingMessageFailureLog(pendingSendFailureLogText(logSubject, code: error.errorCode, text: error.errorDescription ?? "", outcome: .failing(afterFreshTry: false), context: ""))
                         }
                         return failMessages(postbox: postbox, ids: group.map { $0.0 }, errorCode: error.errorDescription)
                     } |> runOn(queue)
@@ -2245,18 +2253,23 @@ public final class PendingMessageManager {
                     }
                 }
                 |> `catch` { error -> Signal<Void, NoError> in
-                    pendingMessageFailureLog("message \(messageId.id) request failed \(error.errorCode) \(error.errorDescription ?? ""), \(self?.failureContext() ?? "")")
                     queue.async {
+                        // One line, written once the next step is known, so a send that goes out again with a
+                        // fresh reference does not read as a failure in the critical log.
                         guard let strongSelf = self, let context = strongSelf.messageContexts[messageId] else {
+                            pendingMessageFailureLog(pendingSendFailureLogText("message \(messageId.id)", code: error.errorCode, text: error.errorDescription ?? "", outcome: .noLongerPending, context: self?.failureContext() ?? ""))
                             return
                         }
-                        if error.errorDescription.hasPrefix("FILEREF_INVALID") || error.errorDescription.hasPrefix("FILE_REFERENCE_") || classifyPendingSendError(code: error.errorCode, text: error.errorDescription) == .reupload {
+                        let wantsFreshMedia = error.errorDescription.hasPrefix("FILEREF_INVALID") || error.errorDescription.hasPrefix("FILE_REFERENCE_") || classifyPendingSendError(code: error.errorCode, text: error.errorDescription) == .reupload
+                        if wantsFreshMedia {
                             if !context.forcedReuploadOnce {
+                                pendingMessageFailureLog(pendingSendFailureLogText("message \(messageId.id)", code: error.errorCode, text: error.errorDescription ?? "", outcome: .sendingAgainWithFreshMedia(items: nil), context: strongSelf.failureContext()))
                                 context.forcedReuploadOnce = true
                                 strongSelf.beginSendingMessages([messageId])
                                 return
                             }
                         }
+                        pendingMessageFailureLog(pendingSendFailureLogText("message \(messageId.id)", code: error.errorCode, text: error.errorDescription ?? "", outcome: .failing(afterFreshTry: wantsFreshMedia), context: strongSelf.failureContext()))
                         strongSelf.notifyMessageFailure(ids: [messageId], code: error.errorDescription)
                         let _ = failMessages(postbox: postbox, ids: [messageId], errorCode: error.errorDescription).start()
                     }
