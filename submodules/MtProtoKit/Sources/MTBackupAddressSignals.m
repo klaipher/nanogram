@@ -265,6 +265,11 @@ MTAtomic *sharedFetchConfigKeychains() {
     mtProto.useTempAuthKeys = true;
     mtProto.allowUnboundEphemeralKeys = allowUnboundEphemeralKeys;
     MTRequestMessageService *requestService = [[MTRequestMessageService alloc] initWithContext:context];
+    // The keychain is shared by every fetch from this address, so from the second fetch on the key
+    // already holds our apiInitializationHash and getConfig would go out without invokeWithLayer.
+    // The server then answered in its base layer (config#232d5905), the parse failed and the
+    // fetched addresses were lost.
+    requestService.alwaysInitializeApi = true;
     [mtProto addMessageService:requestService];
     
     [mtProto resume];
