@@ -3460,8 +3460,9 @@ final class PostboxImpl {
     /// The running transaction's call site and start, for a background drain that times out (see `PostboxRunningTransaction`).
     let runningTransaction: Atomic<PostboxRunningTransaction?>
     private var transactionWriteAttribution = TransactionWriteAttribution()
+    private var slowTransactionLiveViewsLog = SlowTransactionLiveViewsLog()
     
-    private func internalTransaction<T>(_ f: (Transaction) -> T, file: String = #file, line: Int = #line, detail: String? = nil) -> (result: T, updatedTransactionStateVersion: Int64?, updatedMasterClientId: Int64?) {
+    private func internalTransaction<T>(_ f: (Transaction) -> T, file: String = #file, line: Int = #line, detail: (() -> String)? = nil) -> (result: T, updatedTransactionStateVersion: Int64?, updatedMasterClientId: Int64?) {
         let _ = self.isInTransaction.swap(true)
         
         let startTime = CFAbsoluteTimeGetCurrent()
@@ -3493,12 +3494,16 @@ final class PostboxImpl {
         let endTime = CFAbsoluteTimeGetCurrent()
         let transactionDuration = endTime - startTime
         if transactionDuration > 0.01 {
-            postboxLog("Postbox transaction took \(transactionDuration * 1000.0) ms, from: \(file):\(line)\(detail.flatMap({ " " + $0 }) ?? "")")
+            postboxLog("Postbox transaction took \(transactionDuration * 1000.0) ms, from: \(file):\(line)\(detail.flatMap({ " " + $0() }) ?? "")")
         }
-        if transactionDuration > 0.05 {
+        if self.slowTransactionLiveViewsLog.shouldLog(transactionDuration: transactionDuration, now: endTime) {
             // Every live view is updated by a transaction that touches what it shows: which kinds there are, and how
-            // many, says what a slow one pays for.
-            postboxLog("Postbox slow transaction (\(transactionDuration * 1000.0) ms) live views: \(self.viewTracker.liveViewCountsDescription())")
+            // many, says what a slow one pays for. Listing them holds this queue too, so it is gated (100 ms or more,
+            // once a minute) and the line says what it cost.
+            let describeStartTime = CFAbsoluteTimeGetCurrent()
+            let liveViews = self.viewTracker.liveViewCountsDescription()
+            let describeDuration = CFAbsoluteTimeGetCurrent() - describeStartTime
+            postboxLog("Postbox slow transaction (\(transactionDuration * 1000.0) ms) live views (listed in \(describeDuration * 1000.0) ms): \(liveViews)")
         }
         
         let _ = self.isInTransaction.swap(false)
@@ -3521,7 +3526,7 @@ final class PostboxImpl {
         return (result, updatedTransactionState, updatedMasterClientId)
     }
     
-    public func transactionSignal<T, E>(userInteractive: Bool = false, _ f: @escaping(Subscriber<T, E>, Transaction) -> Disposable, file: String = #file, line: Int = #line, detail: String? = nil) -> Signal<T, E> {
+    public func transactionSignal<T, E>(userInteractive: Bool = false, _ f: @escaping(Subscriber<T, E>, Transaction) -> Disposable, file: String = #file, line: Int = #line, detail: (() -> String)? = nil) -> Signal<T, E> {
         return Signal { subscriber in
             let disposable = MetaDisposable()
             
@@ -4463,7 +4468,10 @@ final class PostboxImpl {
     }
     
     public func combinedView(keys: [PostboxViewKey], file: StaticString = #file, line: Int = #line) -> Signal<CombinedView, NoError> {
-        let detail = "keys: " + keys.map({ postboxViewKeyKind($0) }).sorted().joined(separator: ",")
+        // Built only when the transaction is slow enough to be logged, on the Postbox queue.
+        let detail: () -> String = {
+            return "keys: " + postboxViewKindCountsDescription(postboxViewKeyKindCounts(keys))
+        }
         return self.transactionSignal({ [self] subscriber, transaction in
             var views: [PostboxViewKey: MutablePostboxView] = [:]
             for key in keys {
