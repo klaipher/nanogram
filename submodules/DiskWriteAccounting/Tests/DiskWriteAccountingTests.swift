@@ -106,6 +106,70 @@ final class DiskWriteAccountingTests: XCTestCase {
         XCTAssertEqual(DiskWriteLedger.load(path: ledgerPath).days[day]?.bytes, ["logs": 1000, "sqlite.wal.postbox/db": 2 * 1024 * 1024])
     }
 
+    /// The whole ledger (about 40 KB for two weeks) was rewritten on every foreground and background entry, about 250
+    /// times a day (MetricKit 2026-11-25: 2 of 23 disk-write samples). A report that does not save keeps the day's
+    /// totals in memory, and the next report that saves writes them, even when nothing was written in between.
+    func testAReportThatDoesNotSaveKeepsTheLedgerForTheNextSave() throws {
+        let directory = NSTemporaryDirectory() + "DiskWriteAccountingTests-" + UUID().uuidString
+        try FileManager.default.createDirectory(atPath: directory, withIntermediateDirectories: true)
+        defer {
+            let _ = try? FileManager.default.removeItem(atPath: directory)
+        }
+        let ledgerPath = directory + "/disk-writes.json"
+        let accounting = DiskWriteAccounting()
+        let reporter = DiskWriteAccountingReporter(accounting: accounting, ledgerPath: ledgerPath)
+        let day = DiskWriteAccountingReporter.dayKey(Date())
+
+        accounting.add("logs", bytes: 1000)
+        let line = reporter.report(reason: "foreground", savesLedger: false)
+        XCTAssertTrue(line.hasPrefix("Disk writes (foreground): 1000 B"), line)
+        XCTAssertFalse(FileManager.default.fileExists(atPath: ledgerPath), "a report that does not save leaves the file alone")
+        XCTAssertTrue(reporter.summary().contains("\(day): 1000 B"), "the in-memory ledger has it")
+
+        // Nothing was written since: the next saving report still writes what the previous one kept.
+        let background = reporter.report(reason: "background")
+        XCTAssertTrue(background.hasPrefix("Disk writes (background): 0 B"), background)
+        XCTAssertEqual(DiskWriteLedger.load(path: ledgerPath).days[day]?.bytes, ["logs": 1000])
+
+        // A file already on disk is not rewritten by a report that does not save.
+        accounting.add("logs", bytes: 24)
+        reporter.report(reason: "foreground", savesLedger: false)
+        XCTAssertEqual(DiskWriteLedger.load(path: ledgerPath).days[day]?.bytes, ["logs": 1000])
+        reporter.report(reason: "hourly")
+        XCTAssertEqual(DiskWriteLedger.load(path: ledgerPath).days[day]?.bytes, ["logs": 1024])
+
+        // Once saved, a report with nothing new does not rewrite the file.
+        try FileManager.default.removeItem(atPath: ledgerPath)
+        reporter.report(reason: "background")
+        XCTAssertFalse(FileManager.default.fileExists(atPath: ledgerPath))
+    }
+
+    /// iOS may kill the app while it is suspended. What a report kept only in memory reaches the file before the app
+    /// is suspended, however little was written since.
+    func testAReportBeforeSuspensionSavesWhatAReportKeptInMemory() throws {
+        let directory = NSTemporaryDirectory() + "DiskWriteAccountingTests-" + UUID().uuidString
+        try FileManager.default.createDirectory(atPath: directory, withIntermediateDirectories: true)
+        defer {
+            let _ = try? FileManager.default.removeItem(atPath: directory)
+        }
+        let ledgerPath = directory + "/disk-writes.json"
+        let accounting = DiskWriteAccounting()
+        let reporter = DiskWriteAccountingReporter(accounting: accounting, ledgerPath: ledgerPath)
+        let day = DiskWriteAccountingReporter.dayKey(Date())
+
+        accounting.add("logs", bytes: 1000)
+        reporter.report(reason: "foreground", savesLedger: false)
+        accounting.add("logs", bytes: 24)
+        let line = reporter.reportIfPending(atLeast: 1024 * 1024, reason: "suspend")
+        XCTAssertNotNil(line)
+        XCTAssertEqual(DiskWriteLedger.load(path: ledgerPath).days[day]?.bytes, ["logs": 1024])
+
+        // With everything saved, a small amount waits again.
+        accounting.add("logs", bytes: 1)
+        XCTAssertNil(reporter.reportIfPending(atLeast: 1024 * 1024, reason: "suspend"))
+        XCTAssertEqual(DiskWriteLedger.load(path: ledgerPath).days[day]?.bytes, ["logs": 1024])
+    }
+
     func testAReportWithNothingWrittenDoesNotRewriteTheLedger() throws {
         let directory = NSTemporaryDirectory() + "DiskWriteAccountingTests-" + UUID().uuidString
         try FileManager.default.createDirectory(atPath: directory, withIntermediateDirectories: true)

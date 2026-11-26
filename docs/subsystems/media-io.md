@@ -30,7 +30,9 @@
   transition, and `SharedWakeupManager.releaseBackgroundTime` reports (`suspend`, from 1 MB) right
   before iOS may suspend the app: a process launched in the background for a push, then killed while
   suspended, gets no other report. Per-day totals are in `<root>/logs/disk-writes.json`, which Send
-  MetricKit Reports includes, so a day's `logicalDiskWrites` can be split by writer. A new large writer
+  MetricKit Reports includes, so a day's `logicalDiskWrites` can be split by writer. The file (~40 KB) is
+  rewritten by the hourly, background, suspend and export reports; the foreground one only updates it in
+  memory (`report(reason:savesLedger:)`), and the suspend one also saves when it holds such totals. A new large writer
   should report to it. `sqlite3_wal_checkpoint_v2`'s `pnCkpt` is the WAL's *total* backfilled frames,
   so only its growth counts (`SqliteWalWriteAccounting`): summed per checkpoint, a WAL pinned by an
   extension's reader read 1.2 GB of checkpoints for 16 MB written.

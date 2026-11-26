@@ -1,8 +1,8 @@
 public import Foundation
 
 /// Per-day totals of `DiskWriteAccounting`, kept across launches so a day's totals can be set beside that day's
-/// MetricKit `cumulativeLogicalWrites`. Stored as a small JSON file (a few KB) and rewritten only when the reporter
-/// reports, at most once an hour plus once per background entry.
+/// MetricKit `cumulativeLogicalWrites`. Stored as a JSON file of about 3 KB per day (about 40 KB for `keptDays`),
+/// rewritten whole by a report that saves (`DiskWriteAccountingReporter.report(reason:savesLedger:)`).
 public struct DiskWriteLedger: Codable, Equatable, Sendable {
     public struct Day: Codable, Equatable, Sendable {
         public var bytes: [String: Int64]
@@ -112,7 +112,8 @@ public struct DiskWriteLedger: Codable, Equatable, Sendable {
 }
 
 /// Turns the running counters into a log line and the per-day ledger. The app calls `report(reason:)` once an hour
-/// and when it enters the background; each call accounts only what was written since the previous one.
+/// and when it enters the background (both save the ledger file), and `report(reason:savesLedger: false)` when it
+/// returns to the foreground; each call accounts only what was written since the previous one.
 public final class DiskWriteAccountingReporter: @unchecked Sendable {
     private let accounting: DiskWriteAccounting
     private let ledgerPath: String?
@@ -122,6 +123,8 @@ public final class DiskWriteAccountingReporter: @unchecked Sendable {
     private var lastSnapshot = DiskWriteSnapshot()
     private var lastReportDate: Date
     private var ledger: DiskWriteLedger?
+    /// The in-memory ledger has totals the file does not (a report that did not save).
+    private var hasUnsavedChanges = false
 
     public init(accounting: DiskWriteAccounting = .shared, ledgerPath: String?, now: @escaping @Sendable () -> Date = { Date() }) {
         self.accounting = accounting
@@ -137,8 +140,12 @@ public final class DiskWriteAccountingReporter: @unchecked Sendable {
     }
 
     /// Accounts what was written since the last report, adds it to today's ledger entry and returns the log line.
+    /// With `savesLedger` the ledger file is rewritten when it lacks anything (also what an earlier report kept in
+    /// memory); without it only the in-memory ledger changes, and the next report that saves writes it. The file is
+    /// about 40 KB, so a report that a saving one follows soon (the foreground one: the next background entry saves)
+    /// passes false.
     @discardableResult
-    public func report(reason: String) -> String {
+    public func report(reason: String, savesLedger: Bool = true) -> String {
         let current = self.accounting.snapshot()
         let date = self.now()
 
@@ -152,8 +159,14 @@ public final class DiskWriteAccountingReporter: @unchecked Sendable {
         let dayKey = DiskWriteAccountingReporter.dayKey(date)
         ledger.add(delta, day: dayKey)
         self.ledger = ledger
-        if let ledgerPath = self.ledgerPath, !delta.isEmpty {
-            ledger.save(path: ledgerPath)
+        if let ledgerPath = self.ledgerPath {
+            if !delta.isEmpty {
+                self.hasUnsavedChanges = true
+            }
+            if savesLedger && self.hasUnsavedChanges {
+                ledger.save(path: ledgerPath)
+                self.hasUnsavedChanges = false
+            }
         }
         let today = ledger.days[dayKey]?.snapshot ?? DiskWriteSnapshot()
         self.lock.unlock()
@@ -165,14 +178,16 @@ public final class DiskWriteAccountingReporter: @unchecked Sendable {
     /// `report(reason:)` before iOS may suspend the app, which can then kill it without any later report (a process
     /// launched in the background by a push never gets an hourly or foreground one). Reports only when at least
     /// `minimumBytes` were written since the last report, so the ledger is not rewritten on every short wakeup; a
-    /// smaller amount stays for the next report. Nil when nothing was reported.
+    /// smaller amount stays for the next report. Also reports when an earlier report kept totals only in memory, so
+    /// they reach the file before a kill. Nil when nothing was reported.
     @discardableResult
     public func reportIfPending(atLeast minimumBytes: Int64, reason: String) -> String? {
         let current = self.accounting.snapshot()
         self.lock.lock()
         let pendingBytes = current.subtracting(self.lastSnapshot).totalBytes
+        let hasUnsavedChanges = self.hasUnsavedChanges
         self.lock.unlock()
-        if pendingBytes < minimumBytes {
+        if pendingBytes < minimumBytes && !hasUnsavedChanges {
             return nil
         }
         return self.report(reason: reason)
