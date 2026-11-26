@@ -41,6 +41,7 @@ private struct ActivityRecord {
 private final class PeerInputActivityContext {
     private let queue: Queue
     private let isLocal: Bool
+    private let now: () -> Double
     private let notifyEmpty: () -> Void
     private let notifyUpdated: () -> Void
     
@@ -51,9 +52,10 @@ private final class PeerInputActivityContext {
     
     private var scheduledUpdateSubscribers = false
     
-    init(queue: Queue, isLocal: Bool, notifyEmpty: @escaping () -> Void, notifyUpdated: @escaping () -> Void) {
+    init(queue: Queue, isLocal: Bool, now: @escaping () -> Double, notifyEmpty: @escaping () -> Void, notifyUpdated: @escaping () -> Void) {
         self.queue = queue
         self.isLocal = isLocal
+        self.now = now
         self.notifyEmpty = notifyEmpty
         self.notifyUpdated = notifyUpdated
     }
@@ -61,7 +63,7 @@ private final class PeerInputActivityContext {
     func addActivity(peerId: PeerId, activity: PeerInputActivity, timeout: Double, episodeId: Int32?, nextUpdateId: inout Int32) {
         assert(self.queue.isCurrent())
         
-        let timestamp = CFAbsoluteTimeGetCurrent()
+        let timestamp = self.now()
         
         var updated = false
         var found = false
@@ -229,15 +231,17 @@ final class PeerInputActivityManager {
     private final class Impl {
         let queue: Queue
         let isLocal: Bool
+        let now: () -> Double
         
         var nextEpisodeId: Int32 = 0
         var nextUpdateId: Int32 = 0
         var contexts: [PeerActivitySpace: PeerInputActivityContext] = [:]
         var globalContext: PeerGlobalInputActivityContext?
         
-        init(queue: Queue, isLocal: Bool) {
+        init(queue: Queue, isLocal: Bool, now: @escaping () -> Double) {
             self.queue = queue
             self.isLocal = isLocal
+            self.now = now
         }
         
         func activities(peerId: PeerActivitySpace, onNext: @escaping ([(PeerId, PeerInputActivityRecord)]) -> Void) -> Disposable {
@@ -245,7 +249,7 @@ final class PeerInputActivityManager {
             if let currentContext = self.contexts[peerId] {
                 context = currentContext
             } else {
-                context = PeerInputActivityContext(queue: queue, isLocal: self.isLocal, notifyEmpty: { [weak self] in
+                context = PeerInputActivityContext(queue: queue, isLocal: self.isLocal, now: self.now, notifyEmpty: { [weak self] in
                     guard let self else {
                         return
                     }
@@ -331,7 +335,7 @@ final class PeerInputActivityManager {
             if let currentContext = self.contexts[chatPeerId] {
                 context = currentContext
             } else {
-                context = PeerInputActivityContext(queue: self.queue, isLocal: self.isLocal, notifyEmpty: { [weak self] in
+                context = PeerInputActivityContext(queue: self.queue, isLocal: self.isLocal, now: self.now, notifyEmpty: { [weak self] in
                     guard let self else {
                         return
                     }
@@ -420,10 +424,12 @@ final class PeerInputActivityManager {
     private let impl: QueueLocalObject<Impl>
     
     /// `isLocal`: the manager of our own activities, which are sent to the server (see `peerInputActivityRefreshInterval`).
-    init(isLocal: Bool = false) {
+    /// It has no default, so each construction site says which manager it builds.
+    /// `now`: the clock for activity timestamps, called on the manager's queue; tests pass a manual one.
+    init(isLocal: Bool, now: @escaping () -> Double = { CFAbsoluteTimeGetCurrent() }) {
         let queue = self.queue
         self.impl = QueueLocalObject(queue: queue, generate: {
-            return Impl(queue: queue, isLocal: isLocal)
+            return Impl(queue: queue, isLocal: isLocal, now: now)
         })
     }
     

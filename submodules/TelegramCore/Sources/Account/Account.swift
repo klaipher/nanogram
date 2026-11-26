@@ -1345,7 +1345,7 @@ public class Account {
         
         self.networkStatsContext = NetworkStatsContext(postbox: postbox)
         
-        self.peerInputActivityManager = PeerInputActivityManager()
+        self.peerInputActivityManager = PeerInputActivityManager(isLocal: false)
         
         if !supplementary {
             self.filteredStorySubscriptionsContext = StorySubscriptionsContext(accountPeerId: peerId, postbox: postbox, network: network, isHidden: false)
