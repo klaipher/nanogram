@@ -13,8 +13,9 @@ func managedAudioSessionLog(_ what: @autoclosure () -> String) {
     managedAudioSessionLogger(what())
 }
 
+/// The port's type and uid tag, never its name: see `audioPortLogLabel`.
 private func describeAudioPort(_ port: AVAudioSessionPortDescription) -> String {
-    return "\(port.portName) [\(port.portType.rawValue)]"
+    return audioPortLogLabel(portType: port.portType.rawValue, uid: port.uid)
 }
 
 /// Everything needed to tell "the app pinned this input" apart from "the system chose this input".
@@ -147,6 +148,44 @@ public enum AudioSessionOutput: Equatable {
     case speaker
     case headphones
     case port(AudioSessionPort)
+}
+
+/// How a port picked in the call's audio menu appears in text: its kind and the tag of its uid (`bluetooth#539f39`), never
+/// its name ("<first name>'s AirPods Pro") or its uid (a Bluetooth address). Without this, Swift's default description
+/// lists every stored field, and `AudioSessionOutputMode` values are put into the session's log lines, which go to the
+/// always-on critical log.
+extension AudioSessionPort: CustomStringConvertible, CustomDebugStringConvertible, CustomReflectable {
+    public var description: String {
+        return "\(self.type)#\(audioPortLogTag(uid: self.uid))"
+    }
+
+    public var debugDescription: String {
+        return self.description
+    }
+
+    /// `dump` and debuggers read a value's fields through its mirror; it shows the same two things.
+    public var customMirror: Mirror {
+        return Mirror(self, children: ["type": self.type, "tag": audioPortLogTag(uid: self.uid)], displayStyle: .struct)
+    }
+}
+
+extension AudioSessionOutput: CustomStringConvertible, CustomDebugStringConvertible {
+    public var description: String {
+        switch self {
+        case .builtin:
+            return "builtin"
+        case .speaker:
+            return "speaker"
+        case .headphones:
+            return "headphones"
+        case let .port(port):
+            return "port(\(port))"
+        }
+    }
+
+    public var debugDescription: String {
+        return self.description
+    }
 }
 
 private let bluetoothPortTypes = Set<AVAudioSession.Port>([.bluetoothA2DP, .bluetoothLE, .bluetoothHFP])
@@ -342,6 +381,24 @@ public enum AudioSessionOutputMode: Equatable {
                     return false
                 }
         }
+    }
+}
+
+/// The log lines put the mode in as it is ("setup custom(port(bluetooth#539f39)) for voiceCall"); see `AudioSessionPort`.
+extension AudioSessionOutputMode: CustomStringConvertible, CustomDebugStringConvertible {
+    public var description: String {
+        switch self {
+        case .system:
+            return "system"
+        case .speakerIfNoHeadphones:
+            return "speakerIfNoHeadphones"
+        case let .custom(output):
+            return "custom(\(output))"
+        }
+    }
+
+    public var debugDescription: String {
+        return self.description
     }
 }
 
@@ -575,6 +632,8 @@ public final class ManagedAudioSessionImpl: NSObject, ManagedAudioSession {
     }
     private var deactivateTimer: SwiftSignalKit.Timer?
     private var deactivationRetryGate = ManagedAudioSessionDeactivationRetryGate()
+    /// Touched only on `queue`.
+    private var routeLogDeduplicator = AudioRouteLogDeduplicator()
     
     private let isHeadsetPluggedInSync = Atomic<Bool>(value: false)
     private var isHeadsetPluggedInValue = false {
@@ -667,7 +726,10 @@ public final class ManagedAudioSessionImpl: NSObject, ManagedAudioSession {
     }
     
     private func updateCurrentAudioRouteInfo() {
-        managedAudioSessionLog("ManagedAudioSession current route: \(audioInputStateDescription())")
+        let routeDescription = audioInputStateDescription()
+        if self.routeLogDeduplicator.shouldLog(routeDescription) {
+            managedAudioSessionLog("ManagedAudioSession current route: \(routeDescription)")
+        }
 
         let value = self.isHeadsetPluggedIn()
         if self.isHeadsetPluggedInValue != value {

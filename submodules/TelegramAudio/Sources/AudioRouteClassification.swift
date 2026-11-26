@@ -57,3 +57,46 @@ public func loudspeakerShouldBeReappliedOnActivation(outputPortTypes: [String]) 
 public func loudspeakerRequestShouldBeRetried(outputPortTypes: [String], attempt: Int, isLatestRequest: Bool) -> Bool {
     return attempt == 0 && isLatestRequest && loudspeakerRequestMissedRoute(outputPortTypes: outputPortTypes)
 }
+
+/// The ports of the phone itself (`.builtInMic`, `.builtInReceiver`, `.builtInSpeaker`): there is one of each, so the
+/// type alone names them.
+private let builtInAudioPortTypes: Set<String> = ["MicrophoneBuiltIn", "Receiver", "Speaker"]
+
+/// A short tag that stays the same for one port across launches and tells two devices apart: the top 24 bits of the
+/// FNV-1a 32-bit hash of its uid, as 6 hex digits. `hashValue` is seeded per process, so it cannot be used. The uid itself
+/// is never logged, because for a Bluetooth port it holds the device's address.
+public func audioPortLogTag(uid: String) -> String {
+    var hash: UInt32 = 2166136261
+    for byte in uid.utf8 {
+        hash ^= UInt32(truncatingIfNeeded: byte)
+        hash = hash &* 16777619
+    }
+    return String(format: "%06x", hash >> 8)
+}
+
+/// How a port appears in the logs: its type, plus the uid tag for a port that is not part of the phone. Never its name,
+/// which is the one the user gave the device ("<first name>'s AirPods Pro"), because the audio session lines go to the
+/// always-on critical log, which the report does not mask.
+public func audioPortLogLabel(portType: String, uid: String) -> String {
+    if builtInAudioPortTypes.contains(portType) {
+        return portType
+    }
+    return "\(portType)#\(audioPortLogTag(uid: uid))"
+}
+
+/// The session writes its route each time the system says the route changed and each time it activates, often several
+/// times in a few milliseconds with nothing different. Only a route that differs from the last one written is written.
+public struct AudioRouteLogDeduplicator {
+    private var lastLogged: String?
+
+    public init() {
+    }
+
+    public mutating func shouldLog(_ description: String) -> Bool {
+        if self.lastLogged == description {
+            return false
+        }
+        self.lastLogged = description
+        return true
+    }
+}
