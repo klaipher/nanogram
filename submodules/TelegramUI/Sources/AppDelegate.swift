@@ -1755,7 +1755,11 @@ private func extractAccountManagerState(records: AccountRecordsView<TelegramAcco
                     sharedApplicationContext.wakeupManager.beginCleanupProcessingTask()
                     disposable.set(self.runCacheReindexTasks(lowImpact: true, optimizeDatabase: true, maintenanceExpired: expired, completion: {
                         Logger.shared.log("App \(self.episodeId)", "Completed cleanup task")
-                        
+
+                        // The full reindex finished, so the launch check need not repeat it for two days. Only a run that
+                        // got to the end counts: on expiry the signal is disposed and this closure never runs.
+                        UserDefaults.standard.set(Int(CFAbsoluteTimeGetCurrent()) as NSNumber, forKey: CacheReindexSchedule.timestampKey)
+
                         finish(true)
                     }))
                 })
@@ -1779,10 +1783,9 @@ private func extractAccountManagerState(records: AccountRecordsView<TelegramAcco
         }
         
         let timestamp = Int(CFAbsoluteTimeGetCurrent())
-        let minReindexTimestamp = timestamp - 2 * 24 * 60 * 60
-        if let indexTimestamp = UserDefaults.standard.object(forKey: "TelegramCacheIndexTimestamp_v2") as? NSNumber, indexTimestamp.intValue >= minReindexTimestamp {
-        } else {
-            UserDefaults.standard.set(timestamp as NSNumber, forKey: "TelegramCacheIndexTimestamp_v2")
+        let lastIndexTimestamp = (UserDefaults.standard.object(forKey: CacheReindexSchedule.timestampKey) as? NSNumber)?.intValue
+        if CacheReindexSchedule.isDue(lastIndexTimestamp: lastIndexTimestamp, now: timestamp) {
+            UserDefaults.standard.set(timestamp as NSNumber, forKey: CacheReindexSchedule.timestampKey)
             
             Logger.shared.log("App \(self.episodeId)", "Executing low-impact cache reindex in foreground")
             let _ = self.runCacheReindexTasks(lowImpact: true, completion: {
