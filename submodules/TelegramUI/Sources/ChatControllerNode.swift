@@ -4371,7 +4371,7 @@ class ChatControllerNode: ASDisplayNode, ASScrollViewDelegate {
         )
     }
     
-    /// The text input got focus: the keyboard is rising. The data build runs on the main queue, so it starts after the keyboard animation (through the idle path, which also waits for a quiet history
+    /// The text input got focus: the keyboard is rising. The emoji and sticker contents are built on their own queues, but the combined input data and the node update run on the main queue, so it starts after the keyboard animation (through the idle path, which also waits for a quiet history
     /// list and replaces a pending earlier idle start); an explicit demand or a button touch-down still starts at once.
     private func prewarmInputMediaNodeDataAfterFocus() {
         guard self.didInitializeInputMediaNodeDataPromise, !self.inputMediaNodeDataStartGate.hasStarted else {

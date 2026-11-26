@@ -204,6 +204,10 @@ public extension EmojiPagerContentComponent {
         let hasPremiumSignal: Signal<Bool, NoError> = forceHasPremium ? .single(true) : hasPremium(context: context, chatPeerId: chatPeerId, premiumIfSavedMessages: premiumIfSavedMessages)
         let itemReuseCache = EmojiItemReuseCache<EmojiPanelItemKey, EmojiPanelItemFingerprint, EmojiPagerContentComponent.Item>()
         let groupReuseCache = EmojiItemReuseCache<AnyHashable, EmojiReuseIdentityFingerprint<EmojiPagerContentComponent.ItemGroup, EmojiPagerContentComponent.Item>, EmojiPagerContentComponent.ItemGroup>()
+        // Postbox hands a view's first value over inside its transaction, and a queue-less combineLatest maps on the
+        // thread of the last input, so the build below ran inside a Postbox transaction (~33 ms per chat open). Every
+        // input hops here first: the build and the reuse caches run off the database queue, one emission at a time.
+        let buildQueue = Queue(name: "EmojiPagerContentSignals.emojiInputData", qos: .userInitiated)
         
         // Typed one by one: inline, the overloads of distinctUntilChanged inside the eight-way combineLatest and its
         // long map closure are more than the type checker finishes in time.
@@ -219,6 +223,7 @@ public extension EmojiPagerContentComponent {
             |> distinctUntilChanged
         
         let emojiItems: Signal<EmojiPagerContentComponent, NoError> = combineLatest(
+            queue: buildQueue,
             distinctItemCollectionsView,
             distinctHasPremium,
             distinctFeaturedEmojiPacks,
@@ -1755,7 +1760,10 @@ public extension EmojiPagerContentComponent {
             }
         }
         
+        // As in emojiInputData: build off the Postbox queue, whose views deliver their first value inside a transaction.
+        let buildQueue = Queue(name: "EmojiPagerContentSignals.stickerInputData", qos: .userInitiated)
         return combineLatest(
+            queue: buildQueue,
             context.account.postbox.itemCollectionsView(orderedItemListCollectionIds: stickerOrderedItemListCollectionIds, namespaces: stickerNamespaces, aroundIndex: nil, count: 10000000),
             hasPremium(context: context, chatPeerId: chatPeerId, premiumIfSavedMessages: false),
             hasTrending ? context.account.viewTracker.featuredStickerPacks() : .single([]),
