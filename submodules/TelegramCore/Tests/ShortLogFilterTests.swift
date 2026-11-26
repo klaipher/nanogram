@@ -2,10 +2,11 @@ import Foundation
 import XCTest
 @testable import TelegramCore
 
-/// The short log (`critlog-*.txt`, 1 MB per file, 20 files) was ~60% routine lines on a tester's device: msgsAck and
-/// ping sends, every Postbox transaction over 10 ms, one hole-removal line per tag space and the cleanup's in-memory
-/// size reports. A file filled in as little as 55 minutes. `ShortLogFilter` keeps those out of the short log (the full
-/// log still has them), counts them, and writes the counts in one summary line every few minutes.
+/// The short log (`critlog-*.txt`, 1 MB per file, 20 files) filled a file in as little as 55 minutes on a tester's
+/// device, much of it routine: msgsAck and ping sends, every Postbox transaction over 10 ms, one hole-removal line per
+/// tag space and the cleanup's in-memory size reports. `ShortLogFilter` keeps those out of the short log (the full log
+/// still has them; replaying that device's short logs, ~37% of the bytes go), counts them, and writes the counts in one
+/// summary line every few minutes and when the logs are flushed.
 final class ShortLogFilterTests: XCTestCase {
     func testAcksAndPingsAreLeftOutAndCounted() {
         let filter = ShortLogFilter()
@@ -111,6 +112,37 @@ final class ShortLogFilterTests: XCTestCase {
         XCTAssertFalse(filter.admitMTProto("[MTProto#0x1@0x2 preparing ping (4/0)]"))
         // The app was suspended: the next line comes long after the interval.
         XCTAssertEqual(filter.takeSummary(now: 1000.0 + 3600.0), "Short log left out in the last 3600 s: msgsAck 0, ping 1, transactions under 50 ms 0, extra hole spaces 0, cleanup size reports 0")
+    }
+
+    func testAFlushWritesTheCountsSoFar() {
+        let filter = ShortLogFilter()
+        XCTAssertNil(filter.takeSummary(now: 1000.0))
+        // Nothing left out: a flush writes nothing.
+        XCTAssertNil(filter.takeSummary(now: 1010.0, force: true))
+        XCTAssertFalse(filter.admitMTProto("[MTProto#0x1@0x2 preparing ping (4/0)]"))
+        // The app is about to be suspended, long before the interval ends: the counts go out now.
+        XCTAssertEqual(filter.takeSummary(now: 1060.0, force: true), "Short log left out in the last 60 s: msgsAck 0, ping 1, transactions under 50 ms 0, extra hole spaces 0, cleanup size reports 0")
+        XCTAssertEqual(filter.counts, ShortLogFilter.Counts())
+        // The next interval starts at the flush.
+        XCTAssertFalse(filter.admitMTProto("[MTProto#0x1@0x2 preparing ping (5/0)]"))
+        XCTAssertNil(filter.takeSummary(now: 1060.0 + ShortLogFilter.summaryInterval - 1.0))
+        XCTAssertEqual(filter.takeSummary(now: 1060.0 + ShortLogFilter.summaryInterval), "Short log left out in the last 300 s: msgsAck 0, ping 1, transactions under 50 ms 0, extra hole spaces 0, cleanup size reports 0")
+    }
+
+    func testAClockThatGoesBackStartsTheIntervalAgain() {
+        let filter = ShortLogFilter()
+        XCTAssertNil(filter.takeSummary(now: 5000.0))
+        XCTAssertFalse(filter.admitMTProto("[MTProto#0x1@0x2 preparing ping (4/0)]"))
+        // An hour back: no wait for the clock to catch up, and the counts are kept.
+        XCTAssertNil(filter.takeSummary(now: 1400.0))
+        XCTAssertEqual(filter.takeSummary(now: 1400.0 + ShortLogFilter.summaryInterval), "Short log left out in the last 300 s: msgsAck 0, ping 1, transactions under 50 ms 0, extra hole spaces 0, cleanup size reports 0")
+    }
+
+    func testTheClockDoesNotGoBack() {
+        let first = ShortLogFilter.now()
+        let second = ShortLogFilter.now()
+        XCTAssertGreaterThan(first, 0.0)
+        XCTAssertGreaterThanOrEqual(second, first)
     }
 
     func testTheFilterIsSafeToUseFromSeveralThreads() {

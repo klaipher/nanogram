@@ -1,8 +1,10 @@
 import Foundation
 
 /// Decides which MTProto and Postbox lines reach the short log (`critlog-*.txt`, written in every build, 1 MB per file,
-/// 20 files). On a tester's device ~60% of its bytes were routine lines, and a file filled in as little as 55 minutes,
-/// so the hours before a kill were often gone. Left out of the short log (the full log, when on, still has every one):
+/// 20 files). On a tester's device a file filled in as little as 55 minutes, so the hours before a kill were often
+/// gone. Replaying that device's short logs, the rules below drop ~37% of the bytes (MTProto lines as a whole were
+/// ~60%, but containers and file parts stay on purpose). Left out of the short log (the full log, when on, still has
+/// every one):
 ///
 /// - MTProto `preparing msgsAck (...)` and `preparing ping (...)`: ~22% of the bytes. Containers, file parts and every
 ///   other request stay, since acks and bad_msg_notification refer to container ids.
@@ -12,8 +14,11 @@ import Foundation
 ///   differ only in `space:`: up to 17 lines per removal. The first one stays.
 /// - `TimeBasedCleanup in-memory size`: ~470 lines a minute during the daily scan. Its start and end lines stay.
 ///
-/// What is left out is counted, and `takeSummary(now:)` gives one line with the counts every `summaryInterval`.
-/// Safe to use from any thread.
+/// What is left out is counted, and `takeSummary(now:)` gives one line with the counts every `summaryInterval`. That
+/// call comes with the next MTProto or Postbox line, so the logger also writes the counts so far with `force` when it
+/// flushes (`Logger.flushPendingLogs`: before a suspension, on memory warnings and on termination); after a crash or
+/// a kill with no flush the counts of the last interval are missing. `now` comes from `ShortLogFilter.now()`, a clock
+/// that keeps running while the device sleeps and does not follow wall-clock changes. Safe to use from any thread.
 final class ShortLogFilter: @unchecked Sendable {
     static let shared = ShortLogFilter()
 
@@ -50,6 +55,12 @@ final class ShortLogFilter: @unchecked Sendable {
     private var lastHoleAt: Double = 0.0
 
     init() {
+    }
+
+    /// Seconds on a clock that keeps running while the device sleeps and does not step with the wall clock, so a
+    /// time change neither holds the summary back nor misstates its interval.
+    static func now() -> Double {
+        return Double(clock_gettime_nsec_np(CLOCK_MONOTONIC)) / 1_000_000_000.0
     }
 
     /// What has been left out since the last summary.
@@ -126,8 +137,9 @@ final class ShortLogFilter: @unchecked Sendable {
     }
 
     /// One line with what was left out, once `summaryInterval` has passed since the last call that started an
-    /// interval, and only when something was left out. The first call starts the first interval.
-    func takeSummary(now: Double) -> String? {
+    /// interval, and only when something was left out. The first call starts the first interval. With `force` the
+    /// counts so far are written at once (when the logs are flushed, the process may not run again).
+    func takeSummary(now: Double, force: Bool = false) -> String? {
         self.lock.lock()
         defer {
             self.lock.unlock()
@@ -136,8 +148,17 @@ final class ShortLogFilter: @unchecked Sendable {
             self.lastSummaryAt = now
             return nil
         }
+        // The clock does not go back; should it ever, the interval starts again instead of waiting for it to catch up.
+        guard now >= lastSummaryAt else {
+            self.lastSummaryAt = now
+            return nil
+        }
         let elapsed = now - lastSummaryAt
-        guard elapsed >= ShortLogFilter.summaryInterval else {
+        if force {
+            if self.countsValue.isEmpty {
+                return nil
+            }
+        } else if elapsed < ShortLogFilter.summaryInterval {
             return nil
         }
         self.lastSummaryAt = now
@@ -146,6 +167,10 @@ final class ShortLogFilter: @unchecked Sendable {
         if counts.isEmpty {
             return nil
         }
+        return ShortLogFilter.summaryLine(counts: counts, elapsed: elapsed)
+    }
+
+    private static func summaryLine(counts: Counts, elapsed: Double) -> String {
         return "Short log left out in the last \(String(format: "%.0f", elapsed)) s: msgsAck \(counts.msgsAck), ping \(counts.ping), transactions under \(String(format: "%.0f", ShortLogFilter.transactionThresholdMilliseconds)) ms \(counts.fastTransactions), extra hole spaces \(counts.holeSpaces), cleanup size reports \(counts.cleanupSizeReports)"
     }
 

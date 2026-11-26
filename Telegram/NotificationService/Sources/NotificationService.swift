@@ -3380,7 +3380,8 @@ final class NotificationService: UNNotificationServiceExtension {
     override func didReceive(_ request: UNNotificationRequest, withContentHandler contentHandler: @escaping (UNNotificationContent) -> Void) {
         let episode = String(UInt32.random(in: 0 ..< UInt32.max), radix: 16)
         self.episode = episode
-        let startTimestamp = CFAbsoluteTimeGetCurrent()
+        // Uptime, not the wall clock: a time change during the request does not skew the outcome line.
+        let startTimestamp = ProcessInfo.processInfo.systemUptime
         self.startTimestamp = startTimestamp
         
         self.initialContent = request.content
@@ -3489,13 +3490,14 @@ final class NotificationService: UNNotificationServiceExtension {
     }
 
     private static func logOutcome(episode: String, ending: NotificationServiceOutcome.Ending, generated: UNNotificationContent?, result: (content: UNNotificationContent, isQuietPlaceholder: Bool)?, startTimestamp: Double) {
-        let isCall = result.flatMap({ IncomingCallPushPresentation.isIncomingCall(userInfo: $0.content.userInfo) }) ?? false
+        // From the generated content too: a quieted call and an empty call alert hand back content without the marker.
+        let isCall = NotificationServiceOutcome.isCall(generatedUserInfo: generated?.userInfo, deliveredUserInfo: result?.content.userInfo)
         Logger.shared.shortLog("NotificationService", NotificationServiceOutcome.line(
             episode: episode,
             ending: ending,
             delivered: NotificationServiceOutcome.delivered(generated: generated != nil, result: result),
             isCall: isCall,
-            duration: CFAbsoluteTimeGetCurrent() - startTimestamp
+            duration: ProcessInfo.processInfo.systemUptime - startTimestamp
         ))
     }
 

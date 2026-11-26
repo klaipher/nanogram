@@ -40,6 +40,21 @@ enum NotificationServiceOutcome {
         return .alert
     }
 
+    /// Whether the request was a call: the extension's own content or what was handed back carries the ring marker
+    /// or the quiet-call marker. The handed-back content alone misses two calls: a quieted call's content has only the
+    /// quiet marker, and for an empty call alert the server's own payload goes back, which has neither.
+    static func isCall(generatedUserInfo: [AnyHashable: Any]?, deliveredUserInfo: [AnyHashable: Any]?) -> Bool {
+        for userInfo in [generatedUserInfo, deliveredUserInfo] {
+            guard let userInfo else {
+                continue
+            }
+            if IncomingCallPushPresentation.isIncomingCall(userInfo: userInfo) || IncomingCallPushPresentation.isQuietCall(userInfo: userInfo) {
+                return true
+            }
+        }
+        return false
+    }
+
     static func line(episode: String, ending: Ending, delivered: Delivered, isCall: Bool, duration: Double) -> String {
         var line = "NotificationService \(episode) outcome: \(delivered.rawValue)"
         if isCall {

@@ -74,9 +74,10 @@ public func registerLoggingFunctions() {
     })
 }
 
-/// Writes what `ShortLogFilter` left out of the short log, once per `ShortLogFilter.summaryInterval`.
-private func shortLogFilterSummary() {
-    if let summary = ShortLogFilter.shared.takeSummary(now: CFAbsoluteTimeGetCurrent()) {
+/// Writes what `ShortLogFilter` left out of the short log, once per `ShortLogFilter.summaryInterval`, or with `force`
+/// the counts so far (when the logs are flushed: the process may be suspended or end next).
+private func shortLogFilterSummary(force: Bool = false) {
+    if let summary = ShortLogFilter.shared.takeSummary(now: ShortLogFilter.now(), force: force) {
         Logger.shared.shortLog("ShortLog", summary)
     }
 }
@@ -216,7 +217,7 @@ public final class Logger {
         setPostboxLogger({ s in
             Logger.shared.log("Postbox", s)
             // Routine lines stay out of the short log (`ShortLogFilter`); the full log has every line.
-            if ShortLogFilter.shared.admitPostbox(s, now: CFAbsoluteTimeGetCurrent()) {
+            if ShortLogFilter.shared.admitPostbox(s, now: ShortLogFilter.now()) {
                 Logger.shared.shortLog("Postbox", s)
             }
             shortLogFilterSummary()
@@ -265,6 +266,7 @@ public final class Logger {
     /// while the app is suspended) and without the fsync of `sync()`: a plain write survives a kill. Call it before
     /// the app can be suspended, on memory warnings and on termination. Does not block the caller.
     public func flushPendingLogs() {
+        self.writeShortLogFilterSummary()
         self.queue.async {
             self.flushLog()
             self.flushShortLog()
@@ -275,12 +277,23 @@ public final class Logger {
     /// process can be gone right after. A few milliseconds (one write of at most 64 KB plus what the queue has
     /// queued); never call it from a path that must not wait.
     public func flushPendingLogsAndWait() {
+        self.writeShortLogFilterSummary()
         self.queue.sync {
             self.flushLog()
             self.flushShortLog()
         }
     }
     
+    /// The shared logger's short log gets what `ShortLogFilter` left out so far before a flush: otherwise the counts
+    /// wait for the next MTProto or Postbox line, which may never come if the process is suspended and killed. The
+    /// line is queued first, so the flush that follows writes it.
+    private func writeShortLogFilterSummary() {
+        guard let sharedLogger, sharedLogger === self else {
+            return
+        }
+        shortLogFilterSummary(force: true)
+    }
+
     /// Waits until the logger queue ran everything queued so far, without flushing (tests).
     func drainForTesting() {
         self.queue.sync {

@@ -23,6 +23,19 @@ final class NotificationServiceOutcomeTests: XCTestCase {
         XCTAssertEqual(NotificationServiceOutcome.delivered(generated: true, result: (self.content(body: "Hello"), false)), .alert)
     }
 
+    func testACallIsSeenInTheGeneratedOrTheHandedBackContent() {
+        let ring = IncomingCallPushPresentation.markerUserInfo
+        let quiet = IncomingCallPushPresentation.quietUserInfo
+        XCTAssertTrue(NotificationServiceOutcome.isCall(generatedUserInfo: ring, deliveredUserInfo: ring))
+        // A quieted call: the extension made a ring, the content handed back has only the quiet marker.
+        XCTAssertTrue(NotificationServiceOutcome.isCall(generatedUserInfo: ring, deliveredUserInfo: quiet))
+        XCTAssertTrue(NotificationServiceOutcome.isCall(generatedUserInfo: nil, deliveredUserInfo: quiet))
+        // An empty call alert: the server's own payload goes back, without any marker.
+        XCTAssertTrue(NotificationServiceOutcome.isCall(generatedUserInfo: ring, deliveredUserInfo: ["aps": ["alert": "Call"]]))
+        XCTAssertFalse(NotificationServiceOutcome.isCall(generatedUserInfo: ["peerId": "1"], deliveredUserInfo: ["aps": ["alert": "Hi"]]))
+        XCTAssertFalse(NotificationServiceOutcome.isCall(generatedUserInfo: nil, deliveredUserInfo: nil))
+    }
+
     func testTheLineSaysHowTheRequestEnded() {
         XCTAssertEqual(
             NotificationServiceOutcome.line(episode: "a1b2c3", ending: .completed, delivered: .alert, isCall: false, duration: 1.234),
