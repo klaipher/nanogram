@@ -33,8 +33,14 @@ func addSynchronizeRecentlyUsedMediaOperation(transaction: Transaction, category
         let _ = transaction.operationLogRemoveEntry(peerId: peerId, tag: tag, tagLocalIndex: topLocalIndex)
     }
     
-    transaction.operationLogAddEntry(peerId: peerId, tag: tag, tagLocalIndex: .automatic, tagMergedIndex: .automatic, contents: SynchronizeRecentlyUsedMediaOperation(content: operation))
-    transaction.operationLogAddEntry(peerId: peerId, tag: tag, tagLocalIndex: .automatic, tagMergedIndex: .automatic, contents: SynchronizeRecentlyUsedMediaOperation(content: .sync))
+    // Nanogram: a `.sync` request queues one sync, not a sync followed by another (the workers run entries in order,
+    // so the second one only fetched the list again). A local change is still followed by one sync.
+    if case .sync = operation {
+        transaction.operationLogAddEntry(peerId: peerId, tag: tag, tagLocalIndex: .automatic, tagMergedIndex: .automatic, contents: SynchronizeRecentlyUsedMediaOperation(content: .sync))
+    } else {
+        transaction.operationLogAddEntry(peerId: peerId, tag: tag, tagLocalIndex: .automatic, tagMergedIndex: .automatic, contents: SynchronizeRecentlyUsedMediaOperation(content: operation))
+        transaction.operationLogAddEntry(peerId: peerId, tag: tag, tagLocalIndex: .automatic, tagMergedIndex: .automatic, contents: SynchronizeRecentlyUsedMediaOperation(content: .sync))
+    }
 }
 
 func addRecentlyUsedSticker(transaction: Transaction, fileReference: FileMediaReference) {

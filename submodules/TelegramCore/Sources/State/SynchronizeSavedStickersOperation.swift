@@ -20,8 +20,14 @@ func addSynchronizeSavedStickersOperation(transaction: Transaction, operation: S
         let _ = transaction.operationLogRemoveEntry(peerId: peerId, tag: tag, tagLocalIndex: topLocalIndex)
     }
     
-    transaction.operationLogAddEntry(peerId: peerId, tag: tag, tagLocalIndex: .automatic, tagMergedIndex: .automatic, contents: SynchronizeSavedStickersOperation(content: operation))
-    transaction.operationLogAddEntry(peerId: peerId, tag: tag, tagLocalIndex: .automatic, tagMergedIndex: .automatic, contents: SynchronizeSavedStickersOperation(content: .sync))
+    // Nanogram: a `.sync` request queues one sync, not a sync followed by another (the workers run entries in order,
+    // so the second one only fetched the list again). A local change is still followed by one sync.
+    if case .sync = operation {
+        transaction.operationLogAddEntry(peerId: peerId, tag: tag, tagLocalIndex: .automatic, tagMergedIndex: .automatic, contents: SynchronizeSavedStickersOperation(content: .sync))
+    } else {
+        transaction.operationLogAddEntry(peerId: peerId, tag: tag, tagLocalIndex: .automatic, tagMergedIndex: .automatic, contents: SynchronizeSavedStickersOperation(content: operation))
+        transaction.operationLogAddEntry(peerId: peerId, tag: tag, tagLocalIndex: .automatic, tagMergedIndex: .automatic, contents: SynchronizeSavedStickersOperation(content: .sync))
+    }
 }
 
 public enum AddSavedStickerError {
