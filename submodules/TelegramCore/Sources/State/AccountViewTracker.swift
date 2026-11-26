@@ -214,10 +214,47 @@ private func wrappedHistoryViewAdditionalData(chatLocation: ChatLocationInput, a
     return result
 }
 
+/// Where the last full-data fetch of a peer stands. Nanogram: read by the chat screen's refresh on open.
+enum CachedPeerDataFetchState: Equatable {
+    case none
+    case inFlight
+    case succeeded
+    /// Either part of the fetch reported failure.
+    case failed
+    /// The last view of the peer went away before the fetch answered.
+    case cancelled
+}
+
+/// How recent a running or successful fetch must be for the chat screen's refresh on open to skip it.
+/// The peer view the chat opens starts its fetch about 0.6 s before the screen appears (measured on
+/// TestFlight 202611232311); a reopen after that still refreshes, as upstream does.
+let chatOpenCachedPeerDataRefreshWindow: Double = 5.0
+
+/// Nanogram: whether the chat screen's refresh on open would only repeat a fetch that started less than
+/// `window` seconds ago and is still running or has succeeded. A failed or cancelled fetch, no fetch, or a
+/// start in the future (the clock moved back) never makes it redundant.
+func chatOpenCachedPeerDataRefreshIsRedundant(now: Double, fetchStartedAt: Double?, fetchState: CachedPeerDataFetchState, window: Double) -> Bool {
+    guard let fetchStartedAt else {
+        return false
+    }
+    switch fetchState {
+    case .inFlight, .succeeded:
+        let age = now - fetchStartedAt
+        return age >= 0.0 && age < window
+    case .none, .failed, .cancelled:
+        return false
+    }
+}
+
 private final class PeerCachedDataContext {
     var viewIds = Set<Int32>()
     var timestamp: Double?
     var hasCachedData: Bool = false
+    /// Nanogram: the last fetch's start, outcome and id (a superseded fetch's late answer must not set the
+    /// outcome). `timestamp` cannot stand in: it is not cleared when removePeerView cancels a fetch.
+    var fetchStartedAt: Double?
+    var fetchState: CachedPeerDataFetchState = .none
+    var fetchId: Int64 = 0
     let disposable = MetaDisposable()
     
     deinit {
@@ -378,6 +415,7 @@ public final class AccountViewTracker {
     private var updatedReactionsSeenForMessageIds = Set<MessageId>()
     
     private var cachedDataContexts: [PeerId: PeerCachedDataContext] = [:]
+    private var nextCachedPeerDataFetchId: Int64 = 0
     private var cachedChannelParticipantsContexts: [PeerId: CachedChannelParticipantsContext] = [:]
     
     private var channelPollingContexts: [PeerId: ChannelPollingContext] = [:]
@@ -1867,11 +1905,13 @@ public final class AccountViewTracker {
                 return
             }
             let queue = self.queue
+            let fetchId = self.beginCachedPeerDataFetch(context: context)
             context.disposable.set(combineLatest(fetchAndUpdateSupplementalCachedPeerData(peerId: peerId, accountPeerId: account.peerId, network: account.network, postbox: account.postbox), _internal_fetchAndUpdateCachedPeerData(accountPeerId: account.peerId, peerId: peerId, network: account.network, postbox: account.postbox)).start(next: { [weak self] supplementalStatus, cachedStatus in
                 queue.async {
                     guard let strongSelf = self else {
                         return
                     }
+                    strongSelf.finishCachedPeerDataFetch(peerId: peerId, fetchId: fetchId, succeeded: supplementalStatus && cachedStatus)
                     if !supplementalStatus || !cachedStatus {
                         if let existingContext = strongSelf.cachedDataContexts[peerId] {
                             existingContext.timestamp = nil
@@ -1880,6 +1920,39 @@ public final class AccountViewTracker {
                 }
             }))
         }
+    }
+    
+    /// Nanogram: the chat screen's refresh of the peer's full data when it appears. Upstream forces a
+    /// fetch here every time, but the chat's peer view has usually started the same fetch about 0.6 s
+    /// earlier (when the 5-minute throttle had expired), so every such open sent getFullUser, or
+    /// getFullChannel + getParticipant, twice. The refresh is skipped while a fetch that started less
+    /// than `chatOpenCachedPeerDataRefreshWindow` ago is running or has succeeded; otherwise it forces one
+    /// as before. Other callers of `forceUpdateCachedPeerData` refresh after a change and are never skipped.
+    public func refreshCachedPeerDataOnChatOpen(peerId: PeerId) {
+        self.queue.async { [self] in
+            if let context = self.cachedDataContexts[peerId], chatOpenCachedPeerDataRefreshIsRedundant(now: CFAbsoluteTimeGetCurrent(), fetchStartedAt: context.fetchStartedAt, fetchState: context.fetchState, window: chatOpenCachedPeerDataRefreshWindow) {
+                return
+            }
+            self.forceUpdateCachedPeerData(peerId: peerId)
+        }
+    }
+    
+    private func beginCachedPeerDataFetch(context: PeerCachedDataContext) -> Int64 {
+        assert(self.queue.isCurrent())
+        self.nextCachedPeerDataFetchId += 1
+        let fetchId = self.nextCachedPeerDataFetchId
+        context.fetchId = fetchId
+        context.fetchStartedAt = CFAbsoluteTimeGetCurrent()
+        context.fetchState = .inFlight
+        return fetchId
+    }
+    
+    private func finishCachedPeerDataFetch(peerId: PeerId, fetchId: Int64, succeeded: Bool) {
+        assert(self.queue.isCurrent())
+        guard let context = self.cachedDataContexts[peerId], context.fetchId == fetchId else {
+            return
+        }
+        context.fetchState = succeeded ? .succeeded : .failed
     }
     
     private func updateCachedPeerData(peerId: PeerId, accountPeerId: PeerId, viewId: Int32, hasCachedData: Bool) {
@@ -1909,11 +1982,13 @@ public final class AccountViewTracker {
                     return
                 }
                 let queue = self.queue
+                let fetchId = self.beginCachedPeerDataFetch(context: context)
                 context.disposable.set(combineLatest(fetchAndUpdateSupplementalCachedPeerData(peerId: peerId, accountPeerId: accountPeerId, network: account.network, postbox: account.postbox), _internal_fetchAndUpdateCachedPeerData(accountPeerId: account.peerId, peerId: peerId, network: account.network, postbox: account.postbox)).start(next: { [weak self] supplementalStatus, cachedStatus in
                     queue.async {
                         guard let strongSelf = self else {
                             return
                         }
+                        strongSelf.finishCachedPeerDataFetch(peerId: peerId, fetchId: fetchId, succeeded: supplementalStatus && cachedStatus)
                         if !supplementalStatus || !cachedStatus {
                             if let existingContext = strongSelf.cachedDataContexts[peerId] {
                                 existingContext.timestamp = nil
@@ -1932,6 +2007,9 @@ public final class AccountViewTracker {
                 if context.viewIds.isEmpty {
                     context.disposable.set(nil)
                     context.hasCachedData = false
+                    if context.fetchState == .inFlight {
+                        context.fetchState = .cancelled
+                    }
                 }
             }
         }
