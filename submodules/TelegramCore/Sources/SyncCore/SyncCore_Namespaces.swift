@@ -137,6 +137,9 @@ public struct Namespaces {
         public static let cachedPeerStoryListHeads: Int8 = 27
         public static let displayedStoryNotifications: Int8 = 28
         public static let storySendAsPeerIds: Int8 = 29
+        /// Nanogram: the server's hash for each list polled with messages.getStickers(emoticon:), keyed by the
+        /// ordered-list collection id (ManagedRecentStickers.swift). 30 was free in this range.
+        public static let emoticonStickerListHashes: Int8 = 30
         public static let cachedChannelBoosts: Int8 = 31
         public static let displayedMessageNotifications: Int8 = 32
         public static let recommendedChannels: Int8 = 33
