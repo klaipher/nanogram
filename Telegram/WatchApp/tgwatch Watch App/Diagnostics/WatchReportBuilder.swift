@@ -13,6 +13,7 @@ struct WatchReportInputs: Sendable {
     var energyText: String
     var logText: String
     var logNote: String
+    var journalText: String
 }
 
 enum WatchReportBuilder {
@@ -27,7 +28,8 @@ enum WatchReportBuilder {
         let files = [
             WatchReportFile(name: "info.txt", text: info),
             WatchReportFile(name: "energy.txt", text: inputs.energyText),
-            WatchReportFile(name: "log.txt", text: inputs.logText)
+            WatchReportFile(name: "log.txt", text: inputs.logText),
+            WatchReportFile(name: "journal.txt", text: inputs.journalText)
         ]
         let manifest = [
             "Nanogram watch report",
@@ -37,6 +39,7 @@ enum WatchReportBuilder {
             "- info.txt: device, OS and app build, battery, Low Power Mode and thermal state",
             "- energy.txt: CPU and energy numbers of this launch and per behaviour switch since it last changed",
             "- log.txt: " + inputs.logNote,
+            "- journal.txt: the app's own list of events (launches, sign-in state, background refreshes, report copies) of this and earlier launches, up to \(Int(WatchEventJournal.maximumAge / 86_400)) days, oldest first",
             "",
             "Message text, contacts and chat titles are not in these files; phone numbers and emails are masked by the iPhone.",
             ""
@@ -44,7 +47,8 @@ enum WatchReportBuilder {
         return WatchReportPayload(created: inputs.created, files: [WatchReportFile(name: "manifest.txt", text: manifest)] + files)
     }
 
-    /// The app's own log lines of this launch (OSLog keeps nothing of earlier launches for the app to read).
+    /// The app's own log lines of this launch (OSLog keeps nothing of earlier launches for the app to read, and on the
+    /// watch it drops this launch's lines too after a while; journal.txt covers that).
     static func logText(since start: Date, limit: Int = 4000) -> (text: String, note: String) {
         guard let store = try? OSLogStore(scope: .currentProcessIdentifier) else {
             return ("", "the watch's log could not be opened")
@@ -59,7 +63,18 @@ enum WatchReportBuilder {
             lines.append("\(formatter.string(from: entry.date)) [\(entry.category)] \(entry.composedMessage)")
         }
         let kept = lines.suffix(limit)
-        let note = "the watch app's log lines of this launch (\(kept.count) of \(lines.count), newest kept); earlier launches are not readable"
+        let note = logNote(kept: kept.count, total: lines.count, launch: start, now: Date())
         return (kept.joined(separator: "\n") + "\n", note)
+    }
+
+    /// The manifest's line for log.txt. An empty read says so plainly: watchOS had dropped every line of a 20 h launch
+    /// before it was reported, and a bare "0 of 0" read like a broken report.
+    static func logNote(kept: Int, total: Int, launch: Date, now: Date) -> String {
+        guard total > 0 else {
+            let hours = max(0, now.timeIntervalSince(launch)) / 3600
+            let age = String(format: "%.1f", hours)
+            return "the watch app's log lines of this launch: watchOS kept none of them (the launch began \(age) h ago); journal.txt lists the app's own events"
+        }
+        return "the watch app's log lines of this launch (\(kept) of \(total), newest kept); earlier launches are not readable here, journal.txt lists their events"
     }
 }

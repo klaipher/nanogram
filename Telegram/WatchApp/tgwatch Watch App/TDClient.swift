@@ -252,6 +252,7 @@ final class TDClient {
             let mapped = mapAuthState(upd.authorizationState)
             authState = mapped
             logger.notice("authState -> \(mapped.logDescription, privacy: .public)")
+            WatchEventJournal.shared.record("tdlib", "authState", detail: mapped.logDescription)
 
             switch mapped {
             case .waitOtherDeviceConfirmation(let link):
@@ -426,6 +427,7 @@ final class TDClient {
                 TDLibStorage.prepareLayout(accountId: accountId, roots: .production)
             }.value
             logger.notice("tdlib files in \(layout.filesArePurgeable ? "caches" : "database directory", privacy: .public)")
+            WatchEventJournal.shared.record("tdlib", "files in", detail: layout.filesArePurgeable ? "caches" : "database directory")
             do {
                 _ = try await client.setTdlibParameters(
                     apiHash: Secrets.apiHash,
