@@ -971,6 +971,7 @@ final class UniversalVideoGalleryItemNode: ZoomableContentGalleryItemNode {
     
     private let moreButtonStateDisposable = MetaDisposable()
     private let mediaPlaybackStateDisposable = MetaDisposable()
+    private var mediaPlaybackStoreThrottle: (messageId: EngineMessage.Id, throttle: MediaPlaybackPositionStoreThrottle)?
     
     private let fetchDisposable = MetaDisposable()
     private var fetchStatus: MediaResourceStatus?
@@ -2324,7 +2325,7 @@ final class UniversalVideoGalleryItemNode: ZoomableContentGalleryItemNode {
                     } else {
                         self.resetLivePhotoPlayback()
                         if let status = self.playerStatusValue {
-                            self.maybeStorePlaybackStatus(status: status)
+                            self.maybeStorePlaybackStatus(status: status, force: true)
                         }
                         if !self.isLivePhoto {
                             videoNode.continuePlayingWithoutSound()
@@ -2409,7 +2410,13 @@ final class UniversalVideoGalleryItemNode: ZoomableContentGalleryItemNode {
         }
     }
     
-    private func maybeStorePlaybackStatus(status: MediaPlayerStatus) {
+    /// Stores the resume position. The status signal reports every 0.5 s while playing; the throttle keeps that to
+    /// one store per few seconds and skips repeated values (each store rewrites the message). `force` is for the item
+    /// closing or scrolling away, which always stores. Trade-off: on an exit that reaches neither (the process is
+    /// killed or crashes during playback, or the controller goes away without animateOut) the stored resume position
+    /// can be up to `MediaPlaybackPositionStoreThrottle.periodicInterval` (5 s) old instead of about 0.5 s. Pause, seek
+    /// and the end of playback still store at once.
+    private func maybeStorePlaybackStatus(status: MediaPlayerStatus, force: Bool = false) {
         guard let item = self.item else {
             return
         }
@@ -2420,16 +2427,33 @@ final class UniversalVideoGalleryItemNode: ZoomableContentGalleryItemNode {
         let shouldStorePlaybacksState: Bool
         shouldStorePlaybacksState = status.duration >= 20.0
         
+        var timestamp: Double?
         if shouldStorePlaybacksState {
-            var timestamp: Double?
             if status.timestamp > 5.0 && status.timestamp < status.duration - 5.0 {
                 timestamp = status.timestamp
             } else {
                 timestamp = 0.0
             }
+        }
+        
+        let isPlaying: Bool
+        switch status.status {
+        case .playing:
+            isPlaying = true
+        case let .buffering(_, whilePlaying, _, _):
+            isPlaying = whilePlaying
+        case .paused:
+            isPlaying = false
+        }
+        
+        var throttle = MediaPlaybackPositionStoreThrottle()
+        if let current = self.mediaPlaybackStoreThrottle, current.messageId == message.id {
+            throttle = current.throttle
+        }
+        let shouldStore = throttle.shouldStore(MediaPlaybackPositionStoreThrottle.Entry(timestamp: timestamp, rate: status.baseRate), seekId: status.seekId, isPlaying: isPlaying, now: CACurrentMediaTime(), force: force)
+        self.mediaPlaybackStoreThrottle = (message.id, throttle)
+        if shouldStore {
             item.storeMediaPlaybackState(message.id, timestamp, status.baseRate)
-        } else {
-            item.storeMediaPlaybackState(message.id, nil, status.baseRate)
         }
     }
     
@@ -2630,7 +2654,7 @@ final class UniversalVideoGalleryItemNode: ZoomableContentGalleryItemNode {
     
     override func animateOut(to node: (ASDisplayNode, CGRect, () -> (UIView?, UIView?)), addToTransitionSurface: (UIView) -> Void, completion: @escaping () -> Void) {
         if let status = self.playerStatusValue {
-            self.maybeStorePlaybackStatus(status: status)
+            self.maybeStorePlaybackStatus(status: status, force: true)
         }
         
         self.isAnimatingOut = true
@@ -2794,7 +2818,7 @@ final class UniversalVideoGalleryItemNode: ZoomableContentGalleryItemNode {
             
             if videoNode.hasAttachedContext {
                 if let status = self.playerStatusValue {
-                    self.maybeStorePlaybackStatus(status: status)
+                    self.maybeStorePlaybackStatus(status: status, force: true)
                 }
                 
                 if self.isPaused || !self.keepSoundOnDismiss {

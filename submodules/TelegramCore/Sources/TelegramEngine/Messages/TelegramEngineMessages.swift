@@ -910,13 +910,10 @@ public extension TelegramEngine {
         public func storeLocallyDerivedData(messageId: MessageId, data: [String: CodableEntry]) -> Signal<Never, NoError> {
             return self.account.postbox.transaction { transaction -> Void in
                 transaction.updateMessage(messageId, update: { currentMessage in
-                    let storeForwardInfo = currentMessage.forwardInfo.flatMap(StoreMessageForwardInfo.init)
-                    var attributes = currentMessage.attributes.filter { !($0 is DerivedDataMessageAttribute) }
-                    
-                    if !data.isEmpty {
-                        attributes.append(DerivedDataMessageAttribute(data: data))
+                    guard let attributes = attributesReplacingDerivedData(currentMessage.attributes, update: { _ in data }) else {
+                        return .skip
                     }
-                    
+                    let storeForwardInfo = currentMessage.forwardInfo.flatMap(StoreMessageForwardInfo.init)
                     return .update(StoreMessage(id: currentMessage.id, customStableId: nil, globallyUniqueId: currentMessage.globallyUniqueId, groupingKey: currentMessage.groupingKey, threadId: currentMessage.threadId, timestamp: currentMessage.timestamp, flags: StoreMessageFlags(currentMessage.flags), tags: currentMessage.tags, globalTags: currentMessage.globalTags, localTags: currentMessage.localTags, forwardInfo: storeForwardInfo, authorId: currentMessage.author?.id, text: currentMessage.text, attributes: attributes, media: currentMessage.media))
                 })
             }
@@ -926,19 +923,10 @@ public extension TelegramEngine {
         public func updateLocallyDerivedData(messageId: MessageId, update: @escaping ([String: CodableEntry]) -> [String: CodableEntry]) -> Signal<Never, NoError> {
             return self.account.postbox.transaction { transaction -> Void in
                 transaction.updateMessage(messageId, update: { currentMessage in
+                    guard let attributes = attributesReplacingDerivedData(currentMessage.attributes, update: update) else {
+                        return .skip
+                    }
                     let storeForwardInfo = currentMessage.forwardInfo.flatMap(StoreMessageForwardInfo.init)
-                    var attributes = currentMessage.attributes
-                    var data: [String: CodableEntry] = [:]
-                    if let index = attributes.firstIndex(where: { $0 is DerivedDataMessageAttribute }) {
-                        data = (attributes[index] as? DerivedDataMessageAttribute)?.data ?? [:]
-                        attributes.remove(at: index)
-                    }
-                    data = update(data)
-                    
-                    if !data.isEmpty {
-                        attributes.append(DerivedDataMessageAttribute(data: data))
-                    }
-                    
                     return .update(StoreMessage(id: currentMessage.id, customStableId: nil, globallyUniqueId: currentMessage.globallyUniqueId, groupingKey: currentMessage.groupingKey, threadId: currentMessage.threadId, timestamp: currentMessage.timestamp, flags: StoreMessageFlags(currentMessage.flags), tags: currentMessage.tags, globalTags: currentMessage.globalTags, localTags: currentMessage.localTags, forwardInfo: storeForwardInfo, authorId: currentMessage.author?.id, text: currentMessage.text, attributes: attributes, media: currentMessage.media))
                 })
             }
