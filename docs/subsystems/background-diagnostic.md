@@ -9,6 +9,16 @@ tasks the app holds, whether the audio session is active, display links, and cac
 scheduled time means the process was suspended in between. Nothing leaves the device. The "lock" task begun on
 entering the background is a `OneShotBackgroundTask`: ended once, by its 5 s deadline or the expiration handler.
 
+**Memory in the short log, whatever "Log to File" says.** "Log to File" is off by default on TestFlight, so the file
+log's memory lines (the 30 s `Memory detail:`, `Memory purge`, the background diagnostic) are usually missing from
+testers' reports. A compact `Memory <reason>:` line (`MemoryShortLogLine`: footprint before/after for a purge, peak,
+malloc, compressed, graphics, headroom, the largest malloc zone and its block count; at most 256 bytes) goes to
+`Logger.shortLog` (the `critlog-*` files) at launch, on entering the background and on a memory warning (each at
+most once a minute), and every 10 minutes at most while the footprint is above 1 GB (`MemoryShortLogBudget`, pinned
+by `MemoryShortLogTests`). That is at most a few hundred lines a day, against tens of thousands of network and
+Postbox lines. A purge's "after" is measured right after `malloc_zone_pressure_relief`; the Postbox caches are
+cleared later on their own queue, so their release shows in the next line, not in that one.
+
 **Database writes stop before the app lets iOS suspend it (0xdead10cc).** The account databases are in the shared
 app-group container, and a suspended app holding their SQLite lock is killed (MetricKit `fileLock`). So every
 background task the app ends in the background (the "lock" task's 5 s deadline, `SharedWakeupManager`'s
