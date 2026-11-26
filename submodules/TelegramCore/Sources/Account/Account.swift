@@ -1345,7 +1345,7 @@ public class Account {
         
         self.networkStatsContext = NetworkStatsContext(postbox: postbox)
         
-        self.peerInputActivityManager = PeerInputActivityManager()
+        self.peerInputActivityManager = PeerInputActivityManager(isLocal: false)
         
         if !supplementary {
             self.filteredStorySubscriptionsContext = StorySubscriptionsContext(accountPeerId: peerId, postbox: postbox, network: network, isHidden: false)
@@ -1380,7 +1380,7 @@ public class Account {
         )
         
         self.contactSyncManager = ContactSyncManager(postbox: postbox, network: network, accountPeerId: peerId, stateManager: self.stateManager)
-        self.localInputActivityManager = PeerInputActivityManager()
+        self.localInputActivityManager = PeerInputActivityManager(isLocal: true)
         self.accountPresenceManager = AccountPresenceManager(shouldKeepOnlinePresence: self.shouldKeepOnlinePresence.get(), network: network)
         #if os(iOS)
         // iOS only for now: the Rust engine is the macOS default, and its online keepalive cadence
